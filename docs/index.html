@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Autobahn‑Racer — First‑Person HTML5</title>
+  <style>
+    :root{
+      --ui-bg: rgba(10,12,16,0.6);
+      --ui-text: #eaf2ff;
+      --accent: #56ccf2;
+      --danger: #ff5577;
+      --ok: #64f38c;
+    }
+    html, body { height: 100%; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: #0b0e14;
+      overflow: hidden;
+      color: var(--ui-text);
+    }
+    #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+    /* UI Overlay */
+    .hud { position: fixed; inset: 0; pointer-events: none; z-index: 30; }
+    .centerMsg { pointer-events: auto; }
+    .topbar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; padding: 6px 10px; background: var(--ui-bg); border-radius: 12px; backdrop-filter: blur(6px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+    .pill { padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.06); font-weight: 600; letter-spacing: 0.2px; }
+    .speed { color: var(--ok); }
+    .warn { color: var(--danger); }
+    .centerMsg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; display: none; }
+    .centerMsg.show { display: block; }
+    .title { font-size: clamp(20px, 5vw, 48px); font-weight: 800; text-shadow: 0 3px 12px rgba(0,0,0,0.45); }
+    .subtitle { opacity: 0.9; margin-top: 8px; }
+    .btn { pointer-events: auto; margin-top: 18px; display: inline-block; padding: 10px 16px; border-radius: 12px; background: var(--accent); color: #002133; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; box-shadow: 0 10px 25px rgba(86,204,242,0.35); border: 0; cursor: pointer; }
+
+    .bottomTips { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: var(--ui-bg); border-radius: 12px; padding: 8px 10px; backdrop-filter: blur(6px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); font-size: 13px; opacity: 0.9; }
+
+    .rainWarning { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(255, 85, 85, 0.82); color: #170a0a; font-weight: 800; padding: 10px 14px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); display: none; }
+    .rainWarning.show { display: inline-block; animation: pulse 0.8s ease-in-out infinite alternate; }
+    @keyframes pulse { from{ transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.03);} }
+
+    /* Touch hint zones (invisible, but can be toggled for debug) */
+    .touchZone { position: fixed; top:0; bottom:0; width:50%; pointer-events: none; z-index: 5; }
+    .running .touchZone { pointer-events: auto; }
+    .touchLeft { left:0; }
+    .touchRight { right:0; }
+    /* .touchZone{ background: rgba(255,255,255,0.03);} */
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div class="hud" aria-hidden="false">
+    <div class="topbar" id="topbar">
+      <div class="pill" id="score">Score: 0</div>
+      <div class="pill speed" id="speed">Tempo: 0 km/h</div>
+      <div class="pill" id="weather">Wetter: Klar</div>
+      <div class="pill" id="lanes">Spuren: 3</div>
+    </div>
+
+    <div class="rainWarning" id="rainMsg">Achtung: Scheibenwischer defekt! Sicht stark eingeschränkt.</div>
+
+    <div class="centerMsg show" id="menu">
+      <div class="title">Autobahn‑Racer</div>
+      <div class="subtitle">Ego‑Perspektive • Ausweichen • Wetterwechsel • Variable Spuren</div>
+      <button class="btn" id="startBtn">Start</button>
+      <div class="subtitle" style="margin-top:12px; font-size:14px; opacity:0.85;">
+        Steuerung: <strong>A/D</strong> oder <strong>Pfeile links/rechts</strong> · Auf Mobilgeräten per <strong>Touch</strong> (links/rechts)
+      </div>
+    </div>
+
+    <div class="centerMsg" id="gameOver">
+      <div class="title">Unfall!</div>
+      <div class="subtitle" id="finalScore">Score: 0</div>
+      <button class="btn" id="restartBtn">Nochmal</button>
+    </div>
+
+    <div class="bottomTips" id="tips">Drücken Sie <b>P</b> zum Pausieren · <b>M</b> für Stumm</div>
+  </div>
+
+  <!-- Touch zones for mobile -->
+  <div class="touchZone touchLeft" id="touchLeft"></div>
+  <div class="touchZone touchRight" id="touchRight"></div>
+
+<script>
+(() => {
+  'use strict';
+  // --- Canvas Setup with DPR scaling
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize, {passive:true});
+  resize();
+
+  // --- UI Elements
+  const elScore = document.getElementById('score');
+  const elSpeed = document.getElementById('speed');
+  const elWeather = document.getElementById('weather');
+  const elLanes = document.getElementById('lanes');
+  const menu = document.getElementById('menu');
+  const gameOver = document.getElementById('gameOver');
+  const finalScore = document.getElementById('finalScore');
+  const rainMsg = document.getElementById('rainMsg');
+
+  // --- Input
+  const keys = new Set();
+  let touchLeftActive = false, touchRightActive = false;
+  window.addEventListener('keydown', (e)=>{
+    if(['ArrowLeft','ArrowRight','a','A','d','D','p','P','m','M'].includes(e.key)) e.preventDefault();
+    keys.add(e.key);
+  });
+  window.addEventListener('keyup', (e)=>{ keys.delete(e.key); });
+
+  // Touch / Pointer
+  const leftZone = document.getElementById('touchLeft');
+  const rightZone = document.getElementById('touchRight');
+  function bindZone(zone, setter){
+    zone.addEventListener('pointerdown', (e)=>{ setter(true); });
+    zone.addEventListener('pointerup',   (e)=>{ setter(false); });
+    zone.addEventListener('pointercancel',(e)=>{ setter(false); });
+    zone.addEventListener('pointerleave', (e)=>{ setter(false); });
+  }
+  bindZone(leftZone, v=>touchLeftActive=v);
+  bindZone(rightZone, v=>touchRightActive=v);
+  function setTouchEnabled(on){
+    leftZone.style.pointerEvents = on ? 'auto' : 'none';
+    rightZone.style.pointerEvents = on ? 'auto' : 'none';
+  }
+  setTouchEnabled(false);
+
+  // --- Game State
+  const state = {
+    running: false,
+    paused: false,
+    muted: true,
+    time: 0,
+    dt: 0,
+    last: 0,
+    score: 0,
+    speedKmh: 180,
+    targetSpeed: 220,
+    maxSpeed: 300,
+    accel: 16,
+    playerX: 0,
+    steerSpeed: 1.6,
+    steerVisual: 0,
+    lanes: 3,
+    prevLaneCount: 3,
+    laneTarget: 3,
+    laneTimer: 0,
+    laneChangeEvery: 9,
+    traffic: [],
+    spawnTimer: 0,
+    spawnEvery: 0.9,
+    difficulty: 1.0,
+    weather: 'clear',
+    weatherTimer: 0,
+    nextWeatherIn: rand(12, 22),
+    rain: { on:false, intensity:0, msgTimer:0 },
+    crashed: false,
+  };
+
+  // --- Helpers
+  function rand(a,b){ return a + Math.random()*(b-a); }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+
+  // --- Road & Projection Parameters (Ego‑Perspektive)
+  const horizonYFactor = 0.45; // höherer Horizont => tiefere Fahrer‑Sitzposition
+  function roadHalfWidthAt(z){
+    const bottom = Math.min(W, H) * 0.86 * 0.5;   // breiter am unteren Bildrand
+    const top    = Math.min(W, H) * 0.18 * 0.5;   // schmal am Horizont
+    return lerp(bottom, top, z);
+  }
+  function screenYAt(z){ return lerp(H, H*horizonYFactor, z); }
+  // Camera lateral offset helpers (player-centric view)
+  function centerXAt(z, camX){
+    const rw = roadHalfWidthAt(z);
+    return W/2 - camX * rw;
+  }
+  function worldToScreenX(t, z, camX){
+    const rw = roadHalfWidthAt(z);
+    return centerXAt(z, camX) + t * rw;
+  }
+
+  // Lane centers normalized within the -1..1 road span
+  function laneCenters(lanes){
+    if(lanes<=0) return [];
+    const centers = [];
+    const step = 2/lanes;
+    for(let i=0;i<lanes;i++){
+      centers.push(-1 + step*(i + 0.5));
+    }
+    return centers;
+  }
+
+  function alignTrafficToLanes(lanes, centersOverride){
+    const centers = centersOverride || laneCenters(lanes);
+    if(!centers.length) return;
+    const laneHalf = lanes>0 ? 1/lanes : 1;
+    for(const car of state.traffic){
+      const idx = Math.max(0, Math.min(centers.length-1, Math.round(car.laneIndex || 0)));
+      car.laneIndex = idx;
+      const carHalf = car.w * 0.5;
+      const maxNorm = laneHalf>0 ? Math.max(0, 1 - carHalf / laneHalf) : 0;
+      const offsetNorm = clamp(typeof car.offset === 'number' ? car.offset : 0, -maxNorm, maxNorm);
+      car.offset = offsetNorm;
+      car.x = centers[idx] + offsetNorm * laneHalf;
+    }
+  }
+
+  // Remap existing traffic to new lane layout
+  function remapTraffic(prevCount, newCount){
+    if(prevCount===newCount) return;
+    const prevCenters = laneCenters(prevCount);
+    const prevHalf = prevCount>0 ? 1/prevCount : 1;
+    const newCenters = laneCenters(newCount);
+    if(newCenters.length===0) return;
+    for(const car of state.traffic){
+      const prevIdx = Math.max(0, Math.min(prevCenters.length-1, Math.round(car.laneIndex || 0)));
+      const prevCenter = prevCenters.length ? prevCenters[prevIdx] : 0;
+      const offsetNorm = prevHalf>0 ? clamp((car.x - prevCenter) / prevHalf, -0.8, 0.8) : 0;
+      const ratio = clamp((car.x + 1) / 2, 0, 0.9999);
+      const newIndex = clamp(Math.floor(ratio * newCount), 0, Math.max(0, newCount-1));
+      car.laneIndex = newIndex;
+      car.offset = offsetNorm;
+    }
+    alignTrafficToLanes(newCount, newCenters);
+  }
+
+  // --- Traffic cars
+  function spawnTraffic(){
+    const lanesNow = Math.round(state.lanes);
+    const centers = laneCenters(lanesNow);
+    if(!centers.length) return;
+    const laneIndex = Math.floor(rand(0, centers.length));
+    const laneHalf = lanesNow>0 ? 1/lanesNow : 1;
+    const offsetNorm = rand(-0.18, 0.18);
+    const x = centers[laneIndex] + offsetNorm * laneHalf;
+    const z = 1 + Math.random()*0.6;
+    const relSpeed = clamp(rand(0.45, 0.8) * (0.9 + state.difficulty*0.2), 0.35, 0.95);
+    state.traffic.push({ x, z, w: 0.16, h: 0.24, relSpeed, laneIndex, offset: offsetNorm });
+  }
+
+  // --- Collision check
+  function checkCollision(car){
+    if(car.z > 0.10) return false;
+    const px = state.playerX;
+    const dz = Math.abs(car.z);
+    const roadW = roadHalfWidthAt(0.10);
+    const carWpx = car.w * roadW;
+    const dx = Math.abs((px - car.x) * roadW);
+    return dx < carWpx * 0.75 && dz < 0.10;
+  }
+
+  // --- Weather System
+  function setWeather(type){
+    state.weather = type;
+    if(type==='rain'){
+      state.rain.on = true;
+      state.rain.intensity = 0.0;
+      state.rain.msgTimer = 3.5;
+      rainMsg.classList.add('show');
+      elWeather.textContent = 'Wetter: Regen';
+    } else if(type==='clear'){
+      state.rain.on = false;
+      state.rain.intensity = 0.0;
+      rainMsg.classList.remove('show');
+      elWeather.textContent = 'Wetter: Klar';
+    }
+  }
+
+  // --- Rendering helpers
+  function drawSkyAndHorizon(){
+    const g = ctx.createLinearGradient(0,0,0,H);
+    const dusk = state.weather==='rain' ? [ '#1b1e26', '#0c1119' ] : [ '#233146', '#0d1420' ];
+    g.addColorStop(0, dusk[0]);
+    g.addColorStop(1, dusk[1]);
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+    const hy = H*horizonYFactor;
+    const r = Math.max(W,H)*0.5;
+    const grd = ctx.createRadialGradient(W/2, hy, r*0.02, W/2, hy, r);
+    grd.addColorStop(0, 'rgba(255,205,155,0.08)');
+    grd.addColorStop(1, 'rgba(255,205,155,0)');
+    ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(W/2, hy, r, 0, Math.PI*2); ctx.fill();
+  }
+
+  function drawRoad(){
+    const hy = H*horizonYFactor;
+
+    const wTop = roadHalfWidthAt(1);
+    const wBot = roadHalfWidthAt(0);
+    const cxTop = centerXAt(1, state.playerX);
+    const cxBot = centerXAt(0, state.playerX);
+
+    // Road body (perspective with camera offset)
+    ctx.beginPath();
+    ctx.moveTo(cxTop - wTop, hy);
+    ctx.lineTo(cxTop + wTop, hy);
+    ctx.lineTo(cxBot + wBot, H);
+    ctx.lineTo(cxBot - wBot, H);
+    ctx.closePath();
+    const asphalt = ctx.createLinearGradient(0, hy, 0, H);
+    asphalt.addColorStop(0,'#2a2f35');
+    asphalt.addColorStop(1,'#0b0f14');
+    ctx.fillStyle = asphalt; ctx.fill();
+
+    // Perspective shading stripes to enhance speed feel
+    const stripeCount = 14;
+    for(let i=0;i<stripeCount;i++){
+      const z0 = i/stripeCount, z1 = (i+0.5)/stripeCount;
+      const y0 = screenYAt(z0), y1 = screenYAt(z1);
+      const w0 = roadHalfWidthAt(z0), w1 = roadHalfWidthAt(z1);
+      const cx0 = centerXAt(z0, state.playerX), cx1 = centerXAt(z1, state.playerX);
+      ctx.beginPath();
+      ctx.moveTo(cx0 - w0, y0);
+      ctx.lineTo(cx0 + w0, y0);
+      ctx.lineTo(cx1 + w1, y1);
+      ctx.lineTo(cx1 - w1, y1);
+      const a = 0.06 * (1 - z0);
+      ctx.fillStyle = `rgba(255,255,255,${a})`;
+      ctx.fill();
+    }
+
+    // Guard rails (edges)
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(220,220,220,0.75)';
+    ctx.beginPath();
+    ctx.moveTo(cxTop - wTop, hy);
+    ctx.lineTo(cxBot - wBot, H);
+    ctx.moveTo(cxTop + wTop, hy);
+    ctx.lineTo(cxBot + wBot, H);
+    ctx.stroke();
+
+    // Lane lines (variable count)
+    const lanesNow = Math.round(state.lanes);
+    elLanes.textContent = `Spuren: ${lanesNow}`;
+    if(lanesNow>1){
+      ctx.lineWidth = 3; ctx.setLineDash([14, 14]); ctx.lineDashOffset = (state.time*180) % 28;
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      const centers = laneCenters(lanesNow);
+      for(let i=1;i<centers.length;i++){
+        const t = (centers[i-1]+centers[i])/2; // divider between lanes
+        const x0 = centerXAt(1, state.playerX) + t*roadHalfWidthAt(1);
+        const y0 = hy;
+        const x1 = centerXAt(0, state.playerX) + t*roadHalfWidthAt(0);
+        const y1 = H;
+        ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
+    // Car hood for first‑person feel
+    const hoodH = Math.min(300, H*0.30);
+    const hoodG = ctx.createLinearGradient(0, H-hoodH, 0, H);
+    hoodG.addColorStop(0,'rgba(20,25,32,0.0)');
+    hoodG.addColorStop(1,'rgba(20,25,32,0.98)');
+    ctx.fillStyle = hoodG; ctx.fillRect(0, H-hoodH, W, hoodH);
+  }
+
+  function drawTraffic(){
+    state.traffic.sort((a,b)=>b.z - a.z);
+    for(const car of state.traffic){
+      const z = clamp(car.z, 0, 1.05);
+      const y = screenYAt(z);
+      const rw = roadHalfWidthAt(z);
+      const x = worldToScreenX(car.x, z, state.playerX);
+      const scale = lerp(0.25, 1.6, 1 - z);
+      const carW = car.w * rw * scale * 1.1;
+      const carH = car.h * rw * scale * 1.15;
+
+      // Body
+      const grd = ctx.createLinearGradient(x, y-carH, x, y+carH*0.6);
+      grd.addColorStop(0, '#c4d7ff');
+      grd.addColorStop(1, '#7a8bad');
+      ctx.fillStyle = grd;
+      roundRect(ctx, x-carW*0.5, y-carH, carW, carH, Math.min(6, carW*0.18));
+      ctx.fill();
+
+      // Taillights
+      ctx.fillStyle = 'rgba(255,70,70,0.95)';
+      const tlw = carW*0.14, tlh = carH*0.12;
+      ctx.fillRect(x - carW*0.44, y - tlh*0.6, tlw, tlh);
+      ctx.fillRect(x + carW*0.30, y - tlh*0.6, tlw, tlh);
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(x, y+carH*0.05, carW*0.55, carH*0.2, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  function roundRect(ctx,x,y,w,h,r){
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+rr,y);
+    ctx.arcTo(x+w,y,x+w,y+h,rr);
+    ctx.arcTo(x+w,y+h,x,y+h,rr);
+    ctx.arcTo(x,y+h,x,y,rr);
+    ctx.arcTo(x,y,x+w,y,rr);
+    ctx.closePath();
+  }
+
+  // Speed effect lines to reinforce rushing sensation
+  const speedLines = new Array(40).fill(0).map(()=>makeSpeedLine());
+  function makeSpeedLine(){
+    return {
+      x: Math.random(),
+      y: Math.random(),
+      len: rand(0.22, 0.52),
+      speed: rand(0.9, 1.8),
+      width: rand(1.2, 2.4),
+    };
+  }
+  function drawSpeedLines(){
+    const factor = clamp((state.speedKmh - 140) / 180, 0, 1);
+    if(factor <= 0.01) return;
+
+    ctx.save();
+    ctx.globalAlpha = 0.08 + factor * 0.24;
+    for(const line of speedLines){
+      ctx.strokeStyle = 'rgba(220,240,255,0.75)';
+      ctx.lineWidth = line.width * (0.6 + factor * 1.8);
+      ctx.beginPath();
+      const x = W/2 + (line.x - 0.5) * W * 0.7 - state.steerVisual * W * 0.12;
+      const y0 = H * 0.18 + line.y * H * 0.74;
+      const y1 = y0 + line.len * H * (0.6 + factor * 2.6);
+      ctx.moveTo(x, y0);
+      ctx.lineTo(x + state.steerVisual * 20, y1);
+      ctx.stroke();
+
+      line.y += (state.dt || 0.016) * line.speed * (1.3 + factor * 3.4);
+      if(line.y > 1){
+        const fresh = makeSpeedLine();
+        line.x = fresh.x;
+        line.y = 0;
+        line.len = fresh.len;
+        line.speed = fresh.speed;
+        line.width = fresh.width;
+      }
+    }
+    ctx.restore();
+  }
+
+  // Rain overlay
+  const raindrops = new Array(120).fill(0).map(()=>({x:Math.random(), y:Math.random(), l:rand(0.06,0.18), v:rand(0.7, 1.4)}));
+  function drawRain(){
+    if(!state.rain.on && state.rain.intensity<=0) return;
+    const intensity = state.rain.intensity;
+
+    // Visibility veil (wiper broken)
+    ctx.fillStyle = `rgba(14,18,24,${0.20 + intensity*0.35})`;
+    ctx.fillRect(0,0,W,H);
+
+    // Droplets
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = `rgba(180,200,255,${0.3 + intensity*0.5})`;
+    ctx.beginPath();
+    for(const d of raindrops){
+      const x = d.x * W;
+      const y0 = d.y * H;
+      const y1 = y0 + d.l * H * (0.6 + intensity);
+      ctx.moveTo(x, y0);
+      ctx.lineTo(x+3, y1);
+      d.y += d.v * 0.012 * (0.7 + intensity);
+      if(d.y>1){ d.y = 0; d.x = Math.random(); d.v = rand(0.7, 1.6); d.l = rand(0.06,0.2);}    
+    }
+    ctx.stroke();
+
+    if(state.rain.msgTimer>0){
+      state.rain.msgTimer -= state.dt;
+      if(state.rain.msgTimer<=0){ rainMsg.classList.remove('show'); }
+    }
+  }
+
+  // --- Update loop
+  function update(dt){
+    if(keys.has('p') || keys.has('P')){ keys.delete('p'); keys.delete('P'); state.paused = !state.paused; }
+    if(keys.has('m') || keys.has('M')){ keys.delete('m'); keys.delete('M'); state.muted = !state.muted; }
+    if(state.paused || !state.running) return;
+
+    state.difficulty = Math.min(3.0, 1.0 + state.time/90);
+    state.targetSpeed = Math.min(state.maxSpeed, 220 + (state.difficulty-1)*40);
+    const speedDelta = state.targetSpeed - state.speedKmh;
+    state.speedKmh += clamp(speedDelta, -state.accel, state.accel) * dt;
+
+    let steer = 0;
+    if(keys.has('ArrowLeft')||keys.has('a')||keys.has('A')||touchLeftActive) steer -= 1;
+    if(keys.has('ArrowRight')||keys.has('d')||keys.has('D')||touchRightActive) steer += 1;
+    state.playerX += steer * state.steerSpeed * dt;
+    state.steerVisual = lerp(state.steerVisual, steer * 0.42, Math.min(1, 9*dt));
+
+    state.playerX = clamp(state.playerX, -1.02, 1.02);
+
+    state.spawnTimer -= dt;
+    const spawnInterval = Math.max(0.45, state.spawnEvery - (state.difficulty-1)*0.16);
+    if(state.spawnTimer <= 0){
+      spawnTraffic();
+      state.spawnTimer = spawnInterval;
+    }
+
+    const playerRel = state.speedKmh/360;
+    for(const car of state.traffic){
+      const rel = playerRel * dt * (1.0 - car.relSpeed);
+      car.z -= rel;
+    }
+    state.traffic = state.traffic.filter(c => c.z > -0.2);
+
+    for(const car of state.traffic){
+      if(checkCollision(car)){
+        state.crashed = true;
+        gameOverFlow();
+        break;
+      }
+    }
+
+    state.laneTimer += dt;
+    if(state.laneTimer > state.laneChangeEvery){
+      state.laneTimer = 0;
+      state.laneChangeEvery = rand(7, 13);
+      state.laneTarget = Math.round(clamp(state.laneTarget + (Math.random() < 0.5 ? -1 : 1), 2, 5));
+    }
+    state.lanes = lerp(state.lanes, state.laneTarget, 0.6*dt);
+
+    const lanesNow = Math.round(state.lanes);
+    if(lanesNow !== state.prevLaneCount){
+      remapTraffic(state.prevLaneCount, lanesNow);
+      state.prevLaneCount = lanesNow;
+    }
+    alignTrafficToLanes(lanesNow);
+
+    state.weatherTimer += dt;
+    if(state.weather==='clear' && state.weatherTimer > state.nextWeatherIn){
+      setWeather('rain');
+      state.weatherTimer = 0;
+      state.nextWeatherIn = rand(18, 28);
+    } else if(state.weather==='rain' && state.weatherTimer>rand(10,16)){
+      setWeather('clear');
+      state.weatherTimer = 0;
+      state.nextWeatherIn = rand(12, 22);
+    }
+
+    if(state.weather==='rain'){
+      state.rain.intensity = clamp(state.rain.intensity + dt*0.20, 0, 1);
+      state.steerSpeed = 1.4;
+    } else {
+      state.rain.intensity = clamp(state.rain.intensity - dt*0.3, 0, 1);
+      state.steerSpeed = 1.6;
+    }
+
+    state.score += state.speedKmh * dt * 0.6;
+
+    elScore.textContent = `Score: ${Math.floor(state.score).toLocaleString('de-AT')}`;
+    elSpeed.textContent = `Tempo: ${Math.round(state.speedKmh)} km/h`;
+  }
+
+  // --- Draw loop
+  function render(){
+    // World slight roll around a low pivot to emphasize driver view
+    const pivotX = W/2, pivotY = H*0.72;
+    const roll = state.steerVisual * 0.06;
+    ctx.save();
+    ctx.translate(pivotX, pivotY);
+    ctx.rotate(roll);
+    ctx.translate(-pivotX, -pivotY);
+
+    drawSkyAndHorizon();
+    drawRoad();
+    drawTraffic();
+    drawSpeedLines();
+    drawRain();
+
+    ctx.restore();
+
+    drawPlayerGuides();
+    drawCockpitFrame();
+    drawSteeringWheel();
+
+    // Vignette
+    const v = ctx.createRadialGradient(W/2,H/2, Math.min(W,H)*0.2, W/2,H/2, Math.max(W,H)*0.7);
+    v.addColorStop(0,'rgba(0,0,0,0)');
+    v.addColorStop(1,'rgba(0,0,0,0.5)');
+    ctx.fillStyle = v; ctx.fillRect(0,0,W,H);
+  }
+
+  // --- Main loop
+  function loop(ts){
+    if(!state.running){ requestAnimationFrame(loop); return; }
+    if(!state.last) state.last = ts;
+    const rawdt = (ts - state.last) / 1000;
+    state.last = ts;
+    state.dt = Math.min(0.033, rawdt);
+    if(!state.paused && !state.crashed){
+      state.time += state.dt;
+      update(state.dt);
+    }
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // Steering wheel overlay (cockpit)
+  function drawSteeringWheel(){
+    const hoodH = Math.min(300, H*0.30);
+    const r = Math.min(W, H) * 0.17;
+    const cx = W/2, cy = H - hoodH*0.52;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(state.steerVisual);
+
+    ctx.lineWidth = Math.max(6, r*0.12);
+    ctx.strokeStyle = 'rgba(28,34,44,0.95)';
+    ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+
+    ctx.lineWidth = Math.max(2, r*0.04);
+    ctx.strokeStyle = 'rgba(120,160,200,0.35)';
+    ctx.beginPath(); ctx.arc(0,0,r*0.82,0,Math.PI*2); ctx.stroke();
+
+    ctx.lineWidth = Math.max(6, r*0.10);
+    ctx.strokeStyle = 'rgba(36,42,52,0.95)';
+    for(let i=0;i<3;i++){
+      const a = i*(Math.PI*2/3);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*r*0.1, Math.sin(a)*r*0.1);
+      ctx.lineTo(Math.cos(a)*r*0.65, Math.sin(a)*r*0.65);
+      ctx.stroke();
+    }
+
+    const grd = ctx.createRadialGradient(0,0,r*0.08,0,0,r*0.32);
+    grd.addColorStop(0,'#2a313c'); grd.addColorStop(1,'#0f141b');
+    ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(0,0,r*0.34,0,Math.PI*2); ctx.fill();
+
+    ctx.restore();
+  }
+
+  // Player position guides (width markers + center arrow)
+  function drawPlayerGuides(){
+    const z = 0.12; // near player
+    const y = screenYAt(z);
+    const rw = roadHalfWidthAt(z);
+    const cx = worldToScreenX(state.playerX, z, state.playerX); // should be centered
+    const halfW = 0.16 * rw * 0.5; // approximate player car half-width
+
+    // Left & right guide pads
+    const padW = Math.max(8, halfW*0.9), padH = Math.max(10, rw*0.08);
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    const gL = ctx.createLinearGradient(0, y, 0, y+padH);
+    gL.addColorStop(0,'rgba(90,130,180,0.55)');
+    gL.addColorStop(1,'rgba(30,40,60,0.0)');
+    ctx.fillStyle = gL;
+    roundRect(ctx, cx - halfW - padW*0.5, y+6, padW, padH, 6); ctx.fill();
+    roundRect(ctx, cx + halfW - padW*0.5, y+6, padW, padH, 6); ctx.fill();
+
+    // Center arrow
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = 'rgba(220,240,255,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(cx, y-6);
+    ctx.lineTo(cx-8, y+14);
+    ctx.lineTo(cx+8, y+14);
+    ctx.closePath(); ctx.fill();
+
+    ctx.restore();
+  }
+
+  // Cockpit frame: A‑Säulen, Dachkante, Rückspiegel
+  function drawCockpitFrame(){
+    // A‑Säulen
+    ctx.fillStyle = 'rgba(15,18,24,0.98)';
+    const apH = H*0.18;
+    ctx.beginPath(); // links
+    ctx.moveTo(0,0);
+    ctx.lineTo(W*0.14,0);
+    ctx.lineTo(W*0.08, apH);
+    ctx.lineTo(0, apH);
+    ctx.closePath(); ctx.fill();
+
+    ctx.beginPath(); // rechts
+    ctx.moveTo(W,0);
+    ctx.lineTo(W*(1-0.14),0);
+    ctx.lineTo(W*(1-0.08), apH);
+    ctx.lineTo(W, apH);
+    ctx.closePath(); ctx.fill();
+
+    // Dachkante/Visor
+    const visorH = H*0.06;
+    const g = ctx.createLinearGradient(0,0,0,visorH);
+    g.addColorStop(0,'rgba(12,14,18,1)');
+    g.addColorStop(1,'rgba(12,14,18,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(W*0.08, 0, W*0.84, visorH);
+
+    // Rückspiegel
+    const mx = W/2, my = visorH + H*0.025, mw = W*0.18, mh = H*0.045, r = 10;
+    ctx.fillStyle = 'rgba(30,34,42,0.96)';
+    roundRect(ctx, mx-mw/2, my, mw, mh, r);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(10,12,16,0.35)';
+    roundRect(ctx, mx-mw/2+4, my+4, mw-8, mh-8, r*0.6); ctx.fill();
+  }
+
+  // --- Game Flow
+  function start(){
+    Object.assign(state, {
+      running: true, paused: false, crashed:false,
+      time:0, dt:0, last:0, score:0,
+      speedKmh: 180, targetSpeed: 220, maxSpeed: 300,
+      playerX: 0, steerSpeed: 1.6, steerVisual: 0,
+      lanes: 3, prevLaneCount: 3, laneTarget: 3, laneTimer: 0, laneChangeEvery: 9,
+      traffic: [], spawnTimer: 0, spawnEvery: 0.9, difficulty: 1.0,
+      weather: 'clear', weatherTimer: 0, nextWeatherIn: rand(12,22), rain:{on:false,intensity:0,msgTimer:0},
+    });
+    elWeather.textContent = 'Wetter: Klar';
+    menu.classList.remove('show');
+    gameOver.classList.remove('show');
+    rainMsg.classList.remove('show');
+    document.body.classList.add('running');
+    setTouchEnabled(true);
+    requestAnimationFrame(loop);
+  }
+
+  function gameOverFlow(){
+    state.running = true;
+    state.paused = true;
+    finalScore.textContent = `Score: ${Math.floor(state.score).toLocaleString('de-AT')}`;
+    gameOver.classList.add('show');
+    document.body.classList.remove('running');
+    setTouchEnabled(false);
+  }
+
+  // Buttons
+  document.getElementById('startBtn').addEventListener('click', ()=>{ start(); });
+  document.getElementById('restartBtn').addEventListener('click', ()=>{ start(); });
+
+  // Start visible menu
+  menu.classList.add('show');
+  document.body.classList.remove('running');
+  setTouchEnabled(false);
+
+  // Accessibility: start on any key or tap when menu visible
+  window.addEventListener('keydown', (e)=>{
+    if(menu.classList.contains('show') && (e.key===' '||e.key==='Enter'||e.key==='ArrowRight'||e.key==='d'||e.key==='D')){
+      e.preventDefault(); start();
+    }
+  });
+  window.addEventListener('pointerdown', ()=>{
+    if(menu.classList.contains('show')) start();
+  });
+
+  /* -------------------------
+     DEV TESTS (Konsole)
+     ------------------------- */
+  (function runTests(){
+    const results = [];
+    const assert = (name, cond) => { results.push({name, cond}); if(!cond) console.error('❌ Test fehlgeschlagen:', name); };
+
+    // laneCenters
+    const lc1 = laneCenters(1); assert('laneCenters(1) -> [0]', lc1.length===1 && Math.abs(lc1[0])<1e-9);
+    const lc3 = laneCenters(3); assert('laneCenters(3) length 3', lc3.length===3);
+
+    // screenYAt monotonic (horizon oben)
+    const yNear = screenYAt(0.0), yFar = screenYAt(1.0);
+    assert('screenYAt(1.0) < screenYAt(0.0)', yFar < yNear);
+
+    // worldToScreenX alignment with camera offset
+    state.playerX = 0.4;
+    const zT = 0.6; const t0 = 0.0; const tR = 1.0; const tL = -1.0;
+    const xs0 = worldToScreenX(t0, zT, state.playerX);
+    const xsR = worldToScreenX(tR, zT, state.playerX) - worldToScreenX(t0, zT, state.playerX);
+    const xsL = worldToScreenX(t0, zT, state.playerX) - worldToScreenX(tL, zT, state.playerX);
+    assert('right span > 0', xsR>0);
+    assert('left span > 0', xsL>0);
+
+    // spawnTraffic basic
+    const before = state.traffic.length; spawnTraffic(); const after = state.traffic.length;
+    assert('spawnTraffic() erhöht Anzahl Fahrzeuge', after===before+1);
+    const c = state.traffic[state.traffic.length-1];
+    assert('spawnTraffic() x in [-1.5,1.5]', c.x>=-1.5 && c.x<=1.5);
+
+    // alignTraffic keeps cars within their lane bounds
+    state.traffic.push({x: 0.7, z: 0.4, w:0.16, h:0.24, relSpeed:0.6, laneIndex: 2, offset: 0.9});
+    alignTrafficToLanes(3);
+    const aligned = state.traffic[state.traffic.length-1];
+    const centers3b = laneCenters(3);
+    const laneHalf3 = 1/3;
+    const delta = Math.abs(aligned.x - centers3b[aligned.laneIndex]);
+    assert('alignTrafficToLanes() hält Fahrzeuge zentriert', delta <= laneHalf3 + 1e-6);
+
+    // remapTraffic preserves bounds
+    remapTraffic(3,4);
+    const inBounds = state.traffic.every(v => v.x>=-1.6 && v.x<=1.6);
+    assert('remapTraffic() hält Fahrzeuge in Bounds', inBounds);
+
+    // collision true near, false far
+    const carNear = {x: state.playerX, z: 0.08, w:0.16, h:0.24, relSpeed:0.6};
+    const carFar  = {x: state.playerX, z: 0.5,  w:0.16, h:0.24, relSpeed:0.6};
+    assert('checkCollision() Nah = true', checkCollision(carNear)===true);
+    assert('checkCollision() Fern = false', checkCollision(carFar)===false);
+
+    // steering visibly moves world (numerically different projection)
+    const px0 = 0.0; const px1 = 0.5;
+    const sx0 = worldToScreenX(0, 0.5, px0); const sx1 = worldToScreenX(0, 0.5, px1);
+    assert('Steer verändert Projektion', Math.abs(sx0 - sx1) > 10);
+
+    const passed = results.filter(r=>r.cond).length;
+    console.groupCollapsed('%cAutobahn‑Racer Tests','color:#56ccf2;font-weight:bold');
+    results.forEach(r=>console.log(r.cond?'✅':'❌', r.name));
+    console.log(`Bestanden: ${passed}/${results.length}`);
+    console.groupEnd();
+  })();
+})();
+</script>
+</body>
+</html>
