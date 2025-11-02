@@ -193,14 +193,15 @@
     return centerXAt(z, camX) + t * rw;
   }
 
-  // Lane centers from -1..1 for current lanes
+  // Lane centers normalized within the -1..1 road span
   function laneCenters(lanes){
-    const arr=[]; const n=lanes;
-    for(let i=0;i<n;i++){
-      const t = n===1 ? 0 : (i/(n-1))*2-1; // -1..1
-      arr.push(t);
+    if(lanes<=0) return [];
+    const centers = [];
+    const step = 2/lanes;
+    for(let i=0;i<lanes;i++){
+      centers.push(-1 + step*(i + 0.5));
     }
-    return arr;
+    return centers;
   }
 
   // Remap existing traffic to new lane layout
@@ -208,19 +209,22 @@
     if(prevCount===newCount) return;
     const prevCenters = laneCenters(prevCount);
     const newCenters = laneCenters(newCount);
-    const newDelta = newCount>1 ? 2/(newCount-1) : 2;
+    if(newCenters.length===0) return;
+    const prevHalf = prevCount>0 ? 1/prevCount : 1;
+    const newHalf = newCount>0 ? 1/newCount : 1;
     for(const car of state.traffic){
       let nearest = 0, best = Infinity;
       for(let i=0;i<prevCenters.length;i++){
         const d = Math.abs(car.x - prevCenters[i]);
         if(d<best){ best=d; nearest=i; }
       }
-      const ratio = prevCount>1 ? (nearest/(prevCount-1)) : 0.5;
-      const newIndex = Math.round(ratio * (newCount-1));
-      const off = car.x - prevCenters[Math.min(nearest, prevCenters.length-1)];
-      car.laneIndex = clamp(newIndex, 0, Math.max(0, newCount-1));
-      const nx = newCenters[car.laneIndex] + clamp(off, -newDelta*0.35, newDelta*0.35);
-      car.x = nx;
+      const ratio = clamp((car.x + 1) / 2, 0, 0.9999);
+      const newIndex = clamp(Math.floor(ratio * newCount), 0, Math.max(0, newCount-1));
+      const centerIdx = Math.min(nearest, Math.max(0, prevCenters.length-1));
+      const off = prevCenters.length ? car.x - prevCenters[centerIdx] : 0;
+      const offNorm = prevHalf>0 ? clamp(off / prevHalf, -0.9, 0.9) : 0;
+      car.laneIndex = newIndex;
+      car.x = newCenters[newIndex] + offNorm * newHalf;
     }
   }
 
@@ -229,8 +233,9 @@
     const lanesNow = Math.round(state.lanes);
     const centers = laneCenters(lanesNow);
     const laneIndex = Math.floor(rand(0, centers.length));
-    const delta = lanesNow>1 ? 2/(lanesNow-1) : 2;
-    const offset = rand(-0.25, 0.25) * (delta*0.5);
+    const laneWidth = lanesNow>0 ? 2/lanesNow : 2;
+    const laneHalf = laneWidth*0.5;
+    const offset = rand(-0.25, 0.25) * laneHalf;
     const x = centers[laneIndex] + offset;
     const z = 1 + Math.random()*0.6;
     const relSpeed = clamp(rand(0.45, 0.8) * (0.9 + state.difficulty*0.2), 0.35, 0.95);
