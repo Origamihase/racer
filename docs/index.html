@@ -444,7 +444,7 @@
     }
 
     // Car hood for first‑person feel
-    const hoodH = Math.min(320, H*0.32);
+    const hoodH = Math.min(260, H*0.26);
     const hoodG = ctx.createLinearGradient(0, H-hoodH, 0, H);
     hoodG.addColorStop(0,'rgba(22,26,34,0.05)');
     hoodG.addColorStop(0.55,'rgba(22,26,34,0.75)');
@@ -697,7 +697,7 @@
   }
 
   function drawDashboard(){
-    const hoodH = Math.min(320, H*0.32);
+    const hoodH = Math.min(260, H*0.26);
     const dashTop = H - hoodH * 0.9;
     const dashHeight = H - dashTop;
 
@@ -717,7 +717,7 @@
     // Instrument cluster background
     const clusterY = dashTop + dashHeight*0.32;
     const clusterH = dashHeight*0.6;
-    const clusterW = W * 0.64;
+    const clusterW = W * 0.58;
     const clusterX = (W - clusterW) / 2;
     const clusterGrad = ctx.createLinearGradient(0, clusterY, 0, clusterY + clusterH);
     clusterGrad.addColorStop(0, 'rgba(9,12,18,0.95)');
@@ -728,8 +728,8 @@
 
     // Gauges
     const gaugeR = clusterH * 0.42;
-    const leftCx = W/2 - gaugeR*1.25;
-    const rightCx = W/2 + gaugeR*1.25;
+    const leftCx = W/2 - gaugeR*1.15;
+    const rightCx = W/2 + gaugeR*1.15;
     const gaugeCy = clusterY + clusterH*0.52;
 
     const gaugeGrad = ctx.createRadialGradient(0,0, gaugeR*0.2, 0,0, gaugeR);
@@ -789,8 +789,8 @@
 
   // Steering wheel overlay (cockpit)
   function drawSteeringWheel(){
-    const hoodH = Math.min(320, H*0.32);
-    const rOuter = Math.min(W, H) * 0.19;
+    const hoodH = Math.min(260, H*0.26);
+    const rOuter = Math.min(W, H) * 0.17;
     const cx = W/2, cy = H - hoodH*0.45;
     ctx.save();
     ctx.translate(cx, cy);
@@ -863,7 +863,7 @@
     const y = screenYAt(z);
     const rw = roadHalfWidthAt(z);
     const cx = worldToScreenX(state.playerX, z, state.playerX); // should be centered
-    const halfW = 0.16 * rw * 0.5; // approximate player car half-width
+    const halfW = 0.12 * rw * 0.5; // approximate player car half-width
 
     // Left & right guide pads
     const padW = Math.max(8, halfW*0.9), padH = Math.max(10, rw*0.08);
