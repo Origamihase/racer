@@ -176,9 +176,9 @@
   function lerp(a,b,t){ return a + (b-a)*t; }
 
   // --- Road & Projection Parameters (Ego‑Perspektive)
-  const horizonYFactor = 0.37; // höherer Horizont => tiefere Fahrer‑Sitzposition
-  const depthRange = 1.45;
-  const perspectiveStrength = 2.8;
+  const horizonYFactor = 0.42; // höherer Horizont => tiefere Fahrer‑Sitzposition
+  const depthRange = 1.18;
+  const perspectiveStrength = 2.4;
 
   function depthCurve(z){
     const d = Math.max(0, z) * depthRange;
@@ -196,8 +196,9 @@
 
   function roadHalfWidthAt(z){
     const t = depthCurve(clamp(z, 0, 4));
-    const base = Math.min(W, H) * 0.54;
-    const min = Math.min(W, H) * 0.085;
+    const aspect = W / H;
+    const base = Math.min(H * lerp(0.62, 0.74, clamp((aspect - 1) / 1.2, 0, 1)), W * 0.72);
+    const min = Math.min(H * 0.18, W * 0.22);
     return lerp(base, min, t);
   }
 
@@ -265,22 +266,24 @@
     if(!centers.length) return;
     const laneIndex = Math.floor(rand(0, centers.length));
     const laneHalf = lanesNow>0 ? 1/lanesNow : 1;
-    const offsetNorm = rand(-0.18, 0.18);
+    const offsetNorm = rand(-0.12, 0.12);
     const x = centers[laneIndex] + offsetNorm * laneHalf;
     const z = 1 + Math.random()*0.6;
     const relSpeed = clamp(rand(0.45, 0.8) * (0.9 + state.difficulty*0.2), 0.35, 0.95);
-    state.traffic.push({ x, z, w: 0.16, h: 0.24, relSpeed, laneIndex, offset: offsetNorm });
+    state.traffic.push({ x, z, w: 0.26, h: 0.34, relSpeed, laneIndex, offset: offsetNorm });
   }
 
   // --- Collision check
   function checkCollision(car){
-    if(car.z > 0.10) return false;
+    if(car.z > 0.12) return false;
     const px = state.playerX;
     const dz = Math.abs(car.z);
-    const roadW = roadHalfWidthAt(0.10);
-    const carWpx = car.w * roadW;
+    const roadW = roadHalfWidthAt(clamp(car.z, 0, 1.2));
+    const depth = depthCurve(clamp(car.z, 0, 1.6));
+    const scale = lerp(0.35, 1.75, 1 - depth);
+    const carWpx = car.w * roadW * scale;
     const dx = Math.abs((px - car.x) * roadW);
-    return dx < carWpx * 0.75 && dz < 0.10;
+    return dx < carWpx * 0.6 && dz < 0.12;
   }
 
   // --- Weather System
