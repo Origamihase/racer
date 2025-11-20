@@ -105,7 +105,7 @@
         decel: -20,
         offRoadDecel: -150,
         offRoadLimit: 80,
-        centrifugal: 0.12,
+        centrifugal: 0.09,
         skyTop: '#000011',
         skyBot: '#220033'
     };
@@ -234,7 +234,8 @@
 
         // Steuerung
         let speedRatio = state.speed / CFG.speedLimit;
-        let dx = dt * (2.0 + (speedRatio * 1.0)); 
+        // Mehr direktes Lenkgefühl, besonders bei höheren Geschwindigkeiten
+        let dx = dt * (2.4 + (speedRatio * 1.6));
         
         if (keys.left) state.playerX -= dx;
         if (keys.right) state.playerX += dx;
@@ -280,7 +281,8 @@
         CFG.cameraHeight = 1000 + (Math.random() * shake * 20) + Math.sin(state.time * 10)*shake*10;
 
         // Move
-        state.position += state.speed * dt * 2.5;
+        // Höhere Übersetzung in die Kamerabewegung sorgt für sichtbar mehr Tempo
+        state.position += state.speed * dt * 3.5;
         let trackLen = segments.length * CFG.segmentLength;
         while (state.position >= trackLen) state.position -= trackLen;
         while (state.position < 0) state.position += trackLen;
@@ -397,8 +399,11 @@
                     let carX = roadX + (c.lane * segment.p1.screen.w * 0.5);
 
                     // **KORRIGIERTE GRÖSSEN**
-                    let carW = width * scale * 400; // War 1400, viel zu breit!
-                    let carH = width * scale * 200; // Proportional
+                    // Clamp die Maße, damit Fahrzeuge nicht flackern oder zu breit werden
+                    let baseW = width * scale * 160;
+                    let baseH = height * scale * 90;
+                    let carW = Math.max(30, Math.min(baseW, width * 0.2));
+                    let carH = Math.max(20, Math.min(baseH, height * 0.15));
 
                     // Zeichne Auto
                     drawCar(carX, carY, carW, carH, c.color, c.type);
@@ -460,6 +465,9 @@
         // Body
         ctx.fillStyle = color;
         ctx.fillRect(x - w/2, bottomY - bodyH, w, bodyH);
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - w/2, bottomY - bodyH, w, bodyH);
         
         // Dach (Schmaler)
         let roofW = w * (type === 'truck' ? 0.9 : 0.6);
