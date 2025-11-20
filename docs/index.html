@@ -3,28 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NEON RACER</title>
+    <title>2D RACER</title>
     <style>
         body {
             margin: 0;
-            background: #000;
+            background: #111;
             overflow: hidden;
-            font-family: 'Courier New', Courier, monospace;
-            touch-action: none; /* Verhindert Zoom auf Mobile */
+            font-family: sans-serif;
+            touch-action: none;
         }
         canvas {
             display: block;
-            width: 100%;
-            height: 100%;
+            margin: 0 auto;
+            background: #333;
         }
         #ui {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            color: #0ff;
-            font-size: 20px;
-            text-shadow: 0 0 5px #0ff;
-            pointer-events: none;
+            top: 10px;
+            left: 10px;
+            color: #fff;
+            font-size: 18px;
+            z-index: 10;
         }
         #gameover {
             display: none;
@@ -32,289 +31,224 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: #f0f;
-            font-size: 40px;
-            text-align: center;
-            text-shadow: 0 0 10px #f0f;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
             padding: 20px;
-            border: 2px solid #f0f;
+            text-align: center;
+            border: 2px solid white;
+            border-radius: 10px;
+            z-index: 20;
+        }
+        button {
+            background: #0f0;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
             cursor: pointer;
-        }
-        .mobile-controls {
-            display: none;
-            position: absolute;
-            bottom: 20px;
-            width: 100%;
-            justify-content: space-between;
-            padding: 0 20px;
-            box-sizing: border-box;
-        }
-        .btn {
-            width: 80px;
-            height: 80px;
-            background: rgba(0, 255, 255, 0.2);
-            border: 2px solid #0ff;
-            border-radius: 50%;
-        }
-        @media (hover: none) and (pointer: coarse) {
-            .mobile-controls { display: flex; }
+            margin-top: 10px;
+            border-radius: 5px;
         }
     </style>
 </head>
 <body>
 
-    <div id="ui">SCORE: <span id="score">0</span></div>
-    <div id="gameover">
-        CRASHED!<br>
-        <span style="font-size:20px">Klicken zum Neustart</span>
-    </div>
-    
-    <canvas id="gameCanvas"></canvas>
+<div id="ui">Score: <span id="scoreVal">0</span></div>
 
-    <div class="mobile-controls">
-        <div class="btn" id="leftBtn"></div>
-        <div class="btn" id="rightBtn"></div>
-    </div>
+<div id="gameover">
+    <h2>GAME OVER</h2>
+    <p>Dein Score: <span id="finalScore">0</span></p>
+    <button onclick="startGame()">Nochmal spielen</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-    const uiScore = document.getElementById('score');
-    const uiGameOver = document.getElementById('gameover');
+    const scoreEl = document.getElementById('scoreVal');
+    const finalScoreEl = document.getElementById('finalScore');
+    const gameOverScreen = document.getElementById('gameover');
 
-    // Spielzustand
-    let width, height;
-    let road = [];
-    let roadSegmentLength = 200; // Länge eines Segments
-    let totalSegments = 500; // Wie weit die Straße generiert wird
-    let visibleSegments = 300; // Sichtweite
-    let cameraDepth = 0.84; // Kameraposition
-    let playerX = 0;
-    let playerZ = 0;
-    let speed = 0;
-    let maxSpeed = 100; // Basisgeschwindigkeit
+    // Konfiguration
+    let gameLoop;
     let score = 0;
-    let gameActive = true;
-    let particles = [];
-
-    // Eingabe
-    let keys = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false };
+    let speed = 5;
+    let isGameOver = false;
     
-    // Straße generieren
-    function resetGame() {
-        road = [];
-        playerX = 0;
-        playerZ = 0;
-        speed = 0;
-        score = 0;
-        gameActive = true;
-        uiGameOver.style.display = 'none';
-        particles = [];
+    // Spieler
+    const player = {
+        x: 0,
+        y: 0,
+        w: 40, 
+        h: 60,
+        color: '#00ff00' // Grün (Augenfreundlich)
+    };
 
-        for (let i = 0; i < totalSegments; i++) {
-            road.push({
-                x: 0,
-                y: 0,
-                z: i * roadSegmentLength,
-                curve: (Math.random() - 0.5) * (Math.random() > 0.8 ? 400 : 0), // Kurven zufällig
-                color: (Math.floor(i / 3) % 2) ? '#222' : '#333', // Dunkler Asphalt
-                enemy: (i > 20 && Math.random() < 0.05) ? true : false, // Gegner Autos
-                enemyX: (Math.random() - 0.5) * 1500 // Zufällige Position
-            });
-        }
-    }
+    // Gegner
+    let enemies = [];
+    let enemySpawnTimer = 0;
 
-    // Event Listeners
-    window.addEventListener('resize', resize);
-    document.addEventListener('keydown', e => keys[e.code] = true);
-    document.addEventListener('keyup', e => keys[e.code] = false);
+    // Straße
+    let laneMarkings = [];
     
-    // Touch
-    const leftBtn = document.getElementById('leftBtn');
-    const rightBtn = document.getElementById('rightBtn');
-    leftBtn.addEventListener('touchstart', (e) => { e.preventDefault(); keys.ArrowLeft = true; });
-    leftBtn.addEventListener('touchend', (e) => { e.preventDefault(); keys.ArrowLeft = false; });
-    rightBtn.addEventListener('touchstart', (e) => { e.preventDefault(); keys.ArrowRight = true; });
-    rightBtn.addEventListener('touchend', (e) => { e.preventDefault(); keys.ArrowRight = false; });
-    
-    uiGameOver.addEventListener('click', resetGame);
+    // Input
+    let touchX = null;
+    let keys = { ArrowLeft: false, ArrowRight: false };
 
     function resize() {
-        width = canvas.width = window.innerWidth;
-        height = canvas.height = window.innerHeight;
+        canvas.width = Math.min(window.innerWidth, 450); // Max Breite wie ein Handy
+        canvas.height = window.innerHeight;
+        player.y = canvas.height - 100;
+        player.x = canvas.width / 2 - player.w / 2;
     }
 
-    // Hilfsfunktion: 3D Projektion auf 2D Screen
-    function project(p, cameraX, cameraZ, roadWidth) {
-        let scale = cameraDepth / (p.z - cameraZ);
-        let x = (1 + scale * (p.x - cameraX)) * width / 2;
-        let y = (1 - scale * (p.y - 1500)) * height / 2; // 1500 ist Kamerahöhe
-        let w = scale * roadWidth * width / 2;
-        return { x, y, w, scale };
-    }
+    window.addEventListener('resize', resize);
+    resize();
 
-    function drawPoly(x1, y1, w1, x2, y2, w2, color) {
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.moveTo(x1 - w1, y1);
-        ctx.lineTo(x2 - w2, y2);
-        ctx.lineTo(x2 + w2, y2);
-        ctx.lineTo(x1 + w1, y1);
-        ctx.closePath();
-        ctx.fill();
-    }
+    // Steuerung (Tastatur)
+    document.addEventListener('keydown', e => {
+        if(e.code === 'ArrowLeft') keys.ArrowLeft = true;
+        if(e.code === 'ArrowRight') keys.ArrowRight = true;
+    });
+    document.addEventListener('keyup', e => {
+        if(e.code === 'ArrowLeft') keys.ArrowLeft = false;
+        if(e.code === 'ArrowRight') keys.ArrowRight = false;
+    });
 
-    function createParticles(x, y, color) {
-        for(let i=0; i<20; i++) {
-            particles.push({
-                x: x, y: y,
-                vx: (Math.random() - 0.5) * 10,
-                vy: (Math.random() - 0.5) * 10,
-                life: 1.0,
-                color: color
-            });
+    // Steuerung (Touch)
+    canvas.addEventListener('touchstart', e => {
+        e.preventDefault();
+        touchX = e.touches[0].clientX;
+    });
+    canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        let rect = canvas.getBoundingClientRect();
+        let currentX = e.touches[0].clientX - rect.left;
+        player.x = currentX - player.w / 2;
+    });
+
+    function startGame() {
+        enemies = [];
+        laneMarkings = [];
+        score = 0;
+        speed = 5;
+        isGameOver = false;
+        gameOverScreen.style.display = 'none';
+        player.x = canvas.width / 2 - player.w / 2;
+        
+        // Initiale Straßenmarkierungen
+        for(let i=0; i<canvas.height; i+=80) {
+            laneMarkings.push(i);
         }
+
+        if(gameLoop) cancelAnimationFrame(gameLoop);
+        loop();
     }
 
     function update() {
-        if (!gameActive) return;
+        if(isGameOver) return;
 
-        // Beschleunigung
-        if (speed < maxSpeed) speed += 1;
-        
-        // Steuerung
-        if (keys.ArrowLeft) playerX -= 30;
-        if (keys.ArrowRight) playerX += 30;
-        
+        // Schwierigkeit erhöhen
+        score++;
+        scoreEl.innerText = Math.floor(score / 10);
+        if(score % 500 === 0) speed += 1;
+
+        // Spieler Bewegung (Tastatur)
+        if(keys.ArrowLeft) player.x -= 7;
+        if(keys.ArrowRight) player.x += 7;
+
         // Begrenzung
-        if (playerX < -1200) playerX = -1200; // Rand links
-        if (playerX > 1200) playerX = 1200;   // Rand rechts
+        if(player.x < 0) player.x = 0;
+        if(player.x > canvas.width - player.w) player.x = canvas.width - player.w;
 
-        playerZ += speed * 2;
-        score += Math.floor(speed / 10);
-        uiScore.innerText = score;
+        // Straßenmarkierungen bewegen
+        for(let i=0; i<laneMarkings.length; i++) {
+            laneMarkings[i] += speed;
+            if(laneMarkings[i] > canvas.height) {
+                laneMarkings[i] = -40;
+            }
+        }
 
-        // Infinite Road Loop
-        if (playerZ >= roadSegmentLength * totalSegments) {
-            playerZ -= roadSegmentLength * totalSegments; 
-            // Neue Segmente generieren für Endlos-Effekt könnte man hier, 
-            // aber wir loopen einfach für Performance.
+        // Gegner Spawning
+        enemySpawnTimer++;
+        if(enemySpawnTimer > 40) { // Alle 40 Frames ein Gegner (ca.)
+            if(Math.random() > 0.5) {
+                enemies.push({
+                    x: Math.random() * (canvas.width - 40),
+                    y: -60,
+                    w: 40,
+                    h: 60,
+                    color: '#ff0000' // Rot
+                });
+            }
+            enemySpawnTimer = 0;
+        }
+
+        // Gegner Bewegung & Kollision
+        for(let i=enemies.length-1; i>=0; i--) {
+            let e = enemies[i];
+            e.y += speed;
+
+            // Kollision
+            if (
+                player.x < e.x + e.w &&
+                player.x + player.w > e.x &&
+                player.y < e.y + e.h &&
+                player.y + player.h > e.y
+            ) {
+                gameOver();
+            }
+
+            // Aufräumen wenn aus dem Bild
+            if(e.y > canvas.height) {
+                enemies.splice(i, 1);
+            }
         }
     }
 
     function draw() {
-        ctx.fillStyle = '#111'; // Himmel
-        ctx.fillRect(0, 0, width, height);
-        
-        // Pseudo-Sonne/Mond
-        ctx.fillStyle = '#f0f';
-        ctx.beginPath();
-        ctx.arc(width/2, height/2 - 50, 100, 0, Math.PI*2);
-        ctx.fill();
+        // Straße (Hintergrund)
+        ctx.fillStyle = '#333';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Boden
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, height/2, width, height/2);
-
-        let startPos = Math.floor(playerZ / roadSegmentLength);
-        let x = 0, dx = 0;
-        
-        // Render Road
-        for (let i = startPos; i < startPos + visibleSegments; i++) {
-            let segmentIndex = i % totalSegments;
-            let segment = road[segmentIndex];
-            
-            // Loop Logik für Position
-            let loopZ = (i >= totalSegments) ? roadSegmentLength * totalSegments : 0;
-
-            let p1 = project(
-                {x: segment.x - x - dx + segment.curve, y: segment.y, z: segment.z + loopZ}, 
-                playerX, playerZ, 2000
-            );
-            let p2 = project(
-                {x: road[(segmentIndex + 1) % totalSegments].x - x - dx + segment.curve, y: road[(segmentIndex + 1) % totalSegments].y, z: road[(segmentIndex + 1) % totalSegments].z + loopZ}, 
-                playerX, playerZ, 2000
-            );
-
-            x += dx; // Kurvenberechnung
-            dx += segment.curve;
-
-            if (p1.y >= p2.y) continue; // Clipping
-
-            // Gras (Boden)
-            drawPoly(0, p1.y, width, 0, p2.y, width, '#100020');
-            
-            // Straße
-            drawPoly(p1.x, p1.y, p1.w, p2.x, p2.y, p2.w, segment.color);
-            
-            // Seitenstreifen
-            let rW = p1.w * 0.1; 
-            drawPoly(p1.x - p1.w, p1.y, rW, p2.x - p2.w, p2.y, rW, (Math.floor(i / 2) % 2) ? '#f00' : '#fff');
-            drawPoly(p1.x + p1.w, p1.y, rW, p2.x + p2.w, p2.y, rW, (Math.floor(i / 2) % 2) ? '#f00' : '#fff');
-            
-            // Mittelstreifen
-            drawPoly(p1.x, p1.y, rW*0.2, p2.x, p2.y, rW*0.2, '#fff');
-
-            // Gegner Rendern
-            if (segment.enemy) {
-                let enemyScale = p1.scale * 3000;
-                let enemyY = p1.y - enemyScale;
-                // Einfaches Rechteck als Auto
-                ctx.fillStyle = '#ff0';
-                ctx.fillRect(p1.x + (segment.enemyX * p1.scale * width/2) - enemyScale/2, enemyY, enemyScale, enemyScale);
-                
-                // Kollision (sehr simpel, basierend auf Z-Index und X-Nähe)
-                if (i === startPos + 10) { // Wenn Gegner nah genug ist
-                    let enemyScreenX = p1.x + (segment.enemyX * p1.scale * width/2);
-                    let playerScreenX = width / 2;
-                    if (Math.abs(enemyScreenX - playerScreenX) < enemyScale * 0.8) {
-                        gameOver();
-                    }
-                }
-            }
+        // Straßenmarkierungen (Mitte)
+        ctx.fillStyle = '#fff';
+        for(let y of laneMarkings) {
+            ctx.fillRect(canvas.width/2 - 5, y, 10, 40);
         }
 
-        // Spieler Auto (Unten Mitte) - Neon Style
-        ctx.fillStyle = '#0ff';
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#0ff';
-        ctx.beginPath();
-        ctx.moveTo(width/2, height - 100);
-        ctx.lineTo(width/2 - 40, height - 20);
-        ctx.lineTo(width/2 + 40, height - 20);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        // Spieler
+        ctx.fillStyle = player.color;
+        // Einfaches Auto Design
+        ctx.fillRect(player.x, player.y, player.w, player.h); 
+        ctx.fillStyle = '#000'; // Fenster
+        ctx.fillRect(player.x + 5, player.y + 10, player.w - 10, 10);
 
-        // Partikel rendern
-        particles.forEach((p, index) => {
-            p.x += p.vx;
-            p.y += p.vy;
-            p.life -= 0.02;
-            ctx.fillStyle = p.color;
-            ctx.globalAlpha = p.life;
-            ctx.fillRect(p.x, p.y, 5, 5);
-            ctx.globalAlpha = 1.0;
-            if(p.life <= 0) particles.splice(index, 1);
-        });
+        // Gegner
+        for(let e of enemies) {
+            ctx.fillStyle = e.color;
+            ctx.fillRect(e.x, e.y, e.w, e.h);
+            ctx.fillStyle = '#000'; // Fenster
+            ctx.fillRect(e.x + 5, e.y + 40, e.w - 10, 10); // Heckscheibe
+        }
     }
 
     function gameOver() {
-        gameActive = false;
-        uiGameOver.style.display = 'block';
-        createParticles(width/2, height-50, '#ff0000');
-        createParticles(width/2, height-50, '#ffff00');
+        isGameOver = true;
+        finalScoreEl.innerText = Math.floor(score / 10);
+        gameOverScreen.style.display = 'block';
     }
 
     function loop() {
-        update();
-        draw();
-        requestAnimationFrame(loop);
+        if(!isGameOver) {
+            update();
+            draw();
+            gameLoop = requestAnimationFrame(loop);
+        }
     }
 
-    resize();
-    resetGame();
-    loop();
+    // Start beim Laden
+    startGame();
 
 </script>
 </body>
