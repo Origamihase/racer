@@ -493,8 +493,13 @@
     }
 
     function shadeColor(color, percent) {
-        // Sehr simple Hex shading Logik oder Fallback
-        return color; 
+        // Hex-Farbe um Prozentwert abdunkeln/aufhellen
+        const num = parseInt(color.replace('#',''), 16);
+        const amt = Math.round(2.55 * percent);
+        const r = Math.max(0, Math.min(255, (num >> 16) + amt));
+        const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amt));
+        const b = Math.max(0, Math.min(255, (num & 0x0000FF) + amt));
+        return `#${(1 << 24 | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
     }
 
     function drawHills(speedMod, yOff, color, hVar) {
@@ -632,19 +637,25 @@
         requestAnimationFrame(loop);
     }
 
-    const handleKey = (code, val) => {
+    const handleKey = (code, val, event) => {
+        const handled = code === 'ArrowLeft' || code === 'ArrowRight' || code === 'ArrowUp' || code === 'ArrowDown';
+        if (!handled) return;
+
         if(code==='ArrowLeft') keys.left = val;
         if(code==='ArrowRight') keys.right = val;
         if(code==='ArrowUp') keys.up = val;
         if(code==='ArrowDown') keys.down = val;
+
+        if (handled && event?.preventDefault) event.preventDefault();
     };
-    window.addEventListener('keydown', e => handleKey(e.code, true));
-    window.addEventListener('keyup', e => handleKey(e.code, false));
+    window.addEventListener('keydown', e => handleKey(e.code, true, e));
+    window.addEventListener('keyup', e => handleKey(e.code, false, e));
 
     const touchZone = (id, k) => {
         const el = document.getElementById(id);
-        el.addEventListener('touchstart', e => { e.preventDefault(); keys[k]=true; });
-        el.addEventListener('touchend', e => { e.preventDefault(); keys[k]=false; });
+        const opts = { passive: false };
+        el.addEventListener('touchstart', e => { e.preventDefault(); keys[k]=true; }, opts);
+        el.addEventListener('touchend', e => { e.preventDefault(); keys[k]=false; }, opts);
     };
     touchZone('btnLeft', 'left');
     touchZone('btnRight', 'right');
