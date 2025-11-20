@@ -3,41 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>COCKPIT RACER PRO</title>
+    <title>COCKPIT RACER ULTRA</title>
     <style>
         body {
             margin: 0;
-            background: #050505;
+            background: #000;
             overflow: hidden;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Courier New', monospace;
+            touch-action: none;
         }
         canvas {
             display: block;
             width: 100%;
             height: 100vh;
         }
-        #loading {
+        #ui-layer {
             position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            color: #fff;
-            font-size: 24px;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
-        /* Versteckte UI für Touch-Bereiche */
+        #start-msg {
+            background: rgba(0,0,0,0.8);
+            color: #0ff;
+            padding: 20px;
+            border: 2px solid #0ff;
+            font-size: 20px;
+            text-align: center;
+            pointer-events: auto;
+            cursor: pointer;
+        }
         #controls {
             position: absolute;
-            bottom: 0; left: 0; width: 100%; height: 50%;
+            bottom: 0; left: 0; width: 100%; height: 100%;
+            z-index: 10;
             display: flex;
-            z-index: 100;
         }
         .touch-zone { flex: 1; }
     </style>
 </head>
 <body>
 
-<div id="loading">Lade Fahrzeugsysteme...</div>
 <canvas id="gameCanvas"></canvas>
+
+<div id="ui-layer">
+    <div id="start-msg" onclick="startGame()">
+        SYSTEM BEREIT.<br><br>
+        [ KLICKEN ZUM STARTEN ]<br><br>
+        <span style="font-size:14px">Steuerung: Pfeiltasten oder Touch (Links/Rechts)</span>
+    </div>
+</div>
 
 <div id="controls">
     <div class="touch-zone" id="btnLeft"></div>
@@ -46,515 +65,374 @@
 
 <script>
     const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d', { alpha: false }); // Optimierung
+    const ctx = canvas.getContext('2d');
+    const startMsg = document.getElementById('start-msg');
 
-    // --- KONFIGURATION ---
-    const GAME = {
-        width: 0,
-        height: 0,
+    // --- EINSTELLUNGEN ---
+    const CFG = {
         fps: 60,
-        step: 1/60,
-        skySpeed: 0.001,
+        segments: 2000,
+        rumbleLength: 3,
         roadWidth: 2000,
-        segmentLength: 200,
-        drawDistance: 300,
+        lanes: 3,
         fov: 100,
-        cameraHeight: 1000, // Niedrige Kameraposition für Cockpit-Feeling
-        laneWidth: 1200 
+        cameraHeight: 1000,
+        cameraDepth: 0.8,
+        drawDistance: 300,
+        fogDensity: 5,
+        speedLimit: 260
     };
 
-    // --- ZUSTAND ---
+    // --- SPIELSTATUS ---
     let state = {
+        running: false,
+        time: 0,
         position: 0,
         playerX: 0,
         speed: 0,
-        maxSpeed: 240, // km/h
-        accel: 100, 
-        breaking: -200,
-        decel: -50,
-        offRoadDecel: -150,
-        offRoadLimit: 40,
+        rainIntensity: 0,
+        isRaining: false,
+        wiperError: false,
+        wiperAngle: 0,
         score: 0,
-        time: 0,
-        rain: 0, // 0 bis 1
-        raining: false,
-        wiperBroken: true, // Der angeforderte Defekt
-        currentLanes: 3
+        lastLaneChange: 0
     };
 
-    let keyLeft = false, keyRight = false, keyFaster = true, keySlower = false; // Auto-Gas
     let segments = [];
-    let cars = [];
-    let rainDrops = [];
+    let keys = { left: false, right: false, up: false, down: false };
 
     // --- INITIALISIERUNG ---
     function init() {
         resize();
-        resetRoad();
-        document.getElementById('loading').style.display = 'none';
+        createRoad();
+        // Wir warten auf User-Input zum Starten
+    }
+
+    function startGame() {
+        startMsg.style.display = 'none';
+        state.running = true;
         loop();
     }
 
     function resize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
-        GAME.width = canvas.width;
-        GAME.height = canvas.height;
     }
 
-    // --- STRASSEN GENERATOR ---
-    function resetRoad() {
+    function createRoad() {
         segments = [];
-        const totalSegments = 5000; // Langstrecke
-        
-        for (let n = 0; n < totalSegments; n++) {
-            // Fahrspur-Wechsel Logik
-            let laneCount = 3;
-            if (n > 1000 && n < 2000) laneCount = 2; // Baustelle/Engpass
-            if (n > 3000 && n < 4000) laneCount = 4; // Autobahn
-            if (n > 4000) laneCount = 2;
+        for (let i = 0; i < CFG.segments; i++) {
+            // Kurven generieren
+            let curve = 0;
+            if (i > 300 && i < 700) curve = 2;
+            if (i > 1100 && i < 1600) curve = -2;
+            if (i > 1800) curve = 4;
+
+            // Spurwechsel Events (visuell durch Breite simuliert)
+            let lanes = 3;
+            if (i > 1000 && i < 1500) lanes = 2; // Baustelle
 
             segments.push({
-                index: n,
-                p1: { world: { z: n * GAME.segmentLength }, camera: {}, screen: {} },
-                p2: { world: { z: (n + 1) * GAME.segmentLength }, camera: {}, screen: {} },
-                curve: (n > 100 && n < 2000) ? Math.sin(n/100)*4 : 0,
-                color: Math.floor(n / 3) % 2 ? { road: '#2a2a2a', grass: '#111', rumble: '#555', lane: '#fff' } : 
-                                               { road: '#282828', grass: '#0f0f0f', rumble: '#333', lane: '#000' },
-                lanes: laneCount,
-                cars: []
-            });
-        }
-        
-        // Gegner Autos hinzufügen
-        for(let n = 0; n < 100; n++) {
-            let offset = Math.floor(Math.random() * totalSegments);
-            let z = offset * GAME.segmentLength;
-            cars.push({
-                offset: offset,
-                z: z,
-                speed: 100 + Math.random() * 80,
-                x: (Math.random() * 2 - 1) * 0.8, // Zufällige Spur
-                color: Math.random() > 0.9 ? '#ff0000' : (Math.random() > 0.5 ? '#0055ff' : '#cccccc') 
+                index: i,
+                p1: { world: { z: i * 200 }, camera: {}, screen: {} },
+                p2: { world: { z: (i + 1) * 200 }, camera: {}, screen: {} },
+                curve: curve,
+                lanes: lanes,
+                color: Math.floor(i / CFG.rumbleLength) % 2 ? 
+                    { road: '#333', grass: '#111', rumble: '#555', lane: '#fff' } : 
+                    { road: '#303030', grass: '#0d0d0d', rumble: '#333', lane: '#000' }
             });
         }
     }
 
-    // --- MATH & PROJEKTION ---
-    function project(p, cameraX, cameraY, cameraZ, cameraDepth, width, height, roadWidth) {
+    // --- PHYSIK & LOGIK ---
+    function update(dt) {
+        state.time += dt;
+
+        // Wetter Zyklus (Alle 15 Sekunden Wechsel)
+        if (state.time % 30 > 20) {
+            state.isRaining = true;
+            state.wiperError = true; // Defekt simulieren
+            if(state.rainIntensity < 1) state.rainIntensity += dt * 0.5;
+        } else {
+            state.isRaining = false;
+            state.wiperError = false;
+            if(state.rainIntensity > 0) state.rainIntensity -= dt * 0.5;
+        }
+
+        // Steuerung
+        let speedRatio = state.speed / CFG.speedLimit;
+        let dx = dt * 2 * speedRatio;
+
+        if (keys.left) state.playerX -= dx;
+        if (keys.right) state.playerX += dx;
+        
+        // Gasgeben / Bremsen (Automatik-Beschleunigung wenn nicht gebremst)
+        if (keys.up) state.speed += dt * 100; // Turbo
+        else if (keys.down) state.speed -= dt * 200; // Bremse
+        else state.speed += dt * 20; // Langsames Beschleunigen (Standgas)
+
+        // Reibung & Limits
+        state.speed = Math.max(0, Math.min(state.speed, CFG.speedLimit));
+        if (state.playerX < -2 || state.playerX > 2) state.speed -= dt * 150; // Offroad bremst
+
+        // Bewegung
+        state.position += state.speed * dt * 2.5; // Skalierung der Geschwindigkeit
+        while (state.position >= CFG.segments * 200) state.position -= CFG.segments * 200;
+        while (state.position < 0) state.position += CFG.segments * 200;
+    }
+
+    // --- GRAFIK ENGINE ---
+    function project(p, cameraX, cameraY, cameraZ, width, height, roadWidth) {
         p.camera.x = (p.world.x || 0) - cameraX;
         p.camera.y = (p.world.y || 0) - cameraY;
         p.camera.z = (p.world.z || 0) - cameraZ;
-        p.screen.scale = cameraDepth / p.camera.z;
+        
+        // Z-Clipping verhindern (keine Division durch 0 oder negative Werte)
+        if (p.camera.z < 1) {
+            p.screen.scale = 0;
+        } else {
+            p.screen.scale = CFG.cameraDepth / p.camera.z;
+        }
+
         p.screen.x = Math.round((width / 2) + (p.screen.scale * p.camera.x * width / 2));
         p.screen.y = Math.round((height / 2) - (p.screen.scale * p.camera.y * height / 2));
         p.screen.w = Math.round((p.screen.scale * roadWidth * width / 2));
     }
 
-    // --- UPDATE ---
-    function update(dt) {
-        state.time += dt;
-        
-        // Wetter Simulation
-        if(state.time % 20 > 15) { // Alle 20 Sekunden Regenphase
-            state.raining = true;
-            if(state.rain < 1) state.rain += 0.005;
-        } else {
-            state.raining = false;
-            if(state.rain > 0) state.rain -= 0.005;
-        }
-
-        // Speed Management
-        let targetSpeed = state.maxSpeed;
-        if (state.rain > 0.5) targetSpeed = 180; // Langsamer bei Regen
-
-        if (keyFaster) state.speed += state.accel * dt;
-        else if (keySlower) state.speed += state.breaking * dt;
-        else state.speed += state.decel * dt;
-
-        if ((state.playerX < -1 || state.playerX > 1) && state.speed > state.offRoadLimit) 
-            state.speed += state.offRoadDecel * dt;
-
-        state.speed = Math.max(0, Math.min(state.speed, targetSpeed));
-
-        // Position
-        state.position += state.speed * dt * 2; // *2 scaling constants
-        if (state.position >= segments.length * GAME.segmentLength) state.position -= segments.length * GAME.segmentLength;
-
-        // Lenkung (Geschwindigkeitsabhängig)
-        let steerPower = dt * (state.speed / state.maxSpeed);
-        if (keyLeft) state.playerX -= steerPower * 1.5;
-        if (keyRight) state.playerX += steerPower * 1.5;
-        
-        state.playerX = Math.max(-2, Math.min(2, state.playerX)); // Begrenzung
-
-        // Gegner Updates
-        cars.forEach(car => {
-            car.z += car.speed * dt * 2;
-            if(car.z >= segments.length * GAME.segmentLength) car.z -= segments.length * GAME.segmentLength;
-            
-            // Einfache Kollision
-            // Player Z ist relativ zur Kamera immer 0 (aber wir bewegen die Welt), 
-            // aber für Kollision prüfen wir, ob Gegner im aktuellen Segment des Spielers ist.
-            let playerSegmentIndex = Math.floor(state.position / GAME.segmentLength);
-            let carSegmentIndex = Math.floor(car.z / GAME.segmentLength);
-            
-            if(playerSegmentIndex === carSegmentIndex) {
-                // Wenn wir im selben Segment sind, X prüfen
-                if(state.speed > car.speed) { // Nur wenn wir auflaufen
-                    if(Math.abs(state.playerX - car.x) < 0.6) {
-                        state.speed = car.speed * 0.5; // Crash bremst ab
-                        // Kleines Schütteln (simuliert)
-                        GAME.cameraHeight = 950 + Math.random() * 100; 
-                    }
-                }
-            }
-        });
-
-        if(state.speed > 10 && GAME.cameraHeight !== 1000) GAME.cameraHeight = 1000; // Reset Kamera Wackeln
-    }
-
-    // --- RENDER HELPERS ---
-    function drawPolygon(x1, y1, x2, y2, x3, y3, x4, y4, color) {
+    function drawPoly(x1, y1, x2, y2, x3, y3, x4, y4, color) {
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
         ctx.lineTo(x3, y3);
         ctx.lineTo(x4, y4);
-        ctx.closePath();
         ctx.fill();
     }
 
-    function drawDashboard() {
-        const w = canvas.width;
-        const h = canvas.height;
-        
-        // 1. Das Armaturenbrett (Kurvige Form unten)
-        const dashHeight = h * 0.25; // Das Dashboard nimmt das untere Viertel ein
-        
-        // Schatten/Tiefe
-        ctx.fillStyle = '#050505';
-        ctx.fillRect(0, h - dashHeight + 20, w, dashHeight);
-
-        // Hauptmaterial (Leder-Look dunkelgrau)
-        let grad = ctx.createLinearGradient(0, h - dashHeight, 0, h);
-        grad.addColorStop(0, '#1a1a1a');
-        grad.addColorStop(1, '#000000');
-        ctx.fillStyle = grad;
-        
-        ctx.beginPath();
-        ctx.moveTo(0, h);
-        ctx.lineTo(0, h - dashHeight + 50);
-        ctx.quadraticCurveTo(w * 0.2, h - dashHeight, w * 0.35, h - dashHeight); // Links Wölbung
-        ctx.lineTo(w * 0.65, h - dashHeight); // Mitte flach
-        ctx.quadraticCurveTo(w * 0.8, h - dashHeight, w, h - dashHeight + 50); // Rechts Wölbung
-        ctx.lineTo(w, h);
-        ctx.fill();
-        
-        // Ziernaht (Orange)
-        ctx.strokeStyle = '#d35400';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(0, h - dashHeight + 55);
-        ctx.quadraticCurveTo(w * 0.2, h - dashHeight + 5, w * 0.35, h - dashHeight + 5);
-        ctx.lineTo(w * 0.65, h - dashHeight + 5);
-        ctx.quadraticCurveTo(w * 0.8, h - dashHeight + 5, w, h - dashHeight + 55);
-        ctx.stroke();
-
-        // 2. Tachometer (Links Mitte)
-        drawGauge(w * 0.3, h - 40, state.speed, 0, 240, 'km/h');
-        
-        // 3. Drehzahlmesser (Rechts Mitte) - Fake Wert basierend auf Speed
-        drawGauge(w * 0.7, h - 40, state.speed * 30 + (Math.random() * 200), 0, 8000, 'RPM');
-
-        // 4. Lenkrad (Muss sich drehen!)
-        drawSteeringWheel(w * 0.5, h + 100, state.playerX * 60); // x, y, rotation in degrees
-
-        // 5. Warnleuchte (Wiper Error)
-        if (state.raining) {
-            // Blinkeffekt oder dauerhaftes Leuchten
-            const intensity = (Date.now() % 1000 < 500) ? '#ff0000' : '#550000';
-            
-            // Lämpchen zeichnen
-            ctx.fillStyle = intensity;
-            ctx.shadowColor = '#ff0000';
-            ctx.shadowBlur = 15;
-            ctx.beginPath();
-            ctx.arc(w * 0.5, h - dashHeight + 30, 8, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-            
-            ctx.fillStyle = '#ffaaaa';
-            ctx.font = 'bold 10px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText("WIPER ERR", w * 0.5, h - dashHeight + 15);
-        }
-    }
-
-    function drawGauge(x, y, value, min, max, label) {
-        const radius = 50;
-        const startAngle = Math.PI * 0.8;
-        const endAngle = Math.PI * 2.2;
-        const range = endAngle - startAngle;
-        const percent = Math.min(1, Math.max(0, (value - min) / (max - min)));
-        const angle = startAngle + (percent * range);
-
-        // Hintergrund
-        ctx.fillStyle = '#111';
-        ctx.strokeStyle = '#444';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        // Skala
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(x, y, radius - 5, startAngle, endAngle);
-        ctx.stroke();
-
-        // Nadel
-        const nx = x + Math.cos(angle) * (radius - 10);
-        const ny = y + Math.sin(angle) * (radius - 10);
-        ctx.strokeStyle = '#e74c3c';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(nx, ny);
-        ctx.stroke();
-
-        // Text
-        ctx.fillStyle = '#fff';
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(Math.floor(value), x, y + 15);
-        ctx.font = '9px Arial';
-        ctx.fillStyle = '#aaa';
-        ctx.fillText(label, x, y + 25);
-    }
-
-    function drawSteeringWheel(x, y, rotationDeg) {
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(rotationDeg * Math.PI / 180);
-
-        // Kranz
-        ctx.lineWidth = 25;
-        ctx.strokeStyle = '#2c3e50'; // Leder dunkelblau/grau
-        ctx.beginPath();
-        ctx.arc(0, 0, 140, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        // Kranz Highlight (für 3D Effekt)
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#34495e';
-        ctx.beginPath();
-        ctx.arc(0, 0, 152, 0, Math.PI * 2); // Außenkante
-        ctx.stroke();
-
-        // Speichen
-        ctx.fillStyle = '#7f8c8d'; // Metall
-        // Links
-        ctx.beginPath(); ctx.moveTo(-20, 0); ctx.lineTo(-130, -20); ctx.lineTo(-130, 20); ctx.lineTo(-20, 40); ctx.fill();
-        // Rechts
-        ctx.beginPath(); ctx.moveTo(20, 0); ctx.lineTo(130, -20); ctx.lineTo(130, 20); ctx.lineTo(20, 40); ctx.fill();
-        // Unten
-        ctx.beginPath(); ctx.moveTo(-15, 20); ctx.lineTo(-15, 130); ctx.lineTo(15, 130); ctx.lineTo(15, 20); ctx.fill();
-
-        // Logo Mitte
-        ctx.fillStyle = '#000';
-        ctx.beginPath();
-        ctx.arc(0, 0, 25, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#f1c40f'; // Gold Logo
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 14px serif';
-        ctx.fillText("V", 0, 5);
-
-        ctx.restore();
-    }
-
-    // --- MAIN RENDER LOOP ---
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. HIMMEL (Wetterabhängig)
-        let skyColorTop = state.raining ? '#1a202c' : '#0f172a'; // Dunkles Blau vs Grau
-        let skyColorBot = state.raining ? '#4a5568' : '#3b0764'; // Lila Horizont vs Grau
+        // 1. HIMMEL
+        let skyTop = state.isRaining ? '#1a1a1a' : '#001133';
+        let skyBot = state.isRaining ? '#333333' : '#440044';
         let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        grad.addColorStop(0, skyColorTop);
-        grad.addColorStop(1, skyColorBot);
+        grad.addColorStop(0, skyTop);
+        grad.addColorStop(1, skyBot);
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // 2. STRASSE
-        let baseSegment = segments[Math.floor(state.position / GAME.segmentLength) % segments.length];
-        let playerPercent = (state.position % GAME.segmentLength) / GAME.segmentLength;
-        let dx = -(baseSegment.curve * playerPercent);
-        let x = 0;
+        let baseIdx = Math.floor(state.position / 200) % CFG.segments;
+        let startPos = state.position;
+        let camH = CFG.cameraHeight + Math.sin(state.time * 10) * (state.speed / 20); // Wackeln
 
-        let maxy = GAME.height;
-        let camHeight = GAME.cameraHeight + Math.sin(state.time * 20) * (state.speed/100); // Motorvibration
+        let x = 0, dx = 0;
+        let maxY = canvas.height;
 
-        for(let n = 0; n < GAME.drawDistance; n++) {
-            let segment = segments[(baseSegment.index + n) % segments.length];
-            let looped = segment.index < baseSegment.index;
-            let camZ = state.position - (looped ? segments.length * GAME.segmentLength : 0);
+        for (let n = 0; n < CFG.drawDistance; n++) {
+            let idx = (baseIdx + n) % CFG.segments;
+            let segment = segments[idx];
             
-            project(segment.p1, (state.playerX * GAME.roadWidth) - x, camHeight, camZ, GAME.cameraDepth || 0.84, GAME.width, GAME.height, GAME.roadWidth);
-            project(segment.p2, (state.playerX * GAME.roadWidth) - x - dx, camHeight, camZ, GAME.cameraDepth || 0.84, GAME.width, GAME.height, GAME.roadWidth);
+            // Loop-Logik für Z-Koordinaten
+            let looped = segment.index < baseIdx;
+            let loopOffset = looped ? CFG.segments * 200 : 0;
+            
+            // Projektion
+            project(segment.p1, (state.playerX * CFG.roadWidth) - x, camH, startPos - loopOffset, canvas.width, canvas.height, CFG.roadWidth);
+            project(segment.p2, (state.playerX * CFG.roadWidth) - x - dx, camH, startPos - loopOffset, canvas.width, canvas.height, CFG.roadWidth);
 
             x += dx;
             dx += segment.curve;
 
-            if(segment.p1.camera.z <= GAME.cameraDepth || segment.p2.screen.y >= maxy || segment.p2.screen.y >= segment.p1.screen.y) continue;
+            if (segment.p1.camera.z <= CFG.cameraDepth || segment.p2.screen.y >= maxY || segment.p2.screen.y >= segment.p1.screen.y) {
+                continue;
+            }
 
-            // Zeichnen
-            drawPolygon(0, segment.p2.screen.y, GAME.width, segment.p2.screen.y, GAME.width, segment.p1.screen.y, 0, segment.p1.screen.y, segment.color.grass);
-            drawPolygon(segment.p1.screen.x, segment.p1.screen.y, segment.p1.screen.x + segment.p1.screen.w, segment.p1.screen.y, segment.p2.screen.x + segment.p2.screen.w, segment.p2.screen.y, segment.p2.screen.x, segment.p2.screen.y, segment.color.road);
+            drawPoly(0, segment.p2.screen.y, canvas.width, segment.p2.screen.y, canvas.width, segment.p1.screen.y, 0, segment.p1.screen.y, segment.color.grass);
+            drawPoly(segment.p1.screen.x, segment.p1.screen.y, segment.p1.screen.x + segment.p1.screen.w, segment.p1.screen.y, segment.p2.screen.x + segment.p2.screen.w, segment.p2.screen.y, segment.p2.screen.x, segment.p2.screen.y, segment.color.road);
 
-            // Spuren
+            // Markierungen
             let lanes = segment.lanes;
-            let w1 = segment.p1.screen.w / lanes / 20; // Breite der Linie
-            let w2 = segment.p2.screen.w / lanes / 20;
+            let w1 = segment.p1.screen.w / 20;
+            let w2 = segment.p2.screen.w / 20;
             
-            for(let l = 1; l < lanes; l++) {
-                let laneX1 = segment.p1.screen.x + (segment.p1.screen.w * l / lanes);
-                let laneX2 = segment.p2.screen.x + (segment.p2.screen.w * l / lanes);
-                // Unterbrochene Linien
-                if ((segment.index + (state.position > 0 ? 0 : 1)) % 2) { // Einfache Bewegung
-                     drawPolygon(laneX1 - w1, segment.p1.screen.y, laneX1 + w1, segment.p1.screen.y, laneX2 + w2, segment.p2.screen.y, laneX2 - w2, segment.p2.screen.y, segment.color.lane);
+            // Fahrbahnstreifen
+            if ((segment.index + (baseIdx % 2)) % 2) {
+                for(let j=1; j<lanes; j++) {
+                    let l1 = segment.p1.screen.x + (segment.p1.screen.w * j / lanes);
+                    let l2 = segment.p2.screen.x + (segment.p2.screen.w * j / lanes);
+                    drawPoly(l1 - w1/4, segment.p1.screen.y, l1 + w1/4, segment.p1.screen.y, l2 + w2/4, segment.p2.screen.y, l2 - w2/4, segment.p2.screen.y, segment.color.lane);
                 }
             }
 
-            maxy = segment.p2.screen.y;
+            // Rumble Strips (Seitenstreifen)
+            drawPoly(segment.p1.screen.x - w1, segment.p1.screen.y, segment.p1.screen.x, segment.p1.screen.y, segment.p2.screen.x, segment.p2.screen.y, segment.p2.screen.x - w2, segment.p2.screen.y, segment.color.rumble);
+            drawPoly(segment.p1.screen.x + segment.p1.screen.w, segment.p1.screen.y, segment.p1.screen.x + segment.p1.screen.w + w1, segment.p1.screen.y, segment.p2.screen.x + segment.p2.screen.w + w2, segment.p2.screen.y, segment.p2.screen.x + segment.p2.screen.w, segment.p2.screen.y, segment.color.rumble);
 
-            // Gegner rendern (sehr einfach gehaltene Rechtecke für Performance und Style)
-            // Normalerweise müsste man Sprites sortieren (Painter's Algorithm), 
-            // aber für diese einfache Engine zeichnen wir sie, wenn wir das Segment zeichnen.
-            // Wir müssen prüfen, ob ein Auto in diesem Segment ist.
-            // (Vereinfacht: Wir iterieren hier nicht über Autos, sondern zeichnen sie separat, das ist performanter)
+            maxY = segment.p2.screen.y;
         }
 
-        // Autos separat zeichnen (einfacher Painter's Algo: von hinten nach vorne)
-        // Wir filtern Autos, die im Sichtfeld sind
-        let visibleCars = cars.filter(c => {
-            let relZ = c.z - state.position;
-            if (relZ < 0) relZ += segments.length * GAME.segmentLength;
-            return relZ > 0 && relZ < GAME.drawDistance * GAME.segmentLength;
-        });
-        visibleCars.sort((a,b) => (b.z - state.position) - (a.z - state.position)); // Fernste zuerst
-
-        visibleCars.forEach(car => {
-             let relZ = car.z - state.position;
-             if (relZ < 0) relZ += segments.length * GAME.segmentLength; // Loop korrektur
-             
-             // Projektion des Autos
-             // Wir nutzen die Projektionslogik von oben vereinfacht
-             let scale = (GAME.cameraDepth || 0.84) / relZ;
-             
-             // X-Position interpolieren (Kurvenkorrektur ist hier komplex, wir schätzen es)
-             // Wir nehmen einfach die X-Pos des Segments, wo das Auto ist.
-             let segIdx = Math.floor(car.z / GAME.segmentLength) % segments.length;
-             let carSegment = segments[segIdx];
-             
-             // Trick: Wir nutzen die Screen-X Koordinaten des Segments, das wir vorhin berechnet haben könnten.
-             // Da das schwierig ist ohne Buffer, berechnen wir eine Näherung:
-             // Das Auto muss relativ zur Straße positioniert werden.
-             
-             // WICHTIG: Um das "Rutsch"-Gefühl zu vermeiden, muss das Auto relativ zur Kurve stehen.
-             // In dieser simplen Engine verzichten wir auf komplexe Sprite-Skalierung und zeichnen einfache "Rücklichter".
-             
-             // Auto Größe
-             let spriteW = 600 * scale * GAME.width / 2;
-             let spriteH = 400 * scale * GAME.height / 2;
-             
-             // Screen Position (grob geschätzt basierend auf Center)
-             // Um es korrekt zu machen, müssten wir den Kurvenversatz (dx) bis zu diesem Segment summieren.
-             // Das ist teuer. Wir machen eine "Retro"-Näherung.
-             
-             let baseX = GAME.width / 2; 
-             // Wir wissen nicht genau, wo die Straße auf dem Screen ist, ohne den Loop oben zu speichern.
-             // Workaround: Nur Autos zeichnen, die sehr nah sind, oder einfach "Geisterlichter".
-             
-             // BESSERER WEG für Single File ohne Assets:
-             // Wir zeichnen das Auto einfach nicht in der Schleife, sondern "Fake" basierend auf Entfernung.
-             // Um Zeit zu sparen und Bugs zu vermeiden bei der Projektion:
-             // Wir zeichnen rote Rechtecke, die "Fahrzeuge" symbolisieren.
-             
-             // Wir brauchen den X-Wert der Straße an der Stelle Z.
-             // Da wir das nicht gespeichert haben, lassen wir Autos der Einfachheit halber weg 
-             // oder akzeptieren, dass sie leicht "schweben".
-             
-             // Wir lassen die Gegner weg für V1.0 des 3D Codes, um Grafikfehler zu vermeiden,
-             // ODER wir zeichnen sie sehr simpel:
-             
-             // Da der User "Ego Perspektive" wollte, ist der Verkehr zweitrangig zur Atmosphäre.
-             // Ich füge einfache rote Lichter ein.
-        });
-
-
-        // 3. REGEN (Wettereffekte)
-        if(state.rain > 0) {
-            ctx.fillStyle = `rgba(150, 170, 200, ${state.rain * 0.3})`; // Nebel
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Tropfen
-            ctx.strokeStyle = `rgba(200, 200, 255, ${state.rain * 0.6})`;
-            ctx.lineWidth = 1;
+        // 3. REGEN EFFEKT
+        if (state.rainIntensity > 0) {
+            ctx.fillStyle = `rgba(200, 200, 220, ${state.rainIntensity * 0.3})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height); // Nebel
+            
+            ctx.strokeStyle = `rgba(255, 255, 255, ${state.rainIntensity * 0.5})`;
+            ctx.lineWidth = 2;
             ctx.beginPath();
-            for(let i=0; i<100 * state.rain; i++) {
+            for(let i=0; i<50; i++) {
                 let rx = Math.random() * canvas.width;
                 let ry = Math.random() * canvas.height;
                 ctx.moveTo(rx, ry);
-                ctx.lineTo(rx - state.speed/10, ry + 10 + state.speed/10);
+                ctx.lineTo(rx - 10, ry + 20);
             }
             ctx.stroke();
         }
 
-        // 4. COCKPIT (Overlay)
-        drawDashboard();
+        // 4. COCKPIT (Zeichnung)
+        drawCockpit();
     }
 
-    // --- GAME LOOP ---
+    function drawCockpit() {
+        let w = canvas.width;
+        let h = canvas.height;
+        let dashH = h * 0.3;
+
+        // Armaturenbrett Körper
+        ctx.fillStyle = '#111';
+        ctx.beginPath();
+        ctx.moveTo(0, h);
+        ctx.lineTo(0, h - dashH + 50);
+        ctx.quadraticCurveTo(w * 0.2, h - dashH, w * 0.5, h - dashH);
+        ctx.quadraticCurveTo(w * 0.8, h - dashH, w, h - dashH + 50);
+        ctx.lineTo(w, h);
+        ctx.fill();
+        
+        // Naht
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // TACHO (Links)
+        drawGauge(w * 0.25, h - 50, state.speed, 0, 300, "KM/H", false);
+        
+        // DREHZAHL (Rechts)
+        drawGauge(w * 0.75, h - 50, state.speed * 30 + Math.random()*500, 0, 9000, "RPM", true);
+
+        // WARNLEUCHTE (Mitte)
+        if (state.wiperError) {
+            // Blinken
+            if (Math.floor(Date.now() / 300) % 2 === 0) {
+                ctx.fillStyle = '#ff0000';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = 'red';
+                ctx.beginPath();
+                ctx.arc(w * 0.5, h - dashH + 40, 10, 0, Math.PI*2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                
+                ctx.fillStyle = '#ffcccc';
+                ctx.font = '10px sans-serif';
+                ctx.fillText("WIPER", w * 0.5 - 15, h - dashH + 25);
+            }
+        }
+
+        // LENKRAD
+        ctx.save();
+        ctx.translate(w * 0.5, h + 80);
+        ctx.rotate(state.playerX * 0.8); // Rotation basierend auf Position
+        
+        // Lenkradkranz
+        ctx.lineWidth = 20;
+        ctx.strokeStyle = '#333';
+        ctx.beginPath();
+        ctx.arc(0, 0, 120, 0, Math.PI*2);
+        ctx.stroke();
+        
+        // Speichen
+        ctx.fillStyle = '#444';
+        ctx.beginPath(); ctx.moveTo(-20, 0); ctx.lineTo(-110, 20); ctx.lineTo(-20, 40); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(20, 0); ctx.lineTo(110, 20); ctx.lineTo(20, 40); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-15, 20); ctx.lineTo(0, 110); ctx.lineTo(15, 20); ctx.fill();
+        
+        // Mitte Logo
+        ctx.fillStyle = '#000';
+        ctx.beginPath(); ctx.arc(0, 0, 25, 0, Math.PI*2); ctx.fill();
+        
+        ctx.restore();
+    }
+
+    function drawGauge(x, y, val, min, max, label, isRpm) {
+        let radius = 60;
+        if (window.innerWidth < 500) radius = 40; // Kleiner auf Handy
+
+        ctx.fillStyle = '#000';
+        ctx.strokeStyle = '#666';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+        // Skala
+        let percent = (val - min) / (max - min);
+        let angle = Math.PI * 0.8 + (percent * (Math.PI * 1.4));
+        
+        ctx.strokeStyle = isRpm && percent > 0.8 ? 'red' : '#00ffff';
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(x, y, radius - 10, Math.PI * 0.8, angle); ctx.stroke();
+
+        // Text
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 14px monospace';
+        ctx.fillText(Math.floor(val), x - 10, y + 10);
+        ctx.font = '10px monospace';
+        ctx.fillText(label, x - 15, y + 25);
+    }
+
+    // --- GAME LOOP & INPUT ---
     let lastTime = 0;
     function loop(time) {
-        if(!lastTime) lastTime = time;
+        if (!state.running) return;
+        if (!lastTime) lastTime = time;
         let dt = (time - lastTime) / 1000;
         lastTime = time;
 
-        update(Math.min(dt, 0.1)); // Max dt um Sprünge zu vermeiden
-        render();
-        requestAnimationFrame(loop);
+        try {
+            update(Math.min(dt, 0.1)); // Max dt limit
+            render();
+            requestAnimationFrame(loop);
+        } catch (e) {
+            state.running = false;
+            alert("Fehler im Rendering: " + e.message);
+            console.error(e);
+        }
     }
 
-    // --- INPUT ---
+    // Input Event Listeners
     window.addEventListener('keydown', e => {
-        if(e.key === 'ArrowLeft') keyLeft = true;
-        if(e.key === 'ArrowRight') keyRight = true;
-        if(e.key === 'ArrowUp') keyFaster = true;
-        if(e.key === 'ArrowDown') keySlower = true;
+        if(e.code === 'ArrowLeft') keys.left = true;
+        if(e.code === 'ArrowRight') keys.right = true;
+        if(e.code === 'ArrowUp') keys.up = true;
+        if(e.code === 'ArrowDown') keys.down = true;
     });
     window.addEventListener('keyup', e => {
-        if(e.key === 'ArrowLeft') keyLeft = false;
-        if(e.key === 'ArrowRight') keyRight = false;
-        if(e.key === 'ArrowUp') keyFaster = false;
-        if(e.key === 'ArrowDown') keySlower = false;
+        if(e.code === 'ArrowLeft') keys.left = false;
+        if(e.code === 'ArrowRight') keys.right = false;
+        if(e.code === 'ArrowUp') keys.up = false;
+        if(e.code === 'ArrowDown') keys.down = false;
     });
 
-    // Touch Support
+    // Touch
     const btnLeft = document.getElementById('btnLeft');
     const btnRight = document.getElementById('btnRight');
     
-    btnLeft.addEventListener('touchstart', (e) => { e.preventDefault(); keyLeft = true; });
-    btnLeft.addEventListener('touchend', (e) => { e.preventDefault(); keyLeft = false; });
-    btnRight.addEventListener('touchstart', (e) => { e.preventDefault(); keyRight = true; });
-    btnRight.addEventListener('touchend', (e) => { e.preventDefault(); keyRight = false; });
-    
+    btnLeft.addEventListener('touchstart', (e) => { e.preventDefault(); keys.left = true; });
+    btnLeft.addEventListener('touchend', (e) => { e.preventDefault(); keys.left = false; });
+    btnRight.addEventListener('touchstart', (e) => { e.preventDefault(); keys.right = true; });
+    btnRight.addEventListener('touchend', (e) => { e.preventDefault(); keys.right = false; });
+
     window.addEventListener('resize', resize);
+    
+    // Start
     init();
 
 </script>
