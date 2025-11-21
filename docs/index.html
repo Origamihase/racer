@@ -172,16 +172,21 @@
 
         // Verkehr
         cars = [];
-        for (let n = 0; n < 150; n++) { 
+        for (let n = 0; n < 150; n++) {
             let offset = Math.floor(Math.random() * 3800) + 200;
             // Farben für Autos
             const carColors = ['#cc0000', '#0033cc', '#00cc44', '#eeeeee', '#ccaa00'];
             let col = carColors[Math.floor(Math.random() * carColors.length)];
-            
+
+            // Lanes entlang der Straßenbreite verteilen
+            const laneIndex = Math.floor(Math.random() * CFG.lanes);
+            const laneNormalized = (laneIndex / (CFG.lanes - 1)) * 2 - 1; // -1 links, 0 Mitte, 1 rechts
+            const laneJitter = (Math.random() * 0.2) - 0.1;
+
             cars.push({
                 z: offset * CFG.segmentLength,
                 speed: 120 + Math.random() * 150,
-                lane: (Math.random() > 0.5 ? 0.5 : -0.5) + (Math.random()*0.4 - 0.2), 
+                lane: laneNormalized + laneJitter,
                 type: Math.random() > 0.7 ? 'truck' : 'sport',
                 color: col
             });
@@ -252,7 +257,7 @@
 
         // Kollision
         for(let car of cars) {
-            car.z += car.speed * dt * 1.5; 
+            car.z += car.speed * dt * 1.5;
             let maxZ = segments.length * CFG.segmentLength;
             if (car.z > maxZ) car.z -= maxZ;
 
@@ -260,8 +265,12 @@
             if (dist < -maxZ/2) dist += maxZ;
             if (dist > maxZ/2) dist -= maxZ;
 
-            if (dist > 0 && dist < 250) {
-                if (Math.abs(state.playerX - car.lane) < 0.7) {
+            if (dist > 0 && dist < 280) {
+                // Normalisiere Spieler-Lateralposition auf Lane-Koordinaten
+                const playerLane = Math.max(-1, Math.min(1, state.playerX / 3));
+                const laneDelta = Math.abs(playerLane - car.lane);
+
+                if (laneDelta < 0.45) {
                     if (state.speed > car.speed) {
                         state.speed = car.speed * 0.8;
                         CFG.cameraHeight = 900 + Math.random()*200;
@@ -384,26 +393,25 @@
             for(let c of cars) {
                 let cZ = c.z;
                 if (looped && cZ < startPos) cZ += segments.length * CFG.segmentLength;
-                
+
                 if (cZ >= segZ && cZ < segZ + CFG.segmentLength) {
                     let percent = (cZ - segZ) / CFG.segmentLength;
-                    // Interpoliere Y für Hügel
-                    let carY = segment.p1.screen.y + (segment.p2.screen.y - segment.p1.screen.y) * percent;
-                    // Skalierung interpolieren
-                    let scale = segment.p1.screen.scale + (segment.p2.screen.scale - segment.p1.screen.scale) * percent;
-                    
-                    // X Position
-                    let x1 = segment.p1.screen.x + segment.p1.screen.w * 0.5;
-                    let x2 = segment.p2.screen.x + segment.p2.screen.w * 0.5;
-                    let roadX = x1 + (x2 - x1) * percent;
-                    let carX = roadX + (c.lane * segment.p1.screen.w * 0.5);
+                    if (segment.p1.screen.scale === 0 || segment.p2.screen.scale === 0) continue;
 
-                    // **KORRIGIERTE GRÖSSEN**
-                    // Clamp die Maße, damit Fahrzeuge nicht flackern oder zu breit werden
-                    let baseW = width * scale * 160;
-                    let baseH = height * scale * 90;
-                    let carW = Math.max(30, Math.min(baseW, width * 0.2));
-                    let carH = Math.max(20, Math.min(baseH, height * 0.15));
+                    // Interpoliere Position und Breite der Straße
+                    let carY = segment.p1.screen.y + (segment.p2.screen.y - segment.p1.screen.y) * percent;
+                    let roadW = segment.p1.screen.w + (segment.p2.screen.w - segment.p1.screen.w) * percent;
+                    let roadX = segment.p1.screen.x + (segment.p2.screen.x - segment.p1.screen.x) * percent;
+                    let roadCenter = roadX + roadW * 0.5;
+
+                    // Sanfte Skalierung abhängig von Straßentiefe
+                    let scale = segment.p1.screen.scale + (segment.p2.screen.scale - segment.p1.screen.scale) * percent;
+                    let carW = Math.max(30, roadW * 0.6);
+                    let carH = Math.max(20, carW * (c.type === 'truck' ? 0.75 : 0.55));
+
+                    // X Position anhand Lane-Koordinaten berechnen
+                    let laneOffset = c.lane * roadW * 0.45;
+                    let carX = roadCenter + laneOffset;
 
                     // Zeichne Auto
                     drawCar(carX, carY, carW, carH, c.color, c.type);
