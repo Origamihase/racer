@@ -1,20 +1,40 @@
-# Autobahn‑Racer
+# Night Racer 3000
 
-Ein HTML5-Ego-Rennspiel mit dynamischem Verkehr, Wetter und Touch-/Tastatursteuerung.
+Ein HTML5-Highway-Racer im Synthwave-Look — fehlerfrei, hübsch und mit kaputtem Scheibenwischer.
+
+## Features
+
+- Pseudo-3D-Straße mit weichen Kurven und Hügeln
+- Outrun/Synthwave-Optik: Mond, Sterne, Magenta-/Cyan-Rumble-Strips
+- Dynamischer Verkehr mit Sportwagen und LKW
+- Wetterwechsel: Regen mit Tropfen am Glas
+- Defekter Scheibenwischer (Feature, nicht Bug)
+- WebAudio: Motor, Hupe, Crash
+- Witzige Schilder, Easter Eggs (Kuh, UFO, Schneemann, Boombox, Ente, Palme)
+- Schaden-System, Highscore, Score-Titel ("Sonntagsfahrer" bis "Lichtgeschwindigkeits-Opa")
+- Pause, Restart, Touch- und Tastatur-Steuerung
+
+## Steuerung
+
+- `←` `→` (oder `A` `D`, oder Touch links/rechts) — Lenken
+- `↑` Vollgas (passiert automatisch)
+- `↓` (oder Touch links Mitte) — Bremse
+- `H` (oder Touch rechts Mitte) — Hupe
+- `P` oder `Esc` — Pause
+- `Enter` / `Space` — Start oder Neustart
 
 ## Lokal starten
 
 1. Repository klonen
-2. `index.html` aus dem Verzeichnis `docs/` im Browser öffnen (z. B. per Doppelklick oder mit einem lokalen Webserver).
+2. `docs/index.html` im Browser öffnen (am einfachsten per `python3 -m http.server` im Repo-Root)
 
 ## Bereitstellung über GitHub Pages
 
-Damit das Spiel leicht über einen Link erreichbar ist, ist die komplette Anwendung als `docs/index.html` abgelegt. So aktivierst du GitHub Pages für das Repository:
+Die komplette Anwendung liegt als `docs/index.html`. Pages-Aktivierung:
 
-1. Öffne auf GitHub die Repository-Einstellungen (`Settings`).
-2. Navigiere zum Abschnitt **Pages**.
-3. Wähle unter **Source** die Option **Deploy from a branch**.
-4. Wähle als Branch `main` (bzw. den Branch, auf dem sich die Dateien befinden) und als Ordner `docs`.
-5. Speichere die Einstellung.
+1. `Settings → Pages` öffnen
+2. Unter **Source** `Deploy from a branch` wählen
+3. Branch `main`, Ordner `/docs`
+4. Speichern
 
-Nach wenigen Minuten ist das Spiel unter `https://<dein-benutzername>.github.io/<repository-name>/` erreichbar. Die bestehende `game.html` im Wurzelverzeichnis leitet Besucher automatisch zur GitHub-Pages-Variante weiter.
+Die `game.html` im Wurzelverzeichnis leitet automatisch nach `docs/index.html` weiter.
