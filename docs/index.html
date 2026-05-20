@@ -278,6 +278,7 @@ const CFG = {
   carCount: 110,
   signEvery: 90,          // ein Schild alle N Segmente (im Schnitt)
   easterEggEvery: 230,    // grobes Intervall in Segmenten
+  speedScale: 12,         // Welt-Einheiten pro (km/h · Sekunde) — passt sichtbare an angezeigte Geschwindigkeit an
 };
 
 // ============================================================
@@ -836,11 +837,11 @@ function update(dt) {
   if (state.phase !== 'play') {
     // Atmosphäre auf Start- und Game-Over-Screen: Welt rollt weiter
     const ambientSpeed = 230;
-    state.position += ambientSpeed * dt * 3.2;
+    state.position += ambientSpeed * dt * CFG.speedScale;
     const trackLen = segments.length * CFG.segmentLength;
     while (state.position >= trackLen) state.position -= trackLen;
     state.bgOffset -= dt * 0.05;
-    state.cameraHeight = CFG.baseCameraHeight + Math.sin(state.realTime * 0.6) * 12;
+    state.cameraHeight = CFG.baseCameraHeight + getRoadYAt(state.position) + Math.sin(state.realTime * 0.6) * 12;
     state.speed = ambientSpeed;
     return;
   }
@@ -984,7 +985,7 @@ function update(dt) {
   }
 
   for (const c of cars) {
-    c.z += c.speed * dt * 1.6;
+    c.z += c.speed * dt * CFG.speedScale;
     if (c.z >= trackLen) c.z -= trackLen;
     if (c.z < 0) c.z += trackLen;
   }
@@ -1020,16 +1021,16 @@ function update(dt) {
     }
   }
 
-  // Kamera
+  // Position vorwärts
+  state.position += state.speed * dt * CFG.speedScale;
+  while (state.position >= trackLen) state.position -= trackLen;
+  while (state.position < 0) state.position += trackLen;
+
+  // Kamera — folgt der Straßenhöhe am Spielerort, sonst hebt das Auto ab oder gräbt sich ein
   let shake = state.shakeAmp;
   state.shakeAmp = Math.max(0, state.shakeAmp - dt * 18);
   if (state.speed > 200) shake = Math.max(shake, (state.speed / 400) * 4);
-  state.cameraHeight = CFG.baseCameraHeight + Math.sin(state.time * 12) * shake * 6 + (Math.random() - 0.5) * shake * 4;
-
-  // Position vorwärts
-  state.position += state.speed * dt * 3.2;
-  while (state.position >= trackLen) state.position -= trackLen;
-  while (state.position < 0) state.position += trackLen;
+  state.cameraHeight = CFG.baseCameraHeight + getRoadYAt(state.position) + Math.sin(state.time * 12) * shake * 6 + (Math.random() - 0.5) * shake * 4;
 
   // Score & Distanz
   state.score += state.speed * dt * 0.18 * (state.speed > 350 ? 1.4 : 1);
@@ -1086,6 +1087,20 @@ function honk() {
     audio.honk();
     toast(pick(HONK_QUOTES), 900);
   }
+}
+
+// ============================================================
+// Straßenhöhe am Spieler (für Kamera-Follow auf Hügeln)
+// ============================================================
+function getRoadYAt(z) {
+  if (!segments.length) return 0;
+  const trackLen = segments.length * CFG.segmentLength;
+  const pz = ((z % trackLen) + trackLen) % trackLen;
+  const idx = Math.floor(pz / CFG.segmentLength);
+  const seg = segments[idx];
+  if (!seg) return 0;
+  const t = (pz - idx * CFG.segmentLength) / CFG.segmentLength;
+  return lerp(seg.p1.world.y, seg.p2.world.y, t);
 }
 
 // ============================================================
