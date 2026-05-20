@@ -8,17 +8,20 @@ Ein HTML5-Highway-Racer im Synthwave-Look — fehlerfrei, hübsch und mit kaputt
 - Outrun/Synthwave-Optik: Mond, Sterne, Magenta-/Cyan-Rumble-Strips
 - Aurora-Borealis-Bänder am Himmel (häufiger sichtbar, dezent wabernd)
 - Sternschnuppen am Nachthimmel (zufällig, mit Schweif)
-- Beleuchtete Brücken über die Strecke mit Lichterketten
-- Straßenlaternen mit warmem gelbem Glow
+- Große Straßenlaternen mit Lichtkegel auf den Boden
 - Dynamischer Verkehr: Sportwagen, LKW, Polizei mit Blaulicht, Geisterfahrer (mit Bissfaktor)
 - Korrekte Spurmitten (3-Lane) — kein Drauf-Fahren in den Standstreifen mehr
 - Rückspiegel mit Verkehr von hinten ("Objekte näher als sie erscheinen")
 - Eigene Motorhaube/Nase sichtbar (Synthwave-Hood mit Lufthutzen)
-- Wetterwechsel: Regen mit Tropfen am Glas und Wind-Drift
-- Defekter Scheibenwischer mit Sprüh-Witz (Feature, nicht Bug)
+- Cinematischer Regen in zwei Tiefenschichten, Tropfen am Glas, Wind-Drift
+- Defekter Scheibenwischer (klassischer Sweep, Sputter statt Wackeln) mit Sprüh-Witz
+- Outrun-Speed-Streifen vom Fluchtpunkt nach außen + weiche Magenta-/Cyan-Vignette
+- Mitlenkende Scheinwerfer — zwei separate Lichtkegel
+- Geglättete Lenkung (kein Snap, schnelle Selbst-Zentrierung)
+- Skid-Sound beim harten Lenken in Kurven
 - Crash-Funken & Reifenrauch beim Offroad-Trip
-- WebAudio: Motor, Hupe, Crash, Muh, Quietsch — mit Mute-Taste (M)
-- Über 75 witzige Schilder und 14 Easter Eggs (Kuh, UFO, Schneemann, Boombox, Ente, Palme, Pinguin, Wetterballon, Dino, Verkehrskegel, Yeti, Astronaut, Schaf, Roboter)
+- WebAudio: Motor, Hupe, Crash, Muh, Quietsch, Skid, Fanfare — mit Mute-Taste (M)
+- Über 90 witzige Schilder und 14 Easter Eggs (Kuh, UFO, Schneemann, Boombox, Ente, Palme, Pinguin, Wetterballon, Dino, Verkehrskegel, Yeti, Astronaut, Schaf, Roboter)
 - Schaden-System mit Selbstreparatur bei ruhigem Fahren
 - Trip-Odometer auf dem Cockpit (separate Distanz-Anzeige)
 - Highscore mit Vorher-Wert beim Übertreffen, automatisch gesichert bei Tab-Wechsel
@@ -31,7 +34,6 @@ Ein HTML5-Highway-Racer im Synthwave-Look — fehlerfrei, hübsch und mit kaputt
 - Tier-Wechsel-Celebration mit Synthwave-Fanfare und Sternschnuppen
 - Bestdistanz-Tracking neben Highscore
 - Sichtbare Brems-Lichter auf der Motorhaube
-- Wet-Road-Shimmer bei Regen (Mondreflexionen auf der Straße)
 - Mond mit sanfter Lens-Flare und 3D-Halbschatten
 - Aurora-Borealis in 4 Schichten mit Smoothstep-Übergängen
 - Sternschnuppen mit glühendem Kopf

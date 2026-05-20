@@ -289,6 +289,8 @@ const state = {
   phase: 'start',          // 'start' | 'play' | 'pause' | 'over'
   position: 0,
   playerX: 0,
+  playerXVel: 0,           // visuelle Bank-/Tilt-Geschwindigkeit (für Lenkrad)
+  steerInput: 0,           // weich geglättetes Lenkungs-Eingangssignal (-1..+1)
   speed: 0,
   time: 0,
   realTime: 0,             // wall time, läuft auch in Pause weiter (für Animation)
@@ -563,11 +565,48 @@ const audio = (() => {
     src.start(t);
   }
 
+  // Skid/Quietschen — kurzer Reifenpiep beim harten Lenken
+  let skidNode = null, skidGain = null, skidStart = 0;
+  function startSkid() {
+    if (!actx || skidNode) return;
+    const t = actx.currentTime;
+    const buf = actx.createBuffer(1, Math.floor(actx.sampleRate * 1.2), actx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1);
+    }
+    const src = actx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const filt = actx.createBiquadFilter();
+    filt.type = 'bandpass';
+    filt.frequency.value = 1800;
+    filt.Q.value = 8;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.05, t + 0.05);
+    src.connect(filt).connect(g).connect(master);
+    src.start(t);
+    skidNode = src; skidGain = g; skidStart = t;
+  }
+  function stopSkid() {
+    if (!actx || !skidNode) return;
+    const t = actx.currentTime;
+    try {
+      skidGain.gain.cancelScheduledValues(t);
+      skidGain.gain.setValueAtTime(skidGain.gain.value, t);
+      skidGain.gain.linearRampToValueAtTime(0, t + 0.08);
+      const node = skidNode;
+      setTimeout(() => { try { node.stop(); } catch (_) {} }, 120);
+    } catch (_) {}
+    skidNode = null; skidGain = null;
+  }
+
   function resume() {
     if (actx && actx.state === 'suspended') actx.resume();
   }
 
-  return { init, ensureEngine, engine, silenceEngine, honk, cowMoo, squeak, crash, blip, fanfare, whoosh, resume, toggleMute, isMuted };
+  return { init, ensureEngine, engine, silenceEngine, honk, cowMoo, squeak, crash, blip, fanfare, whoosh, startSkid, stopSkid, resume, toggleMute, isMuted };
 })();
 
 // ============================================================
@@ -649,6 +688,22 @@ const SIGNS = [
   ['BETTUNGSSTREIFEN', 'KISSEN INKL.'],
   ['MAUTHÄUSCHEN',     'ZAHLT EIN PIRAT'],
   ['BIO-TANKE',        'NUR HAFER'],
+  ['NACHTKIOSK',       'OFFEN VON 2 BIS 3'],
+  ['VEGAN-RASTHOF',    'NUR LUFT & LIEBE'],
+  ['HEXENWALD',        'BITTE LEISE'],
+  ['TURBO-FAHRSCHULE', 'ZWEI WOCHEN INTENSIV'],
+  ['VOGELHOCHZEIT',    'GRATIS PARKEN'],
+  ['NEONFLOH-MARKT',   'BAR ZAHLEN'],
+  ['SCHNARCH-RAST',    'BETT INKL.'],
+  ['SCHILDERWERK',     'TUT WAS ES KANN'],
+  ['LICHTSCHWERT',     'ABHOLBEREIT'],
+  ['HIER WAR NICHTS',  'JETZT IST WAS DA'],
+  ['GLÜCKSKEKS',       'BIEGE LINKS AB'],
+  ['NIRVANA',          '999 KM'],
+  ['LACHKABINE',       'NUR EINEN HUPER'],
+  ['DUSCHENPFLICHT',   'NACH 100 KM'],
+  ['SPRITHANDEL',      'FÜR DICH UMSONST'],
+  ['REIHENHAUS-CITY',  'GERADEAUS BIS ZUM GÄHNEN'],
 ];
 
 const PLATES = [
@@ -737,11 +792,15 @@ const NARRATOR = [
   'POLIZEI WINKT ZURÜCK',
   'PALMEN IM NORDEN',
   'KAFFEE-RADAR PIEPT',
-  'BRÜCKE! KOPF EINZIEHEN',
   'STERNE HABEN TEMPO',
   'NIRGENDWO IST NÄHER',
   'WIND PFEIFT MIT',
   'NEON FÜTTERT GUT',
+  'REIFEN SUMMEN MIT',
+  'HORIZONT WINKT ZURÜCK',
+  'SYNTHWAVE-FUNK SAUBER',
+  'TACHO LACHT',
+  'KEINE STRESSGRENZE',
 ];
 
 const TIERS = [
@@ -910,14 +969,15 @@ function buildWorld() {
     props.push(prop);
   }
 
-  // Straßenlaternen — gleichmäßig am Rand, abwechselnd links/rechts
+  // Straßenlaternen — größer, dafür seltener, abwechselnd links/rechts.
+  // Spacing 60 statt 22 = ruhigere Optik, dafür sind die Lampen jetzt richtig sichtbar.
   let lampIdx = 0;
-  for (let n = 60; n < CFG.trackSegments - 60; n += 22) {
+  for (let n = 60; n < CFG.trackSegments - 60; n += 60) {
     const side = (lampIdx++ % 2) ? -1 : 1;
     const prop = {
       type: 'lamp',
       side,
-      offset: side * 1.35,
+      offset: side * 1.55,         // etwas weiter weg vom Asphalt
       hue: '#ffd084',
       bob: 0,
     };
@@ -925,12 +985,7 @@ function buildWorld() {
     props.push(prop);
   }
 
-  // Brücken alle ~1400 Segmente (ungefähr ein Mal pro Minute Spielzeit)
-  for (let n = 600; n < CFG.trackSegments - 200; n += irnd(1100, 1700)) {
-    const prop = { type: 'bridge', side: 0, offset: 0, hue: '#5a607a', bob: 0 };
-    segments[n].props.push(prop);
-    props.push(prop);
-  }
+  // (Brücken entfernt — die Balken über die Fahrbahn sind raus.)
 
   // Verkehr
   cars = [];
@@ -1213,19 +1268,23 @@ function update(dt) {
     }
     state.wiperKickIn = rnd(2.5, 5.5);
   }
-  // Bewegung Richtung Target — frame-rate-stables Lerp
+  // Bewegung Richtung Target — frame-rate-stables Lerp, etwas träger für Realismus
   const wDelta = state.wiperTarget - state.wiperPos;
-  state.wiperPos += wDelta * (1 - Math.exp(-dt * 5));
+  state.wiperPos += wDelta * (1 - Math.exp(-dt * 3.5));
   if (Math.abs(wDelta) < 0.02) {
     // Zurück zur Ruheposition mit zeitkonstantem Decay
-    state.wiperTarget *= Math.exp(-dt * 5);
+    state.wiperTarget *= Math.exp(-dt * 3.5);
     if (Math.abs(state.wiperTarget) < 0.01) state.wiperTarget = 0;
   }
-  // Wischer-Wackeln (Jitter) als separater Offset, der direkt aus realTime berechnet wird
-  // → frame-rate-stabil, weil nicht akkumuliert.
-  state.wiperJitter = (state.realTime - state.wiperJam < 0.5)
-    ? Math.sin(state.realTime * 60) * 0.08
-    : 0;
+  // Wischer-Sputtern bei Jam: niedrigere Frequenz und sanfterer Ausschlag,
+  // damit der Arm nicht aussieht, als ob er ein Erdbeben hätte.
+  const sinceJam = state.realTime - state.wiperJam;
+  if (sinceJam < 0.8) {
+    const decay = 1 - sinceJam / 0.8;
+    state.wiperJitter = Math.sin(state.realTime * 22) * 0.035 * decay;
+  } else {
+    state.wiperJitter = 0;
+  }
 
   // Physik (Auto-Accel, Bremse über keys.down)
   const maxSpeed = state.rain > 0.5 ? CFG.speedLimitRain : CFG.speedLimit;
@@ -1241,13 +1300,25 @@ function update(dt) {
   if (state.speed > 360) state.turbo = Math.min(1, state.turbo + dt * 1.2);
   else state.turbo = Math.max(0, state.turbo - dt * 1.2);
 
-  // Lenkung — Basis-Lenkrate plus mehr Power bei mittlerem Tempo,
-  // aber bei sehr hohem Speed wird Lenkung etwas schwerer (realistischer Grip).
+  // Lenkung — weich geglättet, damit das Steuern nicht ruckartig wirkt.
+  // 1. Ziel-Lenkrichtung aus Tastendruck
+  const steerTarget = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+  // 2. Lerp gegen Ziel — schnelles Ansprechen, aber kein hartes Snap.
+  //    rate ~ 12 entspricht ca. 80 ms bis "voll" Ausschlag.
+  state.steerInput += (steerTarget - state.steerInput) * (1 - Math.exp(-dt * 12));
+  // Wenn Taste losgelassen → Self-Centering etwas weicher
+  if (steerTarget === 0) {
+    state.steerInput *= Math.exp(-dt * 6);
+    if (Math.abs(state.steerInput) < 0.002) state.steerInput = 0;
+  }
+
   const speedRatio = state.speed / CFG.speedLimit;
   let dx = dt * (2.4 + speedRatio * 1.9);
   if (state.speed > 360) dx *= 0.85; // Highspeed-Dämpfung
-  if (keys.left)  state.playerX -= dx;
-  if (keys.right) state.playerX += dx;
+  // Geglättete Lenkung anwenden
+  state.playerX += dx * state.steerInput;
+  // visuelle Lenk-Geschwindigkeit (für Lenkrad-Anim/Tilt) — leicht hinterherlaufend
+  state.playerXVel += (state.steerInput - state.playerXVel) * (1 - Math.exp(-dt * 9));
 
   // Kurven schieben
   const segIdx = Math.floor(state.position / CFG.segmentLength) % segments.length;
@@ -1394,6 +1465,16 @@ function update(dt) {
 
   // Engine sound
   audio.engine(state.speed, CFG.speedLimit);
+
+  // Skid-Sound bei harter Lenkung in der Kurve
+  const inCurve = cur ? Math.abs(cur.curve) : 0;
+  const hardSteer = Math.abs(state.steerInput) > 0.7;
+  const goingFast = state.speed > 220;
+  if ((hardSteer && goingFast) || (inCurve > 2.4 && state.speed > 280 && Math.abs(state.steerInput) > 0.3)) {
+    audio.startSkid();
+  } else {
+    audio.stopSkid();
+  }
 
   // Honk cooldown
   state.honkCooldown = Math.max(0, state.honkCooldown - dt);
@@ -1974,8 +2055,6 @@ function drawProp(prop, seg, fog) {
     drawRobot(baseX, baseY, sizeUnit);
   } else if (prop.type === 'lamp') {
     drawLamp(baseX, baseY, sizeUnit, prop.side);
-  } else if (prop.type === 'bridge') {
-    drawBridge(seg, fog);
   }
   ctx.restore();
 }
@@ -2498,83 +2577,118 @@ function drawBalloon(x, y, u) {
 }
 
 function drawLamp(x, y, u, side) {
-  let poleH = u * 220;
-  let poleW = Math.max(2, u * 6);
-  const maxH = height * 0.55;
+  // Deutlich größer als vorher (poleH ~1.7×), damit die Laternen nicht in der
+  // Landschaft verschwinden. Begrenzt durch die Bildhöhe, falls man direkt
+  // darunter steht.
+  let poleH = u * 380;
+  let poleW = Math.max(3, u * 9);
+  const maxH = height * 0.78;
   if (poleH > maxH) { poleW *= maxH / poleH; poleH = maxH; }
   if (poleH < 6) return;
-  const headSize = Math.max(4, u * 30);
+  const headSize = Math.max(6, u * 46);
+  const topY = y - poleH;
 
-  // Mast (helleres Grau, damit er gegen den dunklen Hintergrund sichtbar ist)
+  // Sockel — etwas breiter, dunkel
+  ctx.fillStyle = '#1c1822';
+  ctx.fillRect(x - poleW * 1.4, y - poleW * 1.1, poleW * 2.8, poleW * 1.1);
+
+  // Mast mit sanftem Verlauf — bekommt 3D-Charakter statt Strich-Look
+  const poleGrad = ctx.createLinearGradient(x - poleW / 2, 0, x + poleW / 2, 0);
+  poleGrad.addColorStop(0,    '#3a3444');
+  poleGrad.addColorStop(0.5,  '#6a6276');
+  poleGrad.addColorStop(1,    '#3a3444');
+  ctx.fillStyle = poleGrad;
+  ctx.fillRect(x - poleW / 2, topY, poleW, poleH);
+
+  // Ausleger — leicht gebogen Richtung Straße
+  const armDir = -side; // Richtung Straße
+  const armLen = u * 110;
+  const armY   = topY + Math.max(4, u * 6);
+  const armThick = Math.max(3, u * 7);
   ctx.fillStyle = '#4a4252';
-  ctx.fillRect(x - poleW / 2, y - poleH, poleW, poleH);
-  // Sockel
-  ctx.fillStyle = '#2a242e';
-  ctx.fillRect(x - poleW, y - poleW * 0.8, poleW * 2, poleW * 0.8);
-  // Ausleger zur Straße hin
-  const armDir = -side; // Richtung Straße zeigend
-  const armLen = u * 58;
-  const armY = y - poleH + u * 4;
-  ctx.fillStyle = '#4a4252';
+  ctx.beginPath();
   if (armDir > 0) {
-    ctx.fillRect(x, armY, armLen, Math.max(2, u * 5));
+    ctx.moveTo(x, armY);
+    ctx.quadraticCurveTo(x + armLen * 0.55, armY - armThick * 1.6, x + armLen, armY + armThick * 0.5);
+    ctx.lineTo(x + armLen, armY + armThick * 0.5 + armThick);
+    ctx.quadraticCurveTo(x + armLen * 0.55, armY + armThick * 0.4, x, armY + armThick);
   } else {
-    ctx.fillRect(x - armLen, armY, armLen, Math.max(2, u * 5));
+    ctx.moveTo(x, armY);
+    ctx.quadraticCurveTo(x - armLen * 0.55, armY - armThick * 1.6, x - armLen, armY + armThick * 0.5);
+    ctx.lineTo(x - armLen, armY + armThick * 0.5 + armThick);
+    ctx.quadraticCurveTo(x - armLen * 0.55, armY + armThick * 0.4, x, armY + armThick);
   }
-  // Lampenkopf
-  const lampX = x + armDir * armLen;
-  const lampY = y - poleH + u * 10;
-  ctx.fillStyle = '#fff4c0';
-  ctx.shadowColor = '#ffdd66';
-  ctx.shadowBlur = Math.max(3, headSize);
-  ctx.fillRect(lampX - headSize * 0.45, lampY, headSize * 0.9, headSize * 0.45);
-  ctx.shadowBlur = 0;
-  // Glow am Boden — kegelförmig
-  if (u > 0.03) {
-    ctx.globalAlpha = 0.22;
-    const grad = ctx.createRadialGradient(lampX, y, 0, lampX, y, headSize * 4);
-    grad.addColorStop(0, '#fff4c0');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.ellipse(lampX, y, headSize * 4, headSize * 1.6, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-}
+  ctx.closePath();
+  ctx.fill();
 
-function drawBridge(seg, fog) {
-  // Brücke: über die Straße spannen ein dunkler Balken mit Lichterkette
-  const p1 = seg.p1.screen, p2 = seg.p2.screen;
-  if (p1.scale <= 0) return;
-  const u = p1.scale * width;
-  // Etwa 2.5 Brückenhöhe in Welt-Einheiten — projiziert nach oben
-  const bridgeTop = p1.y - u * 220;
-  const bridgeBot = p1.y - u * 140;
-  const xLeft  = p1.x - p1.w * 1.8;
-  const xRight = p1.x + p1.w * 1.8;
-  // Pfeiler
-  ctx.fillStyle = '#2c2435';
-  ctx.fillRect(p1.x - p1.w * 1.85, bridgeBot, Math.max(4, u * 18), p1.y - bridgeBot);
-  ctx.fillRect(p1.x + p1.w * 1.65, bridgeBot, Math.max(4, u * 18), p1.y - bridgeBot);
-  // Träger
-  ctx.fillStyle = '#3a304a';
-  ctx.fillRect(xLeft, bridgeTop, xRight - xLeft, bridgeBot - bridgeTop);
-  // Lichterkette oben
-  const dotR = Math.max(1, u * 6);
-  const dotSpacing = Math.max(8, u * 50);
-  ctx.fillStyle = '#ffe066';
-  ctx.shadowColor = '#ffd84a';
-  ctx.shadowBlur = Math.max(2, dotR * 1.6);
-  for (let lx = xLeft + dotSpacing * 0.5; lx < xRight; lx += dotSpacing) {
-    ctx.beginPath();
-    ctx.arc(lx, bridgeTop - dotR * 0.3, dotR, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // Lampengehäuse (Trapez nach unten offen)
+  const lampX = x + armDir * armLen;
+  const lampY = armY + armThick * 0.5;
+  const lhw  = headSize * 0.6; // halfwidth oben
+  const lhwB = headSize * 0.85; // halfwidth unten
+  const lhH  = headSize * 0.55;
+  ctx.fillStyle = '#272030';
+  ctx.beginPath();
+  ctx.moveTo(lampX - lhw, lampY);
+  ctx.lineTo(lampX + lhw, lampY);
+  ctx.lineTo(lampX + lhwB, lampY + lhH);
+  ctx.lineTo(lampX - lhwB, lampY + lhH);
+  ctx.closePath();
+  ctx.fill();
+
+  // Glas-Bauch — leuchtende Linse
+  const bulbY = lampY + lhH * 0.55;
+  ctx.shadowColor = '#ffd56b';
+  ctx.shadowBlur = Math.max(6, headSize * 1.2);
+  const bulbGrad = ctx.createRadialGradient(lampX, bulbY, 0, lampX, bulbY, headSize * 0.7);
+  bulbGrad.addColorStop(0,   '#fff8d0');
+  bulbGrad.addColorStop(0.5, '#ffd56b');
+  bulbGrad.addColorStop(1,   'rgba(255, 180, 70, 0)');
+  ctx.fillStyle = bulbGrad;
+  ctx.beginPath();
+  ctx.ellipse(lampX, bulbY, lhwB * 0.9, lhH * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.shadowBlur = 0;
-  // Rand-Streifen
-  ctx.fillStyle = '#ff0066';
-  ctx.fillRect(xLeft, bridgeBot - Math.max(2, u * 5), xRight - xLeft, Math.max(2, u * 5));
+
+  // Heller Kern
+  ctx.fillStyle = 'rgba(255, 250, 220, 0.95)';
+  ctx.beginPath();
+  ctx.ellipse(lampX, bulbY, lhwB * 0.5, lhH * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Lichtkegel zum Boden — länger und sanfter als vorher
+  if (u > 0.025) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const coneTop = bulbY + lhH * 0.3;
+    const coneBottomY = y + headSize * 0.3;
+    const halfTop = headSize * 0.25;
+    const halfBot = headSize * 2.6;
+    const coneGrad = ctx.createLinearGradient(lampX, coneTop, lampX, coneBottomY);
+    coneGrad.addColorStop(0,    'rgba(255, 230, 160, 0.32)');
+    coneGrad.addColorStop(0.4,  'rgba(255, 215, 130, 0.16)');
+    coneGrad.addColorStop(1,    'rgba(255, 200, 100, 0)');
+    ctx.fillStyle = coneGrad;
+    ctx.beginPath();
+    ctx.moveTo(lampX - halfTop, coneTop);
+    ctx.lineTo(lampX + halfTop, coneTop);
+    ctx.lineTo(lampX + halfBot, coneBottomY);
+    ctx.lineTo(lampX - halfBot, coneBottomY);
+    ctx.closePath();
+    ctx.fill();
+
+    // weicher Bodenfleck
+    ctx.globalAlpha = 0.32;
+    const groundGrad = ctx.createRadialGradient(lampX, y, 0, lampX, y, headSize * 5);
+    groundGrad.addColorStop(0,   'rgba(255, 235, 170, 0.85)');
+    groundGrad.addColorStop(0.5, 'rgba(255, 200, 120, 0.25)');
+    groundGrad.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = groundGrad;
+    ctx.beginPath();
+    ctx.ellipse(lampX, y, headSize * 5, headSize * 2.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 }
 
 // ---- Cars ---------------------------------------------------------
@@ -2879,95 +2993,177 @@ function drawPlayerHood() {
 // ---- Headlights ---------------------------------------------------
 function drawHeadlights() {
   const cx = width / 2;
+  // Scheinwerfer "drehen" sich leicht mit der Lenkung mit — kein scharfer Kegel,
+  // nur weicher Versatz nach links/rechts vom Fluchtpunkt.
+  const aim = state.steerInput * width * 0.10;
   const top = height * 0.56;
-  const bot = height * 0.95;
-  const halfBot = width * 0.42;
-  const halfTop = width * 0.03;
+  const bot = height * 0.96;
+  const halfBot = width * 0.44;
+  const halfTop = width * 0.035;
 
+  // Linker und rechter Scheinwerfer separat zeichnen — wirkt wie zwei Lichtkegel
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
+  // Gemeinsamer Verlauf
+  const baseAlpha = state.isRaining ? 0.16 : 0.12;
   const grd = ctx.createLinearGradient(0, top, 0, bot);
   grd.addColorStop(0, 'rgba(255, 245, 210, 0)');
-  grd.addColorStop(1, 'rgba(255, 245, 210, 0.12)');
+  grd.addColorStop(0.6, `rgba(255, 245, 210, ${baseAlpha * 0.7})`);
+  grd.addColorStop(1, `rgba(255, 240, 200, ${baseAlpha})`);
   ctx.fillStyle = grd;
+  // Linker Kegel — leicht nach links versetzt
   ctx.beginPath();
-  ctx.moveTo(cx - halfTop, top);
-  ctx.lineTo(cx + halfTop, top);
-  ctx.lineTo(cx + halfBot, bot);
-  ctx.lineTo(cx - halfBot, bot);
+  ctx.moveTo(cx - halfTop - width * 0.012, top);
+  ctx.lineTo(cx + halfTop * 0.2, top);
+  ctx.lineTo(cx + halfBot * 0.15 + aim, bot);
+  ctx.lineTo(cx - halfBot + aim, bot);
   ctx.closePath();
   ctx.fill();
+  // Rechter Kegel — leicht nach rechts versetzt
+  ctx.beginPath();
+  ctx.moveTo(cx - halfTop * 0.2, top);
+  ctx.lineTo(cx + halfTop + width * 0.012, top);
+  ctx.lineTo(cx + halfBot + aim, bot);
+  ctx.lineTo(cx - halfBot * 0.15 + aim, bot);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
 // ---- Speed lines / Turbo ------------------------------------------
+// Outrun-Style: feine helle Streifen, die deterministisch vom Fluchtpunkt
+// nach außen sausen. Kein flackerndes Math.random pro Frame mehr.
 function drawSpeedLines() {
+  const t = state.turbo;
+  if (t < 0.04) return;
+  const cx = width / 2;
+  const cy = height * 0.5;
+  // Fluchtpunkt ein bisschen mit Lenkung verschieben — wirkt dynamisch
+  const vpx = cx + state.steerInput * width * 0.06;
+  const vpy = cy - 18;
+  const maxR = Math.hypot(width, height) * 0.7;
+  // Anzahl der Streifen wächst mit Turbo (max ~36)
+  const count = 36;
+  const phase = state.realTime * 1.8; // outward flow speed
+
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  ctx.strokeStyle = `rgba(255, 240, 220, ${state.turbo * 0.35})`;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  const cx = width / 2, cy = height * 0.55;
-  for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * Math.PI * 2 + state.realTime * 2;
-    const r1 = width * 0.15;
-    const r2 = width * (0.5 + Math.random() * 0.7);
-    ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
-    ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+  for (let i = 0; i < count; i++) {
+    // Stabile Winkel (deterministisch) mit minimaler Variation
+    const seed = (i * 8761) % 1000 / 1000;
+    const angle = i * (Math.PI * 2 / count) + seed * 0.12;
+    // "Lebensphase" jedes Streifens (0 = neu am Fluchtpunkt, 1 = außen)
+    const life = ((phase * (0.6 + seed * 0.5) + seed) % 1);
+    // Quadratisches Easing — fühlt sich nach "rauschen" an, nicht nach gleicher Geschw.
+    const rOuter = life * life * maxR;
+    const trail  = 0.08 + 0.18 * life;          // Trail wächst mit Distanz
+    const rInner = Math.max(0, rOuter - trail * maxR);
+    // Fade in beim Erscheinen, Fade out beim Verschwinden
+    const fade = Math.sin(life * Math.PI);
+    const a = t * fade * 0.55;
+    if (a < 0.02) continue;
+    const cosA = Math.cos(angle), sinA = Math.sin(angle);
+    const x1 = vpx + cosA * rInner;
+    const y1 = vpy + sinA * rInner;
+    const x2 = vpx + cosA * rOuter;
+    const y2 = vpy + sinA * rOuter;
+    // Verlauf entlang der Linie für weichen Strich
+    const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+    grad.addColorStop(0,   'rgba(255, 200, 240, 0)');
+    grad.addColorStop(0.5, `rgba(255, 230, 250, ${a})`);
+    grad.addColorStop(1,   'rgba(255, 255, 255, 0)');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
   }
-  ctx.stroke();
   ctx.restore();
 
-  // Vignette in Magenta
-  const g = ctx.createRadialGradient(width/2, height/2, height * 0.3, width/2, height/2, width * 0.8);
+  // Vignette: weicher magenta-cyan-Rand
+  const g = ctx.createRadialGradient(cx, cy, height * 0.28, cx, cy, width * 0.78);
   g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(1, `rgba(180, 0, 100, ${state.turbo * 0.35})`);
+  g.addColorStop(0.7, `rgba(120, 0, 80, ${t * 0.18})`);
+  g.addColorStop(1,   `rgba(255, 0, 120, ${t * 0.32})`);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, width, height);
+
+  // Leichte chromatische Akzent-Streifen oben/unten — wirkt wie Motion Blur am Rand
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const accentA = t * 0.22;
+  // oben (subtiler Cyan-Schimmer)
+  const topGrad = ctx.createLinearGradient(0, 0, 0, height * 0.15);
+  topGrad.addColorStop(0, `rgba(0, 220, 255, ${accentA})`);
+  topGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(0, 0, width, height * 0.15);
+  // unten Richtung Cockpit (Magenta)
+  const botGrad = ctx.createLinearGradient(0, height * 0.7, 0, height);
+  botGrad.addColorStop(0, 'rgba(0,0,0,0)');
+  botGrad.addColorStop(1, `rgba(255, 80, 200, ${accentA * 0.9})`);
+  ctx.fillStyle = botGrad;
+  ctx.fillRect(0, height * 0.7, width, height * 0.3);
+  ctx.restore();
 }
 
 // ---- Rain ---------------------------------------------------------
+// Komplett überarbeitet: keine flackernden Querstreifen mehr,
+// stattdessen weicher Dunst und ruhige, lange Regenstreifen.
 function drawRain() {
-  // Wet-Road-Shimmer: schmale leuchtende Streifen auf der Straße zur Andeutung von Mondreflexionen
-  const dashH = Math.max(120, height * 0.22);
-  const horizonY = height * 0.5;
-  const roadBottomY = height - dashH;
-  const shimmerCount = 6;
+  const r = state.rain;
+  if (r <= 0.01) return;
+
+  // 1. Sanfter dunkler Dunst über dem Himmel (oberhalb des Horizonts dichter)
+  const dimGrad = ctx.createLinearGradient(0, 0, 0, height);
+  dimGrad.addColorStop(0,   `rgba(8, 4, 24, ${r * 0.55})`);
+  dimGrad.addColorStop(0.5, `rgba(6, 2, 22, ${r * 0.42})`);
+  dimGrad.addColorStop(1,   `rgba(2, 0, 12, ${r * 0.20})`);
+  ctx.fillStyle = dimGrad;
+  ctx.fillRect(0, 0, width, height);
+
+  // 2. Regenstreifen — deterministisch via Phase, mehrere Schichten,
+  //    konstanter Winkel passend zur Fahrtrichtung.
+  state.rainPhase = (state.rainPhase + 220 * 0.016) % 1e6;
+  const angleX = -1.0 - state.speed * 0.0028;   // Wind nach links bei Speed
+  const angleY =  1.0;
+  // 2 Tiefen-Schichten: weit weg (kleiner, dunkler), nah (länger, heller)
+  const layers = [
+    { count: Math.floor(60 * r), len: 18 + state.speed * 0.03, alpha: 0.32 * r, lw: 1.0, depth: 1.4 },
+    { count: Math.floor(45 * r), len: 32 + state.speed * 0.07, alpha: 0.55 * r, lw: 1.6, depth: 1.0 },
+  ];
   ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < shimmerCount; i++) {
-    const t = (i / shimmerCount + (state.realTime * 0.18) % 1) % 1;
-    const y = lerp(horizonY + 10, roadBottomY - 4, t);
-    // Breite wächst mit Tiefenperspektive
-    const w = lerp(width * 0.04, width * 0.42, t);
-    const a = state.rain * (1 - t * 0.5) * 0.18;
-    if (a < 0.01) continue;
-    const grd = ctx.createLinearGradient(width / 2 - w, y, width / 2 + w, y);
-    grd.addColorStop(0, 'rgba(180, 200, 255, 0)');
-    grd.addColorStop(0.5, `rgba(220, 240, 255, ${a})`);
-    grd.addColorStop(1, 'rgba(180, 200, 255, 0)');
-    ctx.fillStyle = grd;
-    ctx.fillRect(width / 2 - w, y - 1, w * 2, 2);
+  for (const L of layers) {
+    ctx.strokeStyle = `rgba(200, 220, 255, ${L.alpha})`;
+    ctx.lineWidth = L.lw;
+    ctx.beginPath();
+    for (let i = 0; i < L.count; i++) {
+      // Deterministische Startposition (per Schicht/Index gestreut)
+      const seed = (i * 9301 + 49297) % 233280;
+      const baseX = (seed / 233280) * width;
+      const baseY = ((seed * 7) % 233280) / 233280 * height;
+      // Phasen-Drift — schneller bei näherer Schicht
+      const phaseY = state.rainPhase * (160 * L.depth);
+      const phaseX = state.rainPhase * (40 * L.depth);
+      const sx = ((baseX + phaseX) % width + width) % width;
+      const sy = ((baseY + phaseY) % height + height) % height;
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + angleX * L.len, sy + angleY * L.len);
+    }
+    ctx.stroke();
   }
   ctx.restore();
 
-  // Dunkler Überzug
-  ctx.fillStyle = `rgba(2, 0, 18, ${state.rain * 0.35})`;
-  ctx.fillRect(0, 0, width, height);
-
-  // Regenstreifen (deterministisch über Phase, weniger flicker)
-  state.rainPhase = (state.rainPhase + 0.16) % 10000;
-  ctx.strokeStyle = `rgba(200, 230, 255, ${state.rain * 0.55})`;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  const drops = Math.floor(80 * state.rain);
-  for (let i = 0; i < drops; i++) {
-    const seed = (i * 9301 + 49297) % 233280;
-    const sx = (((seed / 233280) * width + state.rainPhase * 40) % width + width) % width;
-    const sy = ((((seed * 7) % 233280) / 233280 * height + state.rainPhase * 120) % height + height) % height;
-    const dy = 22 + state.speed * 0.04;
-    const dx = -state.speed * 0.05;
-    ctx.moveTo(sx, sy);
-    ctx.lineTo(sx + dx, sy + dy);
-  }
-  ctx.stroke();
+  // 3. Subtiler nasser Asphalt-Glanz — eine schmale helle Reflektion
+  //    direkt unterhalb des Horizonts. Keine flackernden Bänder mehr.
+  const horizonY = height * 0.5;
+  const shineGrad = ctx.createLinearGradient(0, horizonY, 0, horizonY + 30);
+  shineGrad.addColorStop(0, `rgba(180, 200, 255, ${r * 0.18})`);
+  shineGrad.addColorStop(1, 'rgba(180, 200, 255, 0)');
+  ctx.fillStyle = shineGrad;
+  ctx.fillRect(0, horizonY, width, 30);
 }
 
 // ---- Drops on glass -----------------------------------------------
@@ -2984,36 +3180,86 @@ function drawDrops() {
 }
 
 // ---- Wiper --------------------------------------------------------
+// Klassischer Front-Wischer mit Pivot links unten. Sauberer Sweep, leicht
+// chaotisch wenn der Wagen "kaputt" ist, aber ohne hartes Wackeln.
 function drawWiper() {
+  const dashH = Math.max(120, height * 0.22);
+  const hoodY = height - dashH;
   if (state.rain < 0.05 && Math.abs(state.wiperPos) < 0.02) return;
 
-  const pivotX = width / 2;
-  const pivotY = height + 40;
-  const len = height * 1.35;
+  // Pivot am unteren linken Drittel des Windschutzes — wie bei einem echten Auto
+  const pivotX = width * 0.22;
+  const pivotY = hoodY + 4;
+  const len = Math.min(height * 0.68, width * 0.55);
+  const armW = Math.max(3, len * 0.012);
+  const bladeLen = len * 0.78;
+  const bladeOff = len * 0.18; // Abstand vom Pivot bis Blatt-Start
+
+  // Parkposition: Arm liegt fast horizontal nach rechts entlang der Hood-Kante.
+  // Im Canvas: Rotation +π/2 = Arm zeigt nach rechts.
+  const parkAngle = Math.PI * 0.48;
+  // Sweep-Range: weiter Bogen nach oben-links über die Scheibe.
+  const sweepRange = -Math.PI * 0.78;
+  const t = clamp(state.wiperPos, -1, 1);
+  // "Wrong way" (negativer pos) gedämpft, damit der Arm nicht unter die Haube rotiert
+  const visualT = t < 0 ? t * 0.25 : t;
+  const angle = parkAngle + visualT * sweepRange;
+  // Kleines elektrisches Sputtern in den ersten 0.8 s nach Jam
+  const sputter = state.wiperJitter || 0;
 
   ctx.save();
   ctx.translate(pivotX, pivotY);
-  // Basis-Ruhewinkel: schief nach oben-links geparkt — sichtbar, aber offensichtlich kaputt
-  const baseAngle = -Math.PI / 4 - 0.15;
-  const jitter = state.wiperJitter || 0;
-  // "Falsche" Richtung gedämpft, damit der Arm auch beim Rückschwung sichtbar bleibt
-  const visualPos = state.wiperPos < 0 ? state.wiperPos * 0.35 : state.wiperPos;
-  const swing = (visualPos + jitter) * (Math.PI * 0.5);
-  ctx.rotate(baseAngle + swing);
+  ctx.rotate(angle + sputter);
 
-  // Arm
-  ctx.fillStyle = '#1a1a1a';
-  ctx.fillRect(-4, 0, 8, -len * 0.92);
+  // Wisch-Trail (Spuren auf der Scheibe direkt hinter dem Blatt) bei Bewegung
+  if (Math.abs(t) > 0.05) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const trailGrad = ctx.createLinearGradient(0, -bladeOff, 0, -bladeOff - bladeLen);
+    trailGrad.addColorStop(0,   'rgba(255,255,255,0)');
+    trailGrad.addColorStop(0.5, 'rgba(255,255,255,0.05)');
+    trailGrad.addColorStop(1,   'rgba(255,255,255,0)');
+    ctx.fillStyle = trailGrad;
+    ctx.fillRect(-armW * 6, -bladeOff - bladeLen, armW * 12, bladeLen);
+    ctx.restore();
+  }
 
-  // Blatt
-  ctx.fillStyle = '#0d0d0d';
-  ctx.fillRect(-len * 0.07, -len * 0.92, len * 0.14, -16);
-  ctx.fillStyle = '#222';
-  ctx.fillRect(-len * 0.065, -len * 0.92 - 16, len * 0.13, -2);
+  // Arm — mit kleinem Knick wie ein echter Wischer-Arm
+  ctx.fillStyle = '#0e0e14';
+  ctx.fillRect(-armW * 0.6, -bladeOff, armW * 1.2, bladeOff);
+  // Hauptarm
+  ctx.fillStyle = '#1a1a22';
+  ctx.fillRect(-armW * 0.8, -bladeOff - bladeLen, armW * 1.6, bladeLen);
+  // Glanzlinie auf dem Arm
+  ctx.fillStyle = '#3a3a4a';
+  ctx.fillRect(-armW * 0.2, -bladeOff - bladeLen, armW * 0.4, bladeLen);
 
-  // Halterung an Pivot
-  ctx.fillStyle = '#444';
-  ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
+  // Halterung Arm → Blatt (kleiner Schwenkpunkt)
+  ctx.fillStyle = '#2a2a35';
+  ctx.beginPath();
+  ctx.arc(0, -bladeOff - bladeLen * 0.08, armW * 1.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Blatt (Gummi)
+  const bladeW = Math.max(6, len * 0.025);
+  ctx.fillStyle = '#0a0a0e';
+  ctx.fillRect(-bladeW / 2, -bladeOff - bladeLen, bladeW, bladeLen);
+  // Halter-Schiene oben drauf
+  ctx.fillStyle = '#1f1f26';
+  ctx.fillRect(-bladeW / 2 + 1, -bladeOff - bladeLen + 4, bladeW - 2, bladeLen - 8);
+  // Drei Klammern entlang des Blatts
+  ctx.fillStyle = '#3a3a48';
+  for (let i = 0; i < 3; i++) {
+    const cy = -bladeOff - bladeLen * (0.18 + i * 0.32);
+    ctx.fillRect(-bladeW / 2 - 1, cy, bladeW + 2, 2);
+  }
+
+  // Pivot-Halterung
+  ctx.fillStyle = '#3a3a44';
+  ctx.beginPath(); ctx.arc(0, 0, armW * 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#1c1c24';
+  ctx.beginPath(); ctx.arc(0, 0, armW * 1.0, 0, Math.PI * 2); ctx.fill();
+
   ctx.restore();
 }
 
@@ -3165,7 +3411,9 @@ function drawSpeedo(cx, cy, r) {
 function drawSteering(cx, cy, r) {
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(state.playerX * 0.55);
+  // Lenkrad-Rotation: Input + ein Bisschen Position für realistisches Gefühl
+  const wheelAngle = state.steerInput * 0.85 + state.playerX * 0.18;
+  ctx.rotate(wheelAngle);
 
   // Außen
   ctx.fillStyle = '#15151c';
@@ -3292,6 +3540,8 @@ function drawHUD() {
 function reset() {
   state.position = 0;
   state.playerX = 0;
+  state.playerXVel = 0;
+  state.steerInput = 0;
   state.speed = 0;
   state.time = 0;
   state.bgOffset = 0;
@@ -3345,6 +3595,7 @@ function endGame(reason) {
   state.phase = 'over';
   state.endReason = reason;
   audio.silenceEngine();
+  audio.stopSkid();
   // Highscore
   const previousHigh = state.highScore;
   const isNewHigh = state.score > state.highScore;
@@ -3389,6 +3640,7 @@ function pauseGame() {
   if (state.phase !== 'play') return;
   state.phase = 'pause';
   audio.silenceEngine();
+  audio.stopSkid();
   elPause.classList.remove('hidden');
 }
 function resumeGame() {
