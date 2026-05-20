@@ -312,7 +312,9 @@ const state = {
   toastUntil: 0,
   toastText: '',
   drops: [],               // Tropfen am Glas
-  splashes: [],            // Spritzer
+  sparks: [],              // Crash-Funken
+  smoke: [],               // Reifen-Rauch (offroad)
+  shootingStars: [],       // Sternschnuppen (selten)
   stars: [],               // gecached
   highScore: parseInt(localStorage.getItem('nr3k_high') || '0', 10) || 0,
   endReason: '',
@@ -531,13 +533,29 @@ const SIGNS = [
   ['KEINE PANIK',      'NUR FAHREN'],
   ['ANTI-STAU-ZONE',   'WENN DU SCHNELL BIST'],
   ['KEKSE 200 M',      'OB ICH LÜGE?'],
+  ['SCHILDA',          'NÄCHSTE AUSFAHRT'],
+  ['BERMUDA-DREIECK',  'AUSFAHRT 13'],
+  ['NEONLAND',         'EINTRITT FREI'],
+  ['SHOWROOM',         'AUSGEBUCHT'],
+  ['ROADTRIP',         'OHNE PLAN'],
+  ['GEISTERFAHRER!',   'NEIN, NUR EINER'],
+  ['EINFAHRT FREI',    'AUSFAHRT NIE'],
+  ['SYNTHWAVE-ZONE',   'BITTE GROOVEN'],
+  ['VERKEHRSFUNK',     'STÖRT NICHT'],
+  ['EXIT 88',          'ZURÜCK IN DIE ZUKUNFT'],
+  ['HUNDE-WC',         '500 M'],
+  ['NÄCHSTE OASE',     'NEVER'],
+  ['LOAD ZONE',        '404 BAUM NICHT GEFUNDEN'],
+  ['DRIVE-IN',         'NUR GUTE LAUNE'],
 ];
 
 const PLATES = [
   'OPA', 'OMA', 'FBI', 'BMW', 'NEIN', 'JA',
   'WHY', '1337', 'CHEF', 'OMG', 'LOL', 'POL',
   'BOSS', 'IDOL', 'ZEN', 'MOIN', 'XOXO', 'KIWI',
-  'YOLO', 'BAFÖG',
+  'YOLO', 'BAFÖG', 'IKEA', 'CHAOS', 'BIER',
+  'WURST', 'HELD', 'NERD', 'KÖTER', 'DJ-OPA',
+  '42', 'OMG-WTF', 'KAKAO', 'TÜV-NEIN',
 ];
 
 const HONK_QUOTES = [
@@ -547,6 +565,10 @@ const HONK_QUOTES = [
   'WACH AUF!',
   'BLINKER? KENNST DU?',
   'TUT TUT!',
+  'BAHN FREI!',
+  'IST DAS DEINE SPUR?',
+  'FAHRRADKLINGEL!',
+  'HUPE HAT GEFÜHLE',
 ];
 
 const CRASH_QUOTES = [
@@ -559,6 +581,11 @@ const CRASH_QUOTES = [
   'OMA AM STEUER',
   'VOLLBREMSUNG!',
   'KEIN KOMMENTAR.',
+  'KRATZER WAREN SCHON DA',
+  'VERSEHENTLICH!',
+  'KAFFEE VERSCHÜTTET',
+  'WO WAR DER?',
+  'TEUFELSAUTO!',
 ];
 
 const WIPER_QUOTES = [
@@ -567,6 +594,10 @@ const WIPER_QUOTES = [
   'WISCHER SAGT: NEIN',
   'WISCHER IM TARIFKONFLIKT',
   'WISCHER: BIN IN PAUSE',
+  'WISCHER: ICH KÜNDIGE',
+  'WISCHER MEDITIERT',
+  'WISCHER VERLIEBT',
+  'WISCHER MACHT SOLO',
 ];
 
 const NARRATOR = [
@@ -577,6 +608,13 @@ const NARRATOR = [
   'BISSCHEN MEHR GAS',
   'AUTOBAHN UNENDLICH',
   'GUTE LAUNE OBLIGATORISCH',
+  'NEONLICHT VORAUS',
+  'MOND GUCKT ZU',
+  'GEISTERFAHRER!? NÖ.',
+  'POLIZEI WINKT ZURÜCK',
+  'PALMEN IM NORDEN',
+  'KAFFEE-RADAR PIEPT',
+  'BRÜCKE! KOPF EINZIEHEN',
 ];
 
 const TIERS = [
@@ -588,6 +626,7 @@ const TIERS = [
   [25000, 'Schumi-Schüler'],
   [40000, 'Raserkönig'],
   [70000, 'Lichtgeschwindigkeits-Opa'],
+  [110000, 'Hyperraum-Senior'],
 ];
 
 const OVER_TITLES = [
@@ -596,6 +635,9 @@ const OVER_TITLES = [
   ['AUA.',              'Versicherung ruft zurück.'],
   ['ENDE.',             'Hast du gesagt: Abkürzung?'],
   ['KAPUTT.',           'Werkstatt hat schon Feierabend.'],
+  ['BLECH!',            'Reifen sucht neuen Job.'],
+  ['KRACH!',            'Der Kofferraum ist jetzt vorne.'],
+  ['PEINLICH.',         'Sogar Oma fährt vorsichtiger.'],
 ];
 
 function scoreTier(s) {
@@ -711,10 +753,10 @@ function buildWorld() {
     segments[n].props.push(prop);
     props.push(prop);
   }
-  // Easter Eggs (Kuh, UFO, Boombox, Schneemann, Pinguin, Wetterballon)
+  // Easter Eggs (Kuh, UFO, Boombox, Schneemann, Pinguin, Wetterballon, Dino, Kegel)
   for (let n = 250; n < CFG.trackSegments - 100; n += irnd(CFG.easterEggEvery - 60, CFG.easterEggEvery + 120)) {
     const side = Math.random() < 0.5 ? -1 : 1;
-    const kinds = ['cow', 'ufo', 'palm', 'snowman', 'boombox', 'duck', 'penguin', 'balloon'];
+    const kinds = ['cow', 'ufo', 'palm', 'snowman', 'boombox', 'duck', 'penguin', 'balloon', 'dino', 'cones'];
     const type = pick(kinds);
     const prop = {
       type,
@@ -754,30 +796,37 @@ function buildWorld() {
 
   // Verkehr
   cars = [];
+  const carColorsByKind = {
+    sport:  ['#cc0033', '#1144bb', '#22aa44', '#dddddd', '#dda500', '#aa22aa', '#ff6622', '#22ccff'],
+    truck:  ['#cc6600', '#446677', '#557755', '#bb2222', '#7a5a2a'],
+    police: ['#162a55'],
+    ghost:  ['#1a1a1a'],
+  };
+  const speedByKind = {
+    sport:  () => rnd(110, 220),
+    truck:  () => rnd(80, 130),
+    police: () => rnd(190, 260),
+    ghost:  () => -rnd(180, 260), // negative Geschwindigkeit = entgegenkommend
+  };
+
   for (let i = 0; i < CFG.carCount; i++) {
     const lane = irnd(0, CFG.lanes - 1);
-    const laneNorm = (lane / (CFG.lanes - 1)) * 2 - 1; // -1, 0, +1
+    // Spurmitten korrekt verteilen: für 3 Lanes ergibt das -2/3, 0, +2/3 (statt -1, 0, +1)
+    const laneNorm = (lane - (CFG.lanes - 1) / 2) * (2 / CFG.lanes);
 
     // Spezielle Auto-Typen mit geringer Wahrscheinlichkeit
     const roll = Math.random();
     let kind = 'sport';
     if (roll < 0.04)        kind = 'police';     // 4 %  Polizei
-    else if (roll < 0.07)   kind = 'ghost';      // 3 %  Geisterfahrer
+    else if (roll < 0.07)   kind = 'ghost';      // 3 %  Geisterfahrer (immer auf der äußeren linken Spur)
     else if (roll < 0.32)   kind = 'truck';      // 25 % LKW
     else                    kind = 'sport';      // Rest Sportler
 
-    const carColorsByKind = {
-      sport:  ['#cc0033', '#1144bb', '#22aa44', '#dddddd', '#dda500', '#aa22aa'],
-      truck:  ['#cc6600', '#446677', '#557755', '#bb2222'],
-      police: ['#162a55'],
-      ghost:  ['#1a1a1a'],
-    };
-    const speedByKind = {
-      sport:  () => rnd(110, 220),
-      truck:  () => rnd(80, 130),
-      police: () => rnd(190, 260),
-      ghost:  () => -rnd(180, 260), // negative Geschwindigkeit = entgegenkommend
-    };
+    // Geisterfahrer kommen entgegen — auf der linken Spur, jitter weg vom Spieler
+    let finalLane = laneNorm + (Math.random() - 0.5) * 0.12;
+    if (kind === 'ghost') {
+      finalLane = -2 / CFG.lanes + (Math.random() - 0.5) * 0.08;
+    }
 
     const seg = irnd(40, CFG.trackSegments - 40);
     const plate = pick(PLATES);
@@ -785,7 +834,7 @@ function buildWorld() {
       seg,
       z: seg * CFG.segmentLength + rnd(0, CFG.segmentLength),
       speed: speedByKind[kind](),
-      lane: laneNorm + (Math.random() - 0.5) * 0.18,
+      lane: finalLane,
       type: kind,
       color: pick(carColorsByKind[kind]),
       bobOff: rnd(0, Math.PI * 2),
@@ -804,6 +853,91 @@ function reindexCars() {
     c.seg = idx;
     segments[idx].cars.push(c);
   }
+}
+
+// ============================================================
+// Partikel: Funken (Crash) und Rauch (Offroad)
+// ============================================================
+function spawnSparks(dir, count) {
+  // dir: +1 bedeutet von rechts ausgehend, -1 von links — Funken fliegen in die Gegenrichtung
+  const baseX = width * (0.5 + dir * 0.18);
+  const baseY = height * 0.82;
+  for (let i = 0; i < count; i++) {
+    const a = Math.atan2(-1, -dir) + (Math.random() - 0.5) * 1.2;
+    const sp = rnd(180, 520);
+    state.sparks.push({
+      x: baseX,
+      y: baseY,
+      vx: Math.cos(a) * sp,
+      vy: Math.sin(a) * sp,
+      life: rnd(0.4, 0.9),
+      age: 0,
+      size: rnd(1.5, 3.2),
+      hue: pick(['#ffd45a', '#ff8c1f', '#ff5050', '#ffffff']),
+    });
+  }
+}
+
+function spawnSmoke(side) {
+  // side: -1 links, +1 rechts
+  const baseX = width * (0.5 + side * 0.16);
+  const baseY = height * 0.88;
+  if (state.smoke.length > 50) return;
+  state.smoke.push({
+    x: baseX + (Math.random() - 0.5) * 14,
+    y: baseY,
+    vx: side * rnd(20, 40) + (Math.random() - 0.5) * 30,
+    vy: -rnd(20, 60),
+    life: rnd(0.6, 1.2),
+    age: 0,
+    size: rnd(8, 18),
+  });
+}
+
+function spawnShootingStar() {
+  state.shootingStars.push({
+    x: rnd(-0.1, 0.6) * width,
+    y: rnd(0, 0.25) * height,
+    vx: rnd(180, 360),
+    vy: rnd(60, 140),
+    life: rnd(0.6, 1.0),
+    age: 0,
+  });
+}
+
+function updateParticles(dt) {
+  // Funken
+  for (const s of state.sparks) {
+    s.age += dt;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.vy += 900 * dt; // Schwerkraft
+    s.vx *= Math.pow(0.4, dt); // Luftwiderstand
+  }
+  state.sparks = state.sparks.filter(s => s.age < s.life && s.y < height + 40);
+
+  // Rauch
+  for (const s of state.smoke) {
+    s.age += dt;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.size += dt * 22;
+    s.vy *= Math.pow(0.5, dt);
+  }
+  state.smoke = state.smoke.filter(s => s.age < s.life);
+
+  // Sternschnuppen (alle ~12-25 Sekunden)
+  if (!state.nextShootingStar) state.nextShootingStar = state.realTime + rnd(8, 20);
+  if (state.realTime > state.nextShootingStar) {
+    spawnShootingStar();
+    state.nextShootingStar = state.realTime + rnd(12, 26);
+  }
+  for (const s of state.shootingStars) {
+    s.age += dt;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+  }
+  state.shootingStars = state.shootingStars.filter(s => s.age < s.life && s.x < width + 100);
 }
 
 // ============================================================
@@ -923,9 +1057,9 @@ function update(dt) {
     }
     state.wiperKickIn = rnd(2.5, 5.5);
   }
-  // Bewegung Richtung Target
+  // Bewegung Richtung Target — deterministisches Lerp (kein Math.random pro Frame)
   const wDelta = state.wiperTarget - state.wiperPos;
-  state.wiperPos += wDelta * Math.min(1, dt * (4 + Math.random() * 2));
+  state.wiperPos += wDelta * Math.min(1, dt * 5);
   if (Math.abs(wDelta) < 0.02) {
     // Zurück zur Ruheposition (links unten) mit Zögern
     state.wiperTarget *= 0.92;
@@ -971,8 +1105,13 @@ function update(dt) {
     state.speed += CFG.offRoadDecel * dt;
     state.shakeAmp = Math.max(state.shakeAmp, 6);
     if (Math.random() < dt * 4) audio.blip(rnd(60, 110), 0.05, 0.05);
+    // Rauch hinter dem Auto, Seite passend zur Off-Road-Richtung
+    if (Math.random() < dt * 14) spawnSmoke(state.playerX < 0 ? -1 : 1);
   }
   state.playerX = clamp(state.playerX, -2.5, 2.5);
+
+  // Partikel aktualisieren
+  updateParticles(dt);
 
   // Verkehr bewegen (immer absolut in Welt-Z)
   const trackLen = segments.length * CFG.segmentLength;
@@ -991,28 +1130,37 @@ function update(dt) {
   }
   reindexCars();
 
-  // Kollisions-Check: nur mit Autos, die "vor" dem Spieler aber nah sind
+  // Kollisions-Check: physische Überlappung (Auto-Länge ~ 120 z-Einheiten, Pufferzone)
   for (const c of cars) {
     let dist = c.z - state.position;
     if (dist < -trackLen / 2) dist += trackLen;
     if (dist >  trackLen / 2) dist -= trackLen;
-    if (dist > -50 && dist < 240) {
+    // Beachte: bei Geisterfahrern (negative Speed) muss die Range etwas größer sein, weil sie schnell auf uns zu kommen
+    const front = c.type === 'ghost' ? 140 : 110;
+    const back  = -70;
+    if (dist > back && dist < front) {
       // Lateralprüfung: c.lane ist in [-1..+1], state.playerX entspricht road-half-widths.
       const laneDelta = Math.abs(c.lane - state.playerX);
-      if (laneDelta < 0.55 && state.collideCooldown <= 0 && state.speed > 30) {
+      if (laneDelta < 0.42 && state.collideCooldown <= 0 && state.speed > 30) {
         // Crash
         state.collideCooldown = CFG.collisionCooldown;
         state.lastHit = state.realTime;
         state.hitFlash = 0.45;
         state.shakeAmp = Math.max(state.shakeAmp, 16);
-        // Schaden skaliert mit Geschwindigkeitsdifferenz
-        const dv = Math.max(0, state.speed - c.speed);
-        state.damage += 18 + (dv / CFG.speedLimit) * 40;
-        state.speed = Math.max(c.speed * 0.5, 40);
+        // Schaden skaliert mit Relativgeschwindigkeit (Ghost = doppelt unangenehm)
+        const relSpeed = c.type === 'ghost'
+          ? state.speed + Math.abs(c.speed)
+          : Math.max(0, state.speed - c.speed);
+        const baseDmg = c.type === 'ghost' ? 28 : 18;
+        state.damage += baseDmg + (relSpeed / CFG.speedLimit) * 40;
+        // Speed-Drop nach Crash
+        if (c.type === 'ghost') state.speed = Math.max(state.speed * 0.3, 40);
+        else state.speed = Math.max(c.speed * 0.5, 40);
         // Andere Spur kurzzeitig wegdrücken
-        state.playerX += (state.playerX > c.lane ? 0.25 : -0.25);
+        state.playerX += (state.playerX > c.lane ? 0.28 : -0.28);
         toast(pick(CRASH_QUOTES), 1100);
         audio.crash();
+        spawnSparks(state.playerX > c.lane ? 1 : -1, 18);
         if (state.damage >= CFG.damageMax) {
           endGame('totalschaden');
         }
@@ -1067,6 +1215,35 @@ function update(dt) {
   if (state.realTime > state.nextNarr) {
     if (state.speed > 250) toast(pick(NARRATOR), 1400);
     state.nextNarr = state.realTime + rnd(10, 18);
+  }
+}
+
+// ============================================================
+// Konami-Cheat (↑↑↓↓←→←→BA) — kosmetischer Goldener Modus
+// ============================================================
+const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','KeyB','KeyA'];
+let konamiIdx = 0;
+function checkKonami(code) {
+  if (code === KONAMI[konamiIdx]) {
+    konamiIdx++;
+    if (konamiIdx >= KONAMI.length) {
+      konamiIdx = 0;
+      activateGoldMode();
+    }
+  } else if (code === KONAMI[0]) {
+    konamiIdx = 1;
+  } else {
+    konamiIdx = 0;
+  }
+}
+function activateGoldMode() {
+  toast('★ GOLDENER MODUS ★', 2400);
+  audio.blip(660, 0.18, 0.12);
+  audio.blip(880, 0.22, 0.10);
+  audio.blip(1320, 0.32, 0.08);
+  // Spawn lustigen Schwarm Sternschnuppen
+  for (let i = 0; i < 12; i++) {
+    setTimeout(() => spawnShootingStar(), i * 110);
   }
 }
 
@@ -1132,11 +1309,18 @@ function render() {
   // Road & all world-z based things
   drawRoadAndWorld();
 
+  // Reifenrauch / Funken über der Straße (vor Cockpit, nach Welt)
+  drawSmoke();
+  drawSparks();
+
   // Headlight cone (vor Cockpit, nach Straße)
   drawHeadlights();
 
   // Speed lines / Turbo
   if (state.turbo > 0.04) drawSpeedLines();
+
+  // Player car hood (sichtbarer Teil der eigenen Motorhaube)
+  drawPlayerHood();
 
   // Rain
   if (state.rain > 0.01) drawRain();
@@ -1163,11 +1347,104 @@ function render() {
   // Wiper
   drawWiper();
 
+  // Rückspiegel (zwischen Wischer und Cockpit)
+  drawRearviewMirror();
+
   // Cockpit dashboard
   drawCockpit();
 
   // HUD
   drawHUD();
+}
+
+// ---- Rückspiegel mit Verkehr von hinten ---------------------------
+function drawRearviewMirror() {
+  if (state.phase !== 'play' && state.phase !== 'pause') return;
+  const mw = Math.min(220, width * 0.22);
+  const mh = mw * 0.42;
+  const mx = (width - mw) / 2;
+  const my = 12;
+
+  // Rahmen
+  ctx.fillStyle = '#0a0612';
+  ctx.fillRect(mx - 4, my - 4, mw + 8, mh + 8);
+  ctx.strokeStyle = '#3a304a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(mx - 4, my - 4, mw + 8, mh + 8);
+
+  // Innen: Synthwave-Himmel
+  const grd = ctx.createLinearGradient(0, my, 0, my + mh);
+  grd.addColorStop(0, '#2a0033');
+  grd.addColorStop(0.6, '#1a0024');
+  grd.addColorStop(1, '#0a0012');
+  ctx.fillStyle = grd;
+  ctx.fillRect(mx, my, mw, mh);
+
+  // Horizont-Linie
+  ctx.strokeStyle = '#ff0066';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(mx, my + mh * 0.55);
+  ctx.lineTo(mx + mw, my + mh * 0.55);
+  ctx.stroke();
+
+  // Stilisierte Straße im Spiegel (zwei Linien als Fluchtpunkt)
+  ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(mx + mw * 0.4, my + mh * 0.55);
+  ctx.lineTo(mx + mw * 0.05, my + mh);
+  ctx.moveTo(mx + mw * 0.6, my + mh * 0.55);
+  ctx.lineTo(mx + mw * 0.95, my + mh);
+  ctx.stroke();
+
+  // Autos hinter dem Spieler: such die nächsten ~5 in den letzten 600 z-Einheiten
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(mx, my, mw, mh);
+  ctx.clip();
+
+  const trackLen = segments.length * CFG.segmentLength;
+  const carsBehind = [];
+  for (const c of cars) {
+    let d = state.position - c.z;
+    if (d < -trackLen / 2) d += trackLen;
+    if (d >  trackLen / 2) d -= trackLen;
+    if (d > 10 && d < 800) carsBehind.push({ c, d });
+  }
+  carsBehind.sort((a, b) => b.d - a.d);  // weiter weg zuerst (Painter)
+  for (const { c, d } of carsBehind) {
+    if (c.type === 'ghost') continue;  // Ghost ist entgegenkommend, nicht hinter uns
+    // Skalierung: nahe = groß, weit = klein
+    const t = clamp(1 - d / 800, 0, 1);  // 1=nah, 0=weit
+    const cw = mw * (0.06 + t * 0.18);
+    const ch = cw * 0.42;
+    const laneScreenX = mx + mw / 2 - (c.lane - state.playerX) * mw * 0.25 * t;
+    const cy = my + mh * 0.55 + (mh * 0.4) * (1 - t);
+    if (cw < 4) continue;
+    // Rück-Silhouette mit Scheinwerfern (helle Punkte)
+    ctx.fillStyle = '#111';
+    ctx.fillRect(laneScreenX - cw / 2, cy - ch, cw, ch);
+    // Polizei-Lichter blinken
+    if (c.type === 'police') {
+      const phase = (state.realTime * 5) % 1;
+      ctx.fillStyle = phase < 0.5 ? '#1a88ff' : '#ff2222';
+      ctx.fillRect(laneScreenX - cw * 0.3, cy - ch - 2, cw * 0.6, 2);
+    } else {
+      // Scheinwerfer
+      ctx.fillStyle = '#fff8cc';
+      ctx.fillRect(laneScreenX - cw * 0.42, cy - ch * 0.5, cw * 0.18, ch * 0.2);
+      ctx.fillRect(laneScreenX + cw * 0.24, cy - ch * 0.5, cw * 0.18, ch * 0.2);
+    }
+  }
+  ctx.restore();
+
+  // Label
+  ctx.fillStyle = '#7d99ad';
+  ctx.font = '600 9px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('OBJEKTE NÄHER ALS SIE ERSCHEINEN', mx + 2, my + mh + 2);
 }
 
 function drawSky() {
@@ -1207,8 +1484,8 @@ function drawMoon() {
 
 function drawAurora() {
   // Sanfter Aurora-Bogen — dünne wabernde Streifen am Horizont
-  const cycle = Math.sin(state.realTime * 0.05) * 0.5 + 0.5;
-  const intensity = Math.max(0, cycle - 0.7) / 0.3;  // nur ~30 % der Zeit sichtbar
+  const cycle = Math.sin(state.realTime * 0.07) * 0.5 + 0.5;
+  const intensity = Math.max(0, cycle - 0.45) / 0.55;  // ~55 % der Zeit sichtbar
   if (intensity < 0.02) return;
   const baseY = height * 0.22;
   ctx.save();
@@ -1246,6 +1523,25 @@ function drawStars() {
     const tw = 0.55 + 0.45 * Math.sin(t * s.sp + s.tw);
     ctx.fillStyle = `rgba(255,255,255,${tw})`;
     ctx.fillRect(sx * width, s.y * height, s.r, s.r);
+  }
+  // Sternschnuppen mit Schweif
+  for (const ss of state.shootingStars) {
+    const a = clamp(1 - ss.age / ss.life, 0, 1);
+    const trailX = ss.x - ss.vx * 0.05;
+    const trailY = ss.y - ss.vy * 0.05;
+    const grad = ctx.createLinearGradient(trailX, trailY, ss.x, ss.y);
+    grad.addColorStop(0, 'rgba(255,255,255,0)');
+    grad.addColorStop(1, `rgba(255,255,255,${a})`);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(trailX, trailY);
+    ctx.lineTo(ss.x, ss.y);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(255,255,255,${a})`;
+    ctx.beginPath();
+    ctx.arc(ss.x, ss.y, 1.6, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -1402,6 +1698,10 @@ function drawProp(prop, seg, fog) {
     const bob = Math.sin((state.realTime + prop.bob) * 0.5) * sizeUnit * 14;
     const air = (prop.airHeight || 2.4) * sizeUnit * 60;
     drawBalloon(baseX, baseY - air + bob, sizeUnit);
+  } else if (prop.type === 'dino') {
+    drawDino(baseX, baseY, sizeUnit);
+  } else if (prop.type === 'cones') {
+    drawCones(baseX, baseY, sizeUnit);
   } else if (prop.type === 'lamp') {
     drawLamp(baseX, baseY, sizeUnit, prop.side);
   } else if (prop.type === 'bridge') {
@@ -1637,6 +1937,81 @@ function drawPenguin(x, y, u) {
   ctx.fillStyle = '#ff9933';
   ctx.fillRect(x - w * 0.18, y - h * 0.04, w * 0.14, h * 0.05);
   ctx.fillRect(x + w * 0.04, y - h * 0.04, w * 0.14, h * 0.05);
+}
+
+function drawDino(x, y, u) {
+  let w = u * 130, h = u * 150;
+  const maxH = height * 0.18;
+  if (h > maxH) { w *= maxH / h; h = maxH; }
+  if (h < 8) return;
+  // Körper grün
+  ctx.fillStyle = '#2a7d4f';
+  ctx.beginPath();
+  ctx.ellipse(x, y - h * 0.4, w * 0.42, h * 0.36, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Hals
+  ctx.fillRect(x + w * 0.1, y - h * 0.85, w * 0.18, h * 0.55);
+  // Kopf
+  ctx.beginPath();
+  ctx.ellipse(x + w * 0.25, y - h * 0.92, w * 0.2, h * 0.16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Rücken-Spikes
+  ctx.fillStyle = '#1a5a32';
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x + i * w * 0.1, y - h * 0.7);
+    ctx.lineTo(x + i * w * 0.1 - w * 0.05, y - h * 0.85);
+    ctx.lineTo(x + i * w * 0.1 + w * 0.05, y - h * 0.85);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Beine
+  ctx.fillStyle = '#2a7d4f';
+  ctx.fillRect(x - w * 0.25, y - h * 0.2, w * 0.12, h * 0.2);
+  ctx.fillRect(x + w * 0.1, y - h * 0.2, w * 0.12, h * 0.2);
+  // Schwanz
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.4, y - h * 0.45);
+  ctx.lineTo(x - w * 0.7, y - h * 0.5);
+  ctx.lineTo(x - w * 0.4, y - h * 0.35);
+  ctx.closePath();
+  ctx.fill();
+  // Auge
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(x + w * 0.32, y - h * 0.95, h * 0.025, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(x + w * 0.33, y - h * 0.95, h * 0.012, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCones(x, y, u) {
+  // Drei Pylonen nebeneinander
+  let s = u * 30;
+  const maxS = height * 0.06;
+  if (s > maxS) s = maxS;
+  if (s < 3) return;
+  const offs = [-1, 0, 1];
+  for (const i of offs) {
+    const cx = x + i * s * 1.2;
+    // Pylon-Form (Trapez + Sockel)
+    ctx.fillStyle = '#222';
+    ctx.fillRect(cx - s * 0.8, y - s * 0.18, s * 1.6, s * 0.18);
+    ctx.fillStyle = '#ff7700';
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.55, y - s * 0.18);
+    ctx.lineTo(cx + s * 0.55, y - s * 0.18);
+    ctx.lineTo(cx + s * 0.1, y - s * 1.4);
+    ctx.lineTo(cx - s * 0.1, y - s * 1.4);
+    ctx.closePath();
+    ctx.fill();
+    // Reflexstreifen
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(cx - s * 0.4, y - s * 0.65, s * 0.8, s * 0.12);
+    ctx.fillRect(cx - s * 0.3, y - s * 0.95, s * 0.6, s * 0.1);
+  }
 }
 
 function drawBalloon(x, y, u) {
@@ -1930,6 +2305,97 @@ function drawCar(x, y, w, h, color, type, bobOff, plate) {
   }
 }
 
+// ---- Sparks (Crash) ----------------------------------------------
+function drawSparks() {
+  if (state.sparks.length === 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of state.sparks) {
+    const a = clamp(1 - s.age / s.life, 0, 1);
+    ctx.fillStyle = s.hue;
+    ctx.globalAlpha = a;
+    // Funke
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.fill();
+    // Schweif
+    ctx.strokeStyle = s.hue;
+    ctx.lineWidth = s.size * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(s.x - s.vx * 0.02, s.y - s.vy * 0.02);
+    ctx.lineTo(s.x, s.y);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// ---- Smoke (Offroad) ---------------------------------------------
+function drawSmoke() {
+  if (state.smoke.length === 0) return;
+  ctx.save();
+  for (const s of state.smoke) {
+    const a = clamp(1 - s.age / s.life, 0, 1) * 0.45;
+    ctx.fillStyle = `rgba(220, 200, 180, ${a})`;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ---- Player Car Hood (eigene Motorhaube, Nase oben sichtbar) -----
+function drawPlayerHood() {
+  if (state.phase !== 'play' && state.phase !== 'pause' && state.phase !== 'over') return;
+  const dashH = Math.max(120, height * 0.22);
+  const hoodY = height - dashH;
+  // Sichtbarer Teil der Motorhaube — zwischen Cockpit-Rand und 60 px darüber
+  const hoodTop = hoodY - Math.min(56, height * 0.075);
+  const tilt = state.playerX * 6; // leicht versetzt mit Lenkung
+
+  // Trapez-Hood
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(width * 0.05 - tilt, hoodY);
+  ctx.lineTo(width * 0.28 - tilt * 0.5, hoodTop);
+  ctx.lineTo(width * 0.72 - tilt * 0.5, hoodTop);
+  ctx.lineTo(width * 0.95 - tilt, hoodY);
+  ctx.closePath();
+  // Verlauf — Synthwave-Hood
+  const hg = ctx.createLinearGradient(0, hoodTop, 0, hoodY);
+  hg.addColorStop(0, '#1a0a2c');
+  hg.addColorStop(0.5, '#2a0a3e');
+  hg.addColorStop(1, '#100416');
+  ctx.fillStyle = hg;
+  ctx.fill();
+  // Glanzlicht entlang der Mitte
+  ctx.fillStyle = 'rgba(255, 100, 200, 0.18)';
+  ctx.beginPath();
+  ctx.moveTo(width * 0.5 - 50 - tilt * 0.3, hoodTop + 4);
+  ctx.lineTo(width * 0.5 + 50 - tilt * 0.3, hoodTop + 4);
+  ctx.lineTo(width * 0.5 + 18 - tilt * 0.5, hoodY - 8);
+  ctx.lineTo(width * 0.5 - 18 - tilt * 0.5, hoodY - 8);
+  ctx.closePath();
+  ctx.fill();
+  // Lufthutze (zwei kleine Schlitze in der Mitte)
+  ctx.fillStyle = '#000';
+  ctx.fillRect(width * 0.5 - 30 - tilt * 0.4, hoodTop + 10, 20, 6);
+  ctx.fillRect(width * 0.5 + 10 - tilt * 0.4, hoodTop + 10, 20, 6);
+  // Kante zum Cockpit hin (neon-Linie)
+  ctx.strokeStyle = '#ff66cc';
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#ff66cc';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.moveTo(width * 0.05 - tilt, hoodY);
+  ctx.lineTo(width * 0.28 - tilt * 0.5, hoodTop);
+  ctx.lineTo(width * 0.72 - tilt * 0.5, hoodTop);
+  ctx.lineTo(width * 0.95 - tilt, hoodY);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
 // ---- Headlights ---------------------------------------------------
 function drawHeadlights() {
   const cx = width / 2;
@@ -2062,6 +2528,21 @@ function drawCockpit() {
   ctx.closePath();
   ctx.fill();
 
+  // Subtle dashboard gradient (Plastik-Look)
+  const dashGrad = ctx.createLinearGradient(0, dashY, 0, height);
+  dashGrad.addColorStop(0, 'rgba(255,255,255,0.04)');
+  dashGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = dashGrad;
+  ctx.beginPath();
+  ctx.moveTo(0, height);
+  ctx.lineTo(0, dashY + 28);
+  ctx.lineTo(width * 0.22, dashY);
+  ctx.lineTo(width * 0.78, dashY);
+  ctx.lineTo(width, dashY + 28);
+  ctx.lineTo(width, height);
+  ctx.closePath();
+  ctx.fill();
+
   // Glanzkante (neon)
   ctx.strokeStyle = '#ff0055';
   ctx.lineWidth = 3;
@@ -2081,13 +2562,42 @@ function drawCockpit() {
   // Lenkrad
   drawSteering(width * 0.18, height - dashH * 0.15, dashH * 0.62);
 
-  // Schadensanzeige
-  drawDamageBar(width * 0.78, dashY + dashH * 0.45, Math.min(dashH * 1.0, width * 0.18), 12);
+  // Schadensanzeige (rechts oben im Dashboard)
+  const dmgW = Math.min(dashH * 1.0, width * 0.16);
+  drawDamageBar(width * 0.82, dashY + dashH * 0.25, dmgW, 12);
 
-  // Warnleuchte Wischer
+  // Distanzzähler (rechts unter Schadensanzeige)
+  drawOdometer(width * 0.82, dashY + dashH * 0.55, dmgW);
+
+  // Warnleuchte Wischer (separate Spalte zwischen Tacho und Schadensanzeige)
   if (state.isRaining) {
-    drawWiperWarning(width * 0.6, dashY + dashH * 0.55);
+    drawWiperWarning(width * 0.66, dashY + dashH * 0.5);
   }
+}
+
+function drawOdometer(cx, cy, w) {
+  const x = cx - w / 2;
+  ctx.fillStyle = '#0a0a14';
+  ctx.fillRect(x - 2, cy - 2, w + 4, 22);
+  ctx.fillStyle = '#1a1a24';
+  ctx.fillRect(x, cy, w, 18);
+
+  // Tachostand
+  ctx.fillStyle = '#00ffcc';
+  ctx.shadowColor = '#00ffcc';
+  ctx.shadowBlur = 6;
+  ctx.font = `700 ${Math.max(11, Math.min(14, w * 0.12))}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const km = state.distanceKm.toFixed(2);
+  ctx.fillText(km + ' km', cx, cy + 9);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#7d99ad';
+  ctx.font = '500 9px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('TRIP', x, cy - 4);
 }
 
 function drawSpeedo(cx, cy, r) {
@@ -2287,7 +2797,9 @@ function reset() {
   state.collideCooldown = 0;
   state.hitFlash = 0;
   state.drops.length = 0;
-  state.splashes.length = 0;
+  state.sparks.length = 0;
+  state.smoke.length = 0;
+  state.shootingStars.length = 0;
   state.endReason = '';
   state.nextNarr = 0;
   state.lastHit = 0;
@@ -2350,8 +2862,9 @@ function resumeGame() {
 // Input
 // ============================================================
 function handleKey(code, val, ev) {
-  const handled = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','KeyA','KeyD','KeyW','KeyS','KeyH','KeyP','Space','Enter','Escape'].includes(code);
+  const handled = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','KeyA','KeyD','KeyW','KeyS','KeyH','KeyB','KeyP','Space','Enter','Escape'].includes(code);
   if (!handled) return;
+  if (val) checkKonami(code);
   if (code === 'ArrowLeft'  || code === 'KeyA') keys.left  = val;
   if (code === 'ArrowRight' || code === 'KeyD') keys.right = val;
   if (code === 'ArrowUp'    || code === 'KeyW') keys.up    = val;
@@ -2402,9 +2915,23 @@ elPause.addEventListener('click', resumeGame);
 // Prevent context menu on long-press
 window.addEventListener('contextmenu', e => { if (state.phase === 'play') e.preventDefault(); });
 
-// Page visibility — auto-pause
+// Page visibility — auto-pause + Highscore-Sicherung
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && state.phase === 'play') pauseGame();
+  // Sichere aktuellen Highscore bei Tab-Wechsel
+  if (state.phase === 'play' || state.phase === 'pause') {
+    const sc = Math.floor(state.score);
+    if (sc > state.highScore) {
+      state.highScore = sc;
+      try { localStorage.setItem('nr3k_high', sc.toString()); } catch(_) {}
+    }
+  }
+});
+window.addEventListener('beforeunload', () => {
+  const sc = Math.floor(state.score);
+  if (sc > state.highScore) {
+    try { localStorage.setItem('nr3k_high', sc.toString()); } catch(_) {}
+  }
 });
 
 // ============================================================

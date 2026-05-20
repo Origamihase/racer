@@ -6,18 +6,25 @@ Ein HTML5-Highway-Racer im Synthwave-Look — fehlerfrei, hübsch und mit kaputt
 
 - Pseudo-3D-Straße mit weichen Kurven und Hügeln
 - Outrun/Synthwave-Optik: Mond, Sterne, Magenta-/Cyan-Rumble-Strips
-- Aurora-Borealis-Bänder am Himmel (selten, dezent)
+- Aurora-Borealis-Bänder am Himmel (häufiger sichtbar, dezent wabernd)
+- Sternschnuppen am Nachthimmel (zufällig, mit Schweif)
 - Beleuchtete Brücken über die Strecke mit Lichterketten
 - Straßenlaternen mit warmem gelbem Glow
-- Dynamischer Verkehr: Sportwagen, LKW, Polizei mit Blaulicht, Geisterfahrer
+- Dynamischer Verkehr: Sportwagen, LKW, Polizei mit Blaulicht, Geisterfahrer (mit Bissfaktor)
+- Korrekte Spurmitten (3-Lane) — kein Drauf-Fahren in den Standstreifen mehr
+- Rückspiegel mit Verkehr von hinten ("Objekte näher als sie erscheinen")
+- Eigene Motorhaube/Nase sichtbar (Synthwave-Hood mit Lufthutzen)
 - Wetterwechsel: Regen mit Tropfen am Glas und Wind-Drift
 - Defekter Scheibenwischer mit Sprüh-Witz (Feature, nicht Bug)
+- Crash-Funken & Reifenrauch beim Offroad-Trip
 - WebAudio: Motor, Hupe, Crash, Muh, Quietsch
-- Witzige Schilder, Easter Eggs (Kuh, UFO, Schneemann, Boombox, Ente, Palme, Pinguin, Wetterballon)
+- Über 40 witzige Schilder und 9+ Easter Eggs (Kuh, UFO, Schneemann, Boombox, Ente, Palme, Pinguin, Wetterballon, Dino, Verkehrskegel)
 - Schaden-System mit Selbstreparatur bei ruhigem Fahren
-- Highscore mit Vorher-Wert beim Übertreffen
-- Score-Titel ("Sonntagsfahrer" bis "Lichtgeschwindigkeits-Opa")
-- Zufällige Kennzeichen mit Sprüchen (OPA, OMA, NEIN, JA, BMW, BAFÖG, ZEN …)
+- Trip-Odometer auf dem Cockpit (separate Distanz-Anzeige)
+- Highscore mit Vorher-Wert beim Übertreffen, automatisch gesichert bei Tab-Wechsel
+- Score-Titel ("Sonntagsfahrer" bis "Hyperraum-Senior")
+- Zufällige Kennzeichen mit Sprüchen (OPA, OMA, NEIN, JA, BMW, BAFÖG, ZEN, IKEA, KAKAO, NERD …)
+- Konami-Code Easter Egg (↑↑↓↓←→←→BA → Goldener Modus mit Sternschnuppenregen)
 - Pause, Restart, Touch- und Tastatur-Steuerung
 
 ## Steuerung
