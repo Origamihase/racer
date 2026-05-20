@@ -2993,10 +2993,12 @@ function drawWiper() {
 
   ctx.save();
   ctx.translate(pivotX, pivotY);
-  // Basis-Ruhewinkel: ein bisschen schief, weil kaputt
-  const baseAngle = -Math.PI / 2 - 0.35;
+  // Basis-Ruhewinkel: schief nach oben-links geparkt — sichtbar, aber offensichtlich kaputt
+  const baseAngle = -Math.PI / 4 - 0.15;
   const jitter = state.wiperJitter || 0;
-  const swing = (state.wiperPos + jitter) * (Math.PI * 0.7);
+  // "Falsche" Richtung gedämpft, damit der Arm auch beim Rückschwung sichtbar bleibt
+  const visualPos = state.wiperPos < 0 ? state.wiperPos * 0.35 : state.wiperPos;
+  const swing = (visualPos + jitter) * (Math.PI * 0.5);
   ctx.rotate(baseAngle + swing);
 
   // Arm
