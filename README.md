@@ -25,6 +25,10 @@ Ein HTML5-Highway-Racer im Synthwave-Look — fehlerfrei, hübsch und mit kaputt
 - Score-Titel ("Sonntagsfahrer" bis "Hyperraum-Senior")
 - Zufällige Kennzeichen mit Sprüchen (OPA, OMA, NEIN, JA, BMW, BAFÖG, ZEN, IKEA, KAKAO, NERD …)
 - Konami-Code Easter Egg (↑↑↓↓←→←→BA → Goldener Modus mit Sternschnuppenregen)
+- "Mut zur Lücke" Score-Bonus beim knappen Vorbeifahren
+- Max-Speed-Tracking mit individueller Bewertung im Game-Over-Screen
+- Tier-Wechsel-Celebration im Spiel
+- Funktioniert auch bei deaktiviertem localStorage (Privacy-Mode)
 - Pause, Restart, Touch- und Tastatur-Steuerung
 
 ## Steuerung

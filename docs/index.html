@@ -316,7 +316,12 @@ const state = {
   smoke: [],               // Reifen-Rauch (offroad)
   shootingStars: [],       // Sternschnuppen (selten)
   stars: [],               // gecached
-  highScore: parseInt(localStorage.getItem('nr3k_high') || '0', 10) || 0,
+  highScore: (() => {
+    try { return parseInt(localStorage.getItem('nr3k_high') || '0', 10) || 0; }
+    catch (_) { return 0; }
+  })(),
+  maxSpeed: 0,
+  curTierIdx: 0,
   endReason: '',
   goalShown: false,
 };
@@ -646,6 +651,14 @@ function scoreTier(s) {
     if (s >= thr) label = name;
   }
   return label;
+}
+
+function currentTierIdx(s) {
+  let idx = 0;
+  for (let i = 0; i < TIERS.length; i++) {
+    if (s >= TIERS[i][0]) idx = i;
+  }
+  return idx;
 }
 
 // ============================================================
@@ -1131,10 +1144,23 @@ function update(dt) {
   reindexCars();
 
   // Kollisions-Check: physische Überlappung (Auto-Länge ~ 120 z-Einheiten, Pufferzone)
+  // "Mut zur Lücke"-Bonus: knapp am Auto vorbei gibt einen kleinen Score-Bonus
+  if (!state.nearMissCooldown) state.nearMissCooldown = 0;
+  state.nearMissCooldown = Math.max(0, state.nearMissCooldown - dt);
   for (const c of cars) {
     let dist = c.z - state.position;
     if (dist < -trackLen / 2) dist += trackLen;
     if (dist >  trackLen / 2) dist -= trackLen;
+    // Near-Miss-Check: 80z vor uns, knapp daneben aber nicht im Crash-Range
+    if (dist > 60 && dist < 140 && state.nearMissCooldown <= 0 && state.speed > 150) {
+      const ld = Math.abs(c.lane - state.playerX);
+      if (ld > 0.42 && ld < 0.7) {
+        state.nearMissCooldown = 0.8;
+        state.score += 80;
+        toast('MUT ZUR LÜCKE +80', 900);
+        audio.blip(840, 0.08, 0.08);
+      }
+    }
     // Beachte: bei Geisterfahrern (negative Speed) muss die Range etwas größer sein, weil sie schnell auf uns zu kommen
     const front = c.type === 'ghost' ? 140 : 110;
     const back  = -70;
@@ -1182,6 +1208,15 @@ function update(dt) {
 
   // Score & Distanz
   state.score += state.speed * dt * 0.18 * (state.speed > 350 ? 1.4 : 1);
+  if (state.speed > state.maxSpeed) state.maxSpeed = state.speed;
+  // Tier-Up feiern
+  const tierIdx = currentTierIdx(state.score);
+  if (tierIdx > state.curTierIdx) {
+    state.curTierIdx = tierIdx;
+    toast('★ ' + TIERS[tierIdx][1].toUpperCase() + ' ★', 1800);
+    audio.blip(560, 0.18, 0.12);
+    audio.blip(720, 0.22, 0.10);
+  }
   const prevKm = Math.floor(state.distanceKm);
   state.distanceKm += state.speed * dt / 3600;
   const curKm = Math.floor(state.distanceKm);
@@ -2803,6 +2838,10 @@ function reset() {
   state.endReason = '';
   state.nextNarr = 0;
   state.lastHit = 0;
+  state.maxSpeed = 0;
+  state.curTierIdx = 0;
+  state.nextShootingStar = 0;
+  state.nearMissCooldown = 0;
 }
 
 function startGame() {
@@ -2834,7 +2873,14 @@ function endGame(reason) {
   const t = pick(OVER_TITLES);
   elGoTitle.textContent = t[0];
   elGoSubtitle.textContent = t[1];
-  elGoSummary.innerHTML = `Du hast <strong>${formatScore(state.score)}</strong> Punkte gemacht und bist <strong>${state.distanceKm.toFixed(1)} km</strong> weit gekommen.<br>Höchstgeschwindigkeit war beeindruckend &mdash; oder auch nicht.`;
+  const maxKmh = Math.floor(state.maxSpeed);
+  const speedComment =
+    maxKmh > 380 ? 'Lichtgeschwindigkeits-verdächtig.' :
+    maxKmh > 300 ? 'Da pfiff der Wind.' :
+    maxKmh > 200 ? 'Solide. Oma hätte gewinkt.' :
+    maxKmh > 100 ? 'Gemütlich. Wie im Sonntagstrip.' :
+                   'Da war jemand sehr vorsichtig.';
+  elGoSummary.innerHTML = `Du hast <strong>${formatScore(state.score)}</strong> Punkte gemacht und bist <strong>${state.distanceKm.toFixed(1)} km</strong> weit gekommen.<br>Höchstgeschwindigkeit: <strong>${maxKmh} km/h</strong> &mdash; ${speedComment}`;
   elGoRank.textContent = isNewHigh
     ? '★ NEUER HIGHSCORE: ' + scoreTier(state.score).toUpperCase() + ' ★'
     : 'Titel: ' + scoreTier(state.score);
