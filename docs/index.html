@@ -316,7 +316,20 @@ const state = {
   smoke: [],               // Reifen-Rauch (offroad)
   shootingStars: [],       // Sternschnuppen (selten)
   stars: [],               // gecached
-  highScore: parseInt(localStorage.getItem('nr3k_high') || '0', 10) || 0,
+  highScore: (() => {
+    try { return parseInt(localStorage.getItem('nr3k_high') || '0', 10) || 0; }
+    catch (_) { return 0; }
+  })(),
+  bestDistanceKm: (() => {
+    try { return parseFloat(localStorage.getItem('nr3k_bestkm') || '0') || 0; }
+    catch (_) { return 0; }
+  })(),
+  reducedMotion: (() => {
+    try { return !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch (_) { return false; }
+  })(),
+  maxSpeed: 0,
+  curTierIdx: 0,
   endReason: '',
   goalShown: false,
 };
@@ -494,11 +507,49 @@ const audio = (() => {
     o.start(t); o.stop(t + dur + 0.05);
   }
 
+  // Aufstiegsfanfare: drei aufsteigende Triangle-Notes mit Sustain
+  function fanfare() {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+    const dur = 0.18;
+    for (let i = 0; i < notes.length; i++) {
+      const start = t + i * dur * 0.7;
+      const o = actx.createOscillator(); o.type = 'triangle'; o.frequency.value = notes[i];
+      const g = actx.createGain();
+      g.gain.setValueAtTime(0, start);
+      g.gain.linearRampToValueAtTime(0.13, start + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+      o.connect(g); g.connect(master);
+      o.start(start); o.stop(start + dur + 0.05);
+    }
+  }
+
+  // Near-Miss-Whoosh: kurzes gefiltertes Rauschen, das im Pitch fällt
+  function whoosh() {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const dur = 0.25;
+    const buf = actx.createBuffer(1, Math.floor(actx.sampleRate * dur), actx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 1.2);
+    }
+    const src = actx.createBufferSource(); src.buffer = buf;
+    const filt = actx.createBiquadFilter(); filt.type = 'bandpass';
+    filt.frequency.setValueAtTime(2200, t);
+    filt.frequency.exponentialRampToValueAtTime(400, t + dur);
+    filt.Q.value = 4;
+    const g = actx.createGain(); g.gain.value = 0.22;
+    src.connect(filt); filt.connect(g); g.connect(master);
+    src.start(t);
+  }
+
   function resume() {
     if (actx && actx.state === 'suspended') actx.resume();
   }
 
-  return { init, ensureEngine, engine, silenceEngine, honk, cowMoo, squeak, crash, blip, resume };
+  return { init, ensureEngine, engine, silenceEngine, honk, cowMoo, squeak, crash, blip, fanfare, whoosh, resume };
 })();
 
 // ============================================================
@@ -547,6 +598,13 @@ const SIGNS = [
   ['NÄCHSTE OASE',     'NEVER'],
   ['LOAD ZONE',        '404 BAUM NICHT GEFUNDEN'],
   ['DRIVE-IN',         'NUR GUTE LAUNE'],
+  ['VOLLE TANKE',      'DURCHGÄNGIG OFFEN, ALSO ZU'],
+  ['NEONHIMMEL',       'BITTE NICHT FÜTTERN'],
+  ['ENDE DER WELT',    'BIEGEN SIE RECHTS AB'],
+  ['VORSICHT MOND',    'KANN BLENDEN'],
+  ['LANGSAM FAHRER',   'BITTE RECHTS BLEIBEN'],
+  ['REIFENWECHSEL',    'GEDULDIG WARTEN'],
+  ['HIER GIBT ES',     'NICHTS ZU SEHEN'],
 ];
 
 const PLATES = [
@@ -556,6 +614,8 @@ const PLATES = [
   'YOLO', 'BAFÖG', 'IKEA', 'CHAOS', 'BIER',
   'WURST', 'HELD', 'NERD', 'KÖTER', 'DJ-OPA',
   '42', 'OMG-WTF', 'KAKAO', 'TÜV-NEIN',
+  'FENG-SHUI', 'KNUSPER', 'PLUTO', 'BLITZ',
+  'BANANE', 'SAUSE', 'ÄHM-OK', 'OLA',
 ];
 
 const HONK_QUOTES = [
@@ -646,6 +706,14 @@ function scoreTier(s) {
     if (s >= thr) label = name;
   }
   return label;
+}
+
+function currentTierIdx(s) {
+  let idx = 0;
+  for (let i = 0; i < TIERS.length; i++) {
+    if (s >= TIERS[i][0]) idx = i;
+  }
+  return idx;
 }
 
 // ============================================================
@@ -1131,10 +1199,23 @@ function update(dt) {
   reindexCars();
 
   // Kollisions-Check: physische Überlappung (Auto-Länge ~ 120 z-Einheiten, Pufferzone)
+  // "Mut zur Lücke"-Bonus: knapp am Auto vorbei gibt einen kleinen Score-Bonus
+  if (!state.nearMissCooldown) state.nearMissCooldown = 0;
+  state.nearMissCooldown = Math.max(0, state.nearMissCooldown - dt);
   for (const c of cars) {
     let dist = c.z - state.position;
     if (dist < -trackLen / 2) dist += trackLen;
     if (dist >  trackLen / 2) dist -= trackLen;
+    // Near-Miss-Check: 80z vor uns, knapp daneben aber nicht im Crash-Range
+    if (dist > 60 && dist < 140 && state.nearMissCooldown <= 0 && state.speed > 150) {
+      const ld = Math.abs(c.lane - state.playerX);
+      if (ld > 0.42 && ld < 0.7) {
+        state.nearMissCooldown = 0.8;
+        state.score += 80;
+        toast('MUT ZUR LÜCKE +80', 900);
+        audio.whoosh();
+      }
+    }
     // Beachte: bei Geisterfahrern (negative Speed) muss die Range etwas größer sein, weil sie schnell auf uns zu kommen
     const front = c.type === 'ghost' ? 140 : 110;
     const back  = -70;
@@ -1178,10 +1259,23 @@ function update(dt) {
   let shake = state.shakeAmp;
   state.shakeAmp = Math.max(0, state.shakeAmp - dt * 18);
   if (state.speed > 200) shake = Math.max(shake, (state.speed / 400) * 4);
+  // Reduced-Motion-Präferenz respektieren: Shake dämpfen statt komplett deaktivieren (Crashes bleiben spürbar)
+  if (state.reducedMotion) shake *= 0.25;
   state.cameraHeight = CFG.baseCameraHeight + getRoadYAt(state.position) + Math.sin(state.time * 12) * shake * 6 + (Math.random() - 0.5) * shake * 4;
 
   // Score & Distanz
   state.score += state.speed * dt * 0.18 * (state.speed > 350 ? 1.4 : 1);
+  if (state.speed > state.maxSpeed) state.maxSpeed = state.speed;
+  // Tier-Up feiern
+  const tierIdx = currentTierIdx(state.score);
+  if (tierIdx > state.curTierIdx) {
+    state.curTierIdx = tierIdx;
+    toast('★ ' + TIERS[tierIdx][1].toUpperCase() + ' ★', 1800);
+    audio.fanfare();
+    // zwei Sternschnuppen als visuelle Bestätigung
+    spawnShootingStar();
+    setTimeout(spawnShootingStar, 220);
+  }
   const prevKm = Math.floor(state.distanceKm);
   state.distanceKm += state.speed * dt / 3600;
   const curKm = Math.floor(state.distanceKm);
@@ -2393,6 +2487,32 @@ function drawPlayerHood() {
   ctx.lineTo(width * 0.95 - tilt, hoodY);
   ctx.stroke();
   ctx.shadowBlur = 0;
+
+  // Brake-Lichter: rotes Glow am Hood-Rand wenn der Spieler bremst
+  if (keys.down && state.phase === 'play') {
+    ctx.strokeStyle = '#ff1133';
+    ctx.lineWidth = 4;
+    ctx.shadowColor = '#ff1133';
+    ctx.shadowBlur = 22;
+    ctx.beginPath();
+    ctx.moveTo(width * 0.06 - tilt, hoodY - 2);
+    ctx.lineTo(width * 0.94 - tilt, hoodY - 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // Roter Schein auf der Hood
+    const brakeGrad = ctx.createLinearGradient(0, hoodY - 30, 0, hoodY);
+    brakeGrad.addColorStop(0, 'rgba(255, 30, 60, 0)');
+    brakeGrad.addColorStop(1, 'rgba(255, 30, 60, 0.45)');
+    ctx.fillStyle = brakeGrad;
+    ctx.beginPath();
+    ctx.moveTo(width * 0.07 - tilt, hoodY);
+    ctx.lineTo(width * 0.28 - tilt * 0.5, hoodTop + 10);
+    ctx.lineTo(width * 0.72 - tilt * 0.5, hoodTop + 10);
+    ctx.lineTo(width * 0.93 - tilt, hoodY);
+    ctx.closePath();
+    ctx.fill();
+  }
+
   ctx.restore();
 }
 
@@ -2445,6 +2565,29 @@ function drawSpeedLines() {
 
 // ---- Rain ---------------------------------------------------------
 function drawRain() {
+  // Wet-Road-Shimmer: schmale leuchtende Streifen auf der Straße zur Andeutung von Mondreflexionen
+  const dashH = Math.max(120, height * 0.22);
+  const horizonY = height * 0.5;
+  const roadBottomY = height - dashH;
+  const shimmerCount = 6;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < shimmerCount; i++) {
+    const t = (i / shimmerCount + (state.realTime * 0.18) % 1) % 1;
+    const y = lerp(horizonY + 10, roadBottomY - 4, t);
+    // Breite wächst mit Tiefenperspektive
+    const w = lerp(width * 0.04, width * 0.42, t);
+    const a = state.rain * (1 - t * 0.5) * 0.18;
+    if (a < 0.01) continue;
+    const grd = ctx.createLinearGradient(width / 2 - w, y, width / 2 + w, y);
+    grd.addColorStop(0, 'rgba(180, 200, 255, 0)');
+    grd.addColorStop(0.5, `rgba(220, 240, 255, ${a})`);
+    grd.addColorStop(1, 'rgba(180, 200, 255, 0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(width / 2 - w, y - 1, w * 2, 2);
+  }
+  ctx.restore();
+
   // Dunkler Überzug
   ctx.fillStyle = `rgba(2, 0, 18, ${state.rain * 0.35})`;
   ctx.fillRect(0, 0, width, height);
@@ -2630,8 +2773,12 @@ function drawSpeedo(cx, cy, r) {
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
   }
 
-  // Nadel
-  const a = start + ratio * Math.PI * 1.4;
+  // Nadel mit Redline-Vibration (über 90 % Speed-Limit)
+  let needleA = start + ratio * Math.PI * 1.4;
+  if (ratio > 0.9 && !state.reducedMotion) {
+    needleA += Math.sin(state.realTime * 38) * 0.018 * ((ratio - 0.9) / 0.2);
+  }
+  const a = needleA;
   ctx.strokeStyle = '#fff';
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -2803,6 +2950,10 @@ function reset() {
   state.endReason = '';
   state.nextNarr = 0;
   state.lastHit = 0;
+  state.maxSpeed = 0;
+  state.curTierIdx = 0;
+  state.nextShootingStar = 0;
+  state.nearMissCooldown = 0;
 }
 
 function startGame() {
@@ -2830,11 +2981,30 @@ function endGame(reason) {
     state.highScore = Math.floor(state.score);
     try { localStorage.setItem('nr3k_high', state.highScore.toString()); } catch(_) {}
   }
+  // Best Distance
+  const previousBestKm = state.bestDistanceKm;
+  const isNewBestKm = state.distanceKm > state.bestDistanceKm;
+  if (isNewBestKm) {
+    state.bestDistanceKm = state.distanceKm;
+    try { localStorage.setItem('nr3k_bestkm', state.distanceKm.toFixed(3)); } catch(_) {}
+  }
   // UI
   const t = pick(OVER_TITLES);
   elGoTitle.textContent = t[0];
   elGoSubtitle.textContent = t[1];
-  elGoSummary.innerHTML = `Du hast <strong>${formatScore(state.score)}</strong> Punkte gemacht und bist <strong>${state.distanceKm.toFixed(1)} km</strong> weit gekommen.<br>Höchstgeschwindigkeit war beeindruckend &mdash; oder auch nicht.`;
+  const maxKmh = Math.floor(state.maxSpeed);
+  const speedComment =
+    maxKmh > 380 ? 'Lichtgeschwindigkeits-verdächtig.' :
+    maxKmh > 300 ? 'Da pfiff der Wind.' :
+    maxKmh > 200 ? 'Solide. Oma hätte gewinkt.' :
+    maxKmh > 100 ? 'Gemütlich. Wie im Sonntagstrip.' :
+                   'Da war jemand sehr vorsichtig.';
+  const distLine = isNewBestKm && previousBestKm > 0
+    ? `<br><span style="color:#00ffcc">★ NEUE BESTDISTANZ! (vorher ${previousBestKm.toFixed(1)} km)</span>`
+    : (state.bestDistanceKm > 0 && state.bestDistanceKm > state.distanceKm
+        ? `<br><span style="color:#7d99ad">Bestdistanz: ${state.bestDistanceKm.toFixed(1)} km</span>`
+        : '');
+  elGoSummary.innerHTML = `Du hast <strong>${formatScore(state.score)}</strong> Punkte gemacht und bist <strong>${state.distanceKm.toFixed(1)} km</strong> weit gekommen.<br>Höchstgeschwindigkeit: <strong>${maxKmh} km/h</strong> &mdash; ${speedComment}${distLine}`;
   elGoRank.textContent = isNewHigh
     ? '★ NEUER HIGHSCORE: ' + scoreTier(state.score).toUpperCase() + ' ★'
     : 'Titel: ' + scoreTier(state.score);
@@ -2915,24 +3085,23 @@ elPause.addEventListener('click', resumeGame);
 // Prevent context menu on long-press
 window.addEventListener('contextmenu', e => { if (state.phase === 'play') e.preventDefault(); });
 
-// Page visibility — auto-pause + Highscore-Sicherung
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && state.phase === 'play') pauseGame();
-  // Sichere aktuellen Highscore bei Tab-Wechsel
-  if (state.phase === 'play' || state.phase === 'pause') {
-    const sc = Math.floor(state.score);
-    if (sc > state.highScore) {
-      state.highScore = sc;
-      try { localStorage.setItem('nr3k_high', sc.toString()); } catch(_) {}
-    }
-  }
-});
-window.addEventListener('beforeunload', () => {
+// Page visibility — auto-pause + Highscore- und Best-Distance-Sicherung
+function persistProgress() {
   const sc = Math.floor(state.score);
   if (sc > state.highScore) {
+    state.highScore = sc;
     try { localStorage.setItem('nr3k_high', sc.toString()); } catch(_) {}
   }
+  if (state.distanceKm > state.bestDistanceKm) {
+    state.bestDistanceKm = state.distanceKm;
+    try { localStorage.setItem('nr3k_bestkm', state.distanceKm.toFixed(3)); } catch(_) {}
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && state.phase === 'play') pauseGame();
+  if (state.phase === 'play' || state.phase === 'pause') persistProgress();
 });
+window.addEventListener('beforeunload', persistProgress);
 
 // ============================================================
 // Main loop (dt-stable)
