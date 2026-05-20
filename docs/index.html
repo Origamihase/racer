@@ -201,6 +201,7 @@
       <kbd>↑</kbd> Vollgas (automatisch) &middot;
       <kbd>↓</kbd> Bremse &middot;
       <kbd>H</kbd> hupen &middot;
+      <kbd>M</kbd> stumm &middot;
       <kbd>P</kbd> Pause
     </p>
     <p>Bei Regen vorsichtig &mdash; der Scheibenwischer streikt seit '98.</p>
@@ -300,6 +301,7 @@ const state = {
   wiperKickIn: 4,
   wiperJam: 0,             // wann der Wischer das letzte Mal hängen blieb
   wiperSpray: 0,           // Sprüh-Effekt-Timer (Sekunden)
+  wiperJitter: 0,          // Wackel-Offset während Jam (frame-stable)
   score: 0,
   distanceKm: 0,
   turbo: 0,
@@ -315,6 +317,7 @@ const state = {
   sparks: [],              // Crash-Funken
   smoke: [],               // Reifen-Rauch (offroad)
   shootingStars: [],       // Sternschnuppen (selten)
+  scorePops: [],           // schwebende +XX Texte
   stars: [],               // gecached
   highScore: (() => {
     try { return parseInt(localStorage.getItem('nr3k_high') || '0', 10) || 0; }
@@ -388,6 +391,10 @@ const audio = (() => {
   let actx = null, master = null;
   let engOsc = null, engGain = null, engFilt = null;
   let started = false;
+  let muted = (() => {
+    try { return localStorage.getItem('nr3k_mute') === '1'; }
+    catch (_) { return false; }
+  })();
 
   function init() {
     if (actx) return;
@@ -396,12 +403,23 @@ const audio = (() => {
       if (!Ctx) return;
       actx = new Ctx();
       master = actx.createGain();
-      master.gain.value = 0.45;
+      master.gain.value = muted ? 0 : 0.45;
       master.connect(actx.destination);
     } catch (e) {
       actx = null;
     }
   }
+
+  function setMuted(m) {
+    muted = m;
+    if (master) master.gain.value = muted ? 0 : 0.45;
+    try { localStorage.setItem('nr3k_mute', muted ? '1' : '0'); } catch (_) {}
+  }
+  function toggleMute() {
+    setMuted(!muted);
+    return muted;
+  }
+  function isMuted() { return muted; }
 
   function ensureEngine() {
     if (!actx || engOsc) return;
@@ -549,7 +567,7 @@ const audio = (() => {
     if (actx && actx.state === 'suspended') actx.resume();
   }
 
-  return { init, ensureEngine, engine, silenceEngine, honk, cowMoo, squeak, crash, blip, fanfare, whoosh, resume };
+  return { init, ensureEngine, engine, silenceEngine, honk, cowMoo, squeak, crash, blip, fanfare, whoosh, resume, toggleMute, isMuted };
 })();
 
 // ============================================================
@@ -605,6 +623,32 @@ const SIGNS = [
   ['LANGSAM FAHRER',   'BITTE RECHTS BLEIBEN'],
   ['REIFENWECHSEL',    'GEDULDIG WARTEN'],
   ['HIER GIBT ES',     'NICHTS ZU SEHEN'],
+  ['BREMSE? NEIN!',    'WOZU DENN?'],
+  ['NUR NOCH 3 KM',    'BIS ZUM HORIZONT'],
+  ['HIER WAR MAL',     'EIN PARKPLATZ'],
+  ['BLINKER-KURS',     'NÄCHSTE WOCHE'],
+  ['ÜBERHOLEN VERB.',  'AUSSER MAN MUSS'],
+  ['AUF DER LINKEN',   'TRÄUMER UNTERWEGS'],
+  ['NEONROCK 95.0',    'JETZT EINSCHALTEN'],
+  ['HUPER-MEKKA',      '∞ DEZIBEL'],
+  ['VORSICHT IGEL',    'NICHT QUETSCHEN'],
+  ['CAFÉ 88',          'OFFEN BIS GESTERN'],
+  ['SPRITPREISE?',     'BESSER NICHT FRAGEN'],
+  ['NIRGENDWO',        'GLEICH RECHTS'],
+  ['BAUM-OUTLET',      '20% AUF EICHEN'],
+  ['REGENBOGEN-WG',    'BESUCH WILLKOMMEN'],
+  ['SPUR-WECHSEL',     'NACH GEFÜHL'],
+  ['NACHTSCHICHT',     'NIE ENDE'],
+  ['SAFTLADEN',        '500 M LINKS'],
+  ['PIZZA-LIEFERDIENST', 'WIR FINDEN DICH'],
+  ['UNFALLREICH',      '(BIST DU SCHULD)'],
+  ['NÄCHSTE TOILETTE', 'ZU SPÄT'],
+  ['NACHWUCHS-FAHRER', 'ABSTAND HALTEN'],
+  ['TRAUMSPUR',        'NICHT WECKEN'],
+  ['EXIT 42',          'ANTWORT VORAUS'],
+  ['BETTUNGSSTREIFEN', 'KISSEN INKL.'],
+  ['MAUTHÄUSCHEN',     'ZAHLT EIN PIRAT'],
+  ['BIO-TANKE',        'NUR HAFER'],
 ];
 
 const PLATES = [
@@ -616,6 +660,9 @@ const PLATES = [
   '42', 'OMG-WTF', 'KAKAO', 'TÜV-NEIN',
   'FENG-SHUI', 'KNUSPER', 'PLUTO', 'BLITZ',
   'BANANE', 'SAUSE', 'ÄHM-OK', 'OLA',
+  'YETI', 'MIAU', 'WUFF', 'TOAST', 'CRINGE',
+  'OPI42', 'KEKS', 'SCHWARM', 'GAS', 'TROT',
+  'BÄR', 'POKAL', 'KRAUT', 'NEON', 'BÜFFEL',
 ];
 
 const HONK_QUOTES = [
@@ -629,6 +676,13 @@ const HONK_QUOTES = [
   'IST DAS DEINE SPUR?',
   'FAHRRADKLINGEL!',
   'HUPE HAT GEFÜHLE',
+  'GUTEN MORGEN!',
+  'SIND WIR DA?',
+  'NA SOWAS!',
+  'WER FÄHRT DA?',
+  'HÖFLICH BLEIBEN',
+  'PLATZ DA, BITTE!',
+  'TÜTÜ-TÜT!',
 ];
 
 const CRASH_QUOTES = [
@@ -646,6 +700,13 @@ const CRASH_QUOTES = [
   'KAFFEE VERSCHÜTTET',
   'WO WAR DER?',
   'TEUFELSAUTO!',
+  'BUMS!',
+  'OH SCHREIBFEHLER!',
+  'DAS WAR HÖFLICH',
+  'KOMM, WAR NICHT VIEL',
+  'NUR SCHRAMME!',
+  'VERSICHERUNG WEINT',
+  'SORRY, NICHT SORRY',
 ];
 
 const WIPER_QUOTES = [
@@ -658,6 +719,8 @@ const WIPER_QUOTES = [
   'WISCHER MEDITIERT',
   'WISCHER VERLIEBT',
   'WISCHER MACHT SOLO',
+  'WISCHER TRÄUMT',
+  'WISCHER HAT WOCHENENDE',
 ];
 
 const NARRATOR = [
@@ -675,6 +738,10 @@ const NARRATOR = [
   'PALMEN IM NORDEN',
   'KAFFEE-RADAR PIEPT',
   'BRÜCKE! KOPF EINZIEHEN',
+  'STERNE HABEN TEMPO',
+  'NIRGENDWO IST NÄHER',
+  'WIND PFEIFT MIT',
+  'NEON FÜTTERT GUT',
 ];
 
 const TIERS = [
@@ -687,6 +754,8 @@ const TIERS = [
   [40000, 'Raserkönig'],
   [70000, 'Lichtgeschwindigkeits-Opa'],
   [110000, 'Hyperraum-Senior'],
+  [160000, 'Quantenflitzer'],
+  [220000, 'Neon-Götze'],
 ];
 
 const OVER_TITLES = [
@@ -821,10 +890,10 @@ function buildWorld() {
     segments[n].props.push(prop);
     props.push(prop);
   }
-  // Easter Eggs (Kuh, UFO, Boombox, Schneemann, Pinguin, Wetterballon, Dino, Kegel)
+  // Easter Eggs (Kuh, UFO, Boombox, Schneemann, Pinguin, Wetterballon, Dino, Kegel, Yeti, Astronaut, Schaf, Roboter)
   for (let n = 250; n < CFG.trackSegments - 100; n += irnd(CFG.easterEggEvery - 60, CFG.easterEggEvery + 120)) {
     const side = Math.random() < 0.5 ? -1 : 1;
-    const kinds = ['cow', 'ufo', 'palm', 'snowman', 'boombox', 'duck', 'penguin', 'balloon', 'dino', 'cones'];
+    const kinds = ['cow', 'ufo', 'palm', 'snowman', 'boombox', 'duck', 'penguin', 'balloon', 'dino', 'cones', 'yeti', 'astronaut', 'sheep', 'robot'];
     const type = pick(kinds);
     const prop = {
       type,
@@ -834,8 +903,9 @@ function buildWorld() {
       bob: Math.random() * Math.PI * 2,
     };
     // UFO und Wetterballon "fliegen" — Höhenversatz im Himmel
-    if (type === 'ufo')       prop.airHeight = 1.6 + Math.random() * 0.6;
-    if (type === 'balloon')   prop.airHeight = 2.4 + Math.random() * 0.8;
+    if (type === 'ufo')        prop.airHeight = 1.6 + Math.random() * 0.6;
+    if (type === 'balloon')    prop.airHeight = 2.4 + Math.random() * 0.8;
+    if (type === 'astronaut')  prop.airHeight = 2.0 + Math.random() * 0.6;
     segments[n].props.push(prop);
     props.push(prop);
   }
@@ -973,6 +1043,16 @@ function spawnShootingStar() {
   });
 }
 
+function spawnScorePop(text, x, y, hue = '#ffe066') {
+  if (state.scorePops.length > 12) return;
+  state.scorePops.push({
+    text, x, y,
+    life: 1.0,
+    age: 0,
+    hue,
+  });
+}
+
 function updateParticles(dt) {
   // Funken
   for (const s of state.sparks) {
@@ -1006,6 +1086,13 @@ function updateParticles(dt) {
     s.y += s.vy * dt;
   }
   state.shootingStars = state.shootingStars.filter(s => s.age < s.life && s.x < width + 100);
+
+  // Score-Pops floaten nach oben und verblassen
+  for (const p of state.scorePops) {
+    p.age += dt;
+    p.y -= dt * 50;
+  }
+  state.scorePops = state.scorePops.filter(p => p.age < p.life);
 }
 
 // ============================================================
@@ -1053,7 +1140,8 @@ function update(dt) {
   const wPhase = (state.time % 45);
   state.isRaining = wPhase > 30;
   const targetRain = state.isRaining ? 1 : 0;
-  state.rain += (targetRain - state.rain) * Math.min(1, dt * 0.5);
+  // Frame-rate-stable lerp (zeitkonstanter Halbwertswert)
+  state.rain += (targetRain - state.rain) * (1 - Math.exp(-dt * 0.5));
   state.rain = clamp(state.rain, 0, 1);
 
   // Tropfen am Glas spawnen
@@ -1125,18 +1213,19 @@ function update(dt) {
     }
     state.wiperKickIn = rnd(2.5, 5.5);
   }
-  // Bewegung Richtung Target — deterministisches Lerp (kein Math.random pro Frame)
+  // Bewegung Richtung Target — frame-rate-stables Lerp
   const wDelta = state.wiperTarget - state.wiperPos;
-  state.wiperPos += wDelta * Math.min(1, dt * 5);
+  state.wiperPos += wDelta * (1 - Math.exp(-dt * 5));
   if (Math.abs(wDelta) < 0.02) {
-    // Zurück zur Ruheposition (links unten) mit Zögern
-    state.wiperTarget *= 0.92;
+    // Zurück zur Ruheposition mit zeitkonstantem Decay
+    state.wiperTarget *= Math.exp(-dt * 5);
     if (Math.abs(state.wiperTarget) < 0.01) state.wiperTarget = 0;
   }
-  // Wischer-Wackeln wenn er "hängt"
-  if (state.realTime - state.wiperJam < 0.5) {
-    state.wiperPos += Math.sin(state.realTime * 60) * 0.03;
-  }
+  // Wischer-Wackeln (Jitter) als separater Offset, der direkt aus realTime berechnet wird
+  // → frame-rate-stabil, weil nicht akkumuliert.
+  state.wiperJitter = (state.realTime - state.wiperJam < 0.5)
+    ? Math.sin(state.realTime * 60) * 0.08
+    : 0;
 
   // Physik (Auto-Accel, Bremse über keys.down)
   const maxSpeed = state.rain > 0.5 ? CFG.speedLimitRain : CFG.speedLimit;
@@ -1152,10 +1241,11 @@ function update(dt) {
   if (state.speed > 360) state.turbo = Math.min(1, state.turbo + dt * 1.2);
   else state.turbo = Math.max(0, state.turbo - dt * 1.2);
 
-  // Lenkung
+  // Lenkung — Basis-Lenkrate plus mehr Power bei mittlerem Tempo,
+  // aber bei sehr hohem Speed wird Lenkung etwas schwerer (realistischer Grip).
   const speedRatio = state.speed / CFG.speedLimit;
-  let dx = dt * (2.4 + speedRatio * 2.1);
-  if (state.speed > 320) dx += dt * speedRatio * 0.6;
+  let dx = dt * (2.4 + speedRatio * 1.9);
+  if (state.speed > 360) dx *= 0.85; // Highspeed-Dämpfung
   if (keys.left)  state.playerX -= dx;
   if (keys.right) state.playerX += dx;
 
@@ -1166,6 +1256,8 @@ function update(dt) {
     state.playerX -= dx * speedRatio * cur.curve * CFG.centrifugal;
     state.bgOffset -= cur.curve * speedRatio * dt * 0.6;
   }
+  // bgOffset auf endlichen Bereich wickeln, damit es nicht ins Unendliche wächst
+  if (state.bgOffset > 1e6 || state.bgOffset < -1e6) state.bgOffset = state.bgOffset % 1000;
 
   // Offroad
   const onGrass = (state.playerX < -1.05 || state.playerX > 1.05);
@@ -1214,6 +1306,8 @@ function update(dt) {
         state.score += 80;
         toast('MUT ZUR LÜCKE +80', 900);
         audio.whoosh();
+        // Floating-Score wo das Auto vorbeizog
+        spawnScorePop('+80', width * (c.lane > state.playerX ? 0.7 : 0.3), height * 0.55, '#00ffcc');
       }
     }
     // Beachte: bei Geisterfahrern (negative Speed) muss die Range etwas größer sein, weil sie schnell auf uns zu kommen
@@ -1447,8 +1541,32 @@ function render() {
   // Cockpit dashboard
   drawCockpit();
 
+  // Schwebende Score-Pops (über allem außer dem HUD)
+  drawScorePops();
+
   // HUD
   drawHUD();
+}
+
+function drawScorePops() {
+  if (state.scorePops.length === 0) return;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const p of state.scorePops) {
+    const t = p.age / p.life;
+    const a = clamp(1 - t, 0, 1);
+    const scale = 1 + t * 0.6;
+    ctx.fillStyle = p.hue;
+    ctx.globalAlpha = a;
+    ctx.shadowColor = p.hue;
+    ctx.shadowBlur = 12;
+    ctx.font = `italic 800 ${Math.round(22 * scale)}px 'Segoe UI', sans-serif`;
+    ctx.fillText(p.text, p.x, p.y);
+  }
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+  ctx.restore();
 }
 
 // ---- Rückspiegel mit Verkehr von hinten ---------------------------
@@ -1558,36 +1676,66 @@ function drawMoon() {
   const r = Math.max(28, Math.min(width, height) * 0.05);
 
   ctx.save();
-  // Glow
-  const glow = ctx.createRadialGradient(mx, my, r * 0.3, mx, my, r * 3.5);
-  glow.addColorStop(0, 'rgba(255, 240, 200, 0.45)');
-  glow.addColorStop(0.4, 'rgba(255, 150, 120, 0.18)');
+  // Glow — sanft mit warmem Innen, weichem Außen
+  const glow = ctx.createRadialGradient(mx, my, r * 0.3, mx, my, r * 4);
+  glow.addColorStop(0, 'rgba(255, 240, 200, 0.5)');
+  glow.addColorStop(0.35, 'rgba(255, 150, 120, 0.22)');
+  glow.addColorStop(0.7, 'rgba(150, 60, 120, 0.08)');
   glow.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = glow;
-  ctx.fillRect(mx - r * 4, my - r * 4, r * 8, r * 8);
+  ctx.fillRect(mx - r * 4.5, my - r * 4.5, r * 9, r * 9);
+  // Sanfte Strahlen (Lens-Flare)
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.translate(mx, my);
+  const rays = 8;
+  for (let i = 0; i < rays; i++) {
+    const ang = (i / rays) * Math.PI * 2 + state.realTime * 0.02;
+    const len = r * (3.5 + Math.sin(state.realTime * 0.5 + i) * 0.4);
+    const grd = ctx.createLinearGradient(0, 0, Math.cos(ang) * len, Math.sin(ang) * len);
+    grd.addColorStop(0, 'rgba(255, 240, 200, 0.18)');
+    grd.addColorStop(1, 'rgba(255, 240, 200, 0)');
+    ctx.strokeStyle = grd;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(ang) * len, Math.sin(ang) * len);
+    ctx.stroke();
+  }
+  ctx.restore();
   // Disc
   ctx.fillStyle = '#fff2c4';
   ctx.beginPath(); ctx.arc(mx, my, r, 0, Math.PI * 2); ctx.fill();
+  // Schatten-Halbmond (subtil — Mond hat sanfte 3D-Form)
+  const shadow = ctx.createRadialGradient(mx + r * 0.4, my + r * 0.2, r * 0.1, mx + r * 0.4, my + r * 0.2, r * 1.2);
+  shadow.addColorStop(0, 'rgba(120, 80, 60, 0)');
+  shadow.addColorStop(1, 'rgba(60, 30, 40, 0.35)');
+  ctx.fillStyle = shadow;
+  ctx.beginPath(); ctx.arc(mx, my, r, 0, Math.PI * 2); ctx.fill();
   // Krater
-  ctx.fillStyle = 'rgba(160,120,90,0.25)';
+  ctx.fillStyle = 'rgba(160,120,90,0.28)';
   ctx.beginPath(); ctx.arc(mx - r*0.3, my - r*0.1, r*0.18, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(mx + r*0.2, my + r*0.3, r*0.12, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(mx + r*0.35, my - r*0.25, r*0.08, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(mx - r*0.15, my + r*0.32, r*0.06, 0, Math.PI*2); ctx.fill();
   ctx.restore();
 }
 
 function drawAurora() {
   // Sanfter Aurora-Bogen — dünne wabernde Streifen am Horizont
+  // Sanfter Auf-/Abbau über cosine-Form (kein scharfes Reinpoppen)
   const cycle = Math.sin(state.realTime * 0.07) * 0.5 + 0.5;
-  const intensity = Math.max(0, cycle - 0.45) / 0.55;  // ~55 % der Zeit sichtbar
+  const raw = Math.max(0, cycle - 0.4) / 0.6;  // ~60% der Zeit sichtbar
+  const intensity = raw * raw * (3 - 2 * raw); // smoothstep
   if (intensity < 0.02) return;
   const baseY = height * 0.22;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   const layers = [
-    { color: [60, 240, 180], amp: 22, freq: 0.004,  phase: 0,   yOff: 0,  thickness: 12 },
-    { color: [180, 100, 255], amp: 26, freq: 0.0055, phase: 1.3, yOff: 24, thickness: 9 },
-    { color: [255, 110, 200], amp: 18, freq: 0.007,  phase: 2.7, yOff: 48, thickness: 7 },
+    { color: [60, 240, 180], amp: 22, freq: 0.004,  phase: 0,   yOff: 0,  thickness: 13 },
+    { color: [180, 100, 255], amp: 26, freq: 0.0055, phase: 1.3, yOff: 24, thickness: 10 },
+    { color: [255, 110, 200], amp: 18, freq: 0.007,  phase: 2.7, yOff: 48, thickness: 8 },
+    { color: [120, 220, 255], amp: 14, freq: 0.009,  phase: 4.1, yOff: 70, thickness: 6 },
   ];
   for (const L of layers) {
     const [r, g, b] = L.color;
@@ -1595,7 +1743,8 @@ function drawAurora() {
     for (let x = 0; x <= width; x += 8) {
       const wave  = Math.sin((x + state.realTime * 40) * L.freq + L.phase) * L.amp;
       const wave2 = Math.sin((x + state.realTime * 14) * L.freq * 0.4 + L.phase) * L.amp * 0.4;
-      const y = baseY + L.yOff + wave + wave2;
+      const wave3 = Math.sin((x - state.realTime * 22) * L.freq * 1.8 + L.phase) * L.amp * 0.18;
+      const y = baseY + L.yOff + wave + wave2 + wave3;
       if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     // Verlauf um die Linie: schmaler heller Streifen mit weichem Fade
@@ -1618,24 +1767,41 @@ function drawStars() {
     ctx.fillStyle = `rgba(255,255,255,${tw})`;
     ctx.fillRect(sx * width, s.y * height, s.r, s.r);
   }
-  // Sternschnuppen mit Schweif
-  for (const ss of state.shootingStars) {
-    const a = clamp(1 - ss.age / ss.life, 0, 1);
-    const trailX = ss.x - ss.vx * 0.05;
-    const trailY = ss.y - ss.vy * 0.05;
-    const grad = ctx.createLinearGradient(trailX, trailY, ss.x, ss.y);
-    grad.addColorStop(0, 'rgba(255,255,255,0)');
-    grad.addColorStop(1, `rgba(255,255,255,${a})`);
-    ctx.strokeStyle = grad;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(trailX, trailY);
-    ctx.lineTo(ss.x, ss.y);
-    ctx.stroke();
-    ctx.fillStyle = `rgba(255,255,255,${a})`;
-    ctx.beginPath();
-    ctx.arc(ss.x, ss.y, 1.6, 0, Math.PI * 2);
-    ctx.fill();
+  // Sternschnuppen mit Schweif und glühendem Kopf
+  if (state.shootingStars.length > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const ss of state.shootingStars) {
+      const a = clamp(1 - ss.age / ss.life, 0, 1);
+      // Längerer Schweif, leicht versetzt
+      const trailX = ss.x - ss.vx * 0.09;
+      const trailY = ss.y - ss.vy * 0.09;
+      const grad = ctx.createLinearGradient(trailX, trailY, ss.x, ss.y);
+      grad.addColorStop(0, 'rgba(255,210,255,0)');
+      grad.addColorStop(0.6, `rgba(255,220,250,${a * 0.4})`);
+      grad.addColorStop(1, `rgba(255,255,255,${a})`);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(trailX, trailY);
+      ctx.lineTo(ss.x, ss.y);
+      ctx.stroke();
+      // Glühender Kopf
+      const glow = ctx.createRadialGradient(ss.x, ss.y, 0, ss.x, ss.y, 14);
+      glow.addColorStop(0, `rgba(255,255,255,${a})`);
+      glow.addColorStop(0.4, `rgba(255,200,240,${a * 0.5})`);
+      glow.addColorStop(1, 'rgba(255,200,240,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(ss.x, ss.y, 14, 0, Math.PI * 2);
+      ctx.fill();
+      // Heller Kern
+      ctx.fillStyle = `rgba(255,255,255,${a})`;
+      ctx.beginPath();
+      ctx.arc(ss.x, ss.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 }
 
@@ -1796,6 +1962,16 @@ function drawProp(prop, seg, fog) {
     drawDino(baseX, baseY, sizeUnit);
   } else if (prop.type === 'cones') {
     drawCones(baseX, baseY, sizeUnit);
+  } else if (prop.type === 'yeti') {
+    drawYeti(baseX, baseY, sizeUnit);
+  } else if (prop.type === 'astronaut') {
+    const bob = Math.sin((state.realTime + prop.bob) * 0.6) * sizeUnit * 10;
+    const air = (prop.airHeight || 2.0) * sizeUnit * 60;
+    drawAstronaut(baseX, baseY - air + bob, sizeUnit);
+  } else if (prop.type === 'sheep') {
+    drawSheep(baseX, baseY, sizeUnit);
+  } else if (prop.type === 'robot') {
+    drawRobot(baseX, baseY, sizeUnit);
   } else if (prop.type === 'lamp') {
     drawLamp(baseX, baseY, sizeUnit, prop.side);
   } else if (prop.type === 'bridge') {
@@ -2079,6 +2255,190 @@ function drawDino(x, y, u) {
   ctx.beginPath();
   ctx.arc(x + w * 0.33, y - h * 0.95, h * 0.012, 0, Math.PI * 2);
   ctx.fill();
+}
+
+function drawYeti(x, y, u) {
+  let w = u * 110, h = u * 200;
+  const maxH = height * 0.22;
+  if (h > maxH) { w *= maxH / h; h = maxH; }
+  if (h < 10) return;
+  // Body — flauschig weiß
+  ctx.fillStyle = '#f7f9ff';
+  ctx.beginPath();
+  ctx.ellipse(x, y - h * 0.42, w * 0.5, h * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Fellbüschel
+  ctx.fillStyle = '#e6ecf6';
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath();
+    ctx.arc(x + i * w * 0.18, y - h * 0.4, w * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Kopf
+  ctx.fillStyle = '#f7f9ff';
+  ctx.beginPath();
+  ctx.arc(x, y - h * 0.82, w * 0.28, 0, Math.PI * 2);
+  ctx.fill();
+  // Augen
+  ctx.fillStyle = '#1a2238';
+  ctx.beginPath(); ctx.arc(x - w * 0.1, y - h * 0.85, w * 0.04, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + w * 0.1, y - h * 0.85, w * 0.04, 0, Math.PI * 2); ctx.fill();
+  // Hörner-Frisur (zwei Knubbel)
+  ctx.fillStyle = '#dde6f0';
+  ctx.beginPath(); ctx.arc(x - w * 0.18, y - h * 1.0, w * 0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + w * 0.18, y - h * 1.0, w * 0.1, 0, Math.PI * 2); ctx.fill();
+  // Mund (kleines schwarzes O)
+  ctx.fillStyle = '#221830';
+  ctx.beginPath(); ctx.arc(x, y - h * 0.74, w * 0.05, 0, Math.PI * 2); ctx.fill();
+  // Arme
+  ctx.fillStyle = '#f7f9ff';
+  ctx.beginPath(); ctx.ellipse(x - w * 0.42, y - h * 0.42, w * 0.12, h * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x + w * 0.42, y - h * 0.42, w * 0.12, h * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+  // Füße
+  ctx.fillStyle = '#dde6f0';
+  ctx.beginPath(); ctx.ellipse(x - w * 0.18, y - h * 0.04, w * 0.16, h * 0.05, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x + w * 0.18, y - h * 0.04, w * 0.16, h * 0.05, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawAstronaut(x, y, u) {
+  let w = u * 80, h = u * 110;
+  const maxW = width * 0.07;
+  if (w > maxW) { h *= maxW / w; w = maxW; }
+  if (w < 6) return;
+  // Helm (transparente Kuppel mit Reflexion)
+  const helmGrad = ctx.createRadialGradient(x - w * 0.15, y - h * 0.85, w * 0.05, x, y - h * 0.7, w * 0.55);
+  helmGrad.addColorStop(0, '#e6f7ff');
+  helmGrad.addColorStop(0.5, '#a8c8e0');
+  helmGrad.addColorStop(1, '#445566');
+  ctx.fillStyle = helmGrad;
+  ctx.beginPath();
+  ctx.arc(x, y - h * 0.7, w * 0.45, 0, Math.PI * 2);
+  ctx.fill();
+  // Visier-Spiegelung
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.ellipse(x - w * 0.12, y - h * 0.8, w * 0.12, h * 0.06, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  // Body — Weltraumanzug
+  ctx.fillStyle = '#e9edf2';
+  ctx.fillRect(x - w * 0.4, y - h * 0.4, w * 0.8, h * 0.5);
+  // Kontroll-Box auf der Brust
+  ctx.fillStyle = '#36456a';
+  ctx.fillRect(x - w * 0.15, y - h * 0.25, w * 0.3, h * 0.12);
+  ctx.fillStyle = '#00ffcc';
+  ctx.fillRect(x - w * 0.1, y - h * 0.22, w * 0.06, h * 0.04);
+  ctx.fillStyle = '#ff3366';
+  ctx.fillRect(x + w * 0.04, y - h * 0.22, w * 0.06, h * 0.04);
+  // Arme
+  ctx.fillStyle = '#e9edf2';
+  ctx.fillRect(x - w * 0.55, y - h * 0.35, w * 0.18, h * 0.4);
+  ctx.fillRect(x + w * 0.37, y - h * 0.35, w * 0.18, h * 0.4);
+  // Handschuhe
+  ctx.fillStyle = '#aabbdd';
+  ctx.beginPath(); ctx.arc(x - w * 0.46, y + h * 0.05, w * 0.12, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + w * 0.46, y + h * 0.05, w * 0.12, 0, Math.PI * 2); ctx.fill();
+  // Beine
+  ctx.fillStyle = '#e9edf2';
+  ctx.fillRect(x - w * 0.32, y + h * 0.1, w * 0.24, h * 0.35);
+  ctx.fillRect(x + w * 0.08, y + h * 0.1, w * 0.24, h * 0.35);
+  // Stiefel
+  ctx.fillStyle = '#36456a';
+  ctx.fillRect(x - w * 0.34, y + h * 0.45, w * 0.28, h * 0.1);
+  ctx.fillRect(x + w * 0.06, y + h * 0.45, w * 0.28, h * 0.1);
+  // Anker-Schnur (er treibt)
+  ctx.strokeStyle = 'rgba(220, 230, 255, 0.4)';
+  ctx.lineWidth = Math.max(1, w * 0.03);
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.4, y - h * 0.4);
+  ctx.quadraticCurveTo(x + w * 1.2, y + h * 0.4, x + w * 1.8, y + h);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawSheep(x, y, u) {
+  let w = u * 120, h = u * 80;
+  const maxW = width * 0.16;
+  if (w > maxW) { h *= maxW / w; w = maxW; }
+  if (w < 8) return;
+  // Wolle (mehrere überlappende weiße Kreise)
+  ctx.fillStyle = '#f2f0ec';
+  ctx.beginPath(); ctx.arc(x - w * 0.25, y - h * 0.6, w * 0.22, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x,            y - h * 0.7, w * 0.24, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + w * 0.25, y - h * 0.6, w * 0.22, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, y - h * 0.45, w * 0.42, h * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+  // Kopf (dunkel)
+  ctx.fillStyle = '#3a3530';
+  ctx.beginPath(); ctx.ellipse(x + w * 0.42, y - h * 0.75, w * 0.12, h * 0.18, 0, 0, Math.PI * 2); ctx.fill();
+  // Ohr
+  ctx.beginPath(); ctx.ellipse(x + w * 0.38, y - h * 0.95, w * 0.05, h * 0.07, -0.4, 0, Math.PI * 2); ctx.fill();
+  // Augen
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(x + w * 0.46, y - h * 0.78, w * 0.02, 0, Math.PI * 2); ctx.fill();
+  // Beine
+  ctx.fillStyle = '#3a3530';
+  ctx.fillRect(x - w * 0.3, y - h * 0.2, w * 0.06, h * 0.22);
+  ctx.fillRect(x - w * 0.1, y - h * 0.2, w * 0.06, h * 0.22);
+  ctx.fillRect(x + w * 0.1, y - h * 0.2, w * 0.06, h * 0.22);
+  ctx.fillRect(x + w * 0.28, y - h * 0.2, w * 0.06, h * 0.22);
+}
+
+function drawRobot(x, y, u) {
+  let w = u * 90, h = u * 140;
+  const maxH = height * 0.18;
+  if (h > maxH) { w *= maxH / h; h = maxH; }
+  if (h < 10) return;
+  // Beine
+  ctx.fillStyle = '#444a55';
+  ctx.fillRect(x - w * 0.3, y - h * 0.15, w * 0.2, h * 0.15);
+  ctx.fillRect(x + w * 0.1, y - h * 0.15, w * 0.2, h * 0.15);
+  // Body
+  const bodyGrad = ctx.createLinearGradient(0, y - h * 0.7, 0, y - h * 0.15);
+  bodyGrad.addColorStop(0, '#a8b2c2');
+  bodyGrad.addColorStop(1, '#5a6478');
+  ctx.fillStyle = bodyGrad;
+  ctx.fillRect(x - w * 0.42, y - h * 0.7, w * 0.84, h * 0.55);
+  // Bauch-Display
+  ctx.fillStyle = '#0a0a14';
+  ctx.fillRect(x - w * 0.28, y - h * 0.55, w * 0.56, h * 0.25);
+  // Display-Text (blink)
+  const blink = (state.realTime * 2) % 2 < 1;
+  ctx.fillStyle = blink ? '#00ffcc' : '#008866';
+  ctx.shadowColor = '#00ffcc';
+  ctx.shadowBlur = Math.max(2, u * 8);
+  ctx.font = `bold ${Math.max(7, u * 22)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(blink ? 'BOOP' : 'BEEP', x, y - h * 0.42);
+  ctx.shadowBlur = 0;
+  // Kopf
+  ctx.fillStyle = '#7a849a';
+  ctx.fillRect(x - w * 0.3, y - h * 0.95, w * 0.6, h * 0.25);
+  // Antenne
+  ctx.strokeStyle = '#7a849a';
+  ctx.lineWidth = Math.max(1, w * 0.04);
+  ctx.beginPath();
+  ctx.moveTo(x, y - h * 0.95);
+  ctx.lineTo(x, y - h * 1.1);
+  ctx.stroke();
+  ctx.fillStyle = '#ff3366';
+  ctx.shadowColor = '#ff3366';
+  ctx.shadowBlur = Math.max(2, u * 10);
+  ctx.beginPath();
+  ctx.arc(x, y - h * 1.1, Math.max(2, w * 0.05), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  // Augen
+  ctx.fillStyle = '#00ffcc';
+  ctx.shadowColor = '#00ffcc';
+  ctx.shadowBlur = Math.max(2, u * 6);
+  ctx.fillRect(x - w * 0.18, y - h * 0.85, w * 0.08, h * 0.08);
+  ctx.fillRect(x + w * 0.1, y - h * 0.85, w * 0.08, h * 0.08);
+  ctx.shadowBlur = 0;
+  // Arme
+  ctx.fillStyle = '#5a6478';
+  ctx.fillRect(x - w * 0.55, y - h * 0.65, w * 0.13, h * 0.45);
+  ctx.fillRect(x + w * 0.42, y - h * 0.65, w * 0.13, h * 0.45);
 }
 
 function drawCones(x, y, u) {
@@ -2635,7 +2995,8 @@ function drawWiper() {
   ctx.translate(pivotX, pivotY);
   // Basis-Ruhewinkel: ein bisschen schief, weil kaputt
   const baseAngle = -Math.PI / 2 - 0.35;
-  const swing = state.wiperPos * (Math.PI * 0.7);
+  const jitter = state.wiperJitter || 0;
+  const swing = (state.wiperPos + jitter) * (Math.PI * 0.7);
   ctx.rotate(baseAngle + swing);
 
   // Arm
@@ -2915,6 +3276,12 @@ function drawHUD() {
     ctx.textAlign = 'center';
     ctx.fillText('☔ REGEN', width / 2, 18);
   }
+  if (audio.isMuted && audio.isMuted()) {
+    ctx.fillStyle = 'rgba(180, 180, 180, .55)';
+    ctx.font = `600 11px 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('🔇 STUMM (M)', width / 2, state.isRaining ? 36 : 18);
+  }
 }
 
 // ============================================================
@@ -2934,6 +3301,7 @@ function reset() {
   state.wiperKickIn = 4;
   state.wiperJam = 0;
   state.wiperSpray = 0;
+  state.wiperJitter = 0;
   state.score = 0;
   state.distanceKm = 0;
   state.turbo = 0;
@@ -2947,6 +3315,7 @@ function reset() {
   state.sparks.length = 0;
   state.smoke.length = 0;
   state.shootingStars.length = 0;
+  state.scorePops.length = 0;
   state.endReason = '';
   state.nextNarr = 0;
   state.lastHit = 0;
@@ -3032,7 +3401,7 @@ function resumeGame() {
 // Input
 // ============================================================
 function handleKey(code, val, ev) {
-  const handled = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','KeyA','KeyD','KeyW','KeyS','KeyH','KeyB','KeyP','Space','Enter','Escape'].includes(code);
+  const handled = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','KeyA','KeyD','KeyW','KeyS','KeyH','KeyB','KeyP','KeyM','Space','Enter','Escape'].includes(code);
   if (!handled) return;
   if (val) checkKonami(code);
   if (code === 'ArrowLeft'  || code === 'KeyA') keys.left  = val;
@@ -3040,6 +3409,11 @@ function handleKey(code, val, ev) {
   if (code === 'ArrowUp'    || code === 'KeyW') keys.up    = val;
   if (code === 'ArrowDown'  || code === 'KeyS') keys.down  = val;
   if (code === 'KeyH' && val) honk();
+  if (code === 'KeyM' && val) {
+    audio.init();
+    const nowMuted = audio.toggleMute();
+    toast(nowMuted ? '🔇 STUMM' : '🔊 LAUT', 900);
+  }
   if ((code === 'KeyP' || code === 'Escape') && val) {
     if (state.phase === 'play') pauseGame();
     else if (state.phase === 'pause') resumeGame();
