@@ -17,21 +17,26 @@ Ein HTML5-Highway-Racer im Synthwave-Look — fehlerfrei, hübsch und mit kaputt
 - Wetterwechsel: Regen mit Tropfen am Glas und Wind-Drift
 - Defekter Scheibenwischer mit Sprüh-Witz (Feature, nicht Bug)
 - Crash-Funken & Reifenrauch beim Offroad-Trip
-- WebAudio: Motor, Hupe, Crash, Muh, Quietsch
-- Über 40 witzige Schilder und 9+ Easter Eggs (Kuh, UFO, Schneemann, Boombox, Ente, Palme, Pinguin, Wetterballon, Dino, Verkehrskegel)
+- WebAudio: Motor, Hupe, Crash, Muh, Quietsch — mit Mute-Taste (M)
+- Über 75 witzige Schilder und 14 Easter Eggs (Kuh, UFO, Schneemann, Boombox, Ente, Palme, Pinguin, Wetterballon, Dino, Verkehrskegel, Yeti, Astronaut, Schaf, Roboter)
 - Schaden-System mit Selbstreparatur bei ruhigem Fahren
 - Trip-Odometer auf dem Cockpit (separate Distanz-Anzeige)
 - Highscore mit Vorher-Wert beim Übertreffen, automatisch gesichert bei Tab-Wechsel
-- Score-Titel ("Sonntagsfahrer" bis "Hyperraum-Senior")
-- Zufällige Kennzeichen mit Sprüchen (OPA, OMA, NEIN, JA, BMW, BAFÖG, ZEN, IKEA, KAKAO, NERD …)
+- 11 Score-Titel ("Sonntagsfahrer" bis "Neon-Götze")
+- Zufällige Kennzeichen mit Sprüchen (OPA, OMA, NEIN, JA, BMW, BAFÖG, ZEN, IKEA, KAKAO, NERD, YETI, MIAU, CRINGE …)
 - Konami-Code Easter Egg (↑↑↓↓←→←→BA → Goldener Modus mit Sternschnuppenregen)
-- "Mut zur Lücke" Score-Bonus beim knappen Vorbeifahren (mit Whoosh-Sound)
+- "Mut zur Lücke" Score-Bonus beim knappen Vorbeifahren (mit Whoosh-Sound und +80-Pop)
+- Schwebende Score-Pops bei Bonus-Aktionen
 - Max-Speed-Tracking mit individueller Bewertung im Game-Over-Screen
 - Tier-Wechsel-Celebration mit Synthwave-Fanfare und Sternschnuppen
 - Bestdistanz-Tracking neben Highscore
 - Sichtbare Brems-Lichter auf der Motorhaube
 - Wet-Road-Shimmer bei Regen (Mondreflexionen auf der Straße)
+- Mond mit sanfter Lens-Flare und 3D-Halbschatten
+- Aurora-Borealis in 4 Schichten mit Smoothstep-Übergängen
+- Sternschnuppen mit glühendem Kopf
 - Tacho-Nadel-Vibration im Redline-Bereich
+- Frame-rate-stabile Physik (gleiches Verhalten bei 30/60/120 fps)
 - Respektiert `prefers-reduced-motion` Browser-Präferenz
 - Funktioniert auch bei deaktiviertem localStorage (Privacy-Mode)
 - Pause, Restart, Touch- und Tastatur-Steuerung
@@ -42,8 +47,10 @@ Ein HTML5-Highway-Racer im Synthwave-Look — fehlerfrei, hübsch und mit kaputt
 - `↑` Vollgas (passiert automatisch)
 - `↓` (oder Touch links Mitte) — Bremse
 - `H` (oder Touch rechts Mitte) — Hupe
+- `M` — Audio stumm/laut (wird gespeichert)
 - `P` oder `Esc` — Pause
 - `Enter` / `Space` — Start oder Neustart
+- Konami: `↑↑↓↓←→←→BA` — Goldener Modus
 
 ## Lokal starten
 
