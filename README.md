@@ -6,12 +6,18 @@ Ein HTML5-Highway-Racer im Synthwave-Look — fehlerfrei, hübsch und mit kaputt
 
 - Pseudo-3D-Straße mit weichen Kurven und Hügeln
 - Outrun/Synthwave-Optik: Mond, Sterne, Magenta-/Cyan-Rumble-Strips
-- Dynamischer Verkehr mit Sportwagen und LKW
-- Wetterwechsel: Regen mit Tropfen am Glas
-- Defekter Scheibenwischer (Feature, nicht Bug)
-- WebAudio: Motor, Hupe, Crash
-- Witzige Schilder, Easter Eggs (Kuh, UFO, Schneemann, Boombox, Ente, Palme)
-- Schaden-System, Highscore, Score-Titel ("Sonntagsfahrer" bis "Lichtgeschwindigkeits-Opa")
+- Aurora-Borealis-Bänder am Himmel (selten, dezent)
+- Beleuchtete Brücken über die Strecke mit Lichterketten
+- Straßenlaternen mit warmem gelbem Glow
+- Dynamischer Verkehr: Sportwagen, LKW, Polizei mit Blaulicht, Geisterfahrer
+- Wetterwechsel: Regen mit Tropfen am Glas und Wind-Drift
+- Defekter Scheibenwischer mit Sprüh-Witz (Feature, nicht Bug)
+- WebAudio: Motor, Hupe, Crash, Muh, Quietsch
+- Witzige Schilder, Easter Eggs (Kuh, UFO, Schneemann, Boombox, Ente, Palme, Pinguin, Wetterballon)
+- Schaden-System mit Selbstreparatur bei ruhigem Fahren
+- Highscore mit Vorher-Wert beim Übertreffen
+- Score-Titel ("Sonntagsfahrer" bis "Lichtgeschwindigkeits-Opa")
+- Zufällige Kennzeichen mit Sprüchen (OPA, OMA, NEIN, JA, BMW, BAFÖG, ZEN …)
 - Pause, Restart, Touch- und Tastatur-Steuerung
 
 ## Steuerung

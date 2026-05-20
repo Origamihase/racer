@@ -298,6 +298,7 @@ const state = {
   wiperTarget: 0.0,
   wiperKickIn: 4,
   wiperJam: 0,             // wann der Wischer das letzte Mal hängen blieb
+  wiperSpray: 0,           // Sprüh-Effekt-Timer (Sekunden)
   score: 0,
   distanceKm: 0,
   turbo: 0,
@@ -430,6 +431,40 @@ const audio = (() => {
     o1.stop(t + 0.55); o2.stop(t + 0.55);
   }
 
+  function cowMoo() {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const o = actx.createOscillator(); o.type = 'sawtooth';
+    const lfo = actx.createOscillator(); lfo.frequency.value = 5;
+    const lfoGain = actx.createGain(); lfoGain.gain.value = 14;
+    o.frequency.value = 110;
+    lfo.connect(lfoGain).connect(o.frequency);
+    const filt = actx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 800;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.18, t + 0.05);
+    g.gain.setValueAtTime(0.18, t + 0.55);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+    o.connect(filt).connect(g).connect(master);
+    o.start(t); lfo.start(t);
+    o.stop(t + 0.85); lfo.stop(t + 0.85);
+  }
+
+  function squeak() {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const o = actx.createOscillator(); o.type = 'square';
+    o.frequency.setValueAtTime(900, t);
+    o.frequency.exponentialRampToValueAtTime(1700, t + 0.12);
+    o.frequency.exponentialRampToValueAtTime(420, t + 0.28);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.12, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(g).connect(master);
+    o.start(t); o.stop(t + 0.35);
+  }
+
   function crash() {
     if (!actx) return;
     const t = actx.currentTime;
@@ -460,7 +495,7 @@ const audio = (() => {
     if (actx && actx.state === 'suspended') actx.resume();
   }
 
-  return { init, ensureEngine, engine, silenceEngine, honk, crash, blip, resume };
+  return { init, ensureEngine, engine, silenceEngine, honk, cowMoo, squeak, crash, blip, resume };
 })();
 
 // ============================================================
@@ -487,6 +522,21 @@ const SIGNS = [
   ['LAST EXIT',        'WURSTBROT'],
   ['DANKE,',           'GUTE FAHRT'],
   ['SIE FAHREN ZU',    'SCHNELL — EGAL'],
+  ['VORSICHT!',        'WILDWECHSEL OMA'],
+  ['ECHTER KAFFEE',    'IN 600 KM'],
+  ['HANDY-AUS',        'NÄCHSTE 0 M'],
+  ['LINKS FAHREN',     'IST AUCH OK'],
+  ['HUPE PRÜFEN',      'TÄGLICH'],
+  ['KEINE PANIK',      'NUR FAHREN'],
+  ['ANTI-STAU-ZONE',   'WENN DU SCHNELL BIST'],
+  ['KEKSE 200 M',      'OB ICH LÜGE?'],
+];
+
+const PLATES = [
+  'OPA', 'OMA', 'FBI', 'BMW', 'NEIN', 'JA',
+  'WHY', '1337', 'CHEF', 'OMG', 'LOL', 'POL',
+  'BOSS', 'IDOL', 'ZEN', 'MOIN', 'XOXO', 'KIWI',
+  'YOLO', 'BAFÖG',
 ];
 
 const HONK_QUOTES = [
@@ -660,16 +710,43 @@ function buildWorld() {
     segments[n].props.push(prop);
     props.push(prop);
   }
-  // Easter Eggs (Kuh, UFO, Boombox, Schneemann)
+  // Easter Eggs (Kuh, UFO, Boombox, Schneemann, Pinguin, Wetterballon)
   for (let n = 250; n < CFG.trackSegments - 100; n += irnd(CFG.easterEggEvery - 60, CFG.easterEggEvery + 120)) {
     const side = Math.random() < 0.5 ? -1 : 1;
-    const kinds = ['cow', 'ufo', 'palm', 'snowman', 'boombox', 'duck'];
+    const kinds = ['cow', 'ufo', 'palm', 'snowman', 'boombox', 'duck', 'penguin', 'balloon'];
+    const type = pick(kinds);
     const prop = {
-      type: pick(kinds),
+      type,
       side,
       offset: side * (1.9 + Math.random() * 0.5),
       hue: '#fff',
+      bob: Math.random() * Math.PI * 2,
     };
+    // UFO und Wetterballon "fliegen" — Höhenversatz im Himmel
+    if (type === 'ufo')       prop.airHeight = 1.6 + Math.random() * 0.6;
+    if (type === 'balloon')   prop.airHeight = 2.4 + Math.random() * 0.8;
+    segments[n].props.push(prop);
+    props.push(prop);
+  }
+
+  // Straßenlaternen — gleichmäßig am Rand, abwechselnd links/rechts
+  let lampIdx = 0;
+  for (let n = 60; n < CFG.trackSegments - 60; n += 22) {
+    const side = (lampIdx++ % 2) ? -1 : 1;
+    const prop = {
+      type: 'lamp',
+      side,
+      offset: side * 1.35,
+      hue: '#ffd084',
+      bob: 0,
+    };
+    segments[n].props.push(prop);
+    props.push(prop);
+  }
+
+  // Brücken alle ~1400 Segmente (ungefähr ein Mal pro Minute Spielzeit)
+  for (let n = 600; n < CFG.trackSegments - 200; n += irnd(1100, 1700)) {
+    const prop = { type: 'bridge', side: 0, offset: 0, hue: '#5a607a', bob: 0 };
     segments[n].props.push(prop);
     props.push(prop);
   }
@@ -679,20 +756,39 @@ function buildWorld() {
   for (let i = 0; i < CFG.carCount; i++) {
     const lane = irnd(0, CFG.lanes - 1);
     const laneNorm = (lane / (CFG.lanes - 1)) * 2 - 1; // -1, 0, +1
-    const isTruck = Math.random() < 0.28;
-    const carColors = isTruck
-      ? ['#cc6600', '#446677', '#557755', '#bb2222']
-      : ['#cc0033', '#1144bb', '#22aa44', '#dddddd', '#dda500', '#aa22aa'];
+
+    // Spezielle Auto-Typen mit geringer Wahrscheinlichkeit
+    const roll = Math.random();
+    let kind = 'sport';
+    if (roll < 0.04)        kind = 'police';     // 4 %  Polizei
+    else if (roll < 0.07)   kind = 'ghost';      // 3 %  Geisterfahrer
+    else if (roll < 0.32)   kind = 'truck';      // 25 % LKW
+    else                    kind = 'sport';      // Rest Sportler
+
+    const carColorsByKind = {
+      sport:  ['#cc0033', '#1144bb', '#22aa44', '#dddddd', '#dda500', '#aa22aa'],
+      truck:  ['#cc6600', '#446677', '#557755', '#bb2222'],
+      police: ['#162a55'],
+      ghost:  ['#1a1a1a'],
+    };
+    const speedByKind = {
+      sport:  () => rnd(110, 220),
+      truck:  () => rnd(80, 130),
+      police: () => rnd(190, 260),
+      ghost:  () => -rnd(180, 260), // negative Geschwindigkeit = entgegenkommend
+    };
 
     const seg = irnd(40, CFG.trackSegments - 40);
+    const plate = pick(PLATES);
     cars.push({
       seg,
       z: seg * CFG.segmentLength + rnd(0, CFG.segmentLength),
-      speed: isTruck ? rnd(80, 130) : rnd(110, 220),
+      speed: speedByKind[kind](),
       lane: laneNorm + (Math.random() - 0.5) * 0.18,
-      type: isTruck ? 'truck' : 'sport',
-      color: pick(carColors),
+      type: kind,
+      color: pick(carColorsByKind[kind]),
       bobOff: rnd(0, Math.PI * 2),
+      plate,
     });
   }
   reindexCars();
@@ -769,14 +865,17 @@ function update(dt) {
           age: 0,
           life: rnd(2.0, 5.0),
           vy: rnd(4, 16) + state.speed * 0.02,
+          vxOff: (Math.random() - 0.5) * 0.6, // individuelle Drift
         });
       }
     }
   }
-  // Tropfen altern
+  // Tropfen altern (mit leichtem Wind-Drift seitwärts)
+  const windPx = (state.playerX * 60) + Math.sin(state.realTime * 0.5) * 14;
   for (const d of state.drops) {
     d.age += dt;
     d.y += d.vy * dt;
+    d.x += (windPx + d.vxOff * 30) * dt * 0.6;
     if (d.y > height * 0.62) d.life = 0;
   }
   state.drops = state.drops.filter(d => d.age < d.life);
@@ -784,9 +883,31 @@ function update(dt) {
   // Kaputter Wischer: Idee — wenn es regnet, will der Wischer arbeiten, schafft aber nur ruckelnde,
   // teils komplett falsche Bewegungen, bleibt manchmal stehen.
   state.wiperKickIn -= dt;
+  state.wiperSpray = Math.max(0, state.wiperSpray - dt);
   if (state.isRaining && state.wiperKickIn <= 0) {
-    // Versuch eines Sweeps
-    if (Math.random() < 0.7) {
+    const roll = Math.random();
+    if (roll < 0.12) {
+      // Bonus-Witz: Wischer schießt einen Schwall Wasser auf die Scheibe
+      state.wiperSpray = 0.6;
+      state.wiperTarget = rnd(0.4, 0.8);
+      toast('SPRÜHFLASCHE?!', 1300);
+      audio.blip(180, 0.18, 0.12);
+      audio.blip(120, 0.25, 0.09);
+      // Statt zu wischen: neue Tropfen!
+      for (let k = 0; k < 30; k++) {
+        if (state.drops.length < 100) {
+          state.drops.push({
+            x: rnd(width * 0.2, width * 0.8),
+            y: rnd(height * 0.05, height * 0.45),
+            r: rnd(3, 8),
+            age: 0,
+            life: rnd(3.0, 6.0),
+            vy: rnd(2, 10) + state.speed * 0.015,
+            vxOff: (Math.random() - 0.5) * 0.8,
+          });
+        }
+      }
+    } else if (roll < 0.7) {
       // erfolgreicher (aber chaotischer) Sweep
       state.wiperTarget = rnd(0.6, 1.0) * (Math.random() < 0.15 ? -1 : 1);
       toast(pick(WIPER_QUOTES), 1200);
@@ -885,7 +1006,7 @@ function update(dt) {
         state.shakeAmp = Math.max(state.shakeAmp, 16);
         // Schaden skaliert mit Geschwindigkeitsdifferenz
         const dv = Math.max(0, state.speed - c.speed);
-        state.damage += 25 + (dv / CFG.speedLimit) * 55;
+        state.damage += 18 + (dv / CFG.speedLimit) * 40;
         state.speed = Math.max(c.speed * 0.5, 40);
         // Andere Spur kurzzeitig wegdrücken
         state.playerX += (state.playerX > c.lane ? 0.25 : -0.25);
@@ -951,8 +1072,20 @@ function update(dt) {
 function honk() {
   if (state.honkCooldown > 0 || state.phase !== 'play') return;
   state.honkCooldown = 0.45;
-  audio.honk();
-  toast(pick(HONK_QUOTES), 900);
+  // Mit kleiner Wahrscheinlichkeit eine kaputte Variante
+  const variant = Math.random();
+  if (variant < 0.07) {
+    // Kuh-Muh
+    audio.cowMoo();
+    toast('MUUUH!', 1000);
+  } else if (variant < 0.13) {
+    // Quietschende Hupe
+    audio.squeak();
+    toast('QUIETSCH!', 900);
+  } else {
+    audio.honk();
+    toast(pick(HONK_QUOTES), 900);
+  }
 }
 
 // ============================================================
@@ -975,6 +1108,7 @@ function project(p, cameraX, cameraY, cameraZ) {
 function render() {
   // BG
   drawSky();
+  drawAurora();
   drawMoon();
   drawStars();
   drawMountains(0.0025, 50, '#0c0220', 110);
@@ -994,6 +1128,16 @@ function render() {
 
   // Drops on windshield
   drawDrops();
+
+  // Wischer-Sprüh-Effekt (kurze weiße Schwall-Wolke)
+  if (state.wiperSpray > 0) {
+    const a = state.wiperSpray * 0.55;
+    const grad = ctx.createRadialGradient(width * 0.5, height * 0.45, height * 0.08, width * 0.5, height * 0.45, height * 0.65);
+    grad.addColorStop(0, `rgba(220, 230, 255, ${a})`);
+    grad.addColorStop(1, 'rgba(220, 230, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+  }
 
   // Hit flash
   if (state.hitFlash > 0) {
@@ -1043,6 +1187,40 @@ function drawMoon() {
   ctx.beginPath(); ctx.arc(mx - r*0.3, my - r*0.1, r*0.18, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(mx + r*0.2, my + r*0.3, r*0.12, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(mx + r*0.35, my - r*0.25, r*0.08, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function drawAurora() {
+  // Sanfter Aurora-Bogen — dünne wabernde Streifen am Horizont
+  const cycle = Math.sin(state.realTime * 0.05) * 0.5 + 0.5;
+  const intensity = Math.max(0, cycle - 0.7) / 0.3;  // nur ~30 % der Zeit sichtbar
+  if (intensity < 0.02) return;
+  const baseY = height * 0.22;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const layers = [
+    { color: [60, 240, 180], amp: 22, freq: 0.004,  phase: 0,   yOff: 0,  thickness: 12 },
+    { color: [180, 100, 255], amp: 26, freq: 0.0055, phase: 1.3, yOff: 24, thickness: 9 },
+    { color: [255, 110, 200], amp: 18, freq: 0.007,  phase: 2.7, yOff: 48, thickness: 7 },
+  ];
+  for (const L of layers) {
+    const [r, g, b] = L.color;
+    ctx.beginPath();
+    for (let x = 0; x <= width; x += 8) {
+      const wave  = Math.sin((x + state.realTime * 40) * L.freq + L.phase) * L.amp;
+      const wave2 = Math.sin((x + state.realTime * 14) * L.freq * 0.4 + L.phase) * L.amp * 0.4;
+      const y = baseY + L.yOff + wave + wave2;
+      if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    // Verlauf um die Linie: schmaler heller Streifen mit weichem Fade
+    const a = 0.55 * intensity;
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+    ctx.lineWidth = L.thickness;
+    ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${a * 0.9})`;
+    ctx.shadowBlur = L.thickness * 2;
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
   ctx.restore();
 }
 
@@ -1191,7 +1369,10 @@ function drawProp(prop, seg, fog) {
   } else if (prop.type === 'cow') {
     drawCow(baseX, baseY, sizeUnit);
   } else if (prop.type === 'ufo') {
-    drawUFO(baseX, baseY - sizeUnit * 1.5, sizeUnit);
+    // UFO schwebt im Himmel und wackelt sanft
+    const bob = Math.sin((state.realTime + prop.bob) * 0.7) * sizeUnit * 18;
+    const air = (prop.airHeight || 1.6) * sizeUnit * 60;
+    drawUFO(baseX, baseY - air + bob, sizeUnit);
   } else if (prop.type === 'palm') {
     drawPalm(baseX, baseY, sizeUnit, prop.side);
   } else if (prop.type === 'snowman') {
@@ -1200,6 +1381,16 @@ function drawProp(prop, seg, fog) {
     drawBoombox(baseX, baseY, sizeUnit);
   } else if (prop.type === 'duck') {
     drawDuck(baseX, baseY, sizeUnit);
+  } else if (prop.type === 'penguin') {
+    drawPenguin(baseX, baseY, sizeUnit);
+  } else if (prop.type === 'balloon') {
+    const bob = Math.sin((state.realTime + prop.bob) * 0.5) * sizeUnit * 14;
+    const air = (prop.airHeight || 2.4) * sizeUnit * 60;
+    drawBalloon(baseX, baseY - air + bob, sizeUnit);
+  } else if (prop.type === 'lamp') {
+    drawLamp(baseX, baseY, sizeUnit, prop.side);
+  } else if (prop.type === 'bridge') {
+    drawBridge(seg, fog);
   }
   ctx.restore();
 }
@@ -1393,6 +1584,155 @@ function drawDuck(x, y, u) {
   ctx.beginPath(); ctx.arc(x + w*0.4, y - h*0.8, h*0.06, 0, Math.PI*2); ctx.fill();
 }
 
+function drawPenguin(x, y, u) {
+  let w = u * 90, h = u * 140;
+  const maxH = height * 0.16;
+  if (h > maxH) { w *= maxH / h; h = maxH; }
+  if (h < 6) return;
+  // Body (schwarz)
+  ctx.fillStyle = '#0a0a14';
+  ctx.beginPath();
+  ctx.ellipse(x, y - h * 0.4, w * 0.5, h * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Bauch (weiß)
+  ctx.fillStyle = '#f4f4f8';
+  ctx.beginPath();
+  ctx.ellipse(x, y - h * 0.32, w * 0.32, h * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Kopf
+  ctx.fillStyle = '#0a0a14';
+  ctx.beginPath();
+  ctx.arc(x, y - h * 0.82, h * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  // Augen
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(x - h * 0.07, y - h * 0.86, h * 0.05, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + h * 0.07, y - h * 0.86, h * 0.05, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#111';
+  ctx.beginPath(); ctx.arc(x - h * 0.07, y - h * 0.86, h * 0.02, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + h * 0.07, y - h * 0.86, h * 0.02, 0, Math.PI * 2); ctx.fill();
+  // Schnabel
+  ctx.fillStyle = '#ff9933';
+  ctx.beginPath();
+  ctx.moveTo(x, y - h * 0.78);
+  ctx.lineTo(x - h * 0.04, y - h * 0.72);
+  ctx.lineTo(x + h * 0.04, y - h * 0.72);
+  ctx.closePath(); ctx.fill();
+  // Füße
+  ctx.fillStyle = '#ff9933';
+  ctx.fillRect(x - w * 0.18, y - h * 0.04, w * 0.14, h * 0.05);
+  ctx.fillRect(x + w * 0.04, y - h * 0.04, w * 0.14, h * 0.05);
+}
+
+function drawBalloon(x, y, u) {
+  let w = u * 100, h = u * 120;
+  const maxW = width * 0.08;
+  if (w > maxW) { h *= maxW / w; w = maxW; }
+  if (w < 6) return;
+  // Ballon
+  const grad = ctx.createRadialGradient(x - w * 0.2, y - h * 0.6, w * 0.1, x, y - h * 0.4, w * 0.6);
+  grad.addColorStop(0, '#ff7777');
+  grad.addColorStop(1, '#992233');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.ellipse(x, y - h * 0.4, w * 0.45, h * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Knoten
+  ctx.fillStyle = '#771122';
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.06, y + h * 0.1);
+  ctx.lineTo(x + w * 0.06, y + h * 0.1);
+  ctx.lineTo(x, y + h * 0.16);
+  ctx.closePath(); ctx.fill();
+  // Schnur
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = Math.max(1, w * 0.03);
+  ctx.beginPath();
+  ctx.moveTo(x, y + h * 0.16);
+  ctx.quadraticCurveTo(x + w * 0.1, y + h * 0.5, x - w * 0.05, y + h);
+  ctx.stroke();
+}
+
+function drawLamp(x, y, u, side) {
+  let poleH = u * 220;
+  let poleW = Math.max(2, u * 6);
+  const maxH = height * 0.55;
+  if (poleH > maxH) { poleW *= maxH / poleH; poleH = maxH; }
+  if (poleH < 6) return;
+  const headSize = Math.max(4, u * 30);
+
+  // Mast (helleres Grau, damit er gegen den dunklen Hintergrund sichtbar ist)
+  ctx.fillStyle = '#4a4252';
+  ctx.fillRect(x - poleW / 2, y - poleH, poleW, poleH);
+  // Sockel
+  ctx.fillStyle = '#2a242e';
+  ctx.fillRect(x - poleW, y - poleW * 0.8, poleW * 2, poleW * 0.8);
+  // Ausleger zur Straße hin
+  const armDir = -side; // Richtung Straße zeigend
+  const armLen = u * 58;
+  const armY = y - poleH + u * 4;
+  ctx.fillStyle = '#4a4252';
+  if (armDir > 0) {
+    ctx.fillRect(x, armY, armLen, Math.max(2, u * 5));
+  } else {
+    ctx.fillRect(x - armLen, armY, armLen, Math.max(2, u * 5));
+  }
+  // Lampenkopf
+  const lampX = x + armDir * armLen;
+  const lampY = y - poleH + u * 10;
+  ctx.fillStyle = '#fff4c0';
+  ctx.shadowColor = '#ffdd66';
+  ctx.shadowBlur = Math.max(3, headSize);
+  ctx.fillRect(lampX - headSize * 0.45, lampY, headSize * 0.9, headSize * 0.45);
+  ctx.shadowBlur = 0;
+  // Glow am Boden — kegelförmig
+  if (u > 0.03) {
+    ctx.globalAlpha = 0.22;
+    const grad = ctx.createRadialGradient(lampX, y, 0, lampX, y, headSize * 4);
+    grad.addColorStop(0, '#fff4c0');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.ellipse(lampX, y, headSize * 4, headSize * 1.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawBridge(seg, fog) {
+  // Brücke: über die Straße spannen ein dunkler Balken mit Lichterkette
+  const p1 = seg.p1.screen, p2 = seg.p2.screen;
+  if (p1.scale <= 0) return;
+  const u = p1.scale * width;
+  // Etwa 2.5 Brückenhöhe in Welt-Einheiten — projiziert nach oben
+  const bridgeTop = p1.y - u * 220;
+  const bridgeBot = p1.y - u * 140;
+  const xLeft  = p1.x - p1.w * 1.8;
+  const xRight = p1.x + p1.w * 1.8;
+  // Pfeiler
+  ctx.fillStyle = '#2c2435';
+  ctx.fillRect(p1.x - p1.w * 1.85, bridgeBot, Math.max(4, u * 18), p1.y - bridgeBot);
+  ctx.fillRect(p1.x + p1.w * 1.65, bridgeBot, Math.max(4, u * 18), p1.y - bridgeBot);
+  // Träger
+  ctx.fillStyle = '#3a304a';
+  ctx.fillRect(xLeft, bridgeTop, xRight - xLeft, bridgeBot - bridgeTop);
+  // Lichterkette oben
+  const dotR = Math.max(1, u * 6);
+  const dotSpacing = Math.max(8, u * 50);
+  ctx.fillStyle = '#ffe066';
+  ctx.shadowColor = '#ffd84a';
+  ctx.shadowBlur = Math.max(2, dotR * 1.6);
+  for (let lx = xLeft + dotSpacing * 0.5; lx < xRight; lx += dotSpacing) {
+    ctx.beginPath();
+    ctx.arc(lx, bridgeTop - dotR * 0.3, dotR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+  // Rand-Streifen
+  ctx.fillStyle = '#ff0066';
+  ctx.fillRect(xLeft, bridgeBot - Math.max(2, u * 5), xRight - xLeft, Math.max(2, u * 5));
+}
+
 // ---- Cars ---------------------------------------------------------
 function drawCarInSegment(c, seg) {
   // Mit der z-Position des Autos innerhalb des Segments interpolieren
@@ -1414,14 +1754,18 @@ function drawCarInSegment(c, seg) {
   const laneOffset = c.lane * roadW * 0.7;
   const carX = roadX + laneOffset;
 
-  drawCar(carX, carY, carW, carH, c.color, c.type, c.bobOff);
+  drawCar(carX, carY, carW, carH, c.color, c.type, c.bobOff, c.plate);
 }
 
-function drawCar(x, y, w, h, color, type, bobOff) {
+function drawCar(x, y, w, h, color, type, bobOff, plate) {
   // y ist der Bodenpunkt
   const bottomY = y + Math.sin((state.realTime + bobOff) * 12) * Math.min(2, h * 0.02);
   const bodyH = h * 0.6;
   const roofH = h * 0.4;
+
+  const isTruck   = type === 'truck';
+  const isPolice  = type === 'police';
+  const isGhost   = type === 'ghost';
 
   // Schatten
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -1445,46 +1789,100 @@ function drawCar(x, y, w, h, color, type, bobOff) {
   ctx.fillStyle = bodyGrad;
   ctx.fillRect(x - w / 2, bottomY - bodyH, w, bodyH);
 
+  // Polizei-Streifen längs
+  if (isPolice && w > 30) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x - w / 2, bottomY - bodyH * 0.45, w, bodyH * 0.18);
+  }
+
   // Outline
   ctx.strokeStyle = 'rgba(0,0,0,0.85)';
   ctx.lineWidth = Math.max(1, Math.min(3, w * 0.02));
   ctx.strokeRect(x - w / 2, bottomY - bodyH, w, bodyH);
 
   // Dach (zentriert!)
-  const roofW = w * (type === 'truck' ? 0.92 : 0.62);
+  const roofW = w * (isTruck ? 0.92 : 0.62);
   const roofX = x - roofW / 2;
   ctx.fillStyle = shadeColor(color, -22);
   ctx.fillRect(roofX, bottomY - bodyH - roofH, roofW, roofH);
-  // Heckscheibe
-  ctx.fillStyle = '#1a0033';
+  // Scheibe (Heck normal, Front bei Ghost)
+  ctx.fillStyle = isGhost ? '#0a0820' : '#1a0033';
   ctx.fillRect(roofX + roofW * 0.1, bottomY - bodyH - roofH * 0.8, roofW * 0.8, roofH * 0.62);
   // Spiegelung Mond
   ctx.fillStyle = 'rgba(255, 240, 200, 0.18)';
   ctx.fillRect(roofX + roofW * 0.1, bottomY - bodyH - roofH * 0.8, roofW * 0.35, roofH * 0.18);
 
-  // Rücklichter (symmetrisch)
+  // Polizei-Blaulicht auf dem Dach (pulsiert blau/rot)
+  if (isPolice && w > 22) {
+    const phase = (state.realTime * 5) % 1;
+    const lbW = roofW * 0.62;
+    const lbH = Math.max(3, roofH * 0.22);
+    const lbY = bottomY - bodyH - roofH - lbH * 0.7;
+    ctx.fillStyle = '#1a1a22';
+    ctx.fillRect(x - lbW / 2, lbY, lbW, lbH);
+    const blueOn = phase < 0.5;
+    const c1 = blueOn ? '#1a88ff' : '#330033';
+    const c2 = blueOn ? '#330033' : '#ff2222';
+    ctx.fillStyle = c1;
+    ctx.shadowColor = c1; ctx.shadowBlur = Math.min(16, w * 0.25);
+    ctx.fillRect(x - lbW / 2, lbY, lbW / 2, lbH);
+    ctx.fillStyle = c2;
+    ctx.shadowColor = c2;
+    ctx.fillRect(x, lbY, lbW / 2, lbH);
+    ctx.shadowBlur = 0;
+    // Auf-Straße-Glow
+    ctx.globalAlpha = 0.32;
+    ctx.fillStyle = blueOn ? '#1a88ff' : '#ff2222';
+    ctx.beginPath();
+    ctx.ellipse(x, bottomY + h * 0.12, w * 0.75, h * 0.18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Lichter (Heck normal, Front bei Ghost)
   const lw = w * 0.16;
   const lh = bodyH * 0.28;
   const ly = bottomY - bodyH * 0.6;
-  ctx.fillStyle = '#ff2244';
-  ctx.shadowColor = '#ff0033';
-  ctx.shadowBlur = Math.min(16, w * 0.18);
-  ctx.fillRect(x - w * 0.46, ly, lw, lh);
-  ctx.fillRect(x + w * 0.46 - lw, ly, lw, lh);
-  ctx.shadowBlur = 0;
-  // Bremslicht-Glow auf Straße
-  ctx.globalAlpha = 0.32;
-  ctx.fillStyle = '#ff0033';
-  ctx.beginPath();
-  ctx.ellipse(x - w * 0.36, bottomY + h * 0.04, lw * 1.4, lh * 0.6, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(x + w * 0.36, bottomY + h * 0.04, lw * 1.4, lh * 0.6, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
 
-  // Kennzeichen
-  if (w > 60) {
+  if (isGhost) {
+    // Frontscheinwerfer — sehr hell, gelblich
+    ctx.fillStyle = '#fff8cc';
+    ctx.shadowColor = '#fff8cc';
+    ctx.shadowBlur = Math.min(24, w * 0.35);
+    ctx.fillRect(x - w * 0.46, ly, lw, lh);
+    ctx.fillRect(x + w * 0.46 - lw, ly, lw, lh);
+    ctx.shadowBlur = 0;
+    // Lichtkegel auf Straße
+    ctx.globalAlpha = 0.42;
+    ctx.fillStyle = '#fff8cc';
+    ctx.beginPath();
+    ctx.ellipse(x - w * 0.32, bottomY + h * 0.06, lw * 1.8, lh * 0.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + w * 0.32, bottomY + h * 0.06, lw * 1.8, lh * 0.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  } else {
+    // Rücklichter
+    ctx.fillStyle = '#ff2244';
+    ctx.shadowColor = '#ff0033';
+    ctx.shadowBlur = Math.min(16, w * 0.18);
+    ctx.fillRect(x - w * 0.46, ly, lw, lh);
+    ctx.fillRect(x + w * 0.46 - lw, ly, lw, lh);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.32;
+    ctx.fillStyle = '#ff0033';
+    ctx.beginPath();
+    ctx.ellipse(x - w * 0.36, bottomY + h * 0.04, lw * 1.4, lh * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + w * 0.36, bottomY + h * 0.04, lw * 1.4, lh * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Kennzeichen (nicht bei Ghost — der zeigt seinen Kühlergrill)
+  if (w > 60 && !isGhost) {
     const plW = w * 0.4, plH = bodyH * 0.18;
     ctx.fillStyle = '#fff';
     ctx.fillRect(x - plW / 2, bottomY - bodyH * 0.25, plW, plH);
@@ -1492,11 +1890,26 @@ function drawCar(x, y, w, h, color, type, bobOff) {
     ctx.font = `bold ${Math.max(6, plH * 0.78)}px monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('OPA', x, bottomY - bodyH * 0.25 + plH * 0.5);
+    ctx.fillText(plate || 'OPA', x, bottomY - bodyH * 0.25 + plH * 0.5);
+  }
+
+  // Geisterfahrer-Kühlergrill (statt Kennzeichen)
+  if (isGhost && w > 40) {
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(x - w * 0.18, bottomY - bodyH * 0.28, w * 0.36, bodyH * 0.16);
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      ctx.beginPath();
+      const yy = bottomY - bodyH * 0.28 + (bodyH * 0.16 * i / 4);
+      ctx.moveTo(x - w * 0.18, yy);
+      ctx.lineTo(x + w * 0.18, yy);
+      ctx.stroke();
+    }
   }
 
   // Truck hat Ladefläche
-  if (type === 'truck' && w > 40) {
+  if (isTruck && w > 40) {
     ctx.fillStyle = shadeColor(color, -40);
     ctx.fillRect(x - w / 2, bottomY - bodyH * 0.4, w, bodyH * 0.04);
   }
@@ -1848,6 +2261,7 @@ function reset() {
   state.wiperTarget = 0;
   state.wiperKickIn = 4;
   state.wiperJam = 0;
+  state.wiperSpray = 0;
   state.score = 0;
   state.distanceKm = 0;
   state.turbo = 0;
@@ -1883,6 +2297,7 @@ function endGame(reason) {
   state.endReason = reason;
   audio.silenceEngine();
   // Highscore
+  const previousHigh = state.highScore;
   const isNewHigh = state.score > state.highScore;
   if (isNewHigh) {
     state.highScore = Math.floor(state.score);
@@ -1893,8 +2308,12 @@ function endGame(reason) {
   elGoTitle.textContent = t[0];
   elGoSubtitle.textContent = t[1];
   elGoSummary.innerHTML = `Du hast <strong>${formatScore(state.score)}</strong> Punkte gemacht und bist <strong>${state.distanceKm.toFixed(1)} km</strong> weit gekommen.<br>Höchstgeschwindigkeit war beeindruckend &mdash; oder auch nicht.`;
-  elGoRank.textContent = isNewHigh ? '★ NEUER HIGHSCORE: ' + scoreTier(state.score).toUpperCase() + ' ★' : 'Titel: ' + scoreTier(state.score);
-  elGoHigh.textContent = formatScore(state.highScore);
+  elGoRank.textContent = isNewHigh
+    ? '★ NEUER HIGHSCORE: ' + scoreTier(state.score).toUpperCase() + ' ★'
+    : 'Titel: ' + scoreTier(state.score);
+  elGoHigh.innerHTML = isNewHigh && previousHigh > 0
+    ? `<strong>${formatScore(state.highScore)}</strong> <span style="color:#7d99ad">(vorher ${formatScore(previousHigh)})</span>`
+    : formatScore(state.highScore);
   elOver.classList.remove('hidden');
 }
 
@@ -1989,9 +2408,14 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 
-// Debug-Bridge (nur in ?debug=1)
+// Debug-Bridge (nur in ?debug=1) — Getter, damit Neubauten erkannt werden
 if (location.search.includes('debug=1')) {
-  window.__nr = { state, cars, segments, CFG };
+  window.__nr = {
+    state, CFG,
+    get cars() { return cars; },
+    get segments() { return segments; },
+    get props() { return props; },
+  };
 }
 
 // ============================================================
