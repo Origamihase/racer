@@ -888,6 +888,7 @@ function step(dt, { render = true } = {}) {
         horn: input.take('horn'),
         wiper: input.take('wiper'),
         megafon: input.take('megafon'),
+        device: input.lastDevice,
       };
       game.update(dt, ctl, camera);
       updateCarMatrix();

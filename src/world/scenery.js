@@ -16,6 +16,17 @@ const AHEAD = 17;
 const BEHIND = 2;
 const NSLOTS = AHEAD + BEHIND + 1;
 
+// Elsa-Statue: aus Mini Adams Sicht deckt der Innenspiegel rechts oben etwa 17–41° ab. Nah hinter der
+// Leitplanke (der Sockel bleibt gut einen halben Meter hinter den Leitpfosten) und etwas größer als früher
+// steht sie beim Heranfahren lange links vom Spiegel im freien Teil der Scheibe und ist dort gut zu erkennen.
+export const ELSA_STATUE = { x: ROAD.right + 4.55, scale: 1.4 };
+const ELSA_FAR = { x: ROAD.right + 8, scale: 1 }; // wo am Rand kein Platz ist: weiter draußen in alter Größe
+const ELSA_ROOM = 12; // so viel Abstand (m) braucht sie am Rand zu Schildern, Blitzern und anderen Orten
+const ELSA_CLEAR = 9.5; // Bäume und Büsche in diesem Umkreis kommen weg
+// Freier Platz im Abschnitt: hinter Notrufsäule (30 m), Tafeln (40 m) und Brücken (50 m)
+const LANDMARK_OFFSET = 75;
+const WAVE_T = 2.6; // so lange winkt Elsa zurück (s)
+
 const BANNERS = [
   'Grüße an Mini Adam!', 'Linke Spur freischalten: jetzt!', 'BrunnenTV Fanclub', 'Malte Malte Malte', 'Elsa ❤',
   'Ehrenmenschen-Brücke', 'Rechts fahren, Adam!', 'Wir streamen in Full HD', 'Live-Eskalationen immer woanders',
@@ -187,6 +198,7 @@ export class Scenery {
     const k = Math.floor(s / SEG);
     const slot = this.slots[((k % NSLOTS) + NSLOTS) % NSLOTS];
     if (slot.k === k) this.placeRequest(slot, r);
+    if (type !== 'elsa') this.makeRoom(r);
     return id;
   }
 
@@ -231,6 +243,7 @@ export class Scenery {
     for (const obj of this.animated) {
       const a = obj.userData.animate;
       if (a) a(this.time, dt);
+      if (obj.userData.waveT > 0) this.waveFins(obj, dt);
     }
     // alte Anfragen aufräumen
     if (this.requests.length > 40) this.requests = this.requests.filter((r) => r.s > s - 500);
@@ -267,7 +280,6 @@ export class Scenery {
 
     // Charakter des Abschnitts
     const village = this.villageSide(k);
-    const nearVillage = this.villageSide(k - 1) || this.villageSide(k + 1);
     for (const side of [1, -1]) {
       const seed = side > 0 ? 11 : 23;
       const forest = smoothstep(0.05, 0.38, fbm1(k / 9, seed));
@@ -330,7 +342,7 @@ export class Scenery {
       for (let i = 0; i < 8; i++) put('decid', side * (40 + rnd() * 160), 0, z0 - rnd() * SEG, 0.7 + rnd() * 0.5, rnd() * 6, 0xffffff);
     }
     // Lärmschutzwand am Dorf
-    if ((village === 1 || nearVillage === 1) && k > 2) {
+    if (this.noiseWall(k)) {
       const wall = this.acquire('noisewall', () => this.makeNoiseWall());
       wall.position.set(ROAD.right + 2.1, 0, z0 - SEG / 2);
       slot.items.push(wall);
@@ -349,23 +361,24 @@ export class Scenery {
       slot.items.push(n);
     }
     // Schilderbrücke mit Navi-Ziel
-    if (k % 13 === 7) {
+    const furn = this.furniture(k);
+    if (furn === 'gantry') {
       const g = this.acquire('gantry', () => this.makeGantry());
       this.labelGantry(g, rnd, s0 + 50);
       g.position.set(0, 0, z0 - 50);
       slot.items.push(g);
-    } else if (k % 23 === 15) {
+    } else if (furn === 'bridge') {
       const b = this.acquire('bridge', () => this.makeBridge());
       this.labelBridge(b, rnd);
       b.position.set(0, 0, z0 - 50);
       slot.items.push(b);
-    } else if (k % 17 === 3) {
+    } else if (furn === 'brown') {
       const [title, sub] = BROWN[Math.floor(rnd() * BROWN.length)];
       const b = this.acquire('brown', () => this.makeBrownSign());
       b.userData.setText(title, sub);
       b.position.set(ROAD.right + 3.4, 0, z0 - 40);
       slot.items.push(b);
-    } else if (k % 29 === 11) {
+    } else if (furn === 'blueinfo') {
       const b = this.acquire('blueinfo', () => this.makeBlueInfo());
       b.userData.setText(rnd() < 0.5 ? ['Rastplatz', 'Schäferborn  2 km'] : ['Raststätte', 'Bananensaft  1500 m']);
       b.position.set(ROAD.right + 3.4, 0, z0 - 40);
@@ -375,6 +388,8 @@ export class Scenery {
     // Angefragte Orte
     for (const r of this.requests) {
       if (!r.built && r.s >= s0 && r.s < s0 + SEG) this.placeRequest(slot, r);
+      // eine Elsa nah an der Abschnittsgrenze stünde sonst im Gebüsch dieses Abschnitts
+      else if (r.spot && r.s > s0 - ELSA_CLEAR && r.s < s0 + SEG + ELSA_CLEAR) this.clearAround(r.spot.x, -r.s, ELSA_CLEAR);
     }
 
     for (const name of Object.keys(this.inst)) {
@@ -393,6 +408,108 @@ export class Scenery {
     return 0;
   }
 
+  /** Lärmschutzwand rechts im Abschnitt k (am Dorf und in den Abschnitten davor und danach)? */
+  noiseWall(k) {
+    const nearVillage = this.villageSide(k - 1) || this.villageSide(k + 1);
+    return (this.villageSide(k) === 1 || nearVillage === 1) && k > 2;
+  }
+
+  /** Was im Abschnitt k steht: Schilderbrücke, Brücke, braune oder blaue Tafel (oder nichts). */
+  furniture(k) {
+    if (k % 13 === 7) return 'gantry';
+    if (k % 23 === 15) return 'bridge';
+    if (k % 17 === 3) return 'brown';
+    if (k % 29 === 11) return 'blueinfo';
+    return null;
+  }
+
+  /** Hat Elsa bei Strecke s nah an der Leitplanke Platz (kein Schild, keine Brücke, keine Wand, kein anderer Ort)? */
+  statueFree(s, self = null) {
+    const k = Math.floor(s / SEG);
+    const o = s - k * SEG;
+    const furn = this.furniture(k);
+    if (this.noiseWall(k)) return false;
+    if ((furn === 'gantry' || furn === 'bridge') && Math.abs(o - 50) < 15) return false;
+    if ((furn === 'brown' || furn === 'blueinfo') && Math.abs(o - 40) < 6) return false;
+    if (k % 20 === 10 && Math.abs(o - 30) < 5) return false; // Notrufsäule
+    if ((k % 5 === 0 && o < 4) || ((k + 1) % 5 === 0 && o > SEG - 4)) return false; // Kilometerschild
+    return !this.requests.some((q) => q !== self && Math.abs(q.s - s) < ELSA_ROOM);
+  }
+
+  /** Kommt nachträglich etwas neben eine nah am Rand stehende Elsa (Blitzer, Schild, Ziel), rückt sie nach draußen. */
+  makeRoom(r) {
+    for (const q of this.requests) {
+      if (q.type !== 'elsa' || q.spot !== ELSA_STATUE || Math.abs(q.s - r.s) >= ELSA_ROOM) continue;
+      q.spot = ELSA_FAR;
+      for (const slot of this.slots) {
+        for (const o of slot.items) {
+          if (o.userData.requestId !== q.id) continue;
+          o.position.x = ELSA_FAR.x;
+          o.scale.setScalar(ELSA_FAR.scale);
+        }
+      }
+      this.clearAround(ELSA_FAR.x, -q.s, ELSA_CLEAR);
+    }
+  }
+
+  /**
+   * Platz für Brunnen oder Elsa ab Strecke s: hinten im Abschnitt, wo am Rand nichts steht, ohne
+   * Lärmschutzwand und ohne Brücke, Schilderbrücke oder Tafel davor, die den Blick verdecken.
+   */
+  landmarkSpot(s) {
+    const k0 = Math.ceil((s - LANDMARK_OFFSET) / SEG);
+    for (let k = k0; k < k0 + 12; k++) {
+      const at = k * SEG + LANDMARK_OFFSET;
+      const furn = this.furniture(k);
+      // auch keine Tafel 35 m davor: die verdeckt sie beim Heranfahren fast ganz
+      if (!furn && this.statueFree(at) && !this.requests.some((q) => Math.abs(q.s - at) < 40)) return at;
+    }
+    return s;
+  }
+
+  /** Lage { x, scale } einer schon aufgestellten Statue (null, solange sie noch nicht steht). */
+  placed(id) {
+    const r = this.requests.find((q) => q.id === id);
+    return (r && r.spot) || null;
+  }
+
+  /** Elsa winkt zurück (nach dem Hupen): ein paar Sekunden lang kräftig mit beiden Flossen und hüpft dabei. */
+  waveBack(id) {
+    for (const slot of this.slots) {
+      for (const o of slot.items) if (o.userData.requestId === id && o.userData.type === 'elsaStatue') o.userData.waveT = WAVE_T;
+    }
+  }
+
+  waveFins(obj, dt) {
+    const u = obj.userData;
+    const elsa = obj.children.find((c) => c.name === 'Elsa');
+    const { finL, finR } = elsa?.userData || {};
+    if (!finL || !finR) return;
+    if (u.elsaY === undefined) u.elsaY = elsa.position.y;
+    u.waveT = Math.max(0, u.waveT - dt);
+    // weich hinein und wieder heraus; animateElsa hat die Flossen in diesem Bild schon gesetzt
+    const f = Math.min(1, u.waveT / 0.5, (WAVE_T - u.waveT) / 0.25);
+    const w = 0.55 + 0.45 * Math.sin(this.time * 12);
+    finL.rotation.z += f * w * 0.9;
+    finR.rotation.z -= f * w * 0.9;
+    elsa.position.y = u.elsaY + f * Math.abs(Math.sin(this.time * 6)) * 0.1;
+  }
+
+  /** Bäume und Büsche um einen Ort herum entfernen, damit er nicht mitten im Gebüsch steht. */
+  clearAround(x, z, radius) {
+    const m = new THREE.Matrix4();
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (const name of ['conifer', 'decid', 'bush']) {
+      const { mesh } = this.inst[name];
+      for (let i = 0; i < mesh.count; i++) {
+        mesh.getMatrixAt(i, m);
+        const e = m.elements;
+        if (Math.hypot(e[12] - x, e[14] - z) < radius) mesh.setMatrixAt(i, zero);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
   placeRequest(slot, r) {
     r.built = true;
     const z = -r.s;
@@ -403,11 +520,18 @@ export class Scenery {
         obj.position.set(ROAD.right + 9, 0, z);
         this.animated.add(obj);
         break;
-      case 'elsa':
+      case 'elsa': {
         obj = this.acquire('elsaStatue', () => this.makeElsaStatue());
-        obj.position.set(ROAD.right + 8, 0, z);
+        // wo am Rand schon etwas steht (Navi-Ziel neben Schild oder Wand), weiter draußen in alter Größe
+        r.spot = this.statueFree(r.s, r) ? ELSA_STATUE : ELSA_FAR;
+        obj.position.set(r.spot.x, 0, z);
+        obj.scale.setScalar(r.spot.scale);
+        obj.userData.waveT = 0;
+        this.waveFins(obj, 0); // falls sie beim Abbau gerade winkte
+        this.clearAround(r.spot.x, z, ELSA_CLEAR);
         this.animated.add(obj);
         break;
+      }
       case 'burg':
         obj = this.acquire('burg', () => this.makeCastle());
         obj.position.set(160, 0, z - 60);

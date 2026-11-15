@@ -8,7 +8,8 @@ export class Input {
     this.throttle = 0;
     this.brake = 0;
     this.anyKey = false;
-    this.lastDevice = 'keyboard';
+    // bis zur ersten Eingabe: Handy und Tablet spielen mit den Touch-Knöpfen
+    this.lastDevice = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard';
     const map = {
       ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'gas', KeyW: 'gas',
       ArrowDown: 'brake', KeyS: 'brake', Space: 'horn', KeyE: 'wiper', KeyH: 'megafon', Escape: 'pause', KeyP: 'pause',

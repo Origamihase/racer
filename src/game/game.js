@@ -7,8 +7,18 @@ import {
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtNum, fmtClock } from '../util.js';
 import { Player, KMH } from './player.js';
 import { Navi, shortName } from './navi.js';
+import { Vector3 } from 'three';
+import { EYE } from '../cockpit/cockpit.js';
+import { ELSA_STATUE } from '../world/scenery.js';
+import { curvePoint } from '../curve.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
+// Rechts oben deckt der Innenspiegel aus Mini Adams Sicht ab etwa 17,8° rechts der Blickrichtung ab
+// (auf dem Handy hochkant endet dort fast schon das Bild): bis 16° steht Elsa frei in der Scheibe.
+const ELSA_VIEW = (16 * Math.PI) / 180;
+// Elsas Kopf an der Statue (Maßstab 1): Kronenspitze, Kinn und halbe Kopfbreite in Metern
+const ELSA_HEAD = { top: 5.65, chin: 3.1, half: 1.3 };
+const elsaTmp = new Vector3();
 
 export class Game {
   /**
@@ -246,6 +256,7 @@ export class Game {
     this.megafonCd = Math.max(0, this.megafonCd - dt);
 
     // --- Eingaben ------------------------------------------------------------
+    if (ctl.device) this.device = ctl.device;
     if (ctl.horn) this.honk();
     if (ctl.wiper) this.manualWiper();
     if (ctl.megafon) this.useMegafon();
@@ -271,7 +282,7 @@ export class Game {
     this.updateLeftLane(dt);
     this.updateWeather(dt, ds);
     this.updateNavi(dt);
-    this.updateEvents(dt);
+    this.updateEvents(dt, camera);
     this.updatePickups(dt, camera);
     this.updateViewers(dt);
     this.updateChat(dt);
@@ -541,7 +552,7 @@ export class Game {
   }
 
   // --- Ereignisse ------------------------------------------------------------------
-  updateEvents(dt) {
+  updateEvents(dt, camera) {
     const p = this.player;
     const T = this.T;
     for (const k of Object.keys(T)) T[k] -= dt;
@@ -679,19 +690,27 @@ export class Game {
     // Brunnen und Elsa am Straßenrand (Hupen bringt Bonus)
     if (!this.landmark && p.s > this.S.landmark) {
       const type = chance(0.55) ? 'brunnen' : 'elsa';
-      const s = p.s + 1500;
-      this.landmark = { type, s, seen: false, greeted: false };
-      this.scenery.request(type, s);
+      // hinten in einem Abschnitt ohne Lärmschutzwand und ohne Brücke davor
+      const s = this.scenery.landmarkSpot(p.s + 1500);
+      this.landmark = { type, s, seen: false, greeted: false, id: this.scenery.request(type, s) };
     }
     if (this.landmark) {
       const lm = this.landmark;
       const d = lm.s - p.s;
-      if (!lm.seen && d < 260) {
+      const elsa = lm.type === 'elsa';
+      const view = elsa && this.elsaView(lm, d, camera);
+      if (!lm.seen && (elsa ? d < view.show : d < 260)) {
         lm.seen = true;
         this.burst(lm.type === 'brunnen' ? CHAT.brunnen : CHAT.elsa, 3, 2);
-        this.ui.toast(lm.type === 'brunnen' ? '⛲ Ein Brunnen! Hupen für BrunnenTV (Leertaste)' : '👑 Elsa! Hupen zum Grüßen (Leertaste)', 'info');
+        const key = this.hornKey();
+        const t = this.ui.toast(lm.type === 'brunnen' ? `⛲ Ein Brunnen! Hupen für BrunnenTV (${key})` : `👑 Elsa! Hupen zum Grüßen (${key})`, 'info');
+        if (elsa) this.elsaToast(lm, t);
       }
-      if (!lm.greeted && d < 220 && d > -40 && this.t - this.lastHorn < 0.3) {
+      // Elsas Hinweise stehen nur, solange sie zu sehen ist (mindestens kurz, damit sie nicht nur aufblitzen),
+      // und nie über ihrem Kopf
+      const age = lm.toast ? this.t - lm.toastT : 0;
+      if (lm.toast && ((!view.visible && age > 1.2) || (view.covered && age > 0.4))) this.elsaToast(lm, null);
+      if (!lm.greeted && (elsa ? lm.seen : d < 220) && d > -40 && this.t - this.lastHorn < 0.3) {
         lm.greeted = true;
         if (lm.type === 'brunnen') {
           this.earn(10, 'BrunnenTV');
@@ -701,7 +720,11 @@ export class Game {
         } else {
           this.earn(10, 'Elsa-Gruß');
           this.cockpit.nomi.setMood('love', 2.5);
-          this.ui.toast('👑 Elsa winkt zurück!', 'good');
+          this.scenery.waveBack(lm.id);
+          // Antwort statt Hinweis; ist sie schon hinter dem Spiegel oder vorbei, winkt sie hinterher
+          this.elsaToast(lm, null);
+          const reply = this.ui.toast(view.visible ? '👑 Elsa winkt zurück!' : '👑 Elsa winkt dir hinterher!', 'good');
+          if (view.visible) this.elsaToast(lm, reply);
         }
         this.hype += 60;
       }
@@ -721,6 +744,49 @@ export class Game {
       else if (hour === 0) this.bot('hugo', 'Mitternacht! Der Stream läuft einfach weiter. 🌙');
       else if (hour < 6) this.bot('hugo', `Es ist ${hour} Uhr nachts. Sendezeit läuft immer noch.`);
     }
+  }
+
+  /**
+   * Elsa aus Mini Adams Sicht: frei zu sehen, solange sie weniger als ELSA_VIEW rechts der Blickrichtung steht
+   * (danach verdeckt sie der Innenspiegel). show: ab diesem Abstand kommt der Hinweis – sobald die Figur
+   * (4,3 m × Maßstab) 4 % der Bildhöhe hat, bei hohem Tempo etwas früher, damit er gut 1,5 s steht.
+   */
+  elsaView(lm, d, camera) {
+    const p = this.player;
+    const { x, scale } = this.scenery.placed(lm.id) || ELSA_STATUE;
+    const side = x - (p.x + EYE.x);
+    const visible = d > 0 && Math.atan2(side, d) - p.yaw < ELSA_VIEW;
+    const fov = ((camera?.fov || 58) * Math.PI) / 180;
+    const clear = (4.3 * scale) / (0.08 * Math.tan(fov / 2));
+    const show = Math.min(175, Math.max(clear, side / Math.tan(ELSA_VIEW) + p.speed * 1.5));
+    // Liegt ihr Kopf auf dem Bildschirm schon unter dem Hinweis (hochkant oder wenn die Mittelspalte
+    // weiter unten beginnt), kommt der Hinweis weg, sonst verdeckt er Krone und Augen.
+    let covered = false;
+    const r = lm.toast && camera && d > 0 ? lm.toast.el.getBoundingClientRect() : null;
+    if (r && r.width > 0) {
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      const at = (dx, y) => {
+        const v = curvePoint(elsaTmp.set(x + dx * scale, y * scale, -d)).project(camera);
+        return [((v.x + 1) / 2) * W, ((1 - v.y) / 2) * H];
+      };
+      const [l, top] = at(-ELSA_HEAD.half, ELSA_HEAD.top);
+      const [rt, chin] = at(ELSA_HEAD.half, ELSA_HEAD.chin);
+      covered = l < r.right + 6 && rt > r.left - 6 && top < r.bottom + 6 && chin > r.top - 6;
+    }
+    return { visible, show, covered };
+  }
+
+  /** Wie man hupt – passend zum Gerät, mit dem gerade gespielt wird. */
+  hornKey() {
+    return this.device === 'touch' ? '📯' : this.device === 'gamepad' ? 'A' : 'Leertaste';
+  }
+
+  /** Hinweis, der mit Elsa verschwindet (null: den bisherigen wegnehmen). */
+  elsaToast(lm, t) {
+    if (lm.toast && lm.toast !== t) lm.toast.drop?.();
+    lm.toast = t;
+    lm.toastT = this.t;
   }
 
   callPolice(text) {

@@ -176,11 +176,14 @@ export class UI {
   toast(text, kind = 'info', sub = '') {
     const t = el('div', 'toast toast-' + kind, this.toastsEl, text);
     if (sub) el('div', 'toast-sub', t, sub);
-    this.toasts.push({ el: t, t: sub ? 5 : 3.6 });
+    // drop(): Hinweis vorzeitig wegnehmen (z. B. wenn das, worauf er zeigt, nicht mehr zu sehen ist)
+    const rec = { el: t, t: sub ? 5 : 3.6, drop: () => (rec.t = Math.min(rec.t, 0)) };
+    this.toasts.push(rec);
     while (this.toasts.length > 4) {
       const old = this.toasts.shift();
       old.el.remove();
     }
+    return rec;
   }
 
   banner(text, dur = 3, sub = '') {
@@ -328,8 +331,11 @@ export class UI {
   // --- pro Bild ------------------------------------------------------------------------
   update(dt, g) {
     // Zeitgesteuerte Elemente
-    for (const t of this.toasts) t.t -= dt;
-    while (this.toasts.length && this.toasts[0].t <= 0) this.toasts.shift().el.remove();
+    for (const t of this.toasts) {
+      t.t -= dt;
+      if (t.t <= 0) t.el.remove();
+    }
+    this.toasts = this.toasts.filter((t) => t.t > 0);
     if (this.bannerT > 0) {
       this.bannerT -= dt;
       if (this.bannerT <= 0) this.bannerEl.classList.add('hidden');
