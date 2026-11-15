@@ -127,8 +127,12 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 /* Kamera-Wechsel („🎥 Drohne“): nur in der leeren Spalte – sonst zeigt der Bildwechsel selbst, was passiert ist */
 .camera-hint { background: var(--panel-strong); padding: 8px 16px; border-radius: 12px; font-weight: 700; font-size: 17px; animation: toastin 0.2s; }
 .nomi-sub:not(.hidden) ~ .camera-hint, .banner:not(.hidden) ~ .camera-hint, .toasts:not(:empty) ~ .camera-hint { display: none; }
-/* während eines Funklochs ist der Stream weg: nichts schimmert unter dem Funkloch-Kasten durch */
+/* während eines Funklochs ist der Stream weg: was unter dem Funkloch-Kasten läge, ist so lange ausgeblendet
+   (ui.js setzt .funk nur, wenn sich beide wirklich überschneiden) */
 .hud.funk .center-stack { visibility: hidden; }
+/* in der schmalen Spalte (Handy hochkant) liegen Untertitel und Hinweise über den seitlichen Rahmen-Streifen:
+   dann deckend, sonst scheint die Beschriftung der Streifen durch */
+.hud-narrow:has(.rahmen .strip) .nomi-sub, .hud-narrow:has(.rahmen .strip) .toast { background: rgb(12, 13, 17); }
 
 /* Chat */
 /* endet über dem Innenspiegel (dessen Oberkante liegt bei etwa einem Viertel der Bildhöhe) */
@@ -155,8 +159,11 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 @keyframes fadein2 { from { opacity: 0; transform: translateY(10px); } }
 /* Drohne: wo im Cockpit das Lenkrad ist, fährt hier das eigene Auto – die Durchsage rückt unter das Auto */
 body.drone .durchsage { bottom: max(10px, 2.5vh); }
-/* liegt sie dabei auf dem unteren Rahmen-Streifen, deckt sie ihn ganz ab, statt ihn durchscheinen zu lassen */
+/* liegt sie dabei auf dem unteren Rahmen-Streifen, deckt sie ihn ab, statt ihn durchscheinen zu lassen; was
+   links und rechts unter ihr hervorschauen würde (Stiele, halbe Steine), blendet so lange aus */
 .hud:has(.strip-bottom) .durchsage { background: rgb(40, 14, 60); }
+.strip-bottom { transition: opacity 0.3s; }
+body.drone .hud:has(> .durchsage:not(.hidden)) .rahmen:not(.corner-only) .strip-bottom { opacity: 0; }
 
 /* Funkloch */
 .funkloch { position: absolute; top: 40%; left: 0; right: 0; margin-inline: auto; width: fit-content; transform: translateY(-50%); background: rgba(30, 30, 30, 0.85); border: 1px solid var(--line); border-radius: 16px;
@@ -181,7 +188,13 @@ body.drone .durchsage { bottom: max(10px, 2.5vh); }
 /* Spender-Hinweis innen neben dem rechten Streifen, nicht darauf */
 .rahmen-caption { position: absolute; bottom: 12vh; right: calc(7.5vh + 10px); max-width: calc(100vw - 15vh - 20px); background: rgba(0,0,0,0.7); border-radius: 8px; padding: 4px 10px; font-size: 13px; font-weight: 700; z-index: 2; }
 /* in der Drohnenansicht gehört der Platz unten der Durchsage: der Hinweis steht dann rechts unter dem Chat */
-body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14px)); max-width: calc(min(310px, 30vw) - 7.5vh); }
+body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14px)); max-width: max(180px, calc(min(310px, 30vw) - 7.5vh)); overflow-wrap: anywhere; }
+/* schmale Fenster mit Maus: unter dem Chat beginnt dort die Mittelspalte – der Hinweis steht dann unten in der Mitte
+   über dem Streifen und wartet, solange eine Durchsage dort steht */
+@media (pointer: fine) {
+  body.drone .hud-narrow .rahmen-caption { left: 0; right: 0; margin-inline: auto; width: fit-content; top: auto; bottom: calc(7.5vh + 6px); max-width: calc(100vw - 15vh - 20px); text-align: center; }
+  body.drone .hud-narrow:has(> .durchsage:not(.hidden)) .rahmen-caption { visibility: hidden; }
+}
 .strip { position: absolute; display: flex; justify-content: space-around; align-items: center; font-family: var(--emoji); font-size: 5.4vh; line-height: 1; overflow: hidden; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
 /* die Ecken gehören dem oberen und unteren Streifen – die seitlichen enden davor, sonst liegt dort alles doppelt */
 .strip-top { top: 0; left: 0; right: 0; height: 7.5vh; }
@@ -277,7 +290,7 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .btn.danger { background: #8a1c1c; }
 
 .card { --pad-y: 26px; --pad-x: 30px; background: var(--panel-strong); border: 1px solid var(--line); border-radius: 18px; padding: var(--pad-y) var(--pad-x); width: 100%; max-width: 980px;
-  max-height: calc(100vh - 2 * var(--scr-pad)); overflow: auto; box-shadow: 0 24px 70px rgba(0,0,0,0.5); animation: cardin 0.35s ease-out; user-select: text; }
+  max-height: 100%; overflow: auto; box-shadow: 0 24px 70px rgba(0,0,0,0.5); animation: cardin 0.35s ease-out; user-select: text; }
 @keyframes cardin { from { opacity: 0; transform: translateY(14px) scale(0.98); } }
 /* Knopfzeile am Kartenende bleibt sichtbar, wenn der Inhalt darüber scrollt (Pause auf dem Handy, Shop, Steuerung bei 720p):
    über die ganze Kartenbreite deckend, der Inhalt läuft darüber weich aus und scheint nie hinter den Knöpfen durch */
@@ -394,6 +407,8 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
   /* Blitzerfoto oben rechts über dem Chat, damit es weder unten abgeschnitten noch von Touch-Knöpfen verdeckt wird */
   .photo { top: 14px; width: min(220px, 34vh); z-index: 6; }
   .title-hint { display: none; }
+  /* dort stünde in der Drohnenansicht auch der Rahmen-Hinweis: er wartet, bis das Foto wieder weg ist */
+  body.drone .hud:has(> .photo:not(.hidden)) .rahmen-caption { visibility: hidden; }
 }
 @media (pointer: coarse) {
   .title-hint { display: none; }
@@ -434,8 +449,15 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
   .durchsage-text { font-size: 14px; line-height: 1.3; }
   /* unter dem Auto ist auf dem Handy wenig Platz: ohne Kopfzeile (der Spender steht im Chat), nur das Mikro vor dem Text */
   body.drone .durchsage-head { display: none; }
-  body.drone .durchsage-text { font-size: 13px; }
+  body.drone .durchsage-text { font-size: 12.5px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
   body.drone .durchsage-text::before { content: '🎙️ '; font-style: normal; }
+}
+/* niedrige Fenster (Handy quer): auch im Cockpit nur zwei Zeilen ohne Kopfzeile – sonst wächst die Durchsage
+   über Banner und Untertitel der Mittelspalte (zu hören ist sie ganz, der Spender steht im Chat) */
+@media (max-height: 560px) {
+  .durchsage-head { display: none; }
+  .durchsage-text { font-size: 12.5px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+  .durchsage-text::before { content: '🎙️ '; font-style: normal; }
 }
 /* quer liegen unten rechts die Touch-Knöpfe (bzw. ist das Fenster niedrig) und oben rechts der Innenspiegel:
    im Cockpit steht der Rahmen-Hinweis dann unten in der Mitte über dem Streifen, eine Durchsage rückt so lange darüber */
@@ -445,8 +467,11 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 }
 /* Touch quer: Durchsage und Rahmen-Hinweis bleiben unten zwischen den beiden Knopfgruppen */
 @media (pointer: coarse) and (orientation: landscape) {
-  body.drone .durchsage { max-width: min(680px, calc(100vw - 432px)); }
+  body.drone .durchsage, body:not(.drone) .hud:has(.rahmen-caption) .durchsage { max-width: min(680px, calc(100vw - 432px)); }
   body:not(.drone) .rahmen-caption { max-width: min(560px, calc(100vw - 432px)); }
+  /* schmale Handys quer: Spalte, Spur-Balken und Funkloch-Kasten bleiben zwischen den Knopfgruppen */
+  .hud-narrow .center-stack, .hud-narrow .leftlane { width: min(460px, var(--mid), calc(100vw - 424px)); }
+  .hud-narrow .funkloch { max-width: min(460px, calc(100vw - 424px)); }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 560px) {
   .durchsage, body.drone .durchsage { max-width: min(560px, calc(100vw - 432px)); }
@@ -458,6 +483,11 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
   body:not(.drone) .rahmen-caption, body.drone .rahmen-caption { left: 0; right: 0; margin-inline: auto; width: fit-content; top: auto; bottom: var(--touch-top); max-width: calc(100vw - 15vh - 20px); text-align: center; }
   /* in der Drohnenansicht stünde die Durchsage darüber schon auf dem Auto: der Rahmen-Hinweis wartet so lange */
   body.drone .hud:has(.durchsage:not(.hidden)) .rahmen-caption { visibility: hidden; }
+}
+/* kleine Handys hochkant: zwischen Auto (endet bei ≈ 73 % der Höhe) und Knöpfen ist kein Platz – Durchsage und
+   Rahmen-Hinweis stehen dann im Himmel knapp über dem Dach (es beginnt bei ≈ 55 %) */
+@media (pointer: coarse) and (orientation: portrait) and (max-height: 820px) {
+  body.drone .durchsage, body.drone .rahmen-caption { bottom: calc(45vh + 8px); }
 }
 /* --- schmale Handys hochkant ---------------------------------------------------------- */
 @media (max-width: 480px) {

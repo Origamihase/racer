@@ -139,6 +139,7 @@ export class Menus {
             card.style.animation = 'none';
             card.scrollTop = st;
           }
+          this.watchScroll(this.screens.shop);
           const nb = this.screens.shop.querySelector(`[data-id="${id}"]`);
           const next = nb && !nb.disabled ? nb : this.screens.shop.querySelector('.btn.back');
           next?.focus({ preventScroll: true });
@@ -149,18 +150,21 @@ export class Menus {
       case 'toggle': {
         this.h.setting(b.dataset.key, !(b.dataset.on === '1'));
         this.render_settings(this.screens.settings, this.h.dataFor('settings'));
+        this.watchScroll(this.screens.settings);
         this.screens.settings.querySelector(`[data-key="${b.dataset.key}"]`)?.focus({ preventScroll: true });
         break;
       }
       case 'quality':
         this.h.setting('quality', b.dataset.value);
         this.render_settings(this.screens.settings, this.h.dataFor('settings'));
+        this.watchScroll(this.screens.settings);
         this.screens.settings.querySelector(`[data-value="${b.dataset.value}"]`)?.focus({ preventScroll: true });
         break;
       case 'reset':
         if (b.dataset.confirm === '1') {
           this.h.resetSave();
           this.render_settings(this.screens.settings, this.h.dataFor('settings'));
+          this.watchScroll(this.screens.settings);
         } else {
           b.dataset.confirm = '1';
           b.textContent = 'Wirklich alles löschen? Nochmal klicken';
@@ -256,7 +260,7 @@ export class Menus {
     for (const j of g.jobs) {
       const r = el('div', 'job' + (j.done ? ' done' : ''), jobs);
       el('span', 'job-box', r, j.done ? '✔' : '');
-      el('span', '', r, j.text);
+      el('span', 'job-text', r, j.text);
     }
     const menu = el('div', 'menu row', card);
     button(menu, '▶ Weiterfahren', 'resume', 'primary');
@@ -302,7 +306,7 @@ export class Menus {
     for (const j of o.jobs) {
       const row = el('div', 'job' + (j.done ? ' done' : ''), left);
       el('span', 'job-box', row, j.done ? '✔' : '');
-      el('span', '', row, j.text);
+      el('span', 'job-text', row, j.text);
     }
     const right = el('div', 'over-col', cols);
     el('h3', '', right, 'Statistik');

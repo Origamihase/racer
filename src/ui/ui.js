@@ -144,10 +144,25 @@ export class UI {
   }
 
   /**
+   * Der Stream ist weg: Untertitel, Banner und Hinweise sind so lange ausgeblendet – aber nur, wenn sie unter dem
+   * Funkloch-Kasten lägen (sonst schienen sie durch). Daneben bleiben sie stehen, auch NOMIs Funkloch-Ansage.
+   */
+  funkCover() {
+    let hit = false;
+    if (!this.funklochEl.classList.contains('hidden')) {
+      const f = this.funklochEl.getBoundingClientRect();
+      const s = this.stackEl.getBoundingClientRect();
+      hit = s.height > 0 && f.left < s.right && f.right > s.left && f.top < s.bottom + 6 && f.bottom > s.top - 6;
+    }
+    this.hud.classList.toggle('funk', hit);
+  }
+
+  /**
    * Läuft die Mittelspalte bis an die Sprachdurchsage, den Rahmen-Hinweis, die Touch-Knöpfe, das eigene Auto
    * (Drohnenansicht) oder den unteren Rand, gehen die ältesten Hinweise vorzeitig – der neueste bleibt immer stehen.
    */
   fitStack() {
+    this.funkCover();
     if (!this.toasts.length) return;
     const s = this.stackEl.getBoundingClientRect();
     if (!s.height) return;
@@ -277,8 +292,7 @@ export class UI {
 
   funkloch(on) {
     this.funklochEl.classList.toggle('hidden', !on);
-    // der Stream ist weg: Untertitel, Banner und Hinweise sind so lange ausgeblendet (sonst scheinen sie unter dem Kasten durch)
-    this.hud.classList.toggle('funk', on);
+    this.funkCover();
     this.liveBadge.classList.toggle('offline', on);
     this.liveBadge.textContent = on ? '● OFFLINE' : '● LIVE';
   }

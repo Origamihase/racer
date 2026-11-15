@@ -560,13 +560,46 @@ function localToWorld(v) {
 // Autos zu schnell) – und steigt rechtzeitig über Fahrzeuge, statt durch sie hindurchzufliegen.
 const ORBIT = { r: 8.5, xMin: ROAD.left + 0.25, xMax: ROAD.right + 0.4, yMax: 4.8, clear: 0.5, margin: 0.5, blend: 2.5, lead: 1.4 };
 const orbitPos = new THREE.Vector3();
-function orbitTarget(p) {
-  const a = stateT * 0.16 + 0.9;
+// Ist auf einer Seite des Autos zu wenig Platz für den vollen Bogen (rechte Spur, Standstreifen, an der
+// Mittelleitplanke), kehrt die Kamera genau hinter bzw. vor dem Auto um und schwingt auf der freien Seite hin und
+// her, statt sich dicht neben das Auto zu quetschen (dort wäre es plötzlich anderthalbmal so groß und hochkant
+// angeschnitten). Wechselt das Auto mitten im Bogen auf eine enge Spur, verlässt sie die enge Seite zügig auf dem
+// kürzesten Weg. Sie springt dabei nie quer durchs Bild.
+const ORBIT_SPEED = 0.16; // rad/s
+const orbit = { a: 0.9, dir: 1, leaving: false };
+function orbitBlocked(p, side) {
+  // im Titel zählt schon die Spur, auf die der Autopilot gerade wechselt: so ist die Kamera rechtzeitig weg
+  const xs = state === 'title' ? [p.x, ROAD.laneCenter(ap.lane)] : [p.x];
+  const room = (s) => Math.min(...xs.map((x) => (s > 0 ? ORBIT.xMax - x : x - ORBIT.xMin)));
+  return room(side) < ORBIT.r * 0.75 && room(-side) > room(side);
+}
+function orbitTarget(p, dt) {
+  orbit.leaving = false;
+  if (!drone.init) {
+    orbit.a = orbitBlocked(p, 1) ? -0.9 : 0.9;
+    orbit.dir = 1;
+  } else {
+    const side = Math.sin(orbit.a) >= 0 ? 1 : -1;
+    if (orbitBlocked(p, side)) {
+      orbit.dir = Math.cos(orbit.a) * side > 0 ? -1 : 1;
+      orbit.a += orbit.dir * ORBIT_SPEED * 4 * dt;
+      orbit.leaving = true;
+    } else {
+      const next = orbit.a + orbit.dir * ORBIT_SPEED * dt;
+      if ((Math.sin(next) >= 0 ? 1 : -1) !== side && orbitBlocked(p, -side)) orbit.dir = -orbit.dir;
+      else orbit.a = next;
+    }
+  }
+  const a = orbit.a;
   const t = orbitPos.set(Math.sin(a) * ORBIT.r, 2.4 + Math.sin(stateT * 0.3) * 0.6, Math.cos(a) * ORBIT.r).applyMatrix4(carMatrix);
-  // seitlich begrenzt: dort wird der Bogen flacher und dafür etwas höher
+  // seitlich begrenzt (falls das Auto mitten im Bogen die Spur wechselt): dort wird der Bogen flacher und etwas höher
   const over = Math.max(t.x - ORBIT.xMax, ORBIT.xMin - t.x, 0);
   t.x = clamp(t.x, ORBIT.xMin, ORBIT.xMax);
-  t.y += over * 0.3;
+  if (orbit.leaving && over > 0) {
+    // auf dem Weg weg von der engen Seite: den Abstand halten, indem die Kamera nach hinten bzw. vorne ausweicht
+    const dx = t.x - p.x;
+    t.z = (Math.cos(orbit.a) >= 0 ? 1 : -1) * Math.sqrt(Math.max(0, ORBIT.r * ORBIT.r - dx * dx));
+  } else t.y += over * 0.3;
   const base = t.y;
   for (const c of traffic.cars) {
     const need = c.v.height + ORBIT.clear;
@@ -600,7 +633,7 @@ function placeDrone(dt, mode) {
   let pos;
   let look;
   if (mode === 'orbit') {
-    pos = orbitTarget(p);
+    pos = orbitTarget(p, dt);
     look = new THREE.Vector3(0, 0.9, 0).applyMatrix4(carMatrix);
   } else {
     pos = new THREE.Vector3(-p.vx * 0.25, 3.3, 9.2).applyMatrix4(carMatrix);

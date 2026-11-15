@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { W } from '../curve.js';
 import { ROAD, roundRect } from '../textures.js';
-import { rand, pick, lerp } from '../util.js';
+import { rand, pick, lerp, smoothstep } from '../util.js';
 
 // Eingesammelt: so lange hüpft das Teil vor der Motorhaube hoch und schrumpft weg
 const TAKE_TIME = 0.4;
@@ -201,14 +201,17 @@ export class Pickups {
     this.items = [];
     this.pool = { charge: [], banana: [], koriander: [] };
     const glow = glowTexture();
+    // Der Schein liegt in derselben Ebene wie das Teil davor: ein paar Tiefenstufen nach hinten geschoben,
+    // damit er das Teil nie (je nach Rundung mal ja, mal nein) überstrahlt – sonst flimmert es und zeigt Streifen
+    const BEHIND = { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 4 };
     this.mats = {
       ring: W.basic({ color: new THREE.Color(0.25, 2.2, 0.9), toneMapped: true }),
       bolt: W.basic({ map: boltTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide }),
       bottle: W.basic({ map: bottleTexture(), transparent: true, alphaTest: 0.05, side: THREE.DoubleSide }),
       koriander: W.basic({ map: corianderTexture(), transparent: true, alphaTest: 0.05, side: THREE.DoubleSide }),
-      glowG: W.basic({ map: glow, color: 0x55ff99, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.8 }),
-      glowY: W.basic({ map: glow, color: 0xffd34d, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.6 }),
-      glowR: W.basic({ map: glow, color: 0xff6040, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.35 }),
+      glowG: W.basic({ ...BEHIND, map: glow, color: 0x55ff99, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.8 }),
+      glowY: W.basic({ ...BEHIND, map: glow, color: 0xffd34d, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.6 }),
+      glowR: W.basic({ ...BEHIND, map: glow, color: 0xff6040, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.35 }),
     };
     this.geo = {
       ring: new THREE.TorusGeometry(0.95, 0.09, 10, 40),
@@ -292,14 +295,19 @@ export class Pickups {
     for (const it of this.items) {
       if (!it.taken && collect && Math.abs(it.s - player.s) < 2.7 && Math.abs(it.x - player.x) < 1.55) {
         it.taken = true;
-        // nie hinter die Stoßstange (bei hohem Tempo liegt zwischen zwei Bildern gut ein Meter)
-        it.ahead = Math.max(it.s - player.s, 2.5);
+        // nie hinter der Stoßstange bleiben (bei hohem Tempo liegt zwischen zwei Bildern gut ein Meter). Was
+        // direkt vor dem Auto lag, rückt gleich nach vorne; seitlich neben den Türen eingesammelte Teile gleiten
+        // erst nach vorne, statt mit einem Satz vor der Haube zu stehen
+        it.from = it.s - player.s;
+        it.ahead = Math.max(it.from, 2.5);
+        if (Math.abs(it.x - player.x) < 1) it.from = it.ahead;
         got.push(it);
       } else if (it.taken) it.fade += dt;
       if (it.taken) {
         // fährt mit dem Auto mit (bleibt vor der Motorhaube), statt stehen zu bleiben und
         // durch Cockpit bzw. Drohnenkamera zu fliegen
-        it.s = player.s + it.ahead + 1.2 * Math.min(1, it.fade / TAKE_TIME);
+        const k = Math.min(1, it.fade / TAKE_TIME);
+        it.s = player.s + lerp(it.from, it.ahead, smoothstep(0, 0.4, k)) + 1.2 * k;
       }
       const rel = it.s - player.s;
       if (rel < -30 || (it.taken && it.fade > TAKE_TIME)) {

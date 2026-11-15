@@ -9,6 +9,8 @@ export const MEDIAN_X = -9.0; // Mitte der Mittelleitplanke
 export const ONCOMING = (x) => 2 * MEDIAN_X - x; // spiegelt eine x-Position auf die Gegenfahrbahn
 export const VIEW_BEHIND = 140;
 export const VIEW_AHEAD = 1700;
+// Helligkeit allen Grases (Bankett, Dämme an den Brücken): wird bei Regen dunkler, siehe setWet
+export const GRASS_TINT = new THREE.Color(1, 1, 1);
 
 /** z-Reihen: vorne dicht, in der Ferne grober (die Krümmung braucht Stützpunkte). */
 function makeRows(behind = VIEW_BEHIND, ahead = VIEW_AHEAD) {
@@ -84,6 +86,7 @@ export class Road {
     this.grassTex = grassTexture();
     this.grassTex.repeat.set(1, 1);
     this.grassMat = W.lambert({ map: this.grassTex });
+    this.grassMat.color = GRASS_TINT;
     const gUV = (x, y, z) => [x / 6, -z / 6];
     const verge = stripGeometry([
       { a: [ROAD.right, 0.0], b: [ROAD.right + 3.2, 0.15], uv: gUV },

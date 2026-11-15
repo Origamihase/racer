@@ -9,7 +9,7 @@ import { ROAD, signTexture, brownSignTexture, speedSignTexture, roundRect, grass
 import { colorize } from '../models/loft.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
 import { mulberry32, fbm1, smoothstep, pick } from '../util.js';
-import { MEDIAN_X, ONCOMING } from './road.js';
+import { MEDIAN_X, ONCOMING, GRASS_TINT } from './road.js';
 
 export const SEG = 100;
 const AHEAD = 17;
@@ -40,6 +40,8 @@ const WALL_GAP = new Set(['ziel', 'brunnen', 'elsa', 'sparkasse', 'kiosk', 'char
 const GAP_BEFORE = 140;
 const GAP_AFTER = 25;
 const WALL_MIN = 20;
+// Fuß des Burgbergs (Radius in m um die Burg, siehe makeCastle): darin stehen keine Häuser und keine Kirche
+const HILL_R = 97;
 
 const BANNERS = [
   'Grüße an Mini Adam!', 'Linke Spur freischalten: jetzt!', 'BrunnenTV Fanclub', 'Malte Malte Malte', 'Elsa ❤',
@@ -173,12 +175,14 @@ export class Scenery {
       dark: W.std({ color: 0x2a2b2e, roughness: 0.7 }),
       white: W.std({ color: 0xf2f2ef, roughness: 0.6 }),
       orange: W.std({ color: 0xe86b12, roughness: 0.6 }),
-      grass: W.lambert({ map: grassTexture() }), // wie das Bankett an der Fahrbahn
+      grass: W.lambert({ map: grassTexture() }), // wie das Bankett an der Fahrbahn (auch bei Regen gleich dunkel)
       stone: W.std({ color: 0xa79e8e, roughness: 0.95 }),
       water: W.std({ color: 0x9ccfff, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.55, envMapIntensity: 1.5 }),
       redRoof: W.std({ color: 0xa3402a, roughness: 0.8 }),
       glassBlue: W.std({ color: 0x5f7fa3, metalness: 0.8, roughness: 0.15, envMapIntensity: 1.2 }),
     };
+    this.mats.grass.color = GRASS_TINT;
+
     this.makeInstanced();
   }
 
@@ -253,15 +257,21 @@ export class Scenery {
     this.requests = this.requests.filter((q) => q !== r);
     // schon gebaute Ziel-Schilder und Wahrzeichen eines überbotenen Ziels wieder abbauen,
     // solange sie noch weit genug voraus stehen (direkt vor der Nase bleibt es lieber stehen)
+    let removed = false;
     if (removeBuilt && r.built && r.s > this.track.position.z + 150) {
       for (const slot of this.slots) {
         const i = slot.items.findIndex((o) => o.userData.requestId === id);
         if (i >= 0) {
           this.release(slot.items[i]);
           slot.items.splice(i, 1);
+          removed = true;
         }
       }
     }
+    // die Lücke in der Lärmschutzwand wieder schließen, aber nur, solange ihr Anfang noch weit voraus liegt
+    // (sonst wüchse die Wand vor der Nase aus dem Boden); bleibt das Ziel stehen, bleibt auch die Lücke
+    const far = r.s - GAP_BEFORE - WALL_MIN > this.track.position.z + 300;
+    if (WALL_GAP.has(r.type) && (removed || !r.built) && far) this.refreshWalls(r.s);
   }
 
   /** Alles abbauen (neue Fahrt beginnt wieder bei 0 km). */
@@ -437,8 +447,10 @@ export class Scenery {
     for (const r of this.requests) {
       if (!r.built && r.s >= s0 && r.s < s0 + SEG) this.placeRequest(slot, r);
       // (die Grundflächen reichen höchstens gut 300 m weit, siehe plantFree)
-      const free = Math.abs(r.s - s0 - SEG / 2) < 400 && this.plantFree(r);
+      const near = Math.abs(r.s - s0 - SEG / 2) < 400;
+      const free = near && this.plantFree(r);
       if (free) this.clearPlants(free, slotIdx);
+      if (near) this.clearHill(r, slotIdx);
     }
 
     for (const name of Object.keys(this.inst)) {
@@ -620,6 +632,24 @@ export class Scenery {
     return null;
   }
 
+  /**
+   * Steht die Burg neben einem Dorf: Häuser und Kirche, die im Burgberg stecken würden, abräumen (nur in
+   * Segment slotIdx oder überall). Häuser sind bis knapp 10 m, die Kirche bis 14 m um ihren Mittelpunkt groß.
+   */
+  clearHill(r, slotIdx = -1) {
+    if (r.type !== 'burg') return;
+    const cz = -r.s - 60; // wie in placeRequest
+    this.clearPlants((x, z) => Math.hypot(x - 160, z - cz) < HILL_R + 10, slotIdx, ['house', 'roof']);
+    this.slots.forEach((slot, i) => {
+      if (slotIdx >= 0 && i !== slotIdx) return;
+      slot.items = slot.items.filter((o) => {
+        const buried = o.userData.type === 'church' && Math.hypot(o.position.x - 160, o.position.z - cz) < HILL_R + 14;
+        if (buried) this.release(o);
+        return !buried;
+      });
+    });
+  }
+
   /** Neues Navi-Ziel oder Wahrzeichen bei s: schon stehende Wandsegmente in der Nähe neu zuschneiden. */
   refreshWalls(s) {
     for (const slot of this.slots) {
@@ -694,6 +724,7 @@ export class Scenery {
     // Bäume, die schon im Weg stehen (auch in den Nachbarsegmenten), verschwinden
     const free = this.plantFree(r);
     if (free) this.clearPlants(free);
+    this.clearHill(r);
   }
 
   // --- Bauteile --------------------------------------------------------
