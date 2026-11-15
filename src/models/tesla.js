@@ -57,6 +57,40 @@ const GLASS_N = 3.2;
 const GLASS_TW = 0.76;
 const GLASS = { w: glassHalf, b: (u) => topLine(u) - 0.05, t: glassTop, tw: GLASS_TW, bw: 1, n: GLASS_N, L };
 const bodyPoint = (u, phi, target) => loftPoint(BODY, u, phi, target);
+// Karosserie ohne Radlauf-Ausschnitt: Umriss für die Stirnwände in den Radläufen
+const BODY_UNCUT = { ...BODY, bx: null };
+
+/**
+ * Stirnwand im Radlauf bei u (Seite s): von der Innenwand (x = 0,415) bis zur Außenhaut und vom
+ * Unterboden bis knapp über die Radmitte. Folgt dem gerundeten Querschnitt, ragt also nirgends heraus.
+ */
+function archEndWall(u, s, xi = 0.415, yTop = 0.345) {
+  const p = new THREE.Vector3();
+  const pts = [];
+  let prev = null;
+  for (let i = 0; i <= 96; i++) {
+    loftPoint(BODY_UNCUT, u, -Math.PI / 2 + (i / 96) * (Math.PI / 2), p);
+    // ein paar Millimeter nach innen, die Loft-Fläche zwischen den Querschnitten ist etwas flacher
+    const cur = [p.x - 0.005, p.y + 0.003];
+    if (prev) {
+      if (prev[0] < xi && cur[0] >= xi) {
+        const k = (xi - prev[0]) / (cur[0] - prev[0]);
+        pts.push([xi, prev[1] + k * (cur[1] - prev[1])]);
+      }
+      if (cur[1] >= yTop) {
+        const k = (yTop - prev[1]) / (cur[1] - prev[1]);
+        pts.push([prev[0] + k * (cur[0] - prev[0]), yTop]);
+        break;
+      }
+      if (cur[0] >= xi) pts.push(cur);
+    }
+    prev = cur;
+  }
+  pts.push([xi, yTop]);
+  const g = new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(s * x, y))));
+  g.translate(0, 0, uToZ(u));
+  return g;
+}
 const glassPoint = (u, phi, target) => loftPoint(GLASS, u, phi, target);
 const lerp = (a, b, t) => a + (b - a) * t;
 /** Ab diesem Winkel beginnt das schwarze Glasdach (darunter die Seitenscheiben). */
@@ -190,12 +224,9 @@ export function buildTesla() {
       wall.rotateY(Math.PI / 2);
       wall.translate(s * 0.415, 0.335, uToZ(u));
       wellParts.push(liner, wall);
-      // senkrechte Stirnwände vorne und hinten im Radlauf (unterhalb der Radmitte), sonst glänzt dort Lack
-      for (const e of [-1, 1]) {
-        const end = new THREE.PlaneGeometry(0.5, 0.18);
-        end.translate(s * 0.665, 0.255, uToZ(u + e * (0.405 - 0.012)));
-        wellParts.push(end);
-      }
+      // senkrechte Stirnwände vorne und hinten im Radlauf (unterhalb der Radmitte), sonst glänzt dort Lack;
+      // sie folgen dem Querschnitt der Karosserie, damit unten nichts wie ein Schmutzfänger heraussteht
+      for (const e of [-1, 1]) wellParts.push(archEndWall(u + e * (0.405 - 0.012), s));
     }
   }
   root.add(new THREE.Mesh(mergeGeometries(wellParts.map((g) => (g.index ? g.toNonIndexed() : g))), dark));
