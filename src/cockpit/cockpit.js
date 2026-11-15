@@ -475,7 +475,7 @@ export class Cockpit {
 
   /** Kamera-Pose (Weltkoordinaten) aus Fahrzeug-Transformation + Kopfbewegung. */
   placeCamera(camera, carMatrix, t, speed, latAcc, dt) {
-    this.shake = Math.max(0, this.shake - dt * 1.6);
+    // das Abklingen von shake passiert einmal pro Bild im Hauptprogramm (auch in Drohne, Pause, Abspann)
     const vib = Math.min(1, speed / 60) * 0.0025 + this.shake * 0.03;
     this.headOffset.x = damp(this.headOffset.x, clamp(-latAcc * 0.006, -0.05, 0.05), 4, dt);
     const ox = this.headOffset.x + (Math.sin(t * 37) * 0.5 + Math.sin(t * 23) * 0.5) * vib;

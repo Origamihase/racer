@@ -23,7 +23,9 @@ export class Input {
       if (a) {
         if (!this.keys.has(a)) this.pressed.add(a);
         this.keys.add(a);
-        if (['left', 'right', 'gas', 'brake', 'horn'].includes(a)) e.preventDefault();
+        // Fahrtasten nicht scrollen lassen, aber Leertaste/Pfeile auf Menü-Knöpfen dem Browser überlassen
+        const onButton = e.target && e.target.tagName === 'BUTTON' && e.target.offsetParent !== null;
+        if (['left', 'right', 'gas', 'brake', 'horn'].includes(a) && !onButton) e.preventDefault();
       }
     });
     window.addEventListener('keyup', (e) => {
@@ -74,12 +76,14 @@ export class Input {
       if (p.buttons[12]?.pressed) gas = 1;
       if (p.buttons[13]?.pressed) brake = 1;
       const btn = (i, action) => {
+        // pro Gamepad merken, sonst löst ein zweites Pad den Knopf in jedem Bild neu aus
+        const key = p.index + ':' + i;
         const down = !!p.buttons[i]?.pressed;
-        if (down && !this.padPrev[i]) {
+        if (down && !this.padPrev[key]) {
           this.pressed.add(action);
           this.anyKey = true;
         }
-        this.padPrev[i] = down;
+        this.padPrev[key] = down;
       };
       btn(0, 'horn');
       btn(2, 'wiper');

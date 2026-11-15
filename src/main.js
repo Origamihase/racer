@@ -104,6 +104,31 @@ quad.frustumCulled = false;
 compScene.add(quad);
 const compCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const U = compMat.uniforms;
+// Überblendung und Blitz auch über dem Cockpit (das wird erst nach dem Weltbild gezeichnet)
+const overlayScene = new THREE.Scene();
+const overlayMat = new THREE.ShaderMaterial({
+  uniforms: { uFade: U.uFade, uFlash: U.uFlash, uFlashColor: U.uFlashColor },
+  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: `
+    uniform float uFade;
+    uniform float uFlash;
+    uniform vec3 uFlashColor;
+    void main() {
+      // wie im Weltbild: erst zum Blitzlicht mischen, dann abdunkeln (vormultipliziert)
+      float f = clamp(uFlash, 0.0, 1.0);
+      float k = 1.0 - clamp(uFade, 0.0, 1.0);
+      gl_FragColor = vec4(min(uFlashColor * 4.0, vec3(1.0)) * f * k, 1.0 - (1.0 - f) * k);
+    }`,
+  transparent: true,
+  depthTest: false,
+  depthWrite: false,
+  blending: THREE.CustomBlending,
+  blendSrc: THREE.OneFactor,
+  blendDst: THREE.OneMinusSrcAlphaFactor,
+});
+const overlayQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), overlayMat);
+overlayQuad.frustumCulled = false;
+overlayScene.add(overlayQuad);
 
 // Kofferraum-Ansicht für den Innenspiegel (Bitspende „Kofferraum öffnen“)
 const trunkTex = (() => {
@@ -251,7 +276,8 @@ const menus = new Menus(app, {
     if (name === 'settings') return { ...settings, speechSupported: speech.supported };
     if (name === 'title') return save;
     if (name === 'pause') return game;
-    if (name === 'over') return lastOver || data;
+    // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
+    if (name === 'over') return lastOver ? { ...lastOver, wallet: save.wallet } : data;
     return data;
   },
   buy: (id) => {
@@ -312,6 +338,15 @@ function applySettings(key) {
         if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => (m.needsUpdate = true));
       });
     }
+    // neue Schattenauflösung: alte Schattenkarte verwerfen, three.js legt sie passend neu an
+    const sh = sky.sun.shadow;
+    if (sh.mapSize.x !== quality.shadowSize) {
+      sh.mapSize.set(quality.shadowSize, quality.shadowSize);
+      if (sh.map) {
+        sh.map.dispose();
+        sh.map = null;
+      }
+    }
     worldRT.samples = quality.msaa;
     worldRT.dispose();
     onResize();
@@ -322,6 +357,7 @@ function toTitle() {
   state = 'title';
   stateT = 0;
   paused = false;
+  cockpit.shake = 0;
   view = 'cockpit';
   ui.show(false);
   speech.stopAll();
@@ -343,7 +379,9 @@ function startRun() {
   view = 'cockpit';
   ui.show(false);
   fxState.fade = 1;
-  input.pressed.clear();
+  cockpit.shake = 0;
+  // die Taste, die „Losfahren“ ausgelöst hat, soll den Kameraschwenk nicht gleich überspringen
+  input.endFrame();
 }
 
 function resume() {
@@ -579,7 +617,8 @@ function renderWorld(cam, { cockpitOn, drops }) {
 
 function renderFrame(cockpitOn) {
   frameNo++;
-  if (cockpitOn && fxState.trunk <= 0 && frameNo % quality.mirrorEvery === 0) {
+  // Während der Kofferraum-Einlage zeigt nur der Innenspiegel das Bild, der Außenspiegel läuft weiter
+  if (cockpitOn && frameNo % quality.mirrorEvery === 0) {
     // Rückspiegel: Blick nach hinten
     rearCam.position.copy(localToWorld(tmpV2.set(0, 1.32, 0.9)));
     rearCam.lookAt(localToWorld(tmpV2.set(0, 1.05, 40)));
@@ -601,6 +640,7 @@ function renderFrame(cockpitOn) {
     renderer.autoClear = false;
     renderer.clearDepth();
     renderer.render(cockpit.scene, cockpitCam);
+    if (U.uFade.value > 0.002 || U.uFlash.value > 0.002) renderer.render(overlayScene, compCam);
     renderer.autoClear = true;
   }
 }
@@ -644,7 +684,9 @@ let last = performance.now();
 let simT = 0;
 const menuPad = { prev: {} };
 
-function pollMenuPad() {
+/** Gamepad im Menü. Die Kanten werden in jedem Bild verfolgt, ausgelöst wird nur bei offenem Menü
+ * (sonst schließt der Start-Knopf, der gerade pausiert hat, das Pausenmenü im nächsten Bild wieder). */
+function pollMenuPad(active) {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (const pd of pads) {
     if (!pd) continue;
@@ -655,7 +697,9 @@ function pollMenuPad() {
     let dir = 0;
     if (edge('up')) dir = -1;
     if (edge('down')) dir = 1;
-    if (dir || edge('a') || edge('b') || edge('start')) menus.pad(dir, edge('a') || (edge('start') && menus.current !== 'pause'), edge('b') || (edge('start') && menus.current === 'pause'));
+    if (active && (dir || edge('a') || edge('b') || edge('start'))) {
+      menus.pad(dir, edge('a') || (edge('start') && menus.current !== 'pause'), edge('b') || (edge('start') && menus.current === 'pause'));
+    }
     menuPad.prev = now;
     return;
   }
@@ -676,7 +720,7 @@ function step(dt, { render = true } = {}) {
   simT += dt;
   stateT += dt;
   input.poll();
-  if (menus.open) pollMenuPad();
+  pollMenuPad(menus.open);
   const p = game.player;
   let ctl = null;
   let cockpitOn = false;
@@ -688,11 +732,13 @@ function step(dt, { render = true } = {}) {
     applySettings('sound');
     storeSave(save);
     ui.toast(settings.sound ? '🔊 Ton an' : '🔇 Ton aus', 'info');
+    menus.refresh('settings');
   }
   if (input.take('chat')) {
     settings.chat = !settings.chat;
     applySettings('chat');
     storeSave(save);
+    menus.refresh('settings');
   }
 
   switch (state) {
@@ -706,7 +752,7 @@ function step(dt, { render = true } = {}) {
       break;
     }
     case 'intro': {
-      if (input.anyKey || input.take('confirm')) introSkip = true;
+      if (stateT > 0.3 && (input.anyKey || input.take('confirm'))) introSkip = true;
       if (introSkip && stateT < INTRO_SWITCH - 0.25) stateT = INTRO_SWITCH - 0.25;
       ctl = autopilot(dt, 100, false);
       ap.lane = 3;
@@ -780,6 +826,8 @@ function step(dt, { render = true } = {}) {
       const stop = { steer: 0, throttle: 0, brake: 0.5, horn: false, wiper: false, megafon: false };
       p.update(dt, stop, { wet: game.weather.level });
       traffic.update(dt, simT, p, { difficulty: 0.2, leftOpen: false, rain: game.weather.level });
+      // Sammelsachen bleiben an ihrem Platz auf der Straße (eingesammelt wird nichts mehr)
+      pickups.update(dt, simT, p, camera, false);
       updateCarMatrix();
       placeDrone(dt, 'orbit');
       adamWave = stateT > 1 ? 1 : 0;
@@ -829,6 +877,7 @@ function step(dt, { render = true } = {}) {
   });
 
   // Effekte
+  cockpit.shake = Math.max(0, cockpit.shake - dt * 1.6);
   fxState.flash = Math.max(0, fxState.flash - dt * 3.5);
   fxState.glitch = Math.max(0, fxState.glitch - dt);
   fxState.green = Math.max(0, fxState.green - dt);
@@ -843,7 +892,8 @@ function step(dt, { render = true } = {}) {
   if (DEBUG && window.__MA && window.__MA.camHook) window.__MA.camHook(camera, carMatrix);
   document.body.classList.toggle('playing', state === 'drive' && !paused);
   if (render) renderFrame(cockpitOn);
-  ui.update(dt, state === 'drive' || state === 'intro' ? game : null);
+  // in der Pause bleiben Banner, Geld-Anzeigen und Funkloch stehen
+  ui.update(paused ? 0 : dt, state === 'drive' || state === 'intro' ? game : null);
   input.endFrame();
 }
 
@@ -867,7 +917,11 @@ function demoScreen() {
 window.addEventListener('pointerdown', () => audio.init());
 window.addEventListener('keydown', () => audio.init());
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) pause();
+  // im Hintergrund läuft requestAnimationFrame nicht, also den Ton direkt anhalten
+  if (document.hidden) {
+    pause();
+    audio.suspend();
+  } else audio.resume();
 });
 
 function boot() {

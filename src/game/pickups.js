@@ -248,7 +248,7 @@ export class Pickups {
   }
 
   /** Gibt eingesammelte Teile zurück. */
-  update(dt, t, player, camera) {
+  update(dt, t, player, camera, collect = true) {
     const got = [];
     const keep = [];
     for (const it of this.items) {
@@ -266,7 +266,7 @@ export class Pickups {
       const yaw = Math.atan2(camera.position.x - it.x, camera.position.z + rel);
       for (const f of o.userData.face) f.rotation.y = yaw;
       if (!it.taken) {
-        if (Math.abs(rel) < 2.7 && Math.abs(it.x - player.x) < 1.55) {
+        if (collect && Math.abs(rel) < 2.7 && Math.abs(it.x - player.x) < 1.55) {
           it.taken = true;
           got.push(it);
         }

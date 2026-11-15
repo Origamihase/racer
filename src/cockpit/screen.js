@@ -350,8 +350,8 @@ export class CenterScreen {
     strokePath(hwy, T.hwyCase, 17);
     strokePath(hwy, T.hwy, 12);
 
-    // Route
-    if (nv.target) {
+    // Route (nach der Ankunft gibt es keine, bis das nächste Gebot kommt)
+    if (nv.target && !nv.arrived) {
       const rec = nv.recalc || 0;
       const sT = s0 + remaining;
       const side = nv.side || 1;
@@ -449,18 +449,18 @@ export class CenterScreen {
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'left';
       ctx.font = 'bold 30px "Helvetica Neue", Arial, sans-serif';
-      const instr = nv.wende && nv.wendeS > s0 ? 'Bitte wenden' : remaining > 400 ? 'A7 folgen' : 'Ausfahrt nehmen';
+      const instr = nv.arrived ? 'Ziel erreicht' : nv.wende && nv.wendeS > s0 ? 'Bitte wenden' : remaining > 400 ? 'A7 folgen' : 'Ausfahrt nehmen';
       const nextDist = nv.wende && nv.wendeS > s0 ? nv.wendeS - s0 : Math.max(0, remaining - 260);
       ctx.fillText(this.arrowFor(instr) + '  ' + instr, x0 + 38, 112);
       ctx.font = '600 28px "Helvetica Neue", Arial, sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText(fmtDist(nextDist), CW - 36, 112);
+      if (!nv.arrived) ctx.fillText(fmtDist(nextDist), CW - 36, 112);
       ctx.textAlign = 'left';
       ctx.font = '26px "Helvetica Neue", Arial, sans-serif';
-      const right = fmtDist(remaining) + ' · ' + (nv.eta || '');
+      const right = nv.arrived ? '' : fmtDist(remaining) + (nv.eta ? ' · ' + nv.eta : '');
       const rightW = ctx.measureText(right).width;
       ctx.fillStyle = '#c9d6ff';
-      fitText(ctx, '🏁 ' + nv.target, x0 + 38, 160, CW - 36 - rightW - 26 - (x0 + 38), 20);
+      fitText(ctx, (nv.arrived ? '⏳ ' : '🏁 ') + nv.target, x0 + 38, 160, CW - 36 - rightW - 26 - (x0 + 38), 20);
       ctx.font = '26px "Helvetica Neue", Arial, sans-serif';
       ctx.textAlign = 'right';
       ctx.fillStyle = '#ffffff';
@@ -481,6 +481,7 @@ export class CenterScreen {
   }
 
   arrowFor(instr) {
+    if (instr === 'Ziel erreicht') return '✓';
     if (instr === 'Bitte wenden') return '↶';
     if (instr === 'Ausfahrt nehmen') return '↗';
     return '↑';
@@ -510,9 +511,16 @@ export class CenterScreen {
     icons.forEach((ic, i) => ctx.fillText(ic, 70 + i * 90, CH - 32));
     ctx.font = '600 26px "Helvetica Neue", Arial, sans-serif';
     ctx.fillStyle = '#e6e8eb';
-    ctx.fillText('21,0 °', CW - 150, CH - 32);
-    ctx.fillStyle = st.wiperOn ? '#4c8dff' : '#e6e8eb';
-    ctx.fillText(st.wiperOn ? 'Wischer: Auto (Beta)' : '', CW - 360, CH - 32);
+    ctx.textAlign = 'right';
+    ctx.fillText('21,0 °', CW - 26, CH - 32);
+    if (st.wiperOn) {
+      // rechts neben den Symbolen (die enden bei x ≈ 630), damit sich nichts überlappt
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#4c8dff';
+      ctx.font = '600 22px "Helvetica Neue", Arial, sans-serif';
+      fitText(ctx, 'Wischer: Auto (Beta)', 656, CH - 32, CW - 130 - 656, 14);
+    }
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
   }
 }

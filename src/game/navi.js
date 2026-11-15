@@ -46,7 +46,8 @@ export class Navi {
   }
 
   set(s, target, bidder, { first = false } = {}) {
-    for (const id of this.requests) this.scenery.cancel(id);
+    // Überboten: Schild und Wahrzeichen des alten Ziels verschwinden. Schon angekommen: alles bleibt stehen.
+    for (const id of this.requests) this.scenery.cancel(id, !this.arrived);
     this.requests = [];
     this.target = target;
     this.bidder = bidder;
@@ -92,7 +93,8 @@ export class Navi {
         break;
     }
     if (/Burg|Wartburg/.test(t.name)) req('burg', S - 40);
-    if (/Frankfurt/.test(t.name)) req('skyline', S);
+    // Skyline hinter dem Ziel, damit ihr Segment erst abgebaut wird, wenn die Türme hinter uns liegen
+    if (/Frankfurt/.test(t.name)) req('skyline', S + 300);
   }
 
   get remaining() {
@@ -120,7 +122,8 @@ export class Navi {
     const remaining = Math.max(0, this.targetS - s);
     const eta = clockMin + (remaining / clamp(speed, 20, 70)) * 0.5;
     return {
-      target: this.arrived ? 'Ziel erreicht – warte auf neues Gebot …' : this.target.name,
+      target: this.arrived ? 'Warte auf das nächste Gebot …' : this.target.name,
+      arrived: this.arrived,
       remaining,
       recalc: this.recalc,
       side: this.side,

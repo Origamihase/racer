@@ -52,13 +52,15 @@ export class UI {
     const bar = el('div', 'leftlane-bar', this.leftLaneEl);
     this.leftLaneFill = el('div', 'leftlane-fill', bar);
     this.naviEl = el('div', 'navi-line', this.hud, '');
-    this.nomiEl = el('div', 'nomi-sub hidden', this.hud);
+    // NOMI-Untertitel, Banner und Hinweise teilen sich eine Spalte (siehe .center-stack)
+    const stack = el('div', 'center-stack', this.hud);
+    this.nomiEl = el('div', 'nomi-sub hidden', stack);
     const eyes = el('span', 'nomi-eyes', this.nomiEl);
     el('i', '', eyes);
     el('i', '', eyes);
     this.nomiText = el('span', 'nomi-text', this.nomiEl, '');
-    this.bannerEl = el('div', 'banner hidden', this.hud, '');
-    this.toastsEl = el('div', 'toasts', this.hud);
+    this.bannerEl = el('div', 'banner hidden', stack, '');
+    this.toastsEl = el('div', 'toasts', stack);
 
     // --- rechts: Chat ---
     this.chatEl = el('div', 'chat', this.hud);
@@ -108,9 +110,9 @@ export class UI {
     this.bannerEl.classList.add('hidden');
     this.nomiEl.classList.add('hidden');
     this.durchsageEl.classList.add('hidden');
-    this.funklochEl.classList.add('hidden');
     this.photoEl.classList.add('hidden');
-    this.liveBadge.classList.remove('offline');
+    // Funkloch-Anzeige samt „● LIVE“-Schild zurück (eine Fahrt kann mitten im Funkloch enden)
+    this.funkloch(false);
     this.bannerT = this.nomiT = this.durchsageT = this.photoT = 0;
   }
 
@@ -158,9 +160,14 @@ export class UI {
   }
 
   money(amount, label) {
+    while (this.moneyPops.childElementCount > 3) this.moneyPops.firstElementChild.remove();
+    // gleichzeitige Gutschriften untereinander statt übereinander
+    const now = performance.now();
+    const fresh = [...this.moneyPops.children].filter((c) => now - c._t < 700).length;
     const p = el('div', 'money-pop ' + (amount >= 0 ? 'plus' : 'minus'), this.moneyPops, (amount >= 0 ? '+' : '−') + fmtCent(Math.abs(amount)) + (label ? ' · ' + label : ''));
+    p._t = now;
+    p.style.top = fresh * 18 + 'px';
     setTimeout(() => p.remove(), 1900);
-    while (this.moneyPops.childElementCount > 4) this.moneyPops.firstElementChild.remove();
   }
 
   durchsage(voiceLabel, text, dur, buyer) {

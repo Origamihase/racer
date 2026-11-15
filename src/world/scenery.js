@@ -190,9 +190,21 @@ export class Scenery {
     return id;
   }
 
-  cancel(id) {
+  cancel(id, removeBuilt = true) {
     const r = this.requests.find((q) => q.id === id);
-    if (r && !r.built) this.requests = this.requests.filter((q) => q !== r);
+    if (!r) return;
+    this.requests = this.requests.filter((q) => q !== r);
+    // schon gebaute Ziel-Schilder und Wahrzeichen eines überbotenen Ziels wieder abbauen,
+    // solange sie noch weit genug voraus stehen (direkt vor der Nase bleibt es lieber stehen)
+    if (removeBuilt && r.built && r.s > this.track.position.z + 150) {
+      for (const slot of this.slots) {
+        const i = slot.items.findIndex((o) => o.userData.requestId === id);
+        if (i >= 0) {
+          this.release(slot.items[i]);
+          slot.items.splice(i, 1);
+        }
+      }
+    }
   }
 
   /** Alles abbauen (neue Fahrt beginnt wieder bei 0 km). */
@@ -339,7 +351,7 @@ export class Scenery {
     // Schilderbrücke mit Navi-Ziel
     if (k % 13 === 7) {
       const g = this.acquire('gantry', () => this.makeGantry());
-      this.labelGantry(g, rnd);
+      this.labelGantry(g, rnd, s0 + 50);
       g.position.set(0, 0, z0 - 50);
       slot.items.push(g);
     } else if (k % 23 === 15) {
@@ -402,7 +414,7 @@ export class Scenery {
         break;
       case 'skyline':
         obj = this.acquire('skyline', () => this.makeSkyline());
-        obj.position.set(-150, 0, z - 250);
+        obj.position.set(-75, 0, z);
         break;
       case 'sparkasse':
         obj = this.acquire('sparkasse', () => this.makeSparkasse());
@@ -425,6 +437,7 @@ export class Scenery {
         break;
       case 'blitzer':
         obj = this.acquire('blitzer', () => this.makeBlitzer());
+        obj.userData.flash.material.color.setScalar(1); // falls eine Fahrt mitten im Blitz endete
         obj.position.set(ROAD.right + 1.6, 0, z);
         break;
       case 'speed': {
@@ -537,16 +550,34 @@ export class Scenery {
     return g;
   }
 
-  labelGantry(g, rnd) {
-    const info = this.gantryInfo();
+  /** Navi-Ziel geändert: die Navi-Tafeln der stehenden Schilderbrücken neu beschriften. */
+  relabelGantries() {
+    const pool = this.pools.get('gantry');
+    if (!pool || !this.gantryInfo) return;
+    for (const g of pool) {
+      if (g.userData.active && g.userData.sSign !== undefined) this.labelGantry(g, Math.random, g.userData.sSign, true);
+    }
+  }
+
+  /** sSign: Position der Schilderbrücke (die Entfernung zum Navi-Ziel gilt ab dem Schild). */
+  labelGantry(g, rnd, sSign, onlyNavi = false) {
+    g.userData.sSign = sSign;
+    const info = this.gantryInfo(sSign);
     const [a, b] = g.userData.panels;
     const kmTxt = (km) => km.toLocaleString('de-DE', { maximumFractionDigits: km < 10 ? 1 : 0 }) + ' km';
-    const p1 = pick(PLACES);
-    let p2 = pick(PLACES);
-    if (p2 === p1) p2 = 'Würzburg';
-    const tA = signTexture([{ left: info.target, right: kmTxt(info.km) }, { left: 'Navi-Ziel', right: '↑' }], { w: 768, h: 288, arrows: null });
+    // keine Stadt doppelt: weder auf beiden Tafeln noch zusätzlich zum Navi-Ziel
+    const pool = PLACES.filter((p) => !info || p !== info.target);
+    const p1 = pick(pool);
+    let p2 = pick(pool);
+    while (p2 === p1) p2 = pick(pool);
+    let p0 = pick(pool);
+    while (p0 === p1 || p0 === p2) p0 = pick(pool);
+    // liegt das Navi-Ziel schon vor dem Schild, zeigt es einfach zwei Orte
+    const tA = info
+      ? signTexture([{ left: info.target, right: kmTxt(info.km) }, { left: 'Navi-Ziel', right: '↑' }], { w: 768, h: 288, arrows: null })
+      : signTexture([{ left: p0, right: kmTxt(3 + Math.floor(rnd() * 20)) }, { left: 'Rastanlage', right: kmTxt(1 + Math.floor(rnd() * 9)) }], { w: 768, h: 288, arrows: null });
     const tB = signTexture([{ left: p1, right: kmTxt(5 + Math.floor(rnd() * 60)) }, { left: p2, right: kmTxt(30 + Math.floor(rnd() * 120)) }], { w: 768, h: 288, arrows: null });
-    for (const [p, t] of [[a, tA], [b, tB]]) {
+    for (const [p, t] of onlyNavi ? [[a, tA]] : [[a, tA], [b, tB]]) {
       if (p.material.map) p.material.map.dispose();
       p.material.map = t;
       p.material.needsUpdate = true;
@@ -886,7 +917,8 @@ export class Scenery {
       const h = 60 + rnd() * 190;
       const w = 18 + rnd() * 22;
       const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mats[i % 3]);
-      b.position.set(-180 + i * 26 + rnd() * 10, h / 2, -rnd() * 120);
+      // schräg nach hinten links gestaffelt – alles weit jenseits der Gegenfahrbahn (die endet bei x ≈ −32)
+      b.position.set(-i * 22 - rnd() * 8, h / 2, -i * 14 - rnd() * 40);
       g.add(b);
       if (i === 7) {
         const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.2, 50, 6), this.mats.steel);

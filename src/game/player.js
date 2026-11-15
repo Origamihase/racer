@@ -157,27 +157,38 @@ export class Player {
 
   /** Zusammenstoß verarbeiten. Gibt true zurück, wenn er zählt. */
   collide(ev) {
-    if (this.cooldown > 0) return false;
+    // Auseinanderschieben gibt es immer, nur der Karosserie-Punkt hat eine Schonfrist
+    const counts = this.cooldown <= 0;
     const c = ev.car;
     const sideHit = ev.lonOverlap > ev.latOverlap * 1.6;
     if (!sideHit && ev.ds > 0) {
       // Auffahren: hinter dem Fahrzeug bleiben
       this.s = c.s - (c.len + this.len) / 2 - 0.35;
-      this.speed = Math.max(0, Math.min(this.speed, c.speed) - 4);
-      c.speed += 2.5;
+      if (counts) {
+        this.speed = Math.max(0, Math.min(this.speed, c.speed) - 4);
+        c.speed += 2.5;
+      } else this.speed = Math.min(this.speed, c.speed);
     } else if (!sideHit && ev.ds < 0) {
       // jemand fährt uns hinten drauf (selten, die KI passt eigentlich auf)
-      this.speed += 2;
-      c.speed = Math.max(0, this.speed - 4);
+      if (counts) {
+        this.speed += 2;
+        c.speed = Math.max(0, this.speed - 4);
+      } else c.speed = Math.min(c.speed, this.speed);
       c.s = this.s - (c.len + this.len) / 2 - 0.4;
     } else {
       // seitlicher Rempler
       const dir = ev.dx > 0 ? -1 : 1;
-      this.x += dir * (ev.latOverlap + 0.12);
-      this.vx = dir * 3.2;
-      this.speed *= 0.93;
-      c.speed *= 0.97;
+      if (counts) {
+        this.x += dir * (ev.latOverlap + 0.12);
+        this.vx = dir * 3.2;
+        this.speed *= 0.93;
+        c.speed *= 0.97;
+      } else {
+        this.x += dir * (ev.latOverlap + 0.05);
+        this.vx = dir * Math.max(1.5, this.vx * dir);
+      }
     }
+    if (!counts) return false;
     this.hits++;
     this.cooldown = 1.6;
     return true;

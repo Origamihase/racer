@@ -61,6 +61,9 @@ export class Traffic {
     this.cars = [];
     this.oncoming = [];
     this.events = [];
+    // neue Fahrt = wieder entspannter Verkehr (auch nach „Neustart“ aus einer langen Fahrt)
+    this.difficulty = 0;
+    this.leftOpen = false;
   }
 
   laneSpeed(lane, truck) {
@@ -154,7 +157,8 @@ export class Traffic {
     if (player.speed < 34 && chance(dt * 0.35) && this.cars.length < target + 4) {
       const lane = this.leftOpen ? 1 : chance(0.6) ? 0 : 1;
       const s = player.s - rand(150, 190);
-      if (this.laneFree(lane, s, 40)) this.spawn(s, lane, { speed: rand(170, 215) * KMH });
+      // startet hinter dem Spieler: zählt nicht als „überholt“
+      if (this.laneFree(lane, s, 40)) this.spawn(s, lane, { speed: rand(170, 215) * KMH }).passed = true;
     }
 
     const objs = this.cars;
@@ -233,6 +237,7 @@ export class Traffic {
           c.s = player.s - (c.len + player.len) / 2 - 0.4;
           c.speed = Math.min(c.speed, player.speed * 0.95);
         } else {
+          c.contactT = t; // wer gerade gestreift wurde, zählt beim Vorbeifahren nicht als „haarscharf“
           this.events.push({ type: 'crash', car: c, ds, dx: c.x - player.x, latOverlap, lonOverlap });
         }
       }
@@ -241,7 +246,8 @@ export class Traffic {
         c.passed = true;
         const clearance = dx - (c.w + player.w) / 2;
         const rel = player.speed - c.speed;
-        if (clearance < 0.85 && clearance > -0.05 && rel > 6) this.events.push({ type: 'nearMiss', car: c, clearance, rel });
+        const touched = t - (c.contactT ?? -1e9) < 2;
+        if (clearance < 0.85 && clearance > -0.05 && rel > 6 && !touched) this.events.push({ type: 'nearMiss', car: c, clearance, rel });
         if (c.behavior === 'polizei') this.events.push({ type: 'passPolice', car: c });
       }
       if (ds > 0) c.passed = false;
@@ -364,13 +370,17 @@ export class Traffic {
   /** Megafon-Durchsage: Autos vor dem Spieler machen Platz. */
   megafon(player) {
     let n = 0;
+    const P = { s: player.s, x: player.x, speed: player.speed, len: player.len, w: player.w, isPlayer: true };
     for (const c of this.cars) {
       const ds = c.s - player.s;
-      if (ds > 0 && ds < 160 && Math.abs(c.x - player.x) < 2.6 && !c.change) {
-        const opts = [c.lane - 1, c.lane + 1].filter((l) => l >= (c.truck ? 2 : 0) && l <= 3);
+      if (ds > 0 && ds < 160 && Math.abs(c.x - player.x) < 2.6 && !c.change && c.behavior !== 'elefant') {
+        // nur auf freie Nachbarspuren ausweichen; bei Gleichstand lieber nach rechts
+        const opts = [c.lane + 1, c.lane - 1].filter((l) => l >= (c.truck ? 2 : 0) && l <= 3 && this.safe(c, l, this.cars, P, true));
         const to = opts.sort((a, b) => Math.abs(ROAD.laneCenter(b) - player.x) - Math.abs(ROAD.laneCenter(a) - player.x))[0];
         if (to !== undefined) {
           c.change = { from: c.lane, to, t: 0, delay: 0.3, dur: 1.8 };
+          // eine Weile auf der neuen Spur bleiben, statt per Rechtsfahrgebot gleich zurückzuziehen
+          c.decideIn = 10 + rand(0, 5);
           n++;
         }
       }
@@ -402,6 +412,7 @@ export class Traffic {
     const lane = this.leftOpen ? 1 : 0;
     const car = this.spawn(sPlayer - 170, lane, { kind: 'polizei', speed: 185 * KMH, behavior: 'polizei' });
     car.v0 = 185 * KMH;
+    car.passed = true; // kommt von hinten – erst wenn sie vorbei ist, kann man sie überholen
     return car;
   }
 

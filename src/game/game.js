@@ -18,10 +18,12 @@ export class Game {
     Object.assign(this, ctx);
     this.player = new Player();
     this.navi = new Navi(this.scenery);
-    this.scenery.gantryInfo = () => ({
-      target: shortName(this.navi.target),
-      km: Math.max(0.1, (this.navi.targetS - this.player.s) / 1000),
-    });
+    // Entfernung zum Navi-Ziel ab der Schilderbrücke (die wird gut 1,7 km voraus gebaut)
+    this.scenery.gantryInfo = (sSign = this.player.s) => {
+      const km = (this.navi.targetS - sSign) / 1000;
+      if (km < 0.2) return null;
+      return { target: shortName(this.navi.target), km };
+    };
     this.running = false;
     this.over = null;
   }
@@ -39,6 +41,9 @@ export class Game {
     this.over = null;
     this.running = true;
     this.queue = [];
+    // Begrüßung und Gong beim Kameraschwenk gibt es in jeder Fahrt
+    this._greeted = false;
+    this._introChime = false;
     this.clock = 18 * 60;
     this.viewers = 240;
     this.hype = 0;
@@ -110,6 +115,9 @@ export class Game {
     this.weather = { level: 0, target: 0, active: false, dur: 0, cool: 0, announced: false, regenzulage: false };
     this.left = { open: false, timer: 0, glow: 0 };
     this.sirenLevel = 0;
+    // nach einer Regenfahrt: Scheibe trocken, Wischer still
+    this.windshield.setRain(0);
+    this.windshield.clear();
     this.scenery.reset();
     this.navi.reset(0);
     this.traffic.reset();
@@ -180,17 +188,19 @@ export class Game {
     this.money -= v;
     this.breakdown[label] = (this.breakdown[label] || 0) - v;
     this.stats.fines += v;
-    this.ui.money(-amount, label);
+    // nur zeigen, was wirklich abgebucht wurde (bei leerem Konto gibt es nichts zu holen)
+    if (v > 0) this.ui.money(-v, label);
     this.audio.bad();
   }
 
   donate(name, amount, what) {
+    // Angesagt wird, was der Zuschauer zahlt; Starlink-Bonus und Regenzulage zeigt nur die Gutschrift
     const v = this.earn(amount * (this.up.starlink ? 1.2 : 1), 'Spenden', { silent: true });
-    this.bot('james', `${name} hat ${fmtCent(v)} ${what ? 'für »' + what + '« ' : ''}gespendet!`);
+    this.bot('james', `${name} hat ${fmtCent(amount)} ${what ? 'für »' + what + '« ' : ''}gespendet!`);
     this.ui.money(v, 'Spende');
     this.audio.pling();
-    const alter = alterReaction(v);
-    if (alter) this.later(0.6, () => this.chat(alter + (v >= 33 ? ' 😱' : '')));
+    const alter = alterReaction(amount);
+    if (alter) this.later(0.6, () => this.chat(alter + (amount >= 33 ? ' 😱' : '')));
     this.hype += v * 2;
     return v;
   }
@@ -282,6 +292,9 @@ export class Game {
     if (p.shoulderTime <= 0) this.shoulderWarned = false;
 
     // Akku
+    // nach dem Laden wieder scharf schalten (mit etwas Abstand, damit es nicht flackert)
+    if (p.battery > 30) this.batteryWarned = 0;
+    else if (p.battery > 12 && this.batteryWarned > 1) this.batteryWarned = 1;
     if (p.battery < 20 && this.batteryWarned < 1) {
       this.batteryWarned = 1;
       this.say(BOARD.lowBattery, 'worried');
@@ -434,7 +447,9 @@ export class Game {
       if (chance(0.16)) {
         // Siegen wird geboten … und sofort überboten
         const n = viewerName();
-        this.bot('james', `${n} bietet ${fmtCent(this.navi.bid + 0.01)} – neues Ziel: Siegen`);
+        // das Siegen-Gebot zählt wirklich, damit das Gegengebot danach mindestens 1 Cent mehr ist
+        this.navi.bid = Math.round((this.navi.bid + 0.01) * 100) / 100;
+        this.bot('james', `${n} bietet ${fmtCent(this.navi.bid)} – neues Ziel: Siegen`);
         this.chat(pick(['SIEGEN!', 'Siegen? 👀', 'Diesmal Siegen!']));
         this.later(2.2, () => this.changeNavi(true));
       } else this.changeNavi(false);
@@ -451,6 +466,7 @@ export class Game {
     const p = this.player;
     const bidder = viewerName();
     const t = this.navi.overbid(p.s, bidder);
+    this.scenery.relabelGantries();
     this.stats.naviChanges++;
     this.bot('james', `${bidder} bietet ${fmtCent(this.navi.bid)} – neues Ziel: ${t.name}`);
     if (siegenOverbid) this.later(0.8, () => this.chat(pick(['Siegen wurde überboten. Wie immer 😂', 'Nicht schon wieder Siegen verpasst', 'Klassiker'])));
@@ -630,9 +646,12 @@ export class Game {
           this.scenery.flashBlitzer(true);
           this.later(0.15, () => this.scenery.flashBlitzer(false));
           this.stats.photos++;
+          // Tempo und Uhrzeit im Moment des Blitzes festhalten (danach wird meist gebremst)
+          const kmh = Math.round(p.kmh);
+          const clock = fmtClock(this.clock);
           this.later(0.6, () => {
             this.fine(15, 'Bußgeld');
-            this.ui.photo(Math.round(p.kmh), fmtClock(this.clock));
+            this.ui.photo(kmh, clock);
           });
           this.burst(CHAT.blitzer, 3, 2);
           this.cockpit.nomi.setMood('surprised', 2);
@@ -692,12 +711,14 @@ export class Game {
     }
 
     // Uhrzeit (Hugo)
-    const hour = Math.floor(this.clock / 60);
+    const hour = Math.floor(this.clock / 60) % 24;
     if (hour !== this.lastHugo && this.t > 5) {
       this.lastHugo = hour;
       if (hour === 21) this.bot('hugo', '21 Uhr: Ortsspenden-Schluss! … Verlängerung um 5 Minuten 😉');
       else if (hour === 22) this.bot('hugo', 'Eigentlich wäre jetzt Sendeschluss. Wir fahren einfach weiter!');
       else if (hour >= 19) this.bot('hugo', `Es ist ${hour} Uhr. Sendezeit läuft.`);
+      else if (hour === 0) this.bot('hugo', 'Mitternacht! Der Stream läuft einfach weiter. 🌙');
+      else if (hour < 6) this.bot('hugo', `Es ist ${hour} Uhr nachts. Sendezeit läuft immer noch.`);
     }
   }
 
@@ -794,8 +815,11 @@ export class Game {
       if (j.done) continue;
       const v = st[j.stat] || 0;
       const prog = clamp(v / j.goal, 0, 1);
-      if (Math.abs(prog - j.progress) > 0.01) changed = true;
-      j.progress = prog;
+      // erst neu zeichnen, wenn sich der Balken sichtbar bewegt (sonst summieren sich kleine Schritte nie)
+      if (Math.abs(prog - j.progress) > 0.01) {
+        j.progress = prog;
+        changed = true;
+      }
       if (v >= j.goal - 0.5) {
         j.done = true;
         j.progress = 1;
@@ -862,8 +886,7 @@ export class Game {
 
   onNearMiss(e) {
     this.stats.nearMisses++;
-    this.earn(3, 'Haarscharf', { silent: true });
-    this.ui.money(3, 'Haarscharf');
+    this.earn(3, 'Haarscharf');
     this.hype += 15;
     if (chance(0.5)) this.chat(pick(CHAT.nearMiss));
   }

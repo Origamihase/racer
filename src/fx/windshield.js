@@ -42,6 +42,8 @@ export class Windshield {
     this.twitches = 0;
     this.wipes = 0;
     this.dirty = true;
+    this.filmAcc = 0;
+    this.dryFor = 0;
   }
 
   setRain(v) {
@@ -91,6 +93,10 @@ export class Windshield {
   update(dt, { speed, camera, carMatrix }) {
     const w = this.wiper;
     w.prevAngle = w.angle;
+    // war es ein echter Wisch? (im letzten Bild des Wischs steht der Modus schon wieder auf „park“)
+    const wasSweep = w.mode === 'sweep';
+    // Tropfen und Film mit der Kamera dieses Bildes projizieren, nicht mit der vom letzten
+    camera.updateMatrixWorld();
     // --- Automatik (Beta) ---------------------------------------------
     if (this.intensity > 0.05 && w.mode === 'park') {
       this.autoTimer -= dt;
@@ -120,6 +126,9 @@ export class Windshield {
         w.t = 0;
         w.dur = rand(0.15, 0.28);
         w.amp = rand(0.2, 0.55);
+        // jedes Nachzucken zählt und klackt
+        this.twitches++;
+        this.onEvent && this.onEvent('twitch');
       }
     } else if (w.mode === 'sweep') {
       w.t += dt;
@@ -165,7 +174,7 @@ export class Windshield {
     const a0 = Math.min(w.prevAngle, w.angle);
     const a1 = Math.max(w.prevAngle, w.angle);
     if (a1 > 0.01 && a1 - a0 > 0.0001) {
-      const twitch = w.mode !== 'sweep';
+      const twitch = !(wasSweep || w.mode === 'sweep');
       for (let i = 0; i < WIPERS.length; i++) {
         const wp = WIPERS[i];
         const scale = wp.max / 2.15;
@@ -186,15 +195,26 @@ export class Windshield {
     }
     if (this.drops.length > 520) this.drops.splice(0, this.drops.length - 520);
 
-    // Film trocknet langsam, bei Regen bleibt ein leichter Schleier
-    this.fctx.globalCompositeOperation = 'source-over';
-    this.fctx.fillStyle = `rgba(0,0,0,${clamp(dt * 0.35, 0, 1)})`;
-    this.fctx.fillRect(0, 0, FW, FH);
-    if (this.intensity > 0) {
-      this.fctx.fillStyle = `rgba(255,255,255,${dt * 0.05 * this.intensity})`;
+    // Film trocknet langsam, bei Regen bleibt ein leichter Schleier.
+    // In Schritten von 0,2 s, sonst gehen die winzigen Deckkräfte in der 8-Bit-Leinwand unter
+    // (dann trocknet ein Schlierenfilm nie ganz ab).
+    this.filmAcc += dt;
+    this.dryFor += dt;
+    if (this.filmAcc >= 0.2) {
+      const acc = this.filmAcc;
+      this.filmAcc = 0;
+      this.fctx.globalCompositeOperation = 'source-over';
+      if (this.intensity <= 0 && this.dryFor > 12) {
+        // längst trocken: den letzten Hauch ganz wegnehmen
+        this.fctx.fillStyle = '#000';
+      } else this.fctx.fillStyle = `rgba(0,0,0,${1 - Math.exp(-0.35 * acc)})`;
       this.fctx.fillRect(0, 0, FW, FH);
+      if (this.intensity > 0) {
+        this.fctx.fillStyle = `rgba(255,255,255,${acc * 0.05 * this.intensity})`;
+        this.fctx.fillRect(0, 0, FW, FH);
+      }
+      this.filmTex.needsUpdate = true;
     }
-    this.filmTex.needsUpdate = true;
 
     this.draw(camera, carMatrix);
   }
@@ -235,6 +255,7 @@ export class Windshield {
     for (const q of pts) ctx.lineTo(q[0], q[1]);
     ctx.closePath();
     if (twitch) {
+      this.dryFor = 0;
       ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = `rgba(255,255,255,${0.06 + this.intensity * 0.12})`;
       ctx.fill();

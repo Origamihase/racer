@@ -256,7 +256,8 @@ export class Road {
     this.posts.position.z = s % this.postSpacing;
     this.delin.position.z = s % this.delinSpacing;
     this.laneUniforms.uTime.value = t;
-    this.laneUniforms.uS.value = s % 7000;
+    // 1120 m = kgV aus Pfeilabstand (7 m) und Lichtwelle (160 m), damit beim Umbruch nichts springt
+    this.laneUniforms.uS.value = s % 1120;
     this.laneUniforms.uOpacity.value = laneOpacity;
     this.laneUniforms.uWarn.value = laneWarn;
     this.lane.visible = laneOpacity > 0.001;

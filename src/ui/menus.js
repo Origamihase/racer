@@ -77,6 +77,22 @@ export class Menus {
     else this.h.back?.(this.current);
   }
 
+  /** Offenen Bildschirm neu zeichnen (z. B. nach M/C-Tastenkürzeln); Scrollstand und Fokus bleiben. */
+  refresh(name) {
+    if (this.current !== name) return;
+    const s = this.screens[name];
+    const a = document.activeElement;
+    const sel = a && s.contains(a) && a.dataset ? (a.dataset.key ? `[data-key="${a.dataset.key}"]` : a.dataset.value ? `[data-value="${a.dataset.value}"]` : null) : null;
+    const st = s.querySelector('.card')?.scrollTop || 0;
+    this['render_' + name](s, this.h.dataFor ? this.h.dataFor(name, this.data) : this.data);
+    const card = s.querySelector('.card');
+    if (card) {
+      card.style.animation = 'none';
+      card.scrollTop = st;
+    }
+    if (sel) s.querySelector(sel)?.focus({ preventScroll: true });
+  }
+
   refreshData(prev) {
     return this.h.dataFor ? this.h.dataFor(prev.name, prev.data) : prev.data;
   }
@@ -102,9 +118,18 @@ export class Menus {
       case 'buy': {
         const id = b.dataset.id;
         if (this.h.buy(id)) {
+          // Liste bleibt, wo sie war: Scrollstand übernehmen, ohne die Einblend-Animation
+          const st = this.screens.shop.querySelector('.card')?.scrollTop || 0;
           this.render_shop(this.screens.shop, this.h.dataFor('shop'));
+          const card = this.screens.shop.querySelector('.card');
+          if (card) {
+            card.style.animation = 'none';
+            card.scrollTop = st;
+          }
           const nb = this.screens.shop.querySelector(`[data-id="${id}"]`);
-          (nb && !nb.disabled ? nb : this.screens.shop.querySelector('.btn.back'))?.focus({ preventScroll: true });
+          const next = nb && !nb.disabled ? nb : this.screens.shop.querySelector('.btn.back');
+          next?.focus({ preventScroll: true });
+          next?.scrollIntoView({ block: 'nearest' });
         }
         break;
       }
@@ -136,7 +161,8 @@ export class Menus {
 
   onKey(e) {
     if (!this.current) return;
-    if (e.target && /input/i.test(e.target.tagName) && e.code !== 'Escape') return;
+    // Eingabefelder behalten ihre Tasten – der Lautstärke-Regler nur ← →, mit ↑ ↓ geht es weiter
+    if (e.target && /input/i.test(e.target.tagName) && e.target.type !== 'range' && e.code !== 'Escape') return;
     const s = this.screens[this.current];
     const btns = [...s.querySelectorAll('.btn:not([disabled]), input[type=range]')];
     const idx = btns.indexOf(document.activeElement);
@@ -148,7 +174,7 @@ export class Menus {
       if (e.target.type === 'range' && (e.code === 'ArrowLeft' || e.code === 'KeyA')) return;
       e.preventDefault();
       btns[(idx - 1 + btns.length) % btns.length]?.focus();
-    } else if (e.code === 'Escape' || e.code === 'Backspace') {
+    } else if (e.code === 'Escape' || e.code === 'Backspace' || (e.code === 'KeyP' && this.current === 'pause')) {
       e.preventDefault();
       if (this.current === 'pause') this.h.action('resume');
       else if (this.current !== 'title' && this.current !== 'over') this.back();
@@ -329,9 +355,11 @@ export class Menus {
       if (lvl < max) el('div', 'next', eff, (lvl > 0 ? 'Nächste Stufe: ' : 'Bringt: ') + it.effect(lvl + 1));
       if (lvl < max) {
         const price = it.prices[lvl];
-        const b = button(c, (d.wallet >= price ? 'Kaufen · ' : 'Fehlt noch · ') + fmtEuro(price), 'buy', d.wallet >= price ? 'buy' : 'buy poor');
+        const ok = d.wallet >= price;
+        // reicht das Guthaben nicht, steht da, wie viel noch fehlt
+        const b = button(c, ok ? 'Kaufen · ' + fmtEuro(price) : fmtEuro(price) + ' · fehlt noch ' + fmtCent(price - d.wallet), 'buy', ok ? 'buy' : 'buy poor');
         b.dataset.id = it.id;
-        if (d.wallet < price) b.disabled = true;
+        if (!ok) b.disabled = true;
       } else el('div', 'maxed-tag', c, 'Ausgebaut ✔');
     }
     const menu = el('div', 'menu row', card);

@@ -86,22 +86,24 @@ export class Sky {
     scene.add(this.dome);
 
     scene.fog = new THREE.Fog(this.fogColor, 140, 1550);
+    // Nebel und Himmel teilen sich dieselbe Farbe, damit der Horizont im Regen mitgraut
+    scene.fog.color = this.fogColor;
 
     // Licht
     this.sun = new THREE.DirectionalLight(0xfff0dc, 3.0);
     this.sun.castShadow = shadows;
-    if (shadows) {
-      this.sun.shadow.mapSize.set(shadowSize, shadowSize);
-      const c = this.sun.shadow.camera;
-      c.left = -55;
-      c.right = 55;
-      c.top = 60;
-      c.bottom = -60;
-      c.near = 10;
-      c.far = 400;
-      this.sun.shadow.bias = -0.0005;
-      this.sun.shadow.normalBias = 0.04;
-    }
+    // Schattenkamera immer einrichten, damit ein späteres Umschalten auf „mittel“/„hoch“ sofort passt
+    this.sun.shadow.mapSize.set(shadowSize, shadowSize);
+    const c = this.sun.shadow.camera;
+    c.left = -55;
+    c.right = 55;
+    c.top = 60;
+    c.bottom = -60;
+    c.near = 10;
+    c.far = 400;
+    c.updateProjectionMatrix();
+    this.sun.shadow.bias = -0.0005;
+    this.sun.shadow.normalBias = 0.04;
     scene.add(this.sun);
     scene.add(this.sun.target);
     this.hemi = new THREE.HemisphereLight(0xc4dcff, 0x5f6a45, 1.05);
@@ -135,14 +137,19 @@ export class Sky {
     const idx = [];
     const near = new THREE.Color().setRGB(0.3, 0.42, 0.33, THREE.SRGBColorSpace);
     const far = new THREE.Color().setRGB(0.5, 0.6, 0.7, THREE.SRGBColorSpace);
+    const H = (u) => 25 + Math.max(0, fbm1(u * 0.09, 4) * 0.5 + 0.5) * 150 + Math.max(0, fbm1(u * 0.31, 9)) * 40;
+    // Der Ring schließt sich genau vor dem Auto: die letzten Stützpunkte laufen weich auf
+    // die Höhe des ersten zu, sonst stünde dort eine senkrechte Felskante über der Fahrbahn.
+    const SEAM = 48;
     for (let i = 0; i <= N; i++) {
       const a = (i / N) * Math.PI * 2;
       const x = Math.sin(a) * R;
       const z = -Math.cos(a) * R;
-      const h = 25 + Math.max(0, fbm1(i * 0.09, 4) * 0.5 + 0.5) * 150 + Math.max(0, fbm1(i * 0.31, 9)) * 40;
+      const w = Math.max(0, (i - (N - SEAM)) / SEAM);
+      const h = w > 0 ? lerp(H(i), H(i - N), w * w * (3 - 2 * w)) : H(i);
       pos.push(x, -40, z, x, h, z);
       const c1 = near.clone().lerp(far, 0.25);
-      const c2 = near.clone().lerp(far, 0.7 + 0.2 * Math.sin(i * 0.05));
+      const c2 = near.clone().lerp(far, 0.7 + 0.2 * Math.sin((i / N) * Math.PI * 6));
       col.push(c1.r, c1.g, c1.b, c2.r, c2.g, c2.b);
       if (i < N) {
         const p = i * 2;

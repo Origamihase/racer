@@ -85,18 +85,21 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .leftlane-bar { height: 5px; background: rgba(255,255,255,0.2); border-radius: 3px; margin-top: 5px; overflow: hidden; }
 .leftlane-fill { height: 100%; background: #9cc4ff; transition: width 0.3s linear; }
 
-.nomi-sub { position: absolute; top: 108px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; max-width: min(70vw, 820px);
+/* NOMI-Untertitel, Banner und Hinweise stapeln sich in einer Spalte, damit sich nichts überdeckt */
+.center-stack { position: absolute; top: 108px; left: 50%; transform: translateX(-50%); width: min(92vw, 900px); display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 4; }
+.nomi-sub { display: flex; align-items: center; gap: 10px; max-width: min(70vw, 820px);
   background: rgba(6, 7, 10, 0.82); border: 1px solid rgba(140, 180, 255, 0.35); border-radius: 14px; padding: 8px 14px; font-size: 17px; font-weight: 600;
-  box-shadow: 0 0 20px rgba(80,130,255,0.25); animation: fadein 0.25s; z-index: 4; }
+  box-shadow: 0 0 20px rgba(80,130,255,0.25); animation: fadein 0.25s; }
 .nomi-eyes { display: inline-flex; gap: 4px; flex: none; width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #3b3d44, #070708 70%); align-items: center; justify-content: center; }
 .nomi-eyes i { width: 7px; height: 10px; border: 2px solid #fff; border-radius: 3px; animation: blink 2.6s infinite; }
-@keyframes fadein { from { opacity: 0; transform: translate(-50%, -6px); } }
+@keyframes fadein { from { opacity: 0; transform: translateY(-6px); } }
 
-.banner { position: absolute; top: 28%; left: 50%; transform: translateX(-50%); font-size: clamp(22px, 3.2vw, 38px); font-weight: 800; text-align: center; white-space: nowrap;
-  color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.7), 0 0 30px rgba(80,140,255,0.6); z-index: 4; }
+.banner { margin-top: clamp(0px, 7vh, 70px); font-size: clamp(22px, 3.2vw, 38px); font-weight: 800; text-align: center; white-space: nowrap;
+  color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.7), 0 0 30px rgba(80,140,255,0.6); }
+.nomi-sub:not(.hidden) + .banner { margin-top: 0; }
 .banner.pop { animation: pop 0.5s cubic-bezier(.2,1.6,.4,1); }
-@keyframes pop { from { transform: translateX(-50%) scale(0.6); opacity: 0; } }
-.toasts { position: absolute; top: 160px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 4; }
+@keyframes pop { from { transform: scale(0.6); opacity: 0; } }
+.toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .toast { background: var(--panel-strong); border: 1px solid var(--line); border-radius: 10px; padding: 7px 14px; font-size: 15px; font-weight: 600; animation: toastin 0.3s; white-space: nowrap; }
 .toast-good { border-color: rgba(53, 200, 106, 0.7); }
 .toast-bad { border-color: rgba(255, 90, 79, 0.8); }
@@ -199,7 +202,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .screens { position: fixed; inset: 0; z-index: 30; display: none; }
 .screens.active { display: block; }
 .screens.dim { background: rgba(5, 6, 9, 0.55); backdrop-filter: blur(5px); }
-.screen { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 28px; overflow: auto; }
+.screen { position: absolute; inset: 0; display: flex; align-items: safe center; justify-content: center; padding: 28px; overflow: auto; }
 .screen-title { justify-content: flex-start; padding-left: clamp(20px, 6vw, 110px); background: linear-gradient(90deg, rgba(6,7,10,0.78) 0%, rgba(6,7,10,0.45) 38%, rgba(6,7,10,0) 62%); }
 .title-card { max-width: 560px; animation: titlein 0.8s ease-out; }
 @keyframes titlein { from { opacity: 0; transform: translateX(-30px); } }
@@ -313,6 +316,12 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 @media (max-height: 560px) {
   .jobs-mini { display: none; }
   .chat { max-height: 38vh; }
+  /* Blitzerfoto oben rechts über dem Chat, damit es weder unten abgeschnitten noch von Touch-Knöpfen verdeckt wird */
+  .photo { top: 14px; width: min(220px, 34vh); z-index: 6; }
+  .title-hint { display: none; }
+}
+@media (pointer: coarse) {
+  .title-hint { display: none; }
 }
 .banner-sub { font-size: clamp(14px, 1.5vw, 18px); font-weight: 600; margin-top: 4px; color: #e6ebf5; text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
 .over-menu { margin: 6px 0 4px; }

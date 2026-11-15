@@ -12,6 +12,15 @@ export class Audio {
     this.duck = 1;
   }
 
+  /** Ton anhalten (z. B. wenn der Tab in den Hintergrund geht). */
+  suspend() {
+    if (this.ctx && this.ctx.state === 'running') this.ctx.suspend().catch(() => {});
+  }
+
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+  }
+
   /** Muss nach einer Nutzer-Geste aufgerufen werden. */
   init() {
     if (this.ctx) {
