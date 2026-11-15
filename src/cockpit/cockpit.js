@@ -3,6 +3,7 @@
 // Innen- und Außenspiegel (echte Rückansicht), NOMI, Stream-Kamera und die Scheibenwischer.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { woodTexture, liveLogoTexture, fabricTexture } from '../textures.js';
 import { Nomi } from './nomi.js';
 import { CenterScreen } from './screen.js';
@@ -43,11 +44,16 @@ function plushMat(color) {
   });
 }
 
-function beam(a, b, w, d, mat) {
+/** Abgerundete Leiste (flache Kapsel) zwischen zwei Punkten, w quer, d in die Tiefe. */
+function roundBeam(a, b, w, d, mat, twist = 0) {
   const dir = new THREE.Vector3().subVectors(b, a);
   const len = dir.length();
-  const g = new THREE.BoxGeometry(w, len, d);
+  const r = 0.5;
+  const g = new THREE.CapsuleGeometry(r, Math.max(0.001, len / Math.max(w, d) - 2 * r), 6, 16);
+  // Kapsel auf Länge len bringen und abflachen
+  g.scale(w, Math.max(w, d), d);
   g.translate(0, len / 2, 0);
+  if (twist) g.rotateY(twist);
   const m = new THREE.Mesh(g, mat);
   m.position.copy(a);
   m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
@@ -144,13 +150,14 @@ export class Cockpit {
   buildPillars(M) {
     const W = WINDSHIELD;
     for (const s of [-1, 1]) {
-      const a = new THREE.Vector3(s * 0.745, W.base.y - 0.02, W.base.z + 0.02);
-      const b = new THREE.Vector3(s * 0.635, W.top.y + 0.01, W.top.z + 0.01);
-      this.root.add(beam(a, b, 0.1, 0.07, M.pillar));
-      const c = new THREE.Vector3(s * 0.67, W.top.y + 0.03, 0.75);
-      this.root.add(beam(b, c, 0.09, 0.08, M.pillar));
+      // A-Säule: unten im Armaturenbrett verankert, oben in den Dachrahmen übergehend
+      const a = new THREE.Vector3(s * 0.765, W.base.y - 0.07, W.base.z - 0.03);
+      const b = new THREE.Vector3(s * 0.64, W.top.y + 0.015, W.top.z + 0.0);
+      this.root.add(roundBeam(a, b, 0.085, 0.06, M.pillar));
+      const c = new THREE.Vector3(s * 0.68, W.top.y + 0.035, 0.8);
+      this.root.add(roundBeam(b, c, 0.08, 0.07, M.pillar));
     }
-    const header = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.06, 0.12), M.pillar);
+    const header = new THREE.Mesh(new RoundedBoxGeometry(1.34, 0.06, 0.12, 3, 0.025), M.pillar);
     header.position.set(0, W.top.y + 0.02, W.top.z + 0.03);
     this.root.add(header);
   }
@@ -160,9 +167,8 @@ export class Cockpit {
     const panel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.56, 1.35), M.door);
     panel.position.set(-0.8, 0.7, -0.08);
     door.add(panel);
-    const sill = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.25, 12), M.dash);
-    sill.rotation.x = Math.PI / 2;
-    sill.position.set(-0.775, 0.985, -0.05);
+    const sill = new THREE.Mesh(new RoundedBoxGeometry(0.075, 0.06, 1.3, 3, 0.025), M.dash);
+    sill.position.set(-0.775, 0.975, -0.06);
     door.add(sill);
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.4), M.dashTop);
     arm.position.set(-0.73, 0.76, 0.15);
@@ -277,8 +283,8 @@ export class Cockpit {
 
   buildMirrors(M) {
     // Innenspiegel
-    const mw = 0.26;
-    const mh = 0.075;
+    const mw = 0.245;
+    const mh = 0.072;
     const shape = new THREE.Shape();
     const r = 0.03;
     shape.moveTo(-mw / 2 + r, -mh / 2);
@@ -296,34 +302,75 @@ export class Cockpit {
     for (let i = 0; i < uv.count; i++) uv.setXY(i, 1 - (pos.getX(i) / mw + 0.5), pos.getY(i) / mh + 0.5);
     this.mirrorMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const mirror = new THREE.Group();
-    mirror.position.set(-0.04, 1.255, -0.29);
-    mirror.rotation.set(-0.06, -0.38, 0);
+    // hängt knapp hinter der Scheibe (die Scheibe ist sehr flach, deshalb etwas tiefer als früher)
+    mirror.position.set(-0.08, 1.235, -0.225);
+    mirror.rotation.set(-0.06, -0.18, 0);
     const glass = new THREE.Mesh(glassGeo, this.mirrorMat);
     glass.position.z = 0.021;
     const frameGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.022, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.006, bevelSegments: 2 });
     frameGeo.translate(0, 0, -0.012);
     const frame = new THREE.Mesh(frameGeo, M.black);
     mirror.add(frame, glass);
-    const stem = beam(new THREE.Vector3(-0.02, 1.255, -0.3), new THREE.Vector3(0.0, 1.33, -0.2), 0.02, 0.02, M.black);
-    this.root.add(mirror, stem);
+    this.root.add(mirror);
 
-    // Außenspiegel links (zeigt den linken Teil der Rückansicht)
+    // Kameragehäuse oben an der Frontscheibe (wie beim Model 3), daran hängt der Innenspiegel
+    const W = WINDSHIELD;
+    const toGlass = new THREE.Matrix4().makeBasis(W.X, W.U, W.N.clone().negate()).setPosition(W.base);
+    const hs = new THREE.Shape();
+    const hx = -0.07; // Mitte des Gehäuses (über dem Spiegel)
+    const hb = 0.075; // halbe Breite unten
+    const ht = 0.14; // halbe Breite oben
+    const v0 = 0.79;
+    const v1 = 0.95;
+    hs.moveTo(hx - hb + 0.025, v0);
+    hs.lineTo(hx + hb - 0.025, v0);
+    hs.quadraticCurveTo(hx + hb, v0, hx + hb + 0.003, v0 + 0.025);
+    hs.lineTo(hx + ht, v1);
+    hs.lineTo(hx - ht, v1);
+    hs.lineTo(hx - hb - 0.003, v0 + 0.025);
+    hs.quadraticCurveTo(hx - hb, v0, hx - hb + 0.025, v0);
+    const sensorGeo = new THREE.ExtrudeGeometry(hs, { depth: 0.014, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.006, bevelSegments: 2, curveSegments: 6 });
+    sensorGeo.translate(0, 0, 0.007);
+    sensorGeo.applyMatrix4(toGlass);
+    const sensorBox = new THREE.Mesh(sensorGeo, M.dash);
+    // kurzer Spiegelfuß mit Kugelgelenk am Spiegelrücken
+    const onGlass = (x, v, d) => new THREE.Vector3(x, v, d).applyMatrix4(toGlass);
+    const footTop = onGlass(-0.08, 0.805, 0.024);
+    const footEnd = new THREE.Vector3(-0.08, 1.258, -0.243);
+    const footDir = footEnd.clone().sub(footTop);
+    const footGeo = new THREE.CylinderGeometry(0.008, 0.011, footDir.length(), 10);
+    footGeo.translate(0, footDir.length() / 2, 0);
+    const foot = new THREE.Mesh(footGeo, M.black);
+    foot.position.copy(footTop);
+    foot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), footDir.normalize());
+    const joint = new THREE.Mesh(new THREE.SphereGeometry(0.013, 12, 8), M.black);
+    joint.position.copy(footEnd);
+    this.root.add(sensorBox, foot, joint);
+    this.mirrorHousing = { toGlass, onGlass };
+
+    // Außenspiegel links (zeigt den linken Teil der Rückansicht): Gehäuse nach vorne gewölbt,
+    // Spiegelglas mit schmalem Rand, sitzt komplett über der Türbrüstung
     const side = new THREE.Group();
-    side.position.set(-1.0, 0.985, -0.58);
+    side.position.set(-1.0, 1.045, -0.6);
     side.rotation.y = 0.62;
-    const housing = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshPhysicalMaterial({ color: 0x050607, metalness: 0.5, roughness: 0.3, clearcoat: 1 }));
-    housing.scale.set(0.115, 0.07, 0.05);
-    housing.position.z = -0.03;
-    const sGeo = new THREE.CircleGeometry(1, 28);
-    sGeo.scale(0.1, 0.06, 1);
+    const housingMat = new THREE.MeshPhysicalMaterial({ color: 0x050607, metalness: 0.5, roughness: 0.3, clearcoat: 1, side: THREE.DoubleSide });
+    const housingGeo = new THREE.SphereGeometry(1, 28, 16, Math.PI, Math.PI);
+    housingGeo.scale(0.122, 0.07, 0.075);
+    const housing = new THREE.Mesh(housingGeo, housingMat);
+    const rimGeo = new THREE.TorusGeometry(1, 0.07, 8, 40);
+    rimGeo.scale(0.117, 0.066, 0.1);
+    const rim = new THREE.Mesh(rimGeo, housingMat);
+    rim.position.z = 0.002;
+    const sGeo = new THREE.CircleGeometry(1, 32);
+    sGeo.scale(0.107, 0.058, 1);
     const sUv = sGeo.attributes.uv;
     const sPos = sGeo.attributes.position;
-    for (let i = 0; i < sUv.count; i++) sUv.setXY(i, 1 - (sPos.getX(i) / 0.2 + 0.5) * 0.42, sPos.getY(i) / 0.12 + 0.5);
+    for (let i = 0; i < sUv.count; i++) sUv.setXY(i, 1 - (sPos.getX(i) / 0.214 + 0.5) * 0.42, sPos.getY(i) / 0.116 + 0.5);
     this.sideMirrorMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const sGlass = new THREE.Mesh(sGeo, this.sideMirrorMat);
-    sGlass.position.z = 0.022;
-    const arm = beam(new THREE.Vector3(-0.76, 0.95, -0.62), new THREE.Vector3(-0.93, 0.975, -0.6), 0.04, 0.03, M.black);
-    side.add(housing, sGlass);
+    sGlass.position.z = 0.004;
+    side.add(housing, rim, sGlass);
+    const arm = roundBeam(new THREE.Vector3(-0.79, 0.985, -0.635), new THREE.Vector3(-0.905, 1.035, -0.665), 0.05, 0.035, housingMat);
     this.root.add(side, arm);
   }
 
@@ -355,22 +402,20 @@ export class Cockpit {
   }
 
   buildExtras(M) {
-    const W = WINDSHIELD;
-    // Stream-Kamera mit rotem REC-Licht an der Scheibe
+    // Stream-Kamera mit rotem REC-Licht: filmt durch die Frontscheibe nach vorne und sitzt
+    // links oben am Kameragehäuse des Innenspiegels (Mini Adam sieht nur die Rückseite)
     const cam = new THREE.Group();
-    const gp = W.base.clone().addScaledVector(W.U, 0.62);
-    gp.x = -0.13;
-    cam.position.copy(gp).addScaledVector(W.N, -0.045);
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.044, 0.036), M.black);
+    cam.position.copy(this.mirrorHousing.onGlass(-0.105, 0.875, 0.049));
+    const body = new THREE.Mesh(new RoundedBoxGeometry(0.06, 0.044, 0.036, 2, 0.006), M.black);
     const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.012, 16), new THREE.MeshStandardMaterial({ color: 0x1a2a3a, metalness: 0.9, roughness: 0.1 }));
     lens.rotation.x = Math.PI / 2;
     lens.position.z = -0.022;
-    this.recLed = new THREE.Mesh(new THREE.SphereGeometry(0.004, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2020, toneMapped: false }));
-    this.recLed.position.set(0.022, 0.016, 0.019);
-    const mount = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.03, 12), M.black);
-    mount.position.set(0, 0.03, -0.02);
-    mount.rotation.x = -0.9;
-    cam.add(body, lens, this.recLed, mount);
+    this.recLed = new THREE.Mesh(new THREE.SphereGeometry(0.0055, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff2020, toneMapped: false }));
+    this.recLed.position.set(0.019, -0.008, 0.0175);
+    // Klemme zum Gehäuse
+    const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, 0.03), M.black);
+    clamp.position.set(0, 0.026, -0.004);
+    cam.add(body, lens, this.recLed, clamp);
     this.root.add(cam);
 
     // Wackel-Elsa (Shop)

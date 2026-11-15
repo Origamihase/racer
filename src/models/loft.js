@@ -40,10 +40,94 @@ export function withArches(bottom, arches, r = 0.4, cv = 0.335) {
 /**
  * Loft-Geometrie. Querschnitt = „Squircle“ zwischen Unterkante b(u) und Oberkante t(u),
  * halbe Breite w(u), oben schmaler (tw). u läuft von vorne (0) nach hinten, z = u - L/2.
+ * Optional bx(u, X, b(u)): Unterkante abhängig von der Querposition X (-1 … 1).
  */
+
+/** Radläufe nur an den Seiten: innen bleibt der Unterboden unten, außen wird ausgeschnitten. */
+export function sideArches(bottomWithArches, from = 0.5, to = 0.72) {
+  return (u, X, base) => {
+    const k = Math.abs(X);
+    if (k <= from) return base;
+    const t = Math.min(1, (k - from) / (to - from));
+    return base + (bottomWithArches(u) - base) * t * t * (3 - 2 * t);
+  };
+}
+
+/** Punkt auf einer Loft-Oberfläche (gleiche Formel wie loft), phi: -π/2 unten, 0 rechts, π/2 oben. */
+export function loftPoint({ w, b, t, tw = 0.9, bw = 0.96, n = 4, L = 4.7, bx = null }, u, phi, target = new THREE.Vector3()) {
+  const e = 2 / n;
+  const c = Math.cos(phi);
+  const s = Math.sin(phi);
+  const X = Math.sign(c) * Math.pow(Math.abs(c), e);
+  const Y = Math.sign(s) * Math.pow(Math.abs(s), e);
+  const bSec = b(u);
+  const bb = bx ? bx(u, X, bSec) : bSec;
+  const tt = Math.max(t(u), bb + 0.002);
+  const y = bb + ((Y + 1) / 2) * (tt - bb);
+  const wf = Y > 0 ? lerp(1, tw, Y) : lerp(1, bw, -Y);
+  return target.set(X * w(u) * wf, y, u - L / 2);
+}
+
+/**
+ * Flächenstück auf einer Oberfläche: point(u, phi) liefert Punkte, das Stück wird um lift entlang
+ * der Flächennormale nach außen gesetzt (liegt also sauber auf der Karosserie bzw. dem Glas).
+ * uv(s, t) -> [u, phi] beschreibt die Form (s quer, t längs, beide 0 … 1).
+ */
+export function surfacePatch(point, uv, { ns = 6, nt = 16, lift = 0.006, center = new THREE.Vector3(0, 0.75, 0) } = {}) {
+  const pos = [];
+  const idx = [];
+  const a = new THREE.Vector3();
+  const du = new THREE.Vector3();
+  const dp = new THREE.Vector3();
+  const nrm = new THREE.Vector3();
+  const h = 1e-3;
+  for (let j = 0; j <= nt; j++) {
+    for (let i = 0; i <= ns; i++) {
+      const [u, phi] = uv(i / ns, j / nt);
+      point(u, phi, a);
+      point(u + h, phi, du).sub(a);
+      point(u, phi + h, dp).sub(a);
+      nrm.crossVectors(du, dp);
+      if (nrm.lengthSq() < 1e-14) nrm.set(a.x, a.y - center.y, a.z - center.z);
+      nrm.normalize();
+      // nach außen zeigen lassen
+      if (nrm.x * a.x + nrm.y * (a.y - center.y) + nrm.z * (a.z - center.z) < 0) nrm.negate();
+      pos.push(a.x + nrm.x * lift, a.y + nrm.y * lift, a.z + nrm.z * lift);
+    }
+  }
+  for (let j = 0; j < nt; j++) {
+    for (let i = 0; i < ns; i++) {
+      const p0 = j * (ns + 1) + i;
+      const p1 = p0 + 1;
+      const p2 = p0 + ns + 1;
+      const p3 = p2 + 1;
+      idx.push(p0, p2, p1, p1, p2, p3);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  // Wicklung so drehen, dass die Normalen nach außen zeigen
+  g.computeVertexNormals();
+  const n0 = new THREE.Vector3().fromBufferAttribute(g.attributes.normal, Math.floor((ns + 1) * (nt + 1) / 2));
+  const p0 = new THREE.Vector3().fromBufferAttribute(g.attributes.position, Math.floor((ns + 1) * (nt + 1) / 2));
+  if (n0.x * p0.x + n0.y * (p0.y - center.y) + n0.z * (p0.z - center.z) < 0) {
+    const arr = g.index.array;
+    for (let k = 0; k < arr.length; k += 3) {
+      const tmp = arr[k + 1];
+      arr[k + 1] = arr[k + 2];
+      arr[k + 2] = tmp;
+    }
+    g.computeVertexNormals();
+  }
+  const uvs = [];
+  for (let j = 0; j <= nt; j++) for (let i = 0; i <= ns; i++) uvs.push(i / ns, j / nt);
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  return g;
+}
 export function loft({
   u0, u1, w, b, t, tw = 0.9, bw = 0.96, n = 4, segs = 80, ring = 28, L = 4.7, H = 1.5, caps = true,
-  sampleEnds = 0.55,
+  sampleEnds = 0.55, bx = null,
 }) {
   const pos = [];
   const uv = [];
@@ -64,10 +148,13 @@ export function loft({
     ringXY.push([Math.sign(c) * Math.pow(Math.abs(c), e), Math.sign(s) * Math.pow(Math.abs(s), e)]);
   }
   for (const u of us) {
-    const bb = b(u);
-    const tt = Math.max(t(u), bb + 0.002);
+    const bSec = b(u);
+    const tSec = t(u);
     const ww = w(u);
     for (const [X, Y] of ringXY) {
+      // bx: Unterkante je nach Querposition (z. B. Radläufe nur außen ausschneiden)
+      const bb = bx ? bx(u, X, bSec) : bSec;
+      const tt = Math.max(tSec, bb + 0.002);
       const y = bb + ((Y + 1) / 2) * (tt - bb);
       const wf = Y > 0 ? lerp(1, tw, Y) : lerp(1, bw, -Y);
       const x = X * ww * wf;

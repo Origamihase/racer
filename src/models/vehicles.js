@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../curve.js';
 import { plateTexture, trailerTexture, truckRearTexture } from '../textures.js';
-import { loft, curve1, withArches, colorize, boxAt, discX } from './loft.js';
+import { loft, loftPoint, surfacePatch, curve1, withArches, sideArches, colorize, boxAt, discX } from './loft.js';
 import { lerp, pick, weightedPick } from '../util.js';
 
 export const CAR_TYPES = {
@@ -102,12 +102,11 @@ function carGeometry(key) {
   if (rear === 'sedan') topPts.push([ce, belt + 0.05], [L - 0.16, belt + 0.06], [L, belt - 0.1]);
   else topPts.push([lerp(hood, L, 0.6), belt + 0.02], [L - 0.06, belt - 0.02], [L, belt - 0.14]);
   const top = curve1(topPts);
-  const bottom = withArches(
-    curve1([[0, 0.36], [0.08, cl + 0.07], [0.28, cl], [L - 0.3, cl], [L - 0.06, cl + 0.1], [L, 0.4]]),
-    axles, wr + 0.07, wr,
-  );
+  const bottomBase = curve1([[0, 0.36], [0.08, cl + 0.07], [0.28, cl], [L - 0.3, cl], [L - 0.06, cl + 0.1], [L, 0.4]]);
+  const bottom = withArches(bottomBase, axles, wr + 0.07, wr);
   const width = curve1([[0, half - 0.22], [0.1, half - 0.08], [0.4, half - 0.02], [0.9, half], [L - 0.9, half], [L - 0.3, half - 0.03], [L, half - 0.1]]);
-  const bodyGeos = [loft({ u0: 0, u1: L, w: width, b: bottom, t: top, tw: 0.9, bw: 0.95, n: 4.5, segs: 64, ring: 24, L, H })];
+  // Radläufe nur an den Seiten ausschneiden (innen bleibt der Unterboden geschlossen)
+  const bodyGeos = [loft({ u0: 0, u1: L, w: width, b: bottomBase, bx: sideArches(bottom, 0.5, 0.72), t: top, tw: 0.9, bw: 0.95, n: 4.5, segs: 64, ring: 24, L, H })];
 
   // Glas
   const beltEnd = rear === 'sedan' ? belt + 0.07 : belt + 0.12;
@@ -119,7 +118,8 @@ function carGeometry(key) {
   else gTopPts.push([(ws + re) / 2, H], [re, H - 0.015], [lerp(re, ce, 0.5), lerp(H, beltEnd, 0.55)], [ce, beltEnd]);
   const gTop = curve1(gTopPts);
   const gHalf = (u) => width(u) - 0.06;
-  const glassGeo = loft({ u0: hood - 0.02, u1: gEnd, w: gHalf, b: (u) => top(u) - 0.05, t: gTop, tw: box ? 0.95 : 0.8, bw: 1, n: 3.4, segs: 36, ring: 22, L, H });
+  const glassShape = { w: gHalf, b: (u) => top(u) - 0.05, t: gTop, tw: box ? 0.95 : 0.8, bw: 1, n: 3.4, L };
+  const glassGeo = loft({ u0: hood - 0.02, u1: gEnd, ...glassShape, segs: 36, ring: 22, H });
 
   // Dach in Wagenfarbe bzw. Kofferaufbau
   if (box) {
@@ -139,10 +139,9 @@ function carGeometry(key) {
       }));
     }
   } else {
-    bodyGeos.push(loft({
-      u0: ws - 0.03, u1: re + 0.02, w: (u) => gHalf(u) * 0.84, b: (u) => gTop(u) - 0.07, t: (u) => gTop(u) + 0.012,
-      tw: 0.92, bw: 1, n: 5, segs: 20, ring: 20, L, H,
-    }));
+    // Dach liegt direkt auf der Glaskuppel (kein schwebender Deckel)
+    const onGlass = (u, phi, target) => loftPoint(glassShape, u, phi, target);
+    bodyGeos.push(surfacePatch(onGlass, (a, t) => [lerp(ws - 0.03, re + 0.02, t), lerp(0.42, Math.PI - 0.42, a)], { ns: 12, nt: 16, lift: 0.006 }));
   }
   const bodyGeo = mergeGeometries(bodyGeos);
 
@@ -151,6 +150,15 @@ function carGeometry(key) {
   const z = (u) => u - L / 2;
   for (const a of axles) {
     for (const s of [-1, 1]) {
+      // dunkles Radhaus, innen verschlossen
+      const xIn = half * 0.45;
+      const liner = new THREE.CylinderGeometry(wr + 0.07, wr + 0.07, half - xIn, 14, 1, true, 0, Math.PI);
+      liner.rotateZ(Math.PI / 2);
+      liner.translate(s * (half + xIn) / 2, wr, z(a));
+      const wall = new THREE.CircleGeometry(wr + 0.07, 14, 0, Math.PI);
+      wall.rotateY(Math.PI / 2);
+      wall.translate(s * xIn, wr, z(a));
+      det.push(colorize(liner, 0x0c0c0d), colorize(wall, 0x0c0c0d));
       const tire = new THREE.CylinderGeometry(wr, wr, 0.22, 16);
       tire.rotateZ(Math.PI / 2);
       tire.translate(s * (half - 0.13), wr, z(a));

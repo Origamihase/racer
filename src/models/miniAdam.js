@@ -337,8 +337,10 @@ export function buildMiniAdam({ curved = true } = {}) {
         armL.rotation.x = -1.15 - steer * 0.12;
         armR.rotation.x = -1.15 + steer * 0.12;
         if (wave > 0) {
-          // Winken mit links (Richtung Fenster)
-          armL.rotation.set(-2.6 * wave, 0, 0.5 * wave + Math.sin(t * 9) * 0.35 * wave);
+          // Winken mit der Hand auf der Fensterseite (armR sitzt im Auto links am Fenster),
+          // seitlich hoch neben den Kopf statt quer vors Gesicht
+          const k = 1 - wave;
+          armR.rotation.set(0.2 * wave - 1.15 * k, 0, -0.12 * k + (2.54 + Math.sin(t * 9) * 0.3) * wave);
         }
       } else {
         armL.rotation.z = 0.18 + Math.sin(t * 1.1) * 0.03;

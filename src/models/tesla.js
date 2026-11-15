@@ -5,7 +5,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { W } from '../curve.js';
 import { plateTexture, aeroWheelTexture, liveLogoTexture } from '../textures.js';
 import { buildMiniAdam } from './miniAdam.js';
-import { loft, curve1, withArches, tireGeometry, discX, boxAt } from './loft.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { loft, loftPoint, sideArches, surfacePatch, curve1, withArches, tireGeometry, discX, boxAt } from './loft.js';
 
 export const TESLA = {
   length: 4.69,
@@ -45,24 +46,58 @@ function uToZ(u) {
   return u - L / 2;
 }
 
-// Punkt auf der Glaskuppel (gleiche Formel wie die Loft-Geometrie): phi 0 = rechte Seite, π/2 = oben
+// Karosserie und Glas als Loft-Beschreibung (für Geometrie und für Punkte auf der Oberfläche)
+const BODY = {
+  w: halfWidth, b: bottomBase, t: topLine, tw: 0.9, bw: 0.94, n: 4.6, L,
+  // Radläufe nur an den Seiten ausschneiden, der Unterboden bleibt geschlossen
+  bx: sideArches(bottomLine, 0.48, 0.7),
+};
 const GLASS_N = 3.2;
 const GLASS_TW = 0.76;
-function glassPoint(u, phi, out = 1) {
-  const e = 2 / GLASS_N;
-  const c = Math.cos(phi);
-  const s = Math.sin(phi);
-  const X = Math.sign(c) * Math.pow(Math.abs(c), e);
-  const Y = Math.sign(s) * Math.pow(Math.abs(s), e);
-  const bb = topLine(u) - 0.05;
-  const tt = Math.max(glassTop(u), bb + 0.002);
-  const y = bb + ((Y + 1) / 2) * (tt - bb);
-  const wf = Y > 0 ? 1 + (GLASS_TW - 1) * Y : 1;
-  return new THREE.Vector3(X * glassHalf(u) * wf * out, y + (out - 1) * 0.4, uToZ(u));
-}
+const GLASS = { w: glassHalf, b: (u) => topLine(u) - 0.05, t: glassTop, tw: GLASS_TW, bw: 1, n: GLASS_N, L };
+const bodyPoint = (u, phi, target) => loftPoint(BODY, u, phi, target);
+const glassPoint = (u, phi, target) => loftPoint(GLASS, u, phi, target);
 const lerp = (a, b, t) => a + (b - a) * t;
 /** Ab diesem Winkel beginnt das schwarze Glasdach (darunter die Seitenscheiben). */
 const ROOF_PHI = 0.34;
+/** phi für die linke (s = -1) bzw. rechte (s = 1) Fahrzeugseite. */
+const sidePhi = (s, phi) => (s > 0 ? phi : Math.PI - phi);
+
+// Scheinwerfer-Umriss (rechte Seite) als Ober- und Unterkante im (u, phi)-Raum der Karosserie,
+// vom inneren Ende an der Front (t = 0) bis zur Spitze am Kotflügel (t = 1)
+const HEAD_UP = [[0.05, 1.24], [0.085, 1.0], [0.13, 0.86], [0.24, 0.8], [0.4, 0.76]];
+const HEAD_LO = [[0.03, 1.2], [0.025, 0.86], [0.05, 0.54], [0.16, 0.55], [0.4, 0.7]];
+function polyAt(pts, t) {
+  const f = Math.min(pts.length - 1.000001, Math.max(0, t * (pts.length - 1)));
+  const i = Math.floor(f);
+  const k = f - i;
+  const p0 = pts[Math.max(0, i - 1)];
+  const p1 = pts[i];
+  const p2 = pts[i + 1];
+  const p3 = pts[Math.min(pts.length - 1, i + 2)];
+  const cr = (j) => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * k + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * k * k + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * k * k * k);
+  return [cr(0), cr(1)];
+}
+function headUV(a, t) {
+  const up = polyAt(HEAD_UP, t);
+  const lo = polyAt(HEAD_LO, t);
+  return [lerp(lo[0], up[0], a), lerp(lo[1], up[1], a)];
+}
+
+/** Höhe des Glasdachs an Position (u, x) (für Dinge, die auf dem Dach stehen). */
+function roofY(u, x) {
+  let lo = ROOF_PHI;
+  let hi = Math.PI / 2;
+  const p = new THREE.Vector3();
+  const ax = Math.abs(x);
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    glassPoint(u, mid, p);
+    if (p.x > ax) lo = mid;
+    else hi = mid;
+  }
+  return glassPoint(u, (lo + hi) / 2, p).y;
+}
 
 export function buildTesla() {
   const root = new THREE.Group();
@@ -71,9 +106,9 @@ export function buildTesla() {
   const paint = W.phys({
     color: 0x060708,
     metalness: 0.5,
-    roughness: 0.3,
+    roughness: 0.34,
     clearcoat: 1,
-    clearcoatRoughness: 0.05,
+    clearcoatRoughness: 0.12,
     envMapIntensity: 1.25,
   });
   const glass = W.phys({
@@ -87,132 +122,90 @@ export function buildTesla() {
   });
   const dark = W.std({ color: 0x0b0b0c, roughness: 0.8, side: THREE.DoubleSide });
   const plastic = W.std({ color: 0x141516, roughness: 0.55 });
-  const trimMat = W.std({ color: 0x2a2c2f, metalness: 0.7, roughness: 0.35 });
-  const headMat = W.std({ color: 0x334455, emissive: 0xdfeeff, emissiveIntensity: 1.2, roughness: 0.2, metalness: 0.3 });
-  const tailMat = W.std({ color: 0x3a0505, emissive: 0xff1010, emissiveIntensity: 0.9, roughness: 0.25 });
-  const interior = W.std({ color: 0x18181a, roughness: 0.85 });
+  const pianoBlack = W.phys({ color: 0x030304, metalness: 0.3, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08, side: THREE.DoubleSide });
+  const headMat = W.std({ color: 0xc8d6e6, emissive: 0xeaf3ff, emissiveIntensity: 1.1, roughness: 0.15, metalness: 0.2, side: THREE.DoubleSide });
+  const lampChrome = W.phys({ color: 0xaeb6bf, metalness: 1, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.04, side: THREE.DoubleSide });
+  const lampLens = W.phys({ color: 0x0c1016, metalness: 0.5, roughness: 0.1, clearcoat: 1, side: THREE.DoubleSide });
+  const tailMat = W.std({ color: 0x4a0606, emissive: 0xff1414, emissiveIntensity: 0.9, roughness: 0.25, side: THREE.DoubleSide });
+  const interior = W.std({ color: 0x1b1b1e, roughness: 0.85 });
   const screenMat = W.basic({ color: 0x7fa4c8 });
 
   // --- Karosserie --------------------------------------------------------
-  const bodyGeo = loft({
-    u0: 0, u1: L, w: halfWidth, b: bottomLine, t: topLine, tw: 0.9, bw: 0.94, n: 4.6, segs: 120, ring: 32, L, H: 1.5,
-  });
+  const bodyGeo = loft({ u0: 0, u1: L, ...BODY, segs: 150, ring: 44, H: 1.5 });
   const body = new THREE.Mesh(bodyGeo, paint);
   body.castShadow = true;
   root.add(body);
 
-  const glassGeo = loft({
-    u0: 1.48, u1: 4.24, w: glassHalf, b: (u) => topLine(u) - 0.05, t: glassTop, tw: GLASS_TW, bw: 1, n: GLASS_N, segs: 70, ring: 28, L, H: 1.5,
-  });
+  const glassGeo = loft({ u0: 1.48, u1: 4.24, ...GLASS, segs: 70, ring: 32, H: 1.5 });
   const glassMesh = new THREE.Mesh(glassGeo, glass);
   glassMesh.renderOrder = 2;
   root.add(glassMesh);
 
-  // A-Säulen, B-Säulen und Fensterrahmen (schwarz-matt) – liegen direkt auf der Glaskuppel
-  const pillarParts = [];
-  const tube = (pts, r) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), Math.max(8, pts.length * 3), r, 7, false);
+  // Säulen, Fensterleisten und Glasdach liegen als flache Flächen direkt auf der Glaskuppel
+  // (keine Rohre mehr – so sieht es aus wie beim echten Model 3 und nicht wie ein Überrollbügel).
+  const trim = [];
+  const patchOnGlass = (uv, opts) => surfacePatch(glassPoint, uv, opts);
   for (const s of [-1, 1]) {
-    const side = (phi) => (s > 0 ? phi : Math.PI - phi);
-    // A-Säule entlang der Frontscheibenkante
-    const aPts = [];
-    for (let i = 0; i <= 10; i++) {
-      const u = 1.53 + i * 0.085;
-      aPts.push(glassPoint(u, side(lerp(-0.2, ROOF_PHI, Math.min(1, i / 4))), 1.012));
-    }
-    pillarParts.push(tube(aPts, 0.026));
-    // B-Säule (breiter, flach)
-    const bPts = [];
-    for (let i = 0; i <= 8; i++) bPts.push(glassPoint(2.82, side(lerp(-0.55, ROOF_PHI + 0.04, i / 8)), 1.012));
-    const bGeo = tube(bPts, 0.034);
-    pillarParts.push(bGeo);
-    // C-Säule
-    const cPts = [];
-    for (let i = 0; i <= 8; i++) cPts.push(glassPoint(3.82, side(lerp(-0.55, ROOF_PHI + 0.04, i / 8)), 1.012));
-    pillarParts.push(tube(cPts, 0.03));
-    // Fensterunterkante und Dachkante
-    const fPts = [];
-    const rPts = [];
-    for (let i = 0; i <= 12; i++) {
-      const u = 1.62 + i * 0.2;
-      fPts.push(glassPoint(u, side(-0.62), 1.012));
-      if (u > 2.3 && u < 4.05) rPts.push(glassPoint(u, side(ROOF_PHI), 1.012));
-    }
-    pillarParts.push(tube(fPts, 0.016));
-    pillarParts.push(tube(rPts, 0.014));
+    // A-Säule: von der Spiegelecke schräg nach oben bis zur Dachkante
+    trim.push(patchOnGlass((a, t) => [lerp(lerp(1.5, 2.25, t), lerp(1.6, 2.36, t), a), sidePhi(s, lerp(-0.74, ROOF_PHI + 0.04, t))], { ns: 2, nt: 18, lift: 0.005 }));
+    // B-Säule
+    trim.push(patchOnGlass((a, t) => [lerp(2.76, 2.88, a), sidePhi(s, lerp(-0.74, ROOF_PHI + 0.04, t))], { ns: 2, nt: 14, lift: 0.005 }));
+    // C-Säule: breite Fläche hinter dem hinteren Seitenfenster (Fließheck)
+    trim.push(patchOnGlass((a, t) => [lerp(lerp(4.0, 3.62, t), 4.24, a), sidePhi(s, lerp(-0.74, ROOF_PHI + 0.04, t))], { ns: 8, nt: 14, lift: 0.005 }));
+    // Fensterleiste unten (deckt den Übergang Glas/Karosserie ab)
+    trim.push(patchOnGlass((a, t) => [lerp(1.52, 4.1, t), sidePhi(s, lerp(-0.86, -0.66, a))], { ns: 2, nt: 30, lift: 0.004 }));
   }
-  // Oberkante der Frontscheibe
-  const headPts = [];
-  for (let i = 0; i <= 12; i++) headPts.push(glassPoint(2.36, lerp(ROOF_PHI, Math.PI - ROOF_PHI, i / 12), 1.01));
-  pillarParts.push(tube(headPts, 0.014));
-  const pillars = new THREE.Mesh(mergeGeometries(pillarParts.map((g) => g.toNonIndexed())), plastic);
-  root.add(pillars);
+  // Getöntes Glasdach mit Heckscheibe: von außen schwarz glänzend
+  trim.push(patchOnGlass((a, t) => [lerp(2.3, 4.24, t), lerp(ROOF_PHI, Math.PI - ROOF_PHI, a)], { ns: 18, nt: 34, lift: 0.004 }));
+  const trimMesh = new THREE.Mesh(mergeGeometries(trim), pianoBlack);
+  trimMesh.castShadow = true;
+  root.add(trimMesh);
 
-  // Getöntes Glasdach: von außen schwarz glänzend wie beim echten Model 3
-  {
-    const NU = 26;
-    const NP = 14;
-    const pos = [];
-    const idx = [];
-    for (let i = 0; i <= NU; i++) {
-      const u = lerp(2.34, 4.05, i / NU);
-      for (let j = 0; j <= NP; j++) {
-        const phi = lerp(ROOF_PHI - 0.02, Math.PI - ROOF_PHI + 0.02, j / NP);
-        const p = glassPoint(u, phi, 1.004);
-        pos.push(p.x, p.y, p.z);
-      }
-    }
-    for (let i = 0; i < NU; i++) {
-      for (let j = 0; j < NP; j++) {
-        const a = i * (NP + 1) + j;
-        const b = a + NP + 1;
-        idx.push(a, b, a + 1, b, b + 1, a + 1);
-      }
-    }
-    const roofGeo = new THREE.BufferGeometry();
-    roofGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    roofGeo.setIndex(idx);
-    roofGeo.computeVertexNormals();
-    const roofMat = W.phys({
-      color: 0x020203,
-      metalness: 0.55,
-      roughness: 0.07,
-      clearcoat: 1,
-      clearcoatRoughness: 0.04,
-      envMapIntensity: 1.7,
-      side: THREE.DoubleSide,
-    });
-    const roof = new THREE.Mesh(roofGeo, roofMat);
-    root.add(roof);
-  }
-
-  // Radhäuser (verhindern den Durchblick) + Unterboden
-  const wellGeo = new THREE.CylinderGeometry(0.41, 0.41, 1.66, 18, 1, true, 0, Math.PI);
-  wellGeo.rotateZ(Math.PI / 2);
+  // Radhäuser: dunkle Innenkotflügel über den Reifen (nur außen, wo die Radläufe ausgeschnitten sind)
+  // (bis weit nach innen und innen mit einer Wand verschlossen, damit man nicht in die Karosserie sieht)
+  const wellParts = [];
   for (const u of ARCH_U) {
-    const well = new THREE.Mesh(wellGeo, dark);
-    well.position.set(0, 0.335, uToZ(u));
-    root.add(well);
+    for (const s of [-1, 1]) {
+      const liner = new THREE.CylinderGeometry(0.405, 0.405, 0.5, 22, 1, true, 0, Math.PI);
+      liner.rotateZ(Math.PI / 2);
+      liner.translate(s * 0.665, 0.335, uToZ(u));
+      const wall = new THREE.CircleGeometry(0.405, 22, 0, Math.PI);
+      wall.rotateY(Math.PI / 2);
+      wall.translate(s * 0.415, 0.335, uToZ(u));
+      wellParts.push(liner, wall);
+    }
   }
-  const floor = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.04, 3.9), dark);
-  floor.position.set(0, 0.2, 0.05);
-  root.add(floor);
+  root.add(new THREE.Mesh(mergeGeometries(wellParts), dark));
 
   // Lufteinlass vorne, Diffusor hinten
   const lip = new THREE.Mesh(
-    mergeGeometries([boxAt(0.95, 0.07, 0.05, 0, 0.3, uToZ(0.02)), boxAt(1.25, 0.09, 0.06, 0, 0.3, uToZ(4.66))]),
+    mergeGeometries([boxAt(0.95, 0.07, 0.05, 0, 0.3, uToZ(0.02)), boxAt(1.1, 0.06, 0.05, 0, 0.34, uToZ(4.62))]),
     plastic,
   );
   root.add(lip);
 
-  // Scheinwerfer (schmal, nach hinten gezogen) und Rückleuchten (um die Ecke)
-  const heads = [];
+  // Scheinwerfer (mandelförmig, um die Ecke gezogen) und Rückleuchten (um die Ecke) – liegen auf der Karosserie
+  const patchOnBody = (uv, opts) => surfacePatch(bodyPoint, uv, opts);
+  const housings = [];
+  const lenses = [];
+  const drls = [];
   const tails = [];
   for (const s of [-1, 1]) {
-    heads.push(boxAt(0.34, 0.055, 0.2, s * 0.6, 0.655, uToZ(0.2), 0.18, s * -0.5, 0));
-    tails.push(boxAt(0.4, 0.07, 0.17, s * 0.6, 0.965, uToZ(4.6), 0, s * 0.42, 0));
-    tails.push(boxAt(0.2, 0.05, 0.04, s * 0.22, 0.99, uToZ(4.665)));
+    const head = (a, t) => {
+      const [u, ph] = headUV(a, t);
+      return [u, sidePhi(s, ph)];
+    };
+    // Chrom-Reflektor unter klarem Glas, darin zwei dunkle Linsen, oben das LED-Tagfahrlicht
+    housings.push(patchOnBody(head, { ns: 8, nt: 24, lift: 0.004 }));
+    for (const [tc, rt] of [[0.34, 0.1], [0.58, 0.11]]) {
+      lenses.push(patchOnBody((r, ang) => head(0.4 + 0.24 * r * Math.cos(ang * Math.PI * 2), tc + rt * r * Math.sin(ang * Math.PI * 2)), { ns: 3, nt: 18, lift: 0.006 }));
+    }
+    drls.push(patchOnBody((a, t) => head(lerp(0.8, 0.94, a), lerp(0.08, 0.95, t)), { ns: 2, nt: 22, lift: 0.007 }));
+    tails.push(patchOnBody((a, t) => [lerp(4.4, 4.672, t), sidePhi(s, lerp(lerp(0.5, 0.36, t), lerp(0.78, 1.0, t), a))], { ns: 6, nt: 14, lift: 0.006 }));
   }
-  root.add(new THREE.Mesh(mergeGeometries(heads), headMat));
+  root.add(new THREE.Mesh(mergeGeometries(housings), lampChrome));
+  root.add(new THREE.Mesh(mergeGeometries(lenses), lampLens));
+  root.add(new THREE.Mesh(mergeGeometries(drls), headMat));
   const tailMesh = new THREE.Mesh(mergeGeometries(tails), tailMat);
   root.add(tailMesh);
 
@@ -235,19 +228,30 @@ export function buildTesla() {
   sticker.position.set(0, topLine(4.42) + 0.006, uToZ(4.42));
   root.add(sticker);
 
-  // Außenspiegel
+  // Außenspiegel: Gehäuse in Wagenfarbe (nach vorne gewölbt), Spiegelglas hinten bündig, kurzer Fuß zur Tür
   const mirrorParts = [];
   const mirrorGlass = [];
+  const mz = uToZ(1.8);
   for (const s of [-1, 1]) {
-    const h = new THREE.SphereGeometry(1, 14, 10);
-    h.scale(0.12, 0.065, 0.075);
-    h.translate(s * 1.01, 0.985, uToZ(1.78));
+    const cx = s * 1.0;
+    const cy = 1.0;
+    const h = new THREE.SphereGeometry(1, 20, 12, Math.PI, Math.PI);
+    h.scale(0.115, 0.064, 0.09);
+    h.translate(cx, cy, mz);
     mirrorParts.push(h);
-    mirrorParts.push(boxAt(0.12, 0.03, 0.05, s * 0.93, 0.965, uToZ(1.8)));
-    mirrorGlass.push(boxAt(0.2, 0.09, 0.01, s * 1.01, 0.985, uToZ(1.78) + 0.075));
+    const rim = new THREE.TorusGeometry(1, 0.06, 6, 28);
+    rim.scale(0.112, 0.062, 0.12);
+    rim.translate(cx, cy, mz + 0.002);
+    mirrorParts.push(rim);
+    mirrorParts.push(boxAt(0.13, 0.035, 0.07, s * 0.885, 0.965, mz - 0.005, 0, 0, s * 0.25));
+    const g = new THREE.CircleGeometry(1, 28);
+    g.scale(0.104, 0.055, 1);
+    g.translate(cx, cy, mz + 0.004);
+    mirrorGlass.push(g);
   }
-  root.add(new THREE.Mesh(mergeGeometries(mirrorParts), paint));
-  root.add(new THREE.Mesh(mergeGeometries(mirrorGlass), W.std({ color: 0x8899aa, metalness: 1, roughness: 0.05 })));
+  const mirrorGeo = mergeGeometries(mirrorParts.map((g) => g.toNonIndexed()));
+  root.add(new THREE.Mesh(mirrorGeo, paint));
+  root.add(new THREE.Mesh(mergeGeometries(mirrorGlass), W.std({ color: 0x9fb2c4, metalness: 1, roughness: 0.06 })));
 
   // Räder: Reifen + Aero-Radkappen (drehen sich)
   const tireGeo = tireGeometry(TESLA.wheelR, 0.235, 24);
@@ -268,18 +272,24 @@ export function buildTesla() {
   }
 
   // --- Innenraum -------------------------------------------------------
+  const rbox = (w, h, d, x, y, z, rx = 0, r = 0.03) => {
+    const g = new RoundedBoxGeometry(w, h, d, 3, Math.min(r, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001));
+    if (rx) g.rotateX(rx);
+    g.translate(x, y, z);
+    return g;
+  };
   const inner = [];
   // Armaturenbrett
-  inner.push(boxAt(1.56, 0.2, 0.42, 0, 0.82, uToZ(1.72)));
-  // Sitze
+  inner.push(rbox(1.56, 0.2, 0.42, 0, 0.82, uToZ(1.72), 0, 0.05));
+  // Sitze (gepolstert)
   for (const s of [-1, 1]) {
-    inner.push(boxAt(0.5, 0.12, 0.5, s * 0.37, 0.5, uToZ(2.72)));
-    inner.push(boxAt(0.5, 0.64, 0.12, s * 0.37, 0.86, uToZ(3.0), -0.2, 0, 0));
-    inner.push(boxAt(0.27, 0.19, 0.1, s * 0.37, 1.25, uToZ(3.07), -0.1, 0, 0));
+    inner.push(rbox(0.5, 0.12, 0.5, s * 0.37, 0.5, uToZ(2.72), 0, 0.04));
+    inner.push(rbox(0.5, 0.64, 0.12, s * 0.37, 0.86, uToZ(3.0), -0.2, 0.05));
+    inner.push(rbox(0.27, 0.19, 0.1, s * 0.37, 1.25, uToZ(3.07), -0.1, 0.045));
   }
-  inner.push(boxAt(1.36, 0.16, 0.5, 0, 0.5, uToZ(3.62)));
-  inner.push(boxAt(1.36, 0.55, 0.12, 0, 0.82, uToZ(3.92), -0.18, 0, 0));
-  inner.push(boxAt(0.22, 0.2, 0.8, 0, 0.55, uToZ(2.6))); // Mittelkonsole
+  inner.push(rbox(1.36, 0.16, 0.5, 0, 0.5, uToZ(3.62), 0, 0.04));
+  inner.push(rbox(1.36, 0.55, 0.12, 0, 0.82, uToZ(3.92), -0.18, 0.05));
+  inner.push(rbox(0.22, 0.2, 0.8, 0, 0.55, uToZ(2.6), 0, 0.04)); // Mittelkonsole
   const interiorMesh = new THREE.Mesh(mergeGeometries(inner), interior);
   root.add(interiorMesh);
   // Mittelbildschirm (leuchtet)
@@ -318,21 +328,43 @@ export function buildTesla() {
   cabinLight.position.set(-0.2, 1.3, uToZ(2.4));
   root.add(cabinLight);
 
-  // Stream-Kamera vorne am Glasdach + drei Mobilfunkantennen (Telekom, Vodafone, O₂ gebündelt)
+  // Stream-Kamera vorne auf dem Glasdach (Saugfuß) + drei Mobilfunkantennen auf Magnetfüßen
+  // (Telekom, Vodafone, O₂ gebündelt)
   const gear = [];
-  gear.push(boxAt(0.12, 0.07, 0.1, 0.0, glassTop(2.45) + 0.03, uToZ(2.45)));
+  const camU = 2.5;
+  const camY = roofY(camU, 0);
+  const suction = new THREE.CylinderGeometry(0.05, 0.055, 0.012, 20);
+  suction.translate(0, camY + 0.004, uToZ(camU));
+  gear.push(suction);
+  const neck = new THREE.CylinderGeometry(0.012, 0.016, 0.03, 10);
+  neck.translate(0, camY + 0.024, uToZ(camU));
+  gear.push(neck);
+  gear.push(rbox(0.12, 0.068, 0.1, 0, camY + 0.07, uToZ(camU), 0, 0.012));
+  const antU = 3.45;
   for (let i = 0; i < 3; i++) {
-    const g = new THREE.CylinderGeometry(0.008, 0.012, 0.16, 6);
-    g.translate(-0.2 + i * 0.2, glassTop(3.5) + 0.08, uToZ(3.5));
-    gear.push(g);
+    const x = -0.18 + i * 0.18;
+    const y = roofY(antU, x);
+    const foot = new THREE.CylinderGeometry(0.03, 0.034, 0.014, 16);
+    foot.translate(x, y + 0.005, uToZ(antU));
+    gear.push(foot);
+    const rod = new THREE.CylinderGeometry(0.005, 0.009, 0.17, 8);
+    rod.translate(0, 0.085, 0);
+    rod.rotateX(0.22); // leicht nach hinten geneigt
+    rod.translate(x, y + 0.01, uToZ(antU));
+    gear.push(rod);
+    const tip = new THREE.SphereGeometry(0.009, 8, 6);
+    tip.translate(0, 0.17, 0);
+    tip.rotateX(0.22);
+    tip.translate(x, y + 0.01, uToZ(antU));
+    gear.push(tip);
   }
-  root.add(new THREE.Mesh(mergeGeometries(gear), plastic));
+  root.add(new THREE.Mesh(mergeGeometries(gear.map((g) => (g.index ? g.toNonIndexed() : g))), plastic));
   const lens = new THREE.Mesh(new THREE.CircleGeometry(0.025, 14), W.std({ color: 0x223344, metalness: 0.9, roughness: 0.1 }));
-  lens.position.set(0, glassTop(2.45) + 0.03, uToZ(2.45) - 0.051);
+  lens.position.set(0, camY + 0.07, uToZ(camU) - 0.051);
   lens.rotation.y = Math.PI;
   root.add(lens);
   const recLed = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 6), W.basic({ color: 0xff2222 }));
-  recLed.position.set(0.04, glassTop(2.45) + 0.055, uToZ(2.45) - 0.05);
+  recLed.position.set(0.04, camY + 0.092, uToZ(camU) - 0.048);
   root.add(recLed);
 
   // Starlink-Schüssel (Shop)
@@ -344,7 +376,7 @@ export function buildTesla() {
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.16, 8), dishMat);
   mast.position.y = 0.08;
   starlink.add(dish, mast);
-  starlink.position.set(0, glassTop(3.05), uToZ(3.05));
+  starlink.position.set(0, roofY(3.05, 0), uToZ(3.05));
   starlink.visible = false;
   root.add(starlink);
 
@@ -382,16 +414,4 @@ export function buildTesla() {
       recLed.visible = Math.sin(t * 4) > -0.2;
     },
   };
-}
-
-// Zylinder zwischen zwei Punkten (für Säulen/Leisten)
-function stick(a, b, r) {
-  const dir = new THREE.Vector3().subVectors(b, a);
-  const len = dir.length();
-  const g = new THREE.CylinderGeometry(r, r, len, 8);
-  g.translate(0, len / 2, 0);
-  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-  g.applyQuaternion(q);
-  g.translate(a.x, a.y, a.z);
-  return g;
 }
