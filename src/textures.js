@@ -400,6 +400,31 @@ export function softDotTexture() {
   return tex(c, { aniso: false });
 }
 
+// Weicher Bodenschatten unter Fahrzeugen (abgerundetes Rechteck, nach außen auslaufend)
+let contactTex = null;
+export function contactShadowTexture() {
+  if (contactTex) return contactTex;
+  const W = 64;
+  const H = 128;
+  const c = canvas(W, H);
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const u = Math.abs((x + 0.5) / W * 2 - 1);
+      const v = Math.abs((y + 0.5) / H * 2 - 1);
+      // Superellipse: innen fast rechteckig, am Rand weich
+      const d = Math.pow(Math.pow(u, 5) + Math.pow(v, 5), 1 / 5);
+      const t = Math.min(1, Math.max(0, (1 - d) / 0.42));
+      const a = t * t * (3 - 2 * t);
+      img.data[(y * W + x) * 4 + 3] = Math.round(a * 255);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  contactTex = tex(c, { aniso: false, srgb: false });
+  return contactTex;
+}
+
 // Blaues Autobahnschild mit Zeilen
 export function signTexture(lines, { w = 512, h = 256, bg = '#1452a8', fg = '#ffffff', border = true, arrows = null } = {}) {
   const c = canvas(w, h);

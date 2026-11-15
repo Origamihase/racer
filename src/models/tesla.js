@@ -3,10 +3,10 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../curve.js';
-import { plateTexture, aeroWheelTexture, liveLogoTexture } from '../textures.js';
+import { plateTexture, aeroWheelTexture, liveLogoTexture, contactShadowTexture } from '../textures.js';
 import { buildMiniAdam } from './miniAdam.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { loft, loftPoint, sideArches, surfacePatch, curve1, withArches, tireGeometry, discX, boxAt } from './loft.js';
+import { loft, loftPoint, sideArches, surfacePatch, curve1, withArches, tireGeometry, discX, boxAt, mirrorShape, mirrorHousingGeometry } from './loft.js';
 
 export const TESLA = {
   length: 4.69,
@@ -40,7 +40,8 @@ const glassTop = curve1([
   [1.48, 0.93], [1.7, 1.04], [2.0, 1.2], [2.25, 1.35], [2.5, 1.415], [2.8, 1.44], [3.1, 1.44], [3.4, 1.415],
   [3.7, 1.3], [3.95, 1.17], [4.15, 1.075], [4.24, 1.045],
 ]);
-const glassHalf = curve1([[1.48, 0.8], [1.8, 0.84], [3.2, 0.85], [4.0, 0.8], [4.24, 0.74]]);
+// zum Heck hin schmaler (wie beim echten Wagen): sonst steht die Glaskuppel über die Schulter hinaus
+const glassHalf = curve1([[1.48, 0.8], [1.8, 0.84], [2.3, 0.8], [2.9, 0.74], [3.5, 0.7], [4.0, 0.63], [4.24, 0.57]]);
 
 function uToZ(u) {
   return u - L / 2;
@@ -82,6 +83,21 @@ function headUV(a, t) {
   const up = polyAt(HEAD_UP, t);
   const lo = polyAt(HEAD_LO, t);
   return [lerp(lo[0], up[0], a), lerp(lo[1], up[1], a)];
+}
+
+/** Höhe der Karosserie-Oberseite an Position (u, x) (für Dinge, die auf dem Blech liegen). */
+function bodyTopY(u, x) {
+  let lo = 0;
+  let hi = Math.PI / 2;
+  const p = new THREE.Vector3();
+  const ax = Math.abs(x);
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    bodyPoint(u, mid, p);
+    if (p.x > ax) lo = mid;
+    else hi = mid;
+  }
+  return bodyPoint(u, (lo + hi) / 2, p).y;
 }
 
 /** Höhe des Glasdachs an Position (u, x) (für Dinge, die auf dem Dach stehen). */
@@ -126,12 +142,13 @@ export function buildTesla() {
   const headMat = W.std({ color: 0xc8d6e6, emissive: 0xeaf3ff, emissiveIntensity: 1.1, roughness: 0.15, metalness: 0.2, side: THREE.DoubleSide });
   const lampChrome = W.phys({ color: 0xaeb6bf, metalness: 1, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.04, side: THREE.DoubleSide });
   const lampLens = W.phys({ color: 0x0c1016, metalness: 0.5, roughness: 0.1, clearcoat: 1, side: THREE.DoubleSide });
-  const tailMat = W.std({ color: 0x4a0606, emissive: 0xff1414, emissiveIntensity: 0.9, roughness: 0.25, side: THREE.DoubleSide });
+  const tailMat = W.std({ color: 0x3a0505, emissive: 0xff0000, emissiveIntensity: 0.2, roughness: 0.25, side: THREE.DoubleSide });
   const interior = W.std({ color: 0x1b1b1e, roughness: 0.85 });
   const screenMat = W.basic({ color: 0x7fa4c8 });
 
   // --- Karosserie --------------------------------------------------------
-  const bodyGeo = loft({ u0: 0, u1: L, ...BODY, segs: 150, ring: 44, H: 1.5 });
+  // Bug und Heck mit gewölbter Schattierung (capDome), sonst wirkt das Heck wie ein schwarzes Loch
+  const bodyGeo = loft({ u0: 0, u1: L, ...BODY, segs: 150, ring: 44, H: 1.5, capDome: 0.8 });
   const body = new THREE.Mesh(bodyGeo, paint);
   body.castShadow = true;
   root.add(body);
@@ -173,16 +190,39 @@ export function buildTesla() {
       wall.rotateY(Math.PI / 2);
       wall.translate(s * 0.415, 0.335, uToZ(u));
       wellParts.push(liner, wall);
+      // senkrechte Stirnwände vorne und hinten im Radlauf (unterhalb der Radmitte), sonst glänzt dort Lack
+      for (const e of [-1, 1]) {
+        const end = new THREE.PlaneGeometry(0.5, 0.18);
+        end.translate(s * 0.665, 0.255, uToZ(u + e * (0.405 - 0.012)));
+        wellParts.push(end);
+      }
     }
   }
-  root.add(new THREE.Mesh(mergeGeometries(wellParts), dark));
+  root.add(new THREE.Mesh(mergeGeometries(wellParts.map((g) => (g.index ? g.toNonIndexed() : g))), dark));
 
-  // Lufteinlass vorne, Diffusor hinten
-  const lip = new THREE.Mesh(
-    mergeGeometries([boxAt(0.95, 0.07, 0.05, 0, 0.3, uToZ(0.02)), boxAt(1.1, 0.06, 0.05, 0, 0.34, uToZ(4.62))]),
-    plastic,
-  );
-  root.add(lip);
+  // Lufteinlass vorne und Diffusor hinten: flache, abgerundete Schlitze auf Bug- und Heckfläche
+  // (keine Klötze, die unter der Nase hängen)
+  const slot = (w, h, r) => {
+    const sh = new THREE.Shape();
+    sh.moveTo(-w / 2 + r, -h / 2);
+    sh.lineTo(w / 2 - r, -h / 2);
+    sh.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
+    sh.lineTo(w / 2, h / 2 - r);
+    sh.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
+    sh.lineTo(-w / 2 + r, h / 2);
+    sh.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
+    sh.lineTo(-w / 2, -h / 2 + r);
+    sh.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
+    const g = new THREE.ShapeGeometry(sh, 6);
+    g.deleteAttribute('uv');
+    return g;
+  };
+  const intake = slot(0.8, 0.03, 0.015);
+  intake.rotateY(Math.PI);
+  intake.translate(0, 0.333, uToZ(0) - 0.003);
+  const diffuser = slot(1.08, 0.07, 0.03);
+  diffuser.translate(0, 0.475, uToZ(L) + 0.003);
+  root.add(new THREE.Mesh(mergeGeometries([intake, diffuser]), plastic));
 
   // Scheinwerfer (mandelförmig, um die Ecke gezogen) und Rückleuchten (um die Ecke) – liegen auf der Karosserie
   const patchOnBody = (uv, opts) => surfacePatch(bodyPoint, uv, opts);
@@ -213,19 +253,29 @@ export function buildTesla() {
   const plateMat = W.std({ map: plateTexture(TESLA.plate), roughness: 0.5 });
   const plateGeo = new THREE.PlaneGeometry(0.52, 0.112);
   const plateF = new THREE.Mesh(plateGeo, plateMat);
-  plateF.position.set(0, 0.36, uToZ(0) - 0.012);
+  plateF.position.set(0, 0.415, uToZ(0) - 0.012);
   plateF.rotation.y = Math.PI;
   const plateR = new THREE.Mesh(plateGeo, plateMat);
   plateR.position.set(0, 0.62, uToZ(L) + 0.004);
   root.add(plateF, plateR);
 
   // LIVE-Aufkleber auf dem Kofferraumdeckel (Fan-Detail)
+  // folgt der Wölbung des Deckels (nicht halb versunken, nicht schwebend); Bildoberkante zeigt nach vorne
+  const stickerGeo = new THREE.PlaneGeometry(0.34, 0.34, 8, 8);
+  const sp = stickerGeo.attributes.position;
+  for (let i = 0; i < sp.count; i++) {
+    const x = sp.getX(i);
+    const u = 4.44 - sp.getY(i);
+    sp.setXYZ(i, x, bodyTopY(u, x) + 0.003, uToZ(u));
+  }
+  stickerGeo.computeVertexNormals();
   const sticker = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.34, 0.34),
-    W.std({ map: liveLogoTexture({ w: 256, h: 256 }), transparent: true, roughness: 0.4, alphaTest: 0.3 }),
+    stickerGeo,
+    W.std({
+      map: liveLogoTexture({ w: 256, h: 256 }), transparent: true, roughness: 0.4, alphaTest: 0.3,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    }),
   );
-  sticker.rotation.x = -Math.PI / 2 + 0.08;
-  sticker.position.set(0, topLine(4.42) + 0.006, uToZ(4.42));
   root.add(sticker);
 
   // Außenspiegel: Gehäuse in Wagenfarbe (nach vorne gewölbt), Spiegelglas hinten bündig, kurzer Fuß zur Tür
@@ -235,21 +285,18 @@ export function buildTesla() {
   for (const s of [-1, 1]) {
     const cx = s * 1.0;
     const cy = 1.0;
-    const h = new THREE.SphereGeometry(1, 20, 12, Math.PI, Math.PI);
-    h.scale(0.115, 0.064, 0.09);
+    // Model-3-Form wie im Cockpit: Schale nach vorne, Glas mit schmalem Rand hinten
+    const h = mirrorHousingGeometry(s);
     h.translate(cx, cy, mz);
     mirrorParts.push(h);
-    const rim = new THREE.TorusGeometry(1, 0.06, 6, 28);
-    rim.scale(0.112, 0.062, 0.12);
-    rim.translate(cx, cy, mz + 0.002);
-    mirrorParts.push(rim);
-    mirrorParts.push(boxAt(0.13, 0.035, 0.07, s * 0.885, 0.965, mz - 0.005, 0, 0, s * 0.25));
-    const g = new THREE.CircleGeometry(1, 28);
-    g.scale(0.104, 0.055, 1);
-    g.translate(cx, cy, mz + 0.004);
+    // Fuß zur Tür – liegt ganz hinter der Glasfläche und steckt nicht durch das Glas
+    mirrorParts.push(boxAt(0.1, 0.032, 0.045, s * 0.86, 0.968, mz - 0.045, 0, 0, s * 0.22));
+    const g = new THREE.ShapeGeometry(mirrorShape(0.9, s), 10);
+    g.deleteAttribute('uv');
+    g.translate(cx, cy, mz + 0.002);
     mirrorGlass.push(g);
   }
-  const mirrorGeo = mergeGeometries(mirrorParts.map((g) => g.toNonIndexed()));
+  const mirrorGeo = mergeGeometries(mirrorParts.map((g) => (g.index ? g.toNonIndexed() : g)));
   root.add(new THREE.Mesh(mirrorGeo, paint));
   root.add(new THREE.Mesh(mergeGeometries(mirrorGlass), W.std({ color: 0x9fb2c4, metalness: 1, roughness: 0.06 })));
 
@@ -261,6 +308,8 @@ export function buildTesla() {
   for (const z of [TESLA.frontAxleZ, TESLA.rearAxleZ]) {
     for (const s of [-1, 1]) {
       const wheel = new THREE.Group();
+      // erst lenken (Hochachse), dann drehen – sonst taumelt das gelenkte Rad beim Rollen
+      wheel.rotation.order = 'YXZ';
       wheel.position.set(s * TESLA.trackHalf, TESLA.wheelR, z);
       const tire = new THREE.Mesh(tireGeo, tireMat);
       tire.castShadow = true;
@@ -280,7 +329,8 @@ export function buildTesla() {
   };
   const inner = [];
   // Armaturenbrett
-  inner.push(rbox(1.56, 0.2, 0.42, 0, 0.82, uToZ(1.72), 0, 0.05));
+  // (schmaler und tiefer als früher: die oberen Ecken stachen an der A-Säule durchs Blech)
+  inner.push(rbox(1.3, 0.18, 0.42, 0, 0.79, uToZ(1.74), 0, 0.05));
   // Sitze (gepolstert)
   for (const s of [-1, 1]) {
     inner.push(rbox(0.5, 0.12, 0.5, s * 0.37, 0.5, uToZ(2.72), 0, 0.04));
@@ -288,7 +338,7 @@ export function buildTesla() {
     inner.push(rbox(0.27, 0.19, 0.1, s * 0.37, 1.25, uToZ(3.07), -0.1, 0.045));
   }
   inner.push(rbox(1.36, 0.16, 0.5, 0, 0.5, uToZ(3.62), 0, 0.04));
-  inner.push(rbox(1.36, 0.55, 0.12, 0, 0.82, uToZ(3.92), -0.18, 0.05));
+  inner.push(rbox(1.12, 0.55, 0.12, 0, 0.82, uToZ(3.92), -0.18, 0.05));
   inner.push(rbox(0.22, 0.2, 0.8, 0, 0.55, uToZ(2.6), 0, 0.04)); // Mittelkonsole
   const interiorMesh = new THREE.Mesh(mergeGeometries(inner), interior);
   root.add(interiorMesh);
@@ -323,10 +373,20 @@ export function buildTesla() {
   cushion2.position.set(-0.37, 0.655, uToZ(2.71));
   root.add(cushion2);
 
-  // Innenlicht (nur beim Kameraschwenk hell, damit man Mini Adam gut sieht)
-  const cabinLight = new THREE.PointLight(0xfff1dd, 0, 2.2, 1.5);
-  cabinLight.position.set(-0.2, 1.3, uToZ(2.4));
-  root.add(cabinLight);
+  // Innenlicht (nur beim Kameraschwenk hell, damit man Mini Adam gut sieht): ein Spot von vorne oben
+  // auf ihn – eine Punktleuchte schien durchs Glas auf Motorhaube und Türen (helle Flecken im Lack)
+  const cabinLight = new THREE.SpotLight(0xfff1dd, 0, 2.2, 0.62, 0.6, 1.5);
+  cabinLight.position.set(-0.37, 1.24, uToZ(2.24));
+  cabinLight.target.position.set(-0.37, 0.96, uToZ(2.66));
+  root.add(cabinLight, cabinLight.target);
+
+  // weicher Bodenschatten (sonst schwebt der Wagen, vor allem bei Regen ohne Sonnenschatten)
+  const groundMat = W.basic({ color: 0x000000, map: contactShadowTexture(), transparent: true, opacity: 0.55, depthWrite: false });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 5.15), groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(0, 0.02, 0);
+  ground.renderOrder = -1;
+  root.add(ground);
 
   // Stream-Kamera vorne auf dem Glasdach (Saugfuß) + drei Mobilfunkantennen auf Magnetfüßen
   // (Telekom, Vodafone, O₂ gebündelt)
@@ -381,7 +441,7 @@ export function buildTesla() {
   root.add(starlink);
 
   root.traverse((o) => {
-    if (o.isMesh && o !== glassMesh) o.castShadow = true;
+    if (o.isMesh && o !== glassMesh && o !== ground) o.castShadow = true;
   });
 
   let wheelAngle = 0;
@@ -397,13 +457,18 @@ export function buildTesla() {
     setStarlink(v) {
       starlink.visible = !!v;
     },
+    /** Bodenschatten: bei Regen kräftiger (die Sonne wirft dann kaum noch Schatten). */
+    setGroundShade(rain) {
+      groundMat.opacity = 0.55 + 0.3 * Math.min(1, Math.max(0, rain));
+    },
     setVest(v) {
       adam.setVest(v);
     },
     setBrake(b) {
       if (b === brake) return;
       brake = b;
-      tailMat.emissiveIntensity = b ? 3.2 : 0.9;
+      // Rücklicht dunkelrot, Bremslicht hell: sonst sieht beides im Tonemapping gleich aus
+      tailMat.emissiveIntensity = b ? 0.95 : 0.2;
     },
     update(dt, speed, steer, t) {
       wheelAngle -= (speed * dt) / TESLA.wheelR;

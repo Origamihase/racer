@@ -66,10 +66,11 @@ export function buildElsa({ curved = true } = {}) {
   body.scale.set(1.0, 1.45, 0.8);
   body.position.y = 0.48;
   g.add(body);
-  const bellyM = new THREE.Mesh(new THREE.SphereGeometry(0.29, 24, 18, -0.9, 1.8, 0.9, 1.6), belly);
-  bellyM.scale.set(1.0, 1.42, 0.82);
-  bellyM.position.y = 0.46;
-  bellyM.position.z = 0.012;
+  // weißer Bauch vorne unter dem Mund: dieselbe Körperform, hauchdünn darübergelegt
+  // (phi = π/2 ist bei SphereGeometry die Vorderseite +z)
+  const bellyM = new THREE.Mesh(new THREE.SphereGeometry(0.3, 24, 14, Math.PI / 2 - 0.85, 1.7, 1.62, 0.98), belly);
+  bellyM.scale.set(1.012, 1.45 * 1.012, 0.8 * 1.012);
+  bellyM.position.y = 0.48;
   g.add(bellyM);
 
   // Schwanzflosse als „Füße“

@@ -68,7 +68,8 @@ setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.25, 3200);
 const cockpitCam = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.012, 20);
-const rearCam = new THREE.PerspectiveCamera(26, 512 / 192, 0.6, 700);
+// Seitenverhältnis wie das Innenspiegelglas (0,245 × 0,072 m), damit nichts verzerrt wird
+const rearCam = new THREE.PerspectiveCamera(21, 0.245 / 0.072, 0.6, 700);
 const photoCam = new THREE.PerspectiveCamera(24, 16 / 9, 0.2, 900);
 
 const sky = new Sky(renderer, scene, { shadows: quality.shadows, shadowSize: quality.shadowSize });
@@ -95,7 +96,7 @@ function drawSize() {
 }
 drawSize();
 const worldRT = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: quality.msaa, depthBuffer: true });
-const mirrorRT = new THREE.WebGLRenderTarget(512, 192, { type: THREE.HalfFloatType, samples: 0, depthBuffer: true });
+const mirrorRT = new THREE.WebGLRenderTarget(768, 226, { type: THREE.HalfFloatType, samples: 4, depthBuffer: true });
 cockpit.setMirrorTexture(mirrorRT.texture);
 const compMat = createCompositeMaterial(worldRT.texture, windshield);
 const compScene = new THREE.Scene();
@@ -104,20 +105,58 @@ quad.frustumCulled = false;
 compScene.add(quad);
 const compCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const U = compMat.uniforms;
-// Überblendung und Blitz auch über dem Cockpit (das wird erst nach dem Weltbild gezeichnet)
-const overlayScene = new THREE.Scene();
-const overlayMat = new THREE.ShaderMaterial({
-  uniforms: { uFade: U.uFade, uFlash: U.uFlash, uFlashColor: U.uFlashColor },
-  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+// Bildeffekte über dem fertigen Bild aus Welt und Cockpit (sonst wirkt das Cockpit wie aufgeklebt):
+// Vignette, Blitz und Überblendung per Mischung; Frosch-Grünstich und Funkloch-Bildstörung brauchen
+// das fertige Bild, dafür wird es nur in diesen Momenten kopiert.
+const postScene = new THREE.Scene();
+const screenSize = new THREE.Vector2();
+let screenTex = null;
+const postMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tScreen: { value: null },
+    uCopy: { value: 0 },
+    uFade: U.uFade,
+    uFlash: U.uFlash,
+    uFlashColor: U.uFlashColor,
+    uVignette: U.uVignette,
+    uGreen: U.uGreen,
+    uGlitch: U.uGlitch,
+    uTime: U.uTime,
+  },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
   fragmentShader: `
+    uniform sampler2D tScreen;
+    uniform float uCopy;
     uniform float uFade;
     uniform float uFlash;
     uniform vec3 uFlashColor;
+    uniform float uVignette;
+    uniform float uGreen;
+    uniform float uGlitch;
+    uniform float uTime;
+    varying vec2 vUv;
     void main() {
-      // wie im Weltbild: erst zum Blitzlicht mischen, dann abdunkeln (vormultipliziert)
+      vec2 vc = vUv - 0.5;
+      // gleiche Vignette wie im Weltbild (dort vor, hier nach der sRGB-Kodierung)
+      float vig = pow(max(0.0, 1.0 - dot(vc, vc) * uVignette), 0.4545);
       float f = clamp(uFlash, 0.0, 1.0);
       float k = 1.0 - clamp(uFade, 0.0, 1.0);
-      gl_FragColor = vec4(min(uFlashColor * 4.0, vec3(1.0)) * f * k, 1.0 - (1.0 - f) * k);
+      vec3 flash = min(uFlashColor * 4.0, vec3(1.0)) * f;
+      if (uCopy > 0.5) {
+        vec2 uv = vUv;
+        if (uGlitch > 0.0) {
+          float band = floor(uv.y * 30.0) + floor(uTime * 24.0);
+          float r = fract(sin(band * 91.7) * 4375.85);
+          uv.x += (r - 0.5) * 0.08 * uGlitch * step(0.6, r);
+        }
+        vec3 c = texture2D(tScreen, uv).rgb;
+        float g = dot(c, vec3(0.3, 0.6, 0.1));
+        c = mix(c, vec3(0.08, 1.0, 0.25) * (0.3 + g), uGreen * 0.65);
+        gl_FragColor = vec4((c * vig * (1.0 - f) + flash) * k, 1.0);
+      } else {
+        // vormultipliziert: Bild * (1 - a) + Farbe
+        gl_FragColor = vec4(flash * k, 1.0 - vig * (1.0 - f) * k);
+      }
     }`,
   transparent: true,
   depthTest: false,
@@ -126,9 +165,9 @@ const overlayMat = new THREE.ShaderMaterial({
   blendSrc: THREE.OneFactor,
   blendDst: THREE.OneMinusSrcAlphaFactor,
 });
-const overlayQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), overlayMat);
-overlayQuad.frustumCulled = false;
-overlayScene.add(overlayQuad);
+const postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMat);
+postQuad.frustumCulled = false;
+postScene.add(postQuad);
 
 // Kofferraum-Ansicht für den Innenspiegel (Bitspende „Kofferraum öffnen“)
 const trunkTex = (() => {
@@ -225,14 +264,14 @@ const fx = {
   },
   trunk: (dur) => {
     fxState.trunk = dur;
-    cockpit.mirrorMat.map = trunkTex;
+    cockpit.setTrunkView(trunkTex);
     cockpit.mirrorMat.needsUpdate = true;
   },
 };
 const uiFacade = {
   reset: () => ui.reset(),
   chat: (m) => ui.chat(m),
-  toast: (t, k) => ui.toast(t, k),
+  toast: (t, k, sub) => ui.toast(t, k, sub),
   banner: (t, d, sub) => ui.banner(t, d, sub),
   nomi: (t, d) => ui.nomi(t, d),
   money: (a, l) => ui.money(a, l),
@@ -486,7 +525,30 @@ function setFov(vfovCockpit) {
   const v = Math.max(THREE.MathUtils.degToRad(vfovCockpit), 2 * Math.atan(Math.tan(minH / 2) / aspect));
   camera.fov = clamp(THREE.MathUtils.radToDeg(v), 50, 78);
   camera.aspect = aspect;
+  // Bildverschiebung gibt es nur im Titel (titleViewOffset setzt sie danach wieder)
+  if (camera.view) camera.view.enabled = false;
   camera.updateProjectionMatrix();
+}
+
+// Im Titel fährt der Wagen sonst hinter den Menüknöpfen (4:3, Handy hochkant):
+// Bildmitte in die freie Fläche neben bzw. unter der Titelkarte schieben
+const viewOff = { x: 0, y: 0 };
+function titleViewOffset(dt) {
+  const Wd = window.innerWidth;
+  const Hd = window.innerHeight;
+  let tx = 0;
+  let ty = 0;
+  const card = state === 'title' ? document.querySelector('.screen-title:not(.hidden) .title-card') : null;
+  const r = card && card.getBoundingClientRect();
+  if (r && r.width) {
+    if (Wd - r.right > Wd * 0.3) tx = (r.right + Wd) / 2 - Wd / 2;
+    else if (Hd - r.bottom >= r.top && Hd - r.bottom > 110) ty = (r.bottom + Hd) / 2 - Hd / 2;
+    else if (r.top > 110) ty = r.top / 2 - Hd / 2;
+  }
+  const k = 1 - Math.exp(-dt * 4);
+  viewOff.x += (tx - viewOff.x) * k;
+  viewOff.y += (ty - viewOff.y) * k;
+  if (Math.abs(viewOff.x) + Math.abs(viewOff.y) > 0.5) camera.setViewOffset(Wd, Hd, -viewOff.x, -viewOff.y, Wd, Hd);
 }
 
 function localToWorld(v) {
@@ -519,6 +581,8 @@ function placeDrone(dt, mode) {
   if (cockpit.shake > 0) camera.position.y += Math.sin(stateT * 60) * cockpit.shake * 0.08;
   camera.lookAt(drone.look);
   setFov(50);
+  if (mode === 'orbit') titleViewOffset(dt);
+  else viewOff.x = viewOff.y = 0;
 }
 
 // Kameraschwenk beim Start: von vorne links an Mini Adam vorbei ins Cockpit
@@ -612,6 +676,8 @@ function renderWorld(cam, { cockpitOn, drops }) {
   renderer.render(scene, cam);
   renderer.setRenderTarget(null);
   U.uDrops.value = drops ? 1 : 0;
+  // mit Cockpit kommen Blitz, Vignette & Co. erst danach über das ganze Bild (postPass)
+  U.uPost.value = cockpitOn ? 0 : 1;
   renderer.render(compScene, compCam);
 }
 
@@ -640,29 +706,44 @@ function renderFrame(cockpitOn) {
     renderer.autoClear = false;
     renderer.clearDepth();
     renderer.render(cockpit.scene, cockpitCam);
-    if (U.uFade.value > 0.002 || U.uFlash.value > 0.002) renderer.render(overlayScene, compCam);
+    postPass();
     renderer.autoClear = true;
   }
 }
 
+/** Effekte über Welt und Cockpit zusammen (siehe postMat). */
+function postPass() {
+  const copy = U.uGreen.value > 0.001 || U.uGlitch.value > 0.001;
+  if (copy) {
+    renderer.getDrawingBufferSize(screenSize);
+    if (!screenTex || screenTex.image.width !== screenSize.x || screenTex.image.height !== screenSize.y) {
+      if (screenTex) screenTex.dispose();
+      screenTex = new THREE.FramebufferTexture(screenSize.x, screenSize.y);
+      postMat.uniforms.tScreen.value = screenTex;
+    }
+    renderer.copyFramebufferToTexture(screenTex);
+  }
+  postMat.uniforms.uCopy.value = copy ? 1 : 0;
+  renderer.render(postScene, compCam);
+}
+
 /** Blitzerfoto: der Tesla von vorne, Mini Adam hinterm Steuer, im Blitzlicht. */
 function takePhoto({ kmh, clock }) {
-  photoCam.aspect = window.innerWidth / window.innerHeight;
+  // immer 4:3 (wie das Polaroid), auch auf dem Handy hochkant: das Bild wird dafür verzerrt gerendert
+  // und beim Kopieren ins 4:3-Foto wieder entzerrt
+  photoCam.aspect = 4 / 3;
   photoCam.updateProjectionMatrix();
   photoCam.position.copy(localToWorld(tmpV2.set(2.6, 1.55, -10.5)));
   photoCam.lookAt(localToWorld(tmpV2.set(-0.3, 1.05, -0.3)));
   const light = tesla.cabinLight.intensity;
-  tesla.cabinLight.intensity = 3.5;
+  tesla.cabinLight.intensity = 5;
+  // nur ein Hauch Blitz über dem ganzen Bild (mehr macht das Foto grau und flau)
   const fl = U.uFlash.value;
-  U.uFlash.value = 0.025;
+  U.uFlash.value = 0.01;
   renderWorld(photoCam, { cockpitOn: false, drops: false });
   U.uFlash.value = fl;
   tesla.cabinLight.intensity = light;
-  const cw = renderer.domElement.width;
-  const ch = renderer.domElement.height;
-  const sh = ch * 0.8;
-  const sw = sh * (4 / 3);
-  photoCtx.drawImage(renderer.domElement, (cw - sw) / 2, (ch - sh) / 2, sw, sh, 0, 0, 360, 270);
+  photoCtx.drawImage(renderer.domElement, 0, 0, renderer.domElement.width, renderer.domElement.height, 0, 0, 360, 270);
   // Datenzeile wie bei echten Blitzern
   photoCtx.fillStyle = 'rgba(0,0,0,0.55)';
   photoCtx.fillRect(0, 238, 360, 32);
@@ -860,7 +941,8 @@ function step(dt, { render = true } = {}) {
     tesla.update(dt, p.speed, p.steer, simT);
     tesla.setBrake(p.braking > 0.1 || p.speed < 1);
     tesla.adam.animate(simT, { steer: p.steer, wave: adamWave, look: adamLook });
-    tesla.cabinLight.intensity = cockpitOn ? 0 : state === 'title' || state === 'intro' || state === 'ending' || state === 'over' ? 2.2 : 0.6;
+    tesla.cabinLight.intensity = cockpitOn ? 0 : state === 'title' || state === 'intro' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
+    tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     cockpit.update({
       dt, t: simT, steer: p.steer, latAcc: p.latAcc, wiperAngles: windshield.angles, sunDir: sky.sunDir, overcast: w,

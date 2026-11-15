@@ -73,24 +73,33 @@ export class Rain {
     this.sprayData = [];
     this.sprayGeo = sg;
     const smat = new THREE.ShaderMaterial({
-      uniforms: { tDot: { value: softDotTexture() }, uCurve: curveUniforms.uCurve, uScale: { value: 600 } },
+      uniforms: { tDot: { value: softDotTexture() }, uCurve: curveUniforms.uCurve, uH: { value: 720 } },
       vertexShader: CURVE_GLSL + /* glsl */ `
         attribute float aAlpha;
         attribute float aSize;
-        uniform float uScale;
+        uniform float uH;
         varying float vA;
+        varying float vCut;
         void main() {
           vec4 w = curveWorld(modelMatrix * vec4(position, 1.0));
           vec4 mv = viewMatrix * w;
           gl_Position = projectionMatrix * mv;
-          gl_PointSize = aSize * uScale / max(1.0, -mv.z);
+          // Größe in Metern: gleich groß bei jeder Bildhöhe und jedem Blickwinkel (auch im Rückspiegel)
+          float px = aSize * 0.52 * uH * projectionMatrix[1][1] / max(1.0, -mv.z);
+          gl_PointSize = px;
+          // Die Fahrbahn schneidet den Punkt unten gerade ab: dort vorher weich ausblenden
+          vec4 g = projectionMatrix * viewMatrix * curveWorld(modelMatrix * vec4(position.x, 0.0, position.z, 1.0));
+          float below = (gl_Position.y / gl_Position.w - g.y / g.w) * 0.5 * uH;
+          vCut = 0.5 + below / max(px, 1.0);
           vA = aAlpha;
         }`,
       fragmentShader: /* glsl */ `
         uniform sampler2D tDot;
         varying float vA;
+        varying float vCut;
         void main() {
           float a = texture2D(tDot, gl_PointCoord).a;
+          a *= 1.0 - smoothstep(vCut - 0.22, vCut, gl_PointCoord.y);
           gl_FragColor = vec4(vec3(0.82, 0.85, 0.9), a * vA);
         }`,
       transparent: true,
@@ -98,12 +107,18 @@ export class Rain {
     });
     this.spray = new THREE.Points(sg, smat);
     this.spray.frustumCulled = false;
+    // Bildhöhe des gerade gezeichneten Ziels (Bildschirm, Rückspiegel, Blitzerfoto)
+    const drawSize = new THREE.Vector2();
+    this.spray.onBeforeRender = (renderer, _s, _c, _g, material) => {
+      const rt = renderer.getRenderTarget();
+      material.uniforms.uH.value = rt ? rt.height : renderer.getDrawingBufferSize(drawSize).y;
+    };
     scene.add(this.spray);
     this.intensity = 0;
   }
 
   setPixelScale(h) {
-    this.spray.material.uniforms.uScale.value = h * 0.9;
+    this.spray.material.uniforms.uH.value = h;
   }
 
   /** Gischt-Partikel ausstoßen (x, z in Kamera-Raum der Welt). */

@@ -43,7 +43,8 @@ export class Nomi {
       uv.setXY(i, pos.getX(i) / span + 0.5, pos.getY(i) / span + 0.5);
     }
     // Kappe zeigt nach +z: SphereGeometry-Mitte (phi = π/2) liegt bei +z? → x = -cos(phi) sin(theta), z = sin(phi) sin(theta)
-    this.faceMat = new THREE.MeshBasicMaterial({ map: this.tex, toneMapped: false });
+    // transparent: nur das runde Display deckt die Kugel ab (die Ecken der Leinwand bleiben frei)
+    this.faceMat = new THREE.MeshBasicMaterial({ map: this.tex, toneMapped: false, transparent: true });
     const face = new THREE.Mesh(cap, this.faceMat);
     this.head.add(face);
 

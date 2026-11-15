@@ -40,7 +40,9 @@ export function withArches(bottom, arches, r = 0.4, cv = 0.335) {
 /**
  * Loft-Geometrie. Querschnitt = „Squircle“ zwischen Unterkante b(u) und Oberkante t(u),
  * halbe Breite w(u), oben schmaler (tw). u läuft von vorne (0) nach hinten, z = u - L/2.
- * Optional bx(u, X, b(u)): Unterkante abhängig von der Querposition X (-1 … 1).
+ * Optional bx(u, X, b(u)): Radlauf-Ausschnitt abhängig von der Querposition X (-1 … 1).
+ * Nur was unter dieser Linie liegt, wird auf sie angehoben; die Flanke darüber bleibt, wie sie ist
+ * (früher wurde der ganze Querschnitt gestaucht: Beule über dem Rad und senkrechte Knicke).
  */
 
 /** Radläufe nur an den Seiten: innen bleibt der Unterboden unten, außen wird ausgeschnitten. */
@@ -61,9 +63,9 @@ export function loftPoint({ w, b, t, tw = 0.9, bw = 0.96, n = 4, L = 4.7, bx = n
   const X = Math.sign(c) * Math.pow(Math.abs(c), e);
   const Y = Math.sign(s) * Math.pow(Math.abs(s), e);
   const bSec = b(u);
-  const bb = bx ? bx(u, X, bSec) : bSec;
-  const tt = Math.max(t(u), bb + 0.002);
-  const y = bb + ((Y + 1) / 2) * (tt - bb);
+  const tt = Math.max(t(u), bSec + 0.002);
+  let y = bSec + ((Y + 1) / 2) * (tt - bSec);
+  if (bx) y = Math.max(y, Math.min(bx(u, X, bSec), tt));
   const wf = Y > 0 ? lerp(1, tw, Y) : lerp(1, bw, -Y);
   return target.set(X * w(u) * wf, y, u - L / 2);
 }
@@ -127,7 +129,7 @@ export function surfacePatch(point, uv, { ns = 6, nt = 16, lift = 0.006, center 
 }
 export function loft({
   u0, u1, w, b, t, tw = 0.9, bw = 0.96, n = 4, segs = 80, ring = 28, L = 4.7, H = 1.5, caps = true,
-  sampleEnds = 0.55, bx = null,
+  sampleEnds = 0.55, bx = null, capDome = 0,
 }) {
   const pos = [];
   const uv = [];
@@ -151,11 +153,11 @@ export function loft({
     const bSec = b(u);
     const tSec = t(u);
     const ww = w(u);
+    const tt = Math.max(tSec, bSec + 0.002);
     for (const [X, Y] of ringXY) {
-      // bx: Unterkante je nach Querposition (z. B. Radläufe nur außen ausschneiden)
-      const bb = bx ? bx(u, X, bSec) : bSec;
-      const tt = Math.max(tSec, bb + 0.002);
-      const y = bb + ((Y + 1) / 2) * (tt - bb);
+      // bx: Radlauf-Ausschnitt je nach Querposition (nur außen); angehoben wird nur, was darunter liegt
+      let y = bSec + ((Y + 1) / 2) * (tt - bSec);
+      if (bx) y = Math.max(y, Math.min(bx(u, X, bSec), tt));
       const wf = Y > 0 ? lerp(1, tw, Y) : lerp(1, bw, -Y);
       const x = X * ww * wf;
       pos.push(x, y, u - L / 2);
@@ -178,7 +180,8 @@ export function loft({
   geo.computeVertexNormals();
 
   if (!caps) return geo;
-  // Deckel vorne/hinten mit eigenen (flachen) Normalen
+  // Deckel vorne/hinten mit eigenen Normalen: flach, oder mit capDome zum Rand hin wie gewölbt
+  // (die Randnormalen neigen sich zur Flanke, so glänzt der Deckel wie eine runde Fläche)
   const nPos = Array.from(geo.attributes.position.array);
   const nNor = Array.from(geo.attributes.normal.array);
   const nUv = Array.from(geo.attributes.uv.array);
@@ -187,12 +190,23 @@ export function loft({
     let cx = 0;
     let cy = 0;
     const z = nPos[sectionIndex * ring * 3 + 2];
+    const az = front ? -1 : 1;
     for (let k = 0; k < ring; k++) {
       const j = (sectionIndex * ring + k) * 3;
       cx += nPos[j];
       cy += nPos[j + 1];
       nPos.push(nPos[j], nPos[j + 1], nPos[j + 2]);
-      nNor.push(0, 0, front ? -1 : 1);
+      if (capDome > 0) {
+        // Seitennormale ohne Längsanteil, mit der Deckelrichtung gemischt
+        const sx = nNor[j];
+        const sy = nNor[j + 1];
+        const sl = Math.hypot(sx, sy) || 1;
+        const nx = (sx / sl) * capDome;
+        const ny = (sy / sl) * capDome;
+        const nz = az * (1 - capDome * 0.55);
+        const nl = Math.hypot(nx, ny, nz);
+        nNor.push(nx / nl, ny / nl, nz / nl);
+      } else nNor.push(0, 0, az);
       nUv.push(nUv[(sectionIndex * ring + k) * 2], nUv[(sectionIndex * ring + k) * 2 + 1]);
     }
     nPos.push(cx / ring, cy / ring, z);
@@ -229,6 +243,42 @@ export function colorize(geo, hex) {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   return geo;
+}
+
+/**
+ * Umriss eines Außenspiegels im Stil des Model 3: außen groß gerundet, innen niedriger und straffer.
+ * Glasseite zeigt nach +z. outer = −1: Außenseite liegt bei −x (linker Spiegel), +1: bei +x (rechter).
+ */
+export function mirrorShape(k = 1, outer = -1) {
+  const X = (x) => (outer < 0 ? x : -x);
+  const xo = -0.118 * k;
+  const xi = 0.112 * k;
+  const yto = 0.062 * k;
+  const yti = 0.05 * k;
+  const ybo = -0.058 * k;
+  const ybi = -0.046 * k;
+  const ro = 0.055 * k;
+  const ri = 0.022 * k;
+  const sh = new THREE.Shape();
+  sh.moveTo(X(xo + ro), ybo);
+  sh.lineTo(X(xi - ri), ybi);
+  sh.quadraticCurveTo(X(xi), ybi, X(xi), ybi + ri);
+  sh.lineTo(X(xi), yti - ri);
+  sh.quadraticCurveTo(X(xi), yti, X(xi - ri), yti);
+  sh.lineTo(X(xo + ro), yto);
+  sh.quadraticCurveTo(X(xo), yto, X(xo), yto - ro);
+  sh.lineTo(X(xo), ybo + ro);
+  sh.quadraticCurveTo(X(xo), ybo, X(xo + ro), ybo);
+  return sh;
+}
+
+/** Spiegelgehäuse: gerundete Schale nach vorne (−z), Vorderkante der Glasseite bei z = 0. */
+export function mirrorHousingGeometry(outer = -1) {
+  const g = new THREE.ExtrudeGeometry(mirrorShape(1, outer), {
+    depth: 0.07, bevelEnabled: true, bevelThickness: 0.014, bevelSize: 0.011, bevelSegments: 4, curveSegments: 12,
+  });
+  g.translate(0, 0, -0.084);
+  return g;
 }
 
 /** Box mit Position/Rotation als fertige Geometrie (für mergeGeometries). */

@@ -373,7 +373,7 @@ export class Menus {
     const tbl = el('div', 'controls-grid', card);
     const rows = [
       ['Lenken', '← → oder A D', 'Linker Stick', '◀ ▶'],
-      ['Strom geben', '↑ oder W', 'RT oder Steuerkreuz ↑', 'Gas'],
+      ['Strom geben', '↑ oder W', 'RT oder Steuerkreuz ↑', 'Strom'],
       ['Bremsen', '↓ oder S', 'LT oder Steuerkreuz ↓', 'Bremse'],
       ['Hupen (Brunnen & Elsa grüßen)', 'Leertaste', 'A', '📯'],
       ['Scheibenwischer von Hand', 'E', 'X', '🌧️'],

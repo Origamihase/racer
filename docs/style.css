@@ -59,11 +59,15 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .stat.shake { animation: shake 0.5s; }
 @keyframes shake { 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
 .stat-val:has(+ .stat-label) { min-width: 0; }
-.money-pops { position: absolute; left: 150px; top: -6px; width: 240px; pointer-events: none; }
-.money-pop { position: absolute; left: 0; top: 0; white-space: nowrap; font-weight: 700; font-size: 14px; animation: moneyup 1.9s ease-out forwards; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
-.money-pop.plus { color: #6dff9c; }
-.money-pop.minus { color: #ff7b72; }
-@keyframes moneyup { 0% { transform: translateY(6px); opacity: 0; } 12% { opacity: 1; } 100% { transform: translateY(-34px); opacity: 0; } }
+.money-slot { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; align-self: stretch; }
+.money-slot .stat-label { transition: opacity 0.3s; }
+.money-slot.popping .stat-label { opacity: 0; transition: none; }
+.money-pops { position: absolute; left: 0; top: 0; bottom: 0; display: flex; align-items: center; pointer-events: none; }
+.money-pop { white-space: nowrap; font-size: 12.5px; font-weight: 800; line-height: 17px; padding: 0 7px; border-radius: 999px; transform-origin: left center; animation: moneypop 1.9s ease-out forwards; }
+.money-pop small { font-size: 11px; font-weight: 600; margin-left: 5px; opacity: 0.9; }
+.money-pop.plus { color: #a4ffc2; background: rgba(22, 96, 50, 0.92); box-shadow: inset 0 0 0 1px rgba(100, 235, 150, 0.55); }
+.money-pop.minus { color: #ffc9c4; background: rgba(120, 26, 22, 0.92); box-shadow: inset 0 0 0 1px rgba(255, 125, 115, 0.6); }
+@keyframes moneypop { 0% { transform: scale(0.7); opacity: 0; } 9% { transform: scale(1.08); opacity: 1; } 16% { transform: scale(1); } 82% { opacity: 1; } 100% { opacity: 0; } }
 .zulage { margin-top: 6px; font-size: 13px; color: #9fd0ff; font-weight: 700; }
 .jobs-mini { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; max-width: 250px; }
 .jobs-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sub); }
@@ -75,9 +79,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .job-bar { flex-basis: 100%; height: 3px; margin-left: 20px; background: rgba(255,255,255,0.12); border-radius: 2px; overflow: hidden; }
 .job-fill { display: block; height: 100%; background: var(--blue); }
 
-.navi-line { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); max-width: min(56vw, 760px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+/* Mittelspalte zwischen Info-Feld und Chat: --top und --mid setzt ui.js (layout) nach der echten Größe beider Felder */
+.navi-line { position: absolute; top: var(--top, 14px); left: 50%; transform: translateX(-50%); max-width: min(760px, var(--mid, 40vw)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 14px; backdrop-filter: blur(6px); z-index: 3; }
-.leftlane { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); width: min(460px, 60vw); background: rgba(20, 50, 120, 0.82); border: 1px solid rgba(120,170,255,0.6);
+.leftlane { position: absolute; top: calc(var(--top, 14px) + 38px); left: 50%; transform: translateX(-50%); width: min(460px, var(--mid, 40vw)); background: rgba(20, 50, 120, 0.82); border: 1px solid rgba(120,170,255,0.6);
   border-radius: 12px; padding: 7px 12px 9px; text-align: center; font-weight: 700; box-shadow: 0 0 24px rgba(60,120,255,0.45); z-index: 3; }
 .leftlane.active { background: rgba(30, 90, 220, 0.9); animation: lanepulse 1s infinite; }
 .leftlane.warn .leftlane-fill { background: #ffb020; }
@@ -85,39 +90,47 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .leftlane-bar { height: 5px; background: rgba(255,255,255,0.2); border-radius: 3px; margin-top: 5px; overflow: hidden; }
 .leftlane-fill { height: 100%; background: #9cc4ff; transition: width 0.3s linear; }
 
+/* kein Platz zwischen den Feldern (Handy hochkant): Spalte unter den Feldern */
+.hud-narrow .navi-line { display: none; }
+.hud-narrow .leftlane { top: var(--top); }
+.hud-narrow .center-stack { top: var(--top); }
+.hud-narrow.lane-on .center-stack { top: calc(var(--top) + 58px); }
+
 /* NOMI-Untertitel, Banner und Hinweise stapeln sich in einer Spalte, damit sich nichts überdeckt */
-.center-stack { position: absolute; top: 108px; left: 50%; transform: translateX(-50%); width: min(92vw, 900px); display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 4; }
-.nomi-sub { display: flex; align-items: center; gap: 10px; max-width: min(70vw, 820px);
+.center-stack { position: absolute; top: calc(var(--top, 14px) + 94px); left: 50%; transform: translateX(-50%); width: min(900px, var(--mid, 40vw)); display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 4; }
+.nomi-sub { display: flex; align-items: center; gap: 10px; max-width: min(100%, 820px);
   background: rgba(6, 7, 10, 0.82); border: 1px solid rgba(140, 180, 255, 0.35); border-radius: 14px; padding: 8px 14px; font-size: 17px; font-weight: 600;
   box-shadow: 0 0 20px rgba(80,130,255,0.25); animation: fadein 0.25s; }
 .nomi-eyes { display: inline-flex; gap: 4px; flex: none; width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #3b3d44, #070708 70%); align-items: center; justify-content: center; }
 .nomi-eyes i { width: 7px; height: 10px; border: 2px solid #fff; border-radius: 3px; animation: blink 2.6s infinite; }
 @keyframes fadein { from { opacity: 0; transform: translateY(-6px); } }
 
-.banner { margin-top: clamp(0px, 7vh, 70px); font-size: clamp(22px, 3.2vw, 38px); font-weight: 800; text-align: center; white-space: nowrap;
+.banner { margin-top: clamp(0px, 7vh, 70px); font-size: clamp(22px, 3.2vw, 38px); font-weight: 800; text-align: center; max-width: 100%; text-wrap: balance;
   color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.7), 0 0 30px rgba(80,140,255,0.6); }
 .nomi-sub:not(.hidden) + .banner { margin-top: 0; }
 .banner.pop { animation: pop 0.5s cubic-bezier(.2,1.6,.4,1); }
 @keyframes pop { from { transform: scale(0.6); opacity: 0; } }
 .toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.toast { background: var(--panel-strong); border: 1px solid var(--line); border-radius: 10px; padding: 7px 14px; font-size: 15px; font-weight: 600; animation: toastin 0.3s; white-space: nowrap; }
+.toast { background: var(--panel-strong); border: 1px solid var(--line); border-radius: 10px; padding: 7px 14px; font-size: 15px; font-weight: 600; animation: toastin 0.3s; max-width: 100%; text-align: center; text-wrap: balance; }
+.toast-sub { font-size: 13px; font-weight: 500; color: #c9d2e3; margin-top: 2px; text-align: center; }
 .toast-good { border-color: rgba(53, 200, 106, 0.7); }
 .toast-bad { border-color: rgba(255, 90, 79, 0.8); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
 
 /* Chat */
-.chat { position: absolute; top: 14px; right: 14px; width: min(310px, 30vw); max-height: 48vh; display: flex; flex-direction: column; background: rgba(10, 10, 13, 0.6);
+/* endet über dem Innenspiegel (dessen Oberkante liegt bei etwa einem Viertel der Bildhöhe) */
+.chat { position: absolute; top: 14px; right: 14px; width: min(310px, 30vw); max-height: max(84px, calc(23vh - 14px)); display: flex; flex-direction: column; background: rgba(10, 10, 13, 0.6);
   border: 1px solid var(--line); border-radius: 14px; overflow: hidden; backdrop-filter: blur(4px); z-index: 3; }
-.chat-head { display: flex; justify-content: space-between; padding: 7px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sub); border-bottom: 1px solid var(--line); }
+.chat-head { display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; padding: 7px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sub); border-bottom: 1px solid var(--line); }
 .chat-count { text-transform: none; letter-spacing: 0; font-weight: 600; }
 .chat-list { overflow: hidden; padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; line-height: 1.32;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 40px); mask-image: linear-gradient(to bottom, transparent 0, #000 40px); }
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px); mask-image: linear-gradient(to bottom, transparent 0, #000 22px); }
 .msg { animation: msgin 0.25s; overflow-wrap: anywhere; }
-.msg .name { font-weight: 700; margin-right: 6px; }
+.msg .name { font-weight: 700; margin-right: 2px; }
 .msg .text { color: #eceef2; }
 .msg.bot { background: rgba(255, 215, 106, 0.09); border-radius: 6px; padding: 2px 6px; }
 .bot-icon { margin-right: 4px; font-family: var(--emoji); }
-.bot-tag { font-size: 9px; font-weight: 800; background: rgba(255,215,106,0.25); color: var(--gold); border-radius: 3px; padding: 0 4px; margin-right: 6px; vertical-align: 1px; }
+.bot-tag { font-size: 9px; font-weight: 800; background: rgba(255,215,106,0.25); color: var(--gold); border-radius: 3px; padding: 0 4px; margin-right: 2px; vertical-align: 1px; white-space: nowrap; }
 @keyframes msgin { from { opacity: 0; transform: translateX(10px); } }
 
 /* Sprachdurchsage */
@@ -197,6 +210,18 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .touch .t-small { width: 54px; height: 54px; font-size: 22px; bottom: 140px; }
 .touch .t-horn { right: 18px; } .touch .t-wiper { right: 80px; } .touch .t-megafon { right: 142px; } .touch .t-camera { left: 18px; } .touch .t-pause { left: 80px; }
 @media (pointer: coarse) { body.playing .touch { display: block; } }
+/* schmale Handys hochkant: Knöpfe kleiner, damit „Bremse“ nicht über dem Pfeil liegt */
+@media (max-width: 480px) {
+  .touch { --tb: min(84px, 19vw); }
+  .touch button { width: var(--tb); height: var(--tb); font-size: 22px; }
+  .touch .t-left { left: 12px; }
+  .touch .t-right { left: calc(22px + var(--tb)); }
+  .touch .t-gas { right: 12px; width: calc(var(--tb) * 1.14); height: calc(var(--tb) * 1.14); font-size: 16px; }
+  .touch .t-brake { right: calc(22px + var(--tb) * 1.14); font-size: 14px; }
+  .touch .t-small { width: 48px; height: 48px; font-size: 20px; bottom: calc(var(--tb) * 1.14 + 40px); }
+  .touch .t-camera { left: 12px; } .touch .t-pause { left: 66px; }
+  .touch .t-horn { right: 12px; } .touch .t-wiper { right: 66px; } .touch .t-megafon { right: 120px; }
+}
 
 /* --- Menüs ------------------------------------------------------------------- */
 .screens { position: fixed; inset: 0; z-index: 30; display: none; }
@@ -308,14 +333,19 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 @media (max-width: 760px) {
   .over-cols { grid-template-columns: 1fr; }
   .hud-info { transform: scale(0.85); transform-origin: top left; }
-  .chat { width: 42vw; max-height: 34vh; font-size: 12px; }
+  .chat { width: 42vw; font-size: 12px; }
+  .chat-list { font-size: 12px; }
+  .chat-count { display: none; }
   .navi-line { display: none; }
   .crow { grid-template-columns: 1.4fr 1fr 1fr; }
   .crow span:nth-child(4) { display: none; }
 }
+/* hochkant ist der Blick auf die Straße klein: die Jobs stehen dann im Pausenmenü */
+@media (max-width: 760px) and (orientation: portrait) {
+  .jobs-mini { display: none; }
+}
 @media (max-height: 560px) {
   .jobs-mini { display: none; }
-  .chat { max-height: 38vh; }
   /* Blitzerfoto oben rechts über dem Chat, damit es weder unten abgeschnitten noch von Touch-Knöpfen verdeckt wird */
   .photo { top: 14px; width: min(220px, 34vh); z-index: 6; }
   .title-hint { display: none; }

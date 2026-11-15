@@ -278,13 +278,16 @@ export class Windshield {
       return;
     }
     const f = CH / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    const ax = CW / CH / camera.aspect;
     const p = { x: 0, y: 0, z: 0, d: 1 };
     for (const d of this.drops) {
       this.glassToScreen(d.x, d.u, camera, carMatrix, p);
       if (p.z > 1) continue;
       const rpx = Math.max(1.2, (d.r / p.d) * f * 2.3);
       const stretch = 1 + Math.min(2.2, d.life < 0.4 ? 0 : (d.r > 0.004 ? 0.35 : 0));
-      ctx.drawImage(this.sprite, p.x - rpx, p.y - rpx * stretch, rpx * 2, rpx * 2 * stretch);
+      // die Tropfen-Leinwand ist 16:9 und wird aufs ganze Bild gezogen: Breite ausgleichen, damit
+      // die Tropfen auf jedem Seitenverhältnis rund bleiben (Handy hochkant, 4:3, 21:9)
+      ctx.drawImage(this.sprite, p.x - rpx * ax, p.y - rpx * stretch, rpx * 2 * ax, rpx * 2 * stretch);
     }
     this.texture.needsUpdate = true;
   }
@@ -318,6 +321,8 @@ export function createCompositeMaterial(sceneTex, ws) {
       uTime: { value: 0 },
       uVignette: { value: 0.35 },
       uSat: { value: 1.08 },
+      // 1: Blitz, Vignette, Frosch, Funkloch und Überblendung hier; 0: erst nach dem Cockpit (main.js)
+      uPost: { value: 1 },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -337,10 +342,11 @@ export function createCompositeMaterial(sceneTex, ws) {
       uniform float uTime;
       uniform float uVignette;
       uniform float uSat;
+      uniform float uPost;
       varying vec2 vUv;
       void main() {
         vec2 uv = vUv;
-        if (uGlitch > 0.0) {
+        if (uGlitch > 0.0 && uPost > 0.5) {
           float band = floor(uv.y * 30.0) + floor(uTime * 24.0);
           float r = fract(sin(band * 91.7) * 4375.85);
           uv.x += (r - 0.5) * 0.08 * uGlitch * step(0.6, r);
@@ -366,15 +372,19 @@ export function createCompositeMaterial(sceneTex, ws) {
         col *= 1.0 - mask * 0.22 * (1.0 - n.y * 0.5);
         col += mask * pow(max(0.0, n.y), 4.0) * 0.35;
         col = mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, uSat);
-        col = mix(col, uFlashColor * 4.0, clamp(uFlash, 0.0, 1.0));
-        vec2 vc = vUv - 0.5;
-        col *= 1.0 - dot(vc, vc) * uVignette;
+        if (uPost > 0.5) {
+          col = mix(col, uFlashColor * 4.0, clamp(uFlash, 0.0, 1.0));
+          vec2 vc = vUv - 0.5;
+          col *= 1.0 - dot(vc, vc) * uVignette;
+        }
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
-        float g = dot(gl_FragColor.rgb, vec3(0.3, 0.6, 0.1));
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.08, 1.0, 0.25) * (0.3 + g), uGreen * 0.65);
-        gl_FragColor.rgb *= 1.0 - uFade;
+        if (uPost > 0.5) {
+          float g = dot(gl_FragColor.rgb, vec3(0.3, 0.6, 0.1));
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.08, 1.0, 0.25) * (0.3 + g), uGreen * 0.65);
+          gl_FragColor.rgb *= 1.0 - uFade;
+        }
       }`,
     depthTest: false,
     depthWrite: false,

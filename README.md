@@ -37,7 +37,7 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 - **You had 5 Jobs:** Pro Fahrt fünf kleine Aufgaben, alle fünf geben einen Bonus.
 - **Tesla-Shop:** Mit dem Guthaben rüstest du den Tesla auf: Beschleunigung, Tempo-Freischaltung,
   Akku-Puffer, Stream-Technik, Sportreifen, Plüsch-Polster, Wischer-Firmware (Beta), Megafon,
-  Starlink-Schüssel, Wackel-Elsa, Warnweste und Konfetti-Kanone.
+  Starlink-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone.
 - **Abspann** mit Abrechnung, Statistik, Blitzerfotos und erlogener Berufsbezeichnung des Tages.
 
 ## Steuerung

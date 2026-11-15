@@ -286,7 +286,7 @@ export class Game {
     if (p.shoulderTime > 4.5) {
       p.shoulderTime = 0;
       this.fine(10, 'Verwarngeld');
-      this.ui.toast('🚓 Standstreifen: 10 € Verwarngeld', 'bad');
+      this.ui.toast('🚓 Standstreifen: 10\u00a0€ Verwarngeld', 'bad');
       this.callPolice('STANDSTREIFEN? NEIN!');
     }
     if (p.shoulderTime <= 0) this.shoulderWarned = false;
@@ -348,7 +348,7 @@ export class Game {
         L.rg = 0;
         L.rgWarned = false;
         this.fine(10, 'Verwarngeld');
-        this.ui.toast('🚓 Rechtsfahrgebot missachtet: 10 € Verwarngeld', 'bad');
+        this.ui.toast('🚓 Rechtsfahrgebot missachtet: 10\u00a0€ Verwarngeld', 'bad');
       }
     } else {
       L.rg = Math.max(0, L.rg - dt * 2);
@@ -475,7 +475,7 @@ export class Game {
     this.burst(CHAT.naviChanged, 2, 3);
     if (t.special === 'siegen') this.later(1.4, () => this.chat('SIEGEN SETZT SICH DURCH?! 😱'));
     if (this.navi.wende) this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info'));
-    this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${fmtNum(this.navi.km, 1)} km)`, 'info');
+    this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${fmtNum(this.navi.km, 1)} km)`, 'info', t.note);
     this.hype += 25;
   }
 
@@ -576,6 +576,7 @@ export class Game {
       if (this.funkloch <= 0) {
         this.ui.funkloch(false);
         this.burst(CHAT.funklochBack, 3, 1.5);
+        this.later(1.2, () => this.bot('nora', 'Verbindung zum Streaming-Server steht wieder. Weiter geht’s!'));
       }
     }
     if (T.funkloch <= 0 && p.s > 1500) {
@@ -834,7 +835,7 @@ export class Game {
     if (!this.allJobsPaid && this.jobs.every((j) => j.done)) {
       this.allJobsPaid = true;
       this.earn(100, 'Jobs', { mult: false });
-      this.bot('victoria', 'You had 5 Jobs – und alle erledigt! 100 € Bonus!');
+      this.bot('victoria', 'You had 5 Jobs – und alle erledigt! 100\u00a0€ Bonus!');
       this.audio.record();
       this.ui.banner('🏆 Alle 5 Jobs erledigt!', 4);
     }

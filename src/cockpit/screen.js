@@ -202,7 +202,14 @@ export class CenterScreen {
     roundRect(ctx, me[0] - mw * 0.36, meTop[1] + (me[1] - meTop[1]) * 0.18, mw * 0.72, (me[1] - meTop[1]) * 0.28, 6);
     ctx.fill();
 
-    // Linke-Spur-Status
+    // Linke-Spur-Status (auf eigenem Streifen, damit keine Spurlinien durch die Schrift laufen)
+    const band = ctx.createLinearGradient(0, CH - 128, 0, CH - 112);
+    band.addColorStop(0, T.panel + '00');
+    band.addColorStop(1, T.panel);
+    ctx.fillStyle = band;
+    ctx.fillRect(0, CH - 128, SPLIT, 16);
+    ctx.fillStyle = T.panel;
+    ctx.fillRect(0, CH - 112, SPLIT, 112);
     ctx.textAlign = 'center';
     ctx.font = '600 24px "Helvetica Neue", Arial, sans-serif';
     if (st.leftLane > 0) {
@@ -301,20 +308,37 @@ export class CenterScreen {
       }
       for (const t of f.towns) {
         const rnd = mulberry32(t.seed);
-        ctx.fillStyle = T.town;
         const [tx, ty] = toScreen(mapRoadX(t.s) + t.x, t.s);
+        const R = t.r * z;
+        ctx.save();
+        ctx.fillStyle = T.town;
         ctx.beginPath();
-        ctx.arc(tx, ty, t.r * z, 0, Math.PI * 2);
+        ctx.arc(tx, ty, R, 0, Math.PI * 2);
         ctx.fill();
+        ctx.clip();
+        // Ortsstraßen als lockeres Raster aus kurzen, versetzten Stücken (nicht alle durch die Mitte)
         ctx.strokeStyle = T.road;
-        ctx.lineWidth = 3;
-        for (let i = 0; i < 6; i++) {
-          ctx.beginPath();
-          const a = rnd() * Math.PI;
-          ctx.moveTo(tx - Math.cos(a) * t.r * z, ty - Math.sin(a) * t.r * z);
-          ctx.lineTo(tx + Math.cos(a) * t.r * z, ty + Math.sin(a) * t.r * z);
-          ctx.stroke();
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        const a0 = rnd() * Math.PI;
+        for (let k = 0; k < 2; k++) {
+          const a = a0 + k * (Math.PI / 2 + (rnd() - 0.5) * 0.5);
+          const ca = Math.cos(a);
+          const sa = Math.sin(a);
+          for (let j = -2; j <= 2; j++) {
+            if (rnd() < 0.25) continue;
+            const off = (j + (rnd() - 0.5) * 0.5) * R * 0.36;
+            const len = R * (0.45 + rnd() * 0.75);
+            const along = (rnd() - 0.5) * R * 0.7;
+            const cx = tx - sa * off + ca * along;
+            const cy = ty + ca * off + sa * along;
+            ctx.beginPath();
+            ctx.moveTo(cx - (ca * len) / 2, cy - (sa * len) / 2);
+            ctx.lineTo(cx + (ca * len) / 2, cy + (sa * len) / 2);
+            ctx.stroke();
+          }
         }
+        ctx.restore();
       }
     }
     // Nebenstraßen

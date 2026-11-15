@@ -22,6 +22,7 @@ export class UI {
     this.hud.id = 'hud';
     // --- oben links: Stream-Infos ---
     const info = el('div', 'hud-info', this.hud);
+    this.infoEl = info;
     const live = el('div', 'live-row', info);
     this.liveBadge = el('span', 'live-badge', live, '● LIVE');
     this.viewersEl = el('span', 'viewers', live, '👁 0');
@@ -38,7 +39,11 @@ export class UI {
     this.recordEl = el('span', 'stat-sub', this.distEl.parentNode, '');
     this.speedEl = row('🚗', '');
     this.moneyRow = row('💶', 'Guthaben');
-    this.moneyPops = el('div', 'money-pops', this.moneyRow.parentNode);
+    // Gutschriften erscheinen genau dort, wo sonst „Guthaben“ steht, damit nichts aus dem Feld ragt
+    const moneyStat = this.moneyRow.parentNode;
+    this.moneySlot = el('span', 'money-slot', moneyStat);
+    this.moneySlot.appendChild(moneyStat.querySelector('.stat-label'));
+    this.moneyPops = el('span', 'money-pops', this.moneySlot);
     this.batteryEl = row('🔋', '');
     this.batteryBar = el('span', 'battery-bar', this.batteryEl.parentNode);
     this.batteryFill = el('span', 'battery-fill', this.batteryBar);
@@ -88,6 +93,36 @@ export class UI {
     this.rahmenList = [];
     this.photos = [];
     this.moneyShown = 0;
+
+    // Die Mittelspalte (Navi-Zeile, linke Spur, NOMI, Banner, Hinweise) liegt zwischen den Feldern links und rechts.
+    // Ist dort kein Platz (Handy hochkant), rückt sie unter die Felder, statt sie zu überdecken.
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => this.layout());
+      ro.observe(info);
+      ro.observe(this.chatEl);
+    }
+    window.addEventListener('resize', () => this.layout());
+  }
+
+  layout() {
+    const a = this.infoEl.getBoundingClientRect();
+    if (!a.width) return; // HUD gerade unsichtbar
+    const W = window.innerWidth;
+    const chat = this.chatOn && this.chatEl.getBoundingClientRect();
+    const side = Math.max(a.right, chat && chat.width ? W - chat.left : 0) + 14;
+    let mid = W - 2 * side;
+    let top = 14;
+    const narrow = mid < 240;
+    if (narrow) {
+      // feste Unterkante des Chats (seine Höchsthöhe), damit die Spalte nicht mit jeder Nachricht springt
+      const chatBottom = chat && chat.width ? chat.top + (parseFloat(getComputedStyle(this.chatEl).maxHeight) || chat.height) : 0;
+      top = Math.max(a.bottom, chatBottom) + 10;
+      mid = W - 28;
+    }
+    const st = this.hud.style;
+    st.setProperty('--mid', Math.round(mid) + 'px');
+    st.setProperty('--top', Math.round(top) + 'px');
+    this.hud.classList.toggle('hud-narrow', narrow);
   }
 
   show(v) {
@@ -97,13 +132,14 @@ export class UI {
   setChat(on) {
     this.chatOn = on;
     this.chatEl.classList.toggle('hidden', !on);
+    this.layout();
   }
 
   reset() {
     this.chatList.textContent = '';
     this.toastsEl.textContent = '';
     this.rahmenEl.textContent = '';
-    this.moneyPops.textContent = '';
+    this.clearMoneyPop();
     this.toasts = [];
     this.rahmenList = [];
     this.photos = [];
@@ -119,24 +155,28 @@ export class UI {
   // --- Chat -------------------------------------------------------------------
   chat({ name, text, bot, icon }) {
     const m = el('div', 'msg' + (bot ? ' bot bot-' + bot : ''), this.chatList);
+    // Leerzeichen zwischen den Teilen, sonst bricht ein schmaler Chat mitten im Namen um
     if (bot) {
       el('span', 'bot-icon', m, icon || BOTS[bot]?.icon || '🤖');
       const n = el('span', 'name', m, name);
       n.style.color = '#ffd76a';
+      m.append(' ');
       el('span', 'bot-tag', m, 'BOT');
     } else {
       const n = el('span', 'name', m, name);
       n.style.color = nameColor(name);
     }
+    m.append(' ');
     el('span', 'text', m, text);
     while (this.chatList.childElementCount > 36) this.chatList.firstElementChild.remove();
     this.chatList.scrollTop = this.chatList.scrollHeight;
   }
 
   // --- Meldungen -------------------------------------------------------------------
-  toast(text, kind = 'info') {
+  toast(text, kind = 'info', sub = '') {
     const t = el('div', 'toast toast-' + kind, this.toastsEl, text);
-    this.toasts.push({ el: t, t: 3.6 });
+    if (sub) el('div', 'toast-sub', t, sub);
+    this.toasts.push({ el: t, t: sub ? 5 : 3.6 });
     while (this.toasts.length > 4) {
       const old = this.toasts.shift();
       old.el.remove();
@@ -160,14 +200,23 @@ export class UI {
   }
 
   money(amount, label) {
-    while (this.moneyPops.childElementCount > 3) this.moneyPops.firstElementChild.remove();
-    // gleichzeitige Gutschriften untereinander statt übereinander
-    const now = performance.now();
-    const fresh = [...this.moneyPops.children].filter((c) => now - c._t < 700).length;
-    const p = el('div', 'money-pop ' + (amount >= 0 ? 'plus' : 'minus'), this.moneyPops, (amount >= 0 ? '+' : '−') + fmtCent(Math.abs(amount)) + (label ? ' · ' + label : ''));
-    p._t = now;
-    p.style.top = fresh * 18 + 'px';
-    setTimeout(() => p.remove(), 1900);
+    // eine Gutschrift auf einmal an Stelle von „Guthaben“; die nächste löst die vorige ab
+    this.moneyPops.textContent = '';
+    const p = el('span', 'money-pop ' + (amount >= 0 ? 'plus' : 'minus'), this.moneyPops, (amount >= 0 ? '+' : '−') + fmtCent(Math.abs(amount)));
+    if (label) {
+      el('small', '', p, label);
+      // passt der Grund nicht mehr ins Feld, bleibt nur der Betrag
+      if (p.offsetWidth > this.moneySlot.clientWidth) p.lastChild.remove();
+    }
+    this.moneySlot.classList.add('popping');
+    clearTimeout(this.moneyTimer);
+    this.moneyTimer = setTimeout(() => this.clearMoneyPop(), 1900);
+  }
+
+  clearMoneyPop() {
+    clearTimeout(this.moneyTimer);
+    this.moneyPops.textContent = '';
+    this.moneySlot.classList.remove('popping');
   }
 
   durchsage(voiceLabel, text, dur, buyer) {
@@ -327,6 +376,7 @@ export class UI {
     // linke Spur
     const L = g.left;
     this.leftLaneEl.classList.toggle('hidden', !L.open);
+    this.hud.classList.toggle('lane-on', L.open);
     if (L.open) {
       const inLane = p.inLeftLane;
       this.leftLaneText.textContent = (inLane ? '⬅️ Linke Spur: Bonus läuft! ' : '⬅️ Linke Spur frei! ') + Math.ceil(L.timer) + ' s';

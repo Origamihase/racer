@@ -46,8 +46,9 @@ function nf(min, max) {
 
 export const fmtNum = (v, digits = 0) => nf(digits, digits).format(v);
 export const fmtKm = (meters, digits = 2) => nf(digits, digits).format(meters / 1000) + ' km';
-export const fmtEuro = (v, digits = 0) => nf(digits, digits).format(v) + ' €';
-export const fmtCent = (v) => nf(2, 2).format(v) + ' €';
+// geschütztes Leerzeichen: Betrag und € werden nie auf zwei Zeilen getrennt
+export const fmtEuro = (v, digits = 0) => nf(digits, digits).format(v) + '\u00a0€';
+export const fmtCent = (v) => nf(2, 2).format(v) + '\u00a0€';
 
 export function fmtClock(minutesOfDay) {
   const m = Math.floor(minutesOfDay) % (24 * 60);

@@ -9,6 +9,7 @@ import { Nomi } from './nomi.js';
 import { CenterScreen } from './screen.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
 import { damp, clamp } from '../util.js';
+import { mirrorShape, mirrorHousingGeometry } from '../models/loft.js';
 
 // Augenposition (Fahrzeug-Koordinaten; vorne = -z). Mini Adam sitzt auf zwei Kissen.
 export const EYE = new THREE.Vector3(-0.37, 1.2, 0.27);
@@ -28,7 +29,8 @@ export const WINDSHIELD = (() => {
 
 // Wischer: Drehpunkt (unten, außen), Länge, maximaler Winkel
 export const WIPERS = [
-  { pivot: new THREE.Vector3(-0.64, 0.884, -0.905), length: 0.62, max: 1.95 },
+  // max so, dass die Wischerspitze vor der A-Säule bleibt (nicht über das Seitenfenster)
+  { pivot: new THREE.Vector3(-0.64, 0.884, -0.905), length: 0.62, max: 1.55 },
   { pivot: new THREE.Vector3(0.06, 0.884, -0.905), length: 0.56, max: 1.75 },
 ];
 
@@ -58,6 +60,61 @@ function roundBeam(a, b, w, d, mat, twist = 0) {
   m.position.copy(a);
   m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
   return m;
+}
+
+/** Rahmen fürs Innenspiegelbild: Dachhimmel, C-Säulen, Hutablage und drei Kopfstützen (wie im Spiegel gesehen). */
+function rearWindowTexture() {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 300;
+  const ctx = c.getContext('2d');
+  const W = c.width;
+  const H = c.height;
+  ctx.fillStyle = '#1c1d20';
+  ctx.fillRect(0, 0, W, H);
+  // Heckscheibe: oben schmaler, unten breiter, mit runden Ecken
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.beginPath();
+  const t = H * 0.12;
+  const b = H * 0.88;
+  ctx.moveTo(W * 0.2, t);
+  ctx.lineTo(W * 0.8, t);
+  ctx.quadraticCurveTo(W * 0.88, t, W * 0.9, t + H * 0.18);
+  ctx.lineTo(W * 0.95, b);
+  ctx.lineTo(W * 0.05, b);
+  ctx.lineTo(W * 0.1, t + H * 0.18);
+  ctx.quadraticCurveTo(W * 0.12, t, W * 0.2, t);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  // Kopfstützen der Rückbank
+  ctx.fillStyle = '#2a2b2f';
+  for (const x of [0.24, 0.5, 0.76]) {
+    const w = W * (x === 0.5 ? 0.085 : 0.11);
+    roundRectPath(ctx, W * x - w / 2, H * 0.7, w, H * 0.4, 26);
+    ctx.fill();
+  }
+  // Hutablage
+  ctx.fillStyle = '#141517';
+  ctx.fillRect(0, H * 0.9, W, H * 0.1);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 export class Cockpit {
@@ -103,8 +160,9 @@ export class Cockpit {
     this.buildExtras(M);
 
     this.nomi = new Nomi();
-    this.nomi.group.position.set(-0.225, 0.913, -0.66);
-    this.nomi.group.scale.setScalar(1.3);
+    // ganz innerhalb der Scheibe (mit etwas Abstand), damit die Wischer hinter NOMI vorbeistreichen
+    this.nomi.group.position.set(-0.27, 0.911, -0.53);
+    this.nomi.group.scale.setScalar(1.1);
     this.root.add(this.nomi.group);
 
     this.steer = 0;
@@ -160,6 +218,13 @@ export class Cockpit {
     const header = new THREE.Mesh(new RoundedBoxGeometry(1.34, 0.06, 0.12, 3, 0.025), M.pillar);
     header.position.set(0, W.top.y + 0.02, W.top.z + 0.03);
     this.root.add(header);
+    // B-Säule links (sieht man beim Kameraschwenk im Intro)
+    this.root.add(roundBeam(new THREE.Vector3(-0.79, 0.99, 0.34), new THREE.Vector3(-0.665, 1.405, 0.3), 0.09, 0.07, M.pillar));
+    // dunkle Abdeckung am Scheibenfuß (Windlauf), darauf liegen die Wischer
+    const cowl = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.11, 0.012), M.vent);
+    cowl.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(W.X, W.U, W.N));
+    cowl.position.copy(W.base).addScaledVector(W.U, -0.01).addScaledVector(W.N, 0.007);
+    this.root.add(cowl);
   }
 
   buildDoor(M) {
@@ -310,7 +375,13 @@ export class Cockpit {
     const frameGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.022, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.006, bevelSegments: 2 });
     frameGeo.translate(0, 0, -0.012);
     const frame = new THREE.Mesh(frameGeo, M.black);
-    mirror.add(frame, glass);
+    // im Spiegel sieht man das Heckfenster mit C-Säulen, Dachhimmel und Kopfstützen
+    const maskGeo = glassGeo.clone();
+    const mUv = maskGeo.attributes.uv;
+    for (let i = 0; i < mUv.count; i++) mUv.setXY(i, pos.getX(i) / mw + 0.5, pos.getY(i) / mh + 0.5);
+    this.mirrorFrame = new THREE.Mesh(maskGeo, new THREE.MeshBasicMaterial({ map: rearWindowTexture(), transparent: true, depthWrite: false }));
+    this.mirrorFrame.position.z = 0.0215;
+    mirror.add(frame, glass, this.mirrorFrame);
     this.root.add(mirror);
 
     // Kameragehäuse oben an der Frontscheibe (wie beim Model 3), daran hängt der Innenspiegel
@@ -318,9 +389,9 @@ export class Cockpit {
     const toGlass = new THREE.Matrix4().makeBasis(W.X, W.U, W.N.clone().negate()).setPosition(W.base);
     const hs = new THREE.Shape();
     const hx = -0.07; // Mitte des Gehäuses (über dem Spiegel)
-    const hb = 0.075; // halbe Breite unten
-    const ht = 0.14; // halbe Breite oben
-    const v0 = 0.79;
+    const hb = 0.048; // halbe Breite unten
+    const ht = 0.088; // halbe Breite oben
+    const v0 = 0.85;
     const v1 = 0.95;
     hs.moveTo(hx - hb + 0.025, v0);
     hs.lineTo(hx + hb - 0.025, v0);
@@ -335,7 +406,7 @@ export class Cockpit {
     const sensorBox = new THREE.Mesh(sensorGeo, M.dash);
     // kurzer Spiegelfuß mit Kugelgelenk am Spiegelrücken
     const onGlass = (x, v, d) => new THREE.Vector3(x, v, d).applyMatrix4(toGlass);
-    const footTop = onGlass(-0.08, 0.805, 0.024);
+    const footTop = onGlass(-0.08, 0.862, 0.024);
     const footEnd = new THREE.Vector3(-0.08, 1.258, -0.243);
     const footDir = footEnd.clone().sub(footTop);
     const footGeo = new THREE.CylinderGeometry(0.008, 0.011, footDir.length(), 10);
@@ -348,29 +419,32 @@ export class Cockpit {
     this.root.add(sensorBox, foot, joint);
     this.mirrorHousing = { toGlass, onGlass };
 
-    // Außenspiegel links (zeigt den linken Teil der Rückansicht): Gehäuse nach vorne gewölbt,
-    // Spiegelglas mit schmalem Rand, sitzt komplett über der Türbrüstung
+    // Außenspiegel links (zeigt den linken Teil der Rückansicht): Model-3-Form – außen groß
+    // gerundet, innen niedriger und straffer –, Gehäuse als gerundete Schale nach vorne,
+    // das Spiegelglas sitzt mit schmalem Rand darin. Montiert auf einem kurzen Fuß an der Tür.
     const side = new THREE.Group();
     side.position.set(-1.0, 1.045, -0.6);
     side.rotation.y = 0.62;
-    const housingMat = new THREE.MeshPhysicalMaterial({ color: 0x050607, metalness: 0.5, roughness: 0.3, clearcoat: 1, side: THREE.DoubleSide });
-    const housingGeo = new THREE.SphereGeometry(1, 28, 16, Math.PI, Math.PI);
-    housingGeo.scale(0.122, 0.07, 0.075);
-    const housing = new THREE.Mesh(housingGeo, housingMat);
-    const rimGeo = new THREE.TorusGeometry(1, 0.07, 8, 40);
-    rimGeo.scale(0.117, 0.066, 0.1);
-    const rim = new THREE.Mesh(rimGeo, housingMat);
-    rim.position.z = 0.002;
-    const sGeo = new THREE.CircleGeometry(1, 32);
-    sGeo.scale(0.107, 0.058, 1);
+    const housingMat = new THREE.MeshPhysicalMaterial({ color: 0x050607, metalness: 0.5, roughness: 0.3, clearcoat: 1 });
+    const housing = new THREE.Mesh(mirrorHousingGeometry(-1), housingMat);
+    const sGeo = new THREE.ShapeGeometry(mirrorShape(0.9, -1), 12);
+    sGeo.computeBoundingBox();
+    const bb = sGeo.boundingBox;
     const sUv = sGeo.attributes.uv;
     const sPos = sGeo.attributes.position;
-    for (let i = 0; i < sUv.count; i++) sUv.setXY(i, 1 - (sPos.getX(i) / 0.214 + 0.5) * 0.42, sPos.getY(i) / 0.116 + 0.5);
+    // rechter Teil des Rückspiegelbildes (= links hinter dem Auto), gespiegelt wie ein echter Spiegel
+    for (let i = 0; i < sUv.count; i++) {
+      const fx = (sPos.getX(i) - bb.min.x) / (bb.max.x - bb.min.x);
+      const fy = (sPos.getY(i) - bb.min.y) / (bb.max.y - bb.min.y);
+      sUv.setXY(i, 1 - fx * 0.34, 0.03 + fy * 0.6);
+    }
     this.sideMirrorMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const sGlass = new THREE.Mesh(sGeo, this.sideMirrorMat);
-    sGlass.position.z = 0.004;
-    side.add(housing, rim, sGlass);
-    const arm = roundBeam(new THREE.Vector3(-0.79, 0.985, -0.635), new THREE.Vector3(-0.905, 1.035, -0.665), 0.05, 0.035, housingMat);
+    sGlass.position.z = 0.002;
+    side.add(housing, sGlass);
+    side.updateMatrix();
+    const armEnd = new THREE.Vector3(0.095, -0.028, -0.05).applyMatrix4(side.matrix);
+    const arm = roundBeam(new THREE.Vector3(-0.79, 0.99, -0.66), armEnd, 0.05, 0.035, housingMat);
     this.root.add(side, arm);
   }
 
@@ -379,6 +453,14 @@ export class Cockpit {
     this.mirrorMat.needsUpdate = true;
     this.sideMirrorMat.map = tex;
     this.sideMirrorMat.needsUpdate = true;
+    this.mirrorFrame.visible = true;
+  }
+
+  /** Innenspiegel zeigt die Kofferraum-Kamera (ohne Heckfenster-Rahmen), der Außenspiegel bleibt. */
+  setTrunkView(tex) {
+    this.mirrorMat.map = tex;
+    this.mirrorMat.needsUpdate = true;
+    this.mirrorFrame.visible = false;
   }
 
   buildWipers(M) {
@@ -405,7 +487,7 @@ export class Cockpit {
     // Stream-Kamera mit rotem REC-Licht: filmt durch die Frontscheibe nach vorne und sitzt
     // links oben am Kameragehäuse des Innenspiegels (Mini Adam sieht nur die Rückseite)
     const cam = new THREE.Group();
-    cam.position.copy(this.mirrorHousing.onGlass(-0.105, 0.875, 0.049));
+    cam.position.copy(this.mirrorHousing.onGlass(-0.098, 0.9, 0.049));
     const body = new THREE.Mesh(new RoundedBoxGeometry(0.06, 0.044, 0.036, 2, 0.006), M.black);
     const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.012, 16), new THREE.MeshStandardMaterial({ color: 0x1a2a3a, metalness: 0.9, roughness: 0.1 }));
     lens.rotation.x = Math.PI / 2;
