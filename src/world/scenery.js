@@ -859,8 +859,11 @@ export class Scenery {
 
   makeElsaStatue() {
     const g = new THREE.Group();
-    const ped = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.1, 1.2, 20), this.mats.stone);
+    // Sockel: 20-Eck mit einer Ecke bei Winkel 0 (+z), Radius unten 2.1, oben 1.8
+    const PED_SEG = 20;
+    const ped = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.1, 1.2, PED_SEG), this.mats.stone);
     ped.position.y = 0.6;
+    ped.castShadow = true; // wie Elsa obendrauf, sonst hängt ihr Schatten losgelöst im Gras
     const elsa = buildElsa({ curved: true });
     elsa.scale.setScalar(4.2);
     elsa.position.y = 1.2;
@@ -875,8 +878,19 @@ export class Scenery {
       ctx.textBaseline = 'middle';
       ctx.fillText('👑 Elsa grüßt!', w / 2, h / 2 + 3);
     });
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.8), W.std({ map: tex }));
-    sign.position.set(0, 0.7, 2.12);
+    // Das Schild schmiegt sich an den Sockel: ein Stück Kegelmantel über vier Sockelflächen, die Ecken
+    // auf den Sockelecken, damit es überall gleich weit (≈ 2 cm) vor dem Stein sitzt. Mitte bei
+    // -π/5 ≈ -0.6, also unter Elsas Blick zur Straße. Die Textur läuft mit dem Winkel, von außen
+    // gelesen also von links nach rechts; die runden Ecken der Textur werden ausgestanzt. Ein
+    // Polygon-Offset hält es auch aus der Ferne flimmerfrei vor dem Stein.
+    const facet = (Math.PI * 2) / PED_SEG;
+    const pedR = (y) => 2.1 - (0.3 * y) / 1.2; // Eckradius des Sockels in Höhe y
+    const signH = 0.76; // 4 Flächen ≈ 2.43 m breit, also 3.2 : 1 wie die Textur
+    const signY = 0.7;
+    const gap = 0.021; // an den Ecken gemessen, senkrecht zur Fläche ≈ 2 cm
+    const signGeo = new THREE.CylinderGeometry(pedR(signY + signH / 2) + gap, pedR(signY - signH / 2) + gap, signH, 4, 1, true, -4 * facet, 4 * facet);
+    const sign = new THREE.Mesh(signGeo, W.std({ map: tex, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }));
+    sign.position.y = signY;
     g.add(ped, elsa, sign);
     g.userData.animate = (t) => animateElsa(elsa, t);
     return g;

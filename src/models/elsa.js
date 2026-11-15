@@ -15,19 +15,36 @@ function scalesTexture() {
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#123a8e';
   ctx.fillRect(0, 0, S, S);
+  // Nahtlos kachelbar (die Textur läuft zweimal um den Körper): 14 Schuppen pro Zeile, Zeilenabstand
+  // die Hälfte davon, also 28 Zeilen – eine gerade Zahl, damit der Versatz jeder zweiten Zeile beim
+  // Umbruch passt. Die Farben werden je Schuppe vorab gewürfelt; am Rand wird eine Spalte bzw. Zeile
+  // um 512 px verschoben noch einmal gezeichnet, in derselben Überlappungs-Reihenfolge wie innen.
+  const COLS = 14;
+  const ROWS = COLS * 2;
+  const pitch = S / COLS;
+  const r = pitch / 1.6;
   const rnd = mulberry32(1887);
-  const r = 22;
-  for (let row = 0; row < S / (r * 0.8) + 2; row++) {
-    for (let col = 0; col < S / (r * 1.6) + 2; col++) {
-      const x = col * r * 1.6 + (row % 2) * r * 0.8;
-      const y = row * r * 0.8;
-      const white = rnd() < 0.16;
+  const cells = [];
+  for (let i = 0; i < ROWS * COLS; i++) cells.push({ white: false, l: 0.85 + rnd() * 0.3 });
+  // genau 16 % weiße Schuppen, zufällig verteilt
+  for (let n = Math.round(cells.length * 0.16); n > 0; ) {
+    const cell = cells[Math.floor(rnd() * cells.length)];
+    if (!cell.white) {
+      cell.white = true;
+      n--;
+    }
+  }
+  for (let row = -1; row < ROWS; row++) {
+    const rw = (row + ROWS) % ROWS;
+    for (let col = -1; col <= COLS; col++) {
+      const { white, l } = cells[rw * COLS + ((col + COLS) % COLS)];
+      const x = (col * S) / COLS + (rw % 2) * pitch * 0.5;
+      const y = row * pitch * 0.5;
       const g = ctx.createRadialGradient(x, y - r * 0.3, 2, x, y, r);
       if (white) {
         g.addColorStop(0, '#ffffff');
         g.addColorStop(1, '#cfd8e6');
       } else {
-        const l = 0.85 + rnd() * 0.3;
         g.addColorStop(0, `rgb(${40 * l},${95 * l},${200 * l})`);
         g.addColorStop(1, `rgb(${14 * l},${46 * l},${130 * l})`);
       }
@@ -58,9 +75,14 @@ export function buildElsa({ curved = true } = {}) {
   const finMat = k(new THREE.MeshStandardMaterial({ color: 0x1d4fb0, roughness: 0.5, side: THREE.DoubleSide }));
   const white = k(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25 }));
   const black = k(new THREE.MeshStandardMaterial({ color: 0x0b0b10, roughness: 0.2 }));
-  const gold = k(new THREE.MeshStandardMaterial({ color: 0xf2c230, metalness: 0.9, roughness: 0.25, emissive: 0x3a2800, emissiveIntensity: 0.3 }));
+  const goldP = { color: 0xf2c230, metalness: 0.9, roughness: 0.25, emissive: 0x3a2800, emissiveIntensity: 0.3 };
+  const gold = k(new THREE.MeshStandardMaterial(goldP));
+  // Der Kronreif ist ein offener Ring: auch innen golden, sonst fehlt von oben seine hintere Hälfte
+  const goldBand = k(new THREE.MeshStandardMaterial({ ...goldP, side: THREE.DoubleSide }));
   const lip = k(new THREE.MeshStandardMaterial({ color: 0xd8344a, roughness: 0.4 }));
-  const belly = k(new THREE.MeshStandardMaterial({ color: 0xe9eef6, roughness: 0.5 }));
+  // Der Bauch liegt nur hauchdünn über dem Körper: per Polygon-Offset immer davor, sonst flimmern
+  // aus der Ferne (Statue) die Schuppen durch
+  const belly = k(new THREE.MeshStandardMaterial({ color: 0xe9eef6, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }));
 
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 24), bodyMat);
   body.scale.set(1.0, 1.45, 0.8);
@@ -120,7 +142,7 @@ export function buildElsa({ curved = true } = {}) {
   // Goldene, offene Lilienkrone mit sechs Zacken
   const crown = new THREE.Group();
   crown.position.y = 0.9;
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.07, 24, 1, true), gold);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.07, 24, 1, true), goldBand);
   crown.add(band);
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;

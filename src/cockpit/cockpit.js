@@ -508,7 +508,8 @@ export class Cockpit {
     this.elsaSpring.rotation.y = 0.5;
     const springBase = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.012, 16), M.black);
     this.elsaSpring.add(springBase, this.elsa);
-    this.elsa.position.y = 0.008;
+    // die Schwanzflosse steht auf dem Rand des Sockels (Oberkante bei y = 0.006)
+    this.elsa.position.y = 0.0045;
     this.elsaSpring.visible = false;
     this.root.add(this.elsaSpring);
 
