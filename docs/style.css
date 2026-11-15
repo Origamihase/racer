@@ -80,8 +80,14 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .job-fill { display: block; height: 100%; background: var(--blue); }
 
 /* Mittelspalte zwischen Info-Feld und Chat: --top und --mid setzt ui.js (layout) nach der echten Größe beider Felder */
-.navi-line { position: absolute; top: var(--top, 14px); left: 50%; transform: translateX(-50%); max-width: min(760px, var(--mid, 40vw)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.navi-line { position: absolute; top: var(--top, 14px); left: 0; right: 0; margin-inline: auto; width: fit-content; max-width: min(760px, var(--mid, 40vw)); display: flex; white-space: nowrap; overflow: hidden;
   background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 14px; backdrop-filter: blur(6px); z-index: 3; }
+/* zu lang: erst wird der Zielname gekürzt (…), die Entfernung bleibt immer lesbar */
+.navi-line > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.navi-line > .navi-km { flex: none; }
+.navi-line > .navi-bid { flex: 0 1000 auto; }
+/* passt die ganze Zeile nicht, fällt das Gebot weg (ui.js misst nach) */
+.navi-line.short > .navi-bid { flex: 0 0 0; }
 .leftlane { position: absolute; top: calc(var(--top, 14px) + 38px); left: 50%; transform: translateX(-50%); width: min(460px, var(--mid, 40vw)); background: rgba(20, 50, 120, 0.82); border: 1px solid rgba(120,170,255,0.6);
   border-radius: 12px; padding: 7px 12px 9px; text-align: center; font-weight: 700; box-shadow: 0 0 24px rgba(60,120,255,0.45); z-index: 3; }
 .leftlane.active { background: rgba(30, 90, 220, 0.9); animation: lanepulse 1s infinite; }
@@ -105,7 +111,8 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .nomi-eyes i { width: 7px; height: 10px; border: 2px solid #fff; border-radius: 3px; animation: blink 2.6s infinite; }
 @keyframes fadein { from { opacity: 0; transform: translateY(-6px); } }
 
-.banner { margin-top: clamp(0px, 7vh, 70px); font-size: clamp(22px, 3.2vw, 38px); font-weight: 800; text-align: center; max-width: 100%; text-wrap: balance;
+/* die Schrift richtet sich nach der Spaltenbreite, damit lange Zielnamen nicht vier, fünf Zeilen hoch werden */
+.banner { margin-top: clamp(0px, 7vh, 70px); font-size: clamp(20px, min(3.2vw, var(--mid, 600px) / 13), 38px); font-weight: 800; text-align: center; max-width: 100%; text-wrap: balance;
   color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.7), 0 0 30px rgba(80,140,255,0.6); }
 .nomi-sub:not(.hidden) + .banner { margin-top: 0; }
 .banner.pop { animation: pop 0.5s cubic-bezier(.2,1.6,.4,1); }
@@ -116,6 +123,12 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .toast-good { border-color: rgba(53, 200, 106, 0.7); }
 .toast-bad { border-color: rgba(255, 90, 79, 0.8); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
+.toasts.squeezed { visibility: hidden; }
+/* Kamera-Wechsel („🎥 Drohne“): nur in der leeren Spalte – sonst zeigt der Bildwechsel selbst, was passiert ist */
+.camera-hint { background: var(--panel-strong); padding: 8px 16px; border-radius: 12px; font-weight: 700; font-size: 17px; animation: toastin 0.2s; }
+.nomi-sub:not(.hidden) ~ .camera-hint, .banner:not(.hidden) ~ .camera-hint, .toasts:not(:empty) ~ .camera-hint { display: none; }
+/* während eines Funklochs ist der Stream weg: nichts schimmert unter dem Funkloch-Kasten durch */
+.hud.funk .center-stack { visibility: hidden; }
 
 /* Chat */
 /* endet über dem Innenspiegel (dessen Oberkante liegt bei etwa einem Viertel der Bildhöhe) */
@@ -133,16 +146,21 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .bot-tag { font-size: 9px; font-weight: 800; background: rgba(255,215,106,0.25); color: var(--gold); border-radius: 3px; padding: 0 4px; margin-right: 2px; vertical-align: 1px; white-space: nowrap; }
 @keyframes msgin { from { opacity: 0; transform: translateX(10px); } }
 
-/* Sprachdurchsage */
-.durchsage { position: absolute; left: 50%; bottom: 30vh; transform: translateX(-50%); max-width: min(680px, 80vw); background: rgba(40, 14, 60, 0.86);
-  border: 1px solid rgba(200, 140, 255, 0.5); border-radius: 14px; padding: 10px 16px; animation: fadein2 0.3s; z-index: 4; }
+/* Sprachdurchsage: mittig über dem Lenkrad. Zentriert über left/right statt left:50% + translate,
+   sonst kann der Kasten nie breiter als die halbe Bildbreite werden */
+.durchsage { position: absolute; left: 0; right: 0; margin-inline: auto; width: fit-content; bottom: 30vh; max-width: min(680px, calc(100vw - 28px)); background: rgba(40, 14, 60, 0.92);
+  border: 1px solid rgba(200, 140, 255, 0.5); border-radius: 14px; padding: 10px 16px; animation: fadein2 0.3s; z-index: 4; transition: bottom 0.3s ease; }
 .durchsage-head { font-size: 12px; color: #d9b8ff; font-weight: 700; margin-bottom: 3px; }
 .durchsage-text { font-size: 17px; font-style: italic; }
-@keyframes fadein2 { from { opacity: 0; transform: translate(-50%, 10px); } }
+@keyframes fadein2 { from { opacity: 0; transform: translateY(10px); } }
+/* Drohne: wo im Cockpit das Lenkrad ist, fährt hier das eigene Auto – die Durchsage rückt unter das Auto */
+body.drone .durchsage { bottom: max(10px, 2.5vh); }
+/* liegt sie dabei auf dem unteren Rahmen-Streifen, deckt sie ihn ganz ab, statt ihn durchscheinen zu lassen */
+.hud:has(.strip-bottom) .durchsage { background: rgb(40, 14, 60); }
 
 /* Funkloch */
-.funkloch { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); background: rgba(30, 30, 30, 0.85); border: 1px solid var(--line); border-radius: 16px;
-  padding: 16px 22px; text-align: center; z-index: 5; max-width: 80vw; }
+.funkloch { position: absolute; top: 40%; left: 0; right: 0; margin-inline: auto; width: fit-content; transform: translateY(-50%); background: rgba(30, 30, 30, 0.85); border: 1px solid var(--line); border-radius: 16px;
+  padding: 16px 22px; text-align: center; z-index: 5; max-width: min(640px, var(--mid, 80vw)); }
 .funkloch-icon { font-size: 36px; font-family: var(--emoji); animation: lowbat 0.6s infinite; }
 .funkloch-text { font-weight: 700; margin-top: 4px; }
 
@@ -153,7 +171,6 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .photo-cap { font-weight: 800; margin-top: 6px; font-size: 14px; }
 .photo-sub { font-size: 12px; color: #555; }
 @keyframes photoin { from { transform: translateX(120%) rotate(12deg); } }
-.camera-hint { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); background: var(--panel-strong); padding: 10px 18px; border-radius: 12px; font-weight: 700; font-size: 18px; z-index: 5; }
 
 /* --- Rahmen ------------------------------------------------------------------ */
 .rahmen-layer { position: absolute; inset: 0; z-index: 2; }
@@ -161,12 +178,16 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .rahmen.out { animation: rahmenout 0.6s ease-in forwards; }
 @keyframes rahmenin { from { opacity: 0; transform: scale(1.06); } }
 @keyframes rahmenout { to { opacity: 0; transform: scale(1.04); } }
-.rahmen-caption { position: absolute; bottom: 12vh; right: 18px; background: rgba(0,0,0,0.7); border-radius: 8px; padding: 4px 10px; font-size: 13px; font-weight: 700; z-index: 2; }
+/* Spender-Hinweis innen neben dem rechten Streifen, nicht darauf */
+.rahmen-caption { position: absolute; bottom: 12vh; right: calc(7.5vh + 10px); max-width: calc(100vw - 15vh - 20px); background: rgba(0,0,0,0.7); border-radius: 8px; padding: 4px 10px; font-size: 13px; font-weight: 700; z-index: 2; }
+/* in der Drohnenansicht gehört der Platz unten der Durchsage: der Hinweis steht dann rechts unter dem Chat */
+body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14px)); max-width: calc(min(310px, 30vw) - 7.5vh); }
 .strip { position: absolute; display: flex; justify-content: space-around; align-items: center; font-family: var(--emoji); font-size: 5.4vh; line-height: 1; overflow: hidden; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+/* die Ecken gehören dem oberen und unteren Streifen – die seitlichen enden davor, sonst liegt dort alles doppelt */
 .strip-top { top: 0; left: 0; right: 0; height: 7.5vh; }
 .strip-bottom { bottom: 0; left: 0; right: 0; height: 7.5vh; }
-.strip-left { top: 0; bottom: 0; left: 0; width: 7.5vh; flex-direction: column; }
-.strip-right { top: 0; bottom: 0; right: 0; width: 7.5vh; flex-direction: column; }
+.strip-left { top: 7.5vh; bottom: 7.5vh; left: 0; width: 7.5vh; flex-direction: column; }
+.strip-right { top: 7.5vh; bottom: 7.5vh; right: 0; width: 7.5vh; flex-direction: column; }
 .rahmen-rosen .strip { background: rgba(120, 10, 30, 0.35); }
 .rahmen-pommes .strip, .rahmen-chips .strip { background: rgba(200, 40, 30, 0.45); }
 .rahmen-burger .strip { background: rgba(120, 70, 20, 0.4); }
@@ -200,6 +221,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .strip-left.norights span { transform: rotate(180deg); }
 
 /* --- Touch ------------------------------------------------------------------- */
+/* Höhe der Touch-Knöpfe über dem unteren Rand (+ Abstand): hochkant gehören Durchsage und Rahmen-Hinweis darüber */
+:root { --touch-top: 8px; }
+@media (pointer: coarse) { :root { --touch-top: 202px; } }
+@media (pointer: coarse) and (max-width: 480px) { :root { --touch-top: calc(min(84px, 19vw) * 1.14 + 96px); } }
 .touch { display: none; position: fixed; inset: auto 0 0 0; height: 40vh; pointer-events: none; z-index: 20; }
 .touch button { pointer-events: auto; position: absolute; border: 2px solid rgba(255,255,255,0.35); background: rgba(10,10,14,0.45); color: #fff; border-radius: 50%;
   font-size: 26px; width: 84px; height: 84px; touch-action: none; font-family: var(--emoji); }
@@ -224,10 +249,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 }
 
 /* --- Menüs ------------------------------------------------------------------- */
-.screens { position: fixed; inset: 0; z-index: 30; display: none; }
+.screens { position: fixed; inset: 0; z-index: 30; display: none; --scr-pad: 28px; }
 .screens.active { display: block; }
 .screens.dim { background: rgba(5, 6, 9, 0.55); backdrop-filter: blur(5px); }
-.screen { position: absolute; inset: 0; display: flex; align-items: safe center; justify-content: center; padding: 28px; overflow: auto; }
+.screen { position: absolute; inset: 0; display: flex; align-items: safe center; justify-content: center; padding: var(--scr-pad); overflow: auto; }
 .screen-title { justify-content: flex-start; padding-left: clamp(20px, 6vw, 110px); background: linear-gradient(90deg, rgba(6,7,10,0.78) 0%, rgba(6,7,10,0.45) 38%, rgba(6,7,10,0) 62%); }
 .title-card { max-width: 560px; animation: titlein 0.8s ease-out; }
 @keyframes titlein { from { opacity: 0; transform: translateX(-30px); } }
@@ -251,9 +276,19 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .btn[disabled] { opacity: 0.45; cursor: default; }
 .btn.danger { background: #8a1c1c; }
 
-.card { background: var(--panel-strong); border: 1px solid var(--line); border-radius: 18px; padding: 26px 30px; width: 100%; max-width: 980px; max-height: calc(100vh - 56px); overflow: auto;
-  box-shadow: 0 24px 70px rgba(0,0,0,0.5); animation: cardin 0.35s ease-out; user-select: text; }
+.card { --pad-y: 26px; --pad-x: 30px; background: var(--panel-strong); border: 1px solid var(--line); border-radius: 18px; padding: var(--pad-y) var(--pad-x); width: 100%; max-width: 980px;
+  max-height: calc(100vh - 2 * var(--scr-pad)); overflow: auto; box-shadow: 0 24px 70px rgba(0,0,0,0.5); animation: cardin 0.35s ease-out; user-select: text; }
 @keyframes cardin { from { opacity: 0; transform: translateY(14px) scale(0.98); } }
+/* Knopfzeile am Kartenende bleibt sichtbar, wenn der Inhalt darüber scrollt (Pause auf dem Handy, Shop, Steuerung bei 720p):
+   über die ganze Kartenbreite deckend, der Inhalt läuft darüber weich aus und scheint nie hinter den Knöpfen durch */
+.card > .menu.row:last-child { position: sticky; bottom: calc(-1 * var(--pad-y)); z-index: 1; margin: 14px calc(-1 * var(--pad-x)) calc(-1 * var(--pad-y));
+  padding: 6px var(--pad-x) var(--pad-y); background: rgb(18, 19, 23); }
+.card > .menu.row:last-child::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 14px; pointer-events: none;
+  background: linear-gradient(rgba(18, 19, 23, 0), rgb(18, 19, 23)); transition: height 0.2s; }
+/* geht es darunter noch weiter (menus.js setzt .more), läuft der Verlauf länger aus – die angeschnittene Zeile zeigt: hier geht es weiter */
+.card.more > .menu.row:last-child::before { height: 48px; }
+/* mit Pfeiltasten oder Gamepad angesteuerte Knöpfe scrollen über die Knopfzeile, nicht dahinter */
+.card:has(> .menu.row:last-child) { scroll-padding-bottom: calc(var(--pad-y) + 80px); }
 .card h2 { margin: 0 0 6px; font-size: 30px; }
 .card h3 { margin: 18px 0 8px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--sub); }
 .card p { line-height: 1.5; color: #dfe2e8; }
@@ -274,7 +309,9 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .over-money .num { color: #6dff9c; }
 .over-dist .lbl, .over-money .lbl { color: var(--sub); font-weight: 600; }
 .over-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
-.bd { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px dashed rgba(255,255,255,0.08); font-variant-numeric: tabular-nums; }
+/* Ziffern gleich breit nur im Wert – im Text machte das die Bindestriche breit („Navi - Ziele“) */
+.bd { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px dashed rgba(255,255,255,0.08); }
+.bd span:last-child { font-variant-numeric: tabular-nums; }
 .bd.minus span:last-child { color: #ff8a80; }
 .beruf { margin-top: 16px; background: linear-gradient(135deg, rgba(255,215,106,0.16), rgba(255,215,106,0.04)); border: 1px solid rgba(255,215,106,0.35); border-radius: 12px; padding: 12px 14px; }
 .beruf-k { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gold); font-weight: 700; }
@@ -290,8 +327,9 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .crew-row .v { font-weight: 700; }
 
 .shop-card { max-width: 1180px; }
-.shop-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.wallet { font-size: 22px; font-weight: 800; color: #6dff9c; background: rgba(53, 200, 106, 0.12); padding: 6px 14px; border-radius: 10px; }
+/* schmal: das Guthaben rutscht unter den Titel, statt Titel und Betrag zu zerbrechen */
+.shop-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; }
+.wallet { font-size: 22px; font-weight: 800; color: #6dff9c; background: rgba(53, 200, 106, 0.12); padding: 6px 14px; border-radius: 10px; white-space: nowrap; }
 .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-top: 10px; }
 .shop-item { background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 13px; display: flex; flex-direction: column; gap: 7px; }
 .shop-item.maxed { border-color: rgba(53, 200, 106, 0.45); }
@@ -312,7 +350,9 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .maxed-tag { text-align: center; color: #8be3a5; font-weight: 800; padding: 8px; }
 
 .controls-grid { display: grid; gap: 2px; margin-top: 10px; }
-.crow { display: grid; grid-template-columns: 1.6fr 1fr 1fr 0.6fr; gap: 10px; padding: 7px 10px; border-radius: 8px; background: rgba(255,255,255,0.03); font-size: 15px; }
+/* minmax(0, …): jede Zeile bekommt dieselben Spaltenbreiten, egal wie lang ihre Wörter sind */
+.crow { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.6fr); gap: 10px; padding: 7px 10px; border-radius: 8px; background: rgba(255,255,255,0.03); font-size: 15px; }
+.crow > span { overflow-wrap: break-word; hyphens: auto; }
 .crow.head { background: none; color: var(--sub); font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; }
 .tips p { margin: 4px 0; font-size: 14.5px; }
 
@@ -337,8 +377,13 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .chat-list { font-size: 12px; }
   .chat-count { display: none; }
   .navi-line { display: none; }
-  .crow { grid-template-columns: 1.4fr 1fr 1fr; }
+  .crow { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
   .crow span:nth-child(4) { display: none; }
+}
+/* auf dem Handy zählt die Touch-Spalte – dafür fällt dort die Gamepad-Spalte weg */
+@media (max-width: 760px) and (pointer: coarse) {
+  .crow span:nth-child(3) { display: none; }
+  .crow span:nth-child(4) { display: block; }
 }
 /* hochkant ist der Blick auf die Straße klein: die Jobs stehen dann im Pausenmenü */
 @media (max-width: 760px) and (orientation: portrait) {
@@ -355,3 +400,70 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 }
 .banner-sub { font-size: clamp(14px, 1.5vw, 18px); font-weight: 600; margin-top: 4px; color: #e6ebf5; text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
 .over-menu { margin: 6px 0 4px; }
+
+/* --- niedrige Fenster (Handy quer) --------------------------------------------------- */
+@media (max-height: 560px) {
+  .screens { --scr-pad: 12px; }
+  .card { --pad-y: 16px; --pad-x: 20px; }
+  .card h2 { font-size: 24px; }
+  .menu { gap: 6px; }
+  .menu .btn { padding: 8px 14px; font-size: 15px; }
+  .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
+  .sum { padding: 5px 9px; }
+  /* Titel: Logo, Untertitel und alle Knöpfe passen ohne Scrollen */
+  .title-card h1 { font-size: 44px; margin: 4px 0 2px; }
+  .title-card h2 { font-size: 18px; }
+  .tagline { margin: 4px 0 10px; font-size: 14px; }
+  .title-stats { margin-top: 10px; font-size: 13px; }
+  /* HUD: kompakte Mittelspalte; die Durchsage steht klein ganz unten – über dem Lenkrad bzw. unter dem Auto */
+  .center-stack { gap: 6px; }
+  .nomi-sub { font-size: 14px; padding: 5px 10px; gap: 8px; border-radius: 12px; }
+  .nomi-eyes { width: 26px; height: 26px; }
+  .banner { font-size: 18px; }
+  .banner-sub { font-size: 12px; }
+  .toast { font-size: 13px; padding: 4px 10px; }
+  .toast-sub { font-size: 11px; }
+  .durchsage, body.drone .durchsage { bottom: 8px; }
+  .funkloch { top: 44%; padding: 10px 16px; }
+  .funkloch-icon { font-size: 26px; }
+  .funkloch-text { font-size: 13px; }
+}
+@media (max-height: 560px), (max-width: 480px) {
+  .durchsage { padding: 6px 12px; border-radius: 12px; }
+  .durchsage-head { font-size: 11px; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .durchsage-text { font-size: 14px; line-height: 1.3; }
+  /* unter dem Auto ist auf dem Handy wenig Platz: ohne Kopfzeile (der Spender steht im Chat), nur das Mikro vor dem Text */
+  body.drone .durchsage-head { display: none; }
+  body.drone .durchsage-text { font-size: 13px; }
+  body.drone .durchsage-text::before { content: '🎙️ '; font-style: normal; }
+}
+/* quer liegen unten rechts die Touch-Knöpfe (bzw. ist das Fenster niedrig) und oben rechts der Innenspiegel:
+   im Cockpit steht der Rahmen-Hinweis dann unten in der Mitte über dem Streifen, eine Durchsage rückt so lange darüber */
+@media (max-height: 560px), (pointer: coarse) and (orientation: landscape) {
+  body:not(.drone) .rahmen-caption { left: 0; right: 0; margin-inline: auto; width: fit-content; bottom: calc(7.5vh + 6px); max-width: min(560px, calc(100vw - 15vh - 20px)); text-align: center; }
+  body:not(.drone) .hud:has(.rahmen-caption) .durchsage { bottom: calc(7.5vh + 52px); }
+}
+/* Touch quer: Durchsage und Rahmen-Hinweis bleiben unten zwischen den beiden Knopfgruppen */
+@media (pointer: coarse) and (orientation: landscape) {
+  body.drone .durchsage { max-width: min(680px, calc(100vw - 432px)); }
+  body:not(.drone) .rahmen-caption { max-width: min(560px, calc(100vw - 432px)); }
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 560px) {
+  .durchsage, body.drone .durchsage { max-width: min(560px, calc(100vw - 432px)); }
+}
+/* Touch hochkant: Durchsage und Rahmen-Hinweis stehen über den Knöpfen (unter dem Auto der Drohnenansicht) */
+@media (pointer: coarse) and (orientation: portrait) {
+  .durchsage, body.drone .durchsage { bottom: var(--touch-top); }
+  body:not(.drone) .hud:has(.rahmen-caption) .durchsage { bottom: calc(var(--touch-top) + 52px); }
+  body:not(.drone) .rahmen-caption, body.drone .rahmen-caption { left: 0; right: 0; margin-inline: auto; width: fit-content; top: auto; bottom: var(--touch-top); max-width: calc(100vw - 15vh - 20px); text-align: center; }
+  /* in der Drohnenansicht stünde die Durchsage darüber schon auf dem Auto: der Rahmen-Hinweis wartet so lange */
+  body.drone .hud:has(.durchsage:not(.hidden)) .rahmen-caption { visibility: hidden; }
+}
+/* --- schmale Handys hochkant ---------------------------------------------------------- */
+@media (max-width: 480px) {
+  .screens { --scr-pad: 12px; }
+  .card { --pad-y: 18px; --pad-x: 16px; }
+  .card h2 { font-size: 24px; }
+  .wallet { font-size: 18px; }
+  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+}

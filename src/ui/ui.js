@@ -15,6 +15,18 @@ const RAHMEN_EMOJI = {
   rosen: '🌹', pommes: '🍟', burger: '🍔', candy: '🍬', chips: '🥔', kuerbis: '🎃',
 };
 
+// Ein Rahmen-Streifen zeigt nur so viele Teile, wie ganz hineinpassen – sonst sind sie an den Enden angeschnitten
+function fitStrip(strip) {
+  const first = strip.firstElementChild;
+  if (!first) return;
+  const column = strip.classList.contains('strip-left') || strip.classList.contains('strip-right');
+  const room = column ? strip.clientHeight : strip.clientWidth;
+  const size = column ? first.offsetHeight : first.offsetWidth;
+  if (!room || !size) return;
+  const n = Math.max(1, Math.floor(room / (size * 1.12)));
+  while (strip.childElementCount > n) strip.lastElementChild.remove();
+}
+
 export class UI {
   constructor(root) {
     this.root = root;
@@ -56,9 +68,14 @@ export class UI {
     this.leftLaneText = el('div', 'leftlane-text', this.leftLaneEl, '');
     const bar = el('div', 'leftlane-bar', this.leftLaneEl);
     this.leftLaneFill = el('div', 'leftlane-fill', bar);
-    this.naviEl = el('div', 'navi-line', this.hud, '');
-    // NOMI-Untertitel, Banner und Hinweise teilen sich eine Spalte (siehe .center-stack)
+    // Ziel, Entfernung und Gebot getrennt: wird es eng, kürzt sich der Name, die Entfernung bleibt stehen
+    this.naviEl = el('div', 'navi-line', this.hud);
+    this.naviTarget = el('span', 'navi-target', this.naviEl, '');
+    this.naviKm = el('span', 'navi-km', this.naviEl, '');
+    this.naviBid = el('span', 'navi-bid', this.naviEl, '');
+    // NOMI-Untertitel, Banner, Hinweise und die Kamera-Anzeige teilen sich eine Spalte (siehe .center-stack)
     const stack = el('div', 'center-stack', this.hud);
+    this.stackEl = stack;
     this.nomiEl = el('div', 'nomi-sub hidden', stack);
     const eyes = el('span', 'nomi-eyes', this.nomiEl);
     el('i', '', eyes);
@@ -66,6 +83,7 @@ export class UI {
     this.nomiText = el('span', 'nomi-text', this.nomiEl, '');
     this.bannerEl = el('div', 'banner hidden', stack, '');
     this.toastsEl = el('div', 'toasts', stack);
+    this.cameraHint = el('div', 'camera-hint hidden', stack, '');
 
     // --- rechts: Chat ---
     this.chatEl = el('div', 'chat', this.hud);
@@ -81,7 +99,6 @@ export class UI {
     el('div', 'funkloch-text', this.funklochEl, 'Verbindung verloren – Telekom, Vodafone und O₂ werden neu gebündelt …');
     this.photoEl = el('div', 'photo hidden', this.hud);
     this.rahmenEl = el('div', 'rahmen-layer', this.hud);
-    this.cameraHint = el('div', 'camera-hint hidden', this.hud, '');
 
     this.chatOn = true;
     this.lastHud = 0;
@@ -123,6 +140,29 @@ export class UI {
     st.setProperty('--mid', Math.round(mid) + 'px');
     st.setProperty('--top', Math.round(top) + 'px');
     this.hud.classList.toggle('hud-narrow', narrow);
+    this.naviMax = Math.min(760, mid);
+  }
+
+  /**
+   * Läuft die Mittelspalte bis an die Sprachdurchsage, den Rahmen-Hinweis, die Touch-Knöpfe, das eigene Auto
+   * (Drohnenansicht) oder den unteren Rand, gehen die ältesten Hinweise vorzeitig – der neueste bleibt immer stehen.
+   */
+  fitStack() {
+    if (!this.toasts.length) return;
+    const s = this.stackEl.getBoundingClientRect();
+    if (!s.height) return;
+    let limit = window.innerHeight - 8;
+    // in der Drohnenansicht beginnt das Auto bei gut der Hälfte der Bildhöhe (hochkant ab ~55 %, quer ab ~58 %)
+    if (document.body.classList.contains('drone')) limit = Math.min(limit, window.innerHeight * 0.54);
+    const below = [this.durchsageEl, ...this.rahmenEl.querySelectorAll('.rahmen-caption'), ...document.querySelectorAll('.touch button')];
+    for (const e of below) {
+      const r = e.getBoundingClientRect();
+      if (r.height && r.top > s.top + 40 && r.left < s.right && r.right > s.left) limit = Math.min(limit, r.top - 8);
+    }
+    const bottom = () => this.stackEl.getBoundingClientRect().bottom;
+    while (this.toasts.length > 1 && bottom() > limit) this.toasts.shift().el.remove();
+    // passt selbst der neueste nicht (hohes Banner), wartet er unsichtbar, bis darüber Platz frei wird
+    this.toastsEl.classList.toggle('squeezed', bottom() > limit);
   }
 
   show(v) {
@@ -183,6 +223,7 @@ export class UI {
       const old = this.toasts.shift();
       old.el.remove();
     }
+    this.fitStack();
     return rec;
   }
 
@@ -194,12 +235,14 @@ export class UI {
     void this.bannerEl.offsetWidth;
     this.bannerEl.classList.add('pop');
     this.bannerT = dur;
+    this.fitStack();
   }
 
   nomi(text, dur = 3) {
     this.nomiText.textContent = text;
     this.nomiEl.classList.remove('hidden');
     this.nomiT = Math.max(2.2, dur);
+    this.fitStack();
   }
 
   money(amount, label) {
@@ -229,10 +272,13 @@ export class UI {
     el('div', 'durchsage-text', this.durchsageEl, '»' + text + '«');
     this.durchsageEl.classList.remove('hidden');
     this.durchsageT = clamp(dur, 3, 14);
+    this.fitStack();
   }
 
   funkloch(on) {
     this.funklochEl.classList.toggle('hidden', !on);
+    // der Stream ist weg: Untertitel, Banner und Hinweise sind so lange ausgeblendet (sonst scheinen sie unter dem Kasten durch)
+    this.hud.classList.toggle('funk', on);
     this.liveBadge.classList.toggle('offline', on);
     this.liveBadge.textContent = on ? '● OFFLINE' : '● LIVE';
   }
@@ -303,7 +349,10 @@ export class UI {
         for (let i = 0; i < 16; i++) el('span', 'rettich', strip, '');
       }
     }
+    // Lego-Steine dehnen sich selbst auf die Streifenlänge, der Kürbis steht allein in der Ecke
+    if (!layer.classList.contains('corner-only')) for (const s of layer.querySelectorAll('.strip:not(.lego)')) fitStrip(s);
     this.rahmenList.push({ el: layer, t: r.dur });
+    this.fitStack();
   }
 
   /** Blitzerfoto als Polaroid einblenden. */
@@ -393,9 +442,13 @@ export class UI {
     // Navi-Zeile
     const nv = g.navi;
     const rem = Math.max(0, nv.targetS - p.s);
-    this.naviEl.textContent = nv.arrived
-      ? '📍 Ziel erreicht – warte auf das nächste Gebot …'
-      : `📍 ${nv.target.name} · ${fmtKm(rem, rem < 10000 ? 1 : 0)} · Gebot ${fmtCent(nv.bid)} von ${nv.bidder}`;
+    this.naviTarget.textContent = nv.arrived ? '📍 Ziel erreicht – warte auf das nächste Gebot …' : '📍 ' + nv.target.name;
+    this.naviKm.textContent = nv.arrived ? '' : '\u00a0· ' + fmtKm(rem, rem < 10000 ? 1 : 0);
+    this.naviBid.textContent = nv.arrived ? '' : `\u00a0· Gebot ${fmtCent(nv.bid)} von ${nv.bidder}`;
+    // passt die ganze Zeile nicht zwischen Info-Feld und Chat, fällt das Gebot weg (es steht auch im Chat und im Auto)
+    const need = this.naviTarget.scrollWidth + this.naviKm.scrollWidth + this.naviBid.scrollWidth + 30;
+    this.naviEl.classList.toggle('short', need > (this.naviMax || 760));
     this.chatCount.textContent = fmtNum(Math.round(g.viewers)) + ' Zuschauer';
+    this.fitStack();
   }
 }

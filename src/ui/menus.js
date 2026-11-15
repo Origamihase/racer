@@ -56,6 +56,7 @@ export class Menus {
     this.data = data;
     const s = this.screens[name];
     this['render_' + name](s, data);
+    this.watchScroll(s);
     s.classList.remove('hidden');
     this.root.classList.add('active');
     this.root.classList.toggle('dim', name !== 'title');
@@ -90,7 +91,19 @@ export class Menus {
       card.style.animation = 'none';
       card.scrollTop = st;
     }
+    this.watchScroll(s);
     if (sel) s.querySelector(sel)?.focus({ preventScroll: true });
+  }
+
+  /** Geht eine Karte über den Bildschirm hinaus, zeigt ein längerer Verlauf über der Knopfzeile, dass darunter noch etwas kommt. */
+  watchScroll(s) {
+    this.scrollObs?.disconnect();
+    const card = s.querySelector('.card');
+    if (!card) return;
+    const more = () => card.classList.toggle('more', card.scrollHeight - card.scrollTop - card.clientHeight > 4);
+    card.addEventListener('scroll', more, { passive: true });
+    this.scrollObs = new ResizeObserver(more);
+    this.scrollObs.observe(card);
   }
 
   refreshData(prev) {
@@ -372,7 +385,8 @@ export class Menus {
     el('h2', '', card, '🎮 Steuerung');
     const tbl = el('div', 'controls-grid', card);
     const rows = [
-      ['Lenken', '← → oder A D', 'Linker Stick', '◀ ▶'],
+      // geschützte Leerzeichen: wird die Spalte schmal, bricht die Zeile nur vor und nach „oder“, nie zwischen A und D
+      ['Lenken', '←\u00a0→ oder A\u00a0D', 'Linker Stick', '◀\u00a0▶'],
       ['Strom geben', '↑ oder W', 'RT oder Steuerkreuz ↑', 'Strom'],
       ['Bremsen', '↓ oder S', 'LT oder Steuerkreuz ↓', 'Bremse'],
       ['Hupen (Brunnen & Elsa grüßen)', 'Leertaste', 'A', '📯'],

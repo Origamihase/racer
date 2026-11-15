@@ -904,7 +904,7 @@ function step(dt, { render = true } = {}) {
         state = 'drive';
         stateT = 0;
         ui.show(true);
-        ui.toast('Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
+        ui.toast(matchMedia('(pointer: coarse)').matches ? 'Tipp: ◀ ▶ lenken · Strom und Bremse rechts · 🎥 Kamera' : 'Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
       }
       break;
     }
@@ -1019,6 +1019,7 @@ function step(dt, { render = true } = {}) {
 
   if (DEBUG && window.__MA && window.__MA.camHook) window.__MA.camHook(camera, carMatrix);
   document.body.classList.toggle('playing', state === 'drive' && !paused);
+  document.body.classList.toggle('drone', view === 'drone');
   if (render) renderFrame(cockpitOn);
   // in der Pause bleiben Banner, Geld-Anzeigen und Funkloch stehen
   ui.update(paused ? 0 : dt, state === 'drive' || state === 'intro' ? game : null);
