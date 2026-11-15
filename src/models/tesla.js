@@ -378,11 +378,19 @@ export function buildTesla() {
   screen.position.set(0, 1.0, uToZ(1.93));
   screen.rotation.x = -0.2;
   root.add(screen);
-  // Lenkrad
+  // Lenkrad mit Nabe und Lenksäule zum Armaturenbrett (dort, wo Mini Adams Hände hinreichen)
   const wheelRing = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.022, 10, 28), interior);
-  wheelRing.position.set(-0.37, 0.9, uToZ(2.15));
+  wheelRing.position.set(-0.37, 0.84, uToZ(2.4));
   wheelRing.rotation.x = -0.35;
   root.add(wheelRing);
+  const wheelAxis = new THREE.Vector3(0, 0, 1).applyEuler(wheelRing.rotation);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.04, 18), interior);
+  hub.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), wheelAxis);
+  hub.position.copy(wheelRing.position).addScaledVector(wheelAxis, -0.01);
+  const column = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.036, 0.46, 12), interior);
+  column.quaternion.copy(hub.quaternion);
+  column.position.copy(wheelRing.position).addScaledVector(wheelAxis, -0.25);
+  root.add(hub, column);
 
   // Mini Adam auf einem Kissen hinterm Steuer
   const adam = buildMiniAdam({ curved: true });
@@ -390,6 +398,9 @@ export function buildTesla() {
   adam.root.position.set(-0.37, 0.4, uToZ(2.62));
   adam.root.rotation.y = Math.PI;
   root.add(adam.root);
+  adam.root.updateMatrix();
+  wheelRing.updateMatrix();
+  adam.setWheel(adam.root.matrix.clone().invert().multiply(wheelRing.matrix), 0.17);
   // zwei Kissen, damit Mini Adam über das Lenkrad schauen kann
   const cushion = new THREE.Mesh(
     new THREE.CylinderGeometry(0.2, 0.22, 0.07, 18),

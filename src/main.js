@@ -828,7 +828,7 @@ function step(dt, { render = true } = {}) {
       game.demo(dt, ctl);
       updateCarMatrix();
       placeDrone(dt, 'orbit');
-      adamWave = Math.max(0, Math.sin(simT * 0.5)) > 0.85 ? 1 : 0;
+      adamWave = smoothstep(0.72, 0.9, Math.sin(simT * 0.5));
       adamLook = Math.sin(simT * 0.4) * 0.6;
       break;
     }
@@ -841,7 +841,8 @@ function step(dt, { render = true } = {}) {
       updateCarMatrix();
       const where = placeIntro(dt);
       cockpitOn = where === 'inside';
-      adamWave = smoothstep(1.4, 2.4, stateT) * (1 - smoothstep(4.2, 4.7, stateT));
+      // winkt, solange die Kamera schräg von vorne kommt; am Seitenfenster sind die Hände wieder am Lenkrad
+      adamWave = smoothstep(1.0, 1.8, stateT) * (1 - smoothstep(3.4, 4.0, stateT));
       adamLook = smoothstep(1.0, 2.6, stateT) * 1.0;
       // Überblendung ins Cockpit
       const tf = stateT;
@@ -911,7 +912,7 @@ function step(dt, { render = true } = {}) {
       pickups.update(dt, simT, p, camera, false);
       updateCarMatrix();
       placeDrone(dt, 'orbit');
-      adamWave = stateT > 1 ? 1 : 0;
+      adamWave = smoothstep(0.9, 1.5, stateT);
       adamLook = Math.sin(stateT * 0.5) * 0.8;
       if (state === 'ending' && stateT > 2.6) {
         state = 'over';

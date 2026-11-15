@@ -322,7 +322,7 @@ export const SHOP = [
   {
     id: 'weste', icon: '🦺', name: 'Warnweste', cat: 'Deko', prices: [90],
     desc: 'Für Mini Adam. Bringt nichts, sieht aber sehr professionell aus.',
-    effect: () => 'Sichtbar beim Drohnenflug',
+    effect: () => 'Sichtbar beim Kameraschwenk',
   },
   {
     id: 'konfetti', icon: '🎉', name: 'Konfetti-Kanone', cat: 'Deko', prices: [200],
