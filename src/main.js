@@ -639,6 +639,7 @@ function onResize() {
   U.uTexel.value.set(1 / size.x, 1 / size.y);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  cockpit.setAspect(camera.aspect);
   rain.setPixelScale(size.y);
 }
 window.addEventListener('resize', onResize);

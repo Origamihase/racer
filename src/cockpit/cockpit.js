@@ -8,7 +8,7 @@ import { woodTexture, liveLogoTexture, fabricTexture } from '../textures.js';
 import { Nomi } from './nomi.js';
 import { CenterScreen } from './screen.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
-import { damp, clamp } from '../util.js';
+import { damp, clamp, smoothstep } from '../util.js';
 import { mirrorShape, mirrorHousingGeometry } from '../models/loft.js';
 
 // Augenposition (Fahrzeug-Koordinaten; vorne = -z). Mini Adam sitzt auf zwei Kissen.
@@ -34,6 +34,17 @@ export const WIPERS = [
   { pivot: new THREE.Vector3(0.06, 0.884, -0.905), length: 0.56, max: 1.75 },
 ];
 
+// Lenkradkranz: leicht oval (Höhe 0,94 der Breite), die Hände folgen dem Oval
+const RIM_SY = 0.94;
+// Griffwinkel der Hände ab 12 Uhr (Bogenmaß): quer fast „Viertel vor drei“, hochkant auf
+// halb elf und halb zwei – mit Abstand zum Bildrand, zu NOMI und zu den Touch-Knöpfen
+const GRIP_WIDE = 1.32;
+const GRIP_TALL = 0.8;
+// Unterarm ab dem Handgelenk und T-Shirt-Ärmel ab der Schulter (Schulter–Hand sind 0,46–0,66 m,
+// der Arm reicht also immer bis in den Ärmel)
+const ARM_LEN = 0.5;
+const SLEEVE_LEN = 0.2;
+
 function plushMat(color) {
   return new THREE.MeshPhysicalMaterial({
     color,
@@ -44,6 +55,19 @@ function plushMat(color) {
     bumpMap: fabricTexture(5),
     bumpScale: 0.5,
   });
+}
+
+/** Rundes Plüschteil entlang +y aus einem Profil [Radius, Höhe]; die Stoffstruktur wird nicht gestreckt. */
+function plushTube(profile) {
+  const n = profile.length;
+  const g = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), 18);
+  // v nach Bogenlänge des Profils, im selben Maßstab wie u (einmal herum)
+  const around = 2 * Math.PI * Math.max(...profile.map(([r]) => r));
+  const v = [0];
+  for (let j = 1; j < n; j++) v.push(v[j - 1] + Math.hypot(profile[j][0] - profile[j - 1][0], profile[j][1] - profile[j - 1][1]) / around);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setY(i, v[i % n]);
+  return g;
 }
 
 /** Abgerundete Leiste (flache Kapsel) zwischen zwei Punkten, w quer, d in die Tiefe. */
@@ -258,7 +282,7 @@ export class Cockpit {
     this.wheel = wheel;
     const R = 0.17;
     const rimGeo = new THREE.TorusGeometry(R, 0.023, 14, 56);
-    rimGeo.scale(1.0, 0.94, 1.15);
+    rimGeo.scale(1.0, RIM_SY, 1.15);
     wheel.add(new THREE.Mesh(rimGeo, M.rim));
     for (const s of [-1, 1]) {
       const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.034, 0.02), M.spoke);
@@ -296,13 +320,13 @@ export class Cockpit {
       pivot.add(stalk);
     }
 
-    // Mini Adams Plüschhände (fast „Viertel vor drei“, damit NOMI zu sehen ist)
+    // Mini Adams Plüschhände. Wo sie am Kranz greifen, hängt vom Bildformat ab (setAspect):
+    // quer fast „Viertel vor drei“, damit NOMI frei bleibt, hochkant höher, sonst landen sie
+    // am Bildrand unter den Touch-Knöpfen.
+    this.rimR = R;
     this.hands = [];
     for (const s of [-1, 1]) {
-      const a = s * 1.32;
       const hand = new THREE.Group();
-      hand.position.set(Math.sin(a) * R, Math.cos(a) * R, 0.012);
-      hand.rotation.z = -a;
       const palm = new THREE.Mesh(new THREE.SphereGeometry(0.048, 18, 14), M.skin);
       palm.scale.set(1.05, 0.85, 0.85);
       palm.position.set(0, 0.005, 0.014);
@@ -312,18 +336,54 @@ export class Cockpit {
       back.scale.set(1, 0.7, 0.6);
       back.position.set(0, 0.01, -0.025);
       hand.add(palm, thumb, back);
+      hand.userData.side = s;
       wheel.add(hand);
       this.hands.push(hand);
     }
-    // Arme (werden jedes Bild zwischen Schulter und Hand ausgerichtet)
+    this.grip = GRIP_WIDE;
+    this.gripTarget = GRIP_WIDE;
+    this.gripSet = false;
+    this.placeHands();
+    // Arme wie beim Plüsch: kurzer schwarzer T-Shirt-Ärmel an der Schulter, darunter der
+    // hautfarbene Plüscharm bis in die Hand. Beide behalten ihre Form und werden jedes Bild
+    // nur zwischen Schulter und Hand ausgerichtet (der Ärmel ab der Schulter, der Arm ab der Hand).
     this.arms = [];
-    const armGeo = new THREE.CapsuleGeometry(0.036, 1, 6, 14);
-    const sleeveGeo = new THREE.CylinderGeometry(0.052, 0.058, 1, 16, 1, true);
+    const foreGeo = plushTube([
+      [0, 0], [0.019, 0.004], [0.028, 0.012], [0.031, 0.024], [0.034, 0.16], [0.037, ARM_LEN - 0.03],
+      [0.032, ARM_LEN - 0.01], [0.018, ARM_LEN - 0.001], [0, ARM_LEN],
+    ]);
+    foreGeo.rotateX(Math.PI); // Handgelenk im Ursprung, der Arm zeigt nach −y (zur Schulter)
+    const sleeveGeo = plushTube([
+      [0, -0.035], [0.03, -0.028], [0.047, -0.012], [0.053, 0.02], [0.056, 0.12], [0.058, SLEEVE_LEN - 0.016],
+      [0.056, SLEEVE_LEN - 0.003], [0.05, SLEEVE_LEN], [0.043, SLEEVE_LEN - 0.008],
+    ]);
     for (const s of [-1, 1]) {
-      const arm = new THREE.Mesh(armGeo, M.sleeve);
+      const fore = new THREE.Mesh(foreGeo, M.skin);
       const sleeve = new THREE.Mesh(sleeveGeo, M.sleeve);
-      this.root.add(arm, sleeve);
-      this.arms.push({ arm, sleeve, shoulder: new THREE.Vector3(-0.37 + s * 0.25, 0.84, 0.3) });
+      this.root.add(fore, sleeve);
+      this.arms.push({ fore, sleeve, shoulder: new THREE.Vector3(-0.37 + s * 0.25, 0.84, 0.3) });
+    }
+  }
+
+  /** Hände an den Kranz setzen (Griffwinkel this.grip ab 12 Uhr; der Kranz ist leicht oval). */
+  placeHands() {
+    const R = this.rimR;
+    for (const hand of this.hands) {
+      const a = hand.userData.side * this.grip;
+      hand.position.set(Math.sin(a) * R, Math.cos(a) * R * RIM_SY, 0.012);
+      hand.rotation.z = -Math.atan2(Math.sin(a), Math.cos(a) / RIM_SY);
+    }
+  }
+
+  /** Bildformat (Breite/Höhe) der Cockpitkamera; hochkant ist das Bild schmal, die Hände greifen höher. */
+  setAspect(aspect) {
+    if (!(aspect > 0 && aspect < Infinity)) return; // Fenster (noch) ohne Größe
+    this.gripTarget = GRIP_TALL + (GRIP_WIDE - GRIP_TALL) * smoothstep(0.6, 1.0, aspect);
+    if (!this.gripSet) {
+      // beim Start sofort, danach (Handy gedreht) gleiten die Hände am Kranz entlang
+      this.gripSet = true;
+      this.grip = this.gripTarget;
+      this.placeHands();
     }
   }
 
@@ -578,24 +638,25 @@ export class Cockpit {
     const { dt, t } = st;
     this.wheelAngle = damp(this.wheelAngle, st.steer * 1.25, 10, dt);
     this.wheel.rotation.z = -this.wheelAngle;
-    // Arme ausrichten
+    // Griff ans Bildformat angleichen (nach dem Drehen des Handys gleiten die Hände hin)
+    if (this.grip !== this.gripTarget) {
+      this.grip = Math.abs(this.grip - this.gripTarget) < 0.002 ? this.gripTarget : damp(this.grip, this.gripTarget, 5, dt);
+      this.placeHands();
+    }
+    // Arme ausrichten: Ärmel ab der Schulter, Unterarm ab der Hand, beide Richtung Schulter → Hand
     this.root.updateMatrixWorld(true);
     const inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert();
     const hp = new THREE.Vector3();
     const dir = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
     this.arms.forEach((a, i) => {
       this.hands[i].getWorldPosition(hp);
       hp.applyMatrix4(inv);
-      dir.subVectors(hp, a.shoulder);
-      const len = dir.length();
-      dir.normalize();
-      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-      a.arm.position.copy(a.shoulder).addScaledVector(dir, len / 2 - 0.01);
-      a.arm.quaternion.copy(q);
-      a.arm.scale.set(1, (len - 0.04) / 1.086, 1);
-      a.sleeve.position.copy(a.shoulder).addScaledVector(dir, 0.08);
-      a.sleeve.quaternion.copy(q);
-      a.sleeve.scale.set(1, 0.22, 1);
+      dir.subVectors(hp, a.shoulder).normalize();
+      a.sleeve.position.copy(a.shoulder);
+      a.sleeve.quaternion.setFromUnitVectors(up, dir);
+      a.fore.position.copy(hp);
+      a.fore.quaternion.copy(a.sleeve.quaternion);
     });
     // Wischer
     if (st.wiperAngles) {
