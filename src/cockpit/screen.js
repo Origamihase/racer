@@ -457,11 +457,14 @@ export class CenterScreen {
       ctx.fillText(fmtDist(nextDist), CW - 36, 112);
       ctx.textAlign = 'left';
       ctx.font = '26px "Helvetica Neue", Arial, sans-serif';
+      const right = fmtDist(remaining) + ' · ' + (nv.eta || '');
+      const rightW = ctx.measureText(right).width;
       ctx.fillStyle = '#c9d6ff';
-      fitText(ctx, '🏁 ' + nv.target, x0 + 38, 160, w - 230);
+      fitText(ctx, '🏁 ' + nv.target, x0 + 38, 160, CW - 36 - rightW - 26 - (x0 + 38), 20);
+      ctx.font = '26px "Helvetica Neue", Arial, sans-serif';
       ctx.textAlign = 'right';
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(fmtDist(remaining) + ' · ' + (nv.eta || ''), CW - 36, 160);
+      ctx.fillText(right, CW - 36, 160);
       // Ferngesteuert-Banner
       ctx.fillStyle = 'rgba(200,16,46,0.94)';
       roundRect(ctx, x0 + 18, h - 74, w - 36, 56, 14);
@@ -519,11 +522,17 @@ function fmtDist(m) {
   return Math.max(0, Math.round(m / 10) * 10) + ' m';
 }
 
-function fitText(ctx, text, x, y, maxW) {
+function fitText(ctx, text, x, y, maxW, minSize = 14) {
   let size = parseFloat(ctx.font.match(/(\d+)px/)[1]);
-  while (ctx.measureText(text).width > maxW && size > 14) {
+  while (ctx.measureText(text).width > maxW && size > minSize) {
     size -= 2;
     ctx.font = ctx.font.replace(/\d+px/, size + 'px');
+  }
+  // Passt es immer noch nicht, wird mit „…“ gekürzt
+  if (ctx.measureText(text).width > maxW) {
+    let t = text;
+    while (t.length > 4 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+    text = t.trimEnd() + '…';
   }
   ctx.fillText(text, x, y);
 }
