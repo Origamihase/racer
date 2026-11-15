@@ -73,7 +73,7 @@ function bottleTexture() {
     ctx.fillStyle = '#3a2a10';
     ctx.font = 'bold 22px Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('BANANENSAFT', 0, 306);
+    ctx.fillText('BANANENSAFT', 0, 306, 124); // so schmal, dass es im Etikett bleibt
     // Glanz
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
     roundRect(ctx, -70, 140, 14, 190, 7);

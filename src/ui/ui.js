@@ -163,6 +163,7 @@ export class UI {
    */
   fitStack() {
     this.funkCover();
+    this.fitDurchsage();
     if (!this.toasts.length) return;
     const s = this.stackEl.getBoundingClientRect();
     if (!s.height) return;
@@ -178,6 +179,25 @@ export class UI {
     while (this.toasts.length > 1 && bottom() > limit) this.toasts.shift().el.remove();
     // passt selbst der neueste nicht (hohes Banner), wartet er unsichtbar, bis darüber Platz frei wird
     this.toastsEl.classList.toggle('squeezed', bottom() > limit);
+    this.fitDurchsage();
+  }
+
+  /**
+   * Reicht der Platz auch ohne Hinweise nicht (Untertitel und langes Banner auf einem niedrigen Handy quer), wartet
+   * die Sprachdurchsage unsichtbar, bis darüber wieder Platz ist – zu hören ist sie ja trotzdem, und das Banner
+   * („Ziel erreicht“) ist wichtiger.
+   */
+  fitDurchsage() {
+    const d = this.durchsageEl;
+    let hit = false;
+    if (!d.classList.contains('hidden')) {
+      const r = d.getBoundingClientRect();
+      const s = this.stackEl.getBoundingClientRect();
+      const shown = [this.nomiEl, this.bannerEl, this.toastsEl].filter((e) => !e.classList.contains('hidden') && !e.classList.contains('squeezed'));
+      const bottom = Math.max(-Infinity, ...shown.map((e) => e.getBoundingClientRect()).filter((b) => b.height).map((b) => b.bottom));
+      hit = r.height > 0 && r.top > s.top + 40 && r.left < s.right && r.right > s.left && bottom > r.top - 4;
+    }
+    d.classList.toggle('squeezed', hit);
   }
 
   show(v) {

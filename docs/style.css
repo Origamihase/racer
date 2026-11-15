@@ -123,7 +123,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .toast-good { border-color: rgba(53, 200, 106, 0.7); }
 .toast-bad { border-color: rgba(255, 90, 79, 0.8); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
-.toasts.squeezed { visibility: hidden; }
+.toasts.squeezed, .durchsage.squeezed { visibility: hidden; }
 /* Kamera-Wechsel („🎥 Drohne“): nur in der leeren Spalte – sonst zeigt der Bildwechsel selbst, was passiert ist */
 .camera-hint { background: var(--panel-strong); padding: 8px 16px; border-radius: 12px; font-weight: 700; font-size: 17px; animation: toastin 0.2s; }
 .nomi-sub:not(.hidden) ~ .camera-hint, .banner:not(.hidden) ~ .camera-hint, .toasts:not(:empty) ~ .camera-hint { display: none; }

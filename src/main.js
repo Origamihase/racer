@@ -582,7 +582,7 @@ function orbitTarget(p, dt) {
     const side = Math.sin(orbit.a) >= 0 ? 1 : -1;
     if (orbitBlocked(p, side)) {
       orbit.dir = Math.cos(orbit.a) * side > 0 ? -1 : 1;
-      orbit.a += orbit.dir * ORBIT_SPEED * 4 * dt;
+      orbit.a += orbit.dir * ORBIT_SPEED * 2.5 * dt;
       orbit.leaving = true;
     } else {
       const next = orbit.a + orbit.dir * ORBIT_SPEED * dt;
