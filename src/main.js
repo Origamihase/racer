@@ -1,0 +1,929 @@
+// Mini Adam – Tesla-Navi ferngesteuert
+// Hauptprogramm: Renderer, Bildkomposition (Welt → Regentropfen/Effekte → Cockpit), Kameras
+// (Cockpit, Drohne, Kameraschwenk beim Start, Vorführmodus), Zustände und Menüs.
+import * as THREE from 'three';
+import { curveUniforms } from './curve.js';
+import { setMaxAnisotropy, ROAD, roundRect } from './textures.js';
+import { Road } from './world/road.js';
+import { Sky } from './world/sky.js';
+import { Scenery } from './world/scenery.js';
+import { Traffic } from './world/traffic.js';
+import { prewarmVehicles } from './models/vehicles.js';
+import { buildTesla } from './models/tesla.js';
+import { Cockpit } from './cockpit/cockpit.js';
+import { Windshield, createCompositeMaterial } from './fx/windshield.js';
+import { Rain } from './fx/rain.js';
+import { Audio } from './audio.js';
+import { Speech } from './speech.js';
+import { Input } from './input.js';
+import { loadSave, storeSave, resetSave } from './save.js';
+import { Game } from './game/game.js';
+import { Pickups } from './game/pickups.js';
+import { UI } from './ui/ui.js';
+import { Menus } from './ui/menus.js';
+import { SHOP, UPGRADE_LIMITS } from './data.js';
+import { clamp, lerp, damp, easeInOut, smoothstep } from './util.js';
+
+const QUALITY = {
+  hoch: { pr: 1.5, msaa: 4, shadows: true, shadowSize: 2048, mirrorEvery: 1 },
+  mittel: { pr: 1.0, msaa: 4, shadows: true, shadowSize: 1024, mirrorEvery: 2 },
+  niedrig: { pr: 0.75, msaa: 0, shadows: false, shadowSize: 1024, mirrorEvery: 3 },
+};
+const DEBUG = /[?&]debug/.test(location.search);
+
+// ---------------------------------------------------------------------------
+const app = document.getElementById('app');
+const loadingEl = document.getElementById('loading');
+const save = loadSave();
+let settings = save.settings;
+
+function qualityPreset() {
+  const q = settings.quality;
+  if (q === 'auto') return { ...QUALITY.hoch, pr: Math.min(window.devicePixelRatio || 1, 1.25), auto: true };
+  return { ...(QUALITY[q] || QUALITY.mittel), pr: Math.min(window.devicePixelRatio || 1, (QUALITY[q] || QUALITY.mittel).pr) };
+}
+let quality = qualityPreset();
+
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+} catch (e) {
+  loadingEl.innerHTML = '<div class="load-card"><h1>Mini Adam</h1><p>WebGL konnte nicht gestartet werden. Bitte eine aktuelle Version von Google Chrome verwenden und die Hardware-Beschleunigung einschalten.</p></div>';
+  throw e;
+}
+let pixelRatio = quality.pr;
+renderer.setPixelRatio(pixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = quality.shadows;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;
+renderer.domElement.id = 'view';
+app.prepend(renderer.domElement);
+setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
+
+// --- Welt ----------------------------------------------------------------------
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.25, 3200);
+const cockpitCam = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.012, 20);
+const rearCam = new THREE.PerspectiveCamera(26, 512 / 192, 0.6, 700);
+const photoCam = new THREE.PerspectiveCamera(24, 16 / 9, 0.2, 900);
+
+const sky = new Sky(renderer, scene, { shadows: quality.shadows, shadowSize: quality.shadowSize });
+const road = new Road(scene);
+const scenery = new Scenery(scene);
+const rain = new Rain(scene);
+const traffic = new Traffic(scene, rain);
+const pickups = new Pickups(scene);
+prewarmVehicles();
+const tesla = buildTesla();
+scene.add(tesla.root);
+const cockpit = new Cockpit();
+cockpit.scene.environment = sky.envTarget.texture;
+sky.onEnv = (tex) => {
+  cockpit.scene.environment = tex;
+};
+const windshield = new Windshield();
+
+// Render-Ziele
+const size = new THREE.Vector2();
+function drawSize() {
+  renderer.getDrawingBufferSize(size);
+  return size;
+}
+drawSize();
+const worldRT = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: quality.msaa, depthBuffer: true });
+const mirrorRT = new THREE.WebGLRenderTarget(512, 192, { type: THREE.HalfFloatType, samples: 0, depthBuffer: true });
+cockpit.setMirrorTexture(mirrorRT.texture);
+const compMat = createCompositeMaterial(worldRT.texture, windshield);
+const compScene = new THREE.Scene();
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compMat);
+quad.frustumCulled = false;
+compScene.add(quad);
+const compCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const U = compMat.uniforms;
+
+// Kofferraum-Ansicht für den Innenspiegel (Bitspende „Kofferraum öffnen“)
+const trunkTex = (() => {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 192;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 192);
+  g.addColorStop(0, '#2a2c30');
+  g.addColorStop(1, '#141517');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 192);
+  ctx.fillStyle = '#0c0c0d';
+  ctx.fillRect(0, 0, 512, 34);
+  const box = (x, y, w, h, col, label) => {
+    ctx.fillStyle = col;
+    roundRect(ctx, x, y, w, h, 8);
+    ctx.fill();
+    ctx.fillStyle = '#e8e8e8';
+    ctx.font = 'bold 15px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x + w / 2, y + h / 2 + 5);
+  };
+  box(24, 70, 120, 84, '#3b3f46', 'Akku-Pack');
+  box(160, 92, 96, 62, '#20242a', 'Router');
+  box(272, 60, 92, 94, '#5a2a2a', 'KONFETTI');
+  box(380, 84, 110, 70, '#1e3550', 'LTE ×3');
+  ctx.strokeStyle = '#d4a21a';
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(140 + i * 8, 120);
+    ctx.bezierCurveTo(180, 175 - i * 6, 330, 178, 380, 120 + i * 6);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#ff4d4d';
+  ctx.font = 'bold 18px Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('● REC  Kofferraum offen', 18, 24);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.x = -1;
+  t.offset.x = 1;
+  return t;
+})();
+
+// Blitzerfoto
+const photoCanvas = document.createElement('canvas');
+photoCanvas.width = 360;
+photoCanvas.height = 270;
+const photoCtx = photoCanvas.getContext('2d');
+
+// --- Ton, Sprache, Eingabe, Oberfläche ---------------------------------------------
+const audio = new Audio();
+audio.enabled = settings.sound;
+audio.volume = settings.volume;
+const speech = new Speech();
+speech.enabled = settings.speech;
+const input = new Input();
+const ui = new UI(app);
+ui.setChat(settings.chat);
+
+// Touch-Knöpfe (nur auf Geräten mit Touchscreen sichtbar)
+const touchEl = document.createElement('div');
+touchEl.className = 'touch';
+for (const [action, label, cls] of [
+  ['left', '◀', 't-left'], ['right', '▶', 't-right'], ['brake', 'Bremse', 't-brake'], ['gas', 'Strom', 't-gas'],
+  ['horn', '📯', 't-small t-horn'], ['wiper', '🌧️', 't-small t-wiper'], ['megafon', '📢', 't-small t-megafon'],
+  ['camera', '🎥', 't-small t-camera'], ['pause', '⏸', 't-small t-pause'],
+]) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = cls;
+  b.textContent = label;
+  touchEl.appendChild(b);
+  input.bindTouch(b, action);
+}
+app.appendChild(touchEl);
+
+let photoRequest = null;
+const fxState = { flash: 0, glitch: 0, green: 0, trunk: 0, fade: 0, fadeTarget: 0 };
+const fx = {
+  flash: (v = 1) => {
+    fxState.flash = Math.max(fxState.flash, v);
+  },
+  glitch: (dur) => {
+    fxState.glitch = Math.max(fxState.glitch, dur);
+  },
+  green: (dur) => {
+    fxState.green = Math.max(fxState.green, dur);
+  },
+  shake: (v) => {
+    cockpit.shake = Math.max(cockpit.shake, v);
+  },
+  trunk: (dur) => {
+    fxState.trunk = dur;
+    cockpit.mirrorMat.map = trunkTex;
+    cockpit.mirrorMat.needsUpdate = true;
+  },
+};
+const uiFacade = {
+  reset: () => ui.reset(),
+  chat: (m) => ui.chat(m),
+  toast: (t, k) => ui.toast(t, k),
+  banner: (t, d, sub) => ui.banner(t, d, sub),
+  nomi: (t, d) => ui.nomi(t, d),
+  money: (a, l) => ui.money(a, l),
+  durchsage: (l, t, d, b) => ui.durchsage(l, t, d, b),
+  rahmen: (r, b) => ui.rahmen(r, b),
+  funkloch: (on) => ui.funkloch(on),
+  damage: (h, m) => ui.damage(h, m),
+  jobs: (j) => ui.jobs(j),
+  photo: (kmh, clock) => {
+    photoRequest = { kmh, clock };
+  },
+};
+
+const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups });
+
+// --- Zustände ------------------------------------------------------------------
+let state = 'loading';
+let view = 'cockpit'; // oder 'drone'
+let stateT = 0;
+let paused = false;
+let lastOver = null;
+let introSkip = false;
+
+const menus = new Menus(app, {
+  click: () => {
+    audio.init();
+    audio.click();
+  },
+  action: (a) => {
+    if (a === 'start' || a === 'restart') startRun();
+    else if (a === 'resume') resume();
+    else if (a === 'quit') {
+      paused = false;
+      menus.hide();
+      game.end('quit');
+    } else if (a === 'menu') toTitle();
+  },
+  back: () => {},
+  dataFor: (name, data) => {
+    if (name === 'shop') return { wallet: save.wallet, upgrades: save.upgrades };
+    if (name === 'settings') return { ...settings, speechSupported: speech.supported };
+    if (name === 'title') return save;
+    if (name === 'pause') return game;
+    if (name === 'over') return lastOver || data;
+    return data;
+  },
+  buy: (id) => {
+    const it = SHOP.find((x) => x.id === id);
+    const lvl = save.upgrades[id] || 0;
+    if (!it || lvl >= UPGRADE_LIMITS[id]) return false;
+    const price = it.prices[lvl];
+    if (save.wallet < price) {
+      audio.bad();
+      return false;
+    }
+    save.wallet = Math.round((save.wallet - price) * 100) / 100;
+    save.upgrades[id] = lvl + 1;
+    storeSave(save);
+    audio.coin();
+    applyCosmetics();
+    return true;
+  },
+  setting: (key, value) => {
+    settings[key] = value;
+    save.settings = settings;
+    storeSave(save);
+    applySettings(key);
+  },
+  resetSave: () => {
+    const fresh = resetSave();
+    for (const k of Object.keys(save)) delete save[k];
+    Object.assign(save, fresh);
+    settings = save.settings;
+    storeSave(save);
+    applyCosmetics();
+    applySettings();
+  },
+});
+
+function applyCosmetics() {
+  const up = save.upgrades;
+  tesla.setStarlink(!!up.starlink);
+  tesla.setVest(!!up.weste);
+  cockpit.setElsa(!!up.elsa);
+}
+
+function applySettings(key) {
+  audio.enabled = settings.sound;
+  audio.volume = settings.volume;
+  audio.setEnabled(settings.sound);
+  speech.enabled = settings.speech;
+  if (!settings.speech) speech.stopAll();
+  ui.setChat(settings.chat);
+  if (!key || key === 'quality') {
+    const before = quality;
+    quality = qualityPreset();
+    pixelRatio = quality.pr;
+    if (before.shadows !== quality.shadows) {
+      renderer.shadowMap.enabled = quality.shadows;
+      sky.sun.castShadow = quality.shadows;
+      scene.traverse((o) => {
+        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => (m.needsUpdate = true));
+      });
+    }
+    worldRT.samples = quality.msaa;
+    worldRT.dispose();
+    onResize();
+  }
+}
+
+function toTitle() {
+  state = 'title';
+  stateT = 0;
+  paused = false;
+  view = 'cockpit';
+  ui.show(false);
+  speech.stopAll();
+  game.startDemo();
+  applyCosmetics();
+  menus.hide();
+  menus.show('title', save);
+}
+
+function startRun() {
+  audio.init();
+  menus.hide();
+  paused = false;
+  game.start(save);
+  applyCosmetics();
+  state = 'intro';
+  stateT = 0;
+  introSkip = false;
+  view = 'cockpit';
+  ui.show(false);
+  fxState.fade = 1;
+  input.pressed.clear();
+}
+
+function resume() {
+  paused = false;
+  menus.hide();
+  speech.pause(false);
+  input.pressed.clear();
+  input.keys.clear();
+}
+
+function pause() {
+  if (state !== 'drive' || paused) return;
+  paused = true;
+  speech.pause(true);
+  menus.show('pause', game);
+}
+
+function finishRun() {
+  const o = game.over;
+  const km = o.distance / 1000;
+  const best = save.best.distance || 0;
+  const newRecord = o.distance > best && o.distance > 50;
+  save.wallet = Math.round((save.wallet + o.money) * 100) / 100;
+  save.best.distance = Math.max(best, o.distance);
+  save.best.earned = Math.max(save.best.earned || 0, o.money);
+  save.best.viewers = Math.max(save.best.viewers || 0, o.peakViewers);
+  save.stats.runs++;
+  save.stats.totalKm += km;
+  save.stats.naviReached += o.stats.naviReached;
+  save.stats.crashes += o.stats.crashes;
+  save.stats.leftLaneEuro += o.breakdown['Linke Spur'] || 0;
+  storeSave(save);
+  lastOver = { ...o, newRecord, best: save.best.distance, wallet: save.wallet, photos: ui.photos.slice() };
+}
+
+// --- Autopilot (Titel, Kameraschwenk, Abspann) -------------------------------------
+const ap = { lane: 2, cool: 0 };
+function autopilot(dt, targetKmh, allowChanges = true) {
+  const p = game.player;
+  ap.cool -= dt;
+  let lead = null;
+  let leadDs = Infinity;
+  for (const c of traffic.cars) {
+    const ds = c.s - p.s;
+    if (ds > 0 && ds < 70 && Math.abs(c.x - p.x) < 2.3 && ds < leadDs) {
+      lead = c;
+      leadDs = ds;
+    }
+  }
+  if (allowChanges && lead && leadDs < 55 && ap.cool <= 0) {
+    const free = (lane) => lane >= 1 && lane <= 3 && traffic.cars.every((c) => Math.abs(c.x - ROAD.laneCenter(lane)) > 2.4 || c.s - p.s < -22 || c.s - p.s > 48);
+    const cur = p.lane;
+    const opts = [cur - 1, cur + 1].filter(free);
+    if (opts.length) {
+      ap.lane = opts[0];
+      ap.cool = 3;
+    }
+  }
+  if (ap.cool <= -8 && ap.lane < 3) {
+    const lane = ap.lane + 1;
+    if (traffic.cars.every((c) => Math.abs(c.x - ROAD.laneCenter(lane)) > 2.4 || c.s - p.s < -22 || c.s - p.s > 60)) {
+      ap.lane = lane;
+      ap.cool = 3;
+    }
+  }
+  const dx = ROAD.laneCenter(ap.lane) - p.x;
+  const steer = Math.abs(dx) > 0.25 ? clamp(dx * 0.9, -1, 1) : 0;
+  let throttle = p.kmh < targetKmh ? 0.6 : 0;
+  let brake = 0;
+  if (lead && leadDs < 40 && lead.speed < p.speed) {
+    throttle = 0;
+    brake = clamp((p.speed - lead.speed) / 8 + (40 - leadDs) / 40, 0, 1);
+  }
+  return { steer, throttle, brake, horn: false, wiper: false, megafon: false };
+}
+
+// --- Kameras -----------------------------------------------------------------------
+const carMatrix = new THREE.Matrix4();
+const carPos = new THREE.Vector3();
+const carQuat = new THREE.Quaternion();
+const carEuler = new THREE.Euler();
+const ONE = new THREE.Vector3(1, 1, 1);
+const tmpV = new THREE.Vector3();
+const tmpV2 = new THREE.Vector3();
+const drone = { pos: new THREE.Vector3(0, 4, 10), look: new THREE.Vector3(0, 1, -10), init: false };
+
+function updateCarMatrix() {
+  const p = game.player;
+  carPos.set(p.x, 0, 0);
+  carEuler.set(0, -p.yaw, clamp(p.latAcc * 0.0025, -0.03, 0.03), 'YXZ');
+  carQuat.setFromEuler(carEuler);
+  carMatrix.compose(carPos, carQuat, ONE);
+  tesla.root.position.copy(carPos);
+  tesla.root.quaternion.copy(carQuat);
+  cockpit.root.position.copy(carPos);
+  cockpit.root.quaternion.copy(carQuat);
+}
+
+function setFov(vfovCockpit) {
+  const aspect = window.innerWidth / window.innerHeight;
+  const minH = THREE.MathUtils.degToRad(86);
+  const v = Math.max(THREE.MathUtils.degToRad(vfovCockpit), 2 * Math.atan(Math.tan(minH / 2) / aspect));
+  camera.fov = clamp(THREE.MathUtils.radToDeg(v), 50, 78);
+  camera.aspect = aspect;
+  camera.updateProjectionMatrix();
+}
+
+function localToWorld(v) {
+  return tmpV.copy(v).applyMatrix4(carMatrix);
+}
+
+function placeDrone(dt, mode) {
+  const p = game.player;
+  let pos;
+  let look;
+  if (mode === 'orbit') {
+    const a = stateT * 0.16 + 0.9;
+    pos = new THREE.Vector3(Math.sin(a) * 8.5, 2.4 + Math.sin(stateT * 0.3) * 0.6, Math.cos(a) * 8.5);
+    look = new THREE.Vector3(0, 0.9, 0);
+  } else {
+    pos = new THREE.Vector3(-p.vx * 0.25, 3.3, 9.2);
+    look = new THREE.Vector3(0, 1.0, -14);
+  }
+  pos.applyMatrix4(carMatrix);
+  look.applyMatrix4(carMatrix);
+  if (!drone.init) {
+    drone.pos.copy(pos);
+    drone.look.copy(look);
+    drone.init = true;
+  }
+  const k = 1 - Math.exp(-dt * (mode === 'orbit' ? 3 : 6));
+  drone.pos.lerp(pos, k);
+  drone.look.lerp(look, k);
+  camera.position.copy(drone.pos);
+  if (cockpit.shake > 0) camera.position.y += Math.sin(stateT * 60) * cockpit.shake * 0.08;
+  camera.lookAt(drone.look);
+  setFov(50);
+}
+
+// Kameraschwenk beim Start: von vorne links an Mini Adam vorbei ins Cockpit
+const INTRO = [
+  { t: 0.0, pos: [-6.2, 2.4, -9.5], look: [-0.25, 0.95, 0.0] },
+  { t: 2.4, pos: [-2.7, 1.55, -3.4], look: [-0.37, 1.12, 0.22] },
+  { t: 4.6, pos: [-1.72, 1.26, 0.2], look: [-0.37, 1.16, 0.28] },
+];
+const INTRO_SWITCH = 4.85;
+const INTRO_END = 6.3;
+function lerpKeys(t) {
+  let a = INTRO[0];
+  let b = INTRO[INTRO.length - 1];
+  for (let i = 0; i < INTRO.length - 1; i++) {
+    if (t >= INTRO[i].t && t <= INTRO[i + 1].t) {
+      a = INTRO[i];
+      b = INTRO[i + 1];
+      break;
+    }
+  }
+  if (t > b.t) return { pos: new THREE.Vector3(...b.pos), look: new THREE.Vector3(...b.look) };
+  const k = easeInOut(clamp((t - a.t) / (b.t - a.t), 0, 1));
+  return {
+    pos: new THREE.Vector3().fromArray(a.pos).lerp(new THREE.Vector3().fromArray(b.pos), k),
+    look: new THREE.Vector3().fromArray(a.look).lerp(new THREE.Vector3().fromArray(b.look), k),
+  };
+}
+
+function placeIntro(dt) {
+  const t = stateT;
+  if (t < INTRO_SWITCH) {
+    const { pos, look } = lerpKeys(t);
+    pos.applyMatrix4(carMatrix);
+    look.applyMatrix4(carMatrix);
+    camera.position.copy(pos);
+    camera.lookAt(look);
+    setFov(44);
+    return 'outside';
+  }
+  // im Cockpit: Kopf dreht vom Seitenfenster nach vorne
+  cockpit.placeCamera(camera, carMatrix, t, game.player.speed, 0, dt);
+  const k = easeInOut(clamp((t - INTRO_SWITCH) / (INTRO_END - INTRO_SWITCH), 0, 1));
+  camera.rotateOnWorldAxis(tmpV2.set(0, 1, 0), (1 - k) * 1.05);
+  setFov(58);
+  return 'inside';
+}
+
+// --- Fenstergröße & Auflösung -----------------------------------------------------
+function onResize() {
+  renderer.setPixelRatio(pixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  drawSize();
+  worldRT.setSize(size.x, size.y);
+  U.uTexel.value.set(1 / size.x, 1 / size.y);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  rain.setPixelScale(size.y);
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+const perf = { acc: 0, n: 0, cool: 3 };
+function adaptResolution(dt) {
+  if (!quality.auto || state === 'loading') return;
+  perf.acc += dt;
+  perf.n++;
+  perf.cool -= dt;
+  if (perf.n < 40) return;
+  const avg = perf.acc / perf.n;
+  perf.acc = 0;
+  perf.n = 0;
+  if (perf.cool > 0) return;
+  const maxPR = Math.min(window.devicePixelRatio || 1, 1.5);
+  if (avg > 1 / 45 && pixelRatio > 0.55) {
+    pixelRatio = Math.max(0.55, pixelRatio - 0.12);
+    perf.cool = 1.5;
+    onResize();
+  } else if (avg < 1 / 75 && pixelRatio < maxPR) {
+    pixelRatio = Math.min(maxPR, pixelRatio + 0.06);
+    perf.cool = 3;
+    onResize();
+  }
+}
+
+// --- Rendern --------------------------------------------------------------------------
+let frameNo = 0;
+function renderWorld(cam, { cockpitOn, drops }) {
+  tesla.root.visible = !cockpitOn;
+  renderer.shadowMap.needsUpdate = quality.shadows;
+  renderer.setRenderTarget(worldRT);
+  renderer.render(scene, cam);
+  renderer.setRenderTarget(null);
+  U.uDrops.value = drops ? 1 : 0;
+  renderer.render(compScene, compCam);
+}
+
+function renderFrame(cockpitOn) {
+  frameNo++;
+  if (cockpitOn && fxState.trunk <= 0 && frameNo % quality.mirrorEvery === 0) {
+    // Rückspiegel: Blick nach hinten
+    rearCam.position.copy(localToWorld(tmpV2.set(0, 1.32, 0.9)));
+    rearCam.lookAt(localToWorld(tmpV2.set(0, 1.05, 40)));
+    tesla.root.visible = false;
+    renderer.setRenderTarget(mirrorRT);
+    renderer.render(scene, rearCam);
+  }
+  if (photoRequest) {
+    takePhoto(photoRequest);
+    photoRequest = null;
+  }
+  renderWorld(camera, { cockpitOn, drops: cockpitOn });
+  if (cockpitOn) {
+    cockpitCam.position.copy(camera.position);
+    cockpitCam.quaternion.copy(camera.quaternion);
+    cockpitCam.fov = camera.fov;
+    cockpitCam.aspect = camera.aspect;
+    cockpitCam.updateProjectionMatrix();
+    renderer.autoClear = false;
+    renderer.clearDepth();
+    renderer.render(cockpit.scene, cockpitCam);
+    renderer.autoClear = true;
+  }
+}
+
+/** Blitzerfoto: der Tesla von vorne, Mini Adam hinterm Steuer, im Blitzlicht. */
+function takePhoto({ kmh, clock }) {
+  photoCam.aspect = window.innerWidth / window.innerHeight;
+  photoCam.updateProjectionMatrix();
+  photoCam.position.copy(localToWorld(tmpV2.set(2.6, 1.55, -10.5)));
+  photoCam.lookAt(localToWorld(tmpV2.set(-0.3, 1.05, -0.3)));
+  const light = tesla.cabinLight.intensity;
+  tesla.cabinLight.intensity = 3.5;
+  const fl = U.uFlash.value;
+  U.uFlash.value = 0.025;
+  renderWorld(photoCam, { cockpitOn: false, drops: false });
+  U.uFlash.value = fl;
+  tesla.cabinLight.intensity = light;
+  const cw = renderer.domElement.width;
+  const ch = renderer.domElement.height;
+  const sh = ch * 0.8;
+  const sw = sh * (4 / 3);
+  photoCtx.drawImage(renderer.domElement, (cw - sw) / 2, (ch - sh) / 2, sw, sh, 0, 0, 360, 270);
+  // Datenzeile wie bei echten Blitzern
+  photoCtx.fillStyle = 'rgba(0,0,0,0.55)';
+  photoCtx.fillRect(0, 238, 360, 32);
+  photoCtx.fillStyle = '#ffd21f';
+  photoCtx.font = 'bold 17px "Courier New", monospace';
+  photoCtx.textAlign = 'left';
+  photoCtx.fillText(`${kmh} km/h   ${clock}   ERLAUBT 120`, 10, 260);
+  let url = null;
+  try {
+    url = photoCanvas.toDataURL('image/jpeg', 0.82);
+  } catch (e) {
+    url = null;
+  }
+  ui.photo(url, kmh, clock);
+}
+
+// --- Hauptschleife ----------------------------------------------------------------------
+let last = performance.now();
+let simT = 0;
+const menuPad = { prev: {} };
+
+function pollMenuPad() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const pd of pads) {
+    if (!pd) continue;
+    const b = (i) => !!pd.buttons[i]?.pressed;
+    const ay = pd.axes[1] || 0;
+    const now = { up: b(12) || ay < -0.6, down: b(13) || ay > 0.6, a: b(0), b: b(1), start: b(9) };
+    const edge = (k) => now[k] && !menuPad.prev[k];
+    let dir = 0;
+    if (edge('up')) dir = -1;
+    if (edge('down')) dir = 1;
+    if (dir || edge('a') || edge('b') || edge('start')) menus.pad(dir, edge('a') || (edge('start') && menus.current !== 'pause'), edge('b') || (edge('start') && menus.current === 'pause'));
+    menuPad.prev = now;
+    return;
+  }
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  let dt = (now - last) / 1000;
+  last = now;
+  if (DEBUG && window.__MA && window.__MA.frozen) return;
+  if (!(dt > 0)) dt = 1 / 60;
+  dt = Math.min(dt, 1 / 20);
+  step(dt);
+  adaptResolution(dt);
+}
+
+function step(dt, { render = true } = {}) {
+  simT += dt;
+  stateT += dt;
+  input.poll();
+  if (menus.open) pollMenuPad();
+  const p = game.player;
+  let ctl = null;
+  let cockpitOn = false;
+  let adamWave = 0;
+  let adamLook = 0;
+
+  if (input.take('mute')) {
+    settings.sound = !settings.sound;
+    applySettings('sound');
+    storeSave(save);
+    ui.toast(settings.sound ? '🔊 Ton an' : '🔇 Ton aus', 'info');
+  }
+  if (input.take('chat')) {
+    settings.chat = !settings.chat;
+    applySettings('chat');
+    storeSave(save);
+  }
+
+  switch (state) {
+    case 'title': {
+      ctl = autopilot(dt, 118);
+      game.demo(dt, ctl);
+      updateCarMatrix();
+      placeDrone(dt, 'orbit');
+      adamWave = Math.max(0, Math.sin(simT * 0.5)) > 0.85 ? 1 : 0;
+      adamLook = Math.sin(simT * 0.4) * 0.6;
+      break;
+    }
+    case 'intro': {
+      if (input.anyKey || input.take('confirm')) introSkip = true;
+      if (introSkip && stateT < INTRO_SWITCH - 0.25) stateT = INTRO_SWITCH - 0.25;
+      ctl = autopilot(dt, 100, false);
+      ap.lane = 3;
+      game.update(dt, ctl, camera);
+      updateCarMatrix();
+      const where = placeIntro(dt);
+      cockpitOn = where === 'inside';
+      adamWave = smoothstep(1.4, 2.4, stateT) * (1 - smoothstep(4.2, 4.7, stateT));
+      adamLook = smoothstep(1.0, 2.6, stateT) * 1.0;
+      // Überblendung ins Cockpit
+      const tf = stateT;
+      fxState.fade = tf < 0.6 ? 1 - tf / 0.6 : tf > INTRO_SWITCH - 0.25 && tf < INTRO_SWITCH ? (tf - (INTRO_SWITCH - 0.25)) / 0.25 : tf >= INTRO_SWITCH && tf < INTRO_SWITCH + 0.35 ? 1 - (tf - INTRO_SWITCH) / 0.35 : 0;
+      if (!game._greeted && tf >= INTRO_SWITCH) {
+        game._greeted = true;
+        audio.whoosh();
+        game.say('Hallo Mini Adam! Der Stream läuft. Gute Fahrt!', 'happy');
+      }
+      if (tf > 0.4 && !game._introChime) {
+        game._introChime = true;
+        audio.nomiChime();
+      }
+      if (stateT >= INTRO_END) {
+        state = 'drive';
+        stateT = 0;
+        ui.show(true);
+        ui.toast('Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
+      }
+      break;
+    }
+    case 'drive': {
+      if (paused) {
+        updateCarMatrix();
+        if (view === 'cockpit') cockpit.placeCamera(camera, carMatrix, simT, 0, 0, 0);
+        cockpitOn = view === 'cockpit';
+        break;
+      }
+      if (input.take('pause')) {
+        pause();
+        break;
+      }
+      if (input.take('camera')) {
+        view = view === 'cockpit' ? 'drone' : 'cockpit';
+        drone.init = false;
+        ui.cameraLabel(view === 'cockpit' ? '🎥 Cockpit' : '🎥 Drohne');
+      }
+      ctl = {
+        steer: input.steer,
+        throttle: input.throttle,
+        brake: input.brake,
+        horn: input.take('horn'),
+        wiper: input.take('wiper'),
+        megafon: input.take('megafon'),
+      };
+      game.update(dt, ctl, camera);
+      updateCarMatrix();
+      if (view === 'cockpit') {
+        cockpit.placeCamera(camera, carMatrix, simT, p.speed, p.latAcc, dt);
+        setFov(58);
+        cockpitOn = true;
+      } else placeDrone(dt, 'follow');
+      if (game.over) {
+        state = 'ending';
+        stateT = 0;
+        drone.init = false;
+        finishRun();
+      }
+      break;
+    }
+    case 'ending':
+    case 'over': {
+      const stop = { steer: 0, throttle: 0, brake: 0.5, horn: false, wiper: false, megafon: false };
+      p.update(dt, stop, { wet: game.weather.level });
+      traffic.update(dt, simT, p, { difficulty: 0.2, leftOpen: false, rain: game.weather.level });
+      updateCarMatrix();
+      placeDrone(dt, 'orbit');
+      adamWave = stateT > 1 ? 1 : 0;
+      adamLook = Math.sin(stateT * 0.5) * 0.8;
+      if (state === 'ending' && stateT > 2.6) {
+        state = 'over';
+        ui.show(false);
+        menus.show('over', lastOver);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+
+  // --- Welt aktualisieren -------------------------------------------------------
+  const s = p.s;
+  const w = game.weather ? game.weather.level : 0;
+  const frozen = paused;
+  if (!frozen) {
+    const cu = curveUniforms.uCurve.value;
+    cu.x = 0.000125 * (0.62 * Math.sin(s / 1900 + 1.3) + 0.38 * Math.sin(s / 740 + 0.4));
+    cu.y = 0.000045 * Math.sin(s / 1300 + 2.1) * (0.5 + 0.5 * Math.sin(s / 3100));
+    const L = game.left || { glow: 0 };
+    road.update(s, dt, simT, L.glow || 0, L.open && L.timer < 10 ? 1 : 0);
+    road.setWet(w);
+    scenery.update(s, dt);
+    sky.setOvercast(w * 0.95);
+    rain.update(dt, simT, { speed: p.speed, s, camX: camera.position.x, intensity: w });
+    tesla.update(dt, p.speed, p.steer, simT);
+    tesla.setBrake(p.braking > 0.1 || p.speed < 1);
+    tesla.adam.animate(simT, { steer: p.steer, wave: adamWave, look: adamLook });
+    tesla.cabinLight.intensity = cockpitOn ? 0 : state === 'title' || state === 'intro' || state === 'ending' || state === 'over' ? 2.2 : 0.6;
+    windshield.update(dt, { speed: p.speed, camera, carMatrix });
+    cockpit.update({
+      dt, t: simT, steer: p.steer, latAcc: p.latAcc, wiperAngles: windshield.angles, sunDir: sky.sunDir, overcast: w,
+      screen: game.screenState ? safeScreen() : null,
+    });
+    if (fxState.trunk > 0) {
+      fxState.trunk -= dt;
+      if (fxState.trunk <= 0) cockpit.setMirrorTexture(mirrorRT.texture);
+    }
+  }
+  sky.update(frozen ? 0 : dt, camera, s, simT);
+  audio.update(dt, {
+    speed: p.speed, throttle: p.throttle, rain: w, sirenLevel: game.sirenLevel || 0, inCabin: cockpitOn, paused: frozen || state === 'over',
+  });
+
+  // Effekte
+  fxState.flash = Math.max(0, fxState.flash - dt * 3.5);
+  fxState.glitch = Math.max(0, fxState.glitch - dt);
+  fxState.green = Math.max(0, fxState.green - dt);
+  U.uTime.value = simT;
+  U.uRain.value = w;
+  U.uFlash.value = fxState.flash;
+  U.uGlitch.value = fxState.glitch > 0 ? 0.6 + 0.4 * Math.sin(simT * 40) : 0;
+  U.uGreen.value = fxState.green > 0 ? (Math.sin(simT * 26) > 0.2 ? 1 : 0.15) : 0;
+  U.uFade.value = state === 'intro' ? clamp(fxState.fade, 0, 1) : 0;
+  U.uSat.value = 1.08 - w * 0.25;
+
+  if (DEBUG && window.__MA && window.__MA.camHook) window.__MA.camHook(camera, carMatrix);
+  document.body.classList.toggle('playing', state === 'drive' && !paused);
+  if (render) renderFrame(cockpitOn);
+  ui.update(dt, state === 'drive' || state === 'intro' ? game : null);
+  input.endFrame();
+}
+
+function safeScreen() {
+  try {
+    return game.running || game.over ? game.screenState() : demoScreen();
+  } catch (e) {
+    return demoScreen();
+  }
+}
+
+function demoScreen() {
+  const p = game.player;
+  return {
+    dark: false, battery: 100, speedKmh: p.kmh, limit: null, playerX: p.x, leftLane: 0, cars: traffic.nearby(p, 125), s: p.s,
+    navi: game.navi.screen(p.s, 18 * 60, p.speed), clock: '18:00', temp: 17, funkloch: 0, wiperOn: false,
+  };
+}
+
+// --- Start ---------------------------------------------------------------------------------
+window.addEventListener('pointerdown', () => audio.init());
+window.addEventListener('keydown', () => audio.init());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) pause();
+});
+
+function boot() {
+  applyCosmetics();
+  game.startDemo();
+  // Ein paar Bilder vorab rendern (Shader kompilieren), dann Titel zeigen
+  updateCarMatrix();
+  placeDrone(0.016, 'orbit');
+  try {
+    renderer.compile(scene, camera);
+    renderer.compile(cockpit.scene, camera);
+  } catch (e) {
+    /* egal */
+  }
+  state = 'title';
+  menus.show('title', save);
+  loadingEl.classList.add('done');
+  setTimeout(() => loadingEl.remove(), 800);
+  requestAnimationFrame((t) => {
+    last = t;
+    frame(t);
+  });
+}
+
+// Debug-Schnittstelle für Tests (?debug)
+if (DEBUG) {
+  window.__MA = {
+    game, traffic, scenery, cockpit, windshield, tesla, ui, menus, input, renderer, camera, save,
+    get state() {
+      return state;
+    },
+    set view(v) {
+      view = v;
+    },
+    start: () => startRun(),
+    skipIntro: () => {
+      stateT = INTRO_END;
+    },
+    step: (seconds, dt = 1 / 30) => {
+      const n = Math.round(seconds / dt);
+      for (let i = 0; i < n; i++) step(dt, { render: i === n - 1 });
+    },
+    setState: (s, t = 0) => {
+      state = s;
+      stateT = t;
+    },
+    rain: (v) => {
+      game.weather.active = v > 0;
+      game.weather.target = v;
+      game.weather.level = v;
+      game.weather.dur = 999;
+      windshield.setRain(v);
+    },
+    pause: () => pause(),
+    resume: () => resume(),
+  };
+}
+
+boot();

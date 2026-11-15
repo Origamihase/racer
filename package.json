@@ -1,0 +1,20 @@
+{
+  "name": "mini-adam-tesla-navi-ferngesteuert",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Mini Adam: Tesla-Navi ferngesteuert – ein liebevoller 3D-Autobahn-Racer im Browser (Fan-Spiel zu SkylineTV LIVE).",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "serve": "python3 -m http.server 8080 --directory docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Origamihase/racer.git"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0",
+    "three": "0.170.0"
+  }
+}
