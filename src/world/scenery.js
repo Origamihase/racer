@@ -5,11 +5,11 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../curve.js';
-import { ROAD, signTexture, brownSignTexture, speedSignTexture, roundRect } from '../textures.js';
+import { ROAD, signTexture, brownSignTexture, speedSignTexture, roundRect, grassTexture } from '../textures.js';
 import { colorize } from '../models/loft.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
 import { mulberry32, fbm1, smoothstep, pick } from '../util.js';
-import { MEDIAN_X } from './road.js';
+import { MEDIAN_X, ONCOMING } from './road.js';
 
 export const SEG = 100;
 const AHEAD = 17;
@@ -22,10 +22,24 @@ const NSLOTS = AHEAD + BEHIND + 1;
 export const ELSA_STATUE = { x: ROAD.right + 4.55, scale: 1.4 };
 const ELSA_FAR = { x: ROAD.right + 8, scale: 1 }; // wo am Rand kein Platz ist: weiter draußen in alter Größe
 const ELSA_ROOM = 12; // so viel Abstand (m) braucht sie am Rand zu Schildern, Blitzern und anderen Orten
-const ELSA_CLEAR = 9.5; // Bäume und Büsche in diesem Umkreis kommen weg
 // Freier Platz im Abschnitt: hinter Notrufsäule (30 m), Tafeln (40 m) und Brücken (50 m)
 const LANDMARK_OFFSET = 75;
 const WAVE_T = 2.6; // so lange winkt Elsa zurück (s)
+
+// Bildseiten von Schildern, Tafeln und Fenstern vor einer Fläche: Die Tiefenauflösung reicht in 450 m
+// Entfernung nur noch für ≈ 5 cm (in 1,5 km für ≈ 50 cm). Der Polygon-Offset zieht die Bildseite um ein paar
+// Tiefenstufen nach vorne, damit nichts dahinter durchflimmert, egal wie weit weg.
+const FRONT = { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 };
+
+// Lärmschutzwand am Dorf: Mitte der 0,3 m dicken Wand. Davor bleibt Platz für den Blitzer (bis +1,95 m) und
+// den Fuß der Schilderbrücke (bis +2,05 m), dahinter für die Brückenpfeiler (ab +2,9 m).
+const WALL_X = ROAD.right + 2.35;
+// Vor Navi-Zielen und Wahrzeichen rechts der Fahrbahn bleibt die Wand offen: ab 140 m davor, damit man sie
+// aus dem Cockpit schon aus ≈ 250 m sieht, bis 25 m dahinter. Kürzere Reststücke als 20 m entfallen.
+const WALL_GAP = new Set(['ziel', 'brunnen', 'elsa', 'sparkasse', 'kiosk', 'charger']);
+const GAP_BEFORE = 140;
+const GAP_AFTER = 25;
+const WALL_MIN = 20;
 
 const BANNERS = [
   'Grüße an Mini Adam!', 'Linke Spur freischalten: jetzt!', 'BrunnenTV Fanclub', 'Malte Malte Malte', 'Elsa ❤',
@@ -106,6 +120,35 @@ function roofGeo() {
   return colorize(g, 0xffffff);
 }
 
+/**
+ * Flächen aus ebenen, konvexen Vielecken. polys: [{ pts: [[x, y, z], …], out: [x, y, z] }], wobei out grob nach
+ * außen zeigt und damit die Umlaufrichtung festlegt. uvFn(p, out) → [u, v]. Flache Normalen.
+ */
+function polyGeometry(polys, uvFn) {
+  const pos = [];
+  const uv = [];
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  for (const { pts, out } of polys) {
+    a.fromArray(pts[0]);
+    b.fromArray(pts[1]).sub(a);
+    c.fromArray(pts[2]).sub(a);
+    const P = b.cross(c).dot(new THREE.Vector3(...out)) < 0 ? [...pts].reverse() : pts;
+    for (let i = 1; i < P.length - 1; i++) {
+      for (const p of [P[0], P[i], P[i + 1]]) {
+        pos.push(...p);
+        uv.push(...uvFn(p, out));
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return g;
+}
+
 const TREE_TINTS = [0xffffff, 0xe0f0e0, 0xc8e0c8, 0xf0ffe0, 0xd0e8d8, 0xfff4dc];
 const HOUSE_COLORS = [0xf1ece0, 0xe9e2cf, 0xf6f3ea, 0xe5d9b8, 0xd9d4cc, 0xefe0c9, 0xdcd2c0];
 const ROOF_COLORS = [0xa3402a, 0x8b3a26, 0x5b3b2e, 0x3a3c40, 0xb5522e, 0x6b2a20];
@@ -130,7 +173,7 @@ export class Scenery {
       dark: W.std({ color: 0x2a2b2e, roughness: 0.7 }),
       white: W.std({ color: 0xf2f2ef, roughness: 0.6 }),
       orange: W.std({ color: 0xe86b12, roughness: 0.6 }),
-      grass: W.lambert({ color: 0x5f8a3a }),
+      grass: W.lambert({ map: grassTexture() }), // wie das Bankett an der Fahrbahn
       stone: W.std({ color: 0xa79e8e, roughness: 0.95 }),
       water: W.std({ color: 0x9ccfff, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.55, envMapIntensity: 1.5 }),
       redRoof: W.std({ color: 0xa3402a, roughness: 0.8 }),
@@ -199,6 +242,8 @@ export class Scenery {
     const slot = this.slots[((k % NSLOTS) + NSLOTS) % NSLOTS];
     if (slot.k === k) this.placeRequest(slot, r);
     if (type !== 'elsa') this.makeRoom(r);
+    // und eine schon stehende Lärmschutzwand davor öffnen
+    if (WALL_GAP.has(type)) this.refreshWalls(s);
     return id;
   }
 
@@ -341,12 +386,8 @@ export class Scenery {
       }
       for (let i = 0; i < 8; i++) put('decid', side * (40 + rnd() * 160), 0, z0 - rnd() * SEG, 0.7 + rnd() * 0.5, rnd() * 6, 0xffffff);
     }
-    // Lärmschutzwand am Dorf
-    if (this.noiseWall(k)) {
-      const wall = this.acquire('noisewall', () => this.makeNoiseWall());
-      wall.position.set(ROAD.right + 2.1, 0, z0 - SEG / 2);
-      slot.items.push(wall);
-    }
+    // Lärmschutzwand am Dorf (mit Lücken vor Navi-Zielen und Wahrzeichen)
+    if (this.hasWall(k)) this.buildWall(slot);
 
     // Kilometerschild (alle 500 m)
     if (k % 5 === 0 && k > 0) {
@@ -372,24 +413,32 @@ export class Scenery {
       this.labelBridge(b, rnd);
       b.position.set(0, 0, z0 - 50);
       slot.items.push(b);
+      // keine Bäume unter der Platte und in den Dämmen, keine Häuser in den Dämmen (bis 14,2 m hinter den
+      // Widerlagern, 16,2 m zu den Seiten; Häuser sind bis 15 m groß)
+      this.clearPlants((x, z) => x > -70 && x < 52 && Math.abs(z - (z0 - 50)) < 20, slotIdx);
+      this.clearPlants((x, z) => x > -74 && x < 56 && Math.abs(z - (z0 - 50)) < 24, slotIdx, ['house', 'roof']);
     } else if (furn === 'brown') {
+      // (die breiten Tafeln stünden mitten in der Lärmschutzwand, also gibt es dort keine, siehe furniture)
       const [title, sub] = BROWN[Math.floor(rnd() * BROWN.length)];
       const b = this.acquire('brown', () => this.makeBrownSign());
       b.userData.setText(title, sub);
       b.position.set(ROAD.right + 3.4, 0, z0 - 40);
       slot.items.push(b);
+      this.clearPlants((x, z) => x > ROAD.right && x < ROAD.right + 8 && Math.abs(z - (z0 - 40)) < 5, slotIdx);
     } else if (furn === 'blueinfo') {
       const b = this.acquire('blueinfo', () => this.makeBlueInfo());
       b.userData.setText(rnd() < 0.5 ? ['Rastplatz', 'Schäferborn  2 km'] : ['Raststätte', 'Bananensaft  1500 m']);
       b.position.set(ROAD.right + 3.4, 0, z0 - 40);
       slot.items.push(b);
+      this.clearPlants((x, z) => x > ROAD.right && x < ROAD.right + 8 && Math.abs(z - (z0 - 40)) < 5, slotIdx);
     }
 
-    // Angefragte Orte
+    // Angefragte Orte; auch der Platz für Orte aus Nachbarsegmenten bleibt frei von Bäumen
     for (const r of this.requests) {
       if (!r.built && r.s >= s0 && r.s < s0 + SEG) this.placeRequest(slot, r);
-      // eine Elsa nah an der Abschnittsgrenze stünde sonst im Gebüsch dieses Abschnitts
-      else if (r.spot && r.s > s0 - ELSA_CLEAR && r.s < s0 + SEG + ELSA_CLEAR) this.clearAround(r.spot.x, -r.s, ELSA_CLEAR);
+      // (die Grundflächen reichen höchstens gut 300 m weit, siehe plantFree)
+      const free = Math.abs(r.s - s0 - SEG / 2) < 400 && this.plantFree(r);
+      if (free) this.clearPlants(free, slotIdx);
     }
 
     for (const name of Object.keys(this.inst)) {
@@ -408,16 +457,12 @@ export class Scenery {
     return 0;
   }
 
-  /** Lärmschutzwand rechts im Abschnitt k (am Dorf und in den Abschnitten davor und danach)? */
-  noiseWall(k) {
-    const nearVillage = this.villageSide(k - 1) || this.villageSide(k + 1);
-    return (this.villageSide(k) === 1 || nearVillage === 1) && k > 2;
-  }
-
   /** Was im Abschnitt k steht: Schilderbrücke, Brücke, braune oder blaue Tafel (oder nichts). */
   furniture(k) {
     if (k % 13 === 7) return 'gantry';
     if (k % 23 === 15) return 'bridge';
+    // die breiten Tafeln stünden mitten in der Lärmschutzwand, also dort keine
+    if (this.hasWall(k)) return null;
     if (k % 17 === 3) return 'brown';
     if (k % 29 === 11) return 'blueinfo';
     return null;
@@ -428,7 +473,7 @@ export class Scenery {
     const k = Math.floor(s / SEG);
     const o = s - k * SEG;
     const furn = this.furniture(k);
-    if (this.noiseWall(k)) return false;
+    if (this.hasWall(k)) return false;
     if ((furn === 'gantry' || furn === 'bridge') && Math.abs(o - 50) < 15) return false;
     if ((furn === 'brown' || furn === 'blueinfo') && Math.abs(o - 40) < 6) return false;
     if (k % 20 === 10 && Math.abs(o - 30) < 5) return false; // Notrufsäule
@@ -448,7 +493,7 @@ export class Scenery {
           o.scale.setScalar(ELSA_FAR.scale);
         }
       }
-      this.clearAround(ELSA_FAR.x, -q.s, ELSA_CLEAR);
+      // ihr Platz weiter draußen ist schon frei (plantFree gilt für die ganze Grundfläche am Rand)
     }
   }
 
@@ -495,18 +540,91 @@ export class Scenery {
     elsa.position.y = u.elsaY + f * Math.abs(Math.sin(this.time * 6)) * 0.1;
   }
 
-  /** Bäume und Büsche um einen Ort herum entfernen, damit er nicht mitten im Gebüsch steht. */
-  clearAround(x, z, radius) {
+  /** Steht in Segment k eine Lärmschutzwand? (rechts am Dorf und je ein Segment davor und danach) */
+  hasWall(k) {
+    if (k <= 2) return false;
+    const near = this.villageSide(k - 1) || this.villageSide(k + 1);
+    return this.villageSide(k) === 1 || near === 1;
+  }
+
+  /**
+   * Stücke [s0, s1] der Lärmschutzwand im ganzen Wandabschnitt um Segment k, ohne die Lücken vor Navi-Zielen
+   * und Wahrzeichen. Die Enden liegen auf dem 5-m-Raster der Wandfelder.
+   */
+  wallPieces(k) {
+    let a = k;
+    while (this.hasWall(a - 1)) a--;
+    let b = k;
+    while (this.hasWall(b + 1)) b++;
+    let pieces = [[a * SEG, (b + 1) * SEG]];
+    for (const r of this.requests) {
+      if (!WALL_GAP.has(r.type)) continue;
+      const g0 = Math.floor((r.s - GAP_BEFORE) / 5) * 5;
+      const g1 = Math.ceil((r.s + GAP_AFTER) / 5) * 5;
+      pieces = pieces.flatMap(([p0, p1]) => (g1 <= p0 || g0 >= p1 ? [[p0, p1]] : [[p0, Math.min(p1, g0)], [Math.max(p0, g1), p1]]));
+    }
+    return pieces.filter(([p0, p1]) => p1 - p0 >= WALL_MIN);
+  }
+
+  /** Lärmschutzwand eines Segments (neu) aufbauen: nur die Stücke außerhalb der Lücken, mit Endpfosten. */
+  buildWall(slot) {
+    const old = slot.items.findIndex((o) => o.userData.type === 'noisewall');
+    if (old >= 0) {
+      this.release(slot.items[old]);
+      slot.items.splice(old, 1);
+    }
+    const s0 = slot.k * SEG;
+    const s1 = s0 + SEG;
+    const parts = [];
+    for (const [p0, p1] of this.wallPieces(slot.k)) {
+      const a = Math.max(p0, s0);
+      const b = Math.min(p1, s1);
+      // [Anfang, Ende, Anfang ist ein Wandende, Ende ist ein Wandende]
+      if (b - a > 0.5) parts.push([a, b, a === p0, b === p1]);
+    }
+    if (!parts.length) return;
+    const w = this.acquire('noisewall', () => this.makeNoiseWall());
+    w.userData.shape(parts, s0 + SEG / 2);
+    w.position.set(WALL_X, 0, -(s0 + SEG / 2));
+    slot.items.push(w);
+  }
+
+  /** Bäume und Büsche (oder names) entfernen, deren Fußpunkt (x, z) test erfüllt – nur in Segment slotIdx oder überall. */
+  clearPlants(test, slotIdx = -1, names = ['conifer', 'decid', 'bush']) {
     const m = new THREE.Matrix4();
     const zero = new THREE.Matrix4().makeScale(0, 0, 0);
-    for (const name of ['conifer', 'decid', 'bush']) {
-      const { mesh } = this.inst[name];
-      for (let i = 0; i < mesh.count; i++) {
+    for (const name of names) {
+      const { mesh, cap } = this.inst[name];
+      const i0 = slotIdx < 0 ? 0 : slotIdx * cap;
+      const i1 = slotIdx < 0 ? cap * NSLOTS : i0 + cap;
+      let hit = false;
+      for (let i = i0; i < i1; i++) {
         mesh.getMatrixAt(i, m);
         const e = m.elements;
-        if (Math.hypot(e[12] - x, e[14] - z) < radius) mesh.setMatrixAt(i, zero);
+        if (e[0] === 0 && e[1] === 0 && e[2] === 0) continue; // leerer Platz
+        if (test(e[12], e[14])) {
+          mesh.setMatrixAt(i, zero);
+          hit = true;
+        }
       }
-      mesh.instanceMatrix.needsUpdate = true;
+      if (hit) mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  /** Grundfläche eines angefragten Orts, auf der keine Bäume stehen dürfen, als Test (x, z), sonst null. */
+  plantFree(r) {
+    const z = -r.s;
+    if (WALL_GAP.has(r.type)) return (x, zz) => x > ROAD.right && x < ROAD.right + 28 && Math.abs(zz - z) < 18;
+    if (r.type === 'burg') return (x, zz) => Math.hypot(x - 160, zz - (z - 60)) < 100;
+    if (r.type === 'skyline') return (x, zz) => x > -425 && x < -64 && zz > z - 265 && zz < z - 16;
+    return null;
+  }
+
+  /** Neues Navi-Ziel oder Wahrzeichen bei s: schon stehende Wandsegmente in der Nähe neu zuschneiden. */
+  refreshWalls(s) {
+    for (const slot of this.slots) {
+      if (slot.k < 0 || !this.hasWall(slot.k)) continue;
+      if (Math.abs(slot.k * SEG + SEG / 2 - s) < GAP_BEFORE + GAP_AFTER + SEG + WALL_MIN) this.buildWall(slot);
     }
   }
 
@@ -528,7 +646,6 @@ export class Scenery {
         obj.scale.setScalar(r.spot.scale);
         obj.userData.waveT = 0;
         this.waveFins(obj, 0); // falls sie beim Abbau gerade winkte
-        this.clearAround(r.spot.x, z, ELSA_CLEAR);
         this.animated.add(obj);
         break;
       }
@@ -574,6 +691,9 @@ export class Scenery {
     }
     obj.userData.requestId = r.id;
     slot.items.push(obj);
+    // Bäume, die schon im Weg stehen (auch in den Nachbarsegmenten), verschwinden
+    const free = this.plantFree(r);
+    if (free) this.clearPlants(free);
   }
 
   // --- Bauteile --------------------------------------------------------
@@ -612,8 +732,9 @@ export class Scenery {
       ctx.textBaseline = 'middle';
       ctx.fillText(text, w / 2, h / 2 + 2);
     });
-    const board = new THREE.Mesh(this.kmGeo.board, W.std({ map: tex, roughness: 0.6 }));
-    board.position.set(0, 1.35, 0.05);
+    // ≥ 5 cm vor dem Pfosten (auch an der schräg gestellten Kante) und mit Polygon-Offset
+    const board = new THREE.Mesh(this.kmGeo.board, W.std({ ...FRONT, map: tex, roughness: 0.6 }));
+    board.position.set(0, 1.35, 0.1);
     board.rotation.y = -0.25;
     g.add(post, board);
     g.userData.active = true;
@@ -629,8 +750,9 @@ export class Scenery {
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.32, 1.25, 0.28), this.mats.orange);
     body.position.y = 0.62;
-    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.25), this.mats.white);
-    plate.position.set(0, 0.95, 0.142);
+    if (!this.mats.plate) this.mats.plate = W.std({ ...FRONT, color: 0xf2f2ef, roughness: 0.6 });
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.25), this.mats.plate);
+    plate.position.set(0, 0.95, 0.152);
     g.add(body, plate);
     return g;
   }
@@ -645,7 +767,8 @@ export class Scenery {
       post.position.set(x, 3.7, 0);
       post.castShadow = true;
       g.add(post);
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.2), this.mats.concrete);
+      // schmal genug, dass der rechte Fuß vor der Lärmschutzwand bleibt
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 1.2), this.mats.concrete);
       foot.position.set(x, 0.25, 0);
       g.add(foot);
     }
@@ -663,14 +786,22 @@ export class Scenery {
       strut.rotation.z = i % 2 ? 0.7 : -0.7;
       g.add(strut);
     }
-    const panelA = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 2.7), W.std({ roughness: 0.5 }));
-    panelA.position.set(-3.75, 6.6, 0.2);
-    const panelB = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 2.7), W.std({ roughness: 0.5 }));
-    panelB.position.set(3.9, 6.6, 0.2);
-    const back = new THREE.Mesh(new THREE.BoxGeometry(14.8, 2.8, 0.12), this.mats.dark);
-    back.position.set(0.07, 6.6, 0.12);
-    g.add(back, panelA, panelB);
-    g.userData.panels = [panelA, panelB];
+    // Träger hinter den Tafeln (z 0,06 … 0,18). Die Tafeln sind 16 cm tiefe Kästen, die 2 cm in ihm stecken:
+    // ihre Bildseite liegt 14 cm vor ihm (statt 2 cm) und hat einen Polygon-Offset, so flimmert aus keiner
+    // Entfernung der dunkle Träger durch die Schrift.
+    const back = new THREE.Mesh(new THREE.BoxGeometry(15.0, 2.8, 0.12), this.mats.dark);
+    back.position.set(0.075, 6.6, 0.12);
+    g.add(back);
+    const panelGeo = new THREE.BoxGeometry(7.2, 2.7, 0.16);
+    const d = this.mats.dark;
+    g.userData.panels = [];
+    for (const x of [-3.75, 3.9]) {
+      const face = W.std({ ...FRONT, roughness: 0.5 });
+      const panel = new THREE.Mesh(panelGeo, [d, d, d, d, face, d]);
+      panel.position.set(x, 6.6, 0.24);
+      g.add(panel);
+      g.userData.panels.push(face);
+    }
     return g;
   }
 
@@ -701,28 +832,28 @@ export class Scenery {
       ? signTexture([{ left: info.target, right: kmTxt(info.km) }, { left: 'Navi-Ziel', right: '↑' }], { w: 768, h: 288, arrows: null })
       : signTexture([{ left: p0, right: kmTxt(3 + Math.floor(rnd() * 20)) }, { left: 'Rastanlage', right: kmTxt(1 + Math.floor(rnd() * 9)) }], { w: 768, h: 288, arrows: null });
     const tB = signTexture([{ left: p1, right: kmTxt(5 + Math.floor(rnd() * 60)) }, { left: p2, right: kmTxt(30 + Math.floor(rnd() * 120)) }], { w: 768, h: 288, arrows: null });
-    for (const [p, t] of onlyNavi ? [[a, tA]] : [[a, tA], [b, tB]]) {
-      if (p.material.map) p.material.map.dispose();
-      p.material.map = t;
-      p.material.needsUpdate = true;
+    for (const [m, t] of onlyNavi ? [[a, tA]] : [[a, tA], [b, tB]]) {
+      if (m.map) m.map.dispose();
+      m.map = t;
+      m.needsUpdate = true;
     }
   }
 
   makeBridge() {
     const g = new THREE.Group();
     const c = this.mats.concrete;
-    const x0 = -58;
-    const x1 = 42;
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 1.1, 11, 20, 1, 1), c);
+    // Die Platte reicht von Widerlager zu Widerlager (Vorderseiten symmetrisch zur Mittelleitplanke)
+    const x1 = 34;
+    const x0 = ONCOMING(x1);
+    // Unterseite etwas dunkler (liegt im Schatten) – als Material der Unterseite, nicht als zweite Fläche davor
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 1.1, 11, 20, 1, 1), [c, c, c, this.mats.concreteDark, c, c]);
     deck.position.set((x0 + x1) / 2, 6.35, 0);
     deck.castShadow = true;
     deck.receiveShadow = true;
     g.add(deck);
-    const under = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, 11), this.mats.concreteDark);
-    under.rotation.x = Math.PI / 2;
-    under.position.set((x0 + x1) / 2, 5.79, 0);
-    g.add(under);
-    for (const x of [MEDIAN_X, ROAD.right + 3, -31.5]) {
+    // Pfeiler nur neben den Fahrbahnen: einer im schmalen Mittelstreifen stünde mitten in den Leitplanken.
+    // Rechts mit Platz für die Lärmschutzwand davor.
+    for (const x of [ROAD.right + 3.5, ONCOMING(ROAD.right + 3.5)]) {
       for (const z of [-3.2, 3.2]) {
         const p = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 5.8, 12), c);
         p.position.set(x, 2.9, z);
@@ -730,23 +861,24 @@ export class Scenery {
         g.add(p);
       }
     }
-    for (const x of [x0 + 4, x1 - 4]) {
-      const ab = new THREE.Mesh(new THREE.BoxGeometry(8, 6, 13), this.mats.grass);
-      ab.position.set(x, 3, 0);
-      g.add(ab);
+    // Widerlager: Betonwand zur Autobahn, dahinter ein Damm mit Grasböschungen
+    for (const dir of [1, -1]) {
+      const [wall, bank] = this.makeAbutment(dir > 0 ? x1 : x0, dir);
+      g.add(wall, bank);
     }
     for (const z of [-5.4, 5.4]) {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.1, 0.1), this.mats.steel);
       rail.position.set((x0 + x1) / 2, 7.95, z);
       g.add(rail);
-      for (let x = x0; x <= x1; x += 2.5) {
+      for (let x = x0 + 1.25; x <= x1 - 1.2; x += 2.5) {
         const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.0, 0.06), this.mats.steel);
         post.position.set(x, 7.4, z);
         g.add(post);
       }
     }
-    const banner = new THREE.Mesh(new THREE.PlaneGeometry(9, 1.5, 8, 1), W.std({ side: THREE.DoubleSide, roughness: 0.9 }));
-    banner.position.set(-1.5, 6.9, 5.6);
+    // 12 cm vor der Stirnseite der Platte und mit Polygon-Offset (sonst flimmert sie ab ≈ 650 m durch)
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(9, 1.5, 8, 1), W.std({ ...FRONT, side: THREE.DoubleSide, roughness: 0.9 }));
+    banner.position.set(-1.5, 6.9, 5.62);
     g.add(banner);
     g.userData.banner = banner;
     // Ein Auto auf der Brücke
@@ -781,6 +913,56 @@ export class Scenery {
     b.userData.banner.position.x = -12 + rnd() * 20;
   }
 
+  /**
+   * Widerlager am Brückenende: Betonwand mit der Vorderseite bei x = xf (zur Autobahn hin), oben so breit wie die
+   * Platte, an den Seiten mit der Böschung (1 : 1,5) abgeschrägt; dahinter (Richtung dir) der Damm, oben ein
+   * kurzes Plateau knapp unter der Wandkrone, nach hinten und zu den Seiten Grasböschungen bis zum Boden.
+   */
+  makeAbutment(xf, dir) {
+    const T = 0.9; // Wandstärke
+    const top = 6.9; // Wandkrone = Oberseite der Platte
+    const hw = 5.9; // halbe Kronenbreite (Platte: 5,5)
+    const run = 1.5 * top;
+    const X = (u) => xf + dir * u;
+    const face = (u) => [[X(u), 0, -(hw + run)], [X(u), 0, hw + run], [X(u), top, hw], [X(u), top, -hw]];
+    const wallPolys = [
+      { pts: face(0), out: [-dir, 0, 0] },
+      { pts: face(T), out: [dir, 0, 0] },
+      { pts: [[X(0), top, -hw], [X(0), top, hw], [X(T), top, hw], [X(T), top, -hw]], out: [0, 1, 0] },
+    ];
+    for (const sz of [1, -1]) {
+      wallPolys.push({ pts: [[X(0), top, sz * hw], [X(0), 0, sz * (hw + run)], [X(T), 0, sz * (hw + run)], [X(T), top, sz * hw]], out: [0, 1, sz] });
+    }
+    const wall = new THREE.Mesh(polyGeometry(wallPolys, () => [0, 0]), this.mats.concrete);
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    // Damm: Plateau 5 cm unter der Wandkrone (keine gleich hohen Flächen), 3 m tief
+    const h = top - 0.05;
+    const L = 3;
+    const r = 1.5 * h;
+    const P = (u, y, z) => [X(u), y, z];
+    const t1 = P(T, h, -hw);
+    const t2 = P(T, h, hw);
+    const t3 = P(T + L, h, hw);
+    const t4 = P(T + L, h, -hw);
+    const b1 = P(T, 0, -(hw + r));
+    const b2 = P(T, 0, hw + r);
+    const b3 = P(T + L + r, 0, hw + r);
+    const b4 = P(T + L + r, 0, -(hw + r));
+    const bankPolys = [
+      { pts: [t1, t2, t3, t4], out: [0, 1, 0] },
+      { pts: [t2, b2, b3, t3], out: [0, 1, 1] },
+      { pts: [t4, t3, b3, b4], out: [dir, 1, 0] },
+      { pts: [t1, t4, b4, b1], out: [0, 1, -1] },
+    ];
+    // Gras wie am Bankett (6 m pro Kachel); auf den Böschungen entlang der Falllinie gemessen
+    const uvFn = ([x, y, z], out) => (out[0] === 0 && out[2] === 0 ? [x / 6, z / 6] : out[2] !== 0 ? [x / 6, (y * 1.8) / 6] : [z / 6, (y * 1.8) / 6]);
+    const bank = new THREE.Mesh(polyGeometry(bankPolys, uvFn), this.mats.grass);
+    bank.castShadow = true;
+    bank.receiveShadow = true;
+    return [wall, bank];
+  }
+
   makeBrownSign() {
     const g = new THREE.Group();
     for (const x of [-1.3, 1.3]) {
@@ -788,15 +970,29 @@ export class Scenery {
       p.position.set(x, 1.9, 0);
       g.add(p);
     }
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 2.1), W.std({ roughness: 0.6 }));
-    panel.position.set(0, 2.75, 0.06);
-    g.add(panel);
+    const face = this.signBoard(g, 3.4, 2.1, 2.75);
     g.rotation.y = -0.12;
     g.userData.setText = (title, sub) => {
-      panel.material.map = this.canvasTexFrom('brown:' + title, () => brownSignTexture(title, sub));
-      panel.material.needsUpdate = true;
+      face.map = this.canvasTexFrom('brown:' + title, () => brownSignTexture(title, sub));
+      face.needsUpdate = true;
     };
     return g;
+  }
+
+  /**
+   * Schildtafel auf zwei Pfosten (Vorderseite der Pfosten bei z = 0,05): ein 5 cm dicker Kasten, Rückseite 1 cm vor
+   * den Pfosten, die Bildseite also 6 cm davor und mit Polygon-Offset. Gibt das Material der Bildseite zurück.
+   */
+  signBoard(g, w, h, y) {
+    if (!this.signEdgeGeo) this.signEdgeGeo = new Map();
+    const key = w + 'x' + h;
+    if (!this.signEdgeGeo.has(key)) this.signEdgeGeo.set(key, new THREE.BoxGeometry(w, h, 0.05));
+    const face = W.std({ ...FRONT, roughness: 0.6 });
+    const s = this.mats.steel;
+    const board = new THREE.Mesh(this.signEdgeGeo.get(key), [s, s, s, s, face, s]);
+    board.position.set(0, y, 0.085);
+    g.add(board);
+    return face;
   }
 
   canvasTexFrom(key, fn) {
@@ -811,13 +1007,11 @@ export class Scenery {
       p.position.set(x, 1.8, 0);
       g.add(p);
     }
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 1.8), W.std({ roughness: 0.6 }));
-    panel.position.set(0, 2.7, 0.06);
-    g.add(panel);
+    const face = this.signBoard(g, 3.4, 1.8, 2.7);
     g.rotation.y = -0.12;
     g.userData.setText = (lines) => {
-      panel.material.map = this.canvasTexFrom('blue:' + lines.join('|'), () => signTexture(lines, { w: 512, h: 272 }));
-      panel.material.needsUpdate = true;
+      face.map = this.canvasTexFrom('blue:' + lines.join('|'), () => signTexture(lines, { w: 512, h: 272 }));
+      face.needsUpdate = true;
     };
     return g;
   }
@@ -825,12 +1019,12 @@ export class Scenery {
   makeSpeedSign(limit) {
     const g = new THREE.Group();
     const tex = speedSignTexture(limit);
-    const mat = W.std({ map: tex, transparent: true, alphaTest: 0.4, roughness: 0.5 });
+    const mat = W.std({ ...FRONT, map: tex, transparent: true, alphaTest: 0.4, roughness: 0.5 });
     for (const x of [ROAD.right + 1.3, MEDIAN_X]) {
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.6, 6), this.mats.steel);
       post.position.set(x, 1.3, 0);
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.0), mat);
-      sign.position.set(x, 2.5, 0.05);
+      sign.position.set(x, 2.5, 0.1);
       g.add(post, sign);
     }
     return g;
@@ -840,10 +1034,11 @@ export class Scenery {
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 2.7, 0.55), W.std({ color: 0x9da3a8, metalness: 0.4, roughness: 0.5 }));
     body.position.y = 1.35;
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.5), W.std({ color: 0x101418, metalness: 0.8, roughness: 0.1 }));
-    win.position.set(0, 2.2, 0.28);
-    const flash = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.2), W.basic({ color: 0xffffff }));
-    flash.position.set(0, 1.75, 0.28);
+    // Fenster 1,5 cm vor dem Gehäuse (statt 5 mm) und mit Polygon-Offset
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.5), W.std({ ...FRONT, color: 0x101418, metalness: 0.8, roughness: 0.1 }));
+    win.position.set(0, 2.2, 0.29);
+    const flash = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.2), W.basic({ ...FRONT, color: 0xffffff }));
+    flash.position.set(0, 1.75, 0.29);
     g.add(body, win, flash);
     g.rotation.y = -0.35;
     g.userData.flash = flash;
@@ -857,8 +1052,9 @@ export class Scenery {
     tower.position.y = 46;
     const nac = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.8, 10), m);
     nac.position.set(0, 93, -1);
+    // Blätter 45 cm vor der Gondel (die Nabe steckt in ihr), sonst flimmern ihre Wurzeln in der Ferne mit ihr
     const rotor = new THREE.Group();
-    rotor.position.set(0, 93, 4.4);
+    rotor.position.set(0, 93, 4.7);
     const hub = new THREE.Mesh(new THREE.SphereGeometry(2.0, 12, 10), m);
     hub.scale.set(1, 1, 1.4);
     rotor.add(hub);
@@ -896,41 +1092,77 @@ export class Scenery {
     const spire = new THREE.Mesh(new THREE.ConeGeometry(3.4, 10, 4), W.std({ color: 0x3e5e52, roughness: 0.7 }));
     spire.rotation.y = Math.PI / 4;
     spire.position.set(0, 25, -7);
-    const clock = new THREE.Mesh(new THREE.CircleGeometry(0.9, 16), W.std({ color: 0x1a1a1a }));
-    clock.position.set(0, 16, -4.74);
+    const clock = new THREE.Mesh(new THREE.CircleGeometry(0.9, 16), W.std({ ...FRONT, color: 0x1a1a1a }));
+    clock.position.set(0, 16, -4.69);
     g.add(nave, roof, tower, spire, clock);
     g.traverse((o) => o.isMesh && (o.castShadow = true));
     return g;
   }
 
+  /** Lärmschutzwand eines Segments; die Form kommt erst mit userData.shape (Lücken, Endpfosten). */
   makeNoiseWall() {
-    const tex = this.canvasTexFrom('noisewall', () => {
-      const c = document.createElement('canvas');
-      c.width = 256;
-      c.height = 128;
-      const ctx = c.getContext('2d');
-      ctx.fillStyle = '#7f8f84';
-      ctx.fillRect(0, 0, 256, 128);
-      for (let y = 0; y < 128; y += 8) {
-        ctx.fillStyle = y % 16 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.06)';
-        ctx.fillRect(0, y, 256, 4);
-      }
-      ctx.fillStyle = '#5b6168';
-      ctx.fillRect(0, 0, 10, 128);
-      const t = new THREE.CanvasTexture(c);
-      t.colorSpace = THREE.SRGBColorSpace;
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.repeat.set(20, 1);
-      t.anisotropy = 4;
-      return t;
-    });
-    const m = W.std({ map: tex, roughness: 0.8 });
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 4.2, SEG, 1, 1, 25), m);
-    wall.position.y = 2.1;
+    if (!this.mats.noiseWall) {
+      // ein Wandfeld (5 m) pro Texturkachel, links der Pfosten-Streifen
+      const tex = this.canvasTexFrom('noisewall', () => {
+        const c = document.createElement('canvas');
+        c.width = 256;
+        c.height = 128;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#7f8f84';
+        ctx.fillRect(0, 0, 256, 128);
+        for (let y = 0; y < 128; y += 8) {
+          ctx.fillStyle = y % 16 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.06)';
+          ctx.fillRect(0, y, 256, 4);
+        }
+        ctx.fillStyle = '#5b6168';
+        ctx.fillRect(0, 0, 10, 128);
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.anisotropy = 4;
+        return t;
+      });
+      this.mats.noiseWall = W.std({ map: tex, roughness: 0.8 });
+      this.mats.wallPost = W.std({ color: 0x5b6168, metalness: 0.4, roughness: 0.55 });
+      this.wallPostGeo = new THREE.BoxGeometry(0.42, 4.45, 0.24);
+      this.wallPostGeo.translate(0, 2.225, 0);
+    }
+    const g = new THREE.Group();
+    const wall = new THREE.Mesh(new THREE.BufferGeometry(), this.mats.noiseWall);
     wall.castShadow = true;
     wall.receiveShadow = true;
-    const g = new THREE.Group();
-    g.add(wall);
+    const posts = new THREE.Mesh(new THREE.BufferGeometry(), this.mats.wallPost);
+    posts.castShadow = true;
+    g.add(wall, posts);
+    // parts: [s0, s1, Anfang offen, Ende offen] in Strecken-Metern, mid: Segmentmitte (dort steht die Gruppe)
+    g.userData.shape = (parts, mid) => {
+      const walls = [];
+      const ends = [];
+      for (const [a, b, openA, openB] of parts) {
+        const len = b - a;
+        const c = (a + b) / 2;
+        const geo = new THREE.BoxGeometry(0.3, 4.2, len, 1, 1, Math.max(1, Math.round(len / 5)));
+        // Textur an der Strecke festgemacht: die Wandfelder laufen über Segmentgrenzen und Lücken hinweg weiter
+        const pos = geo.attributes.position;
+        const uv = geo.attributes.uv;
+        const nrm = geo.attributes.normal;
+        for (let i = 0; i < pos.count; i++) {
+          uv.setXY(i, (c - pos.getZ(i)) / 5, nrm.getY(i) > 0.5 ? 0.97 : (pos.getY(i) + 2.1) / 4.2);
+        }
+        geo.translate(0, 2.1, mid - c);
+        walls.push(geo);
+        // ein Stahlpfosten über jedem Wandende (deckt die Stirnseite ab)
+        for (const [open, s] of [[openA, a], [openB, b]]) {
+          if (open) ends.push(this.wallPostGeo.clone().translate(0, 0, mid - s));
+        }
+      }
+      wall.geometry.dispose();
+      wall.geometry = mergeGeometries(walls);
+      posts.geometry.dispose();
+      posts.geometry = ends.length ? mergeGeometries(ends) : new THREE.BufferGeometry();
+      posts.visible = ends.length > 0;
+      for (const x of [...walls, ...ends]) x.dispose();
+    };
     return g;
   }
 
@@ -968,11 +1200,12 @@ export class Scenery {
       ctx.font = '34px Arial, sans-serif';
       ctx.fillText('mit Herrn Schönnbrun ⛲', w / 2, h * 0.78);
     });
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.25), W.std({ map: tex, roughness: 0.5 }));
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.25), W.std({ ...FRONT, map: tex, roughness: 0.5 }));
     sign.position.set(-4.2, 2.3, 1.5);
     sign.rotation.y = 0.5;
+    // der Pfosten steht ≈ 9 cm hinter dem schräg gestellten Schild (vorher ragte seine Kante bis 7 mm heran)
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.8, 0.12), this.mats.steel);
-    post.position.set(-4.2, 0.9, 1.4);
+    post.position.set(-4.2, 0.9, 1.3);
     g.add(basin, rim, water, column, bowl, jet, fall, sign, post);
     g.userData.animate = (t) => {
       jet.scale.y = 1 + Math.sin(t * 7) * 0.08;
@@ -1022,8 +1255,10 @@ export class Scenery {
 
   makeCastle() {
     const g = new THREE.Group();
-    const hill = new THREE.Mesh(new THREE.ConeGeometry(95, 42, 24, 1), W.lambert({ color: 0x5c8640 }));
-    hill.position.y = 21;
+    // Burgberg mit rundem Gipfelplateau (r = 24 m, die Türme reichen bis 21,8 m): Bergfried, Türme und Mauern
+    // stehen ab y = 42 auf festem Boden und stecken 0,6 m darin (vorher endete der Berg spitz bei y = 42).
+    const prof = [[97, 0], [90, 4], [78, 12.5], [62, 24], [46, 34.5], [34, 40.4], [28, 42.2], [24, 42.6], [0, 42.6]];
+    const hill = new THREE.Mesh(new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 24), W.lambert({ color: 0x5c8640 }));
     const wallM = W.std({ color: 0xb7a98f, roughness: 0.95 });
     const keep = new THREE.Mesh(new THREE.BoxGeometry(12, 30, 12), wallM);
     keep.position.y = 42 + 15;
@@ -1071,11 +1306,13 @@ export class Scenery {
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(14, 7, 10), W.std({ color: 0xe9e6df, roughness: 0.85 }));
     body.position.y = 3.5;
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(12, 3), this.mats.glassBlue);
-    win.position.set(0, 2.2, 5.01);
-    win.rotation.y = 0;
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(8, 1.6), W.std({ roughness: 0.5 }));
-    panel.position.set(0, 6, 5.03);
+    // Fensterband 2,5 cm vor der Fassade mit Polygon-Offset; Schriftzug als 12 cm tiefer Kasten
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(12, 3), W.std({ ...FRONT, color: 0x5f7fa3, metalness: 0.8, roughness: 0.15, envMapIntensity: 1.2 }));
+    win.position.set(0, 2.2, 5.025);
+    const face = W.std({ ...FRONT, roughness: 0.5 });
+    const edge = this.mats.white;
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(8, 1.6, 0.12), [edge, edge, edge, edge, face, edge]);
+    panel.position.set(0, 6, 5.07);
     g.add(body, win, panel);
     g.rotation.y = -Math.PI / 2 + 0.25;
     g.userData.setColor = (color) => {
@@ -1088,8 +1325,8 @@ export class Scenery {
         ctx.textBaseline = 'middle';
         ctx.fillText('Sparkasse', w / 2, h / 2 + 3);
       });
-      panel.material.map = tex;
-      panel.material.needsUpdate = true;
+      face.map = tex;
+      face.needsUpdate = true;
     };
     return g;
   }
@@ -1103,8 +1340,11 @@ export class Scenery {
     awning.rotation.x = 0.25;
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 7, 8), this.mats.steel);
     pole.position.set(-3.6, 3.5, 1);
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.8), W.std({ roughness: 0.5 }));
-    panel.position.set(-3.6, 6.4, 1.13);
+    // Tafel als 6 cm tiefer Kasten direkt vor dem Mast (Bildseite 6 cm vor ihm, mit Polygon-Offset)
+    const face = W.std({ ...FRONT, roughness: 0.5 });
+    const st = this.mats.steel;
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.8, 0.06), [st, st, st, st, face, st]);
+    panel.position.set(-3.6, 6.4, 1.15);
     g.add(body, awning, pole, panel);
     g.rotation.y = -0.4;
     g.userData.setText = (title, sub) => {
@@ -1125,8 +1365,8 @@ export class Scenery {
         ctx.font = 'bold 38px Arial, sans-serif';
         ctx.fillText(sub, w / 2, h * 0.75);
       });
-      panel.material.map = tex;
-      panel.material.needsUpdate = true;
+      face.map = tex;
+      face.needsUpdate = true;
     };
     return g;
   }
@@ -1144,7 +1384,8 @@ export class Scenery {
     for (let i = 0; i < 5; i++) {
       const st = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.6, 0.35), W.std({ color: 0xf2f2f2, roughness: 0.4 }));
       st.position.set(-5 + i * 2.5, 0.8, -1.5);
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.25, 0.36), W.std({ color: 0xd01c1c, emissive: 0x500000 }));
+      // das rote Band 2 cm über den Seiten der Säule (statt 5 mm) und mit Polygon-Offset
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.39, 0.25, 0.39), W.std({ ...FRONT, color: 0xd01c1c, emissive: 0x500000 }));
       stripe.position.set(-5 + i * 2.5, 1.35, -1.5);
       g.add(st, stripe);
     }

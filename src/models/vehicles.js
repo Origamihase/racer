@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../curve.js';
 import { plateTexture, trailerTexture, truckRearTexture, contactShadowTexture } from '../textures.js';
-import { loft, loftPoint, surfacePatch, curve1, withArches, sideArches, colorize, boxAt, discX } from './loft.js';
+import { loft, loftPoint, loftStations, ringPhi, surfacePatch, curve1, withArches, sideArches, colorize, boxAt, discX } from './loft.js';
 import { lerp, pick, weightedPick } from '../util.js';
 
 export const CAR_TYPES = {
@@ -13,7 +13,8 @@ export const CAR_TYPES = {
   limo: { L: 4.78, half: 0.915, H: 1.45, belt: 0.95, hood: 1.32, ws: 1.98, re: 3.15, ce: 3.88, rear: 'sedan', axles: [0.95, 3.8], wr: 0.32, cl: 0.15, nose: 0.6, weight: 15 },
   kombi: { L: 4.82, half: 0.915, H: 1.5, belt: 0.95, hood: 1.25, ws: 1.92, re: 4.5, ce: 4.74, rear: 'wagon', axles: [0.95, 3.75], wr: 0.32, cl: 0.16, nose: 0.6, weight: 18 },
   suv: { L: 4.62, half: 0.94, H: 1.68, belt: 1.08, hood: 1.12, ws: 1.78, re: 4.2, ce: 4.5, rear: 'wagon', axles: [0.92, 3.62], wr: 0.36, cl: 0.22, nose: 0.74, weight: 14 },
-  sport: { L: 4.5, half: 0.93, H: 1.27, belt: 0.82, hood: 1.62, ws: 2.25, re: 2.9, ce: 4.05, rear: 'hatch', axles: [1.12, 3.62], wr: 0.33, cl: 0.12, nose: 0.48, weight: 4 },
+  // arch: Radius des Radlaufs (sonst wr + 0.07); beim flachen Sportwagen kleiner, sonst schaut das Radhaus vorne durch die Haube
+  sport: { L: 4.5, half: 0.93, H: 1.27, belt: 0.82, hood: 1.62, ws: 2.25, re: 2.9, ce: 4.05, rear: 'hatch', axles: [1.12, 3.62], wr: 0.33, arch: 0.35, cl: 0.12, nose: 0.48, weight: 4 },
   transporter: { L: 5.9, half: 1.0, H: 2.5, belt: 1.2, hood: 0.78, ws: 1.42, re: 5.85, ce: 5.9, rear: 'box', cargo: 2.05, axles: [0.95, 4.6], wr: 0.36, cl: 0.2, nose: 0.78, weight: 8 },
   wohnmobil: { L: 7.0, half: 1.15, H: 3.0, belt: 1.3, hood: 0.8, ws: 1.45, re: 6.95, ce: 7.0, rear: 'box', cargo: 1.9, alkoven: true, axles: [1.0, 4.9], wr: 0.38, cl: 0.22, nose: 0.8, weight: 2 },
 };
@@ -126,6 +127,51 @@ function surfX(shape, u, y) {
   return 0;
 }
 
+/** Höhe der Oberseite einer Loft-Form an der Stelle u im seitlichen Abstand x (rechte Seite). */
+function surfY(shape, u, x) {
+  let px = 0;
+  let py = 0;
+  for (let k = 0; k <= 48; k++) {
+    loftPoint(shape, u, Math.PI / 2 - (k / 48) * (Math.PI / 2), tmpP);
+    if (k > 0 && tmpP.x >= x) return lerp(py, tmpP.y, (x - px) / Math.max(1e-6, tmpP.x - px));
+    px = tmpP.x;
+    py = tmpP.y;
+  }
+  return py;
+}
+
+/**
+ * Stirnwand im Radlauf an der Stelle u (Seite s): von der Innenwand (x = xi) bis zur Außenhaut und vom
+ * Unterboden bis yTop. Folgt dem Querschnitt der Karosserie ohne Radlauf-Ausschnitt, ragt also nirgends
+ * heraus (eine rechteckige Platte stand unten und an der gerundeten Flanke wie ein Schmutzfänger über).
+ */
+function archEndWall(shape, u, s, xi, yTop) {
+  const pts = [];
+  let prev = null;
+  for (let i = 0; i <= 96; i++) {
+    loftPoint(shape, u, -Math.PI / 2 + (i / 96) * (Math.PI / 2), tmpP);
+    // ein paar Millimeter nach innen, die Loft-Fläche zwischen den Querschnitten ist etwas flacher
+    const cur = [tmpP.x - 0.005, tmpP.y + 0.003];
+    if (prev) {
+      if (prev[0] < xi && cur[0] >= xi) {
+        const k = (xi - prev[0]) / (cur[0] - prev[0]);
+        pts.push([xi, prev[1] + k * (cur[1] - prev[1])]);
+      }
+      if (cur[1] >= yTop) {
+        const k = (yTop - prev[1]) / (cur[1] - prev[1]);
+        pts.push([prev[0] + k * (cur[0] - prev[0]), yTop]);
+        break;
+      }
+      if (cur[0] >= xi) pts.push(cur);
+    }
+    prev = cur;
+  }
+  pts.push([xi, yTop]);
+  const g = new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(s * x, y))));
+  g.translate(0, 0, u - shape.L / 2);
+  return g;
+}
+
 function carGeometry(key) {
   if (geoCache.has(key)) return geoCache.get(key);
   const p = CAR_TYPES[key];
@@ -137,7 +183,8 @@ function carGeometry(key) {
   else topPts.push([lerp(hood, L, 0.6), belt + 0.02], [L - 0.06, belt - 0.02], [L, belt - 0.14]);
   const top = curve1(topPts);
   const bottomBase = curve1([[0, 0.36], [0.08, cl + 0.07], [0.28, cl], [L - 0.3, cl], [L - 0.06, cl + 0.1], [L, 0.4]]);
-  const bottom = withArches(bottomBase, axles, wr + 0.07, wr);
+  const rArch = p.arch ?? wr + 0.07;
+  const bottom = withArches(bottomBase, axles, rArch, wr);
   const width = curve1([[0, half - 0.22], [0.1, half - 0.08], [0.4, half - 0.02], [0.9, half], [L - 0.9, half], [L - 0.3, half - 0.03], [L, half - 0.1]]);
   // Radläufe nur an den Seiten ausschneiden (innen bleibt der Unterboden geschlossen)
   const bodyShape = { w: width, b: bottomBase, bx: sideArches(bottom, 0.5, 0.72), t: top, tw: 0.9, bw: 0.95, n: 4.5, L };
@@ -161,7 +208,10 @@ function carGeometry(key) {
   const gTop = curve1(gTopPts);
   const gHalf = (u) => width(u) - 0.06;
   const glassShape = { w: gHalf, b: (u) => top(u) - 0.05, t: gTop, tw: box ? 0.95 : 0.8, bw: 1, n: 3.4, L };
-  const glassGeo = loft({ u0: hood - 0.02, u1: gEnd, ...glassShape, segs: 36, ring: 22, H });
+  const gU0 = hood - 0.02;
+  const gSegs = 36;
+  const gRing = 22;
+  const glassGeo = loft({ u0: gU0, u1: gEnd, ...glassShape, segs: gSegs, ring: gRing, H });
 
   // Dach in Wagenfarbe bzw. Kofferaufbau
   if (box) {
@@ -181,9 +231,23 @@ function carGeometry(key) {
       }));
     }
   } else {
-    // Dach liegt direkt auf der Glaskuppel (kein schwebender Deckel)
+    // Dach liegt direkt auf der Glaskuppel (kein schwebender Deckel), und zwar genau auf deren
+    // Stützstellen (Querschnitte und Ringpunkte): Zwischen ihnen sind beide Flächen eben, so sticht
+    // keine Glaskante durch das Dach. Hinten endet es an der Kante zur Heckscheibe.
     const onGlass = (u, phi, target) => loftPoint(glassShape, u, phi, target);
-    bodyGeos.push(surfacePatch(onGlass, (a, t) => [lerp(ws - 0.03, re + 0.02, t), lerp(0.42, Math.PI - 0.42, a)], { ns: 12, nt: 16, lift: 0.006 }));
+    const gUs = loftStations(gU0, gEnd, gSegs);
+    const nearest = (u) => gUs.reduce((best, v, i) => (Math.abs(v - u) < Math.abs(gUs[best] - u) ? i : best), 0);
+    const j0 = nearest(ws - 0.03);
+    const j1 = nearest(re + 0.02);
+    const k0 = Math.round((gRing * (0.42 + Math.PI / 2)) / (2 * Math.PI));
+    const k1 = gRing - k0;
+    const roof = surfacePatch(onGlass, (a, t) => [gUs[j0 + Math.round(t * (j1 - j0))], ringPhi(k0 + Math.round(a * (k1 - k0)), gRing)], {
+      ns: k1 - k0, nt: j1 - j0, lift: 0.006,
+    });
+    // einfarbig: die Polizei-Lackierung zeigt auf dem Dach ihr Silber (nicht die Streifen der Flanken)
+    const roofUv = roof.attributes.uv;
+    for (let i = 0; i < roofUv.count; i++) roofUv.setXY(i, 0.5, 0.97);
+    bodyGeos.push(roof);
   }
   const bodyGeo = mergeGeometries(bodyGeos);
 
@@ -191,23 +255,20 @@ function carGeometry(key) {
   const det = [];
   const liners = [];
   const z = (u) => u - L / 2;
+  const bodyUncut = { ...bodyShape, bx: null };
   for (const a of axles) {
     for (const s of [-1, 1]) {
       // dunkles Radhaus, innen verschlossen (eigenes Mesh mit beidseitigem Material)
       const xIn = half * 0.45;
-      const liner = new THREE.CylinderGeometry(wr + 0.065, wr + 0.065, half - xIn, 14, 1, true, 0, Math.PI);
+      const liner = new THREE.CylinderGeometry(rArch - 0.005, rArch - 0.005, half - xIn, 14, 1, true, 0, Math.PI);
       liner.rotateZ(Math.PI / 2);
       liner.translate(s * (half + xIn) / 2, wr, z(a));
-      const wall = new THREE.CircleGeometry(wr + 0.065, 14, 0, Math.PI);
+      const wall = new THREE.CircleGeometry(rArch - 0.005, 14, 0, Math.PI);
       wall.rotateY(Math.PI / 2);
       wall.translate(s * xIn, wr, z(a));
       liners.push(liner.toNonIndexed(), wall.toNonIndexed());
-      // senkrechte Stirnwände vorne und hinten im Radlauf (unter der Radmitte), sonst glänzt dort Lack
-      for (const e of [-1, 1]) {
-        const end = new THREE.PlaneGeometry(half - xIn, wr - cl + 0.02);
-        end.translate(s * (half + xIn) / 2, (wr + cl - 0.02) / 2, z(a + e * (wr + 0.06)));
-        liners.push(end.toNonIndexed());
-      }
+      // senkrechte Stirnwände vorne und hinten im Radlauf (bis knapp über die Radmitte), sonst glänzt dort Lack
+      for (const e of [-1, 1]) liners.push(archEndWall(bodyUncut, a + e * (rArch - 0.01), s, xIn, wr + 0.01).toNonIndexed());
       const tire = new THREE.CylinderGeometry(wr, wr, 0.22, 16);
       tire.rotateZ(Math.PI / 2);
       tire.translate(s * (half - 0.13), wr, z(a));
@@ -241,12 +302,13 @@ function carGeometry(key) {
   // Rückleuchten (eigenes Mesh, leuchten beim Bremsen) – auf der Heckfläche, nicht darüber
   const tl = [];
   const tailY = rear === 'box' ? 0.85 : top(L) - 0.1;
-  // innerhalb der gerundeten Heckecken (auch beim Kastenaufbau)
-  const tailX = width(L) - 0.26;
+  // innerhalb der gerundeten Heckecken (auch beim Kastenaufbau): die obere Außenecke bleibt 3 cm
+  // innerhalb des Heckumrisses, sonst steht sie über der Rundung in der Luft
+  const tailX = Math.min(width(L) - 0.26, surfX(bodyShape, L, tailY + 0.06) - 0.18);
   for (const s of [-1, 1]) tl.push(boxAt(0.3, 0.12, 0.024, s * tailX, tailY, z(L) + 0.004));
   const tailGeo = mergeGeometries(tl);
   const blinkY = rear === 'box' ? tailY + 0.11 : tailY - 0.1;
-  const blinkX = width(L) - 0.18;
+  const blinkX = Math.min(width(L) - 0.18, surfX(bodyShape, L, blinkY + 0.03) - 0.08);
   const blinkGeo = (s) => mergeGeometries([
     boxAt(0.1, 0.06, 0.024, s * blinkX, blinkY, z(L) + 0.006),
     // vorne unter dem Scheinwerfer und seitlich am Kotflügel, beides auf der Karosserie
@@ -255,7 +317,10 @@ function carGeometry(key) {
   ]);
   const plateGeo = new THREE.PlaneGeometry(0.52, 0.112);
   plateGeo.translate(0, rear === 'box' ? 0.55 : Math.max(cl + 0.32, belt - 0.32), z(L) + 0.012);
-  const lightbarGeo = [boxAt(0.42, 0.08, 0.22, -0.22, H + 0.05, z((ws + re) / 2)), boxAt(0.42, 0.08, 0.22, 0.22, H + 0.05, z((ws + re) / 2))];
+  // Blaulicht steht auf dem gewölbten Dach: Unterkante auf Dachhöhe an den Außenecken (schwebt dort nicht)
+  const uBar = (ws + re) / 2;
+  const yBar = Math.min(surfY(glassShape, uBar - 0.11, 0.43), surfY(glassShape, uBar + 0.11, 0.43));
+  const lightbarGeo = [-1, 1].map((s) => boxAt(0.42, 0.09, 0.22, s * 0.22, yBar + 0.045, z(uBar)));
 
   const g = { bodyGeo, glassGeo, detailGeo, linerGeo, tailGeo, blinkL: blinkGeo(-1), blinkR: blinkGeo(1), plateGeo, lightbarGeo, bodyShape };
   geoCache.set(key, g);
@@ -273,11 +338,12 @@ function truckGeometry() {
     t: curve1([[0, 3.35], [0.2, 3.62], [0.8, 3.75], [2.3, 3.78]]), tw: 0.96, bw: 1, n: 8, segs: 14, ring: 28, L: TRUCK_L, H: 4,
   });
   const det = [];
-  det.push(colorize(boxAt(2.2, 1.05, 0.05, 0, 2.72, z(0) - 0.06, -0.06), 0x182028)); // Frontscheibe (vor der Fahrerhausfront)
+  // Frontscheibe vor der Fahrerhausfront; schmal genug, dass die oberen Ecken innerhalb der Rundung bleiben
+  det.push(colorize(boxAt(2.0, 1.05, 0.05, 0, 2.72, z(0) - 0.06, -0.06), 0x182028));
   for (const s of [-1, 1]) det.push(colorize(boxAt(0.04, 0.85, 1.0, s * 1.255, 2.75, z(0.75)), 0x182028));
   det.push(colorize(boxAt(2.3, 0.35, 0.12, 0, 0.75, z(0.05)), 0x2a2a2c)); // Stoßfänger
   det.push(colorize(boxAt(1.7, 0.9, 0.04, 0, 1.6, z(0.01)), 0x2f3236)); // Grill
-  det.push(colorize(boxAt(2.4, 0.12, 0.35, 0, 3.4, z(0.05), 0.25), 0x1e1e20)); // Sonnenblende
+  det.push(colorize(boxAt(2.1, 0.12, 0.35, 0, 3.4, z(0.05), 0.25), 0x1e1e20)); // Sonnenblende (endet vor den gerundeten Ecken)
   det.push(colorize(boxAt(1.0, 0.45, 5.2, 0, 0.78, z(3.2)), 0x222224)); // Rahmen
   for (const s of [-1, 1]) {
     const tank = new THREE.CylinderGeometry(0.3, 0.3, 1.2, 12);
@@ -286,8 +352,8 @@ function truckGeometry() {
     det.push(colorize(tank, 0xb9bec4));
     det.push(colorize(boxAt(0.3, 0.12, 0.08, s * 0.85, 1.25, z(0.02)), 0xe7eef5)); // Scheinwerfer
     det.push(colorize(boxAt(0.08, 0.55, 0.06, s * 1.38, 2.6, z(0.55)), 0x1a1a1a)); // Spiegel
-    for (const y of [2.42, 2.8]) det.push(colorize(boxAt(0.16, 0.035, 0.035, s * 1.31, y, z(0.55)), 0x1a1a1a)); // Spiegelhalter
-    det.push(colorize(boxAt(0.05, 0.4, 9.0, s * 1.24, 0.95, z(9.3)), 0x9aa0a6)); // Seitenschutz
+    for (const y of [2.42, 2.8]) det.push(colorize(boxAt(0.2, 0.035, 0.035, s * 1.29, y, z(0.55)), 0x1a1a1a)); // Spiegelhalter (beginnen im Blech)
+    det.push(colorize(boxAt(0.05, 0.4, 7.1, s * 1.24, 0.95, z(9.12)), 0x9aa0a6)); // Seitenschutz zwischen Antriebsrad und Auflieger-Achsen
   }
   const wheelsAt = [[1.35, 0.52, 0.32], [4.9, 0.52, 0.55], [13.3, 0.48, 0.5], [14.6, 0.48, 0.5], [15.9, 0.48, 0.5]];
   for (const [u, r, wdt] of wheelsAt) {

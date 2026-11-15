@@ -127,13 +127,8 @@ export function surfacePatch(point, uv, { ns = 6, nt = 16, lift = 0.006, center 
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   return g;
 }
-export function loft({
-  u0, u1, w, b, t, tw = 0.9, bw = 0.96, n = 4, segs = 80, ring = 28, L = 4.7, H = 1.5, caps = true,
-  sampleEnds = 0.55, bx = null, capDome = 0,
-}) {
-  const pos = [];
-  const uv = [];
-  const idx = [];
+/** Die Querschnitt-Stellen u eines Lofts (wie loft sie verwendet). */
+export function loftStations(u0, u1, segs, sampleEnds = 0.55) {
   const us = [];
   for (let i = 0; i <= segs; i++) {
     const s = i / segs;
@@ -141,10 +136,24 @@ export function loft({
     const sc = (1 - Math.cos(Math.PI * s)) / 2;
     us.push(u0 + (u1 - u0) * lerp(s, sc, sampleEnds));
   }
+  return us;
+}
+
+/** Winkel phi des k-ten Punkts im Querschnitt eines Lofts (k = 0 unten, ring / 2 oben). */
+export const ringPhi = (k, ring) => (k / ring) * Math.PI * 2 - Math.PI / 2;
+
+export function loft({
+  u0, u1, w, b, t, tw = 0.9, bw = 0.96, n = 4, segs = 80, ring = 28, L = 4.7, H = 1.5, caps = true,
+  sampleEnds = 0.55, bx = null, capDome = 0,
+}) {
+  const pos = [];
+  const uv = [];
+  const idx = [];
+  const us = loftStations(u0, u1, segs, sampleEnds);
   const e = 2 / n;
   const ringXY = [];
   for (let k = 0; k < ring; k++) {
-    const phi = (k / ring) * Math.PI * 2 - Math.PI / 2;
+    const phi = ringPhi(k, ring);
     const c = Math.cos(phi);
     const s = Math.sin(phi);
     ringXY.push([Math.sign(c) * Math.pow(Math.abs(c), e), Math.sign(s) * Math.pow(Math.abs(s), e)]);
@@ -161,7 +170,9 @@ export function loft({
       const wf = Y > 0 ? lerp(1, tw, Y) : lerp(1, bw, -Y);
       const x = X * ww * wf;
       pos.push(x, y, u - L / 2);
-      uv.push(x < 0 ? u / L : 1 - u / L, y / H);
+      // auf beiden Seiten gleich (früher links gespiegelt: Die Dreiecke an der Mittellinie von Dach
+      // und Boden liefen dann über die ganze Texturbreite, die Lackierung war dort zusammengequetscht)
+      uv.push(u / L, y / H);
     }
   }
   for (let i = 0; i < segs; i++) {

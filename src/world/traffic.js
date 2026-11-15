@@ -102,7 +102,8 @@ export class Traffic {
     car.v0 = car.speed;
     if (behavior === 'polizei') v.setPoliceText?.(this.policeText);
     this.cars.push(car);
-    this.place(car, s);
+    // relativ zum Spieler (Stand des letzten update()), sonst stünde es bis dahin ein Bild lang auf dem Tesla
+    this.place(car, this.sPlayer ?? s);
     return car;
   }
 
@@ -113,11 +114,15 @@ export class Traffic {
     v.group.rotation.y = Math.PI;
     const truck = k === 'lkw';
     const speed = truck ? rand(80, 89) * KMH : rand(LANE_SPEEDS[lane][0] - 15, LANE_SPEEDS[lane][1]) * KMH;
-    this.oncoming.push({ v, s: sPlayer + (ahead ? rand(700, 1300) : rand(100, 1200)), x: ONCOMING(ROAD.laneCenter(truck ? 2 + Math.round(Math.random()) : lane)), speed, len: v.length });
+    const o = { v, s: sPlayer + (ahead ? rand(700, 1300) : rand(100, 1200)), x: ONCOMING(ROAD.laneCenter(truck ? 2 + Math.round(Math.random()) : lane)), speed, len: v.length };
+    // gleich an seinen Platz, sonst steht es ein Bild lang mitten auf dem eigenen Auto
+    v.group.position.set(o.x, 0, -(o.s - sPlayer));
+    this.oncoming.push(o);
   }
 
   populate(sPlayer, playerSpeed) {
     this.reset();
+    this.sPlayer = sPlayer;
     for (let i = 0; i < 18; i++) {
       const lane = pickLane(this.leftOpen);
       const s = sPlayer + 40 + i * 45 + rand(0, 30);
@@ -140,6 +145,7 @@ export class Traffic {
   /** Spieler-Infos: { s, x, speed, len, w } */
   update(dt, t, player, env) {
     this.t = t;
+    this.sPlayer = player.s;
     this.events.length = 0;
     this.difficulty = env.difficulty;
     this.leftOpen = env.leftOpen;

@@ -156,16 +156,19 @@ export class Road {
     // Leitpfosten (alle 50 m): weiß mit schwarzem Band und Reflektor
     this.delinSpacing = 50;
     const delin = new THREE.Group();
-    const dGeo = new THREE.BoxGeometry(0.12, 1.0, 0.12);
-    dGeo.translate(0, 0.5, 0);
-    const bandGeo = new THREE.BoxGeometry(0.125, 0.25, 0.125);
+    // Band 5 mm über den Seiten des Pfostens, Reflektor 1 cm vor dem Band (vorher 2,5 und 1,5 mm), beide mit
+    // Polygon-Offset (der Reflektor mit doppeltem), damit sie auch in der Ferne nicht flimmern
+    // der Pfosten reicht bis 2 cm ins Bankett (dort ~0,05 m hoch), statt 7 cm darüber zu schweben
+    const dGeo = new THREE.BoxGeometry(0.12, 1.09, 0.12);
+    dGeo.translate(0, 0.455, 0);
+    const bandGeo = new THREE.BoxGeometry(0.13, 0.25, 0.13);
     bandGeo.translate(0, 0.82, 0);
     const reflGeo = new THREE.PlaneGeometry(0.05, 0.12);
-    reflGeo.translate(0, 0.82, 0.064);
+    reflGeo.translate(0, 0.82, 0.075);
     const nD = Math.ceil((VIEW_AHEAD * 0.6) / this.delinSpacing);
     const whiteMat = W.std({ color: 0xf2f2ee, roughness: 0.6 });
-    const blackMat = W.std({ color: 0x111111, roughness: 0.6 });
-    const reflMat = W.std({ color: 0xffa020, emissive: 0xff7a00, emissiveIntensity: 0.9 });
+    const blackMat = W.std({ color: 0x111111, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
+    const reflMat = W.std({ color: 0xffa020, emissive: 0xff7a00, emissiveIntensity: 0.9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
     const dMesh = new THREE.InstancedMesh(dGeo, whiteMat, nD);
     const bMesh = new THREE.InstancedMesh(bandGeo, blackMat, nD);
     const rMesh = new THREE.InstancedMesh(reflGeo, reflMat, nD);

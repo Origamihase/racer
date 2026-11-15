@@ -555,27 +555,70 @@ function localToWorld(v) {
   return tmpV.copy(v).applyMatrix4(carMatrix);
 }
 
+// Orbit-Kamera (Titel, Abspann): bleibt über der eigenen Fahrbahn – vor Lärmschutzwand, Schildern,
+// Schilderbrücken- und Brückenpfeilern und der Mittelleitplanke (auf der Gegenfahrbahn kommen die
+// Autos zu schnell) – und steigt rechtzeitig über Fahrzeuge, statt durch sie hindurchzufliegen.
+const ORBIT = { r: 8.5, xMin: ROAD.left + 0.25, xMax: ROAD.right + 0.4, yMax: 4.8, clear: 0.5, margin: 0.5, blend: 2.5, lead: 1.4 };
+const orbitPos = new THREE.Vector3();
+function orbitTarget(p) {
+  const a = stateT * 0.16 + 0.9;
+  const t = orbitPos.set(Math.sin(a) * ORBIT.r, 2.4 + Math.sin(stateT * 0.3) * 0.6, Math.cos(a) * ORBIT.r).applyMatrix4(carMatrix);
+  // seitlich begrenzt: dort wird der Bogen flacher und dafür etwas höher
+  const over = Math.max(t.x - ORBIT.xMax, ORBIT.xMin - t.x, 0);
+  t.x = clamp(t.x, ORBIT.xMin, ORBIT.xMax);
+  t.y += over * 0.3;
+  const base = t.y;
+  for (const c of traffic.cars) {
+    const need = c.v.height + ORBIT.clear;
+    if (need <= base) continue;
+    // Abstand zum Grundriss (mit Rand) – räumlich und, bei schnellen Autos, zeitlich: Die Kamera steigt
+    // etwa 1,4 s bevor eines ankommt und sinkt erst danach wieder, gleich wie schnell es ist (im Abspann
+    // steht der Tesla, dann rauscht der Verkehr mit voller Fahrt vorbei)
+    const zc = p.s - c.s;
+    const dz = Math.max(0, zc - c.len / 2 - ORBIT.margin - t.z, t.z - (zc + c.len / 2 + ORBIT.margin));
+    const dx = Math.max(0, Math.abs(t.x - c.x) - c.w / 2 - ORBIT.margin);
+    const near = 1 - smoothstep(0, ORBIT.blend, dx);
+    const soon = 1 - smoothstep(0.3, ORBIT.lead, dz / Math.max(1e-3, Math.abs(p.speed - c.speed)));
+    const k = Math.max(1 - smoothstep(0, ORBIT.blend, Math.hypot(dx, dz)), near * soon);
+    if (k > 0) t.y = Math.max(t.y, lerp(base, need, k));
+  }
+  t.y = Math.min(t.y, ORBIT.yMax);
+  return t;
+}
+
+/** Notbremse nach dem Glätten: nie in einem Fahrzeug (falls die Vorausschau einmal nicht reicht). */
+function liftOverVehicles(pos, p) {
+  for (const c of traffic.cars) {
+    if (Math.abs(pos.x - c.x) < c.w / 2 + 0.35 && Math.abs(pos.z - (p.s - c.s)) < c.len / 2 + 0.35) {
+      pos.y = Math.max(pos.y, Math.min(c.v.height + 0.35, ORBIT.yMax));
+    }
+  }
+}
+
 function placeDrone(dt, mode) {
   const p = game.player;
   let pos;
   let look;
   if (mode === 'orbit') {
-    const a = stateT * 0.16 + 0.9;
-    pos = new THREE.Vector3(Math.sin(a) * 8.5, 2.4 + Math.sin(stateT * 0.3) * 0.6, Math.cos(a) * 8.5);
-    look = new THREE.Vector3(0, 0.9, 0);
+    pos = orbitTarget(p);
+    look = new THREE.Vector3(0, 0.9, 0).applyMatrix4(carMatrix);
   } else {
-    pos = new THREE.Vector3(-p.vx * 0.25, 3.3, 9.2);
-    look = new THREE.Vector3(0, 1.0, -14);
+    pos = new THREE.Vector3(-p.vx * 0.25, 3.3, 9.2).applyMatrix4(carMatrix);
+    look = new THREE.Vector3(0, 1.0, -14).applyMatrix4(carMatrix);
   }
-  pos.applyMatrix4(carMatrix);
-  look.applyMatrix4(carMatrix);
   if (!drone.init) {
     drone.pos.copy(pos);
     drone.look.copy(look);
     drone.init = true;
   }
   const k = 1 - Math.exp(-dt * (mode === 'orbit' ? 3 : 6));
-  drone.pos.lerp(pos, k);
+  if (mode === 'orbit') {
+    // hoch geht es zügig, herunter gemächlich (sonst hüpft die Kamera bei jedem Lkw)
+    const y = drone.pos.y + (pos.y - drone.pos.y) * (1 - Math.exp(-dt * (pos.y > drone.pos.y ? 4 : 1.5)));
+    drone.pos.lerp(pos, k);
+    drone.pos.y = y;
+    liftOverVehicles(drone.pos, p);
+  } else drone.pos.lerp(pos, k);
   drone.look.lerp(look, k);
   camera.position.copy(drone.pos);
   if (cockpit.shake > 0) camera.position.y += Math.sin(stateT * 60) * cockpit.shake * 0.08;

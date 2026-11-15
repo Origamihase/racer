@@ -1,8 +1,11 @@
 // Dinge auf der Fahrbahn: Lade-Ringe (Akku), Bananensaft (ja!) und Koriander (nein!).
 import * as THREE from 'three';
 import { W } from '../curve.js';
-import { ROAD, softDotTexture, roundRect } from '../textures.js';
-import { rand, pick } from '../util.js';
+import { ROAD, roundRect } from '../textures.js';
+import { rand, pick, lerp } from '../util.js';
+
+// Eingesammelt: so lange hüpft das Teil vor der Motorhaube hoch und schrumpft weg
+const TAKE_TIME = 0.4;
 
 function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas');
@@ -131,6 +134,41 @@ function corianderTexture() {
   });
 }
 
+/**
+ * Weicher Schein hinter den Teilen. Läuft nach unten früher aus als nach oben: die Fläche steht
+ * senkrecht und reicht unter die Fahrbahn, ein runder Schein würde dort mit harter Kante abgeschnitten.
+ * Bei allen drei Teilen liegt die Fahrbahn etwa 14 % über der Unterkante der Fläche.
+ */
+function glowTexture() {
+  const S = 128;
+  const c = document.createElement('canvas');
+  c.width = S;
+  c.height = S;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(S, S);
+  const smooth = (a, b, v) => {
+    const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  for (let y = 0; y < S; y++) {
+    // v: 0 an der Unterkante, 1 oben (Canvas-Zeile 0 ist oben)
+    const v = 1 - (y + 0.5) / S;
+    const fade = smooth(0.2, 0.45, v);
+    for (let x = 0; x < S; x++) {
+      const r = Math.hypot((x + 0.5) / S - 0.5, v - 0.5) * 2;
+      // wie softDotTexture: 1 in der Mitte, 0,4 auf halbem Weg, 0 am Rand
+      const base = r < 0.5 ? 1 - 1.2 * r : Math.max(0, 0.4 * (1 - (r - 0.5) / 0.5));
+      const k = (y * S + x) * 4;
+      img.data[k] = img.data[k + 1] = img.data[k + 2] = 255;
+      img.data[k + 3] = Math.round(255 * base * fade);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function boltTexture() {
   return canvasTexture(256, 256, (ctx, w, h) => {
     ctx.translate(w / 2, h / 2);
@@ -162,7 +200,7 @@ export class Pickups {
     scene.add(this.group);
     this.items = [];
     this.pool = { charge: [], banana: [], koriander: [] };
-    const glow = softDotTexture();
+    const glow = glowTexture();
     this.mats = {
       ring: W.basic({ color: new THREE.Color(0.25, 2.2, 0.9), toneMapped: true }),
       bolt: W.basic({ map: boltTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide }),
@@ -226,7 +264,7 @@ export class Pickups {
     obj.userData.inUse = true;
     obj.visible = true;
     obj.scale.setScalar(1);
-    const it = { type, s, x: ROAD.laneCenter(lane), lane, obj, taken: false, fade: 0, phase: Math.random() * 6 };
+    const it = { type, s, x: ROAD.laneCenter(lane), lane, obj, taken: false, fade: 0, ahead: 0, phase: Math.random() * 6 };
     this.items.push(it);
     return it;
   }
@@ -252,29 +290,39 @@ export class Pickups {
     const got = [];
     const keep = [];
     for (const it of this.items) {
+      if (!it.taken && collect && Math.abs(it.s - player.s) < 2.7 && Math.abs(it.x - player.x) < 1.55) {
+        it.taken = true;
+        // nie hinter die Stoßstange (bei hohem Tempo liegt zwischen zwei Bildern gut ein Meter)
+        it.ahead = Math.max(it.s - player.s, 2.5);
+        got.push(it);
+      } else if (it.taken) it.fade += dt;
+      if (it.taken) {
+        // fährt mit dem Auto mit (bleibt vor der Motorhaube), statt stehen zu bleiben und
+        // durch Cockpit bzw. Drohnenkamera zu fliegen
+        it.s = player.s + it.ahead + 1.2 * Math.min(1, it.fade / TAKE_TIME);
+      }
       const rel = it.s - player.s;
-      if (rel < -30 || (it.taken && it.fade > 0.4)) {
+      if (rel < -30 || (it.taken && it.fade > TAKE_TIME)) {
         it.obj.visible = false;
         it.obj.userData.inUse = false;
         continue;
       }
       keep.push(it);
       const o = it.obj;
-      o.position.set(it.x, Math.sin(t * 2.2 + it.phase) * 0.08, -rel);
+      let x = it.x;
+      let y = Math.sin(t * 2.2 + it.phase) * 0.08;
+      if (it.taken) {
+        // hüpft hoch, rückt zur Wagenmitte und schrumpft dabei weg
+        const k = Math.min(1, it.fade / TAKE_TIME);
+        x = lerp(it.x, player.x, k);
+        y += 1.4 * (1 - (1 - k) * (1 - k));
+        o.scale.setScalar(Math.max(0.001, (1 - k) * (1 + 0.25 * Math.sin(k * Math.PI))));
+      }
+      o.position.set(x, y, -rel);
       if (o.userData.spin) o.userData.spin.rotation.y = t * 1.8 + it.phase;
       // zur Kamera drehen (nur um die Hochachse)
-      const yaw = Math.atan2(camera.position.x - it.x, camera.position.z + rel);
+      const yaw = Math.atan2(camera.position.x - x, camera.position.z + rel);
       for (const f of o.userData.face) f.rotation.y = yaw;
-      if (!it.taken) {
-        if (collect && Math.abs(rel) < 2.7 && Math.abs(it.x - player.x) < 1.55) {
-          it.taken = true;
-          got.push(it);
-        }
-      } else {
-        it.fade += dt;
-        o.scale.setScalar(1 + it.fade * 3);
-        o.position.y += it.fade * 4;
-      }
     }
     this.items = keep;
     return got;
