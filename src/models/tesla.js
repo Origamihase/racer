@@ -1,0 +1,531 @@
+// Schwarzer Tesla Model 3 Long Range AWD (stilisiert, ohne Markenlogos) mit Mini Adam am Steuer.
+// Wird für den Kameraschwenk beim Start, die Drohnenkamera und den Titelbildschirm gebraucht.
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { W } from '../curve.js';
+import { plateTexture, aeroWheelTexture, liveLogoTexture, contactShadowTexture } from '../textures.js';
+import { buildMiniAdam } from './miniAdam.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { loft, loftPoint, sideArches, surfacePatch, curve1, withArches, tireGeometry, discX, boxAt, mirrorShape, mirrorHousingGeometry } from './loft.js';
+
+export const TESLA = {
+  length: 4.69,
+  width: 1.85,
+  height: 1.443,
+  wheelR: 0.335,
+  frontAxleZ: 0.84 - 4.69 / 2,
+  rearAxleZ: 3.715 - 4.69 / 2,
+  trackHalf: 0.79,
+  plate: 'F-LV 333',
+};
+
+// Augenposition des Fahrers (Fahrzeug-Koordinaten, vorne = -z)
+export const DRIVER_EYE = new THREE.Vector3(-0.37, 1.2, 0.27);
+
+const L = TESLA.length;
+const ARCH_U = [0.84, 3.715];
+
+// Seitenlinie: Oberkante (Motorhaube → Gürtellinie → Kofferraum)
+const topLine = curve1([
+  [0, 0.5], [0.03, 0.56], [0.1, 0.625], [0.2, 0.675], [0.45, 0.73], [0.8, 0.79], [1.2, 0.86], [1.52, 0.92],
+  [2.4, 0.965], [3.3, 0.995], [3.95, 1.03], [4.25, 1.05], [4.55, 1.055], [4.64, 1.04], [4.69, 0.95],
+]);
+const bottomBase = curve1([[0, 0.31], [0.06, 0.22], [0.15, 0.18], [0.5, 0.17], [4.3, 0.18], [4.6, 0.25], [4.69, 0.42]]);
+const bottomLine = withArches(bottomBase, ARCH_U, 0.405, 0.335);
+const halfWidth = curve1([
+  [0, 0.6], [0.08, 0.77], [0.25, 0.86], [0.6, 0.905], [1.2, 0.925], [3.6, 0.925], [4.3, 0.9], [4.6, 0.845], [4.69, 0.77],
+]);
+// Glaskuppel (Frontscheibe, Glasdach, Heckscheibe – beim Model 3 fast alles Glas)
+const glassTop = curve1([
+  [1.48, 0.93], [1.7, 1.04], [2.0, 1.2], [2.25, 1.35], [2.5, 1.415], [2.8, 1.44], [3.1, 1.44], [3.4, 1.415],
+  [3.7, 1.3], [3.95, 1.17], [4.15, 1.075], [4.24, 1.045],
+]);
+// zum Heck hin schmaler (wie beim echten Wagen): sonst steht die Glaskuppel über die Schulter hinaus
+const glassHalf = curve1([[1.48, 0.8], [1.8, 0.84], [2.3, 0.8], [2.9, 0.74], [3.5, 0.7], [4.0, 0.63], [4.24, 0.57]]);
+
+function uToZ(u) {
+  return u - L / 2;
+}
+
+// Karosserie und Glas als Loft-Beschreibung (für Geometrie und für Punkte auf der Oberfläche)
+const BODY = {
+  w: halfWidth, b: bottomBase, t: topLine, tw: 0.9, bw: 0.94, n: 4.6, L,
+  // Radläufe nur an den Seiten ausschneiden, der Unterboden bleibt geschlossen
+  bx: sideArches(bottomLine, 0.48, 0.7),
+};
+const GLASS_N = 3.2;
+const GLASS_TW = 0.76;
+const GLASS = { w: glassHalf, b: (u) => topLine(u) - 0.05, t: glassTop, tw: GLASS_TW, bw: 1, n: GLASS_N, L };
+const bodyPoint = (u, phi, target) => loftPoint(BODY, u, phi, target);
+// Karosserie ohne Radlauf-Ausschnitt: Umriss für die Stirnwände in den Radläufen
+const BODY_UNCUT = { ...BODY, bx: null };
+
+/**
+ * Stirnwand im Radlauf bei u (Seite s): von der Innenwand (x = 0,415) bis zur Außenhaut und vom
+ * Unterboden bis knapp über die Radmitte. Folgt dem gerundeten Querschnitt, ragt also nirgends heraus.
+ */
+function archEndWall(u, s, xi = 0.415, yTop = 0.345) {
+  const p = new THREE.Vector3();
+  const pts = [];
+  let prev = null;
+  for (let i = 0; i <= 96; i++) {
+    loftPoint(BODY_UNCUT, u, -Math.PI / 2 + (i / 96) * (Math.PI / 2), p);
+    // ein paar Millimeter nach innen, die Loft-Fläche zwischen den Querschnitten ist etwas flacher
+    const cur = [p.x - 0.005, p.y + 0.003];
+    if (prev) {
+      if (prev[0] < xi && cur[0] >= xi) {
+        const k = (xi - prev[0]) / (cur[0] - prev[0]);
+        pts.push([xi, prev[1] + k * (cur[1] - prev[1])]);
+      }
+      if (cur[1] >= yTop) {
+        const k = (yTop - prev[1]) / (cur[1] - prev[1]);
+        pts.push([prev[0] + k * (cur[0] - prev[0]), yTop]);
+        break;
+      }
+      if (cur[0] >= xi) pts.push(cur);
+    }
+    prev = cur;
+  }
+  pts.push([xi, yTop]);
+  const g = new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(s * x, y))));
+  g.translate(0, 0, uToZ(u));
+  return g;
+}
+const glassPoint = (u, phi, target) => loftPoint(GLASS, u, phi, target);
+const lerp = (a, b, t) => a + (b - a) * t;
+/** Ab diesem Winkel beginnt das schwarze Glasdach (darunter die Seitenscheiben). */
+const ROOF_PHI = 0.34;
+/** phi für die linke (s = -1) bzw. rechte (s = 1) Fahrzeugseite. */
+const sidePhi = (s, phi) => (s > 0 ? phi : Math.PI - phi);
+
+// Scheinwerfer-Umriss (rechte Seite) als Ober- und Unterkante im (u, phi)-Raum der Karosserie,
+// vom inneren Ende an der Front (t = 0) bis zur Spitze am Kotflügel (t = 1)
+const HEAD_UP = [[0.05, 1.24], [0.085, 1.0], [0.13, 0.86], [0.24, 0.8], [0.4, 0.76]];
+const HEAD_LO = [[0.03, 1.2], [0.025, 0.86], [0.05, 0.54], [0.16, 0.55], [0.4, 0.7]];
+function polyAt(pts, t) {
+  const f = Math.min(pts.length - 1.000001, Math.max(0, t * (pts.length - 1)));
+  const i = Math.floor(f);
+  const k = f - i;
+  const p0 = pts[Math.max(0, i - 1)];
+  const p1 = pts[i];
+  const p2 = pts[i + 1];
+  const p3 = pts[Math.min(pts.length - 1, i + 2)];
+  const cr = (j) => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * k + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * k * k + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * k * k * k);
+  return [cr(0), cr(1)];
+}
+function headUV(a, t) {
+  const up = polyAt(HEAD_UP, t);
+  const lo = polyAt(HEAD_LO, t);
+  return [lerp(lo[0], up[0], a), lerp(lo[1], up[1], a)];
+}
+
+/** Höhe der Karosserie-Oberseite an Position (u, x) (für Dinge, die auf dem Blech liegen). */
+function bodyTopY(u, x) {
+  let lo = 0;
+  let hi = Math.PI / 2;
+  const p = new THREE.Vector3();
+  const ax = Math.abs(x);
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    bodyPoint(u, mid, p);
+    if (p.x > ax) lo = mid;
+    else hi = mid;
+  }
+  return bodyPoint(u, (lo + hi) / 2, p).y;
+}
+
+/** Höhe des Glasdachs an Position (u, x) (für Dinge, die auf dem Dach stehen). */
+function roofY(u, x) {
+  let lo = ROOF_PHI;
+  let hi = Math.PI / 2;
+  const p = new THREE.Vector3();
+  const ax = Math.abs(x);
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    glassPoint(u, mid, p);
+    if (p.x > ax) lo = mid;
+    else hi = mid;
+  }
+  return glassPoint(u, (lo + hi) / 2, p).y;
+}
+
+export function buildTesla() {
+  const root = new THREE.Group();
+  root.name = 'Tesla';
+
+  const paint = W.phys({
+    color: 0x060708,
+    metalness: 0.5,
+    roughness: 0.34,
+    clearcoat: 1,
+    clearcoatRoughness: 0.12,
+    envMapIntensity: 1.25,
+  });
+  const glass = W.phys({
+    color: 0x05080c,
+    metalness: 0.25,
+    roughness: 0.04,
+    transparent: true,
+    opacity: 0.74,
+    envMapIntensity: 2.6,
+    depthWrite: false,
+  });
+  const dark = W.std({ color: 0x0b0b0c, roughness: 0.8, side: THREE.DoubleSide });
+  const plastic = W.std({ color: 0x141516, roughness: 0.55 });
+  const pianoBlack = W.phys({ color: 0x030304, metalness: 0.3, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08, side: THREE.DoubleSide });
+  const headMat = W.std({ color: 0xc8d6e6, emissive: 0xeaf3ff, emissiveIntensity: 1.1, roughness: 0.15, metalness: 0.2, side: THREE.DoubleSide });
+  const lampChrome = W.phys({ color: 0xaeb6bf, metalness: 1, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.04, side: THREE.DoubleSide });
+  const lampLens = W.phys({ color: 0x0c1016, metalness: 0.5, roughness: 0.1, clearcoat: 1, side: THREE.DoubleSide });
+  const tailMat = W.std({ color: 0x3a0505, emissive: 0xff0000, emissiveIntensity: 0.2, roughness: 0.25, side: THREE.DoubleSide });
+  const interior = W.std({ color: 0x1b1b1e, roughness: 0.85 });
+  const screenMat = W.basic({ color: 0x7fa4c8 });
+
+  // --- Karosserie --------------------------------------------------------
+  // Bug und Heck mit gewölbter Schattierung (capDome), sonst wirkt das Heck wie ein schwarzes Loch
+  const bodyGeo = loft({ u0: 0, u1: L, ...BODY, segs: 150, ring: 44, H: 1.5, capDome: 0.8 });
+  const body = new THREE.Mesh(bodyGeo, paint);
+  body.castShadow = true;
+  root.add(body);
+
+  const glassGeo = loft({ u0: 1.48, u1: 4.24, ...GLASS, segs: 70, ring: 32, H: 1.5 });
+  const glassMesh = new THREE.Mesh(glassGeo, glass);
+  glassMesh.renderOrder = 2;
+  root.add(glassMesh);
+
+  // Säulen, Fensterleisten und Glasdach liegen als flache Flächen direkt auf der Glaskuppel
+  // (keine Rohre mehr – so sieht es aus wie beim echten Model 3 und nicht wie ein Überrollbügel).
+  const trim = [];
+  const patchOnGlass = (uv, opts) => surfacePatch(glassPoint, uv, opts);
+  for (const s of [-1, 1]) {
+    // A-Säule: von der Spiegelecke schräg nach oben bis zur Dachkante
+    trim.push(patchOnGlass((a, t) => [lerp(lerp(1.5, 2.25, t), lerp(1.6, 2.36, t), a), sidePhi(s, lerp(-0.74, ROOF_PHI + 0.04, t))], { ns: 2, nt: 18, lift: 0.005 }));
+    // B-Säule
+    trim.push(patchOnGlass((a, t) => [lerp(2.76, 2.88, a), sidePhi(s, lerp(-0.74, ROOF_PHI + 0.04, t))], { ns: 2, nt: 14, lift: 0.005 }));
+    // C-Säule: breite Fläche hinter dem hinteren Seitenfenster (Fließheck)
+    trim.push(patchOnGlass((a, t) => [lerp(lerp(4.0, 3.62, t), 4.24, a), sidePhi(s, lerp(-0.74, ROOF_PHI + 0.04, t))], { ns: 8, nt: 14, lift: 0.005 }));
+    // Fensterleiste unten (deckt den Übergang Glas/Karosserie ab)
+    trim.push(patchOnGlass((a, t) => [lerp(1.52, 4.1, t), sidePhi(s, lerp(-0.86, -0.66, a))], { ns: 2, nt: 30, lift: 0.004 }));
+  }
+  // Getöntes Glasdach mit Heckscheibe: von außen schwarz glänzend
+  trim.push(patchOnGlass((a, t) => [lerp(2.3, 4.24, t), lerp(ROOF_PHI, Math.PI - ROOF_PHI, a)], { ns: 18, nt: 34, lift: 0.004 }));
+  const trimMesh = new THREE.Mesh(mergeGeometries(trim), pianoBlack);
+  trimMesh.castShadow = true;
+  root.add(trimMesh);
+
+  // Radhäuser: dunkle Innenkotflügel über den Reifen (nur außen, wo die Radläufe ausgeschnitten sind)
+  // (bis weit nach innen und innen mit einer Wand verschlossen, damit man nicht in die Karosserie sieht)
+  // Radius knapp innerhalb des Radlauf-Ausschnitts (0,405): auf genau demselben Zylinder flimmerten
+  // Innenkotflügel und die Kante des Blechs ineinander (Streifen im Radlauf, Kammlinien auf dem Lack)
+  const LINER_R = 0.395;
+  const wellParts = [];
+  for (const u of ARCH_U) {
+    for (const s of [-1, 1]) {
+      const liner = new THREE.CylinderGeometry(LINER_R, LINER_R, 0.5, 22, 1, true, 0, Math.PI);
+      liner.rotateZ(Math.PI / 2);
+      liner.translate(s * 0.665, 0.335, uToZ(u));
+      const wall = new THREE.CircleGeometry(LINER_R, 22, 0, Math.PI);
+      wall.rotateY(Math.PI / 2);
+      wall.translate(s * 0.415, 0.335, uToZ(u));
+      wellParts.push(liner, wall);
+      // senkrechte Stirnwände vorne und hinten im Radlauf (unterhalb der Radmitte), sonst glänzt dort Lack;
+      // sie folgen dem Querschnitt der Karosserie, damit unten nichts wie ein Schmutzfänger heraussteht
+      for (const e of [-1, 1]) wellParts.push(archEndWall(u + e * (0.405 - 0.012), s));
+    }
+  }
+  root.add(new THREE.Mesh(mergeGeometries(wellParts.map((g) => (g.index ? g.toNonIndexed() : g))), dark));
+
+  // Lufteinlass vorne und Diffusor hinten: flache, abgerundete Schlitze auf Bug- und Heckfläche
+  // (keine Klötze, die unter der Nase hängen)
+  const slot = (w, h, r) => {
+    const sh = new THREE.Shape();
+    sh.moveTo(-w / 2 + r, -h / 2);
+    sh.lineTo(w / 2 - r, -h / 2);
+    sh.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
+    sh.lineTo(w / 2, h / 2 - r);
+    sh.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
+    sh.lineTo(-w / 2 + r, h / 2);
+    sh.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
+    sh.lineTo(-w / 2, -h / 2 + r);
+    sh.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
+    const g = new THREE.ShapeGeometry(sh, 6);
+    g.deleteAttribute('uv');
+    return g;
+  };
+  const intake = slot(0.8, 0.03, 0.015);
+  intake.rotateY(Math.PI);
+  intake.translate(0, 0.333, uToZ(0) - 0.003);
+  const diffuser = slot(1.08, 0.07, 0.03);
+  diffuser.translate(0, 0.475, uToZ(L) + 0.003);
+  root.add(new THREE.Mesh(mergeGeometries([intake, diffuser]), plastic));
+
+  // Scheinwerfer (mandelförmig, um die Ecke gezogen) und Rückleuchten (um die Ecke) – liegen auf der Karosserie
+  const patchOnBody = (uv, opts) => surfacePatch(bodyPoint, uv, opts);
+  const housings = [];
+  const lenses = [];
+  const drls = [];
+  const tails = [];
+  for (const s of [-1, 1]) {
+    const head = (a, t) => {
+      const [u, ph] = headUV(a, t);
+      return [u, sidePhi(s, ph)];
+    };
+    // Chrom-Reflektor unter klarem Glas, darin zwei dunkle Linsen, oben das LED-Tagfahrlicht
+    housings.push(patchOnBody(head, { ns: 8, nt: 24, lift: 0.004 }));
+    for (const [tc, rt] of [[0.34, 0.1], [0.58, 0.11]]) {
+      lenses.push(patchOnBody((r, ang) => head(0.4 + 0.24 * r * Math.cos(ang * Math.PI * 2), tc + rt * r * Math.sin(ang * Math.PI * 2)), { ns: 3, nt: 18, lift: 0.006 }));
+    }
+    drls.push(patchOnBody((a, t) => head(lerp(0.8, 0.94, a), lerp(0.08, 0.95, t)), { ns: 2, nt: 22, lift: 0.007 }));
+    tails.push(patchOnBody((a, t) => [lerp(4.4, 4.672, t), sidePhi(s, lerp(lerp(0.5, 0.36, t), lerp(0.78, 1.0, t), a))], { ns: 6, nt: 14, lift: 0.006 }));
+  }
+  root.add(new THREE.Mesh(mergeGeometries(housings), lampChrome));
+  root.add(new THREE.Mesh(mergeGeometries(lenses), lampLens));
+  root.add(new THREE.Mesh(mergeGeometries(drls), headMat));
+  const tailMesh = new THREE.Mesh(mergeGeometries(tails), tailMat);
+  root.add(tailMesh);
+
+  // Kennzeichen vorne und hinten
+  const plateMat = W.std({ map: plateTexture(TESLA.plate), roughness: 0.5 });
+  const plateGeo = new THREE.PlaneGeometry(0.52, 0.112);
+  const plateF = new THREE.Mesh(plateGeo, plateMat);
+  plateF.position.set(0, 0.415, uToZ(0) - 0.012);
+  plateF.rotation.y = Math.PI;
+  const plateR = new THREE.Mesh(plateGeo, plateMat);
+  plateR.position.set(0, 0.62, uToZ(L) + 0.004);
+  root.add(plateF, plateR);
+
+  // LIVE-Aufkleber auf dem Kofferraumdeckel (Fan-Detail)
+  // folgt der Wölbung des Deckels (nicht halb versunken, nicht schwebend); Bildoberkante zeigt nach vorne
+  const stickerGeo = new THREE.PlaneGeometry(0.34, 0.34, 8, 8);
+  const sp = stickerGeo.attributes.position;
+  for (let i = 0; i < sp.count; i++) {
+    const x = sp.getX(i);
+    const u = 4.44 - sp.getY(i);
+    sp.setXYZ(i, x, bodyTopY(u, x) + 0.003, uToZ(u));
+  }
+  stickerGeo.computeVertexNormals();
+  const sticker = new THREE.Mesh(
+    stickerGeo,
+    W.std({
+      map: liveLogoTexture({ w: 256, h: 256 }), transparent: true, roughness: 0.4, alphaTest: 0.3,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    }),
+  );
+  root.add(sticker);
+
+  // Außenspiegel: Gehäuse in Wagenfarbe (nach vorne gewölbt), Spiegelglas hinten bündig, kurzer Fuß zur Tür
+  const mirrorParts = [];
+  const mirrorGlass = [];
+  const mz = uToZ(1.8);
+  for (const s of [-1, 1]) {
+    const cx = s * 1.0;
+    const cy = 1.0;
+    // Model-3-Form wie im Cockpit: Schale nach vorne, Glas mit schmalem Rand hinten
+    const h = mirrorHousingGeometry(s);
+    h.translate(cx, cy, mz);
+    mirrorParts.push(h);
+    // Fuß zur Tür – liegt ganz hinter der Glasfläche und steckt nicht durch das Glas
+    mirrorParts.push(boxAt(0.1, 0.032, 0.045, s * 0.86, 0.968, mz - 0.045, 0, 0, s * 0.22));
+    const g = new THREE.ShapeGeometry(mirrorShape(0.9, s), 10);
+    g.deleteAttribute('uv');
+    g.translate(cx, cy, mz + 0.002);
+    mirrorGlass.push(g);
+  }
+  const mirrorGeo = mergeGeometries(mirrorParts.map((g) => (g.index ? g.toNonIndexed() : g)));
+  root.add(new THREE.Mesh(mirrorGeo, paint));
+  root.add(new THREE.Mesh(mergeGeometries(mirrorGlass), W.std({ color: 0x9fb2c4, metalness: 1, roughness: 0.06 })));
+
+  // Räder: Reifen + Aero-Radkappen (drehen sich)
+  const tireGeo = tireGeometry(TESLA.wheelR, 0.235, 24);
+  const tireMat = W.std({ color: 0x111111, roughness: 0.9 });
+  const aeroMat = W.std({ map: aeroWheelTexture(), roughness: 0.45, metalness: 0.5 });
+  const wheels = [];
+  for (const z of [TESLA.frontAxleZ, TESLA.rearAxleZ]) {
+    for (const s of [-1, 1]) {
+      const wheel = new THREE.Group();
+      // erst lenken (Hochachse), dann drehen – sonst taumelt das gelenkte Rad beim Rollen
+      wheel.rotation.order = 'YXZ';
+      wheel.position.set(s * TESLA.trackHalf, TESLA.wheelR, z);
+      const tire = new THREE.Mesh(tireGeo, tireMat);
+      tire.castShadow = true;
+      const cap = new THREE.Mesh(discX(TESLA.wheelR * 0.7, s * 0.119, 0, 0, s), aeroMat);
+      wheel.add(tire, cap);
+      root.add(wheel);
+      wheels.push(wheel);
+    }
+  }
+
+  // --- Innenraum -------------------------------------------------------
+  const rbox = (w, h, d, x, y, z, rx = 0, r = 0.03) => {
+    const g = new RoundedBoxGeometry(w, h, d, 3, Math.min(r, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001));
+    if (rx) g.rotateX(rx);
+    g.translate(x, y, z);
+    return g;
+  };
+  const inner = [];
+  // Armaturenbrett
+  // (schmaler und tiefer als früher: die oberen Ecken stachen an der A-Säule durchs Blech)
+  inner.push(rbox(1.3, 0.18, 0.42, 0, 0.79, uToZ(1.74), 0, 0.05));
+  // Sitze (gepolstert). Außen nicht weiter als |x| 0,52: Unter den Seitenfenstern steigt die Unterkante
+  // des Glases nach außen über die Gürtellinie, was dort hineinragt, liegt sichtbar auf dem Türblech
+  for (const s of [-1, 1]) {
+    inner.push(rbox(0.42, 0.12, 0.5, s * 0.31, 0.5, uToZ(2.72), 0, 0.04));
+    inner.push(rbox(0.42, 0.64, 0.12, s * 0.31, 0.86, uToZ(3.0), -0.2, 0.05));
+    inner.push(rbox(0.27, 0.19, 0.1, s * 0.31, 1.25, uToZ(3.07), -0.1, 0.045));
+  }
+  inner.push(rbox(1.36, 0.16, 0.5, 0, 0.5, uToZ(3.62), 0, 0.04));
+  inner.push(rbox(1.12, 0.55, 0.12, 0, 0.82, uToZ(3.92), -0.18, 0.05));
+  inner.push(rbox(0.22, 0.2, 0.8, 0, 0.55, uToZ(2.6), 0, 0.04)); // Mittelkonsole
+  const interiorMesh = new THREE.Mesh(mergeGeometries(inner), interior);
+  root.add(interiorMesh);
+  // Mittelbildschirm (leuchtet)
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.33, 0.2), screenMat);
+  screen.position.set(0, 1.0, uToZ(1.93));
+  screen.rotation.x = -0.2;
+  root.add(screen);
+  // Lenkrad mit Nabe und Lenksäule zum Armaturenbrett (dort, wo Mini Adams Hände hinreichen)
+  // Fahrerplatz etwas zur Mitte gerückt (wie die Sitze): sonst ragen Mini Adams Schulter und beim
+  // Winken sein Ärmel auf der Fensterseite unter dem Seitenfenster heraus aufs Türblech
+  const SEAT_X = -0.3;
+  const wheelRing = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.022, 10, 28), interior);
+  wheelRing.position.set(SEAT_X, 0.84, uToZ(2.4));
+  wheelRing.rotation.x = -0.35;
+  root.add(wheelRing);
+  const wheelAxis = new THREE.Vector3(0, 0, 1).applyEuler(wheelRing.rotation);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.04, 18), interior);
+  hub.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), wheelAxis);
+  hub.position.copy(wheelRing.position).addScaledVector(wheelAxis, -0.01);
+  const column = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.036, 0.46, 12), interior);
+  column.quaternion.copy(hub.quaternion);
+  column.position.copy(wheelRing.position).addScaledVector(wheelAxis, -0.25);
+  root.add(hub, column);
+
+  // Mini Adam auf einem Kissen hinterm Steuer
+  const adam = buildMiniAdam({ curved: true });
+  adam.setPose('drive');
+  adam.root.position.set(SEAT_X, 0.4, uToZ(2.62));
+  adam.root.rotation.y = Math.PI;
+  root.add(adam.root);
+  adam.root.updateMatrix();
+  wheelRing.updateMatrix();
+  adam.setWheel(adam.root.matrix.clone().invert().multiply(wheelRing.matrix), 0.17);
+  // zwei Kissen, damit Mini Adam über das Lenkrad schauen kann
+  const cushion = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2, 0.22, 0.07, 18),
+    W.phys({ color: 0xb0122b, roughness: 0.9, sheen: 1, sheenColor: new THREE.Color(0xff6680) }),
+  );
+  cushion.position.set(SEAT_X, 0.59, uToZ(2.72));
+  root.add(cushion);
+  const cushion2 = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18, 0.2, 0.07, 18),
+    W.phys({ color: 0x1d4fa0, roughness: 0.9, sheen: 1, sheenColor: new THREE.Color(0x77a8ff) }),
+  );
+  cushion2.position.set(SEAT_X, 0.655, uToZ(2.71));
+  root.add(cushion2);
+
+  // Innenlicht (nur beim Kameraschwenk hell, damit man Mini Adam gut sieht): ein Spot von vorne oben
+  // auf ihn – eine Punktleuchte schien durchs Glas auf Motorhaube und Türen (helle Flecken im Lack)
+  const cabinLight = new THREE.SpotLight(0xfff1dd, 0, 2.2, 0.62, 0.6, 1.5);
+  cabinLight.position.set(SEAT_X, 1.24, uToZ(2.24));
+  cabinLight.target.position.set(SEAT_X, 0.96, uToZ(2.66));
+  root.add(cabinLight, cabinLight.target);
+
+  // weicher Bodenschatten (sonst schwebt der Wagen, vor allem bei Regen ohne Sonnenschatten)
+  const groundMat = W.basic({ color: 0x000000, map: contactShadowTexture(), transparent: true, opacity: 0.55, depthWrite: false });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 5.15), groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(0, 0.02, 0);
+  ground.renderOrder = -1;
+  root.add(ground);
+
+  // Stream-Kamera vorne auf dem Glasdach (Saugfuß) + drei Mobilfunkantennen auf Magnetfüßen
+  // (Telekom, Vodafone, O₂ gebündelt)
+  const gear = [];
+  const camU = 2.5;
+  const camY = roofY(camU, 0);
+  const suction = new THREE.CylinderGeometry(0.05, 0.055, 0.012, 20);
+  suction.translate(0, camY + 0.004, uToZ(camU));
+  gear.push(suction);
+  const neck = new THREE.CylinderGeometry(0.012, 0.016, 0.03, 10);
+  neck.translate(0, camY + 0.024, uToZ(camU));
+  gear.push(neck);
+  gear.push(rbox(0.12, 0.068, 0.1, 0, camY + 0.07, uToZ(camU), 0, 0.012));
+  const antU = 3.45;
+  for (let i = 0; i < 3; i++) {
+    const x = -0.18 + i * 0.18;
+    const y = roofY(antU, x);
+    const foot = new THREE.CylinderGeometry(0.03, 0.034, 0.014, 16);
+    foot.translate(x, y + 0.005, uToZ(antU));
+    gear.push(foot);
+    const rod = new THREE.CylinderGeometry(0.005, 0.009, 0.17, 8);
+    rod.translate(0, 0.085, 0);
+    rod.rotateX(0.22); // leicht nach hinten geneigt
+    rod.translate(x, y + 0.01, uToZ(antU));
+    gear.push(rod);
+    const tip = new THREE.SphereGeometry(0.009, 8, 6);
+    tip.translate(0, 0.17, 0);
+    tip.rotateX(0.22);
+    tip.translate(x, y + 0.01, uToZ(antU));
+    gear.push(tip);
+  }
+  root.add(new THREE.Mesh(mergeGeometries(gear.map((g) => (g.index ? g.toNonIndexed() : g))), plastic));
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.025, 14), W.std({ color: 0x223344, metalness: 0.9, roughness: 0.1 }));
+  lens.position.set(0, camY + 0.07, uToZ(camU) - 0.051);
+  lens.rotation.y = Math.PI;
+  root.add(lens);
+  const recLed = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 6), W.basic({ color: 0xff2222 }));
+  recLed.position.set(0.04, camY + 0.092, uToZ(camU) - 0.048);
+  root.add(recLed);
+
+  // Starlink-Schüssel (Shop)
+  const starlink = new THREE.Group();
+  const dishMat = W.std({ color: 0xf2f2f2, roughness: 0.5 });
+  const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.27, 0.035, 28), dishMat);
+  dish.rotation.x = -0.35;
+  dish.position.y = 0.16;
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.16, 8), dishMat);
+  mast.position.y = 0.08;
+  starlink.add(dish, mast);
+  starlink.position.set(0, roofY(3.05, 0), uToZ(3.05));
+  starlink.visible = false;
+  root.add(starlink);
+
+  root.traverse((o) => {
+    if (o.isMesh && o !== glassMesh && o !== ground) o.castShadow = true;
+  });
+
+  let wheelAngle = 0;
+  let brake = false;
+
+  return {
+    root,
+    adam,
+    glass,
+    wheels,
+    cabinLight,
+    recLed,
+    setStarlink(v) {
+      starlink.visible = !!v;
+    },
+    /** Bodenschatten: bei Regen kräftiger (die Sonne wirft dann kaum noch Schatten). */
+    setGroundShade(rain) {
+      groundMat.opacity = 0.55 + 0.3 * Math.min(1, Math.max(0, rain));
+    },
+    setVest(v) {
+      adam.setVest(v);
+    },
+    setBrake(b) {
+      if (b === brake) return;
+      brake = b;
+      // Rücklicht dunkelrot, Bremslicht hell: sonst sieht beides im Tonemapping gleich aus
+      tailMat.emissiveIntensity = b ? 0.95 : 0.2;
+    },
+    update(dt, speed, steer, t) {
+      wheelAngle -= (speed * dt) / TESLA.wheelR;
+      for (let i = 0; i < wheels.length; i++) {
+        wheels[i].rotation.x = wheelAngle;
+        if (i < 2) wheels[i].rotation.y = -steer * 0.35;
+      }
+      recLed.visible = Math.sin(t * 4) > -0.2;
+    },
+  };
+}

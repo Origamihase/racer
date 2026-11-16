@@ -1,71 +1,94 @@
-# Night Racer 3000
+# Mini Adam – Tesla-Navi ferngesteuert
 
-Ein HTML5-Highway-Racer im Synthwave-Look — fehlerfrei, hübsch und mit kaputtem Scheibenwischer.
+*Live-Eskalationen immer woanders!*
 
-## Features
+Ein liebevoller, leicht verrückter 3D-Autobahn-Racer für den Browser und ein Fan-Spiel rund um
+[SkylineTV LIVE](https://skylinetv.live/wiki/index.php?title=Hauptseite).
+Mini Adam (Plüsch, schwarze Cap, LIVE-Shirt, Mikrofon) sitzt am Steuer eines schwarzen
+**Tesla Model 3 Long Range AWD mit 75-kWh-Akku**. Du fährst aus der Cockpit-Ansicht über eine
+vierspurige Autobahn bei Tag, weichst dem Verkehr aus und schaffst so viel Strecke wie möglich.
+Der Chat steuert dabei das Navi fern.
 
-- Pseudo-3D-Straße mit weichen Kurven und Hügeln
-- Outrun/Synthwave-Optik: Mond, Sterne, Magenta-/Cyan-Rumble-Strips
-- Aurora-Borealis-Bänder am Himmel (häufiger sichtbar, dezent wabernd)
-- Sternschnuppen am Nachthimmel (zufällig, mit Schweif)
-- Große Straßenlaternen mit Lichtkegel auf den Boden
-- Dynamischer Verkehr: Sportwagen, LKW, Polizei mit Blaulicht, Geisterfahrer (mit Bissfaktor)
-- Korrekte Spurmitten (3-Lane) — kein Drauf-Fahren in den Standstreifen mehr
-- Rückspiegel mit Verkehr von hinten ("Objekte näher als sie erscheinen")
-- Eigene Motorhaube/Nase sichtbar (Synthwave-Hood mit Lufthutzen)
-- Cinematischer Regen in zwei Tiefenschichten, Tropfen am Glas, Wind-Drift
-- Defekter Scheibenwischer (klassischer Sweep, Sputter statt Wackeln) mit Sprüh-Witz
-- Outrun-Speed-Streifen vom Fluchtpunkt nach außen + weiche Magenta-/Cyan-Vignette
-- Mitlenkende Scheinwerfer — zwei separate Lichtkegel
-- Geglättete Lenkung (kein Snap, schnelle Selbst-Zentrierung)
-- Skid-Sound beim harten Lenken in Kurven
-- Crash-Funken & Reifenrauch beim Offroad-Trip
-- WebAudio: Motor, Hupe, Crash, Muh, Quietsch, Skid, Fanfare — mit Mute-Taste (M)
-- Über 90 witzige Schilder und 14 Easter Eggs (Kuh, UFO, Schneemann, Boombox, Ente, Palme, Pinguin, Wetterballon, Dino, Verkehrskegel, Yeti, Astronaut, Schaf, Roboter)
-- Schaden-System mit Selbstreparatur bei ruhigem Fahren
-- Trip-Odometer auf dem Cockpit (separate Distanz-Anzeige)
-- Highscore mit Vorher-Wert beim Übertreffen, automatisch gesichert bei Tab-Wechsel
-- 11 Score-Titel ("Sonntagsfahrer" bis "Neon-Götze")
-- Zufällige Kennzeichen mit Sprüchen (OPA, OMA, NEIN, JA, BMW, BAFÖG, ZEN, IKEA, KAKAO, NERD, YETI, MIAU, CRINGE …)
-- Konami-Code Easter Egg (↑↑↓↓←→←→BA → Goldener Modus mit Sternschnuppenregen)
-- "Mut zur Lücke" Score-Bonus beim knappen Vorbeifahren (mit Whoosh-Sound und +80-Pop)
-- Schwebende Score-Pops bei Bonus-Aktionen
-- Max-Speed-Tracking mit individueller Bewertung im Game-Over-Screen
-- Tier-Wechsel-Celebration mit Synthwave-Fanfare und Sternschnuppen
-- Bestdistanz-Tracking neben Highscore
-- Sichtbare Brems-Lichter auf der Motorhaube
-- Mond mit sanfter Lens-Flare und 3D-Halbschatten
-- Aurora-Borealis in 4 Schichten mit Smoothstep-Übergängen
-- Sternschnuppen mit glühendem Kopf
-- Tacho-Nadel-Vibration im Redline-Bereich
-- Frame-rate-stabile Physik (gleiches Verhalten bei 30/60/120 fps)
-- Respektiert `prefers-reduced-motion` Browser-Präferenz
-- Funktioniert auch bei deaktiviertem localStorage (Privacy-Mode)
-- Pause, Restart, Touch- und Tastatur-Steuerung
+## Spielen
+
+- **Online:** Nach dem Merge über GitHub Pages: <https://origamihase.github.io/racer/>
+  (Pages-Quelle: Branch `main`, Ordner `/docs`).
+- **Lokal:** `docs/index.html` einfach im Chrome öffnen (Doppelklick genügt, kein Server nötig).
+  Alternativ `npm run serve` und <http://localhost:8080> aufrufen.
+
+Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad und Touch werden unterstützt.
+
+## Worum geht's?
+
+- **Kameraschwenk zum Start:** Die Kamera fährt von außen an Mini Adam vorbei ins Cockpit.
+- **NOMI**, der Boardcomputer (schwarze Kugel mit zwei Augen auf dem Armaturenbrett), sagt ab und zu
+  **„Die linke Fahrspur ist freigeschaltet.“** Wer dann ganz links fährt, bekommt Bonusguthaben.
+- **„Das Navi-Ziel wurde geändert.“** Die Zuschauer überbieten sich mit Cent-Beträgen, das Navi rechnet
+  automatisch eine neue Route (Erlensee, Burg Hauneck, Megahub Lehrte, Siegen … eher nicht).
+  Wer ein Ziel erreicht, bekommt Guthaben.
+- **Regen für Könner:** Wer lange sauber fährt, bekommt Regen. Der automatische Scheibenwischer will
+  anspringen, zuckt aber nur über die Scheibe (Beta!). Mit <kbd>E</kbd> darf man selbst wischen,
+  was auch nicht immer klappt. Dafür gibt es Regenzulage.
+- **Akku und Blech:** Die Stream-Technik im Kofferraum zieht Strom, Lade-Ringe helfen.
+  Rempler kosten Karosserie-Punkte. Leerer Akku oder zu viel Blechschaden beendet die Fahrt.
+- **Live-Chat und Live-Bereich:** Spenden mit Alter-Skala, Sprachdurchsagen, gekaufte Rahmen
+  (Rosen, Rettich für 13,69 €, Pappkartons …), Funklöcher, Polizei Gifhorn, Blitzer mit Polaroid,
+  Brunnen und Elsa am Straßenrand, Bananensaft und Koriander.
+- **You had 5 Jobs:** Pro Fahrt fünf kleine Aufgaben, alle fünf geben einen Bonus.
+- **Tesla-Shop:** Mit dem Guthaben rüstest du den Tesla auf: Beschleunigung, Tempo-Freischaltung,
+  Akku-Puffer, Stream-Technik, Sportreifen, Plüsch-Polster, Wischer-Firmware (Beta), Megafon,
+  Starlink-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone.
+- **Abspann** mit Abrechnung, Statistik, Blitzerfotos und erlogener Berufsbezeichnung des Tages.
 
 ## Steuerung
 
-- `←` `→` (oder `A` `D`, oder Touch links/rechts) — Lenken
-- `↑` Vollgas (passiert automatisch)
-- `↓` (oder Touch links Mitte) — Bremse
-- `H` (oder Touch rechts Mitte) — Hupe
-- `M` — Audio stumm/laut (wird gespeichert)
-- `P` oder `Esc` — Pause
-- `Enter` / `Space` — Start oder Neustart
-- Konami: `↑↑↓↓←→←→BA` — Goldener Modus
+| Aktion | Tastatur | Gamepad | Touch |
+| --- | --- | --- | --- |
+| Lenken | ← → oder A D | Linker Stick | ◀ ▶ |
+| Strom geben | ↑ oder W | RT oder Steuerkreuz ↑ | Strom |
+| Bremsen | ↓ oder S | LT oder Steuerkreuz ↓ | Bremse |
+| Hupen (Brunnen und Elsa grüßen) | Leertaste | A | 📯 |
+| Scheibenwischer von Hand | E | X | 🌧️ |
+| Megafon (aus dem Shop) | H | Y | 📢 |
+| Kamera (Cockpit / Drohne) | V | B | 🎥 |
+| Chat ein/aus | C | – | – |
+| Ton aus | M | – | – |
+| Pause | Esc oder P | Start | ⏸ |
 
-## Lokal starten
+Spielstand, Guthaben, Upgrades und Bestwerte werden im Browser gespeichert (`localStorage`).
+In den Einstellungen lassen sich Ton, Sprachausgabe, Chat und Grafikqualität umstellen.
 
-1. Repository klonen
-2. `docs/index.html` im Browser öffnen (am einfachsten per `python3 -m http.server` im Repo-Root)
+## Entwicklung
 
-## Bereitstellung über GitHub Pages
+Der Quellcode liegt in `src/`, gebaut wird mit [esbuild](https://esbuild.github.io/) zu einer einzigen
+Datei `docs/game.js` (inklusive [three.js](https://threejs.org/), MIT-Lizenz). Dadurch läuft das Spiel
+auch direkt per `file://`.
 
-Die komplette Anwendung liegt als `docs/index.html`. Pages-Aktivierung:
+```bash
+npm install
+npm run build   # baut docs/game.js
+npm run dev     # baut bei jeder Änderung neu (mit Sourcemap)
+npm run serve   # startet einen kleinen Webserver auf Port 8080
+```
 
-1. `Settings → Pages` öffnen
-2. Unter **Source** `Deploy from a branch` wählen
-3. Branch `main`, Ordner `/docs`
-4. Speichern
+`docs/game.js` ist eingecheckt, damit GitHub Pages ohne Build-Schritt funktioniert.
+Nach Änderungen in `src/` bitte `npm run build` ausführen und die neue `docs/game.js` mit committen.
 
-Die `game.html` im Wurzelverzeichnis leitet automatisch nach `docs/index.html` weiter.
+| Ordner | Inhalt |
+| --- | --- |
+| `src/main.js` | Renderer, Kameras, Zustände (Titel, Kameraschwenk, Fahrt, Abspann), Hauptschleife |
+| `src/game/` | Spiellogik: Fahrphysik, Navi-Auktion, Ereignisse, Einsammelbares |
+| `src/world/` | Autobahn, Himmel, Landschaft, Verkehr (mit Spurwechseln) |
+| `src/models/` | Tesla, Mini Adam, Elsa, Fahrzeuge |
+| `src/cockpit/` | Cockpit, NOMI, Mittelbildschirm mit Navi |
+| `src/fx/` | Regen, Tropfen auf der Scheibe, zuckender Wischer, Bild-Effekte |
+| `src/ui/` | HUD, Chat, Menüs, Shop, Abspann |
+| `src/data.js` | Alle Texte, Navi-Ziele, Rahmen, Durchsagen und Shop-Artikel |
+
+Mit `?debug` in der Adresse gibt es `window.__MA` für automatisierte Tests.
+
+## Fan-Projekt
+
+Ein inoffizielles Fan-Spiel ohne Verbindung zu SkylineTV. Alle Insider stammen aus dem
+SkylineTV LIVE Wiki, eine Übersicht mit Quellen steht in [INSIDER.md](INSIDER.md).
+In Erinnerung an Adam Wolke – danke für die Live-Eskalationen.
