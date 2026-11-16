@@ -1130,6 +1130,15 @@ function renderFrame(cockpitOn) {
     cockpitCam.fov = camera.fov;
     cockpitCam.aspect = camera.aspect;
     cockpitCam.updateProjectionMatrix();
+    // Die rote REC-Lampe der Stream-Kamera blinkte sonst als verwischter roter Fleck durch den halbdurchsichtigen Chat
+    const led = cockpit.recLed;
+    const r = ui.chatRect;
+    if (led.visible && r) {
+      led.getWorldPosition(tmpV).project(cockpitCam);
+      const x = ((tmpV.x + 1) / 2) * window.innerWidth;
+      const y = ((1 - tmpV.y) / 2) * window.innerHeight;
+      if (x > r.left - 8 && x < r.right + 8 && y > r.top - 8 && y < r.bottom + 8) led.visible = false;
+    }
     renderer.autoClear = false;
     renderer.clearDepth();
     renderer.render(cockpit.scene, cockpitCam);

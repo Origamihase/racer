@@ -142,6 +142,7 @@ export class UI {
     this.rahmenEl = el('div', 'rahmen-layer', this.hud);
 
     this.chatOn = true;
+    this.chatRect = null;
     this.lastHud = 0;
     this.toasts = [];
     this.bannerT = 0;
@@ -176,11 +177,13 @@ export class UI {
     this.layoutDrone = drone;
     this.layoutPhoto = !this.photoEl.classList.contains('hidden');
     const a = this.infoEl.getBoundingClientRect();
+    const chat = this.chatOn && this.chatEl.getBoundingClientRect();
+    const hasChat = !!(chat && chat.width);
+    // wo der Chat gerade steht (null, wenn er nicht zu sehen ist) – dahinter bleibt die REC-Lampe im Cockpit aus
+    this.chatRect = hasChat ? chat : null;
     if (!a.width) return; // HUD gerade unsichtbar
     const W = window.innerWidth;
     const H = window.innerHeight;
-    const chat = this.chatOn && this.chatEl.getBoundingClientRect();
-    const hasChat = !!(chat && chat.width);
     const side = Math.max(a.right, hasChat ? W - chat.left : 0) + 14;
     let mid = W - 2 * side;
     let top = 14;
