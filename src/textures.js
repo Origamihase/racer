@@ -429,9 +429,9 @@ export function contactShadowTexture() {
 export function signTexture(lines, { w = 512, h = 256, bg = '#1452a8', fg = '#ffffff', border = true, arrows = null } = {}) {
   const c = canvas(w, h);
   const ctx = c.getContext('2d');
+  // die ganze Fläche: die Tafeln sind undurchsichtig, durchsichtige Ecken würden schwarz (der weiße Rand bleibt rund)
   ctx.fillStyle = bg;
-  roundRect(ctx, 0, 0, w, h, 18);
-  ctx.fill();
+  ctx.fillRect(0, 0, w, h);
   if (border) {
     ctx.strokeStyle = fg;
     ctx.lineWidth = 7;
@@ -502,9 +502,9 @@ export function brownSignTexture(title, sub) {
   const h = 320;
   const c = canvas(w, h);
   const ctx = c.getContext('2d');
+  // ganz füllen (undurchsichtige Tafel: durchsichtige Ecken würden schwarz)
   ctx.fillStyle = '#6b3d22';
-  roundRect(ctx, 0, 0, w, h, 16);
-  ctx.fill();
+  ctx.fillRect(0, 0, w, h);
   ctx.strokeStyle = '#fff';
   ctx.lineWidth = 6;
   roundRect(ctx, 10, 10, w - 20, h - 20, 10);
@@ -519,7 +519,7 @@ export function brownSignTexture(title, sub) {
   return tex(c);
 }
 
-function fitTextCenter(ctx, text, x, y, maxW) {
+export function fitTextCenter(ctx, text, x, y, maxW) {
   let size = parseFloat(ctx.font.match(/(\d+(\.\d+)?)px/)[1]);
   while (ctx.measureText(text).width > maxW && size > 12) {
     size -= 2;

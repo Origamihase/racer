@@ -5,7 +5,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../curve.js';
-import { ROAD, signTexture, brownSignTexture, speedSignTexture, roundRect, grassTexture } from '../textures.js';
+import {
+  ROAD, signTexture, brownSignTexture, speedSignTexture, roundRect, grassTexture, fitTextCenter,
+} from '../textures.js';
 import { colorize } from '../models/loft.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
 import { mulberry32, fbm1, smoothstep, pick } from '../util.js';
@@ -42,6 +44,27 @@ const GAP_AFTER = 25;
 const WALL_MIN = 20;
 // Fuß des Burgbergs (Radius in m um die Burg, siehe makeCastle): darin stehen keine Häuser und keine Kirche
 const HILL_R = 97;
+// Sichtweite: so weit reicht der Nebel bei klarem Wetter (sky.js), dahinter hat alles die Nebelfarbe. Schrift auf
+// einer Tafel ist schon ab 150 m nur noch ein paar Pixel hoch.
+const VIEW_FAR = 1550;
+const READ_FAR = 150;
+/** So weit reicht ein Wahrzeichen vor seinen Ort (zum Spieler hin): der Burgberg 37 m, alles andere unter 10 m. */
+const reach = (r) => (r.type === 'burg' ? HILL_R - 60 : 10);
+/** Stünden zwei Navi-Wahrzeichen ineinander? (alle am rechten Rand, zwei Burgberge, zwei Skylines) */
+function clash(a, b) {
+  const d = Math.abs(a.s - b.s);
+  if (WALL_GAP.has(a.type) && WALL_GAP.has(b.type)) return d < 40;
+  if (a.type !== b.type) return false;
+  return (a.type === 'burg' && d < 2 * HILL_R + 10) || (a.type === 'skyline' && d < 270);
+}
+// Dorf: Grundriss der Kirche (makeChurch: Turm mit Helm bis −9,4 m, Dach bis +13,6 m, 4,8 m zu den Seiten),
+// halbe Dachfläche eines Hauses (roofGeo steht 6 % über), Abstand zwischen zwei Häusern, Kronenradius des
+// Laubbaums (decidGeo) bei Maßstab 1 und so viel Platz bleibt an den Dorfenden für die Kronen der Bäume draußen
+const CHURCH_LOT = { z: 2.1, hx: 4.85, hz: 11.55 };
+const ROOF_OVER = 0.56;
+const HOUSE_GAP = 1.2;
+const DECID_CROWN = 3.35;
+const TREE_ROOM = 6;
 
 const BANNERS = [
   'Grüße an Mini Adam!', 'Linke Spur freischalten: jetzt!', 'BrunnenTV Fanclub', 'Malte Malte Malte', 'Elsa ❤',
@@ -151,6 +174,54 @@ function polyGeometry(polys, uvFn) {
   return g;
 }
 
+/**
+ * Grundriss als gedrehtes Rechteck in der Ebene (x, z): Mitte, halbe Kantenlängen und Drehung wie rotation.y
+ * (die lokale x-Achse zeigt dann nach (cos r, −sin r), die lokale z-Achse nach (sin r, cos r)).
+ */
+function lot(x, z, hx, hz, r) {
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  return { x, z, a: [c * hx, -s * hx], b: [s * hz, c * hz] };
+}
+/** Lücke zwischen zwei Grundrissen entlang der besten ihrer Kantenrichtungen (< 0: sie überlappen). */
+function lotGap(P, Q) {
+  let gap = -Infinity;
+  for (const [ax, az] of [P.a, P.b, Q.a, Q.b]) {
+    const L = Math.hypot(ax, az);
+    const nx = ax / L;
+    const nz = az / L;
+    const half = (O) => Math.abs(O.a[0] * nx + O.a[1] * nz) + Math.abs(O.b[0] * nx + O.b[1] * nz);
+    gap = Math.max(gap, Math.abs((Q.x - P.x) * nx + (Q.z - P.z) * nz) - half(P) - half(Q));
+  }
+  return gap;
+}
+/** Abstand eines Punkts (x, z) vom Grundriss (0, wenn er darin liegt). */
+function lotDist(P, x, z) {
+  let d2 = 0;
+  for (const [ax, az] of [P.a, P.b]) {
+    const L = Math.hypot(ax, az);
+    const t = Math.abs(((x - P.x) * ax + (z - P.z) * az) / L) - L;
+    if (t > 0) d2 += t * t;
+  }
+  return Math.sqrt(d2);
+}
+
+// Skyline (Gruppe bei x = SKYLINE_X): 16 Hochhäuser, immer dieselben, schräg nach hinten links gestaffelt – alles
+// weit jenseits der Gegenfahrbahn (die endet bei x ≈ −32). Mitte relativ zur Gruppe, Breite (quadratisch), Höhe.
+const SKYLINE_X = -75;
+let towers = null;
+function skylineTowers() {
+  if (!towers) {
+    const rnd = mulberry32(69);
+    towers = Array.from({ length: 16 }, (_, i) => {
+      const h = 60 + rnd() * 190;
+      const w = 18 + rnd() * 22;
+      return { x: -i * 22 - rnd() * 8, z: -i * 14 - rnd() * 40, w, h };
+    });
+  }
+  return towers;
+}
+
 const TREE_TINTS = [0xffffff, 0xe0f0e0, 0xc8e0c8, 0xf0ffe0, 0xd0e8d8, 0xfff4dc];
 const HOUSE_COLORS = [0xf1ece0, 0xe9e2cf, 0xf6f3ea, 0xe5d9b8, 0xd9d4cc, 0xefe0c9, 0xdcd2c0];
 const ROOF_COLORS = [0xa3402a, 0x8b3a26, 0x5b3b2e, 0x3a3c40, 0xb5522e, 0x6b2a20];
@@ -171,7 +242,10 @@ export class Scenery {
     this.mats = {
       concrete: W.std({ color: 0xbdb9ae, roughness: 0.92 }),
       concreteDark: W.std({ color: 0x8f8c84, roughness: 0.95 }),
-      steel: W.std({ color: 0x9aa1a8, metalness: 0.7, roughness: 0.4 }),
+      // Stahl steht oft hinter Schildtafeln (Pfosten, Mast). Schräg gesehene Pfostenflanken stachen aus 50–100 m
+      // als feine helle Linie durch die Tafel davor; der Versatz wächst mit der Schräge und hält sie dahinter.
+      // Frontal gesehene Flächen verschiebt er praktisch nicht.
+      steel: W.std({ color: 0x9aa1a8, metalness: 0.7, roughness: 0.4, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 0 }),
       dark: W.std({ color: 0x2a2b2e, roughness: 0.7 }),
       white: W.std({ color: 0xf2f2ef, roughness: 0.6 }),
       orange: W.std({ color: 0xe86b12, roughness: 0.6 }),
@@ -240,6 +314,9 @@ export class Scenery {
   request(type, s, data = {}) {
     const id = Math.random().toString(36).slice(2);
     const r = { id, type, s, data, built: false };
+    // Ein stehen gebliebenes Wahrzeichen eines überbotenen Ziels (siehe cancel), dem das neue in die Quere käme,
+    // macht Platz. Neue Navi-Ziele liegen mindestens 1,4 km voraus, es verschwindet also fast ganz im Nebel.
+    for (const q of this.requests) if (q.cancelled && clash(q, r)) this.drop(q);
     this.requests.push(r);
     // Falls das Segment schon steht: sofort einsetzen
     const k = Math.floor(s / SEG);
@@ -251,16 +328,31 @@ export class Scenery {
     return id;
   }
 
+  /**
+   * Anfrage abbrechen (Ziel überboten). Schon gebaute Ziel-Schilder und Wahrzeichen verschwinden nur, wo man sie
+   * nicht mehr sieht: ganz hinten im Nebel. Alles Nähere (auch eine Burg 300 m voraus) bliebe sonst nicht einfach
+   * weg, es verschwände mitten im Bild. Es bleibt also stehen, bis sein Abschnitt hinter dem Auto abgebaut wird,
+   * und behält so lange seine Lücke in der Lärmschutzwand und seinen freien Platz; auf dem Ziel-Schild steht dann
+   * „Überboten:“ (siehe retireZiel). Mit removeBuilt = false (schon angekommen) bleibt ohnehin alles stehen.
+   */
   cancel(id, removeBuilt = true) {
     const r = this.requests.find((q) => q.id === id);
     if (!r) return;
+    if (removeBuilt && r.built && r.s - reach(r) < this.track.position.z + VIEW_FAR) {
+      r.cancelled = true;
+      if (r.type === 'ziel') this.retireZiel(r);
+      return;
+    }
+    this.drop(r, removeBuilt);
+  }
+
+  /** Anfrage r streichen und (mit removeBuilt) ihre schon gebauten Teile abbauen. */
+  drop(r, removeBuilt = true) {
     this.requests = this.requests.filter((q) => q !== r);
-    // schon gebaute Ziel-Schilder und Wahrzeichen eines überbotenen Ziels wieder abbauen,
-    // solange sie noch weit genug voraus stehen (direkt vor der Nase bleibt es lieber stehen)
     let removed = false;
-    if (removeBuilt && r.built && r.s > this.track.position.z + 150) {
+    if (removeBuilt && r.built) {
       for (const slot of this.slots) {
-        const i = slot.items.findIndex((o) => o.userData.requestId === id);
+        const i = slot.items.findIndex((o) => o.userData.requestId === r.id);
         if (i >= 0) {
           this.release(slot.items[i]);
           slot.items.splice(i, 1);
@@ -272,6 +364,17 @@ export class Scenery {
     // (sonst wüchse die Wand vor der Nase aus dem Boden); bleibt das Ziel stehen, bleibt auch die Lücke
     const far = r.s - GAP_BEFORE - WALL_MIN > this.track.position.z + 300;
     if (WALL_GAP.has(r.type) && (removed || !r.built) && far) this.refreshWalls(r.s);
+  }
+
+  /**
+   * Ziel-Schild eines überbotenen Ziels: „Überboten:“ statt „Ziel erreicht:“ – aber nur, solange es noch zu weit
+   * weg ist, um es zu lesen (sonst wechselte die Schrift vor den Augen; dann bleibt sie, man ist gleich vorbei).
+   */
+  retireZiel(r) {
+    if (r.s - this.track.position.z < READ_FAR) return;
+    for (const slot of this.slots) {
+      for (const o of slot.items) if (o.userData.requestId === r.id) o.userData.setText(r.data.title || 'Ziel', true);
+    }
   }
 
   /** Alles abbauen (neue Fahrt beginnt wieder bei 0 km). */
@@ -374,27 +477,62 @@ export class Scenery {
       }
     }
 
-    // Dorf
+    // Dorf: erst die Kirche, dann die Häuser, jedes auf einem freien Platz (Grundriss mit Dachüberstand und
+    // Abstand zu allem, was schon steht; ein paar Versuche, sonst fällt es weg), zuletzt die Bäume dort, wo Stamm
+    // und Krone frei sind. Alles bleibt im eigenen Abschnitt: zum Nachbarabschnitt desselben Dorfs mit 1 m Rand,
+    // an den Dorfenden mit Platz für die Kronen der Bäume draußen. Alles kommt aus rnd(), bleibt also bei jedem
+    // Neubau des Abschnitts gleich.
     if (village) {
       const side = village;
-      const n = 14 + Math.floor(rnd() * 14);
-      for (let i = 0; i < n; i++) {
-        const x = side * (42 + rnd() * 150);
-        const z = z0 - rnd() * SEG;
-        const w = 8 + rnd() * 5;
-        const d = 9 + rnd() * 6;
-        const h = 5 + rnd() * 3.5;
-        const r = (rnd() < 0.5 ? 0 : Math.PI / 2) + (rnd() - 0.5) * 0.3;
-        put('house', x, 0, z, 1, r, pick(HOUSE_COLORS), w, h, d);
-        put('roof', x, 0, z, 1, r, pick(ROOF_COLORS), w, h, d);
-      }
+      const lots = [];
+      const edge = (kk) => (this.villageSide(kk) === side ? 1 : TREE_ROOM);
+      const zTop = z0 - edge(k - 1); // zum Spieler hin
+      const zEnd = z0 - SEG + edge(k + 1);
       if (rnd() < 0.8) {
         const ch = this.acquire('church', () => this.makeChurch());
         ch.position.set(side * (70 + rnd() * 60), 0, z0 - 50);
         ch.rotation.y = rnd() * 0.5;
         slot.items.push(ch);
+        const r = ch.rotation.y;
+        const cx = ch.position.x + Math.sin(r) * CHURCH_LOT.z;
+        const cz = ch.position.z + Math.cos(r) * CHURCH_LOT.z;
+        lots.push(lot(cx, cz, CHURCH_LOT.hx, CHURCH_LOT.hz, r));
       }
-      for (let i = 0; i < 8; i++) put('decid', side * (40 + rnd() * 160), 0, z0 - rnd() * SEG, 0.7 + rnd() * 0.5, rnd() * 6, 0xffffff);
+      const n = 14 + Math.floor(rnd() * 14);
+      for (let i = 0; i < n; i++) {
+        const w = 8 + rnd() * 5;
+        const d = 9 + rnd() * 6;
+        const h = 5 + rnd() * 3.5;
+        const r = (rnd() < 0.5 ? 0 : Math.PI / 2) + (rnd() - 0.5) * 0.3;
+        const wallCol = HOUSE_COLORS[Math.floor(rnd() * HOUSE_COLORS.length)];
+        const roofCol = ROOF_COLORS[Math.floor(rnd() * ROOF_COLORS.length)];
+        // Dach steht an jeder Seite 6 % über (roofGeo)
+        const hx = ROOF_OVER * w;
+        const hz = ROOF_OVER * d;
+        const ez = Math.abs(Math.cos(r)) * hz + Math.abs(Math.sin(r)) * hx;
+        for (let t = 0; t < 8; t++) {
+          const x = side * (42 + rnd() * 150);
+          const z = zTop - ez - rnd() * (zTop - zEnd - 2 * ez);
+          const o = lot(x, z, hx, hz, r);
+          if (!lots.every((p) => lotGap(p, o) >= HOUSE_GAP)) continue;
+          lots.push(o);
+          put('house', x, 0, z, 1, r, wallCol, w, h, d);
+          put('roof', x, 0, z, 1, r, roofCol, w, h, d);
+          break;
+        }
+      }
+      for (let i = 0; i < 8; i++) {
+        const s = 0.7 + rnd() * 0.5;
+        const rotY = rnd() * 6;
+        const R = DECID_CROWN * s + 0.3;
+        for (let t = 0; t < 6; t++) {
+          const x = side * (40 + rnd() * 160);
+          const z = z0 - R - rnd() * (SEG - 2 * R);
+          if (!lots.every((p) => lotDist(p, x, z) >= R)) continue;
+          put('decid', x, 0, z, s, rotY, 0xffffff);
+          break;
+        }
+      }
     }
     // Lärmschutzwand am Dorf (mit Lücken vor Navi-Zielen und Wahrzeichen)
     if (this.hasWall(k)) this.buildWall(slot);
@@ -628,22 +766,35 @@ export class Scenery {
     const z = -r.s;
     if (WALL_GAP.has(r.type)) return (x, zz) => x > ROAD.right && x < ROAD.right + 28 && Math.abs(zz - z) < 18;
     if (r.type === 'burg') return (x, zz) => Math.hypot(x - 160, zz - (z - 60)) < 100;
-    if (r.type === 'skyline') return (x, zz) => x > -425 && x < -64 && zz > z - 265 && zz < z - 16;
+    // unter den Hochhäusern und so weit daneben, wie die größten Kronen reichen
+    if (r.type === 'skyline') return (x, zz) => this.underSkyline(r, x, zz, 6);
     return null;
   }
 
+  /** Liegt (x, z) unter einem Hochhaus der Skyline von Anfrage r oder näher als m daran? */
+  underSkyline(r, x, z, m) {
+    return skylineTowers().some(
+      (t) => Math.abs(x - SKYLINE_X - t.x) < t.w / 2 + m && Math.abs(z + r.s - t.z) < t.w / 2 + m,
+    );
+  }
+
   /**
-   * Steht die Burg neben einem Dorf: Häuser und Kirche, die im Burgberg stecken würden, abräumen (nur in
-   * Segment slotIdx oder überall). Häuser sind bis knapp 10 m, die Kirche bis 14 m um ihren Mittelpunkt groß.
+   * Steht die Burg oder die Skyline neben einem Dorf: Häuser und Kirche, die im Burgberg oder in einem Hochhaus
+   * stecken würden, abräumen (nur in Segment slotIdx oder überall). Häuser sind bis knapp 10 m (mit Dach gut 11 m),
+   * die Kirche bis 14 m (gut 14,5 m) um ihren Mittelpunkt groß.
    */
   clearHill(r, slotIdx = -1) {
-    if (r.type !== 'burg') return;
-    const cz = -r.s - 60; // wie in placeRequest
-    this.clearPlants((x, z) => Math.hypot(x - 160, z - cz) < HILL_R + 10, slotIdx, ['house', 'roof']);
+    let inside;
+    if (r.type === 'burg') {
+      const cz = -r.s - 60; // wie in placeRequest
+      inside = (x, z, m) => Math.hypot(x - 160, z - cz) < HILL_R + m;
+    } else if (r.type === 'skyline') inside = (x, z, m) => this.underSkyline(r, x, z, m + 1.5);
+    else return;
+    this.clearPlants((x, z) => inside(x, z, 10), slotIdx, ['house', 'roof']);
     this.slots.forEach((slot, i) => {
       if (slotIdx >= 0 && i !== slotIdx) return;
       slot.items = slot.items.filter((o) => {
-        const buried = o.userData.type === 'church' && Math.hypot(o.position.x - 160, o.position.z - cz) < HILL_R + 14;
+        const buried = o.userData.type === 'church' && inside(o.position.x, o.position.z, 14);
         if (buried) this.release(o);
         return !buried;
       });
@@ -685,7 +836,7 @@ export class Scenery {
         break;
       case 'skyline':
         obj = this.acquire('skyline', () => this.makeSkyline());
-        obj.position.set(-75, 0, z);
+        obj.position.set(SKYLINE_X, 0, z);
         break;
       case 'sparkasse':
         obj = this.acquire('sparkasse', () => this.makeSparkasse());
@@ -1114,9 +1265,10 @@ export class Scenery {
     const wall = W.std({ color: 0xece5d5, roughness: 0.9 });
     const nave = new THREE.Mesh(new THREE.BoxGeometry(9, 8, 18), wall);
     nave.position.set(0, 4, 4);
-    const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 6.8, 5, 4, 1), this.mats.redRoof);
+    // Walmdach über dem Schiff: die vierseitige Pyramide zuerst drehen (Kanten parallel zu den Wänden) und erst dann
+    // längs strecken – andersherum wurde daraus eine schiefe Raute, deren Ecken 5 m neben dem Schiff in der Luft hingen
+    const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 6.8, 5, 4, 1).rotateY(Math.PI / 4), this.mats.redRoof);
     roof.scale.set(1, 1, 2.0);
-    roof.rotation.y = Math.PI / 4;
     roof.position.set(0, 10.5, 4);
     const tower = new THREE.Mesh(new THREE.BoxGeometry(4.5, 20, 4.5), wall);
     tower.position.set(0, 10, -7);
@@ -1219,17 +1371,18 @@ export class Scenery {
     fall.position.y = 1.65;
     // BrunnenTV-Schild
     const tex = this.canvasTex('brunnentv', 512, 200, (ctx, w, h) => {
+      // ganz füllen (undurchsichtiges Schild: durchsichtige Ecken würden schwarz)
       ctx.fillStyle = '#3a1f63';
-      roundRect(ctx, 0, 0, w, h, 24);
-      ctx.fill();
+      ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = '#ffd84a';
+      // Arial Black ist breiter als Arial: beide Zeilen notfalls etwas kleiner, damit nichts am Rand abreißt
       ctx.font = 'bold 84px Arial Black, Arial, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('BrunnenTV', w / 2, h * 0.42);
+      fitTextCenter(ctx, 'BrunnenTV', w / 2, h * 0.42, w - 40);
       ctx.fillStyle = '#ffffff';
       ctx.font = '34px Arial, sans-serif';
-      ctx.fillText('mit Herrn Schönnbrun ⛲', w / 2, h * 0.78);
+      fitTextCenter(ctx, 'mit Herrn Schönnbrun ⛲', w / 2, h * 0.78, w - 40);
     });
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.25), W.std({ ...FRONT, map: tex, roughness: 0.5 }));
     sign.position.set(-4.2, 2.3, 1.5);
@@ -1315,21 +1468,17 @@ export class Scenery {
 
   makeSkyline() {
     const g = new THREE.Group();
-    const rnd = mulberry32(69);
     const mats = [this.mats.glassBlue, W.std({ color: 0xb9c2cc, metalness: 0.5, roughness: 0.3 }), W.std({ color: 0x6f7a86, metalness: 0.6, roughness: 0.25 })];
-    for (let i = 0; i < 16; i++) {
-      const h = 60 + rnd() * 190;
-      const w = 18 + rnd() * 22;
+    skylineTowers().forEach(({ x, z, w, h }, i) => {
       const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mats[i % 3]);
-      // schräg nach hinten links gestaffelt – alles weit jenseits der Gegenfahrbahn (die endet bei x ≈ −32)
-      b.position.set(-i * 22 - rnd() * 8, h / 2, -i * 14 - rnd() * 40);
+      b.position.set(x, h / 2, z);
       g.add(b);
       if (i === 7) {
         const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.2, 50, 6), this.mats.steel);
-        ant.position.set(b.position.x, h + 25, b.position.z);
+        ant.position.set(x, h + 25, z);
         g.add(ant);
       }
-    }
+    });
     return g;
   }
 
@@ -1364,7 +1513,12 @@ export class Scenery {
 
   makeKiosk() {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(5, 3, 4), W.std({ color: 0xf0e0b0, roughness: 0.8 }));
+    // Versatz wie beim Stahl: das Dach der Bude, flach von der Seite gesehen, stach sonst als heller Punkt durch das
+    // Vordach, das ihm aufliegt
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(5, 3, 4),
+      W.std({ color: 0xf0e0b0, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 0 }),
+    );
     body.position.y = 1.5;
     const awning = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.2, 1.6), W.std({ color: 0xd22020, roughness: 0.7 }));
     awning.position.set(0, 2.8, 2.6);
@@ -1380,21 +1534,22 @@ export class Scenery {
     g.rotation.y = -0.4;
     g.userData.setText = (title, sub) => {
       const tex = this.canvasTex('kiosk:' + title + sub, 512, 288, (ctx, w, h) => {
+        // ganz füllen (undurchsichtige Tafel: durchsichtige Ecken würden schwarz), der rote Rahmen bleibt rund
         ctx.fillStyle = '#fff4d0';
-        roundRect(ctx, 0, 0, w, h, 26);
-        ctx.fill();
+        ctx.fillRect(0, 0, w, h);
         ctx.strokeStyle = '#d22020';
         ctx.lineWidth = 12;
         roundRect(ctx, 8, 8, w - 16, h - 16, 20);
         ctx.stroke();
+        // beide Zeilen passen mit Abstand in den Rahmen (innen 484 px), notfalls etwas kleiner
         ctx.fillStyle = '#b31515';
         ctx.font = 'bold 72px Arial Black, Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(title, w / 2, h * 0.4);
+        fitTextCenter(ctx, title, w / 2, h * 0.4, w - 60);
         ctx.fillStyle = '#333';
         ctx.font = 'bold 38px Arial, sans-serif';
-        ctx.fillText(sub, w / 2, h * 0.75);
+        fitTextCenter(ctx, sub, w / 2, h * 0.75, w - 60);
       });
       face.map = tex;
       face.needsUpdate = true;
@@ -1447,8 +1602,11 @@ export class Scenery {
     panel.position.z = 0.05;
     g.add(flag, panel);
     g.rotation.y = -0.15;
-    g.userData.setText = (title) => {
-      panel.material.map = this.canvasTexFrom('ziel:' + title, () => signTexture(['Ziel erreicht:', title], { w: 512, h: 196, bg: '#1d7a3a' }));
+    // overbid: das Ziel wurde überboten, bevor man ankam (siehe retireZiel)
+    g.userData.setText = (title, overbid = false) => {
+      const key = (overbid ? 'zielx:' : 'ziel:') + title;
+      const head = overbid ? 'Überboten:' : 'Ziel erreicht:';
+      panel.material.map = this.canvasTexFrom(key, () => signTexture([head, title], { w: 512, h: 196, bg: '#1d7a3a' }));
       panel.material.needsUpdate = true;
     };
     return g;

@@ -127,14 +127,23 @@ export function surfacePatch(point, uv, { ns = 6, nt = 16, lift = 0.006, center 
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   return g;
 }
-/** Die Querschnitt-Stellen u eines Lofts (wie loft sie verwendet). */
-export function loftStations(u0, u1, segs, sampleEnds = 0.55) {
-  const us = [];
+/**
+ * Die Querschnitt-Stellen u eines Lofts (wie loft sie verwendet). extra: zusätzliche Stellen (z. B. genau an den
+ * Enden der Radläufe, damit der Ausschnitt dort senkrecht beginnt statt schräg zwischen zwei Querschnitten);
+ * reguläre Stellen, die näher als 6 mm daneben lägen, entfallen.
+ */
+export function loftStations(u0, u1, segs, sampleEnds = 0.55, extra = null) {
+  let us = [];
   for (let i = 0; i <= segs; i++) {
     const s = i / segs;
     // an den Enden dichter (Rundungen), in der Mitte gleichmäßig
     const sc = (1 - Math.cos(Math.PI * s)) / 2;
     us.push(u0 + (u1 - u0) * lerp(s, sc, sampleEnds));
+  }
+  if (extra && extra.length) {
+    const add = extra.filter((u) => u > u0 + 0.006 && u < u1 - 0.006);
+    us = us.filter((u, i) => i === 0 || i === segs || add.every((v) => Math.abs(v - u) >= 0.006));
+    us = us.concat(add).sort((a, b) => a - b);
   }
   return us;
 }
@@ -143,13 +152,14 @@ export function loftStations(u0, u1, segs, sampleEnds = 0.55) {
 export const ringPhi = (k, ring) => (k / ring) * Math.PI * 2 - Math.PI / 2;
 
 export function loft({
-  u0, u1, w, b, t, tw = 0.9, bw = 0.96, n = 4, segs = 80, ring = 28, L = 4.7, H = 1.5, caps = true,
-  sampleEnds = 0.55, bx = null, capDome = 0,
+  u0, u1, w, b, t, tw = 0.9, bw = 0.96, n = 4, segs: segsIn = 80, ring = 28, L = 4.7, H = 1.5, caps = true,
+  sampleEnds = 0.55, bx = null, capDome = 0, extraUs = null,
 }) {
   const pos = [];
   const uv = [];
   const idx = [];
-  const us = loftStations(u0, u1, segs, sampleEnds);
+  const us = loftStations(u0, u1, segsIn, sampleEnds, extraUs);
+  const segs = us.length - 1;
   const e = 2 / n;
   const ringXY = [];
   for (let k = 0; k < ring; k++) {

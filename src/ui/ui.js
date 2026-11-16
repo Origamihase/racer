@@ -1,7 +1,7 @@
 // Das Stream-Overlay über dem Spiel: LIVE-Anzeige, Zuschauer, Strecke, Guthaben, Akku,
 // Karosserie-Punkte, Chat mit Bots, NOMI-Untertitel, Hinweise, Sprachdurchsagen, Rahmen und Blitzerfotos.
 import { fmtNum, fmtCent, fmtKm, fmtDuration, clamp } from '../util.js';
-import { nameColor, BOTS } from '../data.js';
+import { nameColor, nameBreak, BOTS } from '../data.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -14,6 +14,47 @@ function el(tag, cls, parent, text) {
 const RAHMEN_EMOJI = {
   rosen: '🌹', pommes: '🍟', burger: '🍔', candy: '🍬', chips: '🥔', kuerbis: '🎃',
 };
+
+const DEG = Math.PI / 180;
+/**
+ * Bildpunkte je Tangens-Einheit der Hauptkamera bei gewünschtem senkrechtem Bildwinkel – wie setFov() in main.js:
+ * waagerecht mindestens 86°, senkrecht zwischen 50° und 78°. Damit lässt sich ausrechnen, wo feste Teile des Bildes
+ * (Innenspiegel, Mittelbildschirm, das eigene Auto) auf dem Schirm liegen, ohne die 3D-Szene zu kennen.
+ */
+function camScale(W, H, vfov) {
+  const v = clamp(Math.max(vfov * DEG, 2 * Math.atan(Math.tan(43 * DEG) / (W / H))), 50 * DEG, 78 * DEG);
+  return H / 2 / Math.tan(v / 2);
+}
+// Cockpit (setFov(58), Modell aus src/cockpit/cockpit.js): linke Kante von Innenspiegel und Mittelbildschirm samt
+// Rahmen als Tangens-Abstand von der Bildmitte (nachgemessen; das Kopfwackeln verschiebt sie um wenige Bildpunkte)
+const MIRROR = { left: 0.318 };
+const SCREEN = { left: 0.253 };
+// Drohne (setFov(50)): Dachkante des eigenen Autos unter der Bildmitte
+const CAR_TOP = 0.095;
+/** Oberkante des eigenen Autos in der Drohnenansicht (Bildpunkte von oben). */
+function droneCarTop(W, H) {
+  return H / 2 + CAR_TOP * camScale(W, H, 50);
+}
+/** Linke Kante von Mittelbildschirm und Innenspiegel des Cockpits (Bildpunkte). */
+function cockpitParts(W, H) {
+  const S = camScale(W, H, 58);
+  return { screen: W / 2 + SCREEN.left * S, mirror: W / 2 + MIRROR.left * S };
+}
+const COARSE = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : { matches: false };
+
+/**
+ * Lage eines Elements ohne Animationen und Drehungen (getBoundingClientRect enthielte etwa das Aufploppen des
+ * Banners oder das Hereinfliegen des Fotos). Nur für Elemente ohne verschobene Vorfahren (nicht in .center-stack).
+ */
+function layoutRect(e) {
+  let x = 0;
+  let y = 0;
+  for (let p = e; p; p = p.offsetParent) {
+    x += p.offsetLeft;
+    y += p.offsetTop;
+  }
+  return { left: x, top: y, right: x + e.offsetWidth, bottom: y + e.offsetHeight, height: e.offsetHeight };
+}
 
 // Ein Rahmen-Streifen zeigt nur so viele Teile, wie ganz hineinpassen – sonst sind sie an den Enden angeschnitten
 function fitStrip(strip) {
@@ -114,90 +155,182 @@ export class UI {
     // Die Mittelspalte (Navi-Zeile, linke Spur, NOMI, Banner, Hinweise) liegt zwischen den Feldern links und rechts.
     // Ist dort kein Platz (Handy hochkant), rückt sie unter die Felder, statt sie zu überdecken.
     if (typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(() => this.layout());
+      const ro = new ResizeObserver(() => {
+        this.layout();
+        this.trimChat();
+      });
       ro.observe(info);
       ro.observe(this.chatEl);
+      // die Spalte unter dem Spur-Balken beginnt nach seiner echten Höhe (--lane-h), nicht nach einer angenommenen
+      const lane = new ResizeObserver(() => {
+        const h = this.leftLaneEl.offsetHeight;
+        if (h) this.hud.style.setProperty('--lane-h', h + 'px');
+      });
+      lane.observe(this.leftLaneEl);
     }
     window.addEventListener('resize', () => this.layout());
   }
 
   layout() {
+    const drone = document.body.classList.contains('drone');
+    this.layoutDrone = drone;
+    this.layoutPhoto = !this.photoEl.classList.contains('hidden');
     const a = this.infoEl.getBoundingClientRect();
     if (!a.width) return; // HUD gerade unsichtbar
     const W = window.innerWidth;
+    const H = window.innerHeight;
     const chat = this.chatOn && this.chatEl.getBoundingClientRect();
-    const side = Math.max(a.right, chat && chat.width ? W - chat.left : 0) + 14;
+    const hasChat = !!(chat && chat.width);
+    const side = Math.max(a.right, hasChat ? W - chat.left : 0) + 14;
     let mid = W - 2 * side;
     let top = 14;
     const narrow = mid < 240;
-    if (narrow) {
-      // feste Unterkante des Chats (seine Höchsthöhe), damit die Spalte nicht mit jeder Nachricht springt
-      const chatBottom = chat && chat.width ? chat.top + (parseFloat(getComputedStyle(this.chatEl).maxHeight) || chat.height) : 0;
-      top = Math.max(a.bottom, chatBottom) + 10;
-      mid = W - 28;
-    }
-    const st = this.hud.style;
+    if (narrow) mid = W - 28;
+    const hud = this.hud;
+    const st = hud.style;
     st.setProperty('--mid', Math.round(mid) + 'px');
+    hud.classList.toggle('hud-narrow', narrow);
+    hud.classList.remove('col-fit');
+    // so breit und so weit links steht die Spalte nach style.css (mittig)
+    const w0 = this.stackEl.offsetWidth;
+    const L = (W - w0) / 2;
+    const R = (W + w0) / 2;
+    const across = (r) => r.left < R + 10 && r.right > L - 10;
+    if (narrow) {
+      // nur unter den Feldern, über denen sie sonst läge – auf dem Handy quer endet das Info-Feld links neben ihr,
+      // dann beginnt sie schon unter dem Chat und hat bis zum Auto der Drohnenansicht mehr Platz
+      if (across(a)) top = Math.max(top, a.bottom + 10);
+      // feste Unterkante des Chats (seine Höchsthöhe), damit die Spalte nicht mit jeder Nachricht springt
+      if (hasChat && across(chat)) top = Math.max(top, chat.top + (parseFloat(getComputedStyle(this.chatEl).maxHeight) || chat.height) + 10);
+      // Touch hochkant liegt das Blitzerfoto oben rechts über dem Chat und reicht etwas tiefer: so lange darunter
+      if (this.layoutPhoto) {
+        const p = layoutRect(this.photoEl);
+        if (p.height && across(p)) top = Math.max(top, p.bottom + 14);
+      }
+    }
     st.setProperty('--top', Math.round(top) + 'px');
-    this.hud.classList.toggle('hud-narrow', narrow);
+    // Cockpit auf Touch-Geräten quer: Innenspiegel und Mittelbildschirm liegen rechts der Mitte, wo sonst Spur-Balken,
+    // Untertitel und Hinweise stünden – die Spalte endet dann links davor und rückt dafür neben das Info-Feld
+    if (!drone && W > H && COARSE.matches) {
+      const { screen, mirror } = cockpitParts(W, H);
+      const right = Math.min(R, screen - 10, mirror - 10);
+      const left = narrow ? L : Math.min(L, a.right + 14);
+      const w = Math.max(120, Math.min(w0, right - left));
+      if (right < R) {
+        const c = clamp(W / 2, left + w / 2, Math.max(left + w / 2, right - w / 2));
+        st.setProperty('--col-w', Math.round(w) + 'px');
+        st.setProperty('--lane-w', Math.round(Math.min(460, w)) + 'px');
+        st.setProperty('--col-dx', Math.round(c - W / 2) + 'px');
+        hud.classList.add('col-fit');
+        // die Navi-Zeile darüber rückt mit, damit alles eine Spalte bleibt
+        mid = Math.min(mid, w);
+      }
+    }
     this.naviMax = Math.min(760, mid);
+  }
+
+  /** Hat sich seit dem letzten layout() etwas geändert, wonach sich die Spalte richtet? */
+  layoutStale() {
+    return document.body.classList.contains('drone') !== this.layoutDrone || this.photoEl.classList.contains('hidden') === this.layoutPhoto;
   }
 
   /**
    * Der Stream ist weg: Untertitel, Banner und Hinweise sind so lange ausgeblendet – aber nur, wenn sie unter dem
    * Funkloch-Kasten lägen (sonst schienen sie durch). Daneben bleiben sie stehen, auch NOMIs Funkloch-Ansage.
+   * Ebenso der Spur-Balken, der auf dem Handy quer unter dem Chat genau dort steht.
    */
   funkCover() {
     let hit = false;
+    let lane = false;
     if (!this.funklochEl.classList.contains('hidden')) {
       const f = this.funklochEl.getBoundingClientRect();
-      const s = this.stackEl.getBoundingClientRect();
-      hit = s.height > 0 && f.left < s.right && f.right > s.left && f.top < s.bottom + 6 && f.bottom > s.top - 6;
+      const under = (r) => r.height > 0 && f.left < r.right && f.right > r.left && f.top < r.bottom + 6 && f.bottom > r.top - 6;
+      hit = under(this.stackEl.getBoundingClientRect());
+      lane = !this.leftLaneEl.classList.contains('hidden') && under(this.leftLaneEl.getBoundingClientRect());
     }
     this.hud.classList.toggle('funk', hit);
+    this.hud.classList.toggle('funk-lane', lane);
+  }
+
+  /**
+   * Untere Grenzen der Mittelspalte. hard: was nie verdeckt werden darf (unterer Rand, Touch-Knöpfe, das eigene Auto
+   * der Drohnenansicht); soft: zusätzlich Sprachdurchsage und Rahmen-Hinweis – die warten, wenn Untertitel oder Banner
+   * hinunterreichen, nur Hinweise weichen ihnen.
+   */
+  stackLimits(s) {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    let hard = H - 8;
+    if (document.body.classList.contains('drone')) hard = Math.min(hard, droneCarTop(W, H) - 10);
+    // was unterhalb des Spaltenanfangs liegt (daneben Liegendes zählt nicht)
+    const below = (r) => r.height && r.top > s.top + 4 && r.left < s.right && r.right > s.left;
+    for (const b of document.querySelectorAll('.touch button')) {
+      const r = b.getBoundingClientRect();
+      if (below(r)) hard = Math.min(hard, r.top - 8);
+    }
+    let soft = hard;
+    for (const e of [this.durchsageEl, ...this.rahmenEl.querySelectorAll('.rahmen-caption')]) {
+      if (e.classList.contains('hidden')) continue;
+      const r = layoutRect(e);
+      if (below(r)) soft = Math.min(soft, r.top - 8);
+    }
+    return { hard, soft };
+  }
+
+  /** Unterkante der sichtbaren Teile der Mittelspalte (ohne Animationen). */
+  stackBottom(s, parts = this.stackEl.children) {
+    let b = -Infinity;
+    for (const e of parts) {
+      if (e.classList.contains('squeezed') || !e.offsetHeight) continue;
+      b = Math.max(b, s.top + e.offsetTop + e.offsetHeight);
+    }
+    return b;
   }
 
   /**
    * Läuft die Mittelspalte bis an die Sprachdurchsage, den Rahmen-Hinweis, die Touch-Knöpfe, das eigene Auto
    * (Drohnenansicht) oder den unteren Rand, gehen die ältesten Hinweise vorzeitig – der neueste bleibt immer stehen.
+   * Reicht es dann noch immer nicht (Drohnenansicht auf dem Handy quer), wird die Spalte Schritt für Schritt knapper:
+   * Kamera-Anzeige weg, der neueste Hinweis wartet, Banner kleiner (ohne Unterzeile), NOMI-Untertitel weg (NOMI ist zu
+   * hören), Banner einzeilig.
    */
   fitStack() {
+    if (this.layoutStale()) this.layout();
     this.funkCover();
-    this.fitDurchsage();
-    if (!this.toasts.length) return;
+    const sc = this.stackEl.classList;
+    sc.remove('tight', 'tight2');
+    for (const e of [this.nomiEl, this.toastsEl, this.cameraHint]) e.classList.remove('squeezed');
     const s = this.stackEl.getBoundingClientRect();
-    if (!s.height) return;
-    let limit = window.innerHeight - 8;
-    // in der Drohnenansicht beginnt das Auto bei gut der Hälfte der Bildhöhe (hochkant ab ~55 %, quer ab ~58 %)
-    if (document.body.classList.contains('drone')) limit = Math.min(limit, window.innerHeight * 0.54);
-    const below = [this.durchsageEl, ...this.rahmenEl.querySelectorAll('.rahmen-caption'), ...document.querySelectorAll('.touch button')];
-    for (const e of below) {
-      const r = e.getBoundingClientRect();
-      if (r.height && r.top > s.top + 40 && r.left < s.right && r.right > s.left) limit = Math.min(limit, r.top - 8);
+    if (s.height) {
+      const { hard, soft } = this.stackLimits(s);
+      const over = (limit) => this.stackBottom(s) > limit;
+      while (this.toasts.length > 1 && over(soft)) this.toasts.shift().el.remove();
+      // passt selbst der neueste nicht (hohes Banner), wartet er unsichtbar, bis darüber Platz frei wird
+      if (over(soft)) this.toastsEl.classList.add('squeezed');
+      if (over(soft)) this.cameraHint.classList.add('squeezed');
+      if (over(hard)) sc.add('tight');
+      if (over(hard)) this.nomiEl.classList.add('squeezed');
+      if (over(hard)) sc.add('tight2');
     }
-    const bottom = () => this.stackEl.getBoundingClientRect().bottom;
-    while (this.toasts.length > 1 && bottom() > limit) this.toasts.shift().el.remove();
-    // passt selbst der neueste nicht (hohes Banner), wartet er unsichtbar, bis darüber Platz frei wird
-    this.toastsEl.classList.toggle('squeezed', bottom() > limit);
     this.fitDurchsage();
   }
 
   /**
    * Reicht der Platz auch ohne Hinweise nicht (Untertitel und langes Banner auf einem niedrigen Handy quer), wartet
    * die Sprachdurchsage unsichtbar, bis darüber wieder Platz ist – zu hören ist sie ja trotzdem, und das Banner
-   * („Ziel erreicht“) ist wichtiger.
+   * („Ziel erreicht“) ist wichtiger. Ebenso ein Rahmen-Hinweis, auf den die Spalte reicht.
+   * Gemessen wird ohne Animationen: das Banner ploppt aus 60 % Größe auf und wäre sonst anfangs zu klein.
    */
   fitDurchsage() {
-    const d = this.durchsageEl;
-    let hit = false;
-    if (!d.classList.contains('hidden')) {
-      const r = d.getBoundingClientRect();
-      const s = this.stackEl.getBoundingClientRect();
-      const shown = [this.nomiEl, this.bannerEl, this.toastsEl].filter((e) => !e.classList.contains('hidden') && !e.classList.contains('squeezed'));
-      const bottom = Math.max(-Infinity, ...shown.map((e) => e.getBoundingClientRect()).filter((b) => b.height).map((b) => b.bottom));
-      hit = r.height > 0 && r.top > s.top + 40 && r.left < s.right && r.right > s.left && bottom > r.top - 4;
-    }
-    d.classList.toggle('squeezed', hit);
+    const s = this.stackEl.getBoundingClientRect();
+    const bottom = this.stackBottom(s, [this.nomiEl, this.bannerEl, this.toastsEl]);
+    const hit = (e) => {
+      if (e.classList.contains('hidden') || !s.height) return false;
+      const r = layoutRect(e);
+      return r.height > 0 && r.top > s.top + 4 && r.left < s.right && r.right > s.left && bottom > r.top - 4;
+    };
+    this.durchsageEl.classList.toggle('squeezed', hit(this.durchsageEl));
+    for (const c of this.rahmenEl.querySelectorAll('.rahmen-caption')) c.classList.toggle('squeezed', hit(c));
   }
 
   show(v) {
@@ -238,13 +371,25 @@ export class UI {
       m.append(' ');
       el('span', 'bot-tag', m, 'BOT');
     } else {
-      const n = el('span', 'name', m, name);
+      const n = el('span', 'name', m, nameBreak(name));
       n.style.color = nameColor(name);
     }
     m.append(' ');
     el('span', 'text', m, text);
     while (this.chatList.childElementCount > 36) this.chatList.firstElementChild.remove();
-    this.chatList.scrollTop = this.chatList.scrollHeight;
+    this.trimChat();
+  }
+
+  /**
+   * Neueste Nachricht unten, und nur ganze Nachrichten zeigen: was oben aus dem Chat geschoben wird, verschwindet
+   * ganz, statt angeschnitten unter der Kopfzeile zu hängen.
+   */
+  trimChat() {
+    const list = this.chatList;
+    list.scrollTop = list.scrollHeight;
+    if (!list.clientHeight) return;
+    const top = list.getBoundingClientRect().top - 0.5;
+    for (const m of list.children) m.classList.toggle('gone', m.getBoundingClientRect().top < top);
   }
 
   // --- Meldungen -------------------------------------------------------------------
@@ -402,6 +547,8 @@ export class UI {
     el('div', 'photo-sub', this.photoEl, 'Das Foto kommt in einen Rahmen.');
     this.photoEl.classList.remove('hidden');
     this.photoT = 6;
+    this.layout();
+    this.fitStack();
   }
 
   cameraLabel(text) {
@@ -409,10 +556,17 @@ export class UI {
     this.cameraHint.classList.remove('hidden');
     clearTimeout(this.camTimer);
     this.camTimer = setTimeout(() => this.cameraHint.classList.add('hidden'), 1600);
+    this.fitStack();
   }
 
   // --- pro Bild ------------------------------------------------------------------------
   update(dt, g) {
+    // Kamera gewechselt (Cockpit und Drohne halten verschiedene Stellen frei: Spiegel und Bildschirm bzw. das Auto)
+    // oder Blitzerfoto gekommen bzw. gegangen: Spalte gleich neu einpassen
+    if (this.layoutStale()) {
+      this.layout();
+      this.fitStack();
+    }
     // Zeitgesteuerte Elemente
     for (const t of this.toasts) {
       t.t -= dt;
@@ -468,7 +622,11 @@ export class UI {
     this.hud.classList.toggle('lane-on', L.open);
     if (L.open) {
       const inLane = p.inLeftLane;
-      this.leftLaneText.textContent = (inLane ? '⬅️ Linke Spur: Bonus läuft! ' : '⬅️ Linke Spur frei! ') + Math.ceil(L.timer) + ' s';
+      const secs = Math.ceil(L.timer) + ' s';
+      const lt = this.leftLaneText;
+      lt.textContent = (inLane ? '⬅️ Linke Spur: Bonus läuft! ' : '⬅️ Linke Spur frei! ') + secs;
+      // der Balken bleibt einzeilig: passt der Satz nicht (schmaler Balken auf dem Handy), steht nur das Wichtigste da
+      if (lt.scrollWidth > lt.clientWidth + 1) lt.textContent = (inLane ? '⬅️ Bonus läuft! ' : '⬅️ Spur frei! ') + secs;
       this.leftLaneEl.classList.toggle('active', inLane);
       this.leftLaneEl.classList.toggle('warn', L.timer < 10);
       this.leftLaneFill.style.width = clamp(L.timer / 60, 0, 1) * 100 + '%';

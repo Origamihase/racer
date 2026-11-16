@@ -244,27 +244,37 @@ export class Cockpit {
     this.root.add(header);
     // B-Säule links (sieht man beim Kameraschwenk im Intro)
     this.root.add(roundBeam(new THREE.Vector3(-0.79, 0.99, 0.34), new THREE.Vector3(-0.665, 1.405, 0.3), 0.09, 0.07, M.pillar));
-    // dunkle Abdeckung am Scheibenfuß (Windlauf), darauf liegen die Wischer
-    const cowl = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.11, 0.012), M.vent);
+    // dunkle Abdeckung am Scheibenfuß (Windlauf), darauf liegen die Wischer. Vom Fahrerplatz (links)
+    // aus sieht man am rechten Säulenfuß schräg an der Säule vorbei, deshalb reicht der Windlauf rechts
+    // bis hinter die Säule (sonst schaut die Straße als Kerbe durch). Viel weiter (0,95 m) darf er nicht,
+    // sonst steht er neben der Säule heraus; links genügt das Ende unter dem Säulenfuß.
+    const COWL_L = -0.8;
+    const COWL_R = 0.925;
+    const cowl = new THREE.Mesh(new THREE.BoxGeometry(COWL_R - COWL_L, 0.11, 0.012), M.vent);
     cowl.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(W.X, W.U, W.N));
     cowl.position.copy(W.base).addScaledVector(W.U, -0.01).addScaledVector(W.N, 0.007);
+    cowl.position.x += (COWL_L + COWL_R) / 2;
     this.root.add(cowl);
   }
 
   buildDoor(M) {
     const door = new THREE.Group();
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.56, 1.35), M.door);
-    panel.position.set(-0.8, 0.7, -0.08);
-    door.add(panel);
-    const sill = new THREE.Mesh(new RoundedBoxGeometry(0.075, 0.06, 1.3, 3, 0.025), M.dash);
-    sill.position.set(-0.775, 0.975, -0.06);
-    door.add(sill);
+    // Türverkleidung links und rechts: Die rechte sieht man nur bei sehr breitem Bild (21:9) neben dem
+    // rechten Säulenfuß, ohne sie schaute dort die Straße bis aufs Armaturenbrett herein
+    for (const s of [-1, 1]) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.56, 1.35), M.door);
+      panel.position.set(s * 0.8, 0.7, -0.08);
+      door.add(panel);
+      const sill = new THREE.Mesh(new RoundedBoxGeometry(0.075, 0.06, 1.3, 3, 0.025), M.dash);
+      sill.position.set(s * 0.775, 0.975, -0.06);
+      door.add(sill);
+      const wood = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.04, 0.8), M.wood);
+      wood.position.set(s * 0.762, 0.9, -0.1);
+      door.add(wood);
+    }
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.4), M.dashTop);
     arm.position.set(-0.73, 0.76, 0.15);
     door.add(arm);
-    const wood = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.04, 0.8), M.wood);
-    wood.position.set(-0.762, 0.9, -0.1);
-    door.add(wood);
     const btn = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.018, 0.04), M.black);
     btn.position.set(-0.76, 0.86, -0.32);
     door.add(btn);

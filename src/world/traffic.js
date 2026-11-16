@@ -273,7 +273,7 @@ export class Traffic {
       c.v.updateLights(t, c.sirens);
       if (rainy && rel > -10 && rel < 140) {
         const z = -(rel) + c.len / 2;
-        this.rain.emit(c.x, z, c.w, c.speed, c.truck ? 3 : 1);
+        this.rain.emit(c.x, z, c.w, c.speed, c.truck ? 2.5 : 1, dt, c);
       }
     }
     this.cars = keep;

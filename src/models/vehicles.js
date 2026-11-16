@@ -172,6 +172,22 @@ function archEndWall(shape, u, s, xi, yTop) {
   return g;
 }
 
+/**
+ * Höhe der Unterseite einer Loft-Form an der Stelle u im seitlichen Abstand x (rechte Seite), zwischen den
+ * Ringpunkten des Lofts gerade verbunden wie dessen Flächen (die echte Rundung liegt ein wenig tiefer).
+ */
+function underY(shape, u, x, ring) {
+  let px = 0;
+  let py = 0;
+  for (let k = 0; k <= ring / 4; k++) {
+    loftPoint(shape, u, ringPhi(k, ring), tmpP);
+    if (k > 0 && tmpP.x >= x) return lerp(py, tmpP.y, (x - px) / Math.max(1e-6, tmpP.x - px));
+    px = tmpP.x;
+    py = tmpP.y;
+  }
+  return py;
+}
+
 function carGeometry(key) {
   if (geoCache.has(key)) return geoCache.get(key);
   const p = CAR_TYPES[key];
@@ -188,7 +204,10 @@ function carGeometry(key) {
   const width = curve1([[0, half - 0.22], [0.1, half - 0.08], [0.4, half - 0.02], [0.9, half], [L - 0.9, half], [L - 0.3, half - 0.03], [L, half - 0.1]]);
   // Radläufe nur an den Seiten ausschneiden (innen bleibt der Unterboden geschlossen)
   const bodyShape = { w: width, b: bottomBase, bx: sideArches(bottom, 0.5, 0.72), t: top, tw: 0.9, bw: 0.95, n: 4.5, L };
-  const bodyGeos = [loft({ u0: 0, u1: L, ...bodyShape, segs: 64, ring: 24, H })];
+  // Querschnitte genau an den Enden der Radläufe (knapp außen und an den Stirnwänden): Dazwischen lief der
+  // Ausschnitt sonst als schräge Fläche in Wagenfarbe in den Radlauf hinein (heller Spalt vor/hinter dem Reifen)
+  const archUs = axles.flatMap((a) => [a - rArch - 0.002, a - rArch + 0.01, a + rArch - 0.01, a + rArch + 0.002]);
+  const bodyGeos = [loft({ u0: 0, u1: L, ...bodyShape, segs: 64, ring: 24, H, extraUs: archUs })];
   // Leuchten und Blinker liegen als Flächenstücke direkt auf dem Blech (keine herausragenden Klötze)
   const onBody = (u, phi, target) => loftPoint(bodyShape, u, phi, target);
   // fein genug unterteilt, damit die Stücke auf der Rundung nicht ins Blech einsinken (sonst Zacken)
@@ -200,12 +219,17 @@ function carGeometry(key) {
   // Glas
   const beltEnd = rear === 'sedan' ? belt + 0.07 : belt + 0.12;
   const gEnd = box ? p.cargo + 0.02 : ce;
+  // Kastenwagen: Fahrerhausdach etwas unter dem Kasten. Die Kurve schießt hinter der Frontscheibe über ihren
+  // letzten Punkt hinaus (Tangente), deshalb gedeckelt: sonst ragt die Dachkappe über den Kasten hinaus
+  // (Transporter) bzw. die Scheibe oben durch den Alkoven (Wohnmobil).
+  const gRoof = box ? H - 0.08 : H - 0.01;
   const gTopPts = [
-    [hood - 0.02, belt + 0.01], [lerp(hood, ws, 0.5), lerp(belt, H, 0.56)], [ws, H - 0.01],
+    [hood - 0.02, belt + 0.01], [lerp(hood, ws, 0.5), lerp(belt, H, 0.56)], [ws, gRoof],
   ];
-  if (box) gTopPts.push([gEnd, H - 0.01]);
+  if (box) gTopPts.push([gEnd, gRoof]);
   else gTopPts.push([(ws + re) / 2, H], [re, H - 0.015], [lerp(re, ce, 0.5), lerp(H, beltEnd, 0.55)], [ce, beltEnd]);
-  const gTop = curve1(gTopPts);
+  const gCurve = curve1(gTopPts);
+  const gTop = box ? (u) => Math.min(gCurve(u), gRoof) : gCurve;
   const gHalf = (u) => width(u) - 0.06;
   const glassShape = { w: gHalf, b: (u) => top(u) - 0.05, t: gTop, tw: box ? 0.95 : 0.8, bw: 1, n: 3.4, L };
   const gU0 = hood - 0.02;
@@ -256,17 +280,53 @@ function carGeometry(key) {
   const liners = [];
   const z = (u) => u - L / 2;
   const bodyUncut = { ...bodyShape, bx: null };
+  // dunkles Radhaus, innen verschlossen (eigenes Mesh mit beidseitigem Material). Die Innenwand steht dicht
+  // innen am Reifen, also vor der Schräge, mit der der Unterboden zum Radlauf hochgezogen ist: weiter innen
+  // sah man durch den Spalt um den Reifen diese Schräge in Wagenfarbe, mit schwarzen Fetzen davor.
+  const xIn = half - 0.245;
+  const rL = rArch - 0.005;
+  const bodyUs = loftStations(0, L, 64, 0.55, archUs); // Querschnitt-Stellen des Karosserie-Lofts (siehe oben)
   for (const a of axles) {
+    // Schale über dem Rad, 5 mm unter der Radlauf-Kante. Sie knickt an denselben Stellen u wie der Loft:
+    // Zwischen zwei Querschnitten ist dessen Kante gerade und liegt, wo der Radlauf steil ist, fast 7 mm innerhalb
+    // des Kreises. Durch eine runde Schale (Zylinder) stach sie dort als heller Streifen.
+    const arc = [[-rL, 0]];
+    for (const u of bodyUs) if (Math.abs(u - a) < rL) arc.push([u - a, Math.sqrt(rL * rL - (u - a) * (u - a))]);
+    arc.push([rL, 0]);
+    // Innenwand bis zum Unterboden, auch vor und hinter dem Reifen und ein Stück über den Radlauf hinaus:
+    // Der Ausschnitt läuft zwischen zwei Querschnitten schräg aus, auch dort soll man nur Schwarz sehen.
+    // Was über den Radlauf hinausragt, liegt im Blech (über dem Radlauf bleibt mindestens 1 cm Blech).
+    const ext = rArch + 0.07;
+    const wallShape = new THREE.Shape();
+    for (let i = 0; i <= 10; i++) {
+      const dz = -ext + (2 * ext * i) / 10;
+      const y = underY(bodyUncut, a + dz, xIn, 24) + 0.003 - wr;
+      if (i === 0) wallShape.moveTo(dz, y);
+      else wallShape.lineTo(dz, y);
+    }
+    wallShape.lineTo(ext, 0);
+    wallShape.absarc(0, 0, rArch + 0.005, 0, Math.PI, false);
+    wallShape.lineTo(-ext, 0);
+    wallShape.closePath();
     for (const s of [-1, 1]) {
-      // dunkles Radhaus, innen verschlossen (eigenes Mesh mit beidseitigem Material)
-      const xIn = half * 0.45;
-      const liner = new THREE.CylinderGeometry(rArch - 0.005, rArch - 0.005, half - xIn, 14, 1, true, 0, Math.PI);
-      liner.rotateZ(Math.PI / 2);
-      liner.translate(s * (half + xIn) / 2, wr, z(a));
-      const wall = new THREE.CircleGeometry(rArch - 0.005, 14, 0, Math.PI);
-      wall.rotateY(Math.PI / 2);
+      const lp = [];
+      for (let i = 0; i < arc.length - 1; i++) {
+        const [z0, y0] = arc[i];
+        const [z1, y1] = arc[i + 1];
+        const A = [s * xIn, wr + y0, z(a) + z0];
+        const B = [s * half, wr + y0, z(a) + z0];
+        const C = [s * xIn, wr + y1, z(a) + z1];
+        const D = [s * half, wr + y1, z(a) + z1];
+        lp.push(...A, ...B, ...C, ...B, ...D, ...C);
+      }
+      const liner = new THREE.BufferGeometry();
+      liner.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
+      liner.computeVertexNormals();
+      const wall = new THREE.ShapeGeometry(wallShape, 28);
+      // -90°: Form-x wird zu +z (gleiche Richtung wie u)
+      wall.rotateY(-Math.PI / 2);
       wall.translate(s * xIn, wr, z(a));
-      liners.push(liner.toNonIndexed(), wall.toNonIndexed());
+      liners.push(liner, wall.toNonIndexed());
       // senkrechte Stirnwände vorne und hinten im Radlauf (bis knapp über die Radmitte), sonst glänzt dort Lack
       for (const e of [-1, 1]) liners.push(archEndWall(bodyUncut, a + e * (rArch - 0.01), s, xIn, wr + 0.01).toNonIndexed());
       const tire = new THREE.CylinderGeometry(wr, wr, 0.22, 16);
@@ -289,8 +349,10 @@ function carGeometry(key) {
   const armIn = Math.max(surfX(bodyShape, uMir, armY), surfX(glassShape, uMir, armY)) - 0.02;
   for (const s of [-1, 1]) {
     // Scheinwerfer an der vorderen Ecke, nach hinten gezogen
-    det.push(colorize(bodyPatch(s, 0.008, 0.17, 0.2, 0.8, 0.004), 0x2c3138));
-    det.push(colorize(bodyPatch(s, 0.02, 0.15, 0.3, 0.7, 0.007), 0xe4ecf4));
+    // beginnt ein Stück hinter der Spitze: Ganz vorne (beim flachen Sportwagen stark gekrümmt) liegen die ebenen
+    // Loft-Flächen etwas außerhalb der echten Rundung und stachen gezackt durch den Rahmen
+    det.push(colorize(bodyPatch(s, 0.025, 0.17, 0.2, 0.8, 0.004), 0x2c3138));
+    det.push(colorize(bodyPatch(s, 0.035, 0.15, 0.3, 0.7, 0.007), 0xe4ecf4));
     // Außenspiegel: flaches Gehäuse mit Arm, der im Blech beginnt
     det.push(colorize(boxAt(0.15, 0.085, 0.06, s * (half + 0.03), belt + 0.07, z(uMir), 0, s * 0.12, 0), 0x1a1a1c));
     det.push(colorize(boxAt(half - 0.03 - armIn, 0.035, 0.05, s * (armIn + half - 0.03) / 2, armY, z(uMir) + 0.01), 0x1a1a1c));
@@ -312,7 +374,7 @@ function carGeometry(key) {
   const blinkGeo = (s) => mergeGeometries([
     boxAt(0.1, 0.06, 0.024, s * blinkX, blinkY, z(L) + 0.006),
     // vorne unter dem Scheinwerfer und seitlich am Kotflügel, beides auf der Karosserie
-    bodyPatch(s, 0.01, 0.12, 0.02, 0.18, 0.005),
+    bodyPatch(s, 0.025, 0.12, 0.02, 0.18, 0.005),
     bodyPatch(s, Math.min(axles[0] + wr + 0.12, hood - 0.1), Math.min(axles[0] + wr + 0.2, hood - 0.02), 0.3, 0.4, 0.005),
   ]);
   const plateGeo = new THREE.PlaneGeometry(0.52, 0.112);
@@ -343,7 +405,7 @@ function truckGeometry() {
   for (const s of [-1, 1]) det.push(colorize(boxAt(0.04, 0.85, 1.0, s * 1.255, 2.75, z(0.75)), 0x182028));
   det.push(colorize(boxAt(2.3, 0.35, 0.12, 0, 0.75, z(0.05)), 0x2a2a2c)); // Stoßfänger
   det.push(colorize(boxAt(1.7, 0.9, 0.04, 0, 1.6, z(0.01)), 0x2f3236)); // Grill
-  det.push(colorize(boxAt(2.1, 0.12, 0.35, 0, 3.4, z(0.05), 0.25), 0x1e1e20)); // Sonnenblende (endet vor den gerundeten Ecken)
+  det.push(colorize(boxAt(1.8, 0.12, 0.35, 0, 3.4, z(0.05), 0.25), 0x1e1e20)); // Sonnenblende (endet vor den gerundeten Ecken)
   det.push(colorize(boxAt(1.0, 0.45, 5.2, 0, 0.78, z(3.2)), 0x222224)); // Rahmen
   for (const s of [-1, 1]) {
     const tank = new THREE.CylinderGeometry(0.3, 0.3, 1.2, 12);

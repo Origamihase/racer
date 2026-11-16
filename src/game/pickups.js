@@ -123,14 +123,14 @@ function corianderTexture() {
       leaf(x, y, 34, i);
       leaf(x * 0.7 + 18, y * 0.7, 22, i + 1);
     });
-    // Banderole
+    // Banderole: breit genug für das ganze Wort (es ist gut 120 px breit), maxWidth hält es sicher darin
     ctx.fillStyle = '#c62828';
-    roundRect(ctx, -46, 82, 92, 34, 8);
+    roundRect(ctx, -64, 82, 128, 34, 9);
     ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 20px Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('KORIANDER', 0, 106);
+    ctx.fillText('KORIANDER', 0, 106, 114);
   });
 }
 

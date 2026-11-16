@@ -214,13 +214,16 @@ export function buildTesla() {
 
   // Radhäuser: dunkle Innenkotflügel über den Reifen (nur außen, wo die Radläufe ausgeschnitten sind)
   // (bis weit nach innen und innen mit einer Wand verschlossen, damit man nicht in die Karosserie sieht)
+  // Radius knapp innerhalb des Radlauf-Ausschnitts (0,405): auf genau demselben Zylinder flimmerten
+  // Innenkotflügel und die Kante des Blechs ineinander (Streifen im Radlauf, Kammlinien auf dem Lack)
+  const LINER_R = 0.395;
   const wellParts = [];
   for (const u of ARCH_U) {
     for (const s of [-1, 1]) {
-      const liner = new THREE.CylinderGeometry(0.405, 0.405, 0.5, 22, 1, true, 0, Math.PI);
+      const liner = new THREE.CylinderGeometry(LINER_R, LINER_R, 0.5, 22, 1, true, 0, Math.PI);
       liner.rotateZ(Math.PI / 2);
       liner.translate(s * 0.665, 0.335, uToZ(u));
-      const wall = new THREE.CircleGeometry(0.405, 22, 0, Math.PI);
+      const wall = new THREE.CircleGeometry(LINER_R, 22, 0, Math.PI);
       wall.rotateY(Math.PI / 2);
       wall.translate(s * 0.415, 0.335, uToZ(u));
       wellParts.push(liner, wall);
@@ -362,11 +365,12 @@ export function buildTesla() {
   // Armaturenbrett
   // (schmaler und tiefer als früher: die oberen Ecken stachen an der A-Säule durchs Blech)
   inner.push(rbox(1.3, 0.18, 0.42, 0, 0.79, uToZ(1.74), 0, 0.05));
-  // Sitze (gepolstert)
+  // Sitze (gepolstert). Außen nicht weiter als |x| 0,52: Unter den Seitenfenstern steigt die Unterkante
+  // des Glases nach außen über die Gürtellinie, was dort hineinragt, liegt sichtbar auf dem Türblech
   for (const s of [-1, 1]) {
-    inner.push(rbox(0.5, 0.12, 0.5, s * 0.37, 0.5, uToZ(2.72), 0, 0.04));
-    inner.push(rbox(0.5, 0.64, 0.12, s * 0.37, 0.86, uToZ(3.0), -0.2, 0.05));
-    inner.push(rbox(0.27, 0.19, 0.1, s * 0.37, 1.25, uToZ(3.07), -0.1, 0.045));
+    inner.push(rbox(0.42, 0.12, 0.5, s * 0.31, 0.5, uToZ(2.72), 0, 0.04));
+    inner.push(rbox(0.42, 0.64, 0.12, s * 0.31, 0.86, uToZ(3.0), -0.2, 0.05));
+    inner.push(rbox(0.27, 0.19, 0.1, s * 0.31, 1.25, uToZ(3.07), -0.1, 0.045));
   }
   inner.push(rbox(1.36, 0.16, 0.5, 0, 0.5, uToZ(3.62), 0, 0.04));
   inner.push(rbox(1.12, 0.55, 0.12, 0, 0.82, uToZ(3.92), -0.18, 0.05));
@@ -379,8 +383,11 @@ export function buildTesla() {
   screen.rotation.x = -0.2;
   root.add(screen);
   // Lenkrad mit Nabe und Lenksäule zum Armaturenbrett (dort, wo Mini Adams Hände hinreichen)
+  // Fahrerplatz etwas zur Mitte gerückt (wie die Sitze): sonst ragen Mini Adams Schulter und beim
+  // Winken sein Ärmel auf der Fensterseite unter dem Seitenfenster heraus aufs Türblech
+  const SEAT_X = -0.3;
   const wheelRing = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.022, 10, 28), interior);
-  wheelRing.position.set(-0.37, 0.84, uToZ(2.4));
+  wheelRing.position.set(SEAT_X, 0.84, uToZ(2.4));
   wheelRing.rotation.x = -0.35;
   root.add(wheelRing);
   const wheelAxis = new THREE.Vector3(0, 0, 1).applyEuler(wheelRing.rotation);
@@ -395,7 +402,7 @@ export function buildTesla() {
   // Mini Adam auf einem Kissen hinterm Steuer
   const adam = buildMiniAdam({ curved: true });
   adam.setPose('drive');
-  adam.root.position.set(-0.37, 0.4, uToZ(2.62));
+  adam.root.position.set(SEAT_X, 0.4, uToZ(2.62));
   adam.root.rotation.y = Math.PI;
   root.add(adam.root);
   adam.root.updateMatrix();
@@ -406,20 +413,20 @@ export function buildTesla() {
     new THREE.CylinderGeometry(0.2, 0.22, 0.07, 18),
     W.phys({ color: 0xb0122b, roughness: 0.9, sheen: 1, sheenColor: new THREE.Color(0xff6680) }),
   );
-  cushion.position.set(-0.37, 0.59, uToZ(2.72));
+  cushion.position.set(SEAT_X, 0.59, uToZ(2.72));
   root.add(cushion);
   const cushion2 = new THREE.Mesh(
     new THREE.CylinderGeometry(0.18, 0.2, 0.07, 18),
     W.phys({ color: 0x1d4fa0, roughness: 0.9, sheen: 1, sheenColor: new THREE.Color(0x77a8ff) }),
   );
-  cushion2.position.set(-0.37, 0.655, uToZ(2.71));
+  cushion2.position.set(SEAT_X, 0.655, uToZ(2.71));
   root.add(cushion2);
 
   // Innenlicht (nur beim Kameraschwenk hell, damit man Mini Adam gut sieht): ein Spot von vorne oben
   // auf ihn – eine Punktleuchte schien durchs Glas auf Motorhaube und Türen (helle Flecken im Lack)
   const cabinLight = new THREE.SpotLight(0xfff1dd, 0, 2.2, 0.62, 0.6, 1.5);
-  cabinLight.position.set(-0.37, 1.24, uToZ(2.24));
-  cabinLight.target.position.set(-0.37, 0.96, uToZ(2.66));
+  cabinLight.position.set(SEAT_X, 1.24, uToZ(2.24));
+  cabinLight.target.position.set(SEAT_X, 0.96, uToZ(2.66));
   root.add(cabinLight, cabinLight.target);
 
   // weicher Bodenschatten (sonst schwebt der Wagen, vor allem bei Regen ohne Sonnenschatten)

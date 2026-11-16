@@ -95,15 +95,24 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 @keyframes lanepulse { 50% { box-shadow: 0 0 36px rgba(80,150,255,0.85); } }
 .leftlane-bar { height: 5px; background: rgba(255,255,255,0.2); border-radius: 3px; margin-top: 5px; overflow: hidden; }
 .leftlane-fill { height: 100%; background: #9cc4ff; transition: width 0.3s linear; }
+/* immer einzeilig: ist der Balken zu schmal für den ganzen Satz, setzt ui.js einen kürzeren */
+.leftlane-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* kein Platz zwischen den Feldern (Handy hochkant): Spalte unter den Feldern */
 .hud-narrow .navi-line { display: none; }
 .hud-narrow .leftlane { top: var(--top); }
 .hud-narrow .center-stack { top: var(--top); }
-.hud-narrow.lane-on .center-stack { top: calc(var(--top) + 58px); }
+/* --lane-h: echte Höhe des Spur-Balkens (ui.js misst nach) */
+.hud-narrow.lane-on .center-stack { top: calc(var(--top) + var(--lane-h, 47px) + 8px); }
 
 /* NOMI-Untertitel, Banner und Hinweise stapeln sich in einer Spalte, damit sich nichts überdeckt */
 .center-stack { position: absolute; top: calc(var(--top, 14px) + 94px); left: 50%; transform: translateX(-50%); width: min(900px, var(--mid, 40vw)); display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 4; }
+/* Cockpit auf Touch-Geräten quer: Spalte und Spur-Balken enden links vor Innenspiegel und Mittelbildschirm und rücken
+   dafür nach links neben das Info-Feld (ui.js layout setzt .col-fit, --col-w, --lane-w und --col-dx) */
+.hud.col-fit .center-stack, .hud.col-fit .leftlane { margin-left: var(--col-dx, 0px); }
+.hud.col-fit .center-stack { width: var(--col-w); }
+.hud.col-fit .leftlane { width: var(--lane-w); }
+.hud.col-fit .navi-line { left: calc(2 * var(--col-dx, 0px)); max-width: min(760px, var(--col-w)); }
 .nomi-sub { display: flex; align-items: center; gap: 10px; max-width: min(100%, 820px);
   background: rgba(6, 7, 10, 0.82); border: 1px solid rgba(140, 180, 255, 0.35); border-radius: 14px; padding: 8px 14px; font-size: 17px; font-weight: 600;
   box-shadow: 0 0 20px rgba(80,130,255,0.25); animation: fadein 0.25s; }
@@ -123,13 +132,20 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .toast-good { border-color: rgba(53, 200, 106, 0.7); }
 .toast-bad { border-color: rgba(255, 90, 79, 0.8); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
-.toasts.squeezed, .durchsage.squeezed { visibility: hidden; }
+.toasts.squeezed, .durchsage.squeezed, .rahmen-caption.squeezed { visibility: hidden; }
+/* knapper Platz über dem eigenen Auto (Drohnenansicht auf dem Handy quer, ui.js fitStack): das Banner wird kleiner,
+   höchstens zwei Zeilen (.tight2: eine) und ohne Unterzeile; NOMI-Untertitel und Kamera-Anzeige warten (NOMI ist zu hören) */
+.center-stack.tight .banner { margin-top: 0; font-size: 15px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6); }
+.center-stack.tight2 .banner { -webkit-line-clamp: 1; line-clamp: 1; }
+.center-stack.tight .banner-sub, .center-stack.tight .toast-sub { display: none; }
+.nomi-sub.squeezed, .camera-hint.squeezed { display: none; }
 /* Kamera-Wechsel („🎥 Drohne“): nur in der leeren Spalte – sonst zeigt der Bildwechsel selbst, was passiert ist */
 .camera-hint { background: var(--panel-strong); padding: 8px 16px; border-radius: 12px; font-weight: 700; font-size: 17px; animation: toastin 0.2s; }
 .nomi-sub:not(.hidden) ~ .camera-hint, .banner:not(.hidden) ~ .camera-hint, .toasts:not(:empty) ~ .camera-hint { display: none; }
 /* während eines Funklochs ist der Stream weg: was unter dem Funkloch-Kasten läge, ist so lange ausgeblendet
    (ui.js setzt .funk nur, wenn sich beide wirklich überschneiden) */
-.hud.funk .center-stack { visibility: hidden; }
+.hud.funk .center-stack, .hud.funk-lane .leftlane { visibility: hidden; }
 /* in der schmalen Spalte (Handy hochkant) liegen Untertitel und Hinweise über den seitlichen Rahmen-Streifen:
    dann deckend, sonst scheint die Beschriftung der Streifen durch */
 .hud-narrow:has(.rahmen .strip) .nomi-sub, .hud-narrow:has(.rahmen .strip) .toast { background: rgb(12, 13, 17); }
@@ -140,9 +156,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   border: 1px solid var(--line); border-radius: 14px; overflow: hidden; backdrop-filter: blur(4px); z-index: 3; }
 .chat-head { display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; padding: 7px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sub); border-bottom: 1px solid var(--line); }
 .chat-count { text-transform: none; letter-spacing: 0; font-weight: 600; }
-.chat-list { overflow: hidden; padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; line-height: 1.32;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px); mask-image: linear-gradient(to bottom, transparent 0, #000 22px); }
+/* oben nur ganze Nachrichten: eine angeschnittene blendet ui.trimChat aus (.gone) */
+.chat-list { overflow: hidden; padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; line-height: 1.32; }
 .msg { animation: msgin 0.25s; overflow-wrap: anywhere; }
+.msg.gone { visibility: hidden; }
 .msg .name { font-weight: 700; margin-right: 2px; }
 .msg .text { color: #eceef2; }
 .msg.bot { background: rgba(255, 215, 106, 0.09); border-radius: 6px; padding: 2px 6px; }
@@ -174,10 +191,26 @@ body.drone .hud:has(> .durchsage:not(.hidden)) .rahmen:not(.corner-only) .strip-
 /* Blitzerfoto */
 .photo { position: absolute; right: 22px; top: calc(48vh + 34px); width: 220px; background: #fbfaf5; color: #222; padding: 8px 8px 12px; border-radius: 4px;
   transform: rotate(-3deg); box-shadow: 0 10px 30px rgba(0,0,0,0.45); animation: photoin 0.5s cubic-bezier(.2,1.4,.4,1); z-index: 4; }
-.photo img { width: 100%; display: block; border-radius: 2px; background: #111; }
+/* 4:3 wie die Aufnahme – so steht die Höhe schon fest, bevor das Bild geladen ist (ui.js layout misst das Foto) */
+.photo img { width: 100%; display: block; border-radius: 2px; background: #111; aspect-ratio: 4 / 3; object-fit: cover; }
 .photo-cap { font-weight: 800; margin-top: 6px; font-size: 14px; }
 .photo-sub { font-size: 12px; color: #555; }
 @keyframes photoin { from { transform: translateX(120%) rotate(12deg); } }
+/* Touch: oben rechts über dem Chat – dort liegt es nie unter den Knöpfen, auf dem eigenen Auto oder der Durchsage
+   (hochkant rückt die Mittelspalte so lange darunter, siehe ui.js layout) */
+@media (pointer: coarse) {
+  .photo { top: 14px; right: 14px; width: min(220px, 42vw); z-index: 6; }
+}
+/* hochkant kompakt (ohne Unterzeile), damit es kaum unter den Chat reicht und die Spalte nur wenig weichen muss */
+@media (pointer: coarse) and (orientation: portrait) {
+  .photo { width: min(220px, 40vw); padding: 6px 6px 8px; }
+  .photo-cap { font-size: 13px; margin-top: 4px; }
+  .photo-sub { display: none; }
+}
+/* quer stünde dort in der Drohnenansicht auch der Rahmen-Hinweis: er wartet, bis das Foto wieder weg ist */
+@media (pointer: coarse) and (orientation: landscape) {
+  body.drone .hud:has(> .photo:not(.hidden)) .rahmen-caption { visibility: hidden; }
+}
 
 /* --- Rahmen ------------------------------------------------------------------ */
 .rahmen-layer { position: absolute; inset: 0; z-index: 2; }
@@ -206,8 +239,22 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .rahmen-burger .strip { background: rgba(120, 70, 20, 0.4); }
 .rahmen-candy .strip { background: repeating-linear-gradient(45deg, rgba(255,120,190,0.55) 0 14px, rgba(255,255,255,0.55) 14px 28px); }
 .rahmen.corner-only .strip-top, .rahmen.corner-only .strip-left, .rahmen.corner-only .strip-right { display: none; }
-.rahmen.corner-only .strip-bottom { left: auto; width: 34vh; height: 16vh; font-size: 13vh; right: 4vh; bottom: 22vh; background: none; }
+.rahmen.corner-only .strip-bottom { left: auto; width: 17vmin; height: 16vmin; font-size: 13vmin; right: 4vmin; bottom: 22vh; background: none; }
 .rahmen-kuerbis .strip-bottom span:not(:first-child) { display: none; }
+/* Touch: der Kürbis steht kleiner rechts über den Knöpfen (--touch-top) – nie darunter, nie auf dem eigenen Auto,
+   im Cockpit neben dem Mittelbildschirm */
+@media (pointer: coarse) {
+  :root { --pk: min(13vmin, 88px); }
+  .rahmen.corner-only .strip-bottom { width: var(--pk); height: var(--pk); font-size: calc(var(--pk) * 0.78); right: 12px; bottom: calc(var(--touch-top) + 4px); }
+}
+/* schmale Handys quer: rechts ist zwischen Chat, Rahmen-Hinweis und Hupe kein Platz – dann links über den kleinen Knöpfen */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) and (max-aspect-ratio: 2.08/1) {
+  .rahmen.corner-only .strip-bottom { right: auto; left: 14px; }
+}
+/* hochkant stehen Durchsage und Rahmen-Hinweis unten in der Mitte: so lange der Kürbis da ist, links daneben */
+@media (pointer: coarse) and (orientation: portrait) {
+  .hud:has(.rahmen-kuerbis) .durchsage, body .hud .rahmen-kuerbis .rahmen-caption { right: calc(var(--pk) + 20px); max-width: calc(100vw - var(--pk) - 48px); }
+}
 .rettich { width: 3.2vh; height: 6vh; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 80'%3E%3Cpath d='M20 30 L14 2 M20 30 L22 0 M20 30 L30 4' stroke='%2336a032' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M8 30 Q20 24 32 30 Q34 56 20 78 Q6 56 8 30Z' fill='%23fbfbf4' stroke='%23c9c9b0' stroke-width='2'/%3E%3C/svg%3E") center/contain no-repeat; display: block; }
 .rahmen-rettich .strip { background: rgba(60, 120, 40, 0.35); }
 .boxes { position: absolute; left: 0; right: 0; bottom: 0; height: 26vh; }
@@ -260,6 +307,27 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
   .touch .t-camera { left: 12px; } .touch .t-pause { left: 66px; }
   .touch .t-horn { right: 12px; } .touch .t-wiper { right: 66px; } .touch .t-megafon { right: 120px; }
 }
+/* Handy quer: unten rechts liegt im Cockpit der Mittelbildschirm – Pfeile und Pedale kleiner und tiefer, rechts nur so
+   viele kleine Knöpfe, wie neben den Bildschirm passen: das Megafon steht links, auf schmalen Handys auch der Scheibenwischer.
+   --touch-top: Oberkante der kleinen Knöpfe (+ Abstand), darüber steht der Kürbis-Rahmen */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  :root { --touch-top: 170px; }
+  .touch .t-left, .touch .t-right, .touch .t-brake { width: 78px; height: 78px; bottom: 10px; }
+  .touch .t-gas { width: 84px; height: 84px; right: 14px; bottom: 10px; }
+  .touch .t-left { left: 14px; }
+  .touch .t-right { left: 104px; }
+  .touch .t-brake { right: 108px; }
+  .touch .t-small { bottom: 108px; }
+  .touch .t-horn { right: 14px; } .touch .t-wiper { right: 76px; }
+  .touch .t-camera { left: 14px; } .touch .t-pause { left: 76px; } .touch .t-megafon { right: auto; left: 138px; }
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) and (max-aspect-ratio: 2.08/1) {
+  :root { --touch-top: 152px; }
+  .touch .t-gas { width: 80px; height: 80px; }
+  .touch .t-brake { width: 76px; height: 76px; right: 104px; }
+  .touch .t-small { width: 44px; height: 44px; font-size: 19px; bottom: 100px; }
+  .touch .t-pause { left: 64px; } .touch .t-megafon { left: 114px; } .touch .t-wiper { right: auto; left: 164px; }
+}
 
 /* --- Menüs ------------------------------------------------------------------- */
 .screens { position: fixed; inset: 0; z-index: 30; display: none; --scr-pad: 28px; }
@@ -273,7 +341,22 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .title-live { background: var(--live); padding: 3px 10px; border-radius: 6px; font-weight: 800; letter-spacing: 0.08em; font-size: 14px; animation: livepulse 2s infinite; }
 .title-card h1 { font-size: clamp(54px, 8vw, 104px); line-height: 0.95; margin: 10px 0 6px; font-weight: 850; letter-spacing: -0.03em; text-shadow: 0 6px 30px rgba(0,0,0,0.6); }
 .title-card h2 { font-size: clamp(20px, 2.6vw, 32px); margin: 0; font-weight: 700; color: #ff4d57; text-shadow: 0 2px 16px rgba(0,0,0,0.6); }
-.tagline { font-style: italic; color: #d6dae2; margin: 8px 0 22px; font-size: 17px; }
+.tagline { font-style: italic; color: #d6dae2; margin: 8px 0 22px; font-size: 17px; text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 2px 16px rgba(0,0,0,0.6); }
+/* Hochkant steht die Titelkarte oben und das Dunkel kommt von oben (quer endet es schon in der Bildmitte, die Zeilen
+   liefen dort in den hellen Himmel); darunter bleibt der Streifen für den Wagen frei */
+@media (orientation: portrait) {
+  .screen-title { align-items: flex-start; background: linear-gradient(180deg, rgba(6,7,10,0.8) 0%, rgba(6,7,10,0.6) 42%, rgba(6,7,10,0) 66%); }
+  .title-card .title-stats { text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
+}
+/* kurze Handys hochkant (375 × 667): kompakte Karte, damit unter den Knöpfen Platz für den ganzen Wagen bleibt */
+@media (orientation: portrait) and (max-height: 760px) {
+  .title-card h1 { font-size: 44px; margin: 4px 0 2px; }
+  .title-card h2 { font-size: 18px; }
+  .title-card .tagline { margin: 4px 0 10px; font-size: 14px; }
+  .title-card .menu { gap: 6px; }
+  .title-card .menu .btn { padding: 8px 14px; font-size: 15px; }
+  .title-card .title-stats { margin-top: 10px; font-size: 13px; }
+}
 .menu { display: flex; flex-direction: column; gap: 9px; align-items: stretch; max-width: 330px; }
 .menu.row { flex-direction: row; flex-wrap: wrap; max-width: none; margin-top: 18px; }
 .title-stats { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 22px; color: #e1e4ea; font-size: 15px; font-weight: 600; }
@@ -432,6 +515,8 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
   .title-stats { margin-top: 10px; font-size: 13px; }
   /* HUD: kompakte Mittelspalte; die Durchsage steht klein ganz unten – über dem Lenkrad bzw. unter dem Auto */
   .center-stack { gap: 6px; }
+  .leftlane { padding: 5px 10px 6px; font-size: 13px; border-radius: 10px; }
+  .leftlane-bar { margin-top: 4px; height: 4px; }
   .nomi-sub { font-size: 14px; padding: 5px 10px; gap: 8px; border-radius: 12px; }
   .nomi-eyes { width: 26px; height: 26px; }
   .banner { font-size: 18px; }
@@ -472,6 +557,9 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
   /* schmale Handys quer: Spalte, Spur-Balken und Funkloch-Kasten bleiben zwischen den Knopfgruppen */
   .hud-narrow .center-stack, .hud-narrow .leftlane { width: min(460px, var(--mid), calc(100vw - 424px)); }
   .hud-narrow .funkloch { max-width: min(460px, calc(100vw - 424px)); }
+  /* dort beginnen Spalte und Spur-Balken schon unter dem Chat: der Rahmen-Hinweis der Drohnenansicht darunter bleibt
+     rechts neben ihnen (sie enden 212 px vor dem rechten Rand) */
+  body.drone .hud-narrow .rahmen-caption { max-width: calc(194px - 7.5vh); }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 560px) {
   .durchsage, body.drone .durchsage { max-width: min(560px, calc(100vw - 432px)); }

@@ -3,6 +3,13 @@
 import * as THREE from 'three';
 import { CURVE_GLSL, curveUniforms } from '../curve.js';
 import { softDotTexture } from '../textures.js';
+import { smoothstep } from '../util.js';
+
+// Gischt: je Fahrzeug eine feste Zahl Teilchen pro Sekunde (früher je Bild, dann hing die Dichte an der
+// Bildrate), schwach und kurzlebig. So bleibt sie ein weicher Schleier tief hinter den Rädern, durch den man
+// das Auto davor mit seinen Rücklichtern weiter gut sieht (vorher stapelten sich Hunderte Teilchen zur Wand).
+const SPRAY_RATE = 22; // Teilchen pro Sekunde und Auto bei vollem Regen (Lkw: mal amount)
+const SPRAY_ALPHA = 0.1;
 
 export class Rain {
   constructor(scene, count = 2600) {
@@ -91,7 +98,8 @@ export class Rain {
           vec4 g = projectionMatrix * viewMatrix * curveWorld(modelMatrix * vec4(position.x, 0.0, position.z, 1.0));
           float below = (gl_Position.y / gl_Position.w - g.y / g.w) * 0.5 * uH;
           vCut = 0.5 + below / max(px, 1.0);
-          vA = aAlpha;
+          // dicht vor der Kamera ausblenden: sonst legen sich die großen Punkte über die ganze Frontscheibe
+          vA = aAlpha * smoothstep(1.5, 6.0, -mv.z);
         }`,
       fragmentShader: /* glsl */ `
         uniform sampler2D tDot;
@@ -107,6 +115,8 @@ export class Rain {
     });
     this.spray = new THREE.Points(sg, smat);
     this.spray.frustumCulled = false;
+    // nach den Scheiben des Teslas (renderOrder 2): sonst schneidet dessen Glas dunkle Streifen in den Schleier
+    this.spray.renderOrder = 3;
     // Bildhöhe des gerade gezeichneten Ziels (Bildschirm, Rückspiegel, Blitzerfoto)
     const drawSize = new THREE.Vector2();
     this.spray.onBeforeRender = (renderer, _s, _c, _g, material) => {
@@ -121,21 +131,36 @@ export class Rain {
     this.spray.material.uniforms.uH.value = h;
   }
 
-  /** Gischt-Partikel ausstoßen (x, z in Kamera-Raum der Welt). */
-  emit(x, z, width, speed, amount = 1) {
-    if (this.intensity < 0.15) return;
-    const n = Math.round(amount * this.intensity * 2);
+  /**
+   * Gischt hinter einem Fahrzeug (x, z: Heckmitte im Kamera-Raum der Welt). amount: Menge relativ zum Auto
+   * (Lkw mehr), dt: Zeitschritt, src: Objekt, das den Rest zwischen zwei Bildern aufhebt (das Fahrzeug).
+   */
+  emit(x, z, width, speed, amount = 1, dt = 1 / 60, src = null) {
+    if (this.intensity < 0.15) {
+      if (src) src.sprayAcc = 0;
+      return;
+    }
+    // erst ab Tempo spritzt es richtig
+    const rate = SPRAY_RATE * amount * this.intensity * smoothstep(4, 22, speed);
+    let acc = (src ? src.sprayAcc || 0 : Math.random()) + rate * dt;
+    const n = Math.floor(acc);
+    acc -= n;
+    if (src) src.sprayAcc = acc;
+    const big = amount > 1.5;
     for (let i = 0; i < n && this.sprayData.length < this.maxSpray; i++) {
+      // aus den Radspuren links und rechts, nicht über die ganze Breite
+      const side = Math.random() < 0.5 ? -1 : 1;
       this.sprayData.push({
-        x: x + (Math.random() - 0.5) * width,
-        y: 0.25 + Math.random() * 0.3,
-        z,
-        vx: (Math.random() - 0.5) * 1.2,
-        vy: 0.6 + Math.random() * 1.4,
+        x: x + side * (width * 0.5 - 0.32) + (Math.random() - 0.5) * 0.35,
+        y: 0.18 + Math.random() * 0.2,
+        z: z + Math.random() * 0.4,
+        vx: side * Math.random() * 0.6,
+        vy: 0.3 + Math.random() * 0.7,
         vz: speed * 0.9,
         life: 0,
-        max: 0.8 + Math.random() * 0.8,
-        size: 1.2 + Math.random() * 1.6,
+        max: 0.5 + Math.random() * 0.3,
+        size: (big ? 1.2 : 0.8) + Math.random() * 0.6,
+        grow: big ? 2.2 : 1.6,
       });
     }
   }
@@ -163,12 +188,13 @@ export class Rain {
       p.y += p.vy * dt;
       p.vy -= 0.8 * dt;
       p.z += (speed - p.vz * Math.exp(-p.life * 2)) * dt;
-      p.size += dt * 2.2;
+      p.size += dt * p.grow;
       keep.push(p);
       pos[j * 3] = p.x;
       pos[j * 3 + 1] = p.y;
       pos[j * 3 + 2] = p.z;
-      al[j] = 0.32 * (1 - p.life / p.max) * this.intensity;
+      // kurz einblenden (kein Aufploppen), dann bis zum Ende ausblenden
+      al[j] = SPRAY_ALPHA * Math.min(1, p.life / 0.06) * (1 - p.life / p.max) * this.intensity;
       sz[j] = p.size;
       j++;
     }

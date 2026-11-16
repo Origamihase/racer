@@ -141,6 +141,12 @@ export class CenterScreen {
       return [x, y, k];
     };
     const px = st.playerX;
+    // Spuren und Autos nur im eigenen Feld zeichnen: von der linken Spur aus liegen die rechten
+    // Spuren (und Lkw, die man gerade überholt) seitlich weit draußen, sonst landen sie auf der Karte
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, top, SPLIT, CH - top);
+    ctx.clip();
     // Fahrbahnränder und Leitlinien
     const laneEdges = [-7.5, -3.75, 0, 3.75, 7.5];
     if (st.leftLane > 0) {
@@ -184,7 +190,7 @@ export class CenterScreen {
       const p1 = proj(c.dx - px, c.ds + c.len / 2);
       const w = c.w * 30 * p0[2];
       ctx.fillStyle = c.kind === 'polizei' ? '#5c7ed6' : T.car;
-      roundRect(ctx, p0[0] - w / 2, p1[1], w, Math.max(4, p0[1] - p1[1]), Math.min(8, w / 3));
+      pill(ctx, p0[0] - w / 2, p1[1], w, Math.max(4, p0[1] - p1[1]), Math.min(8, w / 3));
       ctx.fill();
       if (c.brake) {
         ctx.fillStyle = '#ff3b30';
@@ -196,11 +202,12 @@ export class CenterScreen {
     const meTop = proj(0, 4.7);
     const mw = 1.85 * 30 * me[2];
     ctx.fillStyle = '#111214';
-    roundRect(ctx, me[0] - mw / 2, meTop[1], mw, me[1] - meTop[1], 10);
+    pill(ctx, me[0] - mw / 2, meTop[1], mw, me[1] - meTop[1], 10);
     ctx.fill();
     ctx.fillStyle = 'rgba(120,150,190,0.8)';
-    roundRect(ctx, me[0] - mw * 0.36, meTop[1] + (me[1] - meTop[1]) * 0.18, mw * 0.72, (me[1] - meTop[1]) * 0.28, 6);
+    pill(ctx, me[0] - mw * 0.36, meTop[1] + (me[1] - meTop[1]) * 0.18, mw * 0.72, (me[1] - meTop[1]) * 0.28, 6);
     ctx.fill();
+    ctx.restore();
 
     // Linke-Spur-Status (auf eigenem Streifen, damit keine Spurlinien durch die Schrift laufen)
     const band = ctx.createLinearGradient(0, CH - 128, 0, CH - 112);
@@ -547,6 +554,15 @@ export class CenterScreen {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
   }
+}
+
+/**
+ * Abgerundetes Rechteck, dessen Radius höchstens die halbe kürzere Seite ist: Die Autos in der
+ * Spuransicht sind flach (oft nur 4–10 px hoch), mit zu großem Radius überschlägt sich der Pfad
+ * und es entstehen Schnörkel statt Kapseln.
+ */
+function pill(ctx, x, y, w, h, r) {
+  roundRect(ctx, x, y, w, h, Math.max(0, Math.min(r, w / 2, h / 2)));
 }
 
 function fmtDist(m) {

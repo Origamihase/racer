@@ -57,6 +57,19 @@ export function viewerName() {
   return pick(NAME_A) + pick(NAME_B);
 }
 
+/**
+ * Für schmale Chats (Handy hochkant): eine Umbruchstelle zwischen den beiden Namensteilen, damit ein langer Name
+ * wie „Superchargerprinzessin“ als „Supercharger-“ / „prinzessin“ umbricht statt irgendwo mitten im Wort. Ein
+ * weiches Trennzeichen erscheint nur, wenn dort wirklich umbrochen wird; vor „_FFM“ oder „3000“ ohne Strich.
+ */
+export function nameBreak(name) {
+  let a = '';
+  for (const p of NAME_A) if (p.length > a.length && p.length < name.length && name.startsWith(p)) a = p;
+  if (!a) return name;
+  const rest = name.slice(a.length);
+  return a + (/^[a-zäöüß]/.test(rest) ? '\u00ad' : '\u200b') + rest;
+}
+
 export function nameColor(name) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;

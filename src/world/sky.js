@@ -4,6 +4,32 @@ import * as THREE from 'three';
 import { curveUniforms, CURVE_K } from '../curve.js';
 import { lerp, fbm1, clamp } from '../util.js';
 
+// Schattenkasten der Sonne (Licht-Einheiten bei 2048er Schattenkarte, „mittel“ mit 1024 nimmt 0,7 davon): u quer
+// zur Straße (±63 m), v längs (rund 220 m, davon 40 m hinter der Kamera, der Rest in Blickrichtung). Am Boden
+// sind die Texel etwa so groß wie vorher (rund 6 × 10 cm); der alte Kasten lag aber schräg, reichte gut 50 m nach
+// hinten und endete 50–130 m voraus mit einer harten Kante. Am Rand laufen die Schatten jetzt aus: kurz an den
+// Seiten und hinten, lang an der fernen Kante (bei „hoch“ von knapp 120 bis 180 m).
+const SHADOW = { u: 96, v: 176, back: 40, side: 30, edge: 0.04, far: 0.29 };
+// three.js füllt Schatten bis genau an den Kastenrand und schaltet dahinter hart auf „kein Schatten“. Hier laufen
+// sie stattdessen weich aus (shadowCoord 0…1 über den Kasten; v wächst in Fahrtrichtung). PCFSoftShadowMap nutzt
+// shadowRadius nicht: placeShadow legt dort die Blickrichtung längs der Straße ab (+1 voraus … −1 zurück), damit
+// gerade die ferne Kante lang ausläuft und die nahe hinter der Kamera kurz.
+const EDGE = SHADOW.edge.toFixed(3);
+const FAR = SHADOW.far.toFixed(3);
+const FADE = /* glsl */ `
+		float shFar = clamp( shadowRadius, - 1.0, 1.0 );
+		float shFade = smoothstep( 0.0, ${EDGE}, shadowCoord.x ) * smoothstep( 0.0, ${EDGE}, 1.0 - shadowCoord.x )
+			* smoothstep( 0.0, mix( ${EDGE}, ${FAR}, max( - shFar, 0.0 ) ), shadowCoord.y )
+			* smoothstep( 0.0, mix( ${EDGE}, ${FAR}, max( shFar, 0.0 ) ), 1.0 - shadowCoord.y );
+		return mix( 1.0, shadow, shadowIntensity * shFade );`;
+{
+  const chunk = THREE.ShaderChunk.shadowmap_pars_fragment;
+  const end = 'return mix( 1.0, shadow, shadowIntensity );';
+  // nur das erste Vorkommen: getShadow (Richtungslicht); das zweite gehört zu getPointShadow
+  if (chunk.includes(end)) THREE.ShaderChunk.shadowmap_pars_fragment = chunk.replace(end, FADE.trim());
+}
+const _dir = new THREE.Vector3();
+
 const SKY_VERT = /* glsl */ `
 varying vec3 vDir;
 void main() {
@@ -95,15 +121,17 @@ export class Sky {
     // Schattenkamera immer einrichten, damit ein späteres Umschalten auf „mittel“/„hoch“ sofort passt
     this.sun.shadow.mapSize.set(shadowSize, shadowSize);
     const c = this.sun.shadow.camera;
-    c.left = -55;
-    c.right = 55;
-    c.top = 60;
-    c.bottom = -60;
+    // „oben“ im Schattenbild ist Fahrtrichtung: so laufen die Seitenkanten des Kastens am Boden längs der Straße
+    c.up.set(0, 0, -1);
     c.near = 10;
     c.far = 400;
-    c.updateProjectionMatrix();
     this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.04;
+    // Achsen des Schattenbilds (wie three.js sie mit lookAt bildet): eU quer, rein waagrecht; eV längs
+    this.eU = new THREE.Vector3().crossVectors(c.up, this.sunDir).normalize();
+    this.eV = new THREE.Vector3().crossVectors(this.sunDir, this.eU);
+    this.shadowK = 0;
+    this.shadowBox();
     scene.add(this.sun);
     scene.add(this.sun.target);
     this.hemi = new THREE.HemisphereLight(0xc4dcff, 0x5f6a45, 1.05);
@@ -179,6 +207,57 @@ export class Sky {
     this.overcast = clamp(v, 0, 1);
   }
 
+  /** Schattenkasten passend zur Schattenkarte der Qualitätsstufe (2048: voll, 1024: 0,7). Gibt den Faktor zurück. */
+  shadowBox() {
+    const sh = this.sun.shadow;
+    const k = sh.mapSize.x >= 2048 ? 1 : 0.7;
+    if (k !== this.shadowK) {
+      this.shadowK = k;
+      const cam = sh.camera;
+      cam.left = (-SHADOW.u * k) / 2;
+      cam.right = (SHADOW.u * k) / 2;
+      cam.bottom = (-SHADOW.v * k) / 2;
+      cam.top = (SHADOW.v * k) / 2;
+      cam.updateProjectionMatrix();
+    }
+    return k;
+  }
+
+  /**
+   * Schattenkasten (siehe SHADOW) dorthin legen, wohin die Kamera schaut: 40 m hinter ihr bis gut 180 m vor ihr,
+   * bei Blick zur Seite (Titel) entsprechend quer. Er rastet auf ganze Texel der Welt ein (die Welt rückt mit s
+   * nach +z): sonst wandern die Treppchen an Schattenkanten beim Fahren mit und flimmern.
+   */
+  placeShadow(camera, s) {
+    const sh = this.sun.shadow;
+    const size = sh.mapSize.x;
+    const k = this.shadowBox();
+    const W = SHADOW.u * k;
+    const V = SHADOW.v * k;
+    // Blickrichtung am Boden
+    camera.getWorldDirection(_dir);
+    const len = Math.hypot(_dir.x, _dir.z);
+    const fx = len > 1e-3 ? _dir.x / len : 0;
+    const fz = len > 1e-3 ? _dir.z / len : -1;
+    const eU = this.eU;
+    const eV = this.eV;
+    // Kastenmitte am Boden: quer zwischen Straßenmitte und Kamera wie bisher, dazu in Blickrichtung verschoben
+    const halfX = W / 2 / eU.x;
+    const halfZ = V / 2 / -eV.z;
+    const x = camera.position.x * 0.5 + fx * (halfX - SHADOW.side * k);
+    const z = camera.position.z + fz * (halfZ - SHADOW.back * k);
+    // auf das Texelraster der Welt einrasten (eU hat keinen z-Anteil, nur v wandert mit s)
+    const tu = W / size;
+    const tv = V / size;
+    const u = Math.round((eU.x * x) / tu) * tu;
+    const sv = eV.z * s;
+    const v = Math.round((eV.x * x + eV.z * z - sv) / tv) * tv + sv;
+    const cx = u / eU.x;
+    this.sun.target.position.set(cx, 0, (v - eV.x * cx) / eV.z);
+    this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 200);
+    sh.radius = -fz;
+  }
+
   update(dt, camera, s, t) {
     const o = this.overcast;
     this.uniforms.uOvercast.value = o;
@@ -201,9 +280,7 @@ export class Sky {
     const cu = curveUniforms.uCurve.value;
     this.hills.position.set(camera.position.x + cu.x * B(1950) * 0.7, cu.y * B(1950) * 0.8, 0);
 
-    // Schatten folgen dem Spieler (Ziel etwas voraus)
-    this.sun.target.position.set(camera.position.x * 0.5, 0, -32);
-    this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 200);
+    this.placeShadow(camera, s);
     this.envGround.material.color.setRGB(lerp(0.16, 0.1, o), lerp(0.17, 0.11, o), lerp(0.13, 0.11, o));
     if (Math.abs(o - this.lastEnvOvercast) > 0.12) this.updateEnv();
   }

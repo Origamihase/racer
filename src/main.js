@@ -530,24 +530,97 @@ function setFov(vfovCockpit) {
   camera.updateProjectionMatrix();
 }
 
-// Im Titel fährt der Wagen sonst hinter den Menüknöpfen (4:3, Handy hochkant):
-// Bildmitte in die freie Fläche neben bzw. unter der Titelkarte schieben
+// Im Titel fährt der Wagen sonst hinter den Menüknöpfen (4:3, Handy hochkant): Das Bild wird so verschoben, dass
+// der ganze Wagen (sein Umriss auf dem Bildschirm, nicht der Blickpunkt auf Dachhöhe) mitten in der freien Fläche
+// neben, unter oder über der Titelkarte steht – in der, in die er am besten passt. Ist auch die zu klein, fährt
+// die Orbit-Kamera so weit zurück, dass er hineinpasst.
 const viewOff = { x: 0, y: 0 };
+// so groß wird der Wagen auf dem Bildschirm höchstens (m, Seitenansicht etwas von oben), Abstände (px), Füllgrad
+const TITLE_CAR = { w: 5.4, h: 2.8, gap: 12, edge: 10, fill: 0.9, zoomMax: 1.7 };
+const carBoxPt = new THREE.Vector3();
+/** Bildschirm-Rechteck [x0, y0, x1, y1] um den Tesla für die Kamera ohne Bildverschiebung */
+function carScreenBox(Wd, Hd) {
+  camera.updateMatrixWorld();
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (let i = 0; i < 8; i++) {
+    carBoxPt.set(i & 1 ? 1.0 : -1.0, i & 2 ? 1.45 : 0, i & 4 ? 2.35 : -2.35).applyMatrix4(carMatrix).project(camera);
+    const px = ((carBoxPt.x + 1) / 2) * Wd;
+    const py = ((1 - carBoxPt.y) / 2) * Hd;
+    x0 = Math.min(x0, px);
+    x1 = Math.max(x1, px);
+    y0 = Math.min(y0, py);
+    y1 = Math.max(y1, py);
+  }
+  return [x0, y0, x1, y1];
+}
+/** Lage der Titelkarte ohne ihre Einflug-Animation (die schiebt sie nur kurz zur Seite) */
+function titleCardRect() {
+  const card = state === 'title' ? document.querySelector('.screen-title:not(.hidden) .title-card') : null;
+  if (!card || !card.offsetWidth) return null;
+  const par = card.offsetParent;
+  const pr = par ? par.getBoundingClientRect() : { left: 0, top: 0 };
+  const left = pr.left + card.offsetLeft - (par ? par.scrollLeft : 0);
+  const top = pr.top + card.offsetTop - (par ? par.scrollTop : 0);
+  return { left, top, right: left + card.offsetWidth, bottom: top + card.offsetHeight };
+}
+/**
+ * Abspann-Fahrt („Akku leer …“): die sichtbare HUD-Mitte (NOMI-Untertitel, Banner, Hinweise). Auf dem Handy quer
+ * steht sie mitten im Bild – der Wagen gehört darunter, sonst verdeckt der Untertitel ihn die ganze Zeit.
+ */
+function endStackRect() {
+  if (state !== 'ending' || !ui.stackEl) return null;
+  const s = ui.stackEl.getBoundingClientRect();
+  const bottom = ui.stackBottom(s);
+  if (!s.height || !(bottom > s.top)) return null;
+  return { left: s.left, top: s.top, right: s.right, bottom };
+}
 function titleViewOffset(dt) {
   const Wd = window.innerWidth;
   const Hd = window.innerHeight;
   let tx = 0;
   let ty = 0;
-  const card = state === 'title' ? document.querySelector('.screen-title:not(.hidden) .title-card') : null;
-  const r = card && card.getBoundingClientRect();
-  if (r && r.width) {
-    if (Wd - r.right > Wd * 0.3) tx = (r.right + Wd) / 2 - Wd / 2;
-    else if (Hd - r.bottom >= r.top && Hd - r.bottom > 110) ty = (r.bottom + Hd) / 2 - Hd / 2;
-    else if (r.top > 110) ty = r.top / 2 - Hd / 2;
+  let zoom = 1;
+  const card = titleCardRect();
+  const r = card || endStackRect();
+  if (r) {
+    const G = TITLE_CAR;
+    const ppm = Hd / (2 * ORBIT.r * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+    const regions = card
+      ? [
+          [r.right + G.gap, G.edge, Wd - G.edge, Hd - G.edge],
+          [G.edge, r.bottom + G.gap, Wd - G.edge, Hd - G.edge],
+          [G.edge, G.edge, Wd - G.edge, r.top - G.gap],
+        ]
+      : [[G.edge, r.bottom + G.gap, Wd - G.edge, Hd - G.edge]];
+    let best = null;
+    let bestS = Infinity;
+    for (const g of regions) {
+      const w = g[2] - g[0];
+      const h = g[3] - g[1];
+      if (w < 60 || h < 40) continue;
+      // so viel weiter weg müsste die Kamera, damit der Wagen hineinpasst (unter 1: passt schon)
+      const s = Math.max(1, (G.w * ppm) / (w * G.fill), (G.h * ppm) / (h * G.fill));
+      if (s < bestS - 0.01) {
+        bestS = s;
+        best = g;
+      }
+    }
+    if (best) {
+      zoom = Math.min(bestS, G.zoomMax);
+      const b = carScreenBox(Wd, Hd);
+      tx = (best[0] + best[2]) / 2 - (b[0] + b[2]) / 2;
+      ty = (best[1] + best[3]) / 2 - (b[1] + b[3]) / 2;
+    }
   }
-  const k = 1 - Math.exp(-dt * 4);
+  // im ersten Bild (Titel, Abspann) gleich an Ort und Stelle, danach gleitend
+  const first = stateT <= dt * 1.5;
+  const k = first ? 1 : 1 - Math.exp(-dt * 4);
   viewOff.x += (tx - viewOff.x) * k;
   viewOff.y += (ty - viewOff.y) * k;
+  orbit.zoom += (zoom - orbit.zoom) * (first ? 1 : 1 - Math.exp(-dt * 1.5));
   if (Math.abs(viewOff.x) + Math.abs(viewOff.y) > 0.5) camera.setViewOffset(Wd, Hd, -viewOff.x, -viewOff.y, Wd, Hd);
 }
 
@@ -557,57 +630,308 @@ function localToWorld(v) {
 
 // Orbit-Kamera (Titel, Abspann): bleibt über der eigenen Fahrbahn – vor Lärmschutzwand, Schildern,
 // Schilderbrücken- und Brückenpfeilern und der Mittelleitplanke (auf der Gegenfahrbahn kommen die
-// Autos zu schnell) – und steigt rechtzeitig über Fahrzeuge, statt durch sie hindurchzufliegen.
-const ORBIT = { r: 8.5, xMin: ROAD.left + 0.25, xMax: ROAD.right + 0.4, yMax: 4.8, clear: 0.5, margin: 0.5, blend: 2.5, lead: 1.4 };
+// Autos zu schnell). Fahrzeuge, die ihr in den nächsten Sekunden die Sicht auf den Tesla nähmen oder unter ihr
+// durchführen (Lkw, Wohnmobil, Transporter, aber auch Autos), umfährt sie: Sie schwenkt rechtzeitig dorthin, wo der
+// Blick frei bleibt – hinter oder vor das Auto oder auf die andere Seite – und wartet dort, bis sie vorbei sind.
+// Über Fahrzeuge steigt sie nur noch zur Not, statt durch sie hindurchzufliegen.
+const ORBIT = {
+  r: 8.5, xMin: ROAD.left + 0.25, xMax: ROAD.right + 0.4, yMax: 4.8, clear: 0.9, margin: 0.5, blend: 2.5, lead: 1.4,
+  // Sicht: Vorausschau (s) und ihre Schritte; ab „bad“ weicht die Kamera aus, unter „ok“ ist der Blick frei.
+  // Ausweichen mit höchstens wEsc (rad/s, die Blickrichtung dreht sich dann gut 30°/s) und Winkelbeschleunigung acc;
+  // beim Schwenken schaut sie „ahead“ (rad) voraus
+  see: 2.4, seeStep: 0.3, bad: 0.3, ok: 0.12, wEsc: 0.6, acc: 1.4, ahead: 0.21,
+  // so lange (s) muss der Blick am Ziel nach der Ankunft frei bleiben (langsame Lkw sind lange im Weg)
+  hold: 3.2,
+  // so hoch steigt sie, um über Autos zwischen ihr und dem Tesla hinwegzuschauen; Drehrate und Steig-/Sinkrate
+  // der Kamera selbst höchstens (rad/s, m/s): der Blick dreht sich nie schneller als etwa 40°/s
+  yLow: 3.9, wMax: 0.68, vyMax: 2.2,
+};
 const orbitPos = new THREE.Vector3();
 // Ist auf einer Seite des Autos zu wenig Platz für den vollen Bogen (rechte Spur, Standstreifen, an der
-// Mittelleitplanke), kehrt die Kamera genau hinter bzw. vor dem Auto um und schwingt auf der freien Seite hin und
+// Mittelleitplanke), kehrt die Kamera hinter bzw. vor dem Auto um und schwingt auf der freien Seite hin und
 // her, statt sich dicht neben das Auto zu quetschen (dort wäre es plötzlich anderthalbmal so groß und hochkant
 // angeschnitten). Wechselt das Auto mitten im Bogen auf eine enge Spur, verlässt sie die enge Seite zügig auf dem
-// kürzesten Weg. Sie springt dabei nie quer durchs Bild.
+// kürzesten Weg. Sie springt dabei nie quer durchs Bild und dreht den Blick nie schneller als etwa 40°/s.
 const ORBIT_SPEED = 0.16; // rad/s
-const orbit = { a: 0.9, dir: 1, leaving: false };
-function orbitBlocked(p, side) {
+// a: Winkel um das Auto (0 = dahinter, π/2 = rechts), w: Drehrate, esc: Ziel beim Ausweichen, zoom: Abstand im Titel
+const orbit = { a: 0.9, dir: 1, w: 0, esc: null, plan: 0, zoom: 1, phi: 0, dist: ORBIT.r };
+function orbitRoom(p, side) {
   // im Titel zählt schon die Spur, auf die der Autopilot gerade wechselt: so ist die Kamera rechtzeitig weg
-  const xs = state === 'title' ? [p.x, ROAD.laneCenter(ap.lane)] : [p.x];
-  const room = (s) => Math.min(...xs.map((x) => (s > 0 ? ORBIT.xMax - x : x - ORBIT.xMin)));
-  return room(side) < ORBIT.r * 0.75 && room(-side) > room(side);
+  const xs = [p.x, orbitLaneX(p)];
+  return Math.min(...xs.map((x) => (side > 0 ? ORBIT.xMax - x : x - ORBIT.xMin)));
+}
+function orbitBlocked(p, side, r = ORBIT.r * orbit.zoom) {
+  const room = orbitRoom(p, side);
+  return room < r * 0.75 && orbitRoom(p, -side) > room;
+}
+/** Darf die Kamera bei Winkel a stehen? Auf einer engen Seite nur so weit, wie dort Platz ist (schräg hinter/vor dem Auto). */
+function orbitAllowed(p, a, r) {
+  const side = Math.sin(a) >= 0 ? 1 : -1;
+  return !orbitBlocked(p, side, r) || Math.abs(Math.sin(a)) * r <= orbitRoom(p, side) - 0.3;
+}
+
+// Prüfpunkte am Tesla (relativ zur Wagenmitte): sieht die Kamera sie, sieht sie den Wagen
+const ORBIT_PTS = [];
+for (const x of [-0.8, 0.8]) for (const y of [0.45, 1.25]) for (const z of [-2.0, 0, 2.0]) ORBIT_PTS.push([x, y, z]);
+/** Schneidet die Strecke a→b den Quader [x0,x1]×[0,y1]×[z0,z1]? */
+function segHitsBox(ax, ay, az, bx, by, bz, x0, x1, y1, z0, z1) {
+  const t = [0, 1];
+  return slab(t, ax, bx - ax, x0, x1) && slab(t, az, bz - az, z0, z1) && slab(t, ay, by - ay, 0, y1);
+}
+function slab(t, o, d, mn, mx) {
+  if (Math.abs(d) < 1e-9) return o >= mn && o <= mx;
+  const ta = (mn - o) / d;
+  const tb = (mx - o) / d;
+  t[0] = Math.max(t[0], Math.min(ta, tb));
+  t[1] = Math.min(t[1], Math.max(ta, tb));
+  return t[0] <= t[1];
+}
+/**
+ * Mindesthöhe der Kamera (cx, cz relativ zum Tesla), damit sie über ein Fahrzeug mit Grundriss [x0,x1]×[z0,z1] und
+ * Höhe h hinweg die ihr zugewandte Wagenseite fast ganz sieht (0, wenn es nicht dazwischen ist): Ihr Blick auf diese
+ * Seite in 0,5 m Höhe geht 0,15 m über das Dach. u = Weg bis zur hinteren Dachkante, bezogen auf den bis zur Wagenseite.
+ */
+function sightLift(cx, cz, x0, x1, z0, z1, h) {
+  let t0 = 0;
+  let t1 = 1;
+  for (const [o, d, mn, mx] of [[cx, -cx, x0, x1], [cz, -cz, z0, z1]]) {
+    if (Math.abs(d) < 1e-9) {
+      if (o < mn || o > mx) return 0;
+      continue;
+    }
+    const ta = (mn - o) / d;
+    const tb = (mx - o) / d;
+    t0 = Math.max(t0, Math.min(ta, tb));
+    t1 = Math.min(t1, Math.max(ta, tb));
+  }
+  if (t0 > t1) return 0;
+  const tn = 1 - Math.min(0.93 / Math.max(Math.abs(cx), 1e-6), 2.35 / Math.max(Math.abs(cz), 1e-6));
+  if (t1 >= tn - 0.03) return Infinity;
+  const u = t1 / tn;
+  return (h + 0.15 - 0.5 * u) / (1 - u);
+}
+/**
+ * Wie sehr Fahrzeuge die Kamera bei Winkel a (Höhe y, Abstand r) in der Zeit tau0 … tau1 (s ab jetzt) stören, 0 … 1:
+ * 1 = eines fährt unter oder dicht neben ihr durch (Lkw, Wohnmobil, Transporter; Autos, wenn sie nicht hoch genug
+ * darüber ist) oder verdeckt einen großen Teil des Teslas. Über Autos dazwischen schaut sie hinweg, indem sie
+ * etwas steigt (bis ORBIT.yLow); Späteres zählt etwas weniger.
+ */
+function orbitSight(p, a, y, r, tau0 = 0, tau1 = ORBIT.see) {
+  const cx = clamp(p.x + Math.sin(a) * r, ORBIT.xMin, ORBIT.xMax) - p.x;
+  const cz = Math.cos(a) * r;
+  // nur Fahrzeuge zwischen Kamera und Tesla (seitlich) oder bei der Kamera zählen
+  const sx0 = Math.min(cx, -1) - 1.5;
+  const sx1 = Math.max(cx, 1) + 1.5;
+  const pT = orbitLaneX(p);
+  let worst = 0;
+  for (const c of traffic.cars) {
+    const xt = c.change ? ROAD.laneCenter(c.change.to) : c.x;
+    const hw = c.w / 2 + 0.15;
+    if (Math.max(c.x, xt) - Math.min(p.x, pT) + hw < sx0 || Math.min(c.x, xt) - Math.max(p.x, pT) - hw > sx1) continue;
+    const z0 = p.s - c.s;
+    const vz = p.speed - c.speed;
+    const h = c.v.height;
+    const tall = h > 2;
+    const zStop = (c.len + p.len) / 2 + 0.4;
+    // zwischen zwei Prüfzeitpunkten zurückgelegter Weg zählt mit (schnelle Autos im Abspann, Spurwechsel)
+    const hl = c.len / 2 + Math.abs(vz) * ORBIT.seeStep * 0.5;
+    const mx = c.change || pT !== p.x ? 0.5 : 0;
+    for (let tau = tau0; tau <= tau1 + 1e-6; tau += ORBIT.seeStep) {
+      const wgt = 1 - 0.35 * Math.min(1, tau / ORBIT.see);
+      if (wgt <= worst) break;
+      const xc = orbitRelX(c, p, pT, tau);
+      const xa = xc - mx;
+      const xb = xc + mx;
+      // wer in der Spur des Teslas fährt, fährt nicht durch ihn hindurch: Er bremst dahinter (oder wechselt die Spur)
+      const same = xa - hw < p.w / 2 && xb + hw > -p.w / 2;
+      let zc = z0 + vz * tau;
+      if (same) zc = z0 >= 0 ? Math.max(zc, zStop) : Math.min(zc, -zStop);
+      let za = zc - hl;
+      let zb = zc + hl;
+      if (same) {
+        if (z0 >= 0) za = Math.max(za, zStop - c.len / 2);
+        else zb = Math.min(zb, c.len / 2 - zStop);
+      }
+      if (zb < -r - 2 || za > r + 2) continue;
+      let k = 0;
+      const ux = Math.max(0, xa - hw - cx, cx - xb - hw);
+      const uz = Math.max(0, za - cz, cz - zb);
+      if (uz < 1.2) {
+        if (ux < (tall ? 1.4 : 0.9)) k = tall || y < h + ORBIT.clear + 0.3 ? 1 : 0.5;
+        // auch nicht dicht neben einem Lkw (& Co.): seine Seitenwand füllte das halbe Bild
+        else if (tall) k = 1 - smoothstep(1.4, 2.6, ux);
+      }
+      // über ein Auto dazwischen schaut sie hinweg, indem sie steigt (siehe orbitTarget) – außer es ginge zu hoch
+      if (k < 1 && (tall || sightLift(cx, cz, xa - hw, xb + hw, za, zb, h) > ORBIT.yLow)) {
+        let n = 0;
+        for (const q of ORBIT_PTS) if (segHitsBox(cx, y, cz, q[0], q[1], q[2], xa - hw, xb + hw, h, za, zb)) n++;
+        k = Math.max(k, Math.min(1, (n / ORBIT_PTS.length) * 1.6));
+      }
+      worst = Math.max(worst, k * wgt);
+    }
+    if (worst >= 1) break;
+  }
+  return worst;
+}
+/** Wohin der Tesla gerade quer fährt: im Titel auf die Spur, die der Autopilot gewählt hat */
+function orbitLaneX(p) {
+  return state === 'title' ? ROAD.laneCenter(ap.lane) : p.x;
+}
+/** Wo Fahrzeug c in tau Sekunden quer zum Tesla steht: Spurwechsel der anderen wie geplant, der Tesla fährt mit
+ *  gut 4 m/s auf seine Spur pT (so schnell lenkt der Autopilot) */
+function orbitRelX(c, p, pT, tau) {
+  const ch = c.change;
+  const x = ch ? lerp(ROAD.laneCenter(ch.from), ROAD.laneCenter(ch.to), smoothstep(0, 1, (ch.t + tau - ch.delay) / ch.dur)) : c.x;
+  return x - p.x - clamp(pT - p.x, -4.3 * tau, 4.3 * tau);
+}
+function orbitCost(p, a, y, r) {
+  return orbitAllowed(p, a, r) ? orbitSight(p, a, y, r) : 2;
+}
+/**
+ * Nächster Winkel mit freier Sicht, von a aus in beide Richtungen gesucht – ohne über eine enge Seite zu springen.
+ * Unterwegs zählt nur, was dort ist, wenn die Kamera vorbeikommt; am Ziel, was ab ihrer Ankunft kommt.
+ */
+function orbitEscape(p, a, y, r) {
+  const step = 0.08;
+  let best = null;
+  let bestCost = Infinity;
+  let least = a;
+  let leastD = Infinity;
+  // die eingeschlagene Richtung behält sie, solange die andere nicht deutlich besser ist (sonst pendelt die Wahl
+  // hin und her und die Kamera bleibt stehen): Bonus in Sekunden, umso größer, je schneller sie schon schwenkt
+  const moving = Math.abs(orbit.w) > 0.05;
+  const keepDir = moving ? Math.sign(orbit.w) : orbit.esc !== null ? Math.sign(orbit.esc - a) : 0;
+  const keep = 0.4 + 2.5 * Math.abs(orbit.w);
+  for (const s of [1, -1]) {
+    let path = 0;
+    let wasOk = orbitAllowed(p, a, r);
+    for (let k = 1; k <= 40; k++) {
+      const th = a + s * k * step;
+      const ok = orbitAllowed(p, th, r);
+      if (!ok && wasOk) break;
+      if (ok) wasOk = true;
+      const at = orbitArrival(th - a);
+      const d = ok ? orbitSight(p, th, y, r, at, at + ORBIT.hold) : 1;
+      if (ok && d + at * 0.01 < leastD) {
+        leastD = d + at * 0.01;
+        least = th;
+      }
+      if (ok && d <= ORBIT.ok) {
+        // etwas Abstand zur Grenze, wenn es dahinter auch noch frei ist
+        const th2 = th + s * step;
+        const more = orbitAllowed(p, th2, r) && orbitSight(p, th2, y, r, at, at + ORBIT.hold) <= ORBIT.ok;
+        // Kosten in Sekunden: Ankunft (Umkehren kostet Bremsweg) und Störung unterwegs
+        const c = at + path * 2.5 - (s === keepDir ? keep : 0);
+        if (c < bestCost) {
+          bestCost = c;
+          best = more ? th + s * step * 0.5 : th;
+        }
+        break;
+      }
+      path = Math.max(path, ok ? Math.min(1, orbitSight(p, th, y, r, Math.max(0, at - 0.4), at + 0.4)) : 1);
+    }
+  }
+  return best ?? least;
+}
+/** Wann die Kamera um den Winkel d weitergedreht ist (s): erst bremsen, falls sie gerade andersherum dreht */
+function orbitArrival(d) {
+  const back = orbit.w * d < 0 ? Math.abs(orbit.w) / ORBIT.acc : 0;
+  return back + 0.25 + Math.abs(d) / ORBIT.wEsc;
+}
+/** Startwinkel: im Titel schräg hinten auf der Seite mit Platz, im Abspann hinter dem stehenden Auto (rückt dort
+ *  gerade einer auf oder fährt einer vorbei, davor oder schräg daneben) – jeweils mit freier Sicht. */
+function orbitStart(p, y, r) {
+  const title = state === 'title' || state === 'loading'; // boot() setzt die Kamera schon vor dem Titel
+  const first = title ? (orbitBlocked(p, 1, r) ? -0.9 : 0.9) : 0;
+  const cands = [first, 0, Math.PI, 0.35, -0.35, Math.PI - 0.35, Math.PI + 0.35, 0.9, -0.9, Math.PI - 0.9, Math.PI + 0.9, 1.57, -1.57];
+  let best = first;
+  let bestC = Infinity;
+  cands.forEach((a, i) => {
+    const c = orbitCost(p, a, y, r) + i * 0.004;
+    if (c < bestC) {
+      bestC = c;
+      best = a;
+    }
+  });
+  orbit.a = best;
+  orbit.w = 0;
+  orbit.esc = null;
+  // weiter in Richtung der Seite mit mehr Platz
+  const side = orbitRoom(p, 1) >= orbitRoom(p, -1) ? 1 : -1;
+  orbit.dir = title ? 1 : side * (Math.cos(best) >= 0 ? 1 : -1);
 }
 function orbitTarget(p, dt) {
-  orbit.leaving = false;
-  if (!drone.init) {
-    orbit.a = orbitBlocked(p, 1) ? -0.9 : 0.9;
-    orbit.dir = 1;
-  } else {
-    const side = Math.sin(orbit.a) >= 0 ? 1 : -1;
-    if (orbitBlocked(p, side)) {
-      orbit.dir = Math.cos(orbit.a) * side > 0 ? -1 : 1;
-      orbit.a += orbit.dir * ORBIT_SPEED * 2.5 * dt;
-      orbit.leaving = true;
+  const r = ORBIT.r * orbit.zoom;
+  const y0 = 2.4 + Math.sin(stateT * 0.3) * 0.6;
+  if (!drone.init) orbitStart(p, y0, r);
+  else {
+    const cost = (a) => orbitCost(p, a, y0, r);
+    let want;
+    const here = cost(orbit.a);
+    if (here > ORBIT.bad || (orbit.esc !== null && here > ORBIT.ok)) {
+      // ausweichen: zum nächsten Winkel mit freier Sicht – alle 0,3 s neu geplant (es kommen Fahrzeuge dazu),
+      // sofort, wenn es am Ziel bis zur Ankunft selbst eng wird
+      orbit.plan -= dt;
+      let stale = orbit.esc === null || orbit.plan <= 0;
+      if (!stale) {
+        const at = orbitArrival(orbit.esc - orbit.a);
+        stale = !orbitAllowed(p, orbit.esc, r) || orbitSight(p, orbit.esc, y0, r, at, at + ORBIT.hold) > ORBIT.bad;
+      }
+      if (stale) {
+        orbit.esc = orbitEscape(p, orbit.a, y0, r);
+        orbit.plan = 0.3;
+      }
+      const d = orbit.esc - orbit.a;
+      want = Math.sign(d) * Math.min(ORBIT.wEsc, Math.abs(d) * 2.5);
+      if (Math.abs(d) > 0.02) orbit.dir = Math.sign(d);
     } else {
-      const next = orbit.a + orbit.dir * ORBIT_SPEED * dt;
-      if ((Math.sin(next) >= 0 ? 1 : -1) !== side && orbitBlocked(p, -side)) orbit.dir = -orbit.dir;
-      else orbit.a = next;
+      orbit.esc = null;
+      want = orbit.dir * ORBIT_SPEED;
+      if (cost(orbit.a + orbit.dir * ORBIT.ahead) > ORBIT.bad) {
+        // vorne wird es eng (Fahrzeug oder enge Seite): umkehren, wenn es zurück frei ist, sonst hier warten
+        if (cost(orbit.a - orbit.dir * ORBIT.ahead) <= ORBIT.ok) {
+          orbit.dir = -orbit.dir;
+          want = orbit.dir * ORBIT_SPEED;
+        } else want = 0;
+      }
+    }
+    orbit.w += clamp(want - orbit.w, -ORBIT.acc * dt, ORBIT.acc * dt);
+    orbit.a += orbit.w * dt;
+    if (Math.abs(orbit.a) > Math.PI) {
+      const turn = Math.sign(orbit.a) * 2 * Math.PI;
+      orbit.a -= turn;
+      if (orbit.esc !== null) orbit.esc -= turn;
     }
   }
   const a = orbit.a;
-  const t = orbitPos.set(Math.sin(a) * ORBIT.r, 2.4 + Math.sin(stateT * 0.3) * 0.6, Math.cos(a) * ORBIT.r).applyMatrix4(carMatrix);
+  // relativ zur Fahrbahn, nicht zur Fahrzeuglängsachse: beim Spurwechsel dreht sich der Wagen, nicht das ganze Bild
+  const t = orbitPos.set(p.x + Math.sin(a) * r, y0, Math.cos(a) * r);
   // seitlich begrenzt (falls das Auto mitten im Bogen die Spur wechselt): dort wird der Bogen flacher und etwas höher
   const over = Math.max(t.x - ORBIT.xMax, ORBIT.xMin - t.x, 0);
   t.x = clamp(t.x, ORBIT.xMin, ORBIT.xMax);
-  if (orbit.leaving && over > 0) {
-    // auf dem Weg weg von der engen Seite: den Abstand halten, indem die Kamera nach hinten bzw. vorne ausweicht
-    const dx = t.x - p.x;
-    t.z = (Math.cos(orbit.a) >= 0 ? 1 : -1) * Math.sqrt(Math.max(0, ORBIT.r * ORBIT.r - dx * dx));
-  } else t.y += over * 0.3;
+  t.y += over * 0.3;
   const base = t.y;
+  const pT = orbitLaneX(p);
   for (const c of traffic.cars) {
-    const need = c.v.height + ORBIT.clear;
+    const zc = p.s - c.s;
+    const h = c.v.height;
+    // über Autos zwischen Kamera und Tesla schaut sie hinweg: steigt, bevor sie dazwischen sind
+    if (h <= 2) {
+      const vz = p.speed - c.speed;
+      let lift = 0;
+      for (let tau = 0; tau <= 2; tau += 0.4) {
+        const z = zc + vz * tau;
+        const x = orbitRelX(c, p, pT, tau);
+        const need = sightLift(t.x - p.x, t.z, x - c.w / 2 - 0.15, x + c.w / 2 + 0.15, z - c.len / 2, z + c.len / 2, h);
+        if (need > 0 && need <= ORBIT.yLow) lift = Math.max(lift, lerp(base, need, 1 - tau / 2.6));
+      }
+      t.y = Math.max(t.y, lift);
+    }
+    const need = h + ORBIT.clear;
     if (need <= base) continue;
     // Abstand zum Grundriss (mit Rand) – räumlich und, bei schnellen Autos, zeitlich: Die Kamera steigt
     // etwa 1,4 s bevor eines ankommt und sinkt erst danach wieder, gleich wie schnell es ist (im Abspann
     // steht der Tesla, dann rauscht der Verkehr mit voller Fahrt vorbei)
-    const zc = p.s - c.s;
     const dz = Math.max(0, zc - c.len / 2 - ORBIT.margin - t.z, t.z - (zc + c.len / 2 + ORBIT.margin));
     const dx = Math.max(0, Math.abs(t.x - c.x) - c.w / 2 - ORBIT.margin);
     const near = 1 - smoothstep(0, ORBIT.blend, dx);
@@ -615,7 +939,8 @@ function orbitTarget(p, dt) {
     const k = Math.max(1 - smoothstep(0, ORBIT.blend, Math.hypot(dx, dz)), near * soon);
     if (k > 0) t.y = Math.max(t.y, lerp(base, need, k));
   }
-  t.y = Math.min(t.y, ORBIT.yMax);
+  // nie steiler als 30° auf den Wagen hinunter (auch nicht, wenn sie seitlich begrenzt näher heranrückt)
+  t.y = Math.min(t.y, ORBIT.yMax, 0.9 + Math.hypot(t.x - p.x, t.z) * 0.58);
   return t;
 }
 
@@ -639,20 +964,45 @@ function placeDrone(dt, mode) {
     pos = new THREE.Vector3(-p.vx * 0.25, 3.3, 9.2).applyMatrix4(carMatrix);
     look = new THREE.Vector3(0, 1.0, -14).applyMatrix4(carMatrix);
   }
-  if (!drone.init) {
-    drone.pos.copy(pos);
-    drone.look.copy(look);
-    drone.init = true;
-  }
   const k = 1 - Math.exp(-dt * (mode === 'orbit' ? 3 : 6));
   if (mode === 'orbit') {
+    // geglättet um das Auto herum (Winkel, Abstand, Höhe): wechselt es die Spur, fährt die Kamera mit, statt
+    // hinterherzuschwenken, und ihr Blick dreht sich nie schneller als ORBIT.wMax. Muss sie an der Seite stehen
+    // bleiben, rückt sie auf ihrer Blicklinie näher heran, statt herumzuwirbeln.
+    const relX = pos.x - p.x;
+    const phi = Math.atan2(relX, pos.z);
+    const dist = Math.hypot(relX, pos.z);
+    if (!drone.init) {
+      orbit.phi = phi;
+      orbit.dist = dist;
+    }
+    let dPhi = phi - orbit.phi;
+    dPhi -= Math.round(dPhi / (2 * Math.PI)) * 2 * Math.PI;
+    orbit.phi += clamp(dPhi * k, -ORBIT.wMax * dt, ORBIT.wMax * dt);
+    orbit.dist += (dist - orbit.dist) * k;
+    let x = p.x + Math.sin(orbit.phi) * orbit.dist;
+    let z = Math.cos(orbit.phi) * orbit.dist;
+    if (x < ORBIT.xMin || x > ORBIT.xMax) {
+      const xl = clamp(x, ORBIT.xMin, ORBIT.xMax);
+      z *= (xl - p.x) / (x - p.x);
+      x = xl;
+    }
     // hoch geht es zügig, herunter gemächlich (sonst hüpft die Kamera bei jedem Lkw)
-    const y = drone.pos.y + (pos.y - drone.pos.y) * (1 - Math.exp(-dt * (pos.y > drone.pos.y ? 4 : 1.5)));
-    drone.pos.lerp(pos, k);
-    drone.pos.y = y;
+    const y0 = drone.init ? drone.pos.y : pos.y;
+    const vy = clamp((pos.y - y0) * (pos.y > y0 ? 4 : 1.5), -ORBIT.vyMax, ORBIT.vyMax);
+    drone.pos.set(x, y0 + vy * dt, z);
     liftOverVehicles(drone.pos, p);
-  } else drone.pos.lerp(pos, k);
-  drone.look.lerp(look, k);
+    drone.look.copy(look);
+    drone.init = true;
+  } else {
+    if (!drone.init) {
+      drone.pos.copy(pos);
+      drone.look.copy(look);
+      drone.init = true;
+    }
+    drone.pos.lerp(pos, k);
+    drone.look.lerp(look, k);
+  }
   camera.position.copy(drone.pos);
   if (cockpit.shake > 0) camera.position.y += Math.sin(stateT * 60) * cockpit.shake * 0.08;
   camera.lookAt(drone.look);

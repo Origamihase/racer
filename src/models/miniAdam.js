@@ -104,11 +104,18 @@ export function solveArm(arm, target, pole, palm) {
  * Zielpunkte für die Hände (Körperkoordinaten). wheel = { m: Matrix4 Lenkrad → Körper, r }.
  * wave 0 … 1 führt die Fensterhand (rechte Hand der Figur, side = 1) vom Lenkrad vor der Schulter
  * hoch und dann seitlich neben den Kopf – bleibt dabei im Innenraum.
+ * Im Auto liegt die Schulter knapp unter der Gürtellinie, und unter dem Seitenfenster ist zwischen
+ * Türblech und Glas nach außen hin ein offener Spalt: Hand und Ellbogen gehen deshalb innen (vor der
+ * Brust, unter dem Kinn) nach oben und erst über der Gürtellinie zum Fenster hin – und seitlich am
+ * Kinn vorbei, nicht quer vors Gesicht, das beim Winken zur Kamera schaut.
  */
-const WAVE_POS = new THREE.Vector3(0.292, 0.765, 0.04);
-const WAVE_VIA = new THREE.Vector3(0.255, 0.6, 0.13);
+const WAVE_POS = new THREE.Vector3(0.275, 0.775, 0.05);
+const WAVE_C1 = new THREE.Vector3(0.2, 0.56, 0.2);
+const WAVE_C2 = new THREE.Vector3(0.215, 0.7, 0.07);
 const WAVE_PALM = new THREE.Vector3(0.55, -0.1, 0.83).normalize();
-const WAVE_POLE = new THREE.Vector3(1, -0.45, -0.1).normalize();
+// Ellbogen beim Hochnehmen nach unten vorne, oben dann vorne-außen
+const WAVE_POLE_UP = new THREE.Vector3(0, -1, 0.3).normalize();
+const WAVE_POLE = new THREE.Vector3(0.1, -0.5, 0.9).normalize();
 const gripTmp = { p: V(), n: V(), c: V(), pole: V(), palm: V(), a: V(), b: V() };
 
 export function handTarget(side, wheel, { wave = 0, steer = 0, t = 0 } = {}, out = { pos: V(), pole: V(), palm: V() }) {
@@ -124,17 +131,18 @@ export function handTarget(side, wheel, { wave = 0, steer = 0, t = 0 } = {}, out
   out.pole.set(side * 0.55, -1, -0.15).normalize();
   if (side > 0 && wave > 0) {
     const w = wave;
-    // quadratische Bézierkurve Lenkrad → vor der Schulter → neben dem Kopf
-    const k0 = (1 - w) * (1 - w);
-    const k1 = 2 * (1 - w) * w;
-    const k2 = w * w;
-    gripTmp.a.copy(out.pos).multiplyScalar(k0).addScaledVector(WAVE_VIA, k1).addScaledVector(WAVE_POS, k2);
+    // kubische Bézierkurve Lenkrad → vor der Brust → seitlich am Kinn hoch → neben dem Kopf
+    const k0 = (1 - w) * (1 - w) * (1 - w);
+    const k1 = 3 * (1 - w) * (1 - w) * w;
+    const k2 = 3 * (1 - w) * w * w;
+    const k3 = w * w * w;
+    gripTmp.a.copy(out.pos).multiplyScalar(k0).addScaledVector(WAVE_C1, k1).addScaledVector(WAVE_C2, k2).addScaledVector(WAVE_POS, k3);
     // Winken: Hand pendelt seitlich, nur wenn sie oben ist
     const wig = smooth(0.7, 1, w);
     gripTmp.a.x += Math.sin(t * 9) * 0.026 * wig;
     gripTmp.a.y += Math.abs(Math.cos(t * 9)) * 0.008 * wig;
     out.pos.copy(gripTmp.a);
-    out.pole.lerp(WAVE_POLE, smooth(0.15, 0.85, w)).normalize();
+    out.pole.lerp(WAVE_POLE_UP, smooth(0, 0.35, w)).lerp(WAVE_POLE, smooth(0.6, 1, w)).normalize();
     out.palm.lerp(WAVE_PALM, smooth(0.2, 0.9, w)).normalize();
   }
   return out;
