@@ -2,7 +2,7 @@
 // Hauptprogramm: Renderer, Bildkomposition (Welt → Regentropfen/Effekte → Cockpit), Kameras
 // (Cockpit, Drohne, Kameraschwenk beim Start, Vorführmodus), Zustände und Menüs.
 import * as THREE from 'three';
-import { curveUniforms } from './curve.js';
+import { curveUniforms, W } from './curve.js';
 import { setMaxAnisotropy, ROAD, roundRect } from './textures.js';
 import { Road } from './world/road.js';
 import { Sky } from './world/sky.js';
@@ -1370,6 +1370,8 @@ function step(dt, { render = true } = {}) {
     const cu = curveUniforms.uCurve.value;
     cu.x = 0.000125 * (0.62 * Math.sin(s / 1900 + 1.3) + 0.38 * Math.sin(s / 740 + 0.4));
     cu.y = 0.000045 * Math.sin(s / 1300 + 2.1) * (0.5 + 0.5 * Math.sin(s / 3100));
+    // Prüfstand (?debug): flache Welt, damit Bausteine unverzerrt begutachtet werden können
+    if (DEBUG && window.__MA && window.__MA.flat) cu.set(0, 0);
     const L = game.left || { glow: 0 };
     road.update(s, dt, simT, L.glow || 0, L.open && L.timer < 10 ? 1 : 0);
     road.setWet(w);
@@ -1471,6 +1473,8 @@ function boot() {
 if (DEBUG) {
   window.__MA = {
     game, traffic, scenery, cockpit, windshield, tesla, ui, menus, input, renderer, camera, save,
+    // für Prüfstände: Szene, three.js und die Weltmaterial-Fabrik (siehe curve.js)
+    scene, THREE, W, sky, road,
     get state() {
       return state;
     },
