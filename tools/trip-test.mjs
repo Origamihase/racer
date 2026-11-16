@@ -48,11 +48,13 @@ function checkPaths(trip) {
  * Fährt eine Strecke ab. decide(fork, trip) → true = abfahren. Prüft dabei, dass nichts springt:
  * die Lage jedes Rahmens im Bild (a + b·d) darf sich von Meter zu Meter nur wenig ändern.
  */
+const VIEW = { cur: 0, ghost: 0, ahead: 0, none: 0, begins: 0, ends: 0, swaps: 0 };
 function drive(trip, metres, decide, opts = {}) {
   const log = [];
   let x = J.L0;
   let lastSh = null;
   let lastProf = null;
+  let lastView = null;
   const step = opts.step || 1;
   const end = trip.s + metres;
   while (trip.s < end) {
@@ -94,6 +96,38 @@ function drive(trip, metres, decide, opts = {}) {
       }
     }
     lastSh = sh;
+    // höchstens eine Autobahn ist zu sehen, und unter uns liegt immer Fahrbahn
+    const av = trip.autobahnView();
+    if (trip.section.kind === 'ab') ok(av && av.role === 'cur' && av.frame === trip.section.frame && av.s0 <= s && av.s1 >= s, 'Autobahn unter uns fehlt bei s=' + s);
+    if (av) {
+      ok(sh.has(av.frame), 'sichtbare Autobahn ohne Scherung (' + av.role + ')');
+      ok(av.s0 < av.s1 && av.secs.length > 0, 'Autobahn ohne Ausdehnung');
+      const ghost = trip.ghosts.some((g) => g.fork.taken === 'exit');
+      const ahead = trip.cur.sections.some((c) => c.kind === 'ab' && c.merge && c.s0 > s && s >= c.s0 - J.show);
+      ok(!(ghost && ahead), 'zwei Autobahnen zugleich zu sehen bei s=' + s);
+      VIEW[av.role] += step;
+      if (isFinite(av.s0)) VIEW.begins += step;
+      if (isFinite(av.s1)) VIEW.ends += step;
+    } else VIEW.none += step;
+    // eine Autobahn verschwindet oder erscheint nur, während wir tief in einem Waldstück stecken
+    const key = av ? av.role + av.frame : '';
+    if (lastView && key !== lastView.key) {
+      const deep = trip.curtains().some((c) => c.path === trip.cur && s - c.s0 >= J.curtainBefore - step - 1 && c.s1 - s >= J.curtainAfter - step - 1);
+      if (lastView.role === 'ghost') ok(deep, 'Autobahn verschwindet außerhalb des Waldstücks bei s=' + s);
+      if (av && av.role === 'ahead') {
+        ok(deep, `Autobahn erscheint außerhalb des Waldstücks bei s=${s} (${trip.section.kind})`);
+        ok(av.secs[0].s0 - s >= J.show - step - 1, 'Autobahn erscheint zu nah: ' + (av.secs[0].s0 - s));
+      }
+      VIEW.swaps++;
+    }
+    lastView = { key, role: av ? av.role : '' };
+    for (const c of trip.curtains()) {
+      if (c.path !== trip.cur || c.s1 < s - 50) continue;
+      for (const q of c.path.sections) if (q.s1 > c.s0 && q.s0 < c.s1) ok(q.kind === 'ramp' || q.kind === 'conn' || q.kind === 'zub', `Waldstück (${c.why}, ${c.s0}–${c.s1}) liegt auf ${q.kind} ${q.s0}–${q.s1}`);
+    }
+    for (const { path, role } of trip.paths()) {
+      for (const c of path.sections) if (c.kind !== 'ab' && trip.visible(c, path) && c.s1 > s - 100 && c.s0 < s + 1500) ok(sh.has(c.frame), `gezeichneter Abschnitt ${c.kind} (${role}) ohne Scherung`);
+    }
     if (opts.check !== false && (s | 0) % 97 === 0) checkPaths(trip);
   }
   return log;
@@ -188,5 +222,6 @@ for (let r = 0; r < runs; r++) {
   }
 }
 console.log(`${runs} Zufallsfahrten: ${forks} Gabelungen (${wrong} gegen das Navi), ${arrivals} Ankünfte, Abschnitte`, JSON.stringify(kinds));
+console.log('Autobahn im Blick (m):', JSON.stringify(VIEW));
 console.log(fails ? `${fails} FEHLER` : 'alles in Ordnung');
 process.exit(fails ? 1 : 0);

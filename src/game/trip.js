@@ -25,18 +25,27 @@ export const J = {
   decel: 250, // Länge des Verzögerungsstreifens vor der Gabelung
   accel: 250, // Länge des Beschleunigungsstreifens nach dem Einfädelpunkt
   ramp: 250, // Rampe nach der Gabelung (die ersten cap Meter sind der Bogen)
-  conn: 1000, // Verbindungsfahrbahn zwischen zwei Autobahnen (zwei Spuren in unserer Richtung)
+  conn: 1650, // Verbindungsfahrbahn zwischen zwei Autobahnen (zwei Spuren in unserer Richtung); so lang, dass der
+  // Einfädelpunkt beim Verschwinden der alten Autobahn noch im Dunst liegt (ramp + conn + auf = hide + show)
   auf: 250, // Auffahrt (die letzten cap Meter sind der Bogen zur Autobahn)
-  back: 350, // Zubringer vom Ort zurück zur Auffahrt
+  back: 1850, // Zubringer vom Ort zur Auffahrt: in seinem ersten Waldstück erscheint die nächste Autobahn
+  feed: 350, // kurzer Zubringer (zum Terminal, am Start)
   term: 220, // Terminal von Fähre, Autozug und Luftfracht
   termOut: 150,
   horizon: 1600, // so weit voraus wird die Strecke festgelegt
   behind: 400, // so weit zurück bleibt sie bestehen
-  hide: 600, // so weit hinter der Gabelung verschwindet die verlassene Autobahn, so weit vor dem Einfädeln erscheint die neue
-  beltFrom: 130, // ab hier steht zwischen Rampe und Autobahn ein Waldstreifen, der dieses Verschwinden verdeckt
+  hide: 450, // so weit hinter der Gabelung verschwindet die verlassene Autobahn (samt ihren alten Abzweigen)
+  show: 1700, // so weit vor dem Einfädelpunkt erscheint die nächste Autobahn: der Punkt selbst liegt dann noch im Dunst
+  // Beides geschieht in einem Waldstück, das den Blick zur Seite verdeckt. Es reicht so weit vor und hinter die Stelle:
+  curtainBefore: 320,
+  curtainAfter: 200,
   ghost: 1200, // so lange bleibt ein nicht genommener Abzweig bestehen
   lock: 500, // ab hier vor der Gabelung ändert ein neues Navi-Ziel den Zweig nicht mehr
+  lockNode: 1500, // ab hier vor einem Knoten abseits der Autobahn bleibt die geplante Weiterfahrt bestehen
   taper: 40, // Übergang der Fahrbahngrenzen zwischen zwei Abschnitten
+  merge2: 150, // so lang ist der Übergang, wenn die linke Spur der Verbindungsfahrbahn vor der Auffahrt endet
+  endCap: 40, // so weit hinter der letzten Ausfahrt reicht die Fahrbahn einer Autobahn, die hier endet
+  beginCap: 120, // so weit vor dem Einfädelpunkt beginnt die Fahrbahn einer Autobahn, die hier anfängt
   gore: 70, // Länge der Sperrfläche hinter der Gabelung
   close: 300, // am Autobahnende werden die Spuren auf dieser Länge nach rechts zur Ausfahrt verengt
   kmOff: 0.0012, // Kartenkilometer je Meter auf Rampen und Zubringern (ein Abstecher soll nur ein, zwei Kilometer zählen)
@@ -53,6 +62,11 @@ export function R(u) {
 /** Steigung von R. */
 export function dR(u) {
   return J.kappa * Math.min(Math.max(u, 0), J.cap);
+}
+
+/** Länge des Übergangs, auf dem die Fahrbahngrenzen am Ende eines Abschnitts zum nächsten zusammenlaufen. */
+export function taperLen(sec, nxt) {
+  return sec.profile === 'verbindung' && nxt.profile === 'rampe' ? J.merge2 : J.taper;
 }
 
 const AB_LANES = [-5.625, -1.875, 1.875, 5.625];
@@ -138,7 +152,7 @@ export class Trip {
     const pl = nd.places.length ? nd.places[0].place : -1;
     const len = pl >= 0 ? townLen(places[pl].pop) : 300;
     this.add(path, 'stadt', Math.max(len, 500), { node: startNode, place: pl, start: true, spotS: 0 });
-    this.add(path, 'zub', J.back, { node: startNode, place: pl, back: true });
+    this.add(path, 'zub', J.feed, { node: startNode, place: pl, back: true });
     path.frontier = { t: 'node', n: startNode, via: -1 };
     this.country = nd.cc;
     this.extendAll();
@@ -199,7 +213,8 @@ export class Trip {
   addAb(path, de, merge = null) {
     const e = deEdge(de);
     const len = edgeLen(e);
-    const sec = this.add(path, 'ab', len, { de, node: deTo(de), kmPerM: e.km / len, merge });
+    // begins: die Autobahn fängt an diesem Knoten erst an (in Gegenrichtung endet sie hier)
+    const sec = this.add(path, 'ab', len, { de, node: deTo(de), kmPerM: e.km / len, merge, begins: !!merge && straight(deRev(de)) < 0 });
     this.border(sec);
     const st = straight(de);
     const fork = {
@@ -360,7 +375,8 @@ export class Trip {
     const kind = deKind(de);
     if (kind === 'ab') {
       const last = path.sections[path.sections.length - 1];
-      if (last && (last.kind === 'stadt' || last.kind === 'term')) this.add(path, 'zub', J.back, { node: n, place: last.place, back: true });
+      // vor jeder Auffahrt liegt eine Verbindungsfahrbahn oder ein langer Zubringer (siehe J.back)
+      if (!last || !(last.kind === 'conn' || (last.kind === 'zub' && last.back))) this.add(path, 'zub', J.back, { node: n, place: last ? last.place : -1, back: true });
       const frameA = this.newFrame('ab');
       const sM = path.s1 + J.auf;
       const link = this.newLink('merge', frameA, path.frame, sM);
@@ -372,7 +388,7 @@ export class Trip {
     } else {
       // Fähre, Autozug, Luftfracht: Zubringer zum Terminal, Überfahrt, drüben vom Terminal weg
       const m = deTo(de);
-      this.add(path, 'zub', J.back, { node: n, transitTo: m });
+      this.add(path, 'zub', J.feed, { node: n, transitTo: m });
       const term = this.add(path, 'term', J.term, { node: n, de, transit: kind, transitTo: m });
       term.spotS = term.s0 + Math.round(J.term * 0.7);
       this.add(path, 'term', J.termOut, { node: m, de, transit: kind, arrival: true, kmPerM: 0 });
@@ -451,7 +467,7 @@ export class Trip {
     const L = path.sections;
     for (let i = 0; i < L.length; i++) {
       const lv = L[i].leave;
-      if (!lv || L[i].s0 - this.s < J.lock) continue;
+      if (!lv || L[i].s0 - this.s < J.lockNode) continue;
       if (this.pickLeave(lv.n, lv.via).key === lv.key) continue;
       this.dropPath(path, i);
       path.s1 = L[i].s0;
@@ -561,12 +577,15 @@ export class Trip {
       this.version++;
     }
     for (let i = this.ghosts.length - 1; i >= 0; i--) {
-      if (s > this.ghosts[i].until) {
-        this.dropPath(this.ghosts[i].path, 0);
-        this.dropLink(this.ghosts[i].link);
-        this.ghosts.splice(i, 1);
-        this.version++;
-      }
+      const g = this.ghosts[i];
+      if (s < g.until) continue;
+      // verschwindet die verlassene Autobahn, gehen ihre alten Abzweige mit (alles verdeckt vom Waldstück)
+      if (g.fork.taken === 'exit') for (const h of this.ghosts) if (h !== g && h.link.a === g.link.a) h.until = -Infinity;
+      this.dropPath(g.path, 0);
+      this.dropLink(g.link);
+      this.ghosts.splice(i, 1);
+      this.version++;
+      i = this.ghosts.length;
     }
     this.extendAll();
     if (this.version !== this.gcVersion) this.gc();
@@ -607,7 +626,8 @@ export class Trip {
       this.ghosts.push({ path: this.cur, from: fork.s, until: fork.s + J.hide, link: fork.link, fork });
       this.cur = fork.branch;
     } else {
-      this.ghosts.push({ path: fork.branch, from: fork.s, until: fork.s + J.ghost, link: fork.link, fork });
+      // der nicht genommene Zweig bleibt, bis sein sichtbarer Teil hinter uns liegt (nichts verschwindet im Blickfeld)
+      this.ghosts.push({ path: fork.branch, from: fork.s, until: Math.max(fork.s + J.ghost, this.drawnEnd(fork.branch) + 200), link: fork.link, fork });
       this.extend(this.cur, this.s + J.horizon);
     }
     this.version++;
@@ -641,9 +661,10 @@ export class Trip {
     const u = s - sec.s0;
     // wird es im nächsten Abschnitt enger, laufen die Grenzen schon auf den letzten Metern zusammen
     const nxt = L[i + 1];
-    if (nxt && s > sec.s1 - J.taper) {
+    const tl = nxt ? taperLen(sec, nxt) : 0;
+    if (nxt && s > sec.s1 - tl) {
       const Q = PROFILES[nxt.profile];
-      const t = (s - (sec.s1 - J.taper)) / J.taper;
+      const t = (s - (sec.s1 - tl)) / tl;
       if (Q.xmin > xmin) xmin = lerp(xmin, Q.xmin, t);
       if (Q.xmax < xmax) xmax = lerp(xmax, Q.xmax, t);
     }
@@ -712,17 +733,76 @@ export class Trip {
   }
 
   /**
-   * Ist dieser Abschnitt schon Teil der sichtbaren Welt? Eine Autobahn, auf die wir erst auffahren werden, erscheint
-   * J.hide Meter vor dem Einfädelpunkt (verdeckt vom Waldstreifen links der Auffahrt). Alles dahinter ebenso.
+   * Ist dieser Abschnitt Teil der sichtbaren Welt? Gilt für alles abseits der Autobahn (die Autobahn selbst zeichnet
+   * die Engine nur über autobahnView). Auf dem eigenen Weg erscheint alles hinter einer Auffahrt erst J.show Meter
+   * vor dem Einfädelpunkt (dann liegt es im Dunst oder hinter dem Waldstück, siehe curtains). Zweige und
+   * zurückgelassene Wege enden vor ihrer Auffahrt: ihre nächste Autobahn wird nie gezeichnet.
    */
-  visible(sec, path) {
+  visible(sec, path = this.cur) {
     const L = path.sections;
+    const own = path === this.cur;
     for (let i = L.indexOf(sec); i >= 0; i--) {
       const c = L[i];
-      if (c.kind === 'ab' && c.merge) return this.s >= c.merge.s - J.hide;
-      if (c.s1 <= this.s) break;
+      if (!own && c.kind === 'auf') return false;
+      if (c.kind === 'ab' && c.merge) return own && this.s >= c.merge.s - J.show;
+      if (own && c.s1 <= this.s) break;
     }
     return true;
+  }
+
+  /** Bis wohin (s) reicht der Teil eines Zweigs, der gezeichnet wird? Er endet vor der Auffahrt. */
+  drawnEnd(path) {
+    for (const c of path.sections) if (c.kind === 'auf' || (c.kind === 'ab' && c.merge)) return c.s0;
+    return path.s1;
+  }
+
+  /**
+   * Die eine Autobahn, die gerade zu sehen ist, oder null. Mehr als eine gibt es nie: die verlassene verschwindet
+   * J.hide Meter hinter der Gabelung, die nächste erscheint J.show Meter vor dem Einfädelpunkt, also frühestens im
+   * selben Augenblick.
+   * role: 'cur' (wir fahren darauf) · 'ghost' (gerade verlassen) · 'ahead' (wir fahren gleich auf)
+   * frame: Rahmen-ID · s0, s1: von wo bis wo ihre Fahrbahn existiert (±Infinity = sie läuft weiter; endlich nur,
+   * wo eine Autobahn anfängt oder endet) · secs: ihre bekannten Abschnitte (für Gabelungen, Schilder, Verkehr)
+   */
+  autobahnView() {
+    const span = (path, sec, role) => {
+      const secs = path.sections.filter((c) => c.kind === 'ab' && c.frame === sec.frame);
+      const first = secs[0];
+      const last = secs[secs.length - 1];
+      const s0 = first.merge && first.begins ? first.s0 - J.beginCap : -Infinity;
+      const s1 = last.fork && last.fork.forced ? last.fork.s + J.endCap : Infinity;
+      return { role, frame: sec.frame, s0, s1, secs };
+    };
+    const cur = this.section;
+    if (cur.kind === 'ab') return span(this.cur, cur, 'cur');
+    for (const g of this.ghosts) if (g.fork.taken === 'exit') return span(g.path, g.fork.sec, 'ghost');
+    for (const c of this.cur.sections) {
+      if (c.kind !== 'ab' || !c.merge || c.s0 <= this.s) continue;
+      return this.s >= c.s0 - J.show ? span(this.cur, c, 'ahead') : null;
+    }
+    return null;
+  }
+
+  /**
+   * Waldstücke, die einen Szenenwechsel verdecken: [{path, s0, s1, why: 'exit' | 'merge'}]. Auf dieser Strecke
+   * muss beiderseits der Straße dichter, hoher Wald stehen (kein Durchblick, auch nicht von der Drohnenkamera).
+   * 'exit': hinter jeder Ausfahrt (dort verschwindet die verlassene Autobahn) · 'merge': dort erscheint die nächste.
+   */
+  curtains() {
+    const out = [];
+    for (const { path } of this.paths()) {
+      const f = path.fork;
+      if (f && f.branch === path) out.push({ path, s0: f.s + J.hide - J.curtainBefore, s1: f.s + J.hide + J.curtainAfter, why: 'exit' });
+      if (path !== this.cur) continue;
+      for (const c of path.sections) {
+        if (c.kind !== 'ab' || !c.merge) continue;
+        const at = c.s0 - J.show;
+        if (at <= 0) continue; // die erste Autobahn nach dem Start ist von Anfang an da
+        if (f && Math.abs(at - (f.s + J.hide)) < 1) continue; // fällt mit dem Waldstück der Ausfahrt zusammen
+        out.push({ path, s0: at - J.curtainBefore, s1: at + J.curtainAfter, why: 'merge' });
+      }
+    }
+    return out;
   }
 
   /** Abstand zwischen der Mitte unserer Spur abseits der Autobahn und dem Rand des Standstreifens (Keil). */

@@ -184,7 +184,7 @@ export function townLen(pop) {
 }
 /** Länge des Zubringers in Spielmetern. */
 export function zubLen(zubKm) {
-  return Math.min(2500, Math.max(350, Math.round((zubKm * 1000) / K / 10) * 10));
+  return Math.min(2500, Math.max(450, Math.round((zubKm * 1000) / K / 10) * 10));
 }
 
 let TRANS = null; // Übergänge vorwärts: je Zustand [{to, cost, km, type, de}]
