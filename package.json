@@ -7,7 +7,9 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "node build.mjs --watch",
-    "serve": "python3 -m http.server 8080 --directory docs"
+    "serve": "python3 -m http.server 8080 --directory docs",
+    "map": "node tools/map/export.mjs",
+    "test": "node tools/trip-test.mjs"
   },
   "repository": {
     "type": "git",

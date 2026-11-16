@@ -1,0 +1,192 @@
+// Prüft Karte, Routen und Streckenlogik ohne Grafik: node tools/trip-test.mjs [Anzahl Zufallsfahrten]
+import * as G from '../src/map/graph.js';
+import { Trip, J, R, dR, BETA, PROFILES } from '../src/game/trip.js';
+
+let fails = 0;
+const ok = (cond, msg) => {
+  if (!cond) {
+    fails++;
+    if (fails < 40) console.log('FEHLER:', msg);
+  }
+};
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// --- Karte -----------------------------------------------------------------------------
+ok(G.places.every((p) => p.node >= 0), 'jeder Ort hängt an einem Knoten');
+const erl = G.findNode('Erlensee');
+const from = G.routeFrom(G.stateOfNode(erl));
+ok(G.places.every((p) => isFinite(from.toPlace(p.i).cost)), 'alle Orte sind von Erlensee aus erreichbar');
+for (const n of G.nodes) ok(n.edges.length > 0, 'Knoten ohne Straße: ' + n.id);
+
+// --- Geometrie des Knotenpunkts --------------------------------------------------------
+ok(Math.abs(R(J.cap) - (J.kappa * J.cap * J.cap) / 2) < 1e-9, 'R am Ende des Bogens');
+ok(Math.abs(dR(J.cap + 50) - BETA) < 1e-9, 'Steigung nach dem Bogen');
+
+/** Prüft die Wege eines Trips auf Lücken. */
+function checkPaths(trip) {
+  for (const { path } of trip.paths()) {
+    let prev = null;
+    for (const sec of path.sections) {
+      if (prev) ok(Math.abs(prev.s1 - sec.s0) < 1e-6, `Lücke im Weg ${path.id} vor ${sec.kind}`);
+      ok(sec.len > 0, 'Abschnitt ohne Länge: ' + sec.kind);
+      ok(trip.frames.has(sec.frame), 'Rahmen fehlt');
+      prev = sec;
+    }
+  }
+}
+
+/**
+ * Fährt eine Strecke ab. decide(fork, trip) → true = abfahren. Prüft dabei, dass nichts springt:
+ * die Lage jedes Rahmens im Bild (a + b·d) darf sich von Meter zu Meter nur wenig ändern.
+ */
+function drive(trip, metres, decide, opts = {}) {
+  const log = [];
+  let x = J.L0;
+  let lastSh = null;
+  let lastProf = null;
+  const step = opts.step || 1;
+  const end = trip.s + metres;
+  while (trip.s < end) {
+    const s = trip.s + step;
+    // Spur wählen: vor einer Gabelung rechtzeitig auf den Verzögerungsstreifen oder weg davon
+    const sec = trip.section;
+    if (sec.kind === 'ab') {
+      const f = sec.fork;
+      if (f && !f.taken && f.s - s < J.decel - 20) x = decide(f, trip) ? J.L0 : 5.625;
+      else if (s - sec.s0 > J.accel) x = 5.625;
+    } else x = J.L0;
+    const p0 = trip.profile(s);
+    x = Math.min(Math.max(x, p0.xmin), p0.xmax);
+    const evs = trip.update(s, x);
+    for (const e of evs) {
+      log.push(e);
+      if (opts.onEvent) opts.onEvent(e, trip);
+    }
+    const prof = trip.profile();
+    ok(prof.xmin < prof.xmax, 'Grenzen verdreht');
+    if (lastProf && !evs.some((e) => e.type === 'fork')) {
+      // Grenzen dürfen nur langsam enger werden
+      ok(prof.xmin - lastProf.xmin < 0.2 * step + 1e-9, `linke Grenze springt bei ${trip.section.kind} um ${(prof.xmin - lastProf.xmin).toFixed(2)}`);
+      ok(lastProf.xmax - prof.xmax < 0.2 * step + 1e-9, `rechte Grenze springt bei ${trip.section.kind} um ${(lastProf.xmax - prof.xmax).toFixed(2)}`);
+    }
+    lastProf = prof;
+    const sh = trip.shears();
+    ok(sh.has(trip.section.frame) || trip.section.link, 'eigener Rahmen ohne Scherung');
+    for (const { path } of trip.paths()) for (const c of path.sections) if (c.s1 > s - 100 && c.s0 < s + 1500) ok(sh.has(c.frame), `sichtbarer Abschnitt ${c.kind} ohne Scherung`);
+    if (lastSh) {
+      for (const [id, v] of sh) {
+        const w = lastSh.get(id);
+        if (!w) continue;
+        // Punkt 0 m und 300 m voraus
+        const j0 = Math.abs(v.a - w.a + (v.b - w.b) * 0 - w.b * 0);
+        const near = Math.abs(v.a - (w.a + w.b * step));
+        const far = Math.abs(v.a + v.b * 300 - (w.a + w.b * (300 + step)));
+        ok(near < 0.02 * step + 1e-6 && far < 1.3 * step, `Rahmen springt (nah ${near.toFixed(3)}, fern ${far.toFixed(3)}) in ${trip.section.kind} bei s=${s.toFixed(0)}`);
+      }
+    }
+    lastSh = sh;
+    if (opts.check !== false && (s | 0) % 97 === 0) checkPaths(trip);
+  }
+  return log;
+}
+
+// --- Fahrt 1: von Erlensee nach Hanau, immer dem Navi nach ------------------------------
+{
+  const trip = new Trip({ rng: rng(1) });
+  ok(trip.section.kind === 'stadt' && G.places[trip.section.place].name === 'Erlensee', 'Start im Ort Erlensee');
+  const hanau = G.findPlace('Hanau');
+  trip.setTarget(hanau);
+  const g0 = trip.guidance();
+  ok(g0.km > 6 && g0.km < 13, 'Hanau liegt rund 9 km entfernt: ' + g0.km);
+  const log = drive(trip, 6000, (f, t) => t.planFor(f) === 'exit');
+  const arr = log.find((e) => e.type === 'arrive');
+  ok(arr && arr.place === hanau, 'Ankunft in Hanau');
+  console.log('Erlensee → Hanau:', log.filter((e) => e.type !== 'pass').map((e) => (e.type === 'enter' ? e.sec.kind : e.type === 'fork' ? `Gabelung(${e.taken})` : e.type)).join(' '), `| ${trip.km.toFixed(1)} Karten-km auf ${trip.s.toFixed(0)} m`);
+}
+
+// --- Fahrt 2: Ansagen und Schilder unterwegs nach Köln ---------------------------------
+{
+  const trip = new Trip({ rng: rng(2) });
+  trip.setTarget(G.findPlace('Köln'));
+  let last = '';
+  let arrived = false;
+  drive(trip, 40000, (f, t) => t.planFor(f) === 'exit', {
+    onEvent: (e, t) => {
+      if (e.type === 'arrive') arrived = true;
+      if (e.type !== 'enter' && e.type !== 'fork') return;
+      const g = t.guidance();
+      const txt = g.type === 'exit' ? `${g.title} in ${(g.dist / 1000).toFixed(1)} km → ${JSON.stringify(g.then)}` : g.type;
+      if (txt.replace(/in [\d.]+ km/, '') !== last.replace(/in [\d.]+ km/, '') && !arrived) console.log(`  s=${t.s.toFixed(0)} noch ${g.km?.toFixed(0)} km, ${g.mins?.toFixed(1)} min: ${txt}`);
+      last = txt;
+    },
+  });
+  ok(arrived, 'Ankunft in Köln');
+  const f = trip.cur.sections.find((c) => c.fork && !c.fork.taken);
+  if (f) console.log('  Schild:', JSON.stringify(trip.signs(f.fork)));
+}
+
+// --- Fahrt 3: weite Ziele mit Fähre, Autozug und Luftfracht ----------------------------
+for (const name of ['Sylt', 'Tokio', 'Key West', 'Valletta', 'Lappland', 'Wyk auf Föhr', 'Dublin', 'Grindelwald']) {
+  const trip = new Trip({ rng: rng(3) });
+  const pi = G.findPlace(name);
+  ok(pi >= 0, 'Ort unbekannt: ' + name);
+  trip.setTarget(pi);
+  const est = trip.guidance();
+  let arrived = false;
+  const transits = [];
+  let guard = 0;
+  while (!arrived && guard++ < 400) {
+    drive(trip, 2000, (f, t) => t.planFor(f) === 'exit', { step: 5, check: false, onEvent: (e) => { if (e.type === 'arrive') arrived = true; if (e.type === 'transit') transits.push(e.kind); } });
+  }
+  ok(arrived, 'Ankunft in ' + name);
+  console.log(`${name}: geschätzt ${est.km.toFixed(0)} km / ${est.mins.toFixed(0)} min, gefahren ${trip.km.toFixed(0)} Karten-km auf ${(trip.s / 1000).toFixed(1)} Spiel-km (${(trip.s / 38 / 60).toFixed(0)} min bei 137 km/h)`, transits.length ? '· ' + transits.join(', ') : '');
+}
+
+// --- Zufallsfahrten: beliebige Entscheidungen, wechselnde Ziele ------------------------
+const runs = Number(process.argv[2] || 30);
+let forks = 0;
+let arrivals = 0;
+let wrong = 0;
+const kinds = {};
+for (let r = 0; r < runs; r++) {
+  const rnd = rng(100 + r);
+  const start = Math.floor(rnd() * G.nodes.length);
+  const trip = new Trip({ rng: rnd, start });
+  const obey = rnd() < 0.5 ? 0.9 : 0.5;
+  let nextChange = 0;
+  for (let leg = 0; leg < 40; leg++) {
+    if (trip.s >= nextChange || trip.target < 0) {
+      // neues Ziel: meist in der Nähe
+      const d = trip.distances();
+      const cand = G.places.map((p) => ({ i: p.i, c: d.toPlace(p.i).cost })).filter((c) => isFinite(c.c)).sort((a, b) => a.c - b.c);
+      const pick = cand[Math.min(cand.length - 1, Math.floor(Math.pow(rnd(), 3) * cand.length))];
+      trip.setTarget(pick.i);
+      nextChange = trip.s + 1500 + rnd() * 9000;
+    }
+    const log = drive(trip, 2500, (f, t) => (rnd() < obey ? t.planFor(f) === 'exit' : rnd() < 0.5), { step: 2.5, check: leg % 5 === 0 });
+    for (const e of log) {
+      if (e.type === 'fork') {
+        forks++;
+        if (e.wrong) wrong++;
+      }
+      if (e.type === 'arrive') arrivals++;
+      if (e.type === 'enter') kinds[e.sec.kind] = (kinds[e.sec.kind] || 0) + 1;
+    }
+    const g = trip.guidance();
+    ok(g.type === 'none' || isFinite(g.km), 'Ansage ohne Entfernung');
+    ok(trip.paths().length <= 6, 'zu viele Wege gleichzeitig: ' + trip.paths().length);
+    ok(trip.frames.size < 4000, 'Rahmen laufen voll');
+  }
+}
+console.log(`${runs} Zufallsfahrten: ${forks} Gabelungen (${wrong} gegen das Navi), ${arrivals} Ankünfte, Abschnitte`, JSON.stringify(kinds));
+console.log(fails ? `${fails} FEHLER` : 'alles in Ordnung');
+process.exit(fails ? 1 : 0);
