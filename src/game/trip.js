@@ -25,16 +25,16 @@ export const J = {
   decel: 250, // Länge des Verzögerungsstreifens vor der Gabelung
   accel: 250, // Länge des Beschleunigungsstreifens nach dem Einfädelpunkt
   ramp: 250, // Rampe nach der Gabelung (die ersten cap Meter sind der Bogen)
-  conn: 600, // Verbindungsrampe zwischen zwei Autobahnen
+  conn: 1000, // Verbindungsfahrbahn zwischen zwei Autobahnen (zwei Spuren in unserer Richtung)
   auf: 250, // Auffahrt (die letzten cap Meter sind der Bogen zur Autobahn)
   back: 350, // Zubringer vom Ort zurück zur Auffahrt
   term: 220, // Terminal von Fähre, Autozug und Luftfracht
   termOut: 150,
-  pre: 1200, // so weit vor dem Einfädelpunkt gehört die neue Autobahn schon zur Welt (Keil zwischen Auffahrt und Autobahn)
-  preTraffic: 700, // so weit vor dem Einfädelpunkt fährt dort schon Verkehr
   horizon: 1600, // so weit voraus wird die Strecke festgelegt
   behind: 400, // so weit zurück bleibt sie bestehen
-  ghost: 1200, // so lange bleibt der nicht gewählte Zweig sichtbar
+  hide: 600, // so weit hinter der Gabelung verschwindet die verlassene Autobahn, so weit vor dem Einfädeln erscheint die neue
+  beltFrom: 130, // ab hier steht zwischen Rampe und Autobahn ein Waldstreifen, der dieses Verschwinden verdeckt
+  ghost: 1200, // so lange bleibt ein nicht genommener Abzweig bestehen
   lock: 500, // ab hier vor der Gabelung ändert ein neues Navi-Ziel den Zweig nicht mehr
   taper: 40, // Übergang der Fahrbahngrenzen zwischen zwei Abschnitten
   gore: 70, // Länge der Sperrfläche hinter der Gabelung
@@ -61,9 +61,10 @@ export const PROFILES = {
   ab: { name: 'ab', xmin: -7.8, xmax: 10.0, limit: 0, pace: 38, lanes: AB_LANES.map((x) => ({ x, dir: 1, w: 3.75 })) },
   rampe: { name: 'rampe', xmin: 7.55, xmax: 10.45, limit: 80, pace: 21, lanes: [{ x: 9.0, dir: 1, w: 3.5 }] },
   land: { name: 'land', xmin: 4.65, xmax: 10.1, limit: 100, pace: 24, lanes: [{ x: 9.0, dir: 1, w: 3.5 }, { x: 5.5, dir: -1, w: 3.5 }] },
+  verbindung: { name: 'verbindung', xmin: 4.65, xmax: 10.1, limit: 100, pace: 28, lanes: [{ x: 9.0, dir: 1, w: 3.5 }, { x: 5.5, dir: 1, w: 3.5 }] },
   stadt: { name: 'stadt', xmin: 5.0, xmax: 9.9, limit: 50, pace: 13, lanes: [{ x: 9.0, dir: 1, w: 3.25 }, { x: 5.75, dir: -1, w: 3.25 }] },
 };
-const PROFILE_OF = { ab: 'ab', ramp: 'rampe', conn: 'rampe', auf: 'rampe', zub: 'land', land: 'land', stadt: 'stadt', term: 'stadt' };
+const PROFILE_OF = { ab: 'ab', ramp: 'rampe', conn: 'verbindung', auf: 'rampe', zub: 'land', land: 'land', stadt: 'stadt', term: 'stadt' };
 const lerp = (a, b, t) => a + (b - a) * Math.min(Math.max(t, 0), 1);
 
 let uid = 0;
@@ -92,10 +93,31 @@ export class Trip {
    */
   constructor(opts = {}) {
     this.rng = opts.rng || Math.random;
+    this.endless = !!opts.endless;
     this.reset(opts.start);
   }
 
+  /** Klassischer Modus: eine endlose Autobahn ohne Ausfahrten (ein einziger Abschnitt, ein Rahmen). */
+  resetEndless() {
+    this.frames = new Map();
+    this.links = [];
+    this.s = 0;
+    this.x = J.L0;
+    this.km = 0;
+    this.target = -1;
+    this.policy = null;
+    this.ghosts = [];
+    this.visited = [];
+    this.events = [];
+    this.version = 0;
+    this.country = 'DE';
+    const path = new Path(-1000, this.newFrame('ab'));
+    this.cur = path;
+    this.add(path, 'ab', 1e9, { kmPerM: 0.001 });
+  }
+
   reset(startNode) {
+    if (this.endless) return this.resetEndless();
     if (startNode === undefined || startNode < 0) startNode = nodes.findIndex((n) => n.id === 'Erlensee');
     this.frames = new Map(); // id → {id, kind, links}
     this.links = []; // {id, type: 'exit'|'merge', a: Autobahnrahmen, b: Rahmen abseits, s}
@@ -116,7 +138,7 @@ export class Trip {
     const pl = nd.places.length ? nd.places[0].place : -1;
     const len = pl >= 0 ? townLen(places[pl].pop) : 300;
     this.add(path, 'stadt', Math.max(len, 500), { node: startNode, place: pl, start: true, spotS: 0 });
-    this.add(path, 'zub', J.back, { node: startNode, place: pl, back: true, stubEnd: true });
+    this.add(path, 'zub', J.back, { node: startNode, place: pl, back: true });
     path.frontier = { t: 'node', n: startNode, via: -1 };
     this.country = nd.cc;
     this.extendAll();
@@ -177,7 +199,7 @@ export class Trip {
   addAb(path, de, merge = null) {
     const e = deEdge(de);
     const len = edgeLen(e);
-    const sec = this.add(path, 'ab', len, { de, node: deTo(de), kmPerM: e.km / len, merge, pre: merge ? J.pre : 0 });
+    const sec = this.add(path, 'ab', len, { de, node: deTo(de), kmPerM: e.km / len, merge });
     this.border(sec);
     const st = straight(de);
     const fork = {
@@ -250,7 +272,7 @@ export class Trip {
     const plan = this.planExit(fork);
     path.sig = plan.sig;
     path.fork = fork;
-    this.add(path, 'ramp', J.ramp, { node: fork.node, link, stubEnd: true });
+    this.add(path, 'ramp', J.ramp, { node: fork.node, link });
     if (plan.visits.length) this.addVisits(path, fork.node, plan.visits, 0);
     else this.add(path, 'conn', J.conn, { node: fork.node });
     path.frontier = { t: 'node', n: fork.node, via: fork.de };
@@ -271,7 +293,7 @@ export class Trip {
       town.spotS = town.s0 + Math.round(tl * 0.6);
       km = p.zubKm;
     }
-    this.add(path, 'zub', J.back, { node, place: visits[visits.length - 1], back: true, stubEnd: true });
+    this.add(path, 'zub', J.back, { node, place: visits[visits.length - 1], back: true });
   }
 
   /** Wahl der Weiterfahrt an einem Knoten abseits der Autobahn. */
@@ -337,6 +359,8 @@ export class Trip {
     const de = t.de;
     const kind = deKind(de);
     if (kind === 'ab') {
+      const last = path.sections[path.sections.length - 1];
+      if (last && (last.kind === 'stadt' || last.kind === 'term')) this.add(path, 'zub', J.back, { node: n, place: last.place, back: true });
       const frameA = this.newFrame('ab');
       const sM = path.s1 + J.auf;
       const link = this.newLink('merge', frameA, path.frame, sM);
@@ -352,7 +376,7 @@ export class Trip {
       const term = this.add(path, 'term', J.term, { node: n, de, transit: kind, transitTo: m });
       term.spotS = term.s0 + Math.round(J.term * 0.7);
       this.add(path, 'term', J.termOut, { node: m, de, transit: kind, arrival: true, kmPerM: 0 });
-      this.add(path, 'zub', J.back, { node: m, back: true, stubEnd: true });
+      this.add(path, 'zub', J.back, { node: m, back: true });
       path.frontier = { t: 'node', n: m, via: de };
     }
   }
@@ -362,7 +386,7 @@ export class Trip {
     const e = deEdge(de);
     const len = edgeLen(e);
     const h = deTo(de);
-    this.border(this.add(path, 'land', len, { de, node: h, kmPerM: e.km / len, stubStart: true }));
+    this.border(this.add(path, 'land', len, { de, node: h, kmPerM: e.km / len }));
     const town = nodes[h].places.find((p) => p.zubKm < 1.5);
     if (town) {
       const tl = townLen(places[town.place].pop);
@@ -405,6 +429,7 @@ export class Trip {
   // --- Navi-Ziel ------------------------------------------------------------------------
   /** Neues Navi-Ziel (Index in places) oder −1. Zweige vor uns werden neu geplant, wenn sie noch weit genug weg sind. */
   setTarget(placeIdx) {
+    if (this.endless) return;
     this.target = placeIdx;
     this.policy = placeIdx >= 0 ? routeTo(placeIdx) : null;
     this.replan(this.cur);
@@ -473,6 +498,12 @@ export class Trip {
    * transit {kind, from, to, sec} · merge {sec} · country {from, to}
    */
   update(s, x) {
+    if (this.endless) {
+      this.km += Math.max(0, s - this.s) * 0.001;
+      this.s = s;
+      this.x = x;
+      return (this.events = []);
+    }
     const ev = (this.events = []);
     const s0 = this.s;
     let prev = this.cur.at(s0);
@@ -573,7 +604,7 @@ export class Trip {
         }
       }
       // der bisherige Weg (die Autobahn) bleibt als Geist zurück
-      this.ghosts.push({ path: this.cur, from: fork.s, until: fork.s + J.ghost, link: fork.link, fork });
+      this.ghosts.push({ path: this.cur, from: fork.s, until: fork.s + J.hide, link: fork.link, fork });
       this.cur = fork.branch;
     } else {
       this.ghosts.push({ path: fork.branch, from: fork.s, until: fork.s + J.ghost, link: fork.link, fork });
@@ -678,6 +709,20 @@ export class Trip {
       }
     }
     return out;
+  }
+
+  /**
+   * Ist dieser Abschnitt schon Teil der sichtbaren Welt? Eine Autobahn, auf die wir erst auffahren werden, erscheint
+   * J.hide Meter vor dem Einfädelpunkt (verdeckt vom Waldstreifen links der Auffahrt). Alles dahinter ebenso.
+   */
+  visible(sec, path) {
+    const L = path.sections;
+    for (let i = L.indexOf(sec); i >= 0; i--) {
+      const c = L[i];
+      if (c.kind === 'ab' && c.merge) return this.s >= c.merge.s - J.hide;
+      if (c.s1 <= this.s) break;
+    }
+    return true;
   }
 
   /** Abstand zwischen der Mitte unserer Spur abseits der Autobahn und dem Rand des Standstreifens (Keil). */
