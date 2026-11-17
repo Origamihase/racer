@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { curve } from '../curve.js';
 import { liveLogoTexture, fabricTexture } from '../textures.js';
 
-const COLORS = {
+export const COLORS = {
   skin: 0xd9a477,
   skinDark: 0xc98b62,
   black: 0x141416,
@@ -28,7 +28,7 @@ export const ADAM_DIM = {
 
 let sharedFabric = null;
 
-function plush(color, curved, { sheen = 0.9, rough = 0.95, side = THREE.FrontSide } = {}) {
+export function plush(color, curved, { sheen = 0.9, rough = 0.95, side = THREE.FrontSide } = {}) {
   if (!sharedFabric) sharedFabric = fabricTexture(11);
   const m = new THREE.MeshPhysicalMaterial({
     color,
