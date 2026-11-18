@@ -1,11 +1,13 @@
 // Dinge auf der Fahrbahn: Lade-Ringe (Akku), Bananensaft (ja!) und Koriander (nein!).
 import * as THREE from 'three';
-import { W } from '../curve.js';
+import { W, curveAt, curvePoint } from '../curve.js';
 import { ROAD, roundRect } from '../textures.js';
 import { rand, pick, lerp, smoothstep } from '../util.js';
 
 // Eingesammelt: so lange hüpft das Teil vor der Motorhaube hoch und schrumpft weg
 const TAKE_TIME = 0.4;
+const FRAME = { x: 0, z: 0, th: 0, y: 0, k: 0, dk: 0, xr: 0, g: 0 };
+const SPOT = new THREE.Vector3();
 
 function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas');
@@ -328,8 +330,11 @@ export class Pickups {
       }
       o.position.set(x, y, -rel);
       if (o.userData.spin) o.userData.spin.rotation.y = t * 1.8 + it.phase;
-      // zur Kamera drehen (nur um die Hochachse)
-      const yaw = Math.atan2(camera.position.x - x, camera.position.z + rel);
+      // zur Kamera drehen (nur um die Hochachse): Richtung zur Kamera in der gebogenen Welt, abzüglich der
+      // Drehung, die die Biegung dem Gegenstand an dieser Stelle ohnehin gibt
+      const th = curveAt(rel, FRAME).th;
+      curvePoint(SPOT.set(x, y, -rel));
+      const yaw = Math.atan2(camera.position.x - SPOT.x, camera.position.z - SPOT.z) - th;
       for (const f of o.userData.face) f.rotation.y = yaw;
     }
     this.items = keep;

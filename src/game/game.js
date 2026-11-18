@@ -755,7 +755,9 @@ export class Game {
     const p = this.player;
     const { x, scale } = this.scenery.placed(lm.id) || ELSA_STATUE;
     const side = x - (p.x + EYE.x);
-    const visible = d > 0 && Math.atan2(side, d) - p.yaw < ELSA_VIEW;
+    // Blickwinkel in der gebogenen Welt (in einer Linkskurve rückt sie weiter nach rechts)
+    const seen = d > 0 ? curvePoint(elsaTmp.set(x, 0, -d)) : null;
+    const visible = d > 0 && Math.atan2(seen.x - (p.x + EYE.x), -seen.z) - p.yaw < ELSA_VIEW;
     const fov = ((camera?.fov || 58) * Math.PI) / 180;
     const clear = (4.3 * scale) / (0.08 * Math.tan(fov / 2));
     const show = Math.min(175, Math.max(clear, side / Math.tan(ELSA_VIEW) + p.speed * 1.5));

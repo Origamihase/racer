@@ -2,11 +2,13 @@
 // Hauptprogramm: Renderer, Bildkomposition (Welt → Regentropfen/Effekte → Cockpit), Kameras
 // (Cockpit, Drohne, Kameraschwenk beim Start, Vorführmodus), Zustände und Menüs.
 import * as THREE from 'three';
-import { curveUniforms, W } from './curve.js';
+import { W, curveTable, curveAt, curveOffset } from './curve.js';
+import { Course, PROBE_MARKS } from './game/course.js';
 import { setMaxAnisotropy, ROAD, roundRect } from './textures.js';
 import { Road } from './world/road.js';
 import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
+import { CurveSigns, gridBusy } from './world/kit/curvesigns.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
@@ -86,6 +88,24 @@ cockpit.scene.environment = sky.envTarget.texture;
 sky.onEnv = (tex) => {
   cockpit.scene.environment = tex;
 };
+// Verlauf der Straße: im klassischen Spiel ein entworfener Endlos-Kurs (die Karte bringt erst die XXL-Fahrt mit).
+// Prüfstand: __MA.course.drive(kurs, fahrt, tick) fährt einen Kurs über eine Fahrt (trip.js), tick(s) vor jedem Bild
+let course = new Course();
+let courseTrip = null;
+let courseTick = null;
+// Kurvenschilder rücken von Möbeln am Rand weg: vom Raster der Landschaft und von Blitzern, Tempo-Schildern und
+// Navi-Zielen, die das Spiel dort bestellt hat
+const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'ziel', 'elsa']);
+const curveSigns = new CurveSigns(scene, {
+  busy(s) {
+    if (gridBusy(s)) return true;
+    for (const r of scenery.requests) if (EDGE_REQUESTS.has(r.type) && Math.abs(r.s - s) < 8) return true;
+    return false;
+  },
+  // jede neue Bestellung kommt hinten an die Liste
+  edge: () => (scenery.requests.length ? scenery.requests[scenery.requests.length - 1].id : ''),
+});
+const skyView = { mapX: 0, mapZ: 0, hillY: 0 };
 const windshield = new Windshield();
 
 // Render-Ziele
@@ -286,6 +306,18 @@ const uiFacade = {
 };
 
 const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups });
+// Krümmung (1/m, links positiv) und Steigung am Spieler für die Lenkung: game.js ruft player.update selbst auf,
+// hier kommen die beiden Werte in dessen env dazu
+const courseEnv = { kappa: 0, grade: 0 };
+{
+  const p = game.player;
+  const update = p.update;
+  p.update = function (dt, ctl, env = {}) {
+    env.kappa = courseEnv.kappa;
+    env.grade = courseEnv.grade;
+    return update.call(this, dt, ctl, env);
+  };
+}
 
 // --- Zustände ------------------------------------------------------------------
 let state = 'loading';
@@ -517,6 +549,24 @@ function updateCarMatrix() {
   tesla.root.quaternion.copy(carQuat);
   cockpit.root.position.copy(carPos);
   cockpit.root.quaternion.copy(carQuat);
+}
+
+// Blick in die Kurve: Cockpit und Verfolgerdrohne drehen sich sacht zum Straßenpunkt 25–60 m voraus und neigen
+// sich ein wenig mit Kuppen und Senken. Geglättet (gut 0,4 s), damit nichts schwimmt.
+const lookAhead = { yaw: 0, pitch: 0 };
+const UP_AXIS = new THREE.Vector3(0, 1, 0);
+const RIGHT_AXIS = new THREE.Vector3(1, 0, 0);
+function updateLookAhead(dt, p) {
+  const d = clamp(25 + p.speed * 0.9, 25, 60);
+  const c = curveAt(d);
+  const f = curveOffset(p.x, c.k, c.xr);
+  const x = c.x + f * Math.cos(c.th) - p.x;
+  const z = c.z - f * Math.sin(c.th);
+  const yaw = Math.atan2(-x, -z);
+  const pitch = Math.atan2(c.y, d);
+  const k = 1 - Math.exp(-dt / 0.42);
+  lookAhead.yaw += (yaw - lookAhead.yaw) * k;
+  lookAhead.pitch += (pitch - lookAhead.pitch) * k;
 }
 
 function setFov(vfovCockpit) {
@@ -963,6 +1013,10 @@ function placeDrone(dt, mode) {
   } else {
     pos = new THREE.Vector3(-p.vx * 0.25, 3.3, 9.2).applyMatrix4(carMatrix);
     look = new THREE.Vector3(0, 1.0, -14).applyMatrix4(carMatrix);
+    // in die Kurve schauen (um die Kamera gedreht) und mit der Straße etwas hoch oder runter
+    look.sub(pos).applyAxisAngle(UP_AXIS, lookAhead.yaw * 0.6);
+    look.y += Math.tan(lookAhead.pitch * 0.6) * 23;
+    look.add(pos);
   }
   const k = 1 - Math.exp(-dt * (mode === 'orbit' ? 3 : 6));
   if (mode === 'orbit') {
@@ -1327,8 +1381,11 @@ function step(dt, { render = true } = {}) {
       };
       game.update(dt, ctl, camera);
       updateCarMatrix();
+      updateLookAhead(dt, p);
       if (view === 'cockpit') {
         cockpit.placeCamera(camera, carMatrix, simT, p.speed, p.latAcc, dt);
+        camera.rotateOnWorldAxis(UP_AXIS, lookAhead.yaw * 0.5);
+        camera.rotateOnAxis(RIGHT_AXIS, lookAhead.pitch * 0.45);
         setFov(58);
         cockpitOn = true;
       } else placeDrone(dt, 'follow');
@@ -1367,13 +1424,28 @@ function step(dt, { render = true } = {}) {
   const w = game.weather ? game.weather.level : 0;
   const frozen = paused;
   if (!frozen) {
-    const cu = curveUniforms.uCurve.value;
-    cu.x = 0.000125 * (0.62 * Math.sin(s / 1900 + 1.3) + 0.38 * Math.sin(s / 740 + 0.4));
-    cu.y = 0.000045 * Math.sin(s / 1300 + 2.1) * (0.5 + 0.5 * Math.sin(s / 3100));
-    // Prüfstand (?debug): flache Welt, damit Bausteine unverzerrt begutachtet werden können
-    if (DEBUG && window.__MA && window.__MA.flat) cu.set(0, 0);
+    // Verlauf der Straße in die Tabelle des Shaders; Prüfstand (?debug): flache Welt, damit Bausteine unverzerrt
+    // begutachtet werden können
+    if (DEBUG && window.__MA && window.__MA.flat) {
+      curveTable.flat();
+      courseEnv.kappa = courseEnv.grade = 0;
+      sky.turn(0);
+    } else {
+      if (courseTick) courseTick(s);
+      const st = course.fill(courseTrip, s, curveTable, dt);
+      courseEnv.kappa = st.kappa;
+      courseEnv.grade = st.grade;
+      sky.turn(st.psi);
+      skyView.mapX = st.mapX;
+      skyView.mapZ = st.mapZ;
+    }
+    curveTable.commit(renderer);
+    // die Hügelkette am Horizont steigt und sinkt mit der Straße, wo sie im Dunst verschwindet
+    skyView.hillY = clamp(curveAt(1500).y * 0.7, -90, 90);
+    cockpit.scene.environmentRotation.copy(sky.envRotation);
     const L = game.left || { glow: 0 };
     road.update(s, dt, simT, L.glow || 0, L.open && L.timer < 10 ? 1 : 0);
+    curveSigns.update(course, s);
     road.setWet(w);
     scenery.update(s, dt);
     sky.setOvercast(w * 0.95);
@@ -1393,7 +1465,7 @@ function step(dt, { render = true } = {}) {
       if (fxState.trunk <= 0) cockpit.setMirrorTexture(mirrorRT.texture);
     }
   }
-  sky.update(frozen ? 0 : dt, camera, s, simT);
+  sky.update(frozen ? 0 : dt, camera, s, simT, skyView);
   audio.update(dt, {
     speed: p.speed, throttle: p.throttle, rain: w, sirenLevel: game.sirenLevel || 0, inCabin: cockpitOn, paused: frozen || state === 'over',
   });
@@ -1502,7 +1574,48 @@ if (DEBUG) {
     },
     pause: () => pause(),
     resume: () => resume(),
+    // Kurven (src/game/course.js): Zustand ansehen, Kurs wählen ('classic' | 'probe'), an eine Stelle springen
+    course: {
+      get inst() {
+        return course;
+      },
+      table: curveTable,
+      at: curveAt,
+      marks: PROBE_MARKS,
+      get state() {
+        return course.state;
+      },
+      mode(m, s) {
+        course.mode = m;
+        course.resetVirtual(m);
+        if (s !== undefined) teleport(s);
+      },
+      teleport: (s) => teleport(s),
+      drive(c, trip, tick) {
+        course = c;
+        courseTrip = trip;
+        courseTick = tick;
+      },
+      bends(dMax = 3000) {
+        const out = [];
+        const s = game.player.s;
+        course.eachBend((s0, s1, k, t, kind) => {
+          if (s1 > s && s0 < s + dMax) out.push({ d0: Math.round(s0 - s), d1: Math.round(s1 - s), R: Math.round(1 / Math.abs(k)), dir: k > 0 ? 'links' : 'rechts', kind });
+        });
+        return out;
+      },
+    },
   };
+}
+
+/** Prüfstand: den Spieler an die Stelle s setzen (Verkehr, Sammelsachen und Landschaft neu). */
+function teleport(sNew) {
+  const p = game.player;
+  p.s = sNew;
+  traffic.populate(sNew, p.speed);
+  pickups.reset();
+  game.navi.reset?.(sNew);
+  scenery.update(sNew, 0);
 }
 
 boot();

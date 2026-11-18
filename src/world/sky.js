@@ -1,7 +1,6 @@
 // Himmel mit Sonne und ziehenden Wolken, Licht, Nebel, Hügel am Horizont und
 // Umgebungsreflexion. Bei Regen zieht es langsam zu (overcast 0 → 1).
 import * as THREE from 'three';
-import { curveUniforms, CURVE_K } from '../curve.js';
 import { lerp, fbm1, clamp } from '../util.js';
 
 // Schattenkasten der Sonne (Licht-Einheiten bei 2048er Schattenkarte, „mittel“ mit 1024 nimmt 0,7 davon): u quer
@@ -29,6 +28,7 @@ const FADE = /* glsl */ `
   if (chunk.includes(end)) THREE.ShaderChunk.shadowmap_pars_fragment = chunk.replace(end, FADE.trim());
 }
 const _dir = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
 
 const SKY_VERT = /* glsl */ `
 varying vec3 vDir;
@@ -86,13 +86,19 @@ export class Sky {
     this.renderer = renderer;
     this.scene = scene;
     this.overcast = 0;
-    this.sunDir = new THREE.Vector3(0.52, 0.6, 0.6).normalize();
+    // Sonne im Kartenrahmen (fest) und in der Welt (um den Kurs psi des Spielers gedreht, siehe turn)
+    this.sunDirMap = new THREE.Vector3(0.52, 0.6, 0.6).normalize();
+    this.sunDir = this.sunDirMap.clone();
+    this.psi = 0;
+    // Drehung der Umgebungsreflexion (für Szenen, die sie benutzen: auch das Cockpit)
+    this.envRotation = new THREE.Euler();
     this.fogClear = new THREE.Color(0.66, 0.78, 0.92);
     this.fogRain = new THREE.Color(0.43, 0.46, 0.5);
     this.fogColor = this.fogClear.clone();
 
+    // Himmelskuppel, Hügelkette und Umgebungsbild liegen im Kartenrahmen und drehen sich als Ganzes
     this.uniforms = {
-      uSunDir: { value: this.sunDir },
+      uSunDir: { value: this.sunDirMap },
       uOvercast: { value: 0 },
       uOffset: { value: new THREE.Vector2(0, 0) },
       uFog: { value: this.fogColor },
@@ -127,9 +133,10 @@ export class Sky {
     c.far = 400;
     this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.04;
-    // Achsen des Schattenbilds (wie three.js sie mit lookAt bildet): eU quer, rein waagrecht; eV längs
-    this.eU = new THREE.Vector3().crossVectors(c.up, this.sunDir).normalize();
-    this.eV = new THREE.Vector3().crossVectors(this.sunDir, this.eU);
+    // Achsen des Schattenbilds (wie three.js sie mit lookAt bildet): eU quer (ohne z-Anteil), eV längs
+    this.eU = new THREE.Vector3();
+    this.eV = new THREE.Vector3();
+    this.shadowAxes();
     this.shadowK = 0;
     this.shadowBox();
     scene.add(this.sun);
@@ -203,6 +210,26 @@ export class Sky {
     if (this.onEnv) this.onEnv(this.envTarget.texture);
   }
 
+  shadowAxes() {
+    this.eU.crossVectors(this.sun.shadow.camera.up, this.sunDir).normalize();
+    this.eV.crossVectors(this.sunDir, this.eU);
+  }
+
+  /**
+   * Die Welt dreht sich: psi = Kurs des Spielers im Kartenrahmen (rad, links positiv). Kuppel, Hügel, Sonne (und mit
+   * ihr Schatten und Licht am Auto) und Umgebungsbild drehen sich um −psi; in einer langen Rechtskurve wandert die
+   * Sonne so links herum um das Auto (im langen Bogen der Kurvenprobe von hinten rechts nach vorn rechts).
+   */
+  turn(psi) {
+    this.psi = psi;
+    this.dome.rotation.y = -psi;
+    this.hills.rotation.y = -psi;
+    this.sunDir.copy(this.sunDirMap).applyAxisAngle(UP, -psi);
+    this.envRotation.set(0, -psi, 0);
+    this.scene.environmentRotation.copy(this.envRotation);
+    this.shadowAxes();
+  }
+
   setOvercast(v) {
     this.overcast = clamp(v, 0, 1);
   }
@@ -258,12 +285,22 @@ export class Sky {
     sh.radius = -fz;
   }
 
-  update(dt, camera, s, t) {
+  /**
+   * view (optional): { mapX, mapZ } Lage des Spielers im Kartenrahmen (die Wolken ziehen passend zur Fahrt),
+   * hillY: Höhe der Straße am Horizont (die Hügelkette steigt und sinkt mit). Den Kurs setzt turn().
+   */
+  update(dt, camera, s, t, view = null) {
     const o = this.overcast;
     this.uniforms.uOvercast.value = o;
     const off = this.uniforms.uOffset.value;
-    off.x += dt * 0.004;
-    off.y = -s * 0.0006 - t * 0.002;
+    this.wind = (this.wind || 0) + dt * 0.004;
+    if (view) {
+      off.x = this.wind + view.mapX * 0.0006;
+      off.y = view.mapZ * 0.0006 - t * 0.002;
+    } else {
+      off.x = this.wind;
+      off.y = -s * 0.0006 - t * 0.002;
+    }
     this.fogColor.copy(this.fogClear).lerp(this.fogRain, o);
     const fog = this.scene.fog;
     fog.near = lerp(140, 18, o);
@@ -276,9 +313,7 @@ export class Sky {
     this.hills.visible = o < 0.98;
 
     this.dome.position.copy(camera.position);
-    const B = (d) => (d * d) / (1 + d * CURVE_K);
-    const cu = curveUniforms.uCurve.value;
-    this.hills.position.set(camera.position.x + cu.x * B(1950) * 0.7, cu.y * B(1950) * 0.8, 0);
+    this.hills.position.set(camera.position.x, view && view.hillY ? view.hillY : 0, camera.position.z);
 
     this.placeShadow(camera, s);
     this.envGround.material.color.setRGB(lerp(0.16, 0.1, o), lerp(0.17, 0.11, o), lerp(0.13, 0.11, o));

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Vehicle, randomKind, setVehicleEnvIntensity } from '../models/vehicles.js';
 import { ROAD } from '../textures.js';
 import { ONCOMING } from './road.js';
+import { curveAt } from '../curve.js';
 import { clamp, lerp, rand, chance, pick, smoothstep } from '../util.js';
 
 const LANE_SPEEDS = [
@@ -13,6 +14,10 @@ const LANE_SPEEDS = [
   [95, 120],
 ];
 const KMH = 1 / 3.6;
+// Vor Kurven nimmt der Verkehr Gas weg, wo die Querbeschleunigung sonst über diesen Komfortwert stiege (m/s²),
+// und bremst dafür sanft (m/s²). Lkw kriechen an langen Steigungen etwas (km/h weniger je Prozent über 2 %).
+const CURVE = { car: { lat: 2.5, dec: 1.2 }, truck: { lat: 1.8, dec: 0.8 }, look: 250, climb: 4.5 };
+const _cf = { x: 0, z: 0, th: 0, y: 0, k: 0, dk: 0, xr: 0, g: 0 };
 
 let nextId = 1;
 
@@ -114,7 +119,7 @@ export class Traffic {
     v.group.rotation.y = Math.PI;
     const truck = k === 'lkw';
     const speed = truck ? rand(80, 89) * KMH : rand(LANE_SPEEDS[lane][0] - 15, LANE_SPEEDS[lane][1]) * KMH;
-    const o = { v, s: sPlayer + (ahead ? rand(700, 1300) : rand(100, 1200)), x: ONCOMING(ROAD.laneCenter(truck ? 2 + Math.round(Math.random()) : lane)), speed, len: v.length };
+    const o = { v, s: sPlayer + (ahead ? rand(700, 1300) : rand(100, 1200)), x: ONCOMING(ROAD.laneCenter(truck ? 2 + Math.round(Math.random()) : lane)), speed, v0: speed, truck, len: v.length };
     // gleich an seinen Platz, sonst steht es ein Bild lang mitten auf dem eigenen Auto
     v.group.position.set(o.x, 0, -(o.s - sPlayer));
     this.oncoming.push(o);
@@ -193,13 +198,14 @@ export class Traffic {
           }
         }
       }
-      // Abstandsregelung
+      // Abstandsregelung (Wunschtempo vor Kurven und am Berg gedeckelt)
       const lead = this.leader(c, objs, P);
       const T = c.truck ? 1.7 : 1.25 + (c.careless ? -0.4 : 0);
       const aMax = c.truck ? 0.6 : 1.6;
       const b = 2.8;
       const s0 = 3;
-      let acc = aMax * (1 - Math.pow(c.speed / Math.max(1, c.v0), 4));
+      const vc = curveSpeed(c, c.s - player.s);
+      let acc = aMax * (1 - Math.pow(c.speed / Math.max(1, Math.min(c.v0, vc)), 4));
       if (lead) {
         const gap = Math.max(0.1, lead.s - c.s - (lead.len + c.len) / 2);
         const dv = c.speed - lead.speed;
@@ -207,9 +213,18 @@ export class Traffic {
         acc -= aMax * Math.pow(sStar / gap, 2);
         if (gap < 4 && dv > 0) acc = Math.min(acc, -9);
       }
+      // vor einer Kurve sichtbar (mit Bremslicht), aber sanft abbremsen
+      let curveBrake = false;
+      if (c.speed > vc + 0.4) {
+        const a = -Math.min(c.truck ? 1.4 : 2.2, 0.5 + (c.speed - vc) * 0.5);
+        if (a < acc) {
+          acc = a;
+          curveBrake = true;
+        }
+      }
       acc = clamp(acc, -10, aMax);
       c.speed = Math.max(0, c.speed + acc * dt);
-      c.brake = acc < -1.2;
+      c.brake = acc < -1.2 || curveBrake;
       c.v.setBrake(c.brake || (c.speed < 3));
       c.s += c.speed * dt;
     }
@@ -281,6 +296,9 @@ export class Traffic {
     // Gegenverkehr
     const okeep = [];
     for (const o of this.oncoming) {
+      // auch der Gegenverkehr nimmt vor Kurven Gas weg (seine Fahrtrichtung zeigt zum Spieler)
+      const vt = Math.min(o.v0, curveSpeed(o, o.s - player.s, -1));
+      o.speed += clamp(vt - o.speed, -1.6 * dt, 0.8 * dt);
       o.s -= o.speed * dt;
       const rel = o.s - player.s;
       if (rel < -200) {
@@ -431,6 +449,26 @@ export class Traffic {
     }
     return out;
   }
+}
+
+/**
+ * Höchsttempo, mit dem das Fahrzeug d Meter vor dem Spieler jetzt fahren darf, damit es jede Kurve der nächsten
+ * CURVE.look Meter mit sanftem Bremsen bequem nimmt (Infinity: keine Grenze). Lkw zusätzlich langsamer am Berg.
+ * dir: Fahrtrichtung entlang d (+1 mit dem Spieler, −1 Gegenverkehr).
+ */
+function curveSpeed(c, d, dir = 1) {
+  const C = c.truck ? CURVE.truck : CURVE.car;
+  let v = Infinity;
+  for (let u = 0; u <= CURVE.look; u += 25) {
+    const k = Math.abs(curveAt(d + dir * u, _cf).k);
+    if (k < 1e-5) continue;
+    v = Math.min(v, Math.sqrt(C.lat / k + 2 * C.dec * u));
+  }
+  if (c.truck) {
+    const g = dir * curveAt(d, _cf).g;
+    if (g > 0.02) v = Math.min(v, c.v0 - (g - 0.02) * 100 * CURVE.climb * KMH);
+  }
+  return v;
 }
 
 function laneOverlap(o, lane) {
