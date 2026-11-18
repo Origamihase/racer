@@ -256,7 +256,8 @@ export function buildTesla() {
   intake.translate(0, 0.333, uToZ(0) - 0.003);
   const diffuser = slot(1.08, 0.07, 0.03);
   diffuser.translate(0, 0.475, uToZ(L) + 0.003);
-  root.add(new THREE.Mesh(mergeGeometries([intake, diffuser]), plastic));
+  const slots = new THREE.Mesh(mergeGeometries([intake, diffuser]), plastic);
+  root.add(slots);
 
   // Scheinwerfer (mandelförmig, um die Ecke gezogen) und Rückleuchten (um die Ecke) – liegen auf der Karosserie
   const patchOnBody = (uv, opts) => surfacePatch(bodyPoint, uv, opts);
@@ -264,18 +265,24 @@ export function buildTesla() {
   const lenses = [];
   const drls = [];
   const tails = [];
-  for (const s of [-1, 1]) {
-    const head = (a, t) => {
+  // Leuchten im (u, phi)-Raum der Karosserie, je Seite s (auch für die Schadensanzeige, siehe damage-fx.js)
+  const lampUV = {
+    head: (s) => (a, t) => {
       const [u, ph] = headUV(a, t);
       return [u, sidePhi(s, ph)];
-    };
+    },
+    drl: (s) => (a, t) => lampUV.head(s)(lerp(0.8, 0.94, a), lerp(0.08, 0.95, t)),
+    tail: (s) => (a, t) => [lerp(4.4, 4.672, t), sidePhi(s, lerp(lerp(0.5, 0.36, t), lerp(0.78, 1.0, t), a))],
+  };
+  for (const s of [-1, 1]) {
+    const head = lampUV.head(s);
     // Chrom-Reflektor unter klarem Glas, darin zwei dunkle Linsen, oben das LED-Tagfahrlicht
     housings.push(patchOnBody(head, { ns: 8, nt: 24, lift: 0.004 }));
     for (const [tc, rt] of [[0.34, 0.1], [0.58, 0.11]]) {
       lenses.push(patchOnBody((r, ang) => head(0.4 + 0.24 * r * Math.cos(ang * Math.PI * 2), tc + rt * r * Math.sin(ang * Math.PI * 2)), { ns: 3, nt: 18, lift: 0.006 }));
     }
-    drls.push(patchOnBody((a, t) => head(lerp(0.8, 0.94, a), lerp(0.08, 0.95, t)), { ns: 2, nt: 22, lift: 0.007 }));
-    tails.push(patchOnBody((a, t) => [lerp(4.4, 4.672, t), sidePhi(s, lerp(lerp(0.5, 0.36, t), lerp(0.78, 1.0, t), a))], { ns: 6, nt: 14, lift: 0.006 }));
+    drls.push(patchOnBody(lampUV.drl(s), { ns: 2, nt: 22, lift: 0.007 }));
+    tails.push(patchOnBody(lampUV.tail(s), { ns: 6, nt: 14, lift: 0.006 }));
   }
   root.add(new THREE.Mesh(mergeGeometries(housings), lampChrome));
   root.add(new THREE.Mesh(mergeGeometries(lenses), lampLens));
@@ -331,8 +338,9 @@ export function buildTesla() {
     mirrorGlass.push(g);
   }
   const mirrorGeo = mergeGeometries(mirrorParts.map((g) => (g.index ? g.toNonIndexed() : g)));
-  root.add(new THREE.Mesh(mirrorGeo, paint));
-  root.add(new THREE.Mesh(mergeGeometries(mirrorGlass), W.std({ color: 0x9fb2c4, metalness: 1, roughness: 0.06 })));
+  const mirrorMesh = new THREE.Mesh(mirrorGeo, paint);
+  const mirrorGlassMesh = new THREE.Mesh(mergeGeometries(mirrorGlass), W.std({ color: 0x9fb2c4, metalness: 1, roughness: 0.06 }));
+  root.add(mirrorMesh, mirrorGlassMesh);
 
   // Räder: Reifen + Aero-Radkappen (drehen sich)
   const tireGeo = tireGeometry(TESLA.wheelR, 0.235, 24);
@@ -503,6 +511,8 @@ export function buildTesla() {
     wheels,
     cabinLight,
     recLed,
+    // Haken für den Schaden außen (src/models/damage-fx.js): verformbare Teile, Kennzeichen, Flächen-Abbildung
+    damageHooks: { root, body, slots, sticker, plateF, plateR, mirrors: [mirrorMesh, mirrorGlassMesh], mirrorZ: mz, bodyPoint, sidePhi, L, n: BODY.n, lampUV },
     setStarlink(v) {
       starlink.visible = !!v;
     },

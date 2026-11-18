@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { clamp, lerp, fbm1, mulberry32, fmtNum } from '../util.js';
 import { roundRect } from '../textures.js';
+import { drawDamageCar, damageBand } from './screen-damage.js';
 
 const CW = 1024;
 const CH = 640;
@@ -110,6 +111,8 @@ export class CenterScreen {
     ctx.font = '500 26px "Helvetica Neue", Arial, sans-serif';
     ctx.fillStyle = T.sub;
     ctx.fillText('km/h', SPLIT / 2, 232);
+    // Wagen von oben mit den Schadenszonen (src/cockpit/screen-damage.js)
+    if (st.damage) drawDamageCar(ctx, st.damage, 20, 100, 56, 114, T);
     if (st.limit) {
       ctx.save();
       ctx.translate(SPLIT - 58, 150);
@@ -219,7 +222,11 @@ export class CenterScreen {
     ctx.fillRect(0, CH - 112, SPLIT, 112);
     ctx.textAlign = 'center';
     ctx.font = '600 24px "Helvetica Neue", Arial, sans-serif';
-    if (st.leftLane > 0) {
+    const dmg = damageBand(st.damage, this.spin);
+    if (dmg) {
+      ctx.fillStyle = dmg.color;
+      fitText(ctx, dmg.text, SPLIT / 2, CH - 86, SPLIT - 28);
+    } else if (st.leftLane > 0) {
       ctx.fillStyle = '#2f6fe4';
       ctx.fillText('Linke Spur frei · ' + Math.ceil(st.leftLane) + ' s', SPLIT / 2, CH - 86);
     } else {

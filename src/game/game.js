@@ -6,6 +6,7 @@ import {
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtNum, fmtClock } from '../util.js';
 import { Player, KMH } from './player.js';
+import { damageLine } from './damage.js';
 import { Navi, shortName } from './navi.js';
 import { Vector3 } from 'three';
 import { EYE } from '../cockpit/cockpit.js';
@@ -141,6 +142,7 @@ export class Game {
     p.update(dt, ctl, { wet: 0 });
     p.battery = 100;
     p.hits = 0;
+    if (!p.damage.pristine) p.damage.reset(p.maxHits);
     this.navi.update(dt, p.s);
     if (this.navi.arrived) this.navi.overbid(p.s, 'Demo');
     this.traffic.update(dt, this.demoT, p, { difficulty: 0.15, leftOpen: false, rain: 0 });
@@ -239,13 +241,18 @@ export class Game {
 
     // --- Fahren ------------------------------------------------------------
     const sBefore = p.s;
-    p.update(dt, ctl, { wet: W.level });
+    // Krümmung und Steigung unter dem Wagen (Kurven-Paket, sonst 0)
+    p.update(dt, ctl, { wet: W.level, kappa: ctl.kappa || 0, grade: ctl.grade || 0 });
     const ds = p.s - sBefore;
     for (const e of p.events) {
       if (e.type === 'rail') {
         this.audio.scrape();
         this.fx.shake(e.hard ? 0.5 : 0.2);
         if (e.hard && chance(0.4)) this.chat(pick(['Leitplanke! 😬', 'Uff, die Leitplanke', 'Kratz kratz']));
+      } else if (e.type === 'understeer' && this.t > (this.understeerSaid ?? -99) + 25) {
+        // zu schnell für die Kurve: NOMI sagt es freundlich (höchstens alle 25 s)
+        this.understeerSaid = this.t;
+        this.say(damageLine('understeer'), 'worried', { priority: false });
       }
     }
     st.distance = p.s;
@@ -498,6 +505,11 @@ export class Game {
     if (t.special === 'siegen') bonus *= 2;
     this.say(BOARD.arrived, 'love');
     this.audio.jingle();
+    // klassisches Spiel: an jedem erreichten Navi-Ziel wird ein Karosserie-Punkt repariert (mit Pflaster)
+    if (p.repair(1)) {
+      this.ui.damage(p.hits, p.maxHits);
+      this.later(2.2, () => this.ui.toast('🩹 ' + damageLine('repair'), 'good'));
+    }
     this.earn(bonus, 'Navi-Ziele');
     this.ui.banner(`🏁 Ziel erreicht: ${t.name}`, 4);
     this.burst(CHAT.naviReached, 4, 3);
@@ -939,11 +951,13 @@ export class Game {
     if (!p.collide(e)) return;
     this.stats.crashes++;
     this.stats.cleanDistance = 0;
-    this.audio.crash();
-    this.fx.shake(1);
+    this.audio.crash(e.zone, e.power);
+    this.fx.shake(1, e.zone);
     this.cockpit.nomi.setMood('dizzy', 3);
     const left = p.maxHits - p.hits;
     this.ui.damage(p.hits, p.maxHits);
+    // NOMI tröstet (nie über Verletzungen): erster Rempler, weitere, der letzte Punkt
+    if (left > 0) this.later(0.6, () => this.say(damageLine(left === 1 ? 'last' : p.hits === 1 ? 'first' : 'more', e.zone), left === 1 ? 'worried' : 'talk', { priority: false }));
     if (e.car.behavior === 'polizei') this.chat('Ausgerechnet die Polizei Gifhorn 😱');
     this.burst(CHAT.crash, 3, 2);
     if (left <= 0) {
@@ -1003,6 +1017,7 @@ export class Game {
       temp: Math.round(17 - W.level * 6),
       funkloch: this.funkloch > 0 ? 1 : 0,
       wiperOn: W.level > 0.05,
+      damage: p.damage,
     };
   }
 }

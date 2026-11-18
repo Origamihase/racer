@@ -2,6 +2,7 @@
 // Karosserie-Punkte, Chat mit Bots, NOMI-Untertitel, Hinweise, Sprachdurchsagen, Rahmen und Blitzerfotos.
 import { fmtNum, fmtCent, fmtKm, fmtDuration, clamp } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
+import { DamageBadge, CruiseBadge } from './drive-hud.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -101,6 +102,9 @@ export class UI {
     this.batteryBar = el('span', 'battery-bar', this.batteryEl.parentNode);
     this.batteryFill = el('span', 'battery-fill', this.batteryBar);
     this.damageEl = row('🧸', '');
+    // Wagen von oben mit farbigen Zonen und den übrigen Punkten; Tempomat-Schild neben dem Tempo (src/ui/drive-hud.js)
+    this.dmgBadge = new DamageBadge(this.damageEl.parentNode, this.damageEl);
+    this.cruiseBadge = new CruiseBadge(this.speedEl.parentNode);
     this.jobsEl = el('div', 'jobs-mini', info);
     this.zulageEl = el('div', 'zulage hidden', info, '🌧️ Regenzulage ×1,5');
 
@@ -615,9 +619,8 @@ export class UI {
     this.batteryEl.textContent = Math.round(p.battery) + ' %';
     this.batteryFill.style.width = clamp(p.battery, 0, 100) + '%';
     this.batteryFill.className = 'battery-fill' + (p.battery < 15 ? ' low' : p.battery < 30 ? ' mid' : '');
-    const left = Math.max(0, p.maxHits - p.hits);
-    this.damageEl.textContent = '♥'.repeat(left) + '♡'.repeat(Math.max(0, p.maxHits - left));
-    this.damageEl.title = 'Karosserie-Punkte';
+    this.dmgBadge.update(p.damage);
+    this.cruiseBadge.update(p);
     this.zulageEl.classList.toggle('hidden', !g.weather.regenzulage);
     // linke Spur
     const L = g.left;

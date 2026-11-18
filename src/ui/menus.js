@@ -2,6 +2,7 @@
 // Einstellungen und „Über das Spiel“. Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
 import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, GAME_TITLE, GAME_SUBTITLE, TAGLINE } from '../data.js';
 import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration } from '../util.js';
+import { renderDriveSettings, driveSettings } from './drive-settings.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -154,6 +155,12 @@ export class Menus {
         this.screens.settings.querySelector(`[data-key="${b.dataset.key}"]`)?.focus({ preventScroll: true });
         break;
       }
+      case 'choice':
+        this.h.setting(b.dataset.key, b.dataset.value);
+        this.render_settings(this.screens.settings, this.h.dataFor('settings'));
+        this.watchScroll(this.screens.settings);
+        this.screens.settings.querySelector(`[data-key="${b.dataset.key}"][data-value="${b.dataset.value}"]`)?.focus({ preventScroll: true });
+        break;
       case 'quality':
         this.h.setting('quality', b.dataset.value);
         this.render_settings(this.screens.settings, this.h.dataFor('settings'));
@@ -452,6 +459,8 @@ export class Menus {
       b.dataset.value = v;
     }
     if (!d.speechSupported) el('p', 'note', card, 'Hinweis: Dieser Browser hat keine deutsche Sprachausgabe – NOMI spricht dann nur per Untertitel.');
+    // Lenkung, Fahrhilfen, Tempomat, Touch und Vibration (src/ui/drive-settings.js)
+    renderDriveSettings(list, driveSettings(d), (k, v) => this.h.setting(k, v), button);
     const rr = el('div', 'set-row', list);
     el('span', '', rr, 'Spielstand');
     button(rr, 'Spielstand zurücksetzen', 'reset', 'off');

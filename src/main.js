@@ -18,6 +18,12 @@ import { Rain } from './fx/rain.js';
 import { Audio } from './audio.js';
 import { Speech } from './speech.js';
 import { Input } from './input.js';
+import { TouchControls } from './ui/touch.js';
+import { driveSettings, playerOptions } from './ui/drive-settings.js';
+import { showDriveHint, driveHintTick } from './ui/drive-hint.js';
+import { Jolt } from './fx/jolt.js';
+import { TeslaDamage } from './models/damage-fx.js';
+import { CabinDamage } from './cockpit/damage-cabin.js';
 import { loadSave, storeSave, resetSave } from './save.js';
 import { Game } from './game/game.js';
 import { Pickups } from './game/pickups.js';
@@ -82,8 +88,12 @@ const traffic = new Traffic(scene, rain);
 const pickups = new Pickups(scene);
 prewarmVehicles();
 const tesla = buildTesla();
+// Schaden außen: Dellen, Schrammen, Pflaster, Leuchten, Dampf (baut nur neu, wenn sich der Schaden ändert)
+const teslaDamage = new TeslaDamage(tesla.damageHooks);
 scene.add(tesla.root);
 const cockpit = new Cockpit();
+// letzter Karosserie-Punkt vom Fahrerplatz aus: Haube springt vorn auf und zittert, Dampf, ab und zu ein Ruckeln
+const cabinDamage = new CabinDamage(cockpit, tesla.damageHooks);
 cockpit.scene.environment = sky.envTarget.texture;
 sky.onEnv = (tex) => {
   cockpit.scene.environment = tex;
@@ -253,8 +263,8 @@ ui.setChat(settings.chat);
 // Touch-Knöpfe (nur auf Geräten mit Touchscreen sichtbar)
 const touchEl = document.createElement('div');
 touchEl.className = 'touch';
+// Lenken, Bremse und Strom kommen aus src/ui/touch.js (Daumen-Zug oder Lenkknöpfe)
 for (const [action, label, cls] of [
-  ['left', '◀', 't-left'], ['right', '▶', 't-right'], ['brake', 'Bremse', 't-brake'], ['gas', 'Strom', 't-gas'],
   ['horn', '📯', 't-small t-horn'], ['wiper', '🌧️', 't-small t-wiper'], ['megafon', '📢', 't-small t-megafon'],
   ['camera', '🎥', 't-small t-camera'], ['pause', '⏸', 't-small t-pause'],
 ]) {
@@ -266,6 +276,8 @@ for (const [action, label, cls] of [
   input.bindTouch(b, action);
 }
 app.appendChild(touchEl);
+const touch = new TouchControls(touchEl, input);
+const jolt = new Jolt();
 
 let photoRequest = null;
 const fxState = { flash: 0, glitch: 0, green: 0, trunk: 0, fade: 0, fadeTarget: 0 };
@@ -279,8 +291,13 @@ const fx = {
   green: (dur) => {
     fxState.green = Math.max(fxState.green, dur);
   },
-  shake: (v) => {
+  shake: (v, zone) => {
     cockpit.shake = Math.max(cockpit.shake, v);
+    // Rempler: Kopf ruckt in Stoßrichtung, Gamepad und Handy rütteln
+    if (zone) {
+      jolt.hit(zone, v);
+      input.rumble(0.9, 220);
+    }
   },
   trunk: (dur) => {
     fxState.trunk = dur;
@@ -306,18 +323,9 @@ const uiFacade = {
 };
 
 const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups });
-// Krümmung (1/m, links positiv) und Steigung am Spieler für die Lenkung: game.js ruft player.update selbst auf,
-// hier kommen die beiden Werte in dessen env dazu
+// Krümmung (1/m, links positiv) und Steigung unter dem Wagen für die Lenkung: course.fill() misst sie am Ende jedes
+// Bildes, also genau dort, wo das nächste beginnt; beim Fahren gehen sie mit den Eingaben (ctl) an game.update
 const courseEnv = { kappa: 0, grade: 0 };
-{
-  const p = game.player;
-  const update = p.update;
-  p.update = function (dt, ctl, env = {}) {
-    env.kappa = courseEnv.kappa;
-    env.grade = courseEnv.grade;
-    return update.call(this, dt, ctl, env);
-  };
-}
 
 // --- Zustände ------------------------------------------------------------------
 let state = 'loading';
@@ -391,7 +399,16 @@ function applyCosmetics() {
   cockpit.setElsa(!!up.elsa);
 }
 
+/** Fahr-Einstellungen auf Fahrphysik, Eingabe und Touch übertragen. */
+function applyDrive() {
+  const ds = driveSettings(settings);
+  game.player.configure(playerOptions(ds));
+  input.vibration = ds.vibration;
+  touch.configure(ds);
+}
+
 function applySettings(key) {
+  applyDrive();
   audio.enabled = settings.sound;
   audio.volume = settings.volume;
   audio.setEnabled(settings.sound);
@@ -460,12 +477,14 @@ function resume() {
   menus.hide();
   speech.pause(false);
   input.pressed.clear();
-  input.keys.clear();
+  input.releaseAll();
 }
 
 function pause() {
   if (state !== 'drive' || paused) return;
   paused = true;
+  // gehaltene Tasten und Daumen loslassen: nach dem Weiterfahren lenkt nichts von allein
+  input.releaseAll();
   speech.pause(true);
   menus.show('pause', game);
 }
@@ -542,7 +561,7 @@ const drone = { pos: new THREE.Vector3(0, 4, 10), look: new THREE.Vector3(0, 1, 
 function updateCarMatrix() {
   const p = game.player;
   carPos.set(p.x, 0, 0);
-  carEuler.set(0, -p.yaw, clamp(p.latAcc * 0.0025, -0.03, 0.03), 'YXZ');
+  carEuler.set(0, -p.yaw, clamp(p.latAccSm * 0.0025, -0.03, 0.03), 'YXZ');
   carQuat.setFromEuler(carEuler);
   carMatrix.compose(carPos, carQuat, ONE);
   tesla.root.position.copy(carPos);
@@ -1350,7 +1369,10 @@ function step(dt, { render = true } = {}) {
         state = 'drive';
         stateT = 0;
         ui.show(true);
-        ui.toast(matchMedia('(pointer: coarse)').matches ? 'Tipp: ◀ ▶ lenken · Strom und Bremse rechts · 🎥 Kamera' : 'Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
+        // beim ersten Start auf diesem Gerät „So steuerst du“, danach der kurze Tipp
+        if (!showDriveHint(ui, input.lastDevice, driveSettings(settings))) {
+          ui.toast(matchMedia('(pointer: coarse)').matches ? 'Tipp: ◀ ▶ lenken · Strom und Bremse rechts · 🎥 Kamera' : 'Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
+        }
       }
       break;
     }
@@ -1371,21 +1393,39 @@ function step(dt, { render = true } = {}) {
         ui.cameraLabel(view === 'cockpit' ? '🎥 Cockpit' : '🎥 Drohne');
       }
       ctl = {
+        // Lenktasten mit Zeitstempel (steerLog) und Tastenstand am Bildende, Stick/Touch-Zug, Wisch-Spurwechsel
         steer: input.steer,
+        steerKey: input.steerKey,
+        steerLog: input.steerLog,
+        analog: input.analog,
+        lane: input.lane,
         throttle: input.throttle,
         brake: input.brake,
         horn: input.take('horn'),
         wiper: input.take('wiper'),
         megafon: input.take('megafon'),
         device: input.lastDevice,
+        // Krümmung und Steigung unter dem Wagen aus dem Kurs (courseEnv); auf dem Prüfstand (?debug) lässt sich
+        // stattdessen eine Probe einhängen: __MA.kappaProbe(s), __MA.gradeProbe(s)
+        kappa: DEBUG && window.__MA && window.__MA.kappaProbe ? window.__MA.kappaProbe(p.s) : courseEnv.kappa,
+        grade: DEBUG && window.__MA && window.__MA.gradeProbe ? window.__MA.gradeProbe(p.s) : courseEnv.grade,
       };
       game.update(dt, ctl, camera);
+      driveHintTick(dt, ctl);
+      // Leitplanke: der Kopf ruckt zur Planke hin, Gamepad und Handy rütteln kurz
+      for (const e of p.events) {
+        if (e.type !== 'rail') continue;
+        jolt.hit(e.side < 0 ? 'left' : 'right', e.hard ? 0.5 : 0.3);
+        input.rumble(e.hard ? 0.6 : 0.3, e.hard ? 140 : 80);
+      }
       updateCarMatrix();
       updateLookAhead(dt, p);
+      jolt.update(dt);
       if (view === 'cockpit') {
-        cockpit.placeCamera(camera, carMatrix, simT, p.speed, p.latAcc, dt);
+        cockpit.placeCamera(camera, carMatrix, simT, p.speed, p.latAccSm, dt);
         camera.rotateOnWorldAxis(UP_AXIS, lookAhead.yaw * 0.5);
         camera.rotateOnAxis(RIGHT_AXIS, lookAhead.pitch * 0.45);
+        jolt.apply(camera, carMatrix);
         setFov(58);
         cockpitOn = true;
       } else placeDrone(dt, 'follow');
@@ -1450,14 +1490,16 @@ function step(dt, { render = true } = {}) {
     scenery.update(s, dt);
     sky.setOvercast(w * 0.95);
     rain.update(dt, simT, { speed: p.speed, s, camX: camera.position.x, intensity: w });
-    tesla.update(dt, p.speed, p.steer, simT);
+    tesla.update(dt, p.speed, p.wheel, simT);
+    teslaDamage.update(dt, simT, p.damage, p.speed);
+    cabinDamage.update(dt, simT, p.damage, p.speed, cockpitOn);
     tesla.setBrake(p.braking > 0.1 || p.speed < 1);
-    tesla.adam.animate(simT, { steer: p.steer, wave: adamWave, look: adamLook });
+    tesla.adam.animate(simT, { steer: p.wheel, wave: adamWave, look: adamLook });
     tesla.cabinLight.intensity = cockpitOn ? 0 : state === 'title' || state === 'intro' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     cockpit.update({
-      dt, t: simT, steer: p.steer, latAcc: p.latAcc, wiperAngles: windshield.angles, sunDir: sky.sunDir, overcast: w,
+      dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, sunDir: sky.sunDir, overcast: w,
       screen: game.screenState ? safeScreen() : null,
     });
     if (fxState.trunk > 0) {
@@ -1468,6 +1510,8 @@ function step(dt, { render = true } = {}) {
   sky.update(frozen ? 0 : dt, camera, s, simT, skyView);
   audio.update(dt, {
     speed: p.speed, throttle: p.throttle, rain: w, sirenLevel: game.sirenLevel || 0, inCabin: cockpitOn, paused: frozen || state === 'over',
+    // Quietschen an der Haftgrenze; Klappern wächst mit den verbrauchten Karosserie-Punkten (0 … 3)
+    squeal: state === 'drive' ? p.squeal : 0, rattle: state === 'drive' ? (3 * p.hits) / p.maxHits : 0,
   });
 
   // Effekte
@@ -1521,6 +1565,7 @@ document.addEventListener('visibilitychange', () => {
 
 function boot() {
   applyCosmetics();
+  applyDrive();
   game.startDemo();
   // Ein paar Bilder vorab rendern (Shader kompilieren), dann Titel zeigen
   updateCarMatrix();

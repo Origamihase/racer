@@ -123,7 +123,7 @@ export class Audio {
   }
 
   /** Laufende Geräusche an den Fahrzustand anpassen. */
-  update(dt, { speed, throttle, rain, sirenLevel, inCabin = true, paused = false }) {
+  update(dt, { speed, throttle, rain, sirenLevel, inCabin = true, paused = false, squeal = 0, rattle = 0 }) {
     if (!this.ready) return;
     const t = this.ctx.currentTime;
     const v = paused ? 0 : speed;
@@ -152,6 +152,9 @@ export class Audio {
     const ph = (t % 1.4) < 0.7;
     this.siren.frequency.setTargetAtTime(ph ? 440 : 587, t, 0.01);
     this.sirenGain.gain.setTargetAtTime(paused ? 0 : sirenLevel * 0.05, t, 0.1);
+    // Reifen an der Haftgrenze, Klappern des beschädigten Wagens
+    if (squeal > 0 || this.squealGain) this.squeal(paused ? 0 : squeal);
+    if (!paused) this.rattle(rattle, v, dt);
   }
 
   // --- Einmal-Geräusche ------------------------------------------------
@@ -227,10 +230,55 @@ export class Audio {
     this.tone(330, 0.25, 'sawtooth', 0.05, 0, 180);
   }
 
-  crash() {
-    this.tone(70, 0.5, 'sine', 0.5, 0, 30);
-    this.noiseBurst(0.45, 0.4, { freq: 1800, slideTo: 300 });
-    this.noiseBurst(0.25, 0.18, { type: 'bandpass', freq: 3500, q: 3, when: 0.03 });
+  /** Rempler, je nach Zone und Wucht (m/s) etwas anders – immer mit einem kleinen Plüsch-„Boing“. */
+  crash(zone = 'front', power = 8) {
+    const k = clamp(0.55 + power / 25, 0.55, 1);
+    if (zone === 'left' || zone === 'right') {
+      this.tone(95, 0.35, 'sine', 0.35 * k, 0, 45);
+      this.noiseBurst(0.4, 0.22 * k, { type: 'bandpass', freq: 2200, slideTo: 700, q: 2 });
+    } else if (zone === 'rear') {
+      this.tone(110, 0.4, 'sine', 0.4 * k, 0, 40);
+      this.noiseBurst(0.3, 0.28 * k, { freq: 2400, slideTo: 400 });
+      this.tone(1900, 0.06, 'square', 0.025 * k, 0.05);
+    } else {
+      this.tone(70, 0.5, 'sine', 0.5 * k, 0, 30);
+      this.noiseBurst(0.45, 0.4 * k, { freq: 1800, slideTo: 300 });
+      this.noiseBurst(0.25, 0.18 * k, { type: 'bandpass', freq: 3500, q: 3, when: 0.03 });
+    }
+    this.tone(420, 0.22, 'sine', 0.05, 0.08, 230);
+  }
+
+  /** Reifen quietschen an der Haftgrenze (0 … 1), läuft dauerhaft und wird nur lauter oder leiser. */
+  squeal(level) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    if (!this.squealGain) {
+      const n = ctx.createBufferSource();
+      n.buffer = this.noiseBuf;
+      n.loop = true;
+      this.squealFilter = ctx.createBiquadFilter();
+      this.squealFilter.type = 'bandpass';
+      this.squealFilter.Q.value = 9;
+      this.squealGain = ctx.createGain();
+      this.squealGain.gain.value = 0;
+      n.connect(this.squealFilter).connect(this.squealGain).connect(this.sfx);
+      n.start();
+    }
+    const t = ctx.currentTime;
+    const l = clamp(level, 0, 1);
+    this.squealFilter.frequency.setTargetAtTime(1150 + 380 * l + Math.sin(t * 9) * 40, t, 0.05);
+    this.squealGain.gain.setTargetAtTime(l * l * 0.07, t, 0.08);
+  }
+
+  /** Leises Klappern, das mit dem Schaden wächst (0 … 3) – nur bei Fahrt. */
+  rattle(level, speed, dt) {
+    if (!this.ready || level <= 0 || speed < 3) return;
+    this.rattleT = (this.rattleT || 0) - dt;
+    if (this.rattleT > 0) return;
+    this.rattleT = (0.09 + Math.random() * 0.5) / (0.4 + level * 0.45) / Math.min(1.5, 0.5 + speed / 40);
+    const f = 900 + Math.random() * 1600;
+    this.noiseBurst(0.035, 0.012 + level * 0.008, { type: 'bandpass', freq: f, q: 5 });
+    if (level >= 2 && Math.random() < 0.3) this.tone(380 + Math.random() * 300, 0.03, 'triangle', 0.01 + level * 0.004);
   }
 
   scrape() {

@@ -646,7 +646,8 @@ export class Cockpit {
    */
   update(st) {
     const { dt, t } = st;
-    this.wheelAngle = damp(this.wheelAngle, st.steer * 1.25, 10, dt);
+    // st.steer ist schon die ruhige Lenkkurve aus steering.js: hier nur noch eine Spur glätten, kein Nachhinken
+    this.wheelAngle = damp(this.wheelAngle, st.steer * 1.25, 40, dt);
     this.wheel.rotation.z = -this.wheelAngle;
     // Griff ans Bildformat angleichen (nach dem Drehen des Handys gleiten die Hände hin)
     if (this.grip !== this.gripTarget) {
