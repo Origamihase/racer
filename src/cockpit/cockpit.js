@@ -767,6 +767,8 @@ export class Cockpit {
         m.needsUpdate = true;
       }
     }
+    // Mit eigener envMap gilt die Drehung des Materials, nicht die der Szene: mit dem Kurs mitdrehen wie die Welt
+    for (const m of this.mirrorish) m.envMapRotation.copy(this.scene.environmentRotation);
     if (this.driver && this.driver.root.visible) this.driver.animate(t, { steer: st.steer });
     this.nomi.update(dt, t, -0.16);
     this.screen.update(dt, st.screen);
