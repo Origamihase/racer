@@ -11,11 +11,13 @@
 import * as THREE from 'three';
 import { W } from '../../curve.js';
 import { Trip, J, BETA, R as rampR, taperLen } from '../../game/trip.js';
-import { GRASS_RGB, ROAD, asphaltBase, guardrailTexture, roundRect } from '../../textures.js';
+import { GRASS_RGB, ROAD, asphaltBase, guardrailTexture } from '../../textures.js';
 import { mulberry32 } from '../../util.js';
 import { ASPHALT, wetAsphalt } from '../road.js';
 import { LAYER, meadowTexture } from './ground.js';
-import { squareOf, squareWeight } from './plan.js';
+import { STREET } from '../kit/layout.js';
+import { PAVEMENT } from '../kit/street.js';
+import { squareOf, squareWeight, kitTown } from './plan.js';
 
 export const AB_EDGE = 10.5; // Asphaltrand der Autobahn (ROAD.right)
 export const AB_RAIL = 11.05; // Schutzplanke der Autobahn (ROAD.right + 0.55)
@@ -35,7 +37,10 @@ export const VIS = {
 // der Standstreifen der Autobahn (Verzögerungs- bzw. Beschleunigungsstreifen) als Querschnitt: Linien wie in der
 // Autobahntextur (rechte Fahrbahnbegrenzung 7,5–7,8, äußerer Rand 10,15–10,35), Planke bei AB_RAIL
 const SHOULDER = { aL: 7.8, aR: AB_EDGE, eL: 7.65, eR: 10.25, ewL: 0.3, ewR: 0.2, mid: null, rails: true, verge: VERGE, kerb: 0, railOutR: AB_RAIL - AB_EDGE };
-export const KERB = { h: 0.12, w: 0.24, walk: 2.6, garden: 2.4 };
+// Bordstein und Gehweg der Ortsdurchfahrt haben die Maße des Stadtbaukastens (kit/layout.js STREET), dessen Häuser,
+// Laternen und Menschen darauf stehen: Bordstein w mit runder Kante (bevel), Pflasterstreifen bis strip, Plattenweg
+// bis pave (dort beginnt die Häuserflucht). garden: Vorgärten dahinter, nur wo noch Platzhalterhäuser stehen.
+export const KERB = { h: STREET.top, w: STREET.kerb, bevel: 0.035, strip: STREET.strip, pave: STREET.pave, garden: 2.4 };
 const RAIL_OUT = 0.45; // Planke so weit neben dem Asphaltrand
 
 // --- Stummel: einmündende kleine Straße links --------------------------------------------------------------------
@@ -241,35 +246,20 @@ function asphaltTexture() {
 }
 export const ASPHALT_TILE = 9.6; // Meter je Kachel: 26,7 Pixel je Meter wie die Autobahntextur
 
-function pavingTexture() {
-  // Gehwegplatten: 30 × 30 cm, warm sandfarben (in der Sonne nicht weiß), weich gewölbt wie kleine Kissen, Fugen dunkler
-  const S = 256;
+/**
+ * Gehweg der Orte in den Farben des Stadtbaukastens (kit/street.js PAVEMENT): cols × rows Felder im Wechsel zweier
+ * Töne. Der Pflasterstreifen am Bordstein hat Reihen quer zur Straße, der Plattenweg ein Schachbrett aus Platten.
+ */
+function tilesTexture(colors, cols, rows) {
+  const S = 64;
   const c = document.createElement('canvas');
-  c.width = S;
+  c.width = cols > 1 ? S : 8;
   c.height = S;
   const ctx = c.getContext('2d');
-  const rnd = mulberry32(5);
-  ctx.fillStyle = '#8c867b';
-  ctx.fillRect(0, 0, S, S);
-  const n = 4;
-  const q = S / n;
-  for (let j = 0; j < n; j++) {
-    for (let i = 0; i < n; i++) {
-      const v = 166 + Math.floor((rnd() - 0.5) * 18);
-      const x = i * q + 3;
-      const y = j * q + 3;
-      const w = q - 6;
-      ctx.fillStyle = `rgb(${v + 6},${v},${v - 13})`;
-      roundRect(ctx, x, y, w, w, 7);
-      ctx.fill();
-      // Licht oben links, Schatten unten rechts: die Platten wirken weich gewölbt
-      const g = ctx.createLinearGradient(x, y, x + w, y + w);
-      g.addColorStop(0, 'rgba(255,250,236,0.16)');
-      g.addColorStop(0.45, 'rgba(255,250,236,0)');
-      g.addColorStop(1, 'rgba(60,50,40,0.14)');
-      ctx.fillStyle = g;
-      roundRect(ctx, x, y, w, w, 7);
-      ctx.fill();
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      ctx.fillStyle = '#' + colors[(i + j) % 2].toString(16).padStart(6, '0');
+      ctx.fillRect((i * c.width) / cols, (j * S) / rows, c.width / cols, S / rows);
     }
   }
   const t = new THREE.CanvasTexture(c);
@@ -278,7 +268,10 @@ function pavingTexture() {
   t.anisotropy = 8;
   return t;
 }
-export const PAVING_TILE = 1.2;
+/** Meter je Kachel längs: zwei Pflasterreihen von 0,5 m bzw. zwei Platten von 1 m; quer liegen drei Platten. */
+const STRIP_TILE = 1;
+const WALK_TILE = 2;
+const WALK_SLABS = 3;
 
 function cobbleTexture() {
   // Kopfsteinpflaster für den Brunnenplatz: Reihen kleiner Granitsteine (12 × 10 je Kachel), versetzt, dunkle Fugen
@@ -382,7 +375,9 @@ export class RoadMaterials {
     this.grass = W.lambert({ map: this.grassTex, ...LAYER.verge });
     this.railTex = guardrailTexture();
     this.rail = W.std({ map: this.railTex, metalness: 0.75, roughness: 0.38, envMapIntensity: 0.9, side: THREE.DoubleSide });
-    this.paving = W.std({ map: pavingTexture(), roughness: 0.9 });
+    // Gehweg der Orte: matt und in den Farben des Stadtbaukastens, wie dessen Plätze (auch im Regen)
+    this.strip = W.lambert({ map: tilesTexture(PAVEMENT.cobble, 1, 2) });
+    this.walk = W.lambert({ map: tilesTexture(PAVEMENT.slab, 2, 2) });
     this.cobble = W.std({ map: cobbleTexture(), roughness: 0.82, envMapIntensity: 0.6 });
     this.solid = W.std({ vertexColors: true, roughness: 0.6, metalness: 0.1 });
     this.wet = 0;
@@ -394,8 +389,6 @@ export class RoadMaterials {
     this.wet = w;
     wetAsphalt(this.asphalt, w);
     wetAsphalt(this.asphaltUnder, w);
-    this.paving.roughness = 0.9 - w * 0.5;
-    this.paving.color.setScalar(1 - w * 0.3);
     this.cobble.roughness = 0.82 - w * 0.5;
     this.cobble.color.setScalar(1 - w * 0.35);
     this.cobble.envMapIntensity = 0.6 + w * 0.8;
@@ -490,7 +483,7 @@ const COL = {
   white: new THREE.Color(0xf2f2ee),
   black: new THREE.Color(0x1d1d1f),
   orange: new THREE.Color(0xff9a2a),
-  kerb: new THREE.Color(0xc9c4b8),
+  kerb: new THREE.Color(PAVEMENT.kerb),
 };
 
 /**
@@ -536,11 +529,13 @@ export function buildPiece(mats, sec, prev, next, sa, sb, inCurve) {
   const marks = new GeoBuf({ mark: true, uv: false });
   const rails = new GeoBuf();
   const solid = new GeoBuf({ color: true, uv: false });
-  const paving = new GeoBuf();
+  const strip = new GeoBuf();
+  const walk = new GeoBuf();
   const cobble = new GeoBuf();
   const aBase = uvBase(sRef, ASPHALT_TILE);
   const gBase = uvBase(sRef, 7);
-  const pBase = uvBase(sRef, PAVING_TILE);
+  const stBase = uvBase(sRef, STRIP_TILE);
+  const wBase = uvBase(sRef, WALK_TILE);
   const wedge = inCurve ? (s) => wedgeLine(uOf(s)) - linShift(uOf(s)) : null;
 
   // --- Asphalt (im Bogen: der Teil über der Autobahn bleibt ihr, die Rampe liegt dort darunter) -------------------
@@ -667,45 +662,61 @@ export function buildPiece(mats, sec, prev, next, sa, sb, inCurve) {
     // Bordstein und Gehweg steigen an den Ortsenden auf 4 m aus dem Boden (zwischen zwei Ortsstücken nicht)
     const kerbed = (q) => !!q && q.kind !== 'ab' && !!VIS[q.profile].kerb;
     const rise = (s) => KERB.h * Math.max(0, Math.min(1, kerbed(prev) ? 1 : (s - sec.s0) / 4, kerbed(next) ? 1 : (sec.s1 - s) / 4));
+    const wide = !!sq && kitTown(sec);
+    // Platten quer: gezählt ab dem Rand des Pflasterstreifens der ungeweiteten Straße, so bleiben sie am Brunnenplatz
+    // gerade liegen, wo der Bordstein schräg läuft
+    const slabU = (side, x) => ((side * (x - (side < 0 ? VIS.stadt.aL : VIS.stadt.aR)) - KERB.strip) * WALK_SLABS) / (2 * (KERB.pave - KERB.strip));
     for (const side of [-1, 1]) {
       let prevRow = null;
       for (let i = 0; i < n; i++) {
         const s = ss[i];
         const hh = rise(s);
         const edge = side < 0 ? X[i].aL : X[i].aR;
+        const bv = Math.min(KERB.bevel, hh); // runde Kante (verschwindet, wo der Bordstein aus dem Boden steigt)
         const x0 = edge; // Bordsteinkante zur Fahrbahn
+        const xb = edge + side * bv;
         const x1 = edge + side * KERB.w; // Bordstein oben
-        const x2 = edge + side * (KERB.w + KERB.walk); // Gehweg außen
+        const x2 = edge + side * KERB.strip; // Pflasterstreifen außen
+        // Plattenweg außen: die Häuserflucht. Am Brunnenplatz eines Orts aus dem Stadtbaukasten reicht er links über
+        // den ganzen Platz bis zur zurückgesetzten Flucht (dort stehen dessen Häuser, kit/layout.js planTown island)
+        const x3 = wide && side < 0 && s >= sq.s0 && s <= sq.s1 ? sq.aL - KERB.pave : edge + side * KERB.pave;
         const z = Z[i];
-        // Bordstein: Stirn und Oberseite (vertex-farbig), Gehweg (Platten), Außenkante
+        // Bordstein: Stirn, runde Kante und Oberseite (vertex-farbig), Pflasterstreifen, Plattenweg, Außenkante
         const row = {
-          f0: solid.vert(x0, 0, z, -side, 0, 0), f1: solid.vert(x0, hh, z, -side, 0, 0),
-          t0: solid.vert(x0, hh, z, 0, 1, 0), t1: solid.vert(x1, hh, z, 0, 1, 0),
-          o0: solid.vert(x2, hh, z, side, 0, 0), o1: solid.vert(x2, 0, z, side, 0, 0),
-          p0: paving.vert(x1, hh, z, 0, 1, 0, x1 / PAVING_TILE, (s - pBase) / PAVING_TILE),
-          p1: paving.vert(x2, hh, z, 0, 1, 0, x2 / PAVING_TILE, (s - pBase) / PAVING_TILE),
+          f0: solid.vert(x0, 0, z, -side, 0, 0), f1: solid.vert(x0, hh - bv, z, -side, 0, 0),
+          c0: solid.vert(x0, hh - bv, z, -side * Math.SQRT1_2, Math.SQRT1_2, 0), c1: solid.vert(xb, hh, z, -side * Math.SQRT1_2, Math.SQRT1_2, 0),
+          t0: solid.vert(xb, hh, z, 0, 1, 0), t1: solid.vert(x1, hh, z, 0, 1, 0),
+          o0: solid.vert(x3, hh, z, side, 0, 0), o1: solid.vert(x3, 0, z, side, 0, 0),
+          s0: strip.vert(x1, hh, z, 0, 1, 0, 0.5, (s - stBase) / STRIP_TILE),
+          s1: strip.vert(x2, hh, z, 0, 1, 0, 0.5, (s - stBase) / STRIP_TILE),
+          w0: walk.vert(x2, hh, z, 0, 1, 0, slabU(side, x2), (s - wBase) / WALK_TILE),
+          w1: walk.vert(x3, hh, z, 0, 1, 0, slabU(side, x3), (s - wBase) / WALK_TILE),
         };
-        for (let k = 0; k < 6; k++) solid.color(COL.kerb.r, COL.kerb.g, COL.kerb.b);
+        for (let k = 0; k < 8; k++) solid.color(COL.kerb.r, COL.kerb.g, COL.kerb.b);
         if (prevRow) {
           const A = prevRow;
           const B = row;
-          // rechts liegt p0 innen (kleineres x), links außen: die Vorderseite zeigt so immer nach oben bzw. außen
+          // rechts liegt die innere Kante bei kleinerem x, links bei größerem: die Vorderseite zeigt so immer nach
+          // oben bzw. außen
           const q = (buf, a, b, c, d) => (side > 0 ? buf.quad(a, d, c, b) : buf.quad(a, b, c, d));
           q(solid, A.f0, B.f0, B.f1, A.f1);
+          q(solid, A.c0, B.c0, B.c1, A.c1);
           q(solid, A.t0, B.t0, B.t1, A.t1);
           q(solid, A.o0, B.o0, B.o1, A.o1);
-          q(paving, A.p0, B.p0, B.p1, A.p1);
+          q(strip, A.s0, B.s0, B.s1, A.s1);
+          q(walk, A.w0, B.w0, B.w1, A.w1);
         }
         prevRow = row;
       }
     }
-    // Grünstreifen hinter dem Gehweg (Vorgärten)
-    for (const side of [-1, 1]) {
+    // Grünstreifen hinter dem Gehweg (Vorgärten), wo noch Platzhalterhäuser stehen; die Orte des Stadtbaukastens
+    // beginnen gleich am Gehweg
+    for (const side of kitTown(sec) ? [] : [-1, 1]) {
       let prevPair = null;
       for (let i = 0; i < n; i++) {
         const edge = side < 0 ? X[i].aL : X[i].aR;
-        const xa = edge + side * (KERB.w + KERB.walk - 0.02);
-        const xb = edge + side * (KERB.w + KERB.walk + KERB.garden);
+        const xa = edge + side * (KERB.pave - 0.02);
+        const xb = edge + side * (KERB.pave + KERB.garden);
         const l = Math.min(xa, xb);
         const r = Math.max(xa, xb);
         const v = (ss[i] - gBase) / 7;
@@ -760,7 +771,8 @@ export function buildPiece(mats, sec, prev, next, sa, sb, inCurve) {
   add(asph, mats.asphalt);
   add(under, mats.asphaltUnder);
   add(grass, mats.grass);
-  add(paving, mats.paving);
+  add(strip, mats.strip);
+  add(walk, mats.walk);
   add(cobble, mats.cobble);
   add(marks, mats.mark);
   add(rails, mats.rail);

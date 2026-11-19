@@ -213,6 +213,70 @@ for (const row of PLACES) {
   ok(L.goalKind(place) === kind, `${place.name}: Hauptbrunnen nicht reproduzierbar`);
 }
 
+// Orte in der XXL-Welt (src/world/xxl/towns.js): der Straßenbau baut Fahrbahn, Bordstein, Gehweg und die Insel des
+// Zielbrunnens, der Plan kennt sie. Für jeden Ort der Karte mit der Insel, wie der Straßenbau sie legt: genau ein
+// Zielbrunnen, es ist der Hauptbrunnen des Orts auf der Insel (und der Lageplan zeigt dorthin), kein zweiter Brunnen
+// in seiner Nähe, nichts steht auf der geweiteten Fahrbahn, Häuser weder übereinander noch auf Plätzen, freie Sicht
+// auf jeden Brunnen, Licht am Zielbrunnen, keine eigenen Gehwegkacheln und Ortsschilder, der Name wie auf der Karte.
+// Dazu der Ort, in dem eine Fahrt beginnt: sein Brunnenplatz liegt kurz vor dem Startpunkt.
+const { places, townLen } = await import('../src/map/graph.js');
+const { townPlan, islandOf } = await import('../src/world/xxl/towns.js');
+const xxl = { towns: 0, houses: 0, fountains: 0 };
+for (const p of places) {
+  const len = townLen(p.pop);
+  const sec = { kind: 'stadt', place: p.i, s0: 1000, s1: 1000 + len, spotS: 1000 + Math.round(len * 0.6) };
+  const isl = islandOf(sec);
+  const plan = townPlan(city, sec);
+  const where = `${p.name} in der XXL-Welt`;
+  xxl.towns++;
+  xxl.fountains += plan.fountains.length;
+  const main = plan.fountains[0];
+  ok(isl && main && main.goal && main.island && main.kind === L.goalKind(p), `${where}: Zielbrunnen ist nicht der Hauptbrunnen auf der Insel`);
+  if (!isl || !main) continue;
+  ok(near(main.x, isl.x) && near(main.z, -isl.u) && near(main.y, isl.y) && main.r + L.ISLAND.kerb <= isl.r + 1e-9, `${where}: Zielbrunnen liegt nicht auf der Insel`);
+  ok(plan.fountains.filter((f) => f.goal).length === 1 && plan.goal === isl.u, `${where}: nicht genau ein Ziel`);
+  ok(plan.items.filter((it) => it.external).length === 1 && plan.items.find((it) => it.external).fountain === 0, `${where}: der Brunnen der Insel gehört dem Straßenbau`);
+  ok(plan.fountains.slice(1).every((f) => Math.abs(f.u - isl.u) >= 40 && !f.special), `${where}: zweiter Brunnen neben dem Zielbrunnen`);
+  const lay = plan.layout;
+  ok(lay.goal && near(lay.goal.x, isl.x) && near(lay.goal.z, -isl.u) && lay.squares[lay.goal.square].kind === 'island' && lay.squares[lay.goal.square].fountain === 0, `${where}: Lageplan zeigt nicht auf die Insel`);
+  ok(lay.name === p.name && lay.signs.length === 0 && plan.texts.length === 0, `${where}: Name oder Schilder`);
+  ok(lay.walks.every((w) => w.z0 === -len && w.z1 === 0), `${where}: Gehwege des Lageplans`);
+  ok(!plan.items.some((it) => it.name === 'pavement' || it.name === 'pavement4'), `${where}: Gehwegkacheln (den Gehweg baut der Straßenbau)`);
+  for (const f of plan.fountains) {
+    const blockers = L.sightBlockers(plan, f);
+    ok(blockers.length === 0, `${where}: Sicht auf ${f.kind} verstellt von ${blockers.map((i) => plan.items[i].name).join(', ')}`);
+    ok(plan.items.some((it) => it.name.startsWith('lamp') && Math.hypot(it.x - f.x, it.z - f.z) <= f.r + 6), `${where}: keine Laterne am Brunnen ${f.kind}`);
+    const fb = box(plan.items.find((it) => it.fountain === f.id).fp);
+    for (const it of plan.items) if (it.fountain !== f.id && !GROUND.has(it.name)) ok(!overlap(fb, box(it.fp), 0.05), `${where}: ${it.name} steht im Brunnen ${f.kind}`);
+  }
+  // linke Bordsteinkante: geweitet neben der Insel, sonst wie überall
+  const kerbL = (u) => (u > isl.u0 && u < isl.u1 ? isl.kerb(u) : L.STREET.curbL);
+  const houses = [];
+  for (const it of plan.items) {
+    if (it.external) continue;
+    const b = baseBox(it);
+    const left = Math.min(kerbL(-b[2]), kerbL(-b[3]), kerbL(-(b[2] + b[3]) / 2));
+    ok(b[1] <= left + 0.01 || b[0] >= L.STREET.curbR - 0.01, `${where}: ${it.name} ragt auf die Fahrbahn (u ${Math.round(-it.z)})`);
+    if (isHouse(it.name)) houses.push([it, box(it.fp)]);
+  }
+  xxl.houses += houses.length;
+  ok(houses.some(([it]) => it.x < L.STREET.curbL - L.STREET.pave - 0.5 && -it.z > isl.u0 && -it.z < isl.u1 && near(it.x, isl.kerb(isl.u) - L.STREET.pave)), `${where}: keine Häuser an der zurückgesetzten Flucht`);
+  for (let i = 0; i < houses.length; i++) {
+    for (let j = i + 1; j < houses.length; j++) ok(!overlap(houses[i][1], houses[j][1], 0.05), `${where}: ${houses[i][0].name} und ${houses[j][0].name} überlappen`);
+    for (const q of plan.squares) {
+      const qb = q.side > 0 ? [L.STREET.curbR + q.d0, L.STREET.curbR + q.d1, -q.u1, -q.u0] : [L.STREET.curbL - q.d1, L.STREET.curbL - q.d0, -q.u1, -q.u0];
+      ok(!overlap(houses[i][1], qb, 0.05), `${where}: ${houses[i][0].name} steht auf dem Platz`);
+    }
+  }
+  ok(JSON.stringify(townPlan(city, sec)) === JSON.stringify(plan), `${where}: Plan nicht reproduzierbar`);
+  // Start der Fahrt mitten im Ort (trip.js: der Abschnitt beginnt 300 m vor dem Startpunkt)
+  const first = { kind: 'stadt', place: p.i, s0: -300, s1: -300 + Math.max(len, 500), start: true, spotS: 0 };
+  const sp = townPlan(city, first);
+  const sm = sp.fountains[0];
+  ok(sm && sm.goal && !sm.island && sm.kind === L.goalKind(p) && sm.x > L.STREET.curbR + L.STREET.pave && sm.u > 300 + 10 && sm.u < 300 + 80, `${where}: am Start kein Brunnen kurz voraus (u ${sm && sm.u})`);
+  ok(L.sightBlockers(sp, sm, [[L.STREET.eye, -300]]).length === 0, `${where}: am Start ist der Brunnen verstellt`);
+}
+
 // Gebaute Meshes gegen den Lageplan, je Größe ein Ort (dazu Frankfurt mit Skyline): die verschmolzenen Ortsstücke reichen
 // genau von 0 bis −len, die vier Ecken jedes Platzes liegen als Eckpunkte des Pflasters in Gehweghöhe im Mesh, die
 // Brunnenliste der Group liegt auf den Brunnen des Lageplans.
@@ -403,6 +467,7 @@ console.log('Lageplan gegen Meshes:', meshChecks.join(' · '));
 console.log('Rastanlagen:', restChecks.join(' · '));
 console.log(`Bausteine: ${blocks} Fassungen, Geometrie im Rahmen von info (Ursprung, w, d, h); ${terrainEdges.length} Gelände ohne offene Ränder`);
 console.log('Zielbrunnen-Arten:', Object.entries(goalKinds).map(([k, v]) => `${k} ${v}`).join(', '));
+console.log(`Orte in der XXL-Welt: ${xxl.towns} mit Insel und als Startort, ${xxl.houses} Häuser, ${xxl.fountains} Brunnen, je einer davon das Ziel auf der Insel`);
 console.log('Hauptbrunnen der Orte (auf der Insel am Ziel):', Object.entries(islands).map(([k, v]) => `${k} ${v}`).join(', '));
 console.log(fails ? `${fails} FEHLER` : 'Alles in Ordnung: jeder Ort hat mindestens einen Brunnen, frei sichtbar und beleuchtet.');
 process.exit(fails ? 1 : 0);

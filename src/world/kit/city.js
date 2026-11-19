@@ -142,14 +142,21 @@ export function createCityKit(F, { bend = null } = {}) {
      * Straßenbau bei z = −s0 in die Strecke gehängt. Dazu group.fountains (Brunnenliste), fountainsInView,
      * watchFountains, resetFountains (siehe attachFountains), group.update(t) für die Fangruppe am Ziel und
      * group.layout, der Lageplan für das Navi (layout.js townLayout, im selben Rahmen).
+     * lazy: die verschmolzenen Stücke und die Wahrzeichen entstehen erst mit group.step() (eines je Aufruf, zuerst
+     * alle Fernfassungen, dann die nahen vom Ortsbeginn an; true, solange noch etwas fehlt; group.pending zählt den
+     * Rest): eine Großstadt braucht am Stück über 100 ms, in Schritten wenige Millisekunden je Bild.
      */
-    buildTown(plan, { farAt = FAR_AT, fans = plan.goal != null } = {}) {
+    buildTown(plan, { farAt = FAR_AT, fans = plan.goal != null, lazy = false } = {}) {
       const root = new THREE.Group();
       root.name = 'Ort ' + plan.place.name;
+      const farJobs = [];
+      const nearJobs = [];
       const chunks = new Map();
       const solo = [];
       const marks = [];
       for (const it of plan.items) {
+        // der Brunnen auf der Insel der Straße gehört dem Straßenbau (layout.js planTown, island)
+        if (it.external) continue;
         if (!kitOf(it.name).geo(it.name)) {
           solo.push(it);
           continue;
@@ -163,23 +170,27 @@ export function createCityKit(F, { bend = null } = {}) {
         chunks.get(ci).push(it);
       }
       const cx = (STREET.curbL + STREET.curbR) / 2;
-      for (const [ci, list] of chunks) {
+      // eine Stufe (nah bei 0, fern ab farAt) in ihre LOD hängen; mit nur einer Stufe zeigt die LOD diese
+      const level = (lod, obj, at) => {
+        padBounds(obj);
+        lod.addLevel(obj, at);
+        return obj;
+      };
+      for (const [ci, list] of [...chunks].sort((a, b) => a[0] - b[0])) {
         const cz = -(ci + 0.5) * CHUNK;
         const make = (far) => compose(core, list.map((it) => ({ g: kitOf(it.name).geo(it.name, far), x: it.x - cx, y: it.y, z: it.z - cz, ry: it.ry, tint: it.tint })));
         const lod = new THREE.LOD();
         lod.name = 'Ortsstück ' + ci;
         lod.position.set(cx, 0, cz);
-        const near = make(false);
-        const far = make(true);
-        padBounds(near);
-        padBounds(far);
-        lod.addLevel(near, 0);
-        lod.addLevel(far, farAt);
         root.add(lod);
-        for (const it of list) {
-          const ex = extrasOf(it);
-          if (ex) root.add(ex);
-        }
+        farJobs.push(() => level(lod, make(true), farAt));
+        nearJobs.push(() => {
+          level(lod, make(false), 0);
+          for (const it of list) {
+            const ex = extrasOf(it);
+            if (ex) root.add(ex);
+          }
+        });
       }
       for (const it of solo) root.add(placeGroup(kitOf(it.name).build(it.name, { tint: it.tint }), it));
       // Wahrzeichen: eigene Stufen nah/fern, gemessen von ihrem eigenen Ursprung (sie stehen weit hinter der Zeile)
@@ -187,16 +198,23 @@ export function createCityKit(F, { bend = null } = {}) {
       for (const it of marks) {
         const lod = new THREE.LOD();
         lod.name = 'Wahrzeichen ' + it.name;
-        const near = landmarks.build(it.name);
-        const far = landmarks.build(it.name, { far: true });
-        padBounds(near);
-        padBounds(far);
-        lod.addLevel(near, 0);
-        lod.addLevel(far, farAt);
         root.add(placeGroup(lod, it));
         // Drehende Teile (Mühlenflügel, Riesenrad) laufen in beiden Stufen mit
-        if (near.userData.update) anim.push(near, far);
+        const moving = (obj) => {
+          if (obj.userData.update) anim.push(obj);
+        };
+        farJobs.push(() => moving(level(lod, landmarks.build(it.name, { far: true }), farAt)));
+        nearJobs.push(() => moving(level(lod, landmarks.build(it.name), 0)));
       }
+      const jobs = [...farJobs, ...nearJobs];
+      root.pending = jobs.length;
+      root.step = () => {
+        const job = jobs.shift();
+        if (job) job();
+        root.pending = jobs.length;
+        return jobs.length > 0;
+      };
+      if (!lazy) while (root.step());
       for (const t of plan.texts) root.add(placeGroup(kitOf(t.name).build(t.name, { name: t.text, next: t.next }), t));
       // Fangruppe am Ziel: neben dem Hauptbrunnen, hinter dem Gehweg, schaut zur Straße
       const main = plan.fountains[0];

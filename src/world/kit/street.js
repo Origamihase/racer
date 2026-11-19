@@ -232,6 +232,8 @@ const COBBLE = [PAL.cobble, mix(PAL.cobble, 0x8f7f72, 0.3)];
 const PLAZA = [mix(CITY.sand, 0xffffff, 0.25), mix(CITY.sand, PAL.stone, 0.55)];
 const GROUND_Y = 0.12;
 const STRIP = 2.2;
+/** Farben des Gehwegs für den Straßenbau, der Bordstein und Gehweg der Orte selbst zieht (xxl/roadkit.js). */
+export const PAVEMENT = { kerb: KERB, slab: SLAB, cobble: COBBLE };
 
 /** Waagerechtes Rechteck x0..x1 × z0..z1 in Höhe y, schaut nach oben (ohne Bodenabdunklung). */
 function flat(B, x0, z0, x1, z1, y, col) {

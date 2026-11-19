@@ -1,9 +1,13 @@
-// Orte der XXL-Welt aus dem Stadtbaukasten (src/world/kit): der eine Baukasten des Spiels und der Zielbrunnen auf der
-// Insel des Brunnenplatzes (plan.js squareOf).
+// Orte der XXL-Welt aus dem Stadtbaukasten (src/world/kit): jede Ortsdurchfahrt eines Orts der Karte (plan.js kitTown)
+// bekommt Häuser, Läden, Plätze, Brunnen, Menschen und Wahrzeichen aus K.planTown + K.buildTown. Fahrbahn, Bordstein
+// und Gehweg bleiben beim Straßenbau (roadkit.js, in den Maßen von kit/layout.js STREET), ebenso die Insel des
+// Zielbrunnens (plan.js squareOf): der Plan des Orts kennt sie und stellt keinen zweiten Hauptbrunnen daneben.
 import { W, curvePoint } from '../../curve.js';
 import { places } from '../../map/graph.js';
 import { createCityKit } from '../kit/city.js';
-import { goalKind, FOUNTAIN_R } from '../kit/layout.js';
+import { goalKind, FOUNTAIN_R, STREET } from '../kit/layout.js';
+import { XXL_BEHIND, squareOf, squareWeight, secSeedKey } from './plan.js';
+import { ISLAND_H } from './roadkit.js';
 
 let kit = null;
 /**
@@ -17,10 +21,48 @@ export function cityKit() {
 
 // Hauptbrunnen von klein nach groß: Ausweichliste, falls einer nicht auf die Insel passt
 const BY_SIZE = Object.keys(FOUNTAIN_R).sort((a, b) => FOUNTAIN_R[a] - FOUNTAIN_R[b]);
+// Fahrt beginnt mitten im Ort: so weit vor dem Startpunkt liegt dort der Brunnenplatz (rechts, vom Start aus zu sehen)
+const START_GOAL = 40;
+// Näher als so weit voraus muss ein Ort fertig dastehen; weiter weg entsteht er Teil für Teil, eines je Bild
+const BUILD_NOW = 450;
+// Bis in diese Entfernung regt sich ein Ort (Fangruppe, Mühlenflügel, Riesenrad)
+const ALIVE = 400;
+
+/**
+ * Insel des Zielbrunnens einer Ortsdurchfahrt für den Ortsplaner (kit/layout.js planTown, island), in Ortskoordinaten
+ * (u = Meter ab Ortsbeginn), oder null: Mitte, Höhe, Radius, Drehung des Brunnens, der Bereich, in dem sich die
+ * Straße weitet, und ihre linke Bordsteinkante dort.
+ */
+export function islandOf(sec) {
+  const sq = squareOf(sec);
+  if (!sq) return null;
+  return {
+    u: sq.s - sec.s0, x: sq.x, y: ISLAND_H, r: sq.r, ry: sq.heading, u0: sq.s0 - sec.s0, u1: sq.s1 - sec.s0,
+    kerb: (u) => STREET.curbL + (sq.aL - STREET.curbL) * squareWeight(sq, sec.s0 + u),
+  };
+}
+
+/**
+ * Plan des Orts einer Ortsdurchfahrt: für denselben Ort immer derselbe (der Zufall hängt am Ort), mit dem Namen der
+ * Karte (den auch Navi und Ortstafel zeigen) und seinem Hauptbrunnen (goalKind) auf der Insel des Straßenbaus bzw.,
+ * wo die Fahrt beginnt, auf dem Platz rechts kurz vor dem Wagen. Ortstafeln stellt der Schilderplan (signplan.js).
+ */
+export function townPlan(K, sec) {
+  const p = places[sec.place];
+  const island = islandOf(sec);
+  return K.planTown(p, {
+    len: sec.s1 - sec.s0, mainKind: goalKind(p), pavement: false, signs: false, signName: p.name,
+    ...(island ? { island } : sec.start ? { goal: START_GOAL - sec.s0 } : {}),
+  });
+}
 
 export class Towns {
-  constructor() {
+  /** @param {import('three').Object3D} root Gruppe der Welt im Raum vor der Krümmung (wie die Rahmen) */
+  constructor(root) {
     this.kit = cityKit();
+    this.root = root;
+    this.items = new Map(); // Schlüssel des Abschnitts → { key, sec, path, place, plan, group, hidden }
+    this.want = new Set();
   }
 
   /**
@@ -40,8 +82,96 @@ export class Towns {
     return obj;
   }
 
-  /** Einmal je Bild: Wasser aller Brunnen bewegen (t: Spielzeit in Sekunden, rain: Regen 0 … 1). */
-  update(t, rain) {
+  // --- Abgleich (XxlWorld.sync): begin, need für jeden Abschnitt mit gebrauchten Stücken, sweep -------------------
+  begin() {
+    this.want.clear();
+  }
+
+  /** Die Ortsdurchfahrt sec (auf dem Weg path) ist im Sichtbereich: ihr Ort wird geplant und aufgebaut bzw. behalten. */
+  need(sec, path) {
+    const key = secSeedKey(sec) + '@' + Math.round(sec.s0);
+    this.want.add(key);
+    let t = this.items.get(key);
+    if (!t) {
+      const plan = townPlan(this.kit, sec);
+      const group = this.kit.buildTown(plan, { lazy: true });
+      // der Ort fährt starr im Rahmen seines Abschnitts mit (siehe update)
+      group.matrixAutoUpdate = false;
+      group.visible = false;
+      this.root.add(group);
+      t = { key, place: sec.place, plan, group, hidden: false };
+      this.items.set(key, t);
+    }
+    // derselbe Abschnitt, vielleicht in einem neu angelegten Zweig: neue Rahmen-ID übernehmen
+    t.sec = sec;
+    t.path = path;
+  }
+
+  sweep() {
+    for (const [key, t] of this.items) {
+      if (this.want.has(key)) continue;
+      this.drop(t);
+      this.items.delete(key);
+    }
+  }
+
+  drop(t) {
+    this.root.remove(t.group);
+    // geteilte Geometrien des Baukastens bleiben; frei wird, was eigens für diesen Ort verschmolzen wurde
+    this.kit.release(t.group);
+  }
+
+  reset() {
+    for (const t of this.items.values()) this.drop(t);
+    this.items.clear();
+  }
+
+  /**
+   * Einmal je Bild: Orte in ihre Rahmen stellen, weiterbauen, bewegen. s: Ort des Wagens, shear: Scherungen der
+   * Rahmen (trip.shearsInto), t: Spielzeit in Sekunden, rain: Regen 0 … 1 (Wasser der Brunnen).
+   *
+   * Ein Rahmen mit Scherung {a, b} zeigt seine Straße geschert (x' = x + a + b·d, die Tiefe bleibt). Häuser sollen
+   * dabei rechtwinklige Kästen bleiben: der Ort wird stattdessen um den Winkel der Scherung gedreht, längs wie die
+   * Straße um 1/cos gestreckt und quer um cos gestaucht. So liegt jede Linie längs der Straße (Bordstein,
+   * Häuserflucht) genau auf der gescherten Straße, Ortsanfang und -ende treffen ihre Abschnittsgrenzen, und rechte
+   * Winkel bleiben rechte. Bezug ist die Mitte der eigenen Spur. Im eigenen Rahmen (b = 0, alles näher als die
+   * nächste Gabelung) ist das eine reine Verschiebung.
+   */
+  update(s, shear, t, rain) {
     this.kit.setWater(t, rain);
+    const xr = STREET.lane;
+    for (const it of this.items.values()) {
+      const g = it.group;
+      const sh = shear.get(it.sec.frame);
+      g.visible = !!sh && !it.hidden;
+      if (!sh) continue;
+      const d0 = it.sec.s0 - s;
+      const q = 1 / (1 + sh.b * sh.b);
+      g.matrix.set(q, 0, -sh.b, xr + sh.a + sh.b * d0 - q * xr, 0, 1, 0, 0, sh.b * q, 0, 1, -d0 - sh.b * q * xr, 0, 0, 0, 1);
+      g.matrixWorldNeedsUpdate = true;
+      const near = d0 < BUILD_NOW && d0 + it.plan.len > -XXL_BEHIND;
+      if (g.pending) {
+        // unterwegs wächst ein Ort weit voraus Teil für Teil; wer mitten hinein gesetzt wird, sieht ihn fertig
+        if (near) while (g.step());
+        else g.step();
+      }
+      if (d0 < ALIVE && d0 + it.plan.len > -XXL_BEHIND) g.update(t);
+    }
+  }
+
+  /**
+   * Der Ort einer Ortsdurchfahrt für Navi-Karte und Brunnen-Szene: { place (Index in places), sec, plan (layout.js
+   * planTown), group (K.buildTown: layout, fountains, fountainsInView, watchFountains) } oder null, solange keines
+   * ihrer Stücke im Sichtbereich liegt. plan.layout (= group.layout) ist der Lageplan in Ortskoordinaten (x seitlich
+   * wie die Straße, z = −(s − sec.s0)), plan.fountains[0] der Zielbrunnen auf der Insel.
+   */
+  of(sec) {
+    for (const t of this.items.values()) if (t.sec === sec) return t;
+    return null;
+  }
+
+  /** Alle Orte im Sichtbereich in Fahrtrichtung geordnet (wie of). */
+  list() {
+    return [...this.items.values()].sort((a, b) => a.sec.s0 - b.sec.s0);
   }
 }

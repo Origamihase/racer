@@ -118,6 +118,9 @@ export function chunksOf(sec) {
   return out;
 }
 
+/** Ortsdurchfahrt eines Orts der Karte: sie wird vom Stadtbaukasten bebaut (towns.js), nicht mit Platzhaltern. */
+export const kitTown = (sec) => sec.kind === 'stadt' && sec.place >= 0;
+
 // --- Wald an den Wechseln der Autobahn ----------------------------------------------------------------------------
 /** Der Wald beginnt so viel vor dem Vorhang (trip.curtains) und endet so viel dahinter: Waldrand, der dichter wird. */
 export const FOREST_IN = 40;

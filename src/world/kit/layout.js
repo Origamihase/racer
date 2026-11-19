@@ -18,6 +18,7 @@ export const STREET = {
   curbL: 3.9,
   pave: 5.0, // Gehwegtiefe: 2,2 m Streifen (Bäume, Laternen, Parkplätze) + 2,8 m Gehweg
   strip: 2.2,
+  kerb: 0.26, // Breite des Bordsteins (Teil des Streifens)
   top: 0.12, // Oberkante von Gehweg und Platz
 };
 
@@ -81,6 +82,8 @@ const FRONT_KINDS = new Set(['village', 'shop', 'town', 'city', 'region', 'groun
 const THIN = new Set(['lamp', 'tree', 'signal']);
 // Was niedriger ist, verdeckt den Brunnen nicht (Bänke, Beete, Tauben, Pflaster)
 const LOW = 0.95;
+// Freier Kreis um die Mitte des Hauptplatzes, wenn dort kein Brunnen steht (Bänke und Laternen ordnen sich darum)
+const CENTRE_R = 2;
 
 /**
  * Art des Hauptbrunnens eines Orts, an dem auch jede Fahrt dorthin endet: die beiden Sonderbrunnen in Augsburg und
@@ -236,7 +239,13 @@ export function sightDistance(plan, f, max = 120) {
 /**
  * Plant einen Ort. place = { key, name, cc, pop, n, lat? }, opts = { len, seed, goal (u des Ziels), infoOf(name),
  * landmarks ([{ name, slot }] aus landmarkFor), signName (Name auf dem Ortsschild, Standard signName(place.name)),
- * nextName (nächster Ort, klein unter dem Ortsende-Schild) }.
+ * nextName (nächster Ort, klein unter dem Ortsende-Schild) }. Für den Straßenbau, der Fahrbahn, Bordstein und Gehweg
+ * selbst baut: mainKind (Art des Hauptbrunnens, z. B. goalKind(place)), pavement: false (keine Gehwegkacheln),
+ * signs: false (keine Ortsschilder) und island = { u, x, y, r, ry, u0, u1, kerb(u) }: der Hauptbrunnen steht auf einer
+ * Insel mitten in der Straße (Mitte (x, −u), Höhe y, Drehung ry), die sich dafür von u0 bis u1 nach links weitet
+ * (kerb(u) = linke Bordsteinkante). Dann ist er fountains[0] und Ziel des Orts, sein Baustein trägt external (ihn baut
+ * der Straßenbau), der Hauptplatz rechts liegt auf seiner Höhe und hat eine Mitte ohne Wasser, links stehen die
+ * Häuser an der zurückgesetzten Flucht hinter dem geweiteten Gehweg (squares: kind 'island').
  * Ergebnis: { place, size, region, len, items, fountains, squares, texts, goal, landmarks }. Wahrzeichen: 'square' wird
  * Rückwand des Hauptplatzes (der Platz wächst mit), 'skyline' steht links hinter der Häuserzeile, mit einer Lücke in
  * der Zeile, durch die man es sieht; 'river' und 'open' stehen nur in plan.landmarks (placed = false) und bleiben dem
@@ -250,7 +259,7 @@ export function planTown(place, opts = {}) {
   const len = opts.len ?? TOWN_LEN[size];
   const rnd = rng(opts.seed ?? hashKey(place.key ?? place.name ?? 'Ort'));
   const top = STREET.top;
-  const plan = { place: { key: place.key, name: place.name ?? place.key, cc: place.cc }, size, region: regionOf(place), len, items: [], fountains: [], squares: [], texts: [], goal: opts.goal ?? null, landmarks: [] };
+  const plan = { place: { key: place.key, name: place.name ?? place.key, cc: place.cc }, size, region: regionOf(place), len, items: [], fountains: [], squares: [], texts: [], goal: opts.goal ?? opts.island?.u ?? null, landmarks: [] };
   const marks = opts.landmarks ?? [];
   // regionale Spielart eines Hauses, wenn es sie gibt (town.js: name@gegend)
   const reg = (name) => {
@@ -275,38 +284,46 @@ export function planTown(place, opts = {}) {
   const lineD = STREET.pave; // Häuserflucht
 
   // --- 1. Hauptplatz mit Brunnen, rechts an der Straße, beim Ziel (60 % wie das Ziel im Straßenbau) ---------------
+  const isl = opts.island ?? null;
   const special = SPECIAL[place.key] ?? SPECIAL[place.name];
-  const mainKind = special ?? pick(rnd, MAIN[size]);
+  // der Zufall zieht auch, wenn der Straßenbau die Art vorgibt: der übrige Ort bleibt derselbe
+  const drawn = special ?? pick(rnd, MAIN[size]);
+  const mainKind = opts.mainKind ?? drawn;
   const mainInfo = infoOf(mainKind);
-  const mr = mainInfo.r ?? mainInfo.w / 2;
+  // Steht der Hauptbrunnen auf der Insel der Straße, bekommt der Platz rechts eine Mitte ohne Wasser: Maibaum oder Linde
+  const centre = isl ? (size === 'dorf' ? 'maypole' : 'streetTreeTall') : null;
+  const mr = centre ? CENTRE_R : mainInfo.r ?? mainInfo.w / 2;
   // Der Platz wächst mit seinem Brunnen (der Endgegner braucht auch im Dorf Raum) und mit einem Wahrzeichen als Rückwand
   const S = Math.max(SQUARE[size][0], Math.ceil((2 * mr + 10) / 8) * 8, squareMark ? Math.ceil((infoOf(squareMark.name).w + 4) / 8) * 8 : 0);
   const D = Math.max(SQUARE[size][1], Math.ceil((2 * mr + 3) / 8) * 8);
-  const uc = Math.round(Math.min(len - S / 2 - 30, Math.max(S / 2 + 40, opts.goal ?? len * 0.6)));
+  const uc = isl ? Math.round(isl.u) : Math.round(Math.min(len - S / 2 - 30, Math.max(S / 2 + 40, opts.goal ?? len * 0.6)));
   const sq = { kind: 'main', side: 1, u0: uc - S / 2, u1: uc + S / 2, d0: lineD, d1: lineD + D };
   plan.squares.push(sq);
   const fountains = [];
-  const placeFountain = (kind, side, d, u, ryExtra = 0, o = {}) => {
+  const fountainAt = (kind, x, y, u, ry, o = {}) => {
     const info = infoOf(kind);
-    const x = sx(side, d);
     const z = -u;
-    const ry = toRoad(side) + ryExtra;
     const id = fountains.length;
-    const it = add(kind, x, o.y ?? top, z, ry, { fountain: id });
+    const it = add(kind, x, y, z, ry, o.external ? { fountain: id, external: true } : { fountain: id });
     const c = Math.cos(ry);
     const s = Math.sin(ry);
-    const tr = ([px, py, pz]) => [x + px * c + pz * s, (o.y ?? top) + py, z - px * s + pz * c];
+    const tr = ([px, py, pz]) => [x + px * c + pz * s, y + py, z - px * s + pz * c];
     const f = {
-      id, kind, title: info.title, x, y: o.y ?? top, z, u, ry, r: info.r ?? Math.max(info.w, info.d) / 2, h: info.h,
+      id, kind, title: info.title, x, y, z, u, ry, r: info.r ?? Math.max(info.w, info.d) / 2, h: info.h,
       place: place.key, special: info.special ?? null, goal: !!o.goal, size: info.size,
       cam: info.cam ? { pos: tr(info.cam.pos), look: tr(info.cam.look) } : null,
     };
+    if (o.external) f.island = true;
     fountains.push(f);
     return { f, it };
   };
+  const placeFountain = (kind, side, d, u, ryExtra = 0, o = {}) => fountainAt(kind, sx(side, d), o.y ?? top, u, toRoad(side) + ryExtra, o);
   // Brunnen nah an die Straße: Vorderkante 1,2 m hinter dem Gehweg, aber im Platz
-  const md = Math.min(lineD + D - mr - 1.5, lineD + 1.2 + mr);
-  const main = placeFountain(mainKind, 1, md, uc, 0, { goal: opts.goal != null });
+  const md = centre ? lineD + D / 2 : Math.min(lineD + D - mr - 1.5, lineD + 1.2 + mr);
+  const main = isl
+    ? fountainAt(mainKind, isl.x, isl.y, isl.u, isl.ry, { goal: true, external: true })
+    : placeFountain(mainKind, 1, md, uc, 0, { goal: opts.goal != null });
+  if (centre) add(centre, sx(1, md), top, -uc, 0);
   // Pflaster des Platzes
   for (let u = sq.u0 + 4; u < sq.u1; u += 8) for (let d = lineD + 4; d < sq.d1; d += 8) add('plaza', sx(1, d), 0, -u, 0);
   // Vor dem Platz eine kleine Grünfläche ohne Haus: der Brunnen ist schon von weitem zu sehen
@@ -325,7 +342,7 @@ export function planTown(place, opts = {}) {
 
   // Laternen am Brunnen: hinter ihm (weiter weg von der Straße) und nach ihm (in Fahrtrichtung)
   const lamp = size === 'dorf' || size === 'klein' ? 'lampOld' : 'lampModern';
-  const fx = main.f.x;
+  const fx = centre ? sx(1, md) : main.f.x;
   add(lamp, fx + mr + 1.4, top, -(uc - mr * 0.7), 0);
   add(lamp, fx - mr * 0.5, top, -(uc + mr + 1.6), 0);
   // Bänke um den Brunnen, Blumen, Bäume an den hinteren Ecken, Tauben vorn
@@ -337,7 +354,7 @@ export function planTown(place, opts = {}) {
   for (let i = 0; i < 3; i++) add(i % 2 ? 'pigeonPeck' : 'pigeon', fx - mr - 0.8 - rnd() * 0.8, top, -(uc + (rnd() - 0.5) * mr), rnd() * 6.28);
   // Dorf: Maibaum hinten; Kleinstadt und größer: Marktstände hinter dem Brunnen, Café nach dem Brunnen
   if (size === 'dorf') {
-    add('maypole', sx(1, sq.d1 - 3), top, -(uc + S / 2 - 7), 0);
+    if (centre !== 'maypole') add('maypole', sx(1, sq.d1 - 3), top, -(uc + S / 2 - 7), 0);
   } else {
     const stalls = ['stallFruit', 'stallFlowers', 'stallBakery'];
     for (let i = 0; i < (size === 'klein' ? 2 : 3); i++) add(stalls[i], sx(1, sq.d1 - 2.2), top, -(uc - S / 2 + 6 + i * 4.2), toRoad(1));
@@ -349,6 +366,45 @@ export function planTown(place, opts = {}) {
     add('oma_sit', fx + mr + 1.2, top + 0.03, -(uc + mr * 0.5 + 0.5), -Math.PI / 2);
     add(pick(rnd, ['kind_wave', 'kind_cheer']), fx - mr * 0.2, top, -(uc + mr + 3.0), Math.PI * 0.9);
     add(pick(rnd, ['mann_stand', 'frau_stand', 'frau2_stand']), fx + mr + 2.6, top, -(uc - 2), -Math.PI / 2);
+  }
+
+  // --- 1b. Insel des Zielbrunnens: links weitet sich die Straße, der Straßenbau pflastert bis zur zurückgesetzten
+  // Flucht. Dort stehen Häuser mit Blick auf den Brunnen, davor Bänke, Laternen und Blumen, in den Ecken Bäume
+  if (isl) {
+    const xb = isl.kerb(isl.u) - lineD;
+    plan.squares.push({ kind: 'island', side: -1, u0: isl.u0, u1: isl.u1, d0: lineD, d1: STREET.curbL - xb });
+    busy.push({ side: -1, u0: isl.u0 - 1, u1: isl.u1 + 1 });
+    // Zeile aus der Ortsmitte, mittig zwischen die Nachbarn gesetzt (die Reste an beiden Enden bleiben gleich schmal)
+    const row = [];
+    let total = 0;
+    for (;;) {
+      const name = reg(pick(rnd, ROWS[size].mid));
+      const w = infoOf(name).w;
+      const g = row.length ? span(rnd, ROWS[size].gapMid) : 0;
+      if (total + g + w > isl.u1 - isl.u0 - 1) break;
+      row.push({ name, w, g });
+      total += g + w;
+    }
+    let u = (isl.u0 + isl.u1 - total) / 2;
+    for (const h of row) {
+      u += h.g;
+      add(h.name, xb, 0, -(u + h.w / 2), toRoad(-1));
+      u += h.w;
+    }
+    const lampS = size === 'dorf' || size === 'klein' ? 'lampOld' : 'lampModern';
+    for (const sg of [-1, 1]) {
+      // Licht am Brunnen: zwei Laternen am rechten Bordstein gegenüber der Insel, zwei vor den Häusern links
+      add(lampS, sx(1, 0.45), top, -(isl.u + sg * (isl.r * 0.5 + 2)), -Math.PI / 2);
+      add(lampS, xb + 2.4, top, -(isl.u + sg * (isl.r + 7)), Math.PI / 2);
+      add('bench', xb + 0.9, top, -(isl.u + sg * 3.4), toRoad(-1));
+      add('flowerTub', xb + 0.8, top, -(isl.u + sg * 6.2), 0);
+      add(pick(rnd, ['streetTree', 'streetTree2']), xb + 2.8, top, -(isl.u + sg * (isl.r + 20)), rnd() * 6);
+    }
+    if (opts.people ?? true) {
+      add('oma_sit', xb + 0.9, top + 0.03, -(isl.u + 3.4), toRoad(-1));
+      add(pick(rnd, ['fan_wave', 'kind_cheer', 'frau_wave']), xb + 2.2, top, -(isl.u - 1.2), toRoad(-1));
+      add(pick(rnd, ['mann_stand', 'frau2_stand', 'opa_walk']), xb + 1.9, top, -(isl.u - isl.r - 9.5), 0);
+    }
   }
 
   // --- 2. Weitere Brunnen in größeren Orten: auf eigenen kleinen Plätzen links ------------------------------------
@@ -497,8 +553,9 @@ export function planTown(place, opts = {}) {
 
   // --- 5. Gehwege: Kacheln, Laternen, Bäume, Parkplätze, Kleinkram, Menschen -------------------------------------
   for (const side of [1, -1]) {
-    // 8-m-Platten bis kurz vor das Ortsende, dann 4-m-Platten: der Gehweg endet genau bei len (Ortslängen sind Vielfache von 4)
-    for (let u = 0; u + 4 <= len + 1e-6;) {
+    // 8-m-Platten bis kurz vor das Ortsende, dann 4-m-Platten: der Gehweg endet genau bei len (Ortslängen sind Vielfache
+    // von 4); baut der Straßenbau Bordstein und Gehweg selbst (pavement: false), entfallen sie
+    for (let u = opts.pavement === false ? Infinity : 0; u + 4 <= len + 1e-6;) {
       const L = u + 8 <= len + 1e-6 ? 8 : 4;
       add(L === 8 ? 'pavement' : 'pavement4', sx(side, 0), 0, -(u + L / 2), toRoad(side));
       u += L;
@@ -555,8 +612,10 @@ export function planTown(place, opts = {}) {
   // shortName in src/game/navi.js: bis zur ersten Klammer, zum ersten Komma oder Gedankenstrich, höchstens 24 Zeichen)
   const sign = opts.signName ?? signName(plan.place.name);
   plan.signName = sign;
-  plan.texts.push({ name: 'townSign', x: sx(1, 0.9), y: top, z: -8, ry: 0, text: sign });
-  plan.texts.push({ name: 'townExit', x: sx(1, 0.9), y: top, z: -(len - 8), ry: 0, text: sign, next: opts.nextName ?? '' });
+  if (opts.signs !== false) {
+    plan.texts.push({ name: 'townSign', x: sx(1, 0.9), y: top, z: -8, ry: 0, text: sign });
+    plan.texts.push({ name: 'townExit', x: sx(1, 0.9), y: top, z: -(len - 8), ry: 0, text: sign, next: opts.nextName ?? '' });
+  }
   add('bollards3', sx(1, 1.0), top, -(uc - S / 2 - 2), Math.PI / 2);
 
   // --- 6. Sichtlinien zum Brunnen freiräumen (Regel, nicht Zufall), und im Becken steht nichts --------------------
@@ -581,8 +640,9 @@ const HOUSE_KINDS = new Set(['village', 'shop', 'town', 'city', 'region']);
  * - streets: [{ id, kind, width, pts: [[x, z], …], lanes: [x eigene Spur, x Gegenspur] }]: die Ortsdurchfahrt zwischen
  *   den Bordsteinen (der Ort hat keine Querstraßen, nur Lücken zwischen den Häusern)
  * - walks: Gehwege [{ side, x0, x1, z0, z1 }] (Bordstein bis Häuserflucht)
- * - squares: Plätze [{ kind ('main' | 'extra'), side, x0, x1, z0, z1, fountain }]
- * - fountains: [{ id, kind, x, z, r, goal }]
+ * - squares: Plätze [{ kind ('main' | 'extra' | 'island'), side, x0, x1, z0, z1, fountain }]; 'island': die Fläche, um
+ *   die sich die Straße links für die Insel des Zielbrunnens weitet (bis zur zurückgesetzten Häuserflucht)
+ * - fountains: [{ id, kind, x, z, r, goal, island (steht auf der Insel mitten in der Straße) }]
  * - name: Name auf Ortsschild und Ortsende (wie im Navi), signs: [{ kind ('townSign' | 'townExit'), x, z, text }]
  * - goal: Zielplatz { x, z (Mitte des Hauptbrunnens: die Stecknadel), kind, square (Index in squares) }
  * - buildings: Häuser und Türme [[x0, x1, z0, z1, h], …]; landmarks: gesetzte Wahrzeichen [{ name, slot, x0, x1, z0, z1, h }]
@@ -592,8 +652,9 @@ export function townLayout(plan, infoOf) {
   const sideX = (side, d0, d1) => (side > 0 ? [STREET.curbR + d0, STREET.curbR + d1] : [STREET.curbL - d1, STREET.curbL - d0]);
   const walks = [1, -1].map((side) => {
     const tiles = plan.items.filter((it) => (it.name === 'pavement' || it.name === 'pavement4') && Math.sign(it.x - (STREET.curbL + STREET.curbR) / 2) === side);
-    const z0 = Math.min(...tiles.map((it) => it.fp.cz - it.fp.hw));
-    const z1 = Math.max(...tiles.map((it) => it.fp.cz + it.fp.hw));
+    // ohne Kacheln (Gehweg vom Straßenbau) reicht er wie mit ihnen über den ganzen Ort
+    const z0 = tiles.length ? Math.min(...tiles.map((it) => it.fp.cz - it.fp.hw)) : -plan.len;
+    const z1 = tiles.length ? Math.max(...tiles.map((it) => it.fp.cz + it.fp.hw)) : 0;
     const [x0, x1] = sideX(side, 0, STREET.pave);
     return { side, x0: r1(x0), x1: r1(x1), z0: r1(z0), z1: r1(z1) };
   });
@@ -602,7 +663,7 @@ export function townLayout(plan, infoOf) {
     const f = plan.fountains.find((ff) => Math.sign(ff.x - (STREET.curbL + STREET.curbR) / 2) === q.side && -ff.z > q.u0 && -ff.z < q.u1);
     return { kind: q.kind, side: q.side, x0: r1(x0), x1: r1(x1), z0: r1(-q.u1), z1: r1(-q.u0), fountain: f ? f.id : null };
   });
-  const fountains = plan.fountains.map((f) => ({ id: f.id, kind: f.kind, x: r1(f.x), z: r1(f.z), r: r1(f.r), goal: f.goal }));
+  const fountains = plan.fountains.map((f) => ({ id: f.id, kind: f.kind, x: r1(f.x), z: r1(f.z), r: r1(f.r), goal: f.goal, ...(f.island ? { island: true } : {}) }));
   const main = plan.fountains[0];
   const buildings = [];
   const landmarks = [];
@@ -623,7 +684,7 @@ export function townLayout(plan, infoOf) {
     walks,
     squares,
     fountains,
-    goal: main ? { x: r1(main.x), z: r1(main.z), kind: main.kind, square: 0 } : null,
+    goal: main ? { x: r1(main.x), z: r1(main.z), kind: main.kind, square: Math.max(0, plan.squares.findIndex((q) => q.kind === 'island')) } : null,
     buildings,
     landmarks,
   };
