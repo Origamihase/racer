@@ -118,9 +118,11 @@ export class Game {
       maxViewers: 0, charges: 0, distance: 0, blitzerClean: 0, rainDistance: 0, crashes: 0, koriander: 0, fines: 0,
       wipes: 0, twitches: 0, photos: 0, donations: 0, subs: 0, vips: 0, topBid: 0, overtakes: 0,
     };
-    // Für jeden der fünf Jobs hat jemand im Chat eine Spende versprochen – und einer für alle zusammen
+    // Für jeden der fünf Jobs hat jemand im Chat eine Spende versprochen – und einer für alle zusammen. In der
+    // XXL-Welt ruht das Bieten (worldNavi): was nur ein Gebot erfüllen kann, verspricht dort niemand
     const pledges = this.eco.pledges(5);
-    this.jobs = shuffle(JOB_TEMPLATES).slice(0, 5).map((j, i) => ({ ...j, done: false, progress: 0, pledger: viewerName(), pledge: pledges.list[i] }));
+    const pool = this.worldNavi ? JOB_TEMPLATES.filter((j) => j.stat !== 'naviChanges' && j.stat !== 'naviReached') : JOB_TEMPLATES;
+    this.jobs = shuffle(pool).slice(0, 5).map((j, i) => ({ ...j, done: false, progress: 0, pledger: viewerName(), pledge: pledges.list[i] }));
     this.allJobs = { pledger: viewerName(), pledge: pledges.all };
     this.allJobsPaid = false;
 
