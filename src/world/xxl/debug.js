@@ -9,16 +9,23 @@ import { autoTarget } from './plan.js';
 const FRAME_COLORS = [0xff6b6b, 0x4dabf7, 0x51cf66, 0xfcc419, 0xcc5de8, 0xff922b, 0x22b8cf];
 
 /** Nur die Fahrt m Meter vorwärts (wie world.advance, aber ohne die Welt aufzubauen): für Suchen über weite Strecken. */
-function tripAdvance(world, p, m) {
+function tripAdvance(world, p, m, each) {
   const T = world.trip;
   const end = p.s + m;
   while (p.s < end) {
     p.s = Math.min(end, p.s + 5);
     p.x = autoTarget(T, world.choice);
     T.update(p.s, p.x);
+    if (each) each(p.s, 5);
   }
 }
 
+/**
+ * hooks.afterWarp(p): nach einem Sprung (Verkehr, Sammelsachen und Szenerie beginnen neu). hooks.eachStep(s, step):
+ * nach jedem Schritt eines Sprungs. Der Kurs der Straße entsteht beim Fahren Stück für Stück (Course.fill); wird er
+ * erst am Ende eines Sprungs geplant, liegen die Bögen der Kante anders als bei jeder echten Fahrt – mit eachStep
+ * plant main.js ihn unterwegs mit, und die Prüfbilder zeigen die Straße, die ein Spieler dort bekommt.
+ */
 export function installDebug(M, world, getPlayer, hooks = {}) {
   const tint = new Map();
   let colors = false;
@@ -39,7 +46,7 @@ export function installDebug(M, world, getPlayer, hooks = {}) {
     /** Ohne Bild m Meter der Route folgen (Ausfahrten wie der Autopilot), dann die Welt neu aufbauen. */
     warp(m) {
       const p = getPlayer();
-      const evs = world.advance(p, m);
+      const evs = world.advance(p, m, 5, hooks.eachStep);
       if (hooks.afterWarp) hooks.afterWarp(p);
       return { s: Math.round(p.s), x: p.x, sec: world.trip.section.kind, events: evs };
     },
@@ -78,12 +85,12 @@ export function installDebug(M, world, getPlayer, hooks = {}) {
       for (let walked = 0; walked < maxM; ) {
         const at = find();
         if (at !== null && at - before - T.s < 1500 && (at < forkAhead() + 1 || at - before < forkAhead())) {
-          tripAdvance(world, p, at - before - T.s);
+          tripAdvance(world, p, at - before - T.s, hooks.eachStep);
           found = at;
           break;
         }
         const m = Math.max(1, Math.min(200, forkAhead() + 2 - T.s));
-        tripAdvance(world, p, m);
+        tripAdvance(world, p, m, hooks.eachStep);
         walked += m;
       }
       api.warp(0);
@@ -118,7 +125,7 @@ export function installDebug(M, world, getPlayer, hooks = {}) {
           if (hooks.afterWarp) hooks.afterWarp(p);
           return { ...sw, s: +T.s.toFixed(2) };
         }
-        tripAdvance(world, p, 100);
+        tripAdvance(world, p, 100, hooks.eachStep);
       }
       api.warp(0);
       return null;
@@ -130,7 +137,7 @@ export function installDebug(M, world, getPlayer, hooks = {}) {
     standAt(s) {
       const p = getPlayer();
       const jump = s - p.s;
-      if (jump > 0) world.advance(p, jump, 0.5);
+      if (jump > 0) world.advance(p, jump, 0.5, hooks.eachStep);
       p.speed = 0;
       p.vx = 0;
       if (jump > 20 && hooks.afterWarp) hooks.afterWarp(p);

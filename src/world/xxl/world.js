@@ -122,9 +122,10 @@ export class XxlWorld {
 
   /**
    * Ohne Bild m Meter der Route folgen (Titel, Prüfhilfen): x wie der Autopilot, Ereignisse werden nur gezählt.
-   * Danach steht der Spieler mit allem drum herum an der neuen Stelle.
+   * Danach steht der Spieler mit allem drum herum an der neuen Stelle. each(s, step): nach jedem Schritt der Fahrt
+   * (die Prüfhilfen planen so den Kurs unterwegs mit, siehe installDebug).
    */
-  advance(p, m, step = 5) {
+  advance(p, m, step = 5, each = null) {
     const T = this.trip;
     const end = p.s + m;
     const evs = [];
@@ -132,6 +133,7 @@ export class XxlWorld {
       p.s = Math.min(end, p.s + step);
       p.x = autoTarget(T, this.choice);
       for (const e of T.update(p.s, p.x)) evs.push(e.type);
+      if (each) each(p.s, step);
     }
     p.vx = 0;
     this.version = -1;

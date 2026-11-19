@@ -1956,7 +1956,13 @@ if (DEBUG) {
       },
     },
   };
-  if (xxl) installDebug(window.__MA, xxl, () => game.player, { afterWarp: () => { traffic.reset(); pickups.reset(); scenery.reset(); } });
+  if (xxl) {
+    installDebug(window.__MA, xxl, () => game.player, {
+      afterWarp: () => { traffic.reset(); pickups.reset(); scenery.reset(); },
+      // ein Sprung plant den Kurs unterwegs wie eine Fahrt mit 30 m/s (ohne die Tabelle des Shaders zu schreiben)
+      eachStep: (s, step) => course.fill(xxl.trip, s, null, step / 30),
+    });
+  }
   window.__MA.kit = { ...window.__MA.kit, nature: createNatureKit(W) };
 }
 
