@@ -37,6 +37,9 @@ const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
 // Brunnen (hold); wer neu Gas gibt, bremst, lenkt oder hupt, fährt sofort weiter, sobald die Karte kurz zu sehen
 // war (guard); das erste Gebot der nächsten Runde kommt frühestens pause Sekunden, nachdem der Wagen fahren darf.
 const BRUNNEN_TV = { hold: 6, guard: 0.6, pause: 1.5 };
+// Erste Runde: Fährt der Wagen schon im Zielort, wartet das nächste Gebot – höchstens so viele Sekunden nach der
+// Einfahrt (wer dort parkt, statt zum Brunnen zu fahren, hält die Bieter nicht ewig auf)
+export const TOWN_HOLD = 75;
 // Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
 // Kästchen, lead Sekunden später folgen NOMIs Gong und ihre Ansage
 const RADAR = { ahead: 180, lead: 0.45 };
@@ -173,6 +176,7 @@ export class Game {
     this.bidPlan = this.eco.nextBid({ bid: this.navi.bid });
     this.T.bid = this.bidPlan.delay;
     this.roundNew = false;
+    this.townT = 0; // Sekunden im Zielort der ersten Runde (updateNavi)
     this.traffic.reset();
     this.traffic.populate(0, p.speed);
     this.pickups.reset();
@@ -731,8 +735,9 @@ export class Game {
       this.bidPlan.late = true;
     }
     // (… und ist der Wagen dort schon im Zielort, wartet das nächste Gebot, bis er am Brunnen steht oder vorbeigerollt
-    // ist: Die erste Runde soll an einem Brunnen enden, nicht zweihundert Meter davor)
-    if (nv.opening && this.worldNavi && nv.inTown) this.T.bid = Math.max(this.T.bid, 1);
+    // ist: Die erste Runde soll an einem Brunnen enden, nicht zweihundert Meter davor – höchstens TOWN_HOLD lang)
+    this.townT = nv.inTown ? this.townT + dt : 0;
+    if (nv.opening && this.worldNavi && nv.inTown && this.townT < TOWN_HOLD) this.T.bid = Math.max(this.T.bid, 1);
     if (this.T.bid <= 0) {
       const plan = this.bidPlan;
       const siegen = this.bidTargets().find((x) => x.special === 'siegen');
