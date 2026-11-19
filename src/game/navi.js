@@ -14,8 +14,14 @@ export function shortName(t) {
 const SPARK_HEX = { rot: '#d5121e', blau: '#1d5fbf', 'weiß': '#f2f2f2', 'rot (wie immer)': '#d5121e', 'überraschend orange': '#f07a12' };
 
 export class Navi {
-  constructor(scenery) {
+  /**
+   * idle: In der XXL-Welt gehören Ziel, Weg und Ankunft der Fahrt über die echte Karte (trip.js). Bis dort auf echte
+   * Orte geboten wird, ruht dieses Navi: kein erfundenes Ziel an der Strecke (Tafel, Wahrzeichen), keine Ankunft
+   * nach gezählten Metern, kein „Bitte wenden“.
+   */
+  constructor(scenery, idle = false) {
     this.scenery = scenery;
+    this.idle = idle;
     this.requests = [];
     this.reset(0);
   }
@@ -67,6 +73,7 @@ export class Navi {
   }
 
   placeLandmarks() {
+    if (this.idle) return;
     const t = this.target;
     const S = this.targetS;
     const req = (type, s, data) => this.requests.push(this.scenery.request(type, s, data));
@@ -105,6 +112,7 @@ export class Navi {
   update(dt, s) {
     this._s = s;
     const ev = [];
+    if (this.idle) return ev;
     this.recalc = Math.max(0, this.recalc - dt / 2.4);
     if (this.wende && s > this.wendeS) {
       this.wende = false;

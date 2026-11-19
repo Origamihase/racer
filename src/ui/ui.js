@@ -818,7 +818,8 @@ export class UI {
       this.leftLaneEl.classList.toggle('warn', L.timer < 10);
       this.leftLaneFill.style.width = clamp(L.timer / (L.dur || 60), 0, 1) * 100 + '%';
     }
-    // Navi-Zeile
+    // Navi-Zeile (XXL-Welt: Sie zeigte das ruhende klassische Navi statt des Ziels der Fahrt und bleibt deshalb weg)
+    this.naviEl.classList.toggle('hidden', g.worldNavi);
     const nv = g.navi;
     const rem = Math.max(0, nv.targetS - p.s);
     this.naviTarget.textContent = nv.arrived ? '📍 Ziel erreicht – warte auf das nächste Gebot …' : '📍 ' + nv.target.name;

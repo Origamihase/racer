@@ -366,7 +366,7 @@ const uiFacade = {
   },
 };
 
-const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups });
+const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, worldNavi: !!xxl });
 // XXL: Ankunft, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht, Mimik, Chat); jeder Ort,
 // durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
 if (xxl) xxl.on((e) => {

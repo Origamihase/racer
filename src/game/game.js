@@ -9,6 +9,7 @@ import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fm
 import { Player, KMH } from './player.js';
 import { damageLine } from './damage.js';
 import { Navi, shortName } from './navi.js';
+import { places } from '../map/graph.js';
 import { Economy } from './economy.js';
 import { Vector3 } from 'three';
 import { EYE } from '../cockpit/cockpit.js';
@@ -38,12 +39,16 @@ const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
 
 export class Game {
   /**
-   * @param {object} ctx traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui, fx, pickups
+   * @param {object} ctx traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui, fx, pickups;
+   *   worldNavi: true in der XXL-Welt. Dort führt das Navi die Fahrt über die echte Karte (trip.js, Anzeige in
+   *   src/map), und die Ankunft meldet onTrip am Brunnenplatz. Das klassische Bieten auf erfundene Ziele ruht dann,
+   *   bis auf echte Orte geboten wird: sonst widerspräche jede Zeile davon dem Navi und der Welt.
    */
   constructor(ctx) {
     Object.assign(this, ctx);
+    this.worldNavi = !!this.worldNavi;
     this.player = new Player();
-    this.navi = new Navi(this.scenery);
+    this.navi = new Navi(this.scenery, this.worldNavi);
     // Stream-Kasse samt heimlicher Chat-Stimmung, und was sie in jedem Schritt vom Fahren wissen will
     this.eco = new Economy();
     this.ecoIn = { kmh: 0, limit: false, stuck: false, leftOpen: false, inLeft: false, funkloch: false };
@@ -169,7 +174,7 @@ export class Game {
     this.bot('hugo', 'Der Stream läuft! Viel Spaß beim Zuschauen.');
     this.later(1.2, () => this.chat('Hallo Mini Adam ❤'));
     this.later(2.0, () => this.chat('Wohin fahren wir heute?'));
-    this.later(3.2, () => this.bot('james', `Startgebot: ${fmtCent(this.navi.bid)} – Ziel: ${this.navi.target.name}`));
+    if (!this.worldNavi) this.later(3.2, () => this.bot('james', `Startgebot: ${fmtCent(this.navi.bid)} – Ziel: ${this.navi.target.name}`));
     // die Challenges des Abends: Wer was verspricht, steht im Chat
     this.jobs.forEach((j, i) => this.later(10 + i * 11 + rand(0, 5), () => {
       if (!j.done) this.chat(fillTemplate(pick(CHAT.pledge), { wenn: j.wenn, betrag: fmtBetrag(j.pledge) }), j.pledger);
@@ -649,6 +654,7 @@ export class Game {
 
   // --- Navi ------------------------------------------------------------------------
   updateNavi(dt) {
+    if (this.worldNavi) return;
     const p = this.player;
     const nv = this.navi;
     // Kurz vor dem Ziel doch noch überboten – ein Klassiker. (Nur hier muss das Spiel wissen, wie viele Sekunden
@@ -886,12 +892,14 @@ export class Game {
 
   /**
    * Ereignisse der XXL-Fahrt (trip.js, main.js reicht sie von der Welt durch): Dort liegen Ankunft, Ausfahrten und
-   * Abzweige in der Strecke. Mini Adams Mimik reagiert darauf wie an den klassischen Stellen (Ziel erreicht: Jubel,
-   * neuer Weg: Blick aufs Navi), und wer an der geplanten Ausfahrt vorbeifährt, verstimmt den Chat.
+   * Abzweige in der Strecke. Das Navi-Ziel ist erreicht, wo die Fahrt es meldet – am Brunnenplatz des Zielorts –, und
+   * wird dort gefeiert wie jedes klassische Ziel (onArrive jubelt selbst). Mini Adams Mimik reagiert auch sonst wie an
+   * den klassischen Stellen (neuer Weg: Blick aufs Navi), und wer an der geplanten Ausfahrt vorbeifährt, verstimmt
+   * den Chat.
    */
   onTrip(e) {
     if (!this.running) return;
-    if (e.type === 'arrive') this.onMood('cheer', 1);
+    if (e.type === 'arrive') this.onArrive({ target: { name: places[e.place].name } });
     else if (e.type === 'rest') this.onMood('happy', 0.6);
     else if (e.type === 'fork') {
       if (e.wrong && e.planned === 'exit') {

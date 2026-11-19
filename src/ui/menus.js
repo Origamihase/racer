@@ -290,7 +290,8 @@ export class Menus {
     };
     item('Strecke', fmtKm(g.player.s));
     item('Einnahmen dieser Fahrt', fmtCent(g.money));
-    item('Navi-Ziel', g.navi.target.name);
+    // XXL-Welt: das klassische Navi ruht dort (game.worldNavi), sein Ziel gibt es in der Welt nicht
+    if (!g.worldNavi) item('Navi-Ziel', g.navi.target.name);
     item('Navi-Gebote', fmtNum(g.stats.naviChanges));
     item('Zuschauer', fmtNum(Math.round(g.viewers)));
     item('Sendezeit', fmtDuration(g.t));
