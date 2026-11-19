@@ -1374,9 +1374,10 @@ export class MapPlanner {
       runs[best].A += rest;
     } else if (!runs.length && Math.abs(total) > 1e-4) runs.push({ A: total, c: len / 2, s: 0, e: len });
     if (matched >= 1 && spec.amin) prune(runs, spec.amin * RAD);
-    // Steigung aus den Höhen: dy/ds = E · d(Höhe)/d(Kartenweg)
+    // Steigung aus den Höhen: dy/ds = E · d(Höhe)/d(Kartenweg). Die Höhen gelten bei jedem matched (das beschreibt nur
+    // die Lage): Auch Ersatzverläufe und Bögen in Ortsknoten folgen dem Gelände
     let grade = null;
-    if (elev && matched >= 1) {
+    if (elev) {
       grade = new Float64Array(n);
       for (let i = 1; i + 1 < n; i++) grade[i] = (EXAGGERATE * (ev[i + 1] - ev[i - 1])) / (2 * DS * c);
       grade = gauss(grade, 120 / DS);
