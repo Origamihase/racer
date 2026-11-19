@@ -545,7 +545,7 @@ export function fmtRoad(m) {
 /**
  * Reisekilometer bis zu einer Stelle: „412 km“ (gerundet, wie auf den Entfernungstafeln), unter 10 km mit einer
  * Nachkommastelle und aufgerundet: „0,5 km“ heißt „höchstens noch so weit“. So steigt die Zahl nie, wenn die Anzeige
- * auf echter Straße zu Metern wechselt (aus „1,2 km“ wird „1150 m“, nie aus „1,1 km“).
+ * auf echter Straße zu Metern wechselt (aus „1,1 km“ wird „1000 m“, aus „0,7 km“ an der Ortstafel „650 m“).
  */
 export function fmtKm(km) {
   if (!isFinite(km)) return '– km';
@@ -559,11 +559,13 @@ export function fmtOdo(km) {
 }
 /**
  * Die eine Entfernungsangabe des Spiels – für das Ziel, die nächste Handlung, jeden Ort: d = {km, m, real} von
- * trip.reach(). Liegt bis zur Stelle nur echte Straße (real), nennt sie die Meter, sonst die Reisekilometer. Am
- * Wechsel (an der Gabelung, an der Ortstafel) ist es dieselbe Strecke in der anderen Einheit: aus „0,5 km“ wird „500 m“.
+ * trip.reach(). Liegt bis zur Stelle nur echte Straße (real) und höchstens BOARD_M davon, nennt sie die Meter, so wie
+ * Vorwegweiser und Baken zählen; sonst die Reisekilometer – auch auf echter Straße, wo es noch weiter ist: „1,2 km“
+ * liest sich im Fahren leichter als „1150 m“. Am Wechsel ist es dieselbe Strecke in der anderen Einheit, und die Zahl
+ * steigt dabei nie: aus „1,1 km“ wird „1000 m“, an der Ortstafel aus „0,5 km“ „500 m“.
  */
 export function fmtDistance(d) {
-  return d.real ? fmtRoad(d.m) : fmtKm(d.km);
+  return d.real && d.m <= BOARD_M ? fmtRoad(d.m) : fmtKm(d.km);
 }
 
 /**

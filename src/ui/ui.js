@@ -1,6 +1,6 @@
 // Das Stream-Overlay über dem Spiel: LIVE-Anzeige, Zuschauer, Strecke, Guthaben, Akku,
 // Karosserie-Punkte, Chat mit Bots, NOMI-Untertitel, Hinweise, Sprachdurchsagen, Rahmen und Blitzerfotos.
-import { fmtNum, fmtCent, fmtKm, fmtDuration, clamp } from '../util.js';
+import { fmtNum, fmtCent, fmtKm, fmtDuration, fmtClock, clamp } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
@@ -833,7 +833,9 @@ export class UI {
     this.lastHud = 0.1;
     const p = g.player;
     this.viewersEl.textContent = '👁 ' + fmtNum(Math.round(g.viewers));
-    this.timeEl.textContent = fmtDuration(g.t);
+    // klassisch die Stoppuhr des Streams; in der Reise die Uhr vom Mittelbildschirm (Game.clock) – an ihr hängen die
+    // Ankunftszeit der Zeile oben und „Sendezeit … (bis … Uhr)“ am Ende
+    this.timeEl.textContent = g.worldNavi ? fmtClock(g.clock) + '\u202fUhr' : fmtDuration(g.t);
     // XXL: der Kilometerzähler der Fahrt in Reisekilometern, mit dem Rekord der XXL-Welt (Game.odometer)
     const odo = g.odometer;
     const strecke = (m) => (g.worldNavi ? fmtOdo(m / 1000) : fmtKm(m));

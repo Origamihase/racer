@@ -794,13 +794,14 @@ export class Game {
       }
       this.onMood('curious', 1);
       if (this.worldNavi) {
-        // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt);
-        // die Entfernung steht da wie auf dem Kärtchen im Auto
+        // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt)
         if (nv.wende) {
           this.later(1.5, () => this.chat(this.chatLine(CHAT.ortWende)));
           this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'info'));
         }
-        this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${nv.distance})`, 'info', t.note);
+        // nur der Name: Wie weit es ist und wann der Wagen ankommt, zählt die Zeile darüber laufend mit – eine Zahl
+        // hier bliebe stehen, während jene schon weiterläuft
+        this.ui.toast(`📍 Neues Navi-Ziel: ${t.name}`, 'info', t.note);
         return;
       }
       if (nv.wende) this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info'));

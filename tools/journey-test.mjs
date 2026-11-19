@@ -17,8 +17,9 @@
 // - Die Zahlen passen zusammen (ein Maß für die Reise, siehe trip.js): in jedem Schritt jedes Streams –
 //   Entfernung zum Ziel = Entfernung zur nächsten Handlung + der Rest dahinter; sie fällt um genau das, was der
 //   Kilometerzähler steigt, und steigt nie, solange das Ziel steht und die Fahrt nicht neu plant; Meter nennt eine
-//   Anzeige nur, wo bis zur Stelle echte Straße (1:1) liegt – oder in der Ansage ab dem ersten Vorwegweiser, und dann
-//   sagt sie an jeder Tafel und Bake genau deren Meter; Ansage, Kärtchen und HUD-Zeile nennen im Zielort dieselbe
+//   Anzeige nur, wo bis zur Stelle echte Straße (1:1) liegt und höchstens 1000 m davon (weiter weg auch dort
+//   Kilometer: „1,2 km“, am Wechsel wird daraus „1000 m“ und nichts steigt) – oder in der Ansage ab dem ersten
+//   Vorwegweiser, und dann sagt sie an jeder Tafel und Bake genau deren Meter; Ansage, Kärtchen und HUD-Zeile nennen im Zielort dieselbe
 //   Zahl; eine Entfernungstafel, die das Ziel nennt, zeigt die Kilometer des Navis; jeder Abschnitt zählt, was die
 //   Karte für seine Kante sagt (Rampen, Verbindungen und Orte: ihre Meter).
 // - Die erste Runde eines Streams (navi.js OPENING, economy.js OPENING_CALM): Bis zum ersten Halt an einem Brunnen
@@ -272,16 +273,24 @@ function numbers(trip, nav, nv, N, game) {
         ok(now <= shown, `Die Anzeige steigt von ${shown} m auf „${text}“ (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
         ok(m || !inMetres, `Die Anzeige wechselt von Metern zurück zu „${text}“`);
         if (m && !inMetres) {
+          // am Wechsel der Einheit: dieselbe Strecke, höchstens um die Rundung kleiner (aus „1,1 km“ wird „1000 m“)
           N.units++;
           N.unitDrop = Math.max(N.unitDrop, shown - now);
+          ok(shown - now <= 100 + 1e-6, `Am Wechsel zu Metern springt die Anzeige von ${shown} m auf „${text}“ (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
         }
       }
       shown = now;
       inMetres = m;
       fresh = false;
-      // Meter nur, wo bis zum Ziel echte Straße liegt – und dann auch Meter
+      // Meter nur, wo bis zum Ziel echte Straße liegt und höchstens BOARD_M davon – und dann auch Meter. Ist es auf
+      // echter Straße weiter, stehen dort Kilometer mit einer Nachkommastelle, aufgerundet („1,2 km“, nicht „1150 m“)
       const way = legKm(trip.s, trip.plan().end);
-      ok(m === way.real, `„${text}“ zum Ziel, aber der Weg dorthin ist ${way.real ? 'echte Straße' : 'gerafft'} (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
+      ok(m === (way.real && d.m <= BOARD_M), `„${text}“ zum Ziel, aber der Weg dorthin ist ${way.real ? d.m.toFixed(0) + ' m echte Straße' : 'gerafft'} (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
+      if (way.real && !m) {
+        N.kmReal++;
+        const fits = d.m > 9900 ? Math.abs(now - d.m) <= 500 : /^\d,\d km$/.test(text) && now >= d.m - 1e-3 && now < d.m + 100 + 1e-3;
+        ok(fits, `Auf echter Straße, ${d.m.toFixed(0)} m vor dem Ziel, steht „${text}“ (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
+      }
       ok(Math.abs(way.km - d.km) < 1e-9 && (!way.real || Math.abs(d.km * 1000 - d.m) < 1e-6), `reach ${d.km} km / ${d.m} m, Abschnitte ${way.km} km`);
       if (m) N.metres++;
       else N.kms++;
@@ -384,7 +393,7 @@ function stream(driver, hours, seed, firstRound = false) {
     // angekommen, bevor ein Gebot es änderte, dev = größte Abweichung der vorhergesagten Fahrzeit (trip.whatIf)
     open: { bids: [], standT: -1, standPlace: -1, calm: 0, drive: 0, changed: 0, end: '', endT: -1, kept: false, dev: 0, minChoice: Infinity, late: 0 },
     num: {
-      steps: 0, falls: 0, plans: 0, maxErr: 0, metres: 0, kms: 0, units: 0, unitDrop: 0, boards: 0, beacons: 0, tables: 0, tableRows: 0, tableDev: 0, sums: 0, same: 0, calm: 0, near: 0,
+      steps: 0, falls: 0, plans: 0, maxErr: 0, metres: 0, kms: 0, kmReal: 0, units: 0, unitDrop: 0, boards: 0, beacons: 0, tables: 0, tableRows: 0, tableDev: 0, sums: 0, same: 0, calm: 0, near: 0,
       edges: 0, edgeKm: 0, feederKm: 0, realKm: 0, realBy: {},
       clockErr: 0, clockKm: 0, clockMove: 0, clockStand: 0, etaLegs: [],
     },
@@ -666,7 +675,7 @@ function numbersLine(m) {
   const by = Object.entries(N.realBy).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${fmt(v, 0)}`).join(', ');
   return (
     `Die Zahlen passen zusammen: ${N.steps} Schritte, ${fmt(m.tripKm, 0)} Reisekilometer auf ${fmt(m.roadKm, 0)} km Straße · ${N.falls}× fiel die Entfernung zum Ziel genau wie der Zähler stieg (größter Fehler ${N.maxErr.toExponential(1)} km), ${N.plans} neue Pläne` +
-    ` · Anzeige in km ${N.kms}×, in Metern ${N.metres}× (nur auf echter Straße), ${N.units} Wechsel km → m (größter Sprung der Zahl ${fmt(N.unitDrop, 0)} m)` +
+    ` · Anzeige in km ${N.kms}× (davon ${N.kmReal}× auf echter Straße über ${BOARD_M} m: „1,2 km“ statt „1150 m“), in Metern ${N.metres}× (nur auf echter Straße bis ${BOARD_M} m), ${N.units} Wechsel km → m (größter Sprung der Zahl ${fmt(N.unitDrop, 0)} m, erlaubt 100 m)` +
     ` · ${N.sums}× Ziel = Handlung + Rest, ${N.same}× im Zielort dieselbe Zahl auf Ansage, Kärtchen und HUD-Zeile, Ausfahrt ${N.calm}× als Vorschau in km und ${N.near}× in Metern, ${N.boards} Vorwegweiser und ${N.beacons} Baken mit der Zahl der Ansage` +
     ` · ${N.tables} Entfernungstafeln, ${N.tableRows} nannten das Ziel (größte Abweichung ${fmt(N.tableDev, 2)} km)` +
     ` · ${N.edges} Kanten = ${fmt(N.edgeKm, 0)} km laut Karte, Zubringer ${fmt(N.feederKm, 0)} km, echte Straße ${fmt(N.realKm, 0)} km (${fmt((100 * N.realKm) / Math.max(all, 1e-9), 1)} %: ${by})` +
@@ -851,6 +860,7 @@ if (HOURS >= 3) {
   ok(sum((m) => m.arrivals) >= 30, `zu wenige Ankünfte: ${sum((m) => m.arrivals)}`);
   ok(sum((m) => m.lockFork) >= 10 && sum((m) => m.lockNode) >= 20, `zu wenige Gebote in Sperrzonen: ${sum((m) => m.lockFork)} / ${sum((m) => m.lockNode)}`);
   ok(sum((m) => m.navi.exit) > 2000 && sum((m) => m.navi.arrive) > 300, 'Navi und Welt: zu wenig geprüft');
+  ok(sum((m) => m.num.kmReal) >= 500 && sum((m) => m.num.units) >= 20, `Anzeige auf echter Straße über ${BOARD_M} m und ihr Wechsel zu Metern: zu wenig geprüft (${sum((m) => m.num.kmReal)} Schritte, ${sum((m) => m.num.units)} Wechsel)`);
 }
 console.log(`Reise: ${rows.length} Streams zu je ${HOURS} h in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 if (fails) {
