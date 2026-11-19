@@ -167,7 +167,7 @@ export class Road {
 
     // --- Fahrbahnen ------------------------------------------------------
     this.roadTex = roadTexture();
-    this.roadMat = W.std({ map: this.roadTex, roughness: 0.88, metalness: 0.0, envMapIntensity: 0.6 });
+    this.roadMat = W.std({ map: this.roadTex, roughness: 0.9, metalness: 0.0, envMapIntensity: 0.3 });
     const L = ROAD.texLength;
     const roadUV = (x, y, z) => [(x - ROAD.left) / ROAD.width, -z / L];
     const oppUV = (x, y, z) => [(ONCOMING(x) - ROAD.left) / ROAD.width, -z / L];
@@ -368,9 +368,9 @@ export class Road {
   /** Nässe 0…1 (Regen): Asphalt dunkler und spiegelnder. */
   setWet(w) {
     this.wet = w;
-    this.roadMat.roughness = 0.88 - w * 0.62;
+    this.roadMat.roughness = 0.9 - w * 0.64;
     this.roadMat.color.setScalar(1 - w * 0.42);
-    this.roadMat.envMapIntensity = 0.6 + w * 0.9;
+    this.roadMat.envMapIntensity = 0.3 + w * 1.2;
     this.railMat.roughness = 0.38 - w * 0.2;
     this.grassMat.color.setScalar(1 - w * 0.25);
     this.fieldMat.color.setScalar(1 - w * 0.28);

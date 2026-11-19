@@ -6,12 +6,15 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../curve.js';
 import {
-  ROAD, signTexture, brownSignTexture, speedSignTexture, roundRect, grassTexture, fitTextCenter,
+  ROAD, signTexture, brownSignTexture, speedSignTexture, roundRect, grassTexture, fitTextCenter, masonryTexture,
 } from '../textures.js';
 import { colorize } from '../models/loft.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
 import { mulberry32, fbm1, smoothstep, pick } from '../util.js';
 import { MEDIAN_X, ONCOMING, GRASS_TINT } from './road.js';
+import { dropInGeo } from './kit/nature.js';
+import { box, rod, ball, lathe, bar, sweep, move, fuse, tone, blend } from './kit/shapes.js';
+import { PAL } from './kit/palette.js';
 
 export const SEG = 100;
 const AHEAD = 17;
@@ -74,76 +77,18 @@ const BANNERS = [
 const BROWN = [
   ['Burg Hauneck', 'Haunetal'], ['Wartburg', 'Eisenach'], ['Weser-Skywalk', 'Beverungen'], ['Burg Ronneburg', 'Ronneburg'],
   ['Elsa', 'Kassel grüßt'], ['Hochofenwerk Phoenix West', 'Dortmund'], ['BrunnenTV-Studio', 'Herr Schönnbrun'],
-  ['Megahub', 'Lehrte'], ['Rhön', 'Starlink-Gebiet'], ['Zissel', 'Kassel'], ['Skyline', 'Frankfurt am Main'],
+  ['Megahub', 'Lehrte'], ['Rhön', 'Satelliten-Gebiet'], ['Zissel', 'Kassel'], ['Skyline', 'Frankfurt am Main'],
 ];
 const PLACES = ['Kassel', 'Fulda', 'Frankfurt', 'Gifhorn', 'Hannover', 'Würzburg', 'Göttingen', 'Hamburg', 'Hanau', 'Siegen', 'Erlensee', 'Eisenach', 'Bad Hersfeld', 'Dortmund'];
 
 // ---------------------------------------------------------------------------
-// Geometrien für Instanzen
-export function coniferGeo() {
-  const parts = [];
-  const trunk = new THREE.CylinderGeometry(0.16, 0.24, 2.4, 6);
-  trunk.translate(0, 1.2, 0);
-  parts.push(colorize(trunk, 0x4a3324));
-  const layers = [[2.5, 4.0, 1.5], [2.05, 3.5, 3.4], [1.55, 3.0, 5.2], [1.0, 2.5, 6.8]];
-  for (const [r, h, y] of layers) {
-    const c = new THREE.ConeGeometry(r, h, 8);
-    c.translate(0, y + h / 2, 0);
-    parts.push(colorize(c, 0x2d5530));
-  }
-  return mergeGeometries(parts);
-}
-export function decidGeo() {
-  const parts = [];
-  const trunk = new THREE.CylinderGeometry(0.2, 0.3, 3.2, 6).toNonIndexed();
-  trunk.translate(0, 1.6, 0);
-  parts.push(colorize(trunk, 0x5a4030));
-  const blobs = [[0, 5.0, 0, 2.6], [1.3, 4.3, 0.6, 1.9], [-1.2, 4.5, -0.5, 2.0], [0.2, 6.3, 0.3, 1.7]];
-  for (const [x, y, z, r] of blobs) {
-    const b = new THREE.IcosahedronGeometry(r, 1);
-    b.translate(x, y, z);
-    parts.push(colorize(b, 0x4c7a34));
-  }
-  return mergeGeometries(parts);
-}
-export function bushGeo() {
-  const parts = [];
-  for (const [x, y, z, r] of [[0, 0.7, 0, 1.0], [0.8, 0.55, 0.3, 0.75], [-0.7, 0.5, -0.2, 0.7]]) {
-    const b = new THREE.IcosahedronGeometry(r, 1);
-    b.translate(x, y, z);
-    parts.push(colorize(b, 0x557f37));
-  }
-  return mergeGeometries(parts);
-}
-export function houseGeo() {
-  const g = new THREE.BoxGeometry(1, 1, 1);
-  g.translate(0, 0.5, 0);
-  // Fenster als dunkle Vertex-Farbe? Einfach: einfarbig, Variation über Instanzfarben
-  return colorize(g, 0xffffff);
-}
-export function roofGeo() {
-  const p = [];
-  const h = 0.62;
-  const quad = (a, b, c, d) => p.push(...a, ...b, ...c, ...a, ...c, ...d);
-  const tri = (a, b, c) => p.push(...a, ...b, ...c);
-  const e = 0.06;
-  const A = [-0.5 - e, 1, -0.5 - e];
-  const B = [0.5 + e, 1, -0.5 - e];
-  const C = [0.5 + e, 1, 0.5 + e];
-  const D = [-0.5 - e, 1, 0.5 + e];
-  const R1 = [0, 1 + h, -0.5 - e];
-  const R2 = [0, 1 + h, 0.5 + e];
-  quad(C, B, R1, R2);
-  quad(A, D, R2, R1);
-  tri(D, C, R2);
-  tri(B, A, R1);
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
-  g.computeVertexNormals();
-  const n = p.length / 3;
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(n * 2), 2));
-  return colorize(g, 0xffffff);
-}
+// Geometrien für Instanzen: aus dem Natur-Baukasten (gleicher Ursprung, gleiche Maße wie die alten Klötze).
+// Exportiert, weil auch andere Teile der Welt (z. B. der Wald der XXL-Welt) mit denselben Bausteinen bauen.
+export const coniferGeo = () => dropInGeo('conifer');
+export const decidGeo = () => dropInGeo('decid');
+export const bushGeo = () => dropInGeo('bush');
+export const houseGeo = () => dropInGeo('house');
+export const roofGeo = () => dropInGeo('roof');
 
 /**
  * Flächen aus ebenen, konvexen Vielecken. polys: [{ pts: [[x, y, z], …], out: [x, y, z] }], wobei out grob nach
@@ -223,8 +168,8 @@ function skylineTowers() {
 }
 
 const TREE_TINTS = [0xffffff, 0xe0f0e0, 0xc8e0c8, 0xf0ffe0, 0xd0e8d8, 0xfff4dc];
-const HOUSE_COLORS = [0xf1ece0, 0xe9e2cf, 0xf6f3ea, 0xe5d9b8, 0xd9d4cc, 0xefe0c9, 0xdcd2c0];
-const ROOF_COLORS = [0xa3402a, 0x8b3a26, 0x5b3b2e, 0x3a3c40, 0xb5522e, 0x6b2a20];
+const HOUSE_COLORS = PAL.wall;
+const ROOF_COLORS = PAL.roof;
 
 // ---------------------------------------------------------------------------
 export class Scenery {
@@ -967,46 +912,51 @@ export class Scenery {
   }
 
   makeGantry() {
+    if (!this.mats.gantry) {
+      // Rahmen, Füße und Rückwand als ein Stück mit Eckfarben; der Versatz wie beim Stahl (siehe mats.steel) hält
+      // die Pfosten hinter den Tafeln. Die Tafeln: fünf Seiten im Rahmenton, die Bildseite (+z) zuletzt, so ist
+      // jede Tafel zwei Draw-Calls statt sechs.
+      this.mats.gantry = W.std({ vertexColors: true, metalness: 0.3, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 0 });
+      this.mats.panelEdge = W.std({ color: PAL.darkMetal, roughness: 0.6 });
+      this.panelGeo = new THREE.BoxGeometry(7.2, 2.7, 0.16);
+      const idx = Array.from(this.panelGeo.index.array);
+      this.panelGeo.setIndex([...idx.slice(0, 24), ...idx.slice(30, 36), ...idx.slice(24, 30)]);
+      this.panelGeo.clearGroups();
+      this.panelGeo.addGroup(0, 30, 0);
+      this.panelGeo.addGroup(30, 6, 1);
+    }
     const g = new THREE.Group();
-    const m = this.mats.steel;
     const xl = MEDIAN_X - 0.4;
     const xr = ROAD.right + 1.6;
+    const STEEL = PAL.steel;
+    const parts = [];
     for (const x of [xl, xr]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 7.4, 0.5), m);
-      post.position.set(x, 3.7, 0);
-      post.castShadow = true;
-      g.add(post);
-      // schmal genug, dass der rechte Fuß vor der Lärmschutzwand bleibt
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 1.2), this.mats.concrete);
-      foot.position.set(x, 0.25, 0);
-      g.add(foot);
+      // schmal genug, dass der rechte Fuß vor der Lärmschutzwand bleibt; Stütze mit Fußplatte und Kappe
+      parts.push(box(0.9, 0.5, 1.2, { round: 0.08, at: [x, 0, 0], col: PAL.concrete, ao: 0.3 }));
+      parts.push(box(0.7, 0.06, 0.7, { round: 0.02, at: [x, 0.5, 0], col: tone(STEEL, 0.8), ao: 0 }));
+      parts.push(box(0.5, 6.84, 0.5, { round: 0.1, rs: 2, at: [x, 0.56, 0], col: [tone(STEEL, 0.84), tone(STEEL, 1.05)], ao: 0.12 }));
+      parts.push(box(0.58, 0.08, 0.58, { round: 0.03, at: [x, 7.4, 0], col: tone(STEEL, 1.08), ao: 0 }));
     }
+    // Fachwerkträger: zwei Gurte und dazwischen Streben im Zickzack
     const span = xr - xl;
-    for (const y of [6.3, 7.2]) {
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(span, 0.22, 0.22), m);
-      beam.position.set((xl + xr) / 2, y, 0);
-      beam.castShadow = true;
-      g.add(beam);
+    for (const y of [6.3, 7.2]) parts.push(bar([xl, y, 0], [xr, y, 0], 0.11, { seg: 8, hs: 6, col: STEEL, ao: 0 }));
+    for (let i = 0; i < 12; i++) {
+      const a = xl + (span * i) / 12;
+      const b = xl + (span * (i + 1)) / 12;
+      const [ya, yb] = i % 2 ? [7.2, 6.3] : [6.3, 7.2];
+      parts.push(bar([a, ya, 0], [b, yb, 0], 0.045, { seg: 6, col: tone(STEEL, 0.94), ao: 0 }));
     }
-    for (let i = 0; i <= 12; i++) {
-      const x = xl + (span * i) / 12;
-      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 0.08), m);
-      strut.position.set(x, 6.75, 0);
-      strut.rotation.z = i % 2 ? 0.7 : -0.7;
-      g.add(strut);
-    }
-    // Träger hinter den Tafeln (z 0,06 … 0,18). Die Tafeln sind 16 cm tiefe Kästen, die 2 cm in ihm stecken:
-    // ihre Bildseite liegt 14 cm vor ihm (statt 2 cm) und hat einen Polygon-Offset, so flimmert aus keiner
-    // Entfernung der dunkle Träger durch die Schrift.
-    const back = new THREE.Mesh(new THREE.BoxGeometry(15.0, 2.8, 0.12), this.mats.dark);
-    back.position.set(0.075, 6.6, 0.12);
-    g.add(back);
-    const panelGeo = new THREE.BoxGeometry(7.2, 2.7, 0.16);
-    const d = this.mats.dark;
+    // Träger hinter den Tafeln (z 0,06 … 0,18), freundlich grau statt schwarz. Die Tafeln sind 16 cm tiefe Kästen,
+    // die 2 cm in ihm stecken: ihre Bildseite liegt 14 cm vor ihm (statt 2 cm) und hat einen Polygon-Offset, so
+    // flimmert aus keiner Entfernung der Träger durch die Schrift.
+    parts.push(box(15.0, 2.8, 0.12, { at: [0.075, 5.2, 0.12], col: [0x69727c, 0x8a939d], ao: 0 }));
+    const frame = new THREE.Mesh(fuse(parts), this.mats.gantry);
+    frame.castShadow = true;
+    g.add(frame);
     g.userData.panels = [];
     for (const x of [-3.75, 3.9]) {
       const face = W.std({ ...FRONT, roughness: 0.5 });
-      const panel = new THREE.Mesh(panelGeo, [d, d, d, d, face, d]);
+      const panel = new THREE.Mesh(this.panelGeo, [this.mats.panelEdge, face]);
       panel.position.set(x, 6.6, 0.24);
       g.add(panel);
       g.userData.panels.push(face);
@@ -1062,48 +1012,90 @@ export class Scenery {
   }
 
   makeBridge() {
+    if (!this.mats.bridge) {
+      // Platte, Pfeiler, Geländer und Blumenkästen tragen ihre Farben in den Ecken: die ganze Brücke ist so ein
+      // Draw-Call (früher einer je Geländerpfosten); dazu die Widerlager aus Sandstein und die Grasdämme
+      this.mats.bridge = W.std({ vertexColors: true, roughness: 0.85 });
+      this.mats.masonry = W.std({ map: masonryTexture(), roughness: 0.95 });
+    }
     const g = new THREE.Group();
-    const c = this.mats.concrete;
     // Die Platte reicht von Widerlager zu Widerlager (Vorderseiten symmetrisch zur Mittelleitplanke)
     const x1 = 34;
     const x0 = ONCOMING(x1);
-    // Unterseite etwas dunkler (liegt im Schatten) – als Material der Unterseite, nicht als zweite Fläche davor
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 1.1, 11, 20, 1, 1), [c, c, c, this.mats.concreteDark, c, c]);
-    deck.position.set((x0 + x1) / 2, 6.35, 0);
-    deck.castShadow = true;
-    deck.receiveShadow = true;
-    g.add(deck);
+    const n = 20;
+    // Querschnitt der 1,1 m dicken Platte (halb, von der Mitte der Unterseite zur Mitte der Fahrbahn): unten weich
+    // gerundete Kanten, oben die helle Kappe mit dem Geländer, 8 cm vorstehend mit einer feinen Schattenkante. Die
+    // Unterseite ist bläulich getönt: dorthin kommt nur Licht vom grünen Boden, das sie sonst oliv färbte.
+    const UNDER = 0xaea2de;
+    const FACE = 0xc4b294;
+    const CAP = 0xe2d8c3;
+    const half = [[5.8, 0, -1, 0, UNDER]];
+    for (let i = 0; i <= 4; i++) {
+      const a = (-Math.PI / 2) * (1 - i / 4);
+      half.push([6 + 0.2 * Math.sin(a), 5.3 + 0.2 * Math.cos(a), Math.sin(a), Math.cos(a), blend(UNDER, FACE, i / 4)]);
+    }
+    half.push([6.52, 5.5, 0, 1, FACE], [6.52, 5.5, -1, 0, blend(UNDER, CAP, 0.3)], [6.52, 5.58, -1, 0, blend(UNDER, CAP, 0.3)]);
+    half.push([6.52, 5.58, 0, 1, CAP]);
+    for (let i = 0; i <= 2; i++) {
+      const a = (Math.PI / 2) * (i / 2);
+      half.push([6.84 + 0.06 * Math.sin(a), 5.52 + 0.06 * Math.cos(a), Math.sin(a), Math.cos(a), CAP]);
+    }
+    half.push([6.9, 4.1, 1, 0, CAP], [6.9, 4.1, 1, 0, PAL.asphalt], [6.9, 0, 1, 0, PAL.asphalt]);
+    const profile = [...half, ...half.map(([y, z, ny, nz, c]) => [y, -z, ny, -nz, c]).reverse()];
+    const parts = [sweep(profile, x0, x1, n)];
     // Pfeiler nur neben den Fahrbahnen: einer im schmalen Mittelstreifen stünde mitten in den Leitplanken.
-    // Rechts mit Platz für die Lärmschutzwand davor.
+    // Rechts mit Platz für die Lärmschutzwand davor. Runde Säulen auf einem Sockel, oben ein Kapitell, das die
+    // Platte weich aufnimmt (es steckt ein paar Zentimeter in ihr).
+    const pillar = [
+      lathe([[0.8, 0], [0.8, 0.22], [0.74, 0.32], [0.62, 0.38]], { seg: 16, col: tone(PAL.stone, 0.96), ao: 0.18 }),
+      lathe([[0.62, 0.38], [0.58, 0.46], [0.55, 5.05]], { seg: 16, col: [tone(FACE, 0.92), FACE], ao: 0.06 }),
+      lathe([[0.55, 5.05], [0.6, 5.22], [0.71, 5.37], [0.79, 5.5], [0.82, 5.62], [0.82, 5.86]], { seg: 16, col: CAP, ao: 0 }),
+    ];
     for (const x of [ROAD.right + 3.5, ONCOMING(ROAD.right + 3.5)]) {
-      for (const z of [-3.2, 3.2]) {
-        const p = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 5.8, 12), c);
-        p.position.set(x, 2.9, z);
-        p.castShadow = true;
-        g.add(p);
-      }
+      for (const z of [-3.2, 3.2]) parts.push(move(pillar, { at: [x, 0, z] }));
     }
-    // Widerlager: Betonwand zur Autobahn, dahinter ein Damm mit Grasböschungen
-    for (const dir of [1, -1]) {
-      const [wall, bank] = this.makeAbutment(dir > 0 ? x1 : x0, dir);
-      g.add(wall, bank);
-    }
+    // Geländer in freundlichem Grün: Handlauf, Knieholm und Pfosten alle 2,5 m, an beiden Enden ein Endpfosten
+    const RAIL = 0x5f9f92;
+    const shade = { ao: 0.12, y0: 6.9, y1: 8 };
     for (const z of [-5.4, 5.4]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.1, 0.1), this.mats.steel);
-      rail.position.set((x0 + x1) / 2, 7.95, z);
-      g.add(rail);
-      for (let x = x0 + 1.25; x <= x1 - 1.2; x += 2.5) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.0, 0.06), this.mats.steel);
-        post.position.set(x, 7.4, z);
-        g.add(post);
-      }
+      parts.push(bar([x0 + 0.2, 7.95, z], [x1 - 0.2, 7.95, z], 0.06, { seg: 8, hs: n, col: tone(RAIL, 1.1), ...shade }));
+      parts.push(bar([x0 + 0.2, 7.45, z], [x1 - 0.2, 7.45, z], 0.035, { seg: 6, hs: n, col: RAIL, ...shade }));
+      for (const x of [x0 + 0.2, x1 - 0.2]) parts.push(box(0.12, 1.12, 0.12, { at: [x, 6.9, z], col: RAIL, ...shade }));
+      for (let x = x0 + 1.25; x <= x1 - 1.2; x += 2.5) parts.push(box(0.09, 1.05, 0.08, { at: [x, 6.9, z], col: RAIL, ...shade }));
     }
-    // 12 cm vor der Stirnseite der Platte und mit Polygon-Offset (sonst flimmert sie ab ≈ 650 m durch)
+    // Blumenkästen außen am Geländer zur Fahrt hin, je mitten zwischen zwei Pfosten und nicht dort, wo das
+    // Transparent hängen kann (x −16,5 … 12,5): Terrakottakasten mit hellem Rand, Blattpolster, rote und rosa
+    // Geranien, vorn hängt etwas Grün über
+    const BLOOM = [PAL.red, 0xf6a3bd, PAL.red, 0xfdfbf5, 0xf6a3bd, PAL.red, 0xf6a3bd];
+    const flowerBox = [
+      box(1.4, 0.3, 0.3, { round: 0.04, at: [0, -0.3, 0], col: [tone(PAL.brick, 0.85), PAL.brick], ao: 0 }),
+      box(1.46, 0.05, 0.36, { at: [0, -0.04, 0], col: tone(PAL.brick, 1.18), ao: 0 }),
+    ];
+    for (let i = 0; i < 3; i++) flowerBox.push(ball(0.3, { flat: 0.6, s: [1, 0.55, 0.7], at: [-0.45 + i * 0.45, 0.02, 0], col: [tone(PAL.crown[2], 0.9), PAL.crown[1]], ao: 0 }));
+    BLOOM.forEach((col, i) => {
+      const u = -0.6 + (i * 1.2) / (BLOOM.length - 1);
+      flowerBox.push(ball(0.085, { at: [u, 0.17 + 0.03 * Math.cos(i * 2.1), 0.05 * Math.sin(i * 2.7)], col, ao: 0 }));
+    });
+    for (const u of [-0.42, 0.05, 0.5]) flowerBox.push(ball(0.1, { s: [1.4, 1, 0.6], at: [u, -0.06, 0.17], col: [tone(PAL.crown[0], 0.8), PAL.crown[0]], ao: 0 }));
+    for (const x of [18, 25.5, -37, -44.5]) parts.push(move(flowerBox, { at: [x, 7.55, 5.62] }));
+    const body = new THREE.Mesh(fuse(parts), this.mats.bridge);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    g.add(body);
+    // Widerlager: Sandsteinwand zur Autobahn, dahinter ein Damm mit Grasböschungen
+    const ends = [this.makeAbutment(x1, 1), this.makeAbutment(x0, -1)];
+    const wall = new THREE.Mesh(mergeGeometries(ends.map((e) => e[0])), this.mats.masonry);
+    const bank = new THREE.Mesh(mergeGeometries(ends.map((e) => e[1])), this.mats.grass);
+    for (const m of [wall, bank]) {
+      m.castShadow = true;
+      m.receiveShadow = true;
+      g.add(m);
+    }
+    // 12 cm vor der Kappe und mit Polygon-Offset (sonst flimmert sie ab ≈ 650 m durch)
     const banner = new THREE.Mesh(new THREE.PlaneGeometry(9, 1.5, 8, 1), W.std({ ...FRONT, side: THREE.DoubleSide, roughness: 0.9 }));
-    banner.position.set(-1.5, 6.9, 5.62);
+    banner.position.set(-1.5, 6.9, 5.7);
     g.add(banner);
     g.userData.banner = banner;
-    // Ein Auto auf der Brücke
     return g;
   }
 
@@ -1136,9 +1128,10 @@ export class Scenery {
   }
 
   /**
-   * Widerlager am Brückenende: Betonwand mit der Vorderseite bei x = xf (zur Autobahn hin), oben so breit wie die
+   * Widerlager am Brückenende: Sandsteinwand mit der Vorderseite bei x = xf (zur Autobahn hin), oben so breit wie die
    * Platte, an den Seiten mit der Böschung (1 : 1,5) abgeschrägt; dahinter (Richtung dir) der Damm, oben ein
    * kurzes Plateau knapp unter der Wandkrone, nach hinten und zu den Seiten Grasböschungen bis zum Boden.
+   * Gibt die Geometrien [Wand, Damm] zurück (makeBridge fasst beide Enden zusammen).
    */
   makeAbutment(xf, dir) {
     const T = 0.9; // Wandstärke
@@ -1155,9 +1148,15 @@ export class Scenery {
     for (const sz of [1, -1]) {
       wallPolys.push({ pts: [[X(0), top, sz * hw], [X(0), 0, sz * (hw + run)], [X(T), 0, sz * (hw + run)], [X(T), top, sz * hw]], out: [0, 1, sz] });
     }
-    const wall = new THREE.Mesh(polyGeometry(wallPolys, () => [0, 0]), this.mats.concrete);
-    wall.castShadow = true;
-    wall.receiveShadow = true;
+    // Mauerwerk (Kachel 3,6 m): die Lagen laufen waagerecht und die oberste schließt mit der Krone ab; auf den
+    // schrägen Kronen liegen die Steine wie Abdeckplatten quer zur Falllinie
+    const S = 3.6;
+    const wallUv = ([x, y, z], out) => {
+      if (out[0] !== 0) return [z / S, (y - top) / S];
+      if (out[2] === 0) return [z / S, x / S];
+      return [x / S, Math.hypot(top - y, Math.abs(z) - hw) / S];
+    };
+    const wall = polyGeometry(wallPolys, wallUv);
     // Damm: Plateau 5 cm unter der Wandkrone (keine gleich hohen Flächen), 3 m tief
     const h = top - 0.05;
     const L = 3;
@@ -1179,10 +1178,7 @@ export class Scenery {
     ];
     // Gras wie am Bankett (6 m pro Kachel); auf den Böschungen entlang der Falllinie gemessen
     const uvFn = ([x, y, z], out) => (out[0] === 0 && out[2] === 0 ? [x / 6, z / 6] : out[2] !== 0 ? [x / 6, (y * 1.8) / 6] : [z / 6, (y * 1.8) / 6]);
-    const bank = new THREE.Mesh(polyGeometry(bankPolys, uvFn), this.mats.grass);
-    bank.castShadow = true;
-    bank.receiveShadow = true;
-    return [wall, bank];
+    return [wall, polyGeometry(bankPolys, uvFn)];
   }
 
   makeBrownSign() {
@@ -1302,7 +1298,7 @@ export class Scenery {
 
   makeChurch() {
     const g = new THREE.Group();
-    const wall = W.std({ color: 0xece5d5, roughness: 0.9 });
+    const wall = W.std({ color: 0xf3ecdc, roughness: 0.9 });
     const nave = new THREE.Mesh(new THREE.BoxGeometry(9, 8, 18), wall);
     nave.position.set(0, 4, 4);
     // Walmdach über dem Schiff: die vierseitige Pyramide zuerst drehen (Kanten parallel zu den Wänden) und erst dann
@@ -1312,13 +1308,48 @@ export class Scenery {
     roof.position.set(0, 10.5, 4);
     const tower = new THREE.Mesh(new THREE.BoxGeometry(4.5, 20, 4.5), wall);
     tower.position.set(0, 10, -7);
-    const spire = new THREE.Mesh(new THREE.ConeGeometry(3.4, 10, 4), W.std({ color: 0x3e5e52, roughness: 0.7 }));
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(3.4, 10, 4), W.std({ color: 0x4a8576, roughness: 0.7 }));
     spire.rotation.y = Math.PI / 4;
     spire.position.set(0, 25, -7);
-    const clock = new THREE.Mesh(new THREE.CircleGeometry(0.9, 16), W.std({ ...FRONT, color: 0x1a1a1a }));
-    clock.position.set(0, 16, -4.69);
-    g.add(nave, roof, tower, spire, clock);
+    // Zierrat als ein eingefärbtes Stück: Rundbogenfenster, Tür, Schallluken, Turmuhren, Turmkugel. Alles steht
+    // ein paar Zentimeter aus der Wand heraus (keine deckungsgleichen Flächen).
+    const trim = [];
+    const SAND = 0xd9c9a6;
+    // Rundbogen auf einer Wand: Fußmitte (x, y, z), turn dreht die Front (0 schaut nach +z), Breite w, Höhe h
+    const arch = (x, y, z, turn, w, h, col, deep) => {
+      const o = { col, ao: 0, y0: 0, y1: h };
+      const frame = { col: SAND, ao: 0 };
+      trim.push(move([
+        box(w, h - w / 2, deep, o),
+        rod(w / 2, w / 2, deep, { seg: 12, caps: true, rot: [Math.PI / 2, 0, 0], at: [0, h - w / 2, -deep / 2], ...o }),
+        box(w + 0.36, h - w / 2, deep - 0.16, frame),
+        rod(w / 2 + 0.18, w / 2 + 0.18, deep - 0.16, { seg: 12, caps: true, rot: [Math.PI / 2, 0, 0], at: [0, h - w / 2, -deep / 2 + 0.08], ...frame }),
+      ], { rot: [0, turn, 0], at: [x, y, z] }));
+    };
+    const GLASS = [0x3f6f9c, 0x9fd0e8];
+    for (const s of [1, -1]) {
+      for (const z of [-0.5, 4, 8.5]) arch(s * 4.5, 2.6, z, s * Math.PI / 2, 1.3, 3.5, GLASS, 0.24);
+    }
+    arch(0, 0, 13, 0, 2.0, 3.3, [0x7a5a3c, 0xa87a4f], 0.24);
+    trim.push(box(3.2, 0.22, 0.9, { at: [0, 0, 13.3], col: 0xcfc6b4, ao: 0 }));
+    for (let i = 0; i < 4; i++) {
+      const turn = (i * Math.PI) / 2;
+      const [nx, nz] = [Math.sin(turn), Math.cos(turn)];
+      // die Seite zum Schiff hin liegt unter dem Dach: dort keine Schallluke
+      if (i !== 0) arch(nx * 2.25, 10.6, -7 + nz * 2.25, turn, 1.1, 2.3, [0x47525e, 0x6d7a86], 0.24);
+      trim.push(move([
+        rod(1.14, 1.14, 0.07, { seg: 16, caps: true, rot: [Math.PI / 2, 0, 0], at: [0, 0, -0.05], col: 0x9a7a45, ao: 0 }),
+        rod(0.95, 0.95, 0.15, { seg: 16, caps: true, rot: [Math.PI / 2, 0, 0], at: [0, 0, -0.05], col: 0xfbf6e6, ao: 0 }),
+        box(0.1, 0.72, 0.05, { at: [0, -0.06, 0.135], col: 0x4a4038, ao: 0 }),
+        box(0.13, 0.5, 0.05, { rot: [0, 0, -1.15], at: [0, 0, 0.135], col: 0x4a4038, ao: 0 }),
+      ], { rot: [0, turn, 0], at: [nx * 2.25, 16, -7 + nz * 2.25] }));
+    }
+    trim.push(ball(0.42, { d: 1, at: [0, 30.1, -7], col: PAL.gold, ao: 0 }));
+    const deco = new THREE.Mesh(fuse(trim), W.lambert({ vertexColors: true }));
+    g.add(nave, roof, tower, spire);
     g.traverse((o) => o.isMesh && (o.castShadow = true));
+    deco.receiveShadow = true;
+    g.add(deco);
     return g;
   }
 
@@ -1328,17 +1359,49 @@ export class Scenery {
       // ein Wandfeld (5 m) pro Texturkachel, links der Pfosten-Streifen
       const tex = this.canvasTexFrom('noisewall', () => {
         const c = document.createElement('canvas');
-        c.width = 256;
-        c.height = 128;
+        c.width = 512;
+        c.height = 256;
         const ctx = c.getContext('2d');
-        ctx.fillStyle = '#7f8f84';
+        ctx.scale(2, 2);
+        // salbeigrüne Lamellen, oben ein heller Abschluss, unten rankt Efeu mit ein paar Blüten
+        const wash = ctx.createLinearGradient(0, 0, 0, 128);
+        wash.addColorStop(0, '#b4cbb0');
+        wash.addColorStop(1, '#98b59b');
+        ctx.fillStyle = wash;
         ctx.fillRect(0, 0, 256, 128);
-        for (let y = 0; y < 128; y += 8) {
-          ctx.fillStyle = y % 16 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.06)';
+        for (let y = 12; y < 128; y += 8) {
+          ctx.fillStyle = y % 16 ? 'rgba(40,70,50,0.07)' : 'rgba(255,255,255,0.09)';
           ctx.fillRect(0, y, 256, 4);
         }
-        ctx.fillStyle = '#5b6168';
+        ctx.fillStyle = '#e6ecdf';
+        ctx.fillRect(0, 0, 256, 10);
+        ctx.fillStyle = 'rgba(40,70,50,0.16)';
+        ctx.fillRect(0, 10, 256, 2);
+        // ein Feld ist 5 m breit und 4,2 m hoch: Kreise sind auf der Kachel Ellipsen (0,6 so hoch wie breit)
+        const rnd = mulberry32(77);
+        const leaves = ['#5f9e4a', '#6fae52', '#4f8f45', '#7ab95a'];
+        const blob = (x, y, r) => {
+          ctx.beginPath();
+          ctx.ellipse(x, y, r, r * 0.6, 0, 0, 7);
+          ctx.fill();
+        };
+        // je Feld eine Ranke: in der Feldmitte am höchsten, zu den Pfosten hin flach – so wirkt die Wiederholung
+        // von Feld zu Feld gepflanzt statt gekachelt
+        for (let i = 0; i < 76; i++) {
+          const x = 14 + rnd() * 236;
+          const top = 9 + 36 * Math.sin((Math.PI * (x - 10)) / 246) ** 2;
+          const up = rnd() * rnd();
+          ctx.fillStyle = leaves[i % 4];
+          blob(x, 126 - up * top, 10 - up * 5 + rnd() * 3);
+        }
+        for (let i = 0; i < 10; i++) {
+          ctx.fillStyle = i % 3 ? '#fdfbf5' : '#f7a8c4';
+          blob(60 + rnd() * 150, 122 - rnd() * 18, 2.4);
+        }
+        ctx.fillStyle = '#74838a';
         ctx.fillRect(0, 0, 10, 128);
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.fillRect(2, 0, 2.5, 128);
         const t = new THREE.CanvasTexture(c);
         t.colorSpace = THREE.SRGBColorSpace;
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -1346,7 +1409,7 @@ export class Scenery {
         return t;
       });
       this.mats.noiseWall = W.std({ map: tex, roughness: 0.8 });
-      this.mats.wallPost = W.std({ color: 0x5b6168, metalness: 0.4, roughness: 0.55 });
+      this.mats.wallPost = W.std({ color: 0x74838a, metalness: 0.4, roughness: 0.55 });
       this.wallPostGeo = new THREE.BoxGeometry(0.42, 4.45, 0.24);
       this.wallPostGeo.translate(0, 2.225, 0);
     }
@@ -1537,13 +1600,15 @@ export class Scenery {
     g.rotation.y = -Math.PI / 2 + 0.25;
     g.userData.setColor = (color) => {
       const tex = this.canvasTex('spk:' + color, 512, 100, (ctx, w, h) => {
-        ctx.fillStyle = '#ffffff';
+        // helle Schrift (die Bank ist weiß) steht auf Blaugrau, sonst verschwände sie auf dem weißen Schild
+        const light = [1, 3, 5].reduce((a, i) => a + parseInt(color.slice(i, i + 2), 16), 0) > 600;
+        ctx.fillStyle = light ? '#5f7fa3' : '#ffffff';
         ctx.fillRect(0, 0, w, h);
         ctx.fillStyle = color;
-        ctx.font = 'bold 64px Arial, sans-serif';
+        ctx.font = 'bold 54px Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('Sparkasse', w / 2, h / 2 + 3);
+        ctx.fillText('Bank am Markt', w / 2, h / 2 + 3);
       });
       face.map = tex;
       face.needsUpdate = true;

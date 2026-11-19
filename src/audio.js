@@ -299,6 +299,38 @@ export class Audio {
     this.tone(1400, 0.35, 'sine', 0.012, 0.2, 1800);
   }
 
+  /** Der Wischermotor zieht an und verhungert (Beginn eines Versuchs, der hängen bleibt). */
+  wiperStrain() {
+    this.tone(72, 0.34, 'sawtooth', 0.045, 0, 128);
+    this.tone(290, 0.3, 'triangle', 0.012, 0.02, 520);
+  }
+
+  /** Das Gummi rubbelt über die Scheibe: n ganz kurze Stöße (when = Verzögerung in s). */
+  wiperStutter(n = 4, when = 0) {
+    for (let i = 0; i < n; i++) {
+      this.noiseBurst(0.028, 0.034, { type: 'bandpass', freq: 620 + 90 * i, q: 5, when: when + i * 0.042 });
+    }
+  }
+
+  /** Der Motor gibt auf: kurzes, absinkendes Brummen. */
+  wiperGiveUp() {
+    this.tone(96, 0.28, 'sawtooth', 0.03, 0, 52);
+  }
+
+  /** Der Wischer fällt auf den Anschlag der Parkstellung zurück. */
+  wiperClack() {
+    this.tone(170, 0.05, 'triangle', 0.055, 0, 85);
+    this.noiseBurst(0.022, 0.04, { type: 'highpass', freq: 2400 });
+  }
+
+  /** Trockenes Gummi quietscht über trockenes Glas (Fehlalarm ohne Regen). */
+  wiperSqueak() {
+    this.tone(880, 0.12, 'triangle', 0.03, 0, 1480);
+    this.tone(1020, 0.14, 'triangle', 0.028, 0.17, 1720);
+    this.noiseBurst(0.1, 0.012, { type: 'bandpass', freq: 2600, q: 12, when: 0.02 });
+    this.noiseBurst(0.1, 0.012, { type: 'bandpass', freq: 3000, q: 12, when: 0.19 });
+  }
+
   horn() {
     this.tone(415, 0.45, 'square', 0.06);
     this.tone(523, 0.45, 'square', 0.05);

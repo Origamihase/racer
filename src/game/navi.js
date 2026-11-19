@@ -1,6 +1,6 @@
-// Das ferngesteuerte Navi: Zuschauer überbieten sich (immer 1 Cent mehr), das Ziel wechselt
+// Das ferngesteuerte Navi: Zuschauer überbieten sich (mindestens 1 Cent mehr), das Ziel wechselt
 // automatisch, die Route wird neu berechnet – manchmal mit „Bitte wenden“ auf der Autobahn.
-import { NAVI_TARGETS, SPARKASSEN_FARBEN } from '../data.js';
+import { NAVI_TARGETS, BANK_FARBEN } from '../data.js';
 import { rand, chance, pick, weightedPick, fmtCent, fmtClock, clamp } from '../util.js';
 
 /** Kurzer Name für Schilderbrücken und das Navi-Kärtchen. */
@@ -35,14 +35,15 @@ export class Navi {
     return weightedPick(NAVI_TARGETS.filter((t) => t !== cur), (t) => t.weight ?? 1);
   }
 
-  /** Ein Zuschauer überbietet: neues Ziel, Gebot + 1 Cent (manchmal mehr). */
-  overbid(s, bidder) {
-    const extra = chance(0.18) ? Math.floor(rand(2, 12)) : 1;
-    this.bid = Math.round((this.bid + extra * 0.01) * 100) / 100;
+  /**
+   * Ein Zuschauer überbietet: neues Ziel, Gebot + increment (mindestens 1 Cent; wie viel, entscheidet die
+   * Stream-Kasse in economy.js). Im Bieterduell bringt jeder sein eigenes Ziel mit (target).
+   */
+  overbid(s, bidder, increment = 0.01, target = this.pickTarget()) {
+    this.bid = Math.round((this.bid + increment) * 100) / 100;
     this.changes++;
-    const t = this.pickTarget();
-    this.set(s, t, bidder);
-    return t;
+    this.set(s, target, bidder);
+    return target;
   }
 
   set(s, target, bidder, { first = false } = {}) {
@@ -59,7 +60,7 @@ export class Navi {
     this.wendeS = s + rand(380, 820);
     this.arrived = false;
     this.side = chance(0.5) ? 1 : -1;
-    this.sparkColor = pick(SPARKASSEN_FARBEN);
+    this.sparkColor = pick(BANK_FARBEN);
     this.history.push({ name: target.name, bidder, bid: this.bid });
     if (this.history.length > 12) this.history.shift();
     this.placeLandmarks();

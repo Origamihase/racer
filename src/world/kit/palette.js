@@ -41,6 +41,11 @@ export const PAL = {
   signGreen: 0x2f8f4e,
   red: 0xe5483a,
   orange: 0xf08a2c,
+  // Kleinteile: Gold für Turmkugeln und Naben, helles Holz für Zäune und Pfähle, „Tinte“ als dunkelster Ton
+  // (Augen, Hufe, Zeiger) – nie reines Schwarz
+  gold: 0xf2c230,
+  wood: 0xb08a5e,
+  ink: 0x2a2a30,
   // Himmel
   skyTop: 0x5aa9e6,
   skyHorizon: 0xcfe9f7,

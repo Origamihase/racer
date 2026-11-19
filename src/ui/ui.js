@@ -13,7 +13,7 @@ function el(tag, cls, parent, text) {
 }
 
 const RAHMEN_EMOJI = {
-  rosen: '🌹', pommes: '🍟', burger: '🍔', candy: '🍬', chips: '🥔', kuerbis: '🎃',
+  rosen: '🌹', sonnenblumen: '🌻', pommes: '🍟', burger: '🍔', candy: '🍬', chips: '🥔', kuerbis: '🎃',
 };
 
 const DEG = Math.PI / 180;
@@ -42,6 +42,10 @@ function cockpitParts(W, H) {
   return { screen: W / 2 + SCREEN.left * S, mirror: W / 2 + MIRROR.left * S };
 }
 const COARSE = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : { matches: false };
+// Facecam: Eckradius wie in style.css (.facecam), kleinste sinnvolle Breite, Seitenverhältnis 16 : 9
+const FC_RADIUS = 12;
+const FC_MIN_W = 168;
+const overlap = (a, b, pad = 0) => a.left < b.right + pad && a.right > b.left - pad && a.top < b.bottom + pad && a.bottom > b.top - pad;
 
 /**
  * Lage eines Elements ohne Animationen und Drehungen (getBoundingClientRect enthielte etwa das Aufploppen des
@@ -106,7 +110,6 @@ export class UI {
     this.dmgBadge = new DamageBadge(this.damageEl.parentNode, this.damageEl);
     this.cruiseBadge = new CruiseBadge(this.speedEl.parentNode);
     this.jobsEl = el('div', 'jobs-mini', info);
-    this.zulageEl = el('div', 'zulage hidden', info, '🌧️ Regenzulage ×1,5');
 
     // --- Mitte oben ---
     this.leftLaneEl = el('div', 'leftlane hidden', this.hud);
@@ -125,7 +128,11 @@ export class UI {
     const eyes = el('span', 'nomi-eyes', this.nomiEl);
     el('i', '', eyes);
     el('i', '', eyes);
-    this.nomiText = el('span', 'nomi-text', this.nomiEl, '');
+    // am selben Platz spricht auch das Sprachstudio: dann mit Kopfhörer statt NOMIs Augen (siehe studio())
+    el('span', 'studio-icon', this.nomiEl, '🎧');
+    const words = el('span', 'nomi-words', this.nomiEl);
+    el('span', 'studio-label', words, 'Sprachstudio');
+    this.nomiText = el('span', 'nomi-text', words, '');
     this.bannerEl = el('div', 'banner hidden', stack, '');
     this.toastsEl = el('div', 'toasts', stack);
     this.cameraHint = el('div', 'camera-hint hidden', stack, '');
@@ -141,9 +148,20 @@ export class UI {
     this.durchsageEl = el('div', 'durchsage hidden', this.hud);
     this.funklochEl = el('div', 'funkloch hidden', this.hud);
     el('div', 'funkloch-icon', this.funklochEl, '📡');
-    el('div', 'funkloch-text', this.funklochEl, 'Verbindung verloren – Telekom, Vodafone und O₂ werden neu gebündelt …');
+    el('div', 'funkloch-text', this.funklochEl, 'Verbindung verloren – alle Handynetze werden neu gebündelt …');
     this.photoEl = el('div', 'photo hidden', this.hud);
     this.rahmenEl = el('div', 'rahmen-layer', this.hud);
+    // --- unten links: Facecam. Hier nur Rahmen und Namensschild; das Bild zeichnet WebGL genau in dieses Rechteck
+    // (facecam.js, nach dem Cockpit), es liegt also unter allen HUD-Elementen und weicht ihnen deshalb aus ---
+    this.facecamEl = el('div', 'facecam', this.hud);
+    const tag = el('div', 'facecam-tag', this.facecamEl);
+    el('i', 'facecam-dot', tag);
+    el('span', '', tag, 'Mini Adam');
+    this.facecamOn = true;
+    // Lage in CSS-Pixeln (x, y, w, h) und Deckkraft; target: wohin sie gleitet (null = ausblenden); fcBox: was
+    // placeFacecam zurückgibt (gerundet, mit Eckradius r)
+    this.fc = { x: 0, y: 0, w: 0, h: 0, alpha: 0, target: null, check: 0 };
+    this.fcBox = null;
 
     this.chatOn = true;
     this.chatRect = null;
@@ -344,6 +362,123 @@ export class UI {
     this.hud.classList.toggle('hidden', !v);
   }
 
+  /** Einstellung „Facecam“ (an/aus) */
+  setFacecam(on) {
+    this.facecamOn = on;
+  }
+
+  /**
+   * Wo die Facecam hin soll (CSS-Pixel) – unten links über der Türverkleidung des Cockpits, etwa 22 % der Bildbreite.
+   * Rahmen-Streifen und Briefmarkenrand schieben sie nach innen, Pappkartons nach oben, auf Tablets steht sie über den
+   * Touch-Knöpfen; nach oben begrenzt sie das Info-Feld (dann wird sie kleiner). null: kein Platz (Handy hochkant,
+   * kleine Handys quer, abgedeckte linke Bildhälfte). blocked: ein anderes HUD-Element liegt gerade darauf – dann
+   * blendet sie so lange aus (sie ist das Unwichtigste im Bild).
+   */
+  facecamTarget() {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    if (COARSE.matches && (H > W || H <= 500)) return null;
+    const vh = H / 100;
+    let w = Math.min(W * 0.22, H * 0.5, 440);
+    let left = 14;
+    let bottom = 14;
+    for (const { el: r } of this.rahmenList) {
+      if (r.querySelector('.half-left')) return null;
+      if (r.querySelector('.strip-left') && !r.classList.contains('corner-only')) {
+        left = Math.max(left, 7.5 * vh + 10);
+        bottom = Math.max(bottom, 7.5 * vh + 10);
+      }
+      if (r.querySelector('.stamp-frame')) {
+        left = Math.max(left, 4.2 * vh + 22);
+        bottom = Math.max(bottom, 4.2 * vh + 22);
+      }
+      if (r.querySelector('.boxes')) bottom = Math.max(bottom, 15 * vh + 8);
+    }
+    // Touch-Knöpfe in der linken Spalte (Tablet quer): darüber
+    for (const b of document.querySelectorAll('.touch button')) {
+      const r = b.getBoundingClientRect();
+      if (r.width && r.left < left + w) bottom = Math.max(bottom, H - r.top + 10);
+    }
+    const info = this.infoEl.getBoundingClientRect();
+    const top = info.width && info.left < left + w ? info.bottom + 12 : 14;
+    let h = (w * 9) / 16;
+    if (H - bottom - h < top) {
+      h = H - bottom - top;
+      w = (h * 16) / 9;
+    }
+    if (w < FC_MIN_W) return null;
+    const box = { left, top: H - bottom - h, right: left + w, bottom: H - bottom };
+    // was darauf liegen könnte: Sprachdurchsage, Blitzerfoto, Mittelspalte, Funkloch, Spur-Balken, Rahmen-Hinweis
+    let blocked = false;
+    const parts = [this.durchsageEl, this.photoEl, this.funklochEl, this.leftLaneEl, ...this.stackEl.children, ...this.rahmenEl.querySelectorAll('.rahmen-caption')];
+    for (const e of parts) {
+      if (e.classList.contains('hidden') || e.classList.contains('squeezed')) continue;
+      const r = e.getBoundingClientRect();
+      if (r.width && r.height && overlap(r, box, 6)) blocked = true;
+    }
+    return { x: left, y: box.top, w, h, blocked };
+  }
+
+  /**
+   * Pro Bild vor dem Rendern (main.js): Facecam einblenden, wenn want (Cockpit-Ansicht in der Fahrt) und die
+   * Einstellung an ist, sanft an ihren Platz gleiten lassen und den Rahmen dorthin setzen. Rückgabe: Lage und
+   * Deckkraft fürs WebGL-Bild ({ x, y, w, h, r, alpha } in CSS-Pixeln) oder null, wenn nichts zu zeichnen ist.
+   */
+  placeFacecam(dt, want) {
+    const f = this.fc;
+    const on = want && this.facecamOn && !this.hud.classList.contains('hidden') && this.hud.style.display !== 'none';
+    // neue Fenstergröße (auch in der Pause): sofort neu einpassen, ohne Gleiten
+    const resized = f.vw !== window.innerWidth || f.vh !== window.innerHeight;
+    f.vw = window.innerWidth;
+    f.vh = window.innerHeight;
+    // Lage neu bestimmen: 10× pro Sekunde (liest Elementgrößen) und sofort beim Einblenden. Kamerawechsel, Ende der
+    // Fahrt oder Einstellung aus: sofort weg (das WebGL-Bild gibt es dann ohnehin nicht mehr)
+    f.check -= dt;
+    if (!on) {
+      f.target = null;
+      f.alpha = 0;
+    } else if (resized || f.check <= 0 || !f.target) {
+      f.check = 0.1;
+      f.target = this.facecamTarget();
+    }
+    const t = f.target;
+    const show = t && !t.blocked ? 1 : 0;
+    if (!t && resized) f.alpha = 0;
+    if (t) {
+      if (f.alpha <= 0.001 || resized) {
+        // taucht auf: gleich am Ziel, nur ein kleines Stück von unten herein (neue Fenstergröße: genau ans Ziel)
+        Object.assign(f, { x: t.x, y: t.y + (resized ? 0 : 10), w: t.w, h: t.h });
+      }
+      const k = 1 - Math.exp(-dt * 9);
+      f.x += (t.x - f.x) * k;
+      f.y += (t.y - f.y) * k;
+      f.w += (t.w - f.w) * k;
+      f.h += (t.h - f.h) * k;
+    }
+    // ein: 0,4 s, aus (ein HUD-Element liegt darauf): 0,25 s; ohne Zeit, etwa in der Pause, bleibt alles stehen
+    f.alpha = clamp(f.alpha + (show ? dt / 0.4 : -dt / 0.25), 0, 1);
+    // Rahmen und WebGL-Bild bekommen dieselben (auf 0,1 px gerundeten) Werte
+    const st = this.facecamEl.style;
+    const css = (k, v) => {
+      if (st[k] !== v) st[k] = v;
+    };
+    css('display', f.alpha > 0 ? 'block' : 'none');
+    if (!(f.alpha > 0)) return null;
+    const b = this.fcBox || (this.fcBox = { r: FC_RADIUS });
+    const r10 = (v) => Math.round(v * 10) / 10;
+    b.x = r10(f.x);
+    b.y = r10(f.y);
+    b.w = r10(f.w);
+    b.h = r10(f.h);
+    b.alpha = Math.round(f.alpha * 1000) / 1000;
+    css('left', b.x + 'px');
+    css('top', b.y + 'px');
+    css('width', b.w + 'px');
+    css('height', b.h + 'px');
+    css('opacity', String(b.alpha));
+    return b;
+  }
+
   setChat(on) {
     this.chatOn = on;
     this.chatEl.classList.toggle('hidden', !on);
@@ -395,6 +530,20 @@ export class UI {
     const list = this.chatList;
     list.scrollTop = list.scrollHeight;
     if (!list.clientHeight) return;
+    // Die neueste verschwindet nie: Ist sie allein schon höher als das Fenster (Handy quer zeigt zwei Zeilen, die
+    // Ansagen von James brauchen oft drei), wird sie auf die Zeilen gekürzt, die hineinpassen – sonst bliebe der
+    // Chat leer. Jedes Mal neu gemessen, weil sich das Fenster beim Drehen des Handys ändert.
+    const last = list.lastElementChild;
+    if (last) {
+      last.classList.remove('cut');
+      const cs = getComputedStyle(list);
+      const room = list.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      if (last.offsetHeight > room + 0.5) {
+        last.classList.add('cut');
+        last.style.webkitLineClamp = Math.max(1, Math.floor(room / parseFloat(getComputedStyle(last).lineHeight)));
+      }
+      list.scrollTop = list.scrollHeight;
+    }
     const top = list.getBoundingClientRect().top - 0.5;
     for (const m of list.children) m.classList.toggle('gone', m.getBoundingClientRect().top < top);
   }
@@ -427,6 +576,16 @@ export class UI {
 
   nomi(text, dur = 3) {
     this.nomiText.textContent = text;
+    this.nomiEl.classList.remove('studio');
+    this.nomiEl.classList.remove('hidden');
+    this.nomiT = Math.max(2.2, dur);
+    this.fitStack();
+  }
+
+  /** Das Sprachstudio spricht: derselbe Untertitel-Platz wie bei NOMI, aber klar als Sprachstudio erkennbar. */
+  studio(text, dur = 3) {
+    this.nomiText.textContent = text;
+    this.nomiEl.classList.add('studio');
     this.nomiEl.classList.remove('hidden');
     this.nomiT = Math.max(2.2, dur);
     this.fitStack();
@@ -529,11 +688,6 @@ export class UI {
         const n = side === 'top' || side === 'bottom' ? 6 : 3;
         for (let i = 0; i < n; i++) el('span', '', strip, '© Keine Rechte');
       }
-    } else if (r.id === 'rettich') {
-      for (const side of ['top', 'bottom', 'left', 'right']) {
-        const strip = el('div', 'strip strip-' + side, layer);
-        for (let i = 0; i < 16; i++) el('span', 'rettich', strip, '');
-      }
     }
     // Lego-Steine dehnen sich selbst auf die Streifenlänge, der Kürbis steht allein in der Ecke
     if (!layer.classList.contains('corner-only')) for (const s of layer.querySelectorAll('.strip:not(.lego)')) fitStrip(s);
@@ -621,7 +775,6 @@ export class UI {
     this.batteryFill.className = 'battery-fill' + (p.battery < 15 ? ' low' : p.battery < 30 ? ' mid' : '');
     this.dmgBadge.update(p.damage);
     this.cruiseBadge.update(p);
-    this.zulageEl.classList.toggle('hidden', !g.weather.regenzulage);
     // linke Spur
     const L = g.left;
     this.leftLaneEl.classList.toggle('hidden', !L.open);
@@ -630,12 +783,12 @@ export class UI {
       const inLane = p.inLeftLane;
       const secs = Math.ceil(L.timer) + ' s';
       const lt = this.leftLaneText;
-      lt.textContent = (inLane ? '⬅️ Linke Spur: Bonus läuft! ' : '⬅️ Linke Spur frei! ') + secs;
+      lt.textContent = (inLane ? '⬅️ Du fährst links · noch ' : '⬅️ Linke Spur frei · noch ') + secs;
       // der Balken bleibt einzeilig: passt der Satz nicht (schmaler Balken auf dem Handy), steht nur das Wichtigste da
-      if (lt.scrollWidth > lt.clientWidth + 1) lt.textContent = (inLane ? '⬅️ Bonus läuft! ' : '⬅️ Spur frei! ') + secs;
+      if (lt.scrollWidth > lt.clientWidth + 1) lt.textContent = (inLane ? '⬅️ Links · ' : '⬅️ Spur frei · ') + secs;
       this.leftLaneEl.classList.toggle('active', inLane);
       this.leftLaneEl.classList.toggle('warn', L.timer < 10);
-      this.leftLaneFill.style.width = clamp(L.timer / 60, 0, 1) * 100 + '%';
+      this.leftLaneFill.style.width = clamp(L.timer / (L.dur || 60), 0, 1) * 100 + '%';
     }
     // Navi-Zeile
     const nv = g.navi;

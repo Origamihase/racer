@@ -1,5 +1,5 @@
 // Sprachausgabe (Web Speech API, deutsche Stimme). NOMI hat Vorrang vor den
-// Sprachdurchsagen der Zuschauer. Ohne Sprachausgabe läuft alles mit geschätzter Dauer weiter.
+// Sprachdurchsagen der Zuschauer und vor dem Sprachstudio. Ohne Sprachausgabe läuft alles mit geschätzter Dauer weiter.
 import { VOICES } from './data.js';
 
 export class Speech {
@@ -29,6 +29,7 @@ export class Speech {
       karla: [/Katja/i, /Google Deutsch/i, /Anna/i],
       william: [/Stefan/i, /Markus/i, /Yannick/i, /Conrad/i, /Google Deutsch/i],
       schoennbrun: [/Stefan/i, /Markus/i, /Yannick/i, /Conrad/i],
+      sprachstudio: [/Katja/i, /Petra/i, /Hedda/i, /Anna/i, /Google Deutsch/i],
     }[key] || [];
     for (const re of pref) {
       const v = this.voices.find((x) => re.test(x.name));

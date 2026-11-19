@@ -1,15 +1,23 @@
-// Das Cockpit des Model 3 aus Mini Adams Sicht: flaches Armaturenbrett mit Holzleiste und
-// Luftschlitz, großer Mittelbildschirm, Lenkrad mit LIVE-Logo, Mini Adams Plüschhände,
-// Innen- und Außenspiegel (echte Rückansicht), NOMI, Stream-Kamera und die Scheibenwischer.
+// Das Cockpit des Model 3 aus Mini Adams Sicht – wie ein Spielzeugmacher es für einen Plüschfahrer bauen würde:
+// gepolsterte Kabine (cabin.js), Lenkrad mit LIVE-Logo (wheel.js), Mini Adams Plüschhände (hands.js), großer
+// Mittelbildschirm, Innen- und Außenspiegel (echte Rückansicht), NOMI, Stream-Technik (rig.js), Mitbringsel
+// (props.js) und die Scheibenwischer.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { woodTexture, liveLogoTexture, fabricTexture } from '../textures.js';
+import { liveLogoTexture, softDotTexture } from '../textures.js';
 import { Nomi } from './nomi.js';
 import { CenterScreen } from './screen.js';
+import { buildWipers } from './wipers.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
-import { damp, clamp, smoothstep } from '../util.js';
+import { damp, clamp, smoothstep, lerp } from '../util.js';
 import { mirrorShape, mirrorHousingGeometry } from '../models/loft.js';
+import { plush, COLORS, buildMiniAdam, ADAM_DIM } from '../models/miniAdam.js';
+import { prep, meshOf, mergeByMaterial, rbox, sweep, ring, place, roundedRect, warp, pillow, lathe } from './parts.js';
+import { buildCabin, buildHood, roofGlassGeometry, blob, dashTopY, pillarPoint, PAL, SEAT } from './cabin.js';
+import { WHEEL, buildWheelParts, buildColumn } from './wheel.js';
+import { mittenGeometry, forearmGeometry, upperArmGeometry, sleeveGeometry, WRIST } from './hands.js';
+import { buildRig, setLiveCrop } from './rig.js';
+import { buildProps } from './props.js';
+import { grainTexture, weaveTexture, leatherTexture, perfTexture, walnutTexture, labelAtlas, decalAtlas, decalUV } from './cabinTextures.js';
 
 // Augenposition (Fahrzeug-Koordinaten; vorne = -z). Mini Adam sitzt auf zwei Kissen.
 export const EYE = new THREE.Vector3(-0.37, 1.2, 0.27);
@@ -27,64 +35,51 @@ export const WINDSHIELD = (() => {
   return { base, top, U, X, N, length, halfBase: 0.74, halfTop: 0.63 };
 })();
 
-// Wischer: Drehpunkt (unten, außen), Länge, maximaler Winkel
-export const WIPERS = [
-  // max so, dass die Wischerspitze vor der A-Säule bleibt (nicht über das Seitenfenster)
-  { pivot: new THREE.Vector3(-0.64, 0.884, -0.905), length: 0.62, max: 1.55 },
-  { pivot: new THREE.Vector3(0.06, 0.884, -0.905), length: 0.56, max: 1.75 },
-];
+// Wischer (Fahrer-, dann Beifahrerseite). pivot: Fuß der Achse auf der Scheibe, knapp über ihrer Unterkante;
+// park/max: Winkel des Arms in Parkstellung und am oberen Anschlag (rad; 0 = waagerecht nach rechts, positiv
+// gegen den Uhrzeigersinn aus Fahrersicht); arm: Abstand Achse–Adapter; blade: Wischblatt von … bis (längs des
+// Arms ab der Achse); offset: seitlicher Versatz des Blatts durch die Kröpfung des Arms (zur Wischrichtung hin).
+export const WIPERS = (() => {
+  const W = WINDSHIELD;
+  const foot = (x, u) => W.base.clone().addScaledVector(W.U, u).setX(x);
+  // das Fahrerblatt endet oben parallel zur linken Scheibenkante (A-Säule), 7 cm vor ihr. Die Beifahrerachse sitzt
+  // 20 cm links der Mitte und schwenkt weiter: Bleiben beide im Schauer stehen (STAND in windshield.js), steht aus
+  // Fahrersicht jedes Blatt senkrecht – das Fahrerblatt links im Blick, das Beifahrerblatt nahe der Mitte, links
+  // vom Innenspiegel. Das Beifahrerblatt reicht in Parkstellung rechts neben den Mittelbildschirm hinaus.
+  const edge = Math.atan2(W.length, W.halfBase - W.halfTop);
+  return [
+    { pivot: foot(-0.64, 0.065), park: 0.2, max: edge, arm: 0.41, blade: [0.1, 0.72], offset: 0.022 },
+    { pivot: foot(-0.2, 0.065), park: 0.2, max: 1.83, arm: 0.4, blade: [0.12, 0.68], offset: 0.02 },
+  ];
+})();
 
-// Lenkradkranz: leicht oval (Höhe 0,94 der Breite), die Hände folgen dem Oval
-const RIM_SY = 0.94;
-// Griffwinkel der Hände ab 12 Uhr (Bogenmaß): quer fast „Viertel vor drei“, hochkant auf
-// halb elf und halb zwei – mit Abstand zum Bildrand, zu NOMI und zu den Touch-Knöpfen
-const GRIP_WIDE = 1.32;
+// Kameragehäuse an der Scheibe, an dem der Innenspiegel hängt: ein kleines, weich gepolstertes Kissen, das hinter
+// dem Spiegel beginnt (vom Fahrer aus verdeckt der Spiegel die untere Hälfte) und 10 cm die Scheibe hinaufreicht –
+// bis in den Dachrahmen läge es aus Fahrersicht als dunkles Brett vor dem Himmel. Mitte x, halbe Breite unten und
+// größte, von/bis v längs der Scheibe ab ihrer Unterkante, Dicke unten/oben (unten dünn: Luft zum Spiegel).
+const HOUSING = { x: -0.08, hb: 0.038, hw: 0.045, v0: 0.695, v1: 0.795, t0: 0.011, t1: 0.022 };
+
+// Griffwinkel der Hände ab 12 Uhr (Bogenmaß): quer gut „Viertel vor drei“ (knapp über den Speichen, mit Abstand
+// zu NOMI), hochkant auf halb elf und halb zwei – mit Abstand zum Bildrand und zu den Touch-Knöpfen
+const GRIP_WIDE = 1.2;
 const GRIP_TALL = 0.8;
-// Unterarm ab dem Handgelenk und T-Shirt-Ärmel ab der Schulter (Schulter–Hand sind 0,46–0,66 m,
-// der Arm reicht also immer bis in den Ärmel)
-const ARM_LEN = 0.5;
-const SLEEVE_LEN = 0.2;
-
-function plushMat(color) {
-  return new THREE.MeshPhysicalMaterial({
-    color,
-    roughness: 0.95,
-    sheen: 1,
-    sheenRoughness: 0.5,
-    sheenColor: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.35),
-    bumpMap: fabricTexture(5),
-    bumpScale: 0.5,
-  });
-}
-
-/** Rundes Plüschteil entlang +y aus einem Profil [Radius, Höhe]; die Stoffstruktur wird nicht gestreckt. */
-function plushTube(profile) {
-  const n = profile.length;
-  const g = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), 18);
-  // v nach Bogenlänge des Profils, im selben Maßstab wie u (einmal herum)
-  const around = 2 * Math.PI * Math.max(...profile.map(([r]) => r));
-  const v = [0];
-  for (let j = 1; j < n; j++) v.push(v[j - 1] + Math.hypot(profile[j][0] - profile[j - 1][0], profile[j][1] - profile[j - 1][1]) / around);
-  const uv = g.attributes.uv;
-  for (let i = 0; i < uv.count; i++) uv.setY(i, v[i % n]);
-  return g;
-}
-
-/** Abgerundete Leiste (flache Kapsel) zwischen zwei Punkten, w quer, d in die Tiefe. */
-function roundBeam(a, b, w, d, mat, twist = 0) {
-  const dir = new THREE.Vector3().subVectors(b, a);
-  const len = dir.length();
-  const r = 0.5;
-  const g = new THREE.CapsuleGeometry(r, Math.max(0.001, len / Math.max(w, d) - 2 * r), 6, 16);
-  // Kapsel auf Länge len bringen und abflachen
-  g.scale(w, Math.max(w, d), d);
-  g.translate(0, len / 2, 0);
-  if (twist) g.rotateY(twist);
-  const m = new THREE.Mesh(g, mat);
-  m.position.copy(a);
-  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-  return m;
-}
+// Arme: Schulter–Handgelenk sind 0,59–0,73 m (je nach Griff und Lenkeinschlag) – länger als Mini Adams eigene
+// Plüscharme, deshalb sind sie dehnbar: Ober- und Unterarm (Grundlängen) werden jedes Bild bis zum Ellbogen gestreckt.
+// Der Ellbogen liegt knapp vor der Mitte und hängt etwas nach unten und außen durch (nie im Bild der Ich-Perspektive,
+// aber aus freien Kameras wirken die Arme so weich statt wie Stangen). Der T-Shirt-Ärmel wird nicht gestreckt.
+const UPPER_LEN = 0.3;
+const FORE_LEN = 0.36;
+const SLEEVE_LEN = 0.13;
+const ELBOW = { at: 0.45, down: 0.06, out: 0.035 };
+// Schultern: wo Mini Adams Schultern im Sitz sind (unter und hinter dem Auge; dort sitzen sie auch bei der Figur,
+// die freie Kameras zu sehen bekommen, siehe showDriver)
+const SHOULDER = { dx: 0.165, y: 0.93, z: 0.36 };
+const UP = new THREE.Vector3(0, 1, 0);
+// Stärke des Himmels (Umgebungstextur) in der Kabine; Lack, Klavierlack und Satin spiegeln ihn ungedämpft
+const ENV = 0.5;
+// Kabinenlicht bei Sonne: so viel, dass Anthrazit lesbar bleibt, aber nicht mehr – sonst brennen die hellen
+// Plüschhände aus. Die Formen tragen dafür aufgemalte Schatten (Vertexfarben) und weicher Glanz.
+const LIGHT = { hemi: 2.45, sun: 1.8, back: 1.0 };
 
 /** Rahmen fürs Innenspiegelbild: Dachhimmel, C-Säulen, Hutablage und drei Kopfstützen (wie im Spiegel gesehen). */
 function rearWindowTexture() {
@@ -94,33 +89,56 @@ function rearWindowTexture() {
   const ctx = c.getContext('2d');
   const W = c.width;
   const H = c.height;
-  ctx.fillStyle = '#1c1d20';
+  // Dachhimmel und C-Säulen: Stoff, zur Scheibe hin vom Tageslicht etwas aufgehellt
+  const g = ctx.createRadialGradient(W / 2, H * 0.5, H * 0.3, W / 2, H * 0.5, W * 0.55);
+  g.addColorStop(0, '#474a51');
+  g.addColorStop(1, '#2a2c31');
+  ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
-  // Heckscheibe: oben schmaler, unten breiter, mit runden Ecken
+  // Heckscheibe: groß wie beim Model 3 (das Glasdach reicht bis an sie heran), oben kaum Rahmen, seitlich schmale
+  // C-Säulen, unten die Hutablage
+  const t = H * 0.05;
+  const b = H * 0.86;
+  const opening = () => {
+    ctx.beginPath();
+    ctx.moveTo(W * 0.16, t);
+    ctx.lineTo(W * 0.84, t);
+    ctx.quadraticCurveTo(W * 0.935, t, W * 0.945, t + H * 0.2);
+    ctx.lineTo(W * 0.975, b);
+    ctx.lineTo(W * 0.025, b);
+    ctx.lineTo(W * 0.055, t + H * 0.2);
+    ctx.quadraticCurveTo(W * 0.065, t, W * 0.16, t);
+    ctx.closePath();
+  };
+  // dunkle Einfassung mit weichem Schatten, dann die Scheibe ausstanzen
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+  ctx.shadowBlur = 12;
+  ctx.strokeStyle = '#1e2024';
+  ctx.lineWidth = 9;
+  opening();
+  ctx.stroke();
+  ctx.restore();
   ctx.globalCompositeOperation = 'destination-out';
-  ctx.beginPath();
-  const t = H * 0.12;
-  const b = H * 0.88;
-  ctx.moveTo(W * 0.2, t);
-  ctx.lineTo(W * 0.8, t);
-  ctx.quadraticCurveTo(W * 0.88, t, W * 0.9, t + H * 0.18);
-  ctx.lineTo(W * 0.95, b);
-  ctx.lineTo(W * 0.05, b);
-  ctx.lineTo(W * 0.1, t + H * 0.18);
-  ctx.quadraticCurveTo(W * 0.12, t, W * 0.2, t);
-  ctx.closePath();
+  opening();
   ctx.fill();
   ctx.globalCompositeOperation = 'source-over';
-  // Kopfstützen der Rückbank
-  ctx.fillStyle = '#2a2b2f';
+  // Kopfstützen der Rückbank: oben vom Heckfenster her angeleuchtet
   for (const x of [0.24, 0.5, 0.76]) {
     const w = W * (x === 0.5 ? 0.085 : 0.11);
+    const hg = ctx.createLinearGradient(0, H * 0.7, 0, H * 0.95);
+    hg.addColorStop(0, '#4b4e55');
+    hg.addColorStop(1, '#2d2f34');
+    ctx.fillStyle = hg;
     roundRectPath(ctx, W * x - w / 2, H * 0.7, w, H * 0.4, 26);
     ctx.fill();
   }
   // Hutablage
-  ctx.fillStyle = '#141517';
-  ctx.fillRect(0, H * 0.9, W, H * 0.1);
+  const sg = ctx.createLinearGradient(0, b, 0, H);
+  sg.addColorStop(0, '#383b41');
+  sg.addColorStop(1, '#1f2125');
+  ctx.fillStyle = sg;
+  ctx.fillRect(0, b, W, H - b);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
@@ -141,6 +159,63 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+/** Halbe Breite des Kameragehäuses auf der Höhe k (0 unten … 1 oben): unten schmaler, oben ein runder Bogen. */
+function housingHalf(k) {
+  const { hb, hw } = HOUSING;
+  if (k < 0.45) return lerp(hb, hw, Math.sin((k / 0.45) * Math.PI / 2));
+  const t = (k - 0.45) / 0.55;
+  return hw * Math.sqrt(1 - 0.87 * t * t);
+}
+
+/** Dicke des Kameragehäuses (Abstand seiner Vorderseite vom Glas) bei s (−1 … 1 quer) und k: mittig leicht gewölbt. */
+function housingDepth(s, k) {
+  const { t0, t1 } = HOUSING;
+  const ty = 2 * k - 1;
+  return lerp(t0, t1, k) + 0.004 * Math.max(0, 1 - s * s) * Math.max(0, 1 - ty * ty) + 0.0006;
+}
+
+/**
+ * Kameragehäuse (siehe HOUSING) als Kissen auf dem Glas: Rückseite flach am Glas, Vorderseite weich gewölbt, unten
+ * schmaler und dünner, oben rund. toGlass: Scheibenkoordinaten (x, v, d nach innen) → Fahrzeug.
+ */
+function housingGeometry(toGlass) {
+  const { x, hw, v0, v1, t1 } = HOUSING;
+  const h = v1 - v0;
+  const g = pillow(2 * hw, h, t1, 0.011, 0, 16);
+  return warp(g, (p) => {
+    const k = clamp(p.y / h + 0.5, 0, 1);
+    const s = p.x / hw;
+    const front = clamp(p.z / t1 + 0.5, 0, 1);
+    p.set(x + s * housingHalf(k), v0 + k * h, front * housingDepth(s, k));
+  }).applyMatrix4(toGlass);
+}
+
+const AIM = { x: new THREE.Vector3(), y: new THREE.Vector3(), z: new THREE.Vector3(), m: new THREE.Matrix4() };
+
+/**
+ * Richtet ein Armteil von a nach b aus: lokales +y zeigt nach b, lokales +z so weit wie möglich nach oben (die Nähte
+ * und Schatten der Arme bleiben so, wo sie hingehören). Mit len wird das Teil in y auf die Strecke a–b gestreckt.
+ */
+function aimAlong(obj, a, b, len = 0) {
+  const { x, y, z, m } = AIM;
+  y.subVectors(b, a);
+  const l = y.length();
+  y.multiplyScalar(1 / l);
+  z.copy(UP).addScaledVector(y, -y.y).normalize();
+  x.crossVectors(y, z);
+  obj.quaternion.setFromRotationMatrix(m.makeBasis(x, y, z));
+  obj.position.copy(a);
+  if (len) obj.scale.y = l / len;
+}
+
+/** Abgerundete Leiste (Kapsel) zwischen zwei Punkten, Querschnitt w × d. */
+function roundBeam(a, b, w, d) {
+  const n = 8;
+  const pts = [];
+  for (let i = 0; i <= n; i++) pts.push(a.clone().lerp(b, i / n));
+  return sweep(pts, () => ring(w / 2, d / 2, 14, 2.4), { up: new THREE.Vector3(0, 1, 0) });
+}
+
 export class Cockpit {
   constructor() {
     this.scene = new THREE.Scene();
@@ -148,40 +223,88 @@ export class Cockpit {
     this.root.name = 'Cockpit';
     this.scene.add(this.root);
 
-    this.hemi = new THREE.HemisphereLight(0xc8dcff, 0x40372c, 1.25);
+    // Licht in der Kabine: Das getönte Glasdach dämpft den blauen Himmel (sonst wird alles Anthrazit marineblau),
+    // dafür hellt neutrales Himmelslicht von oben und warmes Streulicht aus dem Innenraum auf. Von hinten fällt
+    // Licht durch Heck- und Seitenfenster auf alles, was zum Fahrer schaut (Stirnseite, Lenkrad, Säulen).
+    this.scene.environmentIntensity = ENV;
+    this.hemi = new THREE.HemisphereLight(0xfff4e6, 0x6b5744, LIGHT.hemi);
     this.scene.add(this.hemi);
-    this.sun = new THREE.DirectionalLight(0xfff0dc, 2.0);
+    this.sun = new THREE.DirectionalLight(0xffeccf, LIGHT.sun);
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
+    this.back = new THREE.DirectionalLight(0xfff3e8, LIGHT.back);
+    this.back.position.set(0, 1.6, 2.2);
+    this.back.target.position.set(0, 0.8, -0.6);
+    this.root.add(this.back, this.back.target);
     this.fill = new THREE.PointLight(0xfff4e8, 0.25, 2.5, 1.2);
     this.fill.position.set(-0.2, 1.25, 0.1);
     this.root.add(this.fill);
 
+    // Sammelmaterialien der Kabine: Formen bringen ihre Farbe als Vertexfarbe mit (samt aufgemalter
+    // Schattierung in Falten und unter Kanten), Struktur kommt als feines Relief aus der Textur
+    const wood = walnutTexture();
+    wood.repeat.set(1, 8);
+    this.MS = {
+      soft: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.74, bumpMap: grainTexture(), bumpScale: 0.35 }),
+      cloth: new THREE.MeshPhysicalMaterial({
+        vertexColors: true, roughness: 0.96, sheen: 0.7, sheenRoughness: 0.6, sheenColor: 0x5d6168, bumpMap: weaveTexture(), bumpScale: 0.6,
+      }),
+      leather: new THREE.MeshPhysicalMaterial({
+        vertexColors: true, roughness: 0.52, bumpMap: leatherTexture(), bumpScale: 0.45, clearcoat: 0.2, clearcoatRoughness: 0.45,
+      }),
+      wood: new THREE.MeshStandardMaterial({ vertexColors: true, map: wood, roughness: 0.46 }),
+      satin: new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.85, roughness: 0.32 }),
+      gloss: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.24, clearcoat: 1, clearcoatRoughness: 0.12 }),
+      perf: new THREE.MeshStandardMaterial({ vertexColors: true, map: perfTexture(), roughness: 0.72 }),
+      label: new THREE.MeshStandardMaterial({ vertexColors: true, map: labelAtlas(), roughness: 0.55 }),
+      plush: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.95, sheen: 1, sheenRoughness: 0.55, sheenColor: 0xffffff, bumpMap: grainTexture(), bumpScale: 0.5 }),
+      // schwarzer Lack (Spiegelgehäuse, Motorhaube): spiegelt den Himmel gedämpft, sonst wird die flach gesehene
+      // Haube zum hellen Band
+      paint: new THREE.MeshPhysicalMaterial({
+        vertexColors: true, metalness: 0.4, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1, envMapIntensity: 0.75,
+      }),
+      // Motorhaube: derselbe Lack, aber fast streifend gesehen – spiegelt dort nur gedämpft (sonst ein helles Band)
+      hood: new THREE.MeshPhysicalMaterial({
+        vertexColors: true, metalness: 0.3, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.12, envMapIntensity: 0.42,
+      }),
+      led: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
+    };
+    // Aufdrucke ohne Rahmen (LIVE-Logo auf der Prallplatte): durchsichtig, über der Fläche
+    const logoTex = liveLogoTexture({ w: 512, h: 512 });
+    this.decal = new THREE.MeshStandardMaterial({
+      vertexColors: true, map: decalAtlas(logoTex.image), transparent: true, depthWrite: false, roughness: 0.5,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    });
+    logoTex.dispose();
+    // Mini Adams Hände und Arme: derselbe Plüsch wie die Figur (Nähte als Vertexfarbe darüber)
+    this.skinMat = plush(COLORS.skin, false);
+    this.skinMat.vertexColors = true;
+    this.shirtMat = plush(COLORS.shirt, false);
+    this.shirtMat.vertexColors = true;
+
+    // weiche Schatten unter allem, was auf dem Armaturenbrett steht
+    this.shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, map: softDotTexture(), transparent: true, opacity: 0.6, depthWrite: false });
+    // Lack, Klavierlack und Satin spiegeln die Umgebung in voller Stärke (siehe update)
+    this.mirrorish = [this.MS.gloss, this.MS.satin, this.MS.paint, this.MS.hood];
+    this.env = null;
+    const S = {};
+    for (const k of Object.keys(this.MS)) S[k] = [];
+    S.shadow = [];
+    this.S = S;
+
     const M = {
-      dashTop: new THREE.MeshStandardMaterial({ color: 0x1d1e21, roughness: 0.86 }),
-      dash: new THREE.MeshStandardMaterial({ color: 0x18191c, roughness: 0.62 }),
-      vent: new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.9 }),
-      wood: new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.42, color: 0xd9c4b0 }),
-      pillar: new THREE.MeshStandardMaterial({ color: 0x26272a, roughness: 0.95 }),
-      door: new THREE.MeshStandardMaterial({ color: 0x1b1c1f, roughness: 0.68 }),
-      chrome: new THREE.MeshStandardMaterial({ color: 0xb9bdc2, metalness: 1, roughness: 0.22 }),
-      rim: new THREE.MeshStandardMaterial({ color: 0x131315, roughness: 0.52 }),
-      spoke: new THREE.MeshStandardMaterial({ color: 0x2b2c30, metalness: 0.55, roughness: 0.32 }),
-      black: new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.3, metalness: 0.2 }),
-      skin: plushMat(0xd9a477),
-      sleeve: plushMat(0x161618),
       wiper: new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.6, metalness: 0.4 }),
     };
     this.M = M;
 
-    this.buildDash(M);
-    this.buildPillars(M);
-    this.buildDoor(M);
-    this.buildWheel(M);
-    this.buildScreen(M);
-    this.buildMirrors(M);
+    buildCabin(S, WINDSHIELD);
+    buildHood(S);
+    this.buildWheel(S);
+    this.buildScreen(S);
+    this.buildMirrors(S);
     this.buildWipers(M);
-    this.buildExtras(M);
+    this.buildExtras(S);
+    this.flush();
 
     this.nomi = new Nomi();
     // ganz innerhalb der Scheibe (mit etwas Abstand), damit die Wischer hinter NOMI vorbeistreichen
@@ -195,193 +318,140 @@ export class Cockpit {
     this.elsaVel = 0;
     this.headOffset = new THREE.Vector3();
     this.shake = 0;
+    this.tmp = { m: new THREE.Matrix4(), w: new THREE.Vector3(), e: new THREE.Vector3() };
+    this.placeArms();
+    this.driver = null;
+    this.eyeWorld = new THREE.Vector3();
+    this.scene.onBeforeRender = (renderer, scene, camera) => this.showDriver(camera);
   }
 
-  buildDash(M) {
-    const sh = new THREE.Shape();
-    const pts = [
-      [-0.92, 0.882], [-0.86, 0.9], [-0.5, 0.913], [-0.455, 0.905], [-0.42, 0.875], [-0.405, 0.85], [-0.405, 0.8],
-      [-0.43, 0.793], [-0.43, 0.776], [-0.395, 0.77], [-0.335, 0.62], [-0.35, 0.42], [-0.92, 0.42],
-    ];
-    sh.moveTo(pts[0][0], pts[0][1]);
-    for (let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], pts[i][1]);
-    sh.closePath();
-    const W = 1.6;
-    const g = new THREE.ExtrudeGeometry(sh, { depth: W, bevelEnabled: false, curveSegments: 4 });
-    g.rotateY(-Math.PI / 2);
-    g.translate(W / 2, 0, 0);
-    const dash = new THREE.Mesh(g, M.dashTop);
-    this.root.add(dash);
-    // Holzleiste über die ganze Breite
-    const woodGeo = new THREE.BoxGeometry(1.5, 0.05, 0.012);
-    const wood = new THREE.Mesh(woodGeo, M.wood);
-    wood.position.set(0.02, 0.826, -0.399);
-    this.root.add(wood);
-    // Luftschlitz (dunkel)
-    const vent = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.014, 0.02), M.vent);
-    vent.position.set(0.02, 0.785, -0.425);
-    this.root.add(vent);
-    // Lautsprecher-Gitter oben auf dem Armaturenbrett (links und rechts)
-    for (const x of [-0.62, 0.62]) {
-      const sp = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.004, 0.08), M.vent);
-      sp.position.set(x, 0.912, -0.78);
-      this.root.add(sp);
+  /** Sammellisten zu je einem Mesh zusammenfassen (wenige Zeichenaufrufe). */
+  flush() {
+    for (const [k, mat] of Object.entries(this.MS)) {
+      const mesh = meshOf(this.S[k], mat);
+      if (mesh) this.root.add(mesh);
     }
-  }
-
-  buildPillars(M) {
-    const W = WINDSHIELD;
-    for (const s of [-1, 1]) {
-      // A-Säule: unten im Armaturenbrett verankert, oben in den Dachrahmen übergehend
-      const a = new THREE.Vector3(s * 0.765, W.base.y - 0.07, W.base.z - 0.03);
-      const b = new THREE.Vector3(s * 0.64, W.top.y + 0.015, W.top.z + 0.0);
-      this.root.add(roundBeam(a, b, 0.085, 0.06, M.pillar));
-      const c = new THREE.Vector3(s * 0.68, W.top.y + 0.035, 0.8);
-      this.root.add(roundBeam(b, c, 0.08, 0.07, M.pillar));
+    const shadow = meshOf(this.S.shadow, this.shadowMat);
+    if (shadow) {
+      shadow.renderOrder = 1;
+      this.root.add(shadow);
     }
-    const header = new THREE.Mesh(new RoundedBoxGeometry(1.34, 0.06, 0.12, 3, 0.025), M.pillar);
-    header.position.set(0, W.top.y + 0.02, W.top.z + 0.03);
-    this.root.add(header);
-    // B-Säule links (sieht man beim Kameraschwenk im Intro)
-    this.root.add(roundBeam(new THREE.Vector3(-0.79, 0.99, 0.34), new THREE.Vector3(-0.665, 1.405, 0.3), 0.09, 0.07, M.pillar));
-    // dunkle Abdeckung am Scheibenfuß (Windlauf), darauf liegen die Wischer. Vom Fahrerplatz (links)
-    // aus sieht man am rechten Säulenfuß schräg an der Säule vorbei, deshalb reicht der Windlauf rechts
-    // bis hinter die Säule (sonst schaut die Straße als Kerbe durch). Viel weiter (0,95 m) darf er nicht,
-    // sonst steht er neben der Säule heraus; links genügt das Ende unter dem Säulenfuß.
-    const COWL_L = -0.8;
-    const COWL_R = 0.925;
-    const cowl = new THREE.Mesh(new THREE.BoxGeometry(COWL_R - COWL_L, 0.11, 0.012), M.vent);
-    cowl.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(W.X, W.U, W.N));
-    cowl.position.copy(W.base).addScaledVector(W.U, -0.01).addScaledVector(W.N, 0.007);
-    cowl.position.x += (COWL_L + COWL_R) / 2;
-    this.root.add(cowl);
+    // getöntes Glasdach und Heckscheibe: von innen ein abgedunkelter Himmel über der Kabine (sonst wirkt sie aus
+    // freien Kameras wie ein Cabrio mit Überrollbügel)
+    const roof = meshOf(roofGlassGeometry(), new THREE.MeshBasicMaterial({ color: 0x0b0e12, transparent: true, opacity: 0.62, depthWrite: false }));
+    roof.renderOrder = 2;
+    this.root.add(roof);
+    this.S = null;
   }
 
-  buildDoor(M) {
-    const door = new THREE.Group();
-    // Türverkleidung links und rechts: Die rechte sieht man nur bei sehr breitem Bild (21:9) neben dem
-    // rechten Säulenfuß, ohne sie schaute dort die Straße bis aufs Armaturenbrett herein
-    for (const s of [-1, 1]) {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.56, 1.35), M.door);
-      panel.position.set(s * 0.8, 0.7, -0.08);
-      door.add(panel);
-      const sill = new THREE.Mesh(new RoundedBoxGeometry(0.075, 0.06, 1.3, 3, 0.025), M.dash);
-      sill.position.set(s * 0.775, 0.975, -0.06);
-      door.add(sill);
-      const wood = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.04, 0.8), M.wood);
-      wood.position.set(s * 0.762, 0.9, -0.1);
-      door.add(wood);
+  /**
+   * Mini Adam selbst sieht nur, wer nicht in seinem Kopf sitzt (freie Kameras im Prüfstand): dann sitzt die Figur
+   * auf ihren Kissen, die langen Plüscharme des Cockpits wachsen aus ihren Schultern. Gebaut wird sie erst beim
+   * ersten Blick von außen – im Spiel kostet sie nichts.
+   */
+  showDriver(camera) {
+    const eye = this.eyeWorld.copy(EYE).applyMatrix4(this.root.matrixWorld);
+    const outside = camera.position.distanceTo(eye) > 0.15;
+    if (outside && !this.driver) {
+      const adam = buildMiniAdam({ curved: false });
+      adam.setPose('drive');
+      // ihre eigenen, kurzen Arme reichen nicht bis ans Lenkrad (führt die Figur ihre Arme als gehäutetes Netz
+      // neben dem Knochen, liegt es in userData.skin und wird ebenfalls ausgeblendet)
+      for (const arm of [adam.armL, adam.armR]) {
+        arm.visible = false;
+        if (arm.userData.skin) arm.userData.skin.visible = false;
+      }
+      const k = SHOULDER.dx / ADAM_DIM.shoulder[0];
+      adam.root.scale.setScalar(k);
+      adam.root.rotation.y = Math.PI;
+      adam.root.position.set(EYE.x, SHOULDER.y - ADAM_DIM.shoulder[1] * k, SHOULDER.z);
+      this.root.add(adam.root);
+      // die Szene hat ihre Matrizen für dieses Bild schon gerechnet – die neue Figur sonst erst im nächsten
+      adam.root.updateMatrixWorld(true);
+      this.driver = adam;
     }
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.4), M.dashTop);
-    arm.position.set(-0.73, 0.76, 0.15);
-    door.add(arm);
-    const btn = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.018, 0.04), M.black);
-    btn.position.set(-0.76, 0.86, -0.32);
-    door.add(btn);
-    this.root.add(door);
+    if (this.driver) this.driver.root.visible = outside;
   }
 
-  buildWheel(M) {
-    // Lenkrad: Kranz, zwei Speichen mit Scrollrädern, Prallplatte mit LIVE-Logo
+  buildWheel(S) {
+    // Lenkrad: dreht sich als Ganzes (eigene Meshes je Material), Säule und Hebel stehen still (Sammellisten)
     const pivot = new THREE.Group();
-    pivot.position.set(-0.37, 0.865, -0.2);
-    pivot.rotation.x = -0.5;
+    pivot.position.copy(WHEEL.c);
+    pivot.rotation.x = -WHEEL.tilt;
+    pivot.updateMatrix();
+    pivot.matrixAutoUpdate = false;
     this.root.add(pivot);
+    this.wheelPivot = pivot;
     const wheel = new THREE.Group();
     pivot.add(wheel);
     this.wheel = wheel;
-    const R = 0.17;
-    const rimGeo = new THREE.TorusGeometry(R, 0.023, 14, 56);
-    rimGeo.scale(1.0, RIM_SY, 1.15);
-    wheel.add(new THREE.Mesh(rimGeo, M.rim));
-    for (const s of [-1, 1]) {
-      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.034, 0.02), M.spoke);
-      spoke.position.set(s * 0.115, -0.01, -0.005);
-      wheel.add(spoke);
-      const scroll = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.01, 16), M.black);
-      scroll.rotation.x = Math.PI / 2;
-      scroll.position.set(s * 0.11, -0.01, 0.009);
-      wheel.add(scroll);
-    }
-    const lower = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.11, 0.02), M.spoke);
-    lower.position.set(0, -0.1, -0.005);
-    wheel.add(lower);
-    const hubGeo = new THREE.CylinderGeometry(0.065, 0.07, 0.04, 28);
-    hubGeo.rotateX(Math.PI / 2);
-    hubGeo.scale(1.25, 0.85, 1);
-    const hub = new THREE.Mesh(hubGeo, M.rim);
-    hub.position.set(0, -0.008, -0.01);
-    wheel.add(hub);
-    const logo = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.075, 0.075),
-      new THREE.MeshStandardMaterial({ map: liveLogoTexture({ w: 256, h: 256 }), transparent: true, roughness: 0.4, alphaTest: 0.2 }),
-    );
-    logo.position.set(0, -0.004, 0.011);
-    wheel.add(logo);
-    // Lenksäule + Hebel
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.24, 14), M.dash);
-    col.rotation.x = Math.PI / 2;
-    col.position.set(0, -0.01, -0.13);
-    pivot.add(col);
-    for (const s of [-1, 1]) {
-      const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.006, 0.14, 8), M.black);
-      stalk.rotation.z = s * (Math.PI / 2 - 0.25);
-      stalk.position.set(s * 0.09, 0.0, -0.08);
-      pivot.add(stalk);
-    }
+    const L = { leather: [], soft: [], satin: [], gloss: [] };
+    const { logo } = buildWheelParts(L);
+    for (const [k, list] of Object.entries(L)) wheel.add(meshOf(list, this.MS[k]));
+    const [u0, v0, u1, v1] = decalUV('live');
+    const uv = logo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + (u1 - u0) * uv.getX(i), v0 + (v1 - v0) * uv.getY(i));
+    const logoMesh = new THREE.Mesh(prep(logo, 0xf4f2ee, { uv: 'keep' }), this.decal);
+    logoMesh.renderOrder = 2;
+    wheel.add(logoMesh);
+    buildColumn(S);
 
     // Mini Adams Plüschhände. Wo sie am Kranz greifen, hängt vom Bildformat ab (setAspect):
-    // quer fast „Viertel vor drei“, damit NOMI frei bleibt, hochkant höher, sonst landen sie
+    // quer gut „Viertel vor drei“, damit NOMI frei bleibt, hochkant höher, sonst landen sie
     // am Bildrand unter den Touch-Knöpfen.
-    this.rimR = R;
-    this.hands = [];
-    for (const s of [-1, 1]) {
-      const hand = new THREE.Group();
-      const palm = new THREE.Mesh(new THREE.SphereGeometry(0.048, 18, 14), M.skin);
-      palm.scale.set(1.05, 0.85, 0.85);
-      palm.position.set(0, 0.005, 0.014);
-      const thumb = new THREE.Mesh(new THREE.SphereGeometry(0.019, 12, 10), M.skin);
-      thumb.position.set(-s * 0.03, -0.012, 0.035);
-      const back = new THREE.Mesh(new THREE.SphereGeometry(0.04, 14, 10), M.skin);
-      back.scale.set(1, 0.7, 0.6);
-      back.position.set(0, 0.01, -0.025);
-      hand.add(palm, thumb, back);
+    const rt = (WHEEL.tr + WHEEL.td) / 2;
+    this.hands = [-1, 1].map((s) => {
+      const hand = new THREE.Mesh(mittenGeometry(s, rt, WHEEL.R), this.skinMat);
       hand.userData.side = s;
       wheel.add(hand);
-      this.hands.push(hand);
-    }
+      return hand;
+    });
+    this.rimR = WHEEL.R;
     this.grip = GRIP_WIDE;
     this.gripTarget = GRIP_WIDE;
     this.gripSet = false;
     this.placeHands();
-    // Arme wie beim Plüsch: kurzer schwarzer T-Shirt-Ärmel an der Schulter, darunter der
-    // hautfarbene Plüscharm bis in die Hand. Beide behalten ihre Form und werden jedes Bild
-    // nur zwischen Schulter und Hand ausgerichtet (der Ärmel ab der Schulter, der Arm ab der Hand).
-    this.arms = [];
-    const foreGeo = plushTube([
-      [0, 0], [0.019, 0.004], [0.028, 0.012], [0.031, 0.024], [0.034, 0.16], [0.037, ARM_LEN - 0.03],
-      [0.032, ARM_LEN - 0.01], [0.018, ARM_LEN - 0.001], [0, ARM_LEN],
-    ]);
-    foreGeo.rotateX(Math.PI); // Handgelenk im Ursprung, der Arm zeigt nach −y (zur Schulter)
-    const sleeveGeo = plushTube([
-      [0, -0.035], [0.03, -0.028], [0.047, -0.012], [0.053, 0.02], [0.056, 0.12], [0.058, SLEEVE_LEN - 0.016],
-      [0.056, SLEEVE_LEN - 0.003], [0.05, SLEEVE_LEN], [0.043, SLEEVE_LEN - 0.008],
-    ]);
-    for (const s of [-1, 1]) {
-      const fore = new THREE.Mesh(foreGeo, M.skin);
-      const sleeve = new THREE.Mesh(sleeveGeo, M.sleeve);
-      this.root.add(fore, sleeve);
-      this.arms.push({ fore, sleeve, shoulder: new THREE.Vector3(-0.37 + s * 0.25, 0.84, 0.3) });
+    // Arme wie beim Plüsch: kurzer schwarzer T-Shirt-Ärmel an der Schulter, darunter der hautfarbene Plüscharm mit
+    // weichem Ellbogen bis in die Hand (placeArms richtet sie jedes Bild aus)
+    const upperGeo = upperArmGeometry(UPPER_LEN);
+    const sleeveGeo = sleeveGeometry(SLEEVE_LEN);
+    this.arms = [-1, 1].map((s) => {
+      const upper = new THREE.Mesh(upperGeo, this.skinMat);
+      const fore = new THREE.Mesh(forearmGeometry(FORE_LEN, s), this.skinMat);
+      const sleeve = new THREE.Mesh(sleeveGeo, this.shirtMat);
+      this.root.add(upper, fore, sleeve);
+      return {
+        upper, fore, sleeve,
+        shoulder: new THREE.Vector3(EYE.x + s * SHOULDER.dx, SHOULDER.y, SHOULDER.z),
+        sag: new THREE.Vector3(s * ELBOW.out, -ELBOW.down, 0),
+      };
+    });
+  }
+
+  /** Hände an den Kranz setzen (Griffwinkel this.grip ab 12 Uhr). */
+  placeHands() {
+    const R = WHEEL.R;
+    for (const hand of this.hands) {
+      const a = hand.userData.side * this.grip;
+      hand.position.set(Math.sin(a) * R, Math.cos(a) * R, 0);
+      hand.rotation.z = -a;
     }
   }
 
-  /** Hände an den Kranz setzen (Griffwinkel this.grip ab 12 Uhr; der Kranz ist leicht oval). */
-  placeHands() {
-    const R = this.rimR;
-    for (const hand of this.hands) {
-      const a = hand.userData.side * this.grip;
-      hand.position.set(Math.sin(a) * R, Math.cos(a) * R * RIM_SY, 0.012);
-      hand.rotation.z = -Math.atan2(Math.sin(a), Math.cos(a) / RIM_SY);
+  /** Ärmel und Oberarm ab der Schulter, Unterarm ab dem Handgelenk ausrichten; beide treffen sich im Ellbogen. */
+  placeArms() {
+    const { m, w, e } = this.tmp;
+    this.wheel.updateMatrix();
+    for (let i = 0; i < 2; i++) {
+      const hand = this.hands[i];
+      hand.updateMatrix();
+      m.multiplyMatrices(this.wheelPivot.matrix, this.wheel.matrix).multiply(hand.matrix);
+      w.copy(WRIST).applyMatrix4(m);
+      const a = this.arms[i];
+      e.lerpVectors(a.shoulder, w, ELBOW.at).add(a.sag);
+      aimAlong(a.sleeve, a.shoulder, e);
+      aimAlong(a.upper, a.shoulder, e, UPPER_LEN);
+      aimAlong(a.fore, w, e, FORE_LEN);
     }
   }
 
@@ -394,43 +464,40 @@ export class Cockpit {
       this.gripSet = true;
       this.grip = this.gripTarget;
       this.placeHands();
+      this.placeArms();
     }
+    this.liveAspect = aspect;
+    setLiveCrop(this.liveDisplay, aspect);
   }
 
-  buildScreen(M) {
+  buildScreen(S) {
     this.screen = new CenterScreen();
     const g = new THREE.Group();
     g.position.set(0.0, 1.03, -0.465);
     g.rotation.x = -0.16;
-    const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.352, 0.226, 0.018), M.black);
-    bezel.position.z = -0.01;
+    g.updateMatrix();
+    this.screenMatrix = g.matrix.clone();
+    const at = (geo) => geo.applyMatrix4(this.screenMatrix);
+    // Rahmen in Klavierlack mit weicher Kante, Fuß auf dem Armaturenbrett
+    S.gloss.push(prep(at(place(rbox(0.352, 0.226, 0.018, 0.006, 3), 0, 0, -0.01)), PAL.gloss));
+    S.soft.push(prep(at(place(rbox(0.06, 0.09, 0.03, 0.008, 3), 0, -0.135, -0.03)), PAL.padLow, { shade: (p) => 0.55 + 0.45 * smoothstep(0.91, 0.95, p.y) }));
+    // Kontaktschatten: die Unterkante des Bildschirms schwebt knapp über dem Armaturenbrett
+    blob(S, 0, dashTopY(0, -0.455), -0.455, 0.2, 0.045);
     const display = new THREE.Mesh(
       new THREE.PlaneGeometry(0.336, 0.21),
       new THREE.MeshBasicMaterial({ map: this.screen.texture, toneMapped: false }),
     );
     display.position.z = 0.0005;
-    const stand = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.03), M.dash);
-    stand.position.set(0, -0.13, -0.03);
-    g.add(bezel, display, stand);
+    g.add(display);
     this.root.add(g);
     this.displayMat = display.material;
   }
 
-  buildMirrors(M) {
+  buildMirrors(S) {
     // Innenspiegel
     const mw = 0.245;
     const mh = 0.072;
-    const shape = new THREE.Shape();
-    const r = 0.03;
-    shape.moveTo(-mw / 2 + r, -mh / 2);
-    shape.lineTo(mw / 2 - r, -mh / 2);
-    shape.quadraticCurveTo(mw / 2, -mh / 2, mw / 2, -mh / 2 + r);
-    shape.lineTo(mw / 2, mh / 2 - r);
-    shape.quadraticCurveTo(mw / 2, mh / 2, mw / 2 - r, mh / 2);
-    shape.lineTo(-mw / 2 + r, mh / 2);
-    shape.quadraticCurveTo(-mw / 2, mh / 2, -mw / 2, mh / 2 - r);
-    shape.lineTo(-mw / 2, -mh / 2 + r);
-    shape.quadraticCurveTo(-mw / 2, -mh / 2, -mw / 2 + r, -mh / 2);
+    const shape = roundedRect(mw, mh, 0.03);
     const glassGeo = new THREE.ShapeGeometry(shape, 6);
     const uv = glassGeo.attributes.uv;
     const pos = glassGeo.attributes.position;
@@ -440,54 +507,56 @@ export class Cockpit {
     // hängt knapp hinter der Scheibe (die Scheibe ist sehr flach, deshalb etwas tiefer als früher)
     mirror.position.set(-0.08, 1.235, -0.225);
     mirror.rotation.set(-0.06, -0.18, 0);
+    mirror.updateMatrix();
     const glass = new THREE.Mesh(glassGeo, this.mirrorMat);
-    glass.position.z = 0.021;
-    const frameGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.022, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.006, bevelSegments: 2 });
-    frameGeo.translate(0, 0, -0.012);
-    const frame = new THREE.Mesh(frameGeo, M.black);
+    glass.position.z = 0.0205;
+    // rahmenlos wie beim Model 3: Das Glas liegt auf einer dünnen Trägerplatte mit schmaler, runder Kante, dahinter
+    // sitzt ein kleineres, weich gerundetes Gehäuse – von vorn verdeckt, vom Beifahrer aus ein glatter Kiesel.
+    // Die Rückseite (z = −0,004) trägt das Kugelgelenk des Spiegelfußes.
+    const carrier = new THREE.ExtrudeGeometry(shape, { depth: 0.002, bevelEnabled: true, bevelSize: 0.0018, bevelThickness: 0.0016, bevelSegments: 2, curveSegments: 4 });
+    carrier.translate(0, 0, 0.0167);
+    S.gloss.push(prep(carrier.applyMatrix4(mirror.matrix), PAL.mirror));
+    const shell = new THREE.ExtrudeGeometry(roundedRect(mw - 0.036, mh - 0.024, 0.022), { depth: 0.008, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.006, bevelSegments: 3, curveSegments: 4 });
+    shell.translate(0, 0, 0.002);
+    S.gloss.push(prep(shell.applyMatrix4(mirror.matrix), PAL.mirror, { shade: (p) => 0.75 + 0.25 * smoothstep(1.2, 1.26, p.y) }));
     // im Spiegel sieht man das Heckfenster mit C-Säulen, Dachhimmel und Kopfstützen
     const maskGeo = glassGeo.clone();
     const mUv = maskGeo.attributes.uv;
     for (let i = 0; i < mUv.count; i++) mUv.setXY(i, pos.getX(i) / mw + 0.5, pos.getY(i) / mh + 0.5);
     this.mirrorFrame = new THREE.Mesh(maskGeo, new THREE.MeshBasicMaterial({ map: rearWindowTexture(), transparent: true, depthWrite: false }));
-    this.mirrorFrame.position.z = 0.0215;
-    mirror.add(frame, glass, this.mirrorFrame);
+    this.mirrorFrame.position.z = 0.021;
+    mirror.add(glass, this.mirrorFrame);
     this.root.add(mirror);
 
-    // Kameragehäuse oben an der Frontscheibe (wie beim Model 3), daran hängt der Innenspiegel
+    // Kameragehäuse an der Frontscheibe (wie beim Model 3, nur kompakter): ein weiches Kissen, oben rund, das flach
+    // auf dem Glas liegt und zum Innenraum hin gewölbt ist; der Spiegel hängt mit einem kurzen Kugelgelenk daran
     const W = WINDSHIELD;
+    // Scheibenkoordinaten (x quer, v längs ab der Unterkante, d nach innen) → Fahrzeug; öffentlich wie bisher
     const toGlass = new THREE.Matrix4().makeBasis(W.X, W.U, W.N.clone().negate()).setPosition(W.base);
-    const hs = new THREE.Shape();
-    const hx = -0.07; // Mitte des Gehäuses (über dem Spiegel)
-    const hb = 0.048; // halbe Breite unten
-    const ht = 0.088; // halbe Breite oben
-    const v0 = 0.85;
-    const v1 = 0.95;
-    hs.moveTo(hx - hb + 0.025, v0);
-    hs.lineTo(hx + hb - 0.025, v0);
-    hs.quadraticCurveTo(hx + hb, v0, hx + hb + 0.003, v0 + 0.025);
-    hs.lineTo(hx + ht, v1);
-    hs.lineTo(hx - ht, v1);
-    hs.lineTo(hx - hb - 0.003, v0 + 0.025);
-    hs.quadraticCurveTo(hx - hb, v0, hx - hb + 0.025, v0);
-    const sensorGeo = new THREE.ExtrudeGeometry(hs, { depth: 0.014, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.006, bevelSegments: 2, curveSegments: 6 });
-    sensorGeo.translate(0, 0, 0.007);
-    sensorGeo.applyMatrix4(toGlass);
-    const sensorBox = new THREE.Mesh(sensorGeo, M.dash);
-    // kurzer Spiegelfuß mit Kugelgelenk am Spiegelrücken
-    const onGlass = (x, v, d) => new THREE.Vector3(x, v, d).applyMatrix4(toGlass);
-    const footTop = onGlass(-0.08, 0.862, 0.024);
-    const footEnd = new THREE.Vector3(-0.08, 1.258, -0.243);
-    const footDir = footEnd.clone().sub(footTop);
-    const footGeo = new THREE.CylinderGeometry(0.008, 0.011, footDir.length(), 10);
-    footGeo.translate(0, footDir.length() / 2, 0);
-    const foot = new THREE.Mesh(footGeo, M.black);
-    foot.position.copy(footTop);
-    foot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), footDir.normalize());
-    const joint = new THREE.Mesh(new THREE.SphereGeometry(0.013, 12, 8), M.black);
-    joint.position.copy(footEnd);
-    this.root.add(sensorBox, foot, joint);
-    this.mirrorHousing = { toGlass, onGlass };
+    this.mirrorHousing = { toGlass, onGlass: (x, v, d) => new THREE.Vector3(x, v, d).applyMatrix4(toGlass) };
+    S.cloth.push(prep(housingGeometry(toGlass), PAL.cloth, {
+      // zum Glas hin im Schatten, die gewölbte Vorderseite fängt Licht durchs Heckfenster (sonst ein dunkler Fleck
+      // vor dem Himmel)
+      shade: (p, n) => {
+        const d = -(p.clone().sub(W.base).dot(W.N));
+        return (0.62 + 0.38 * smoothstep(0.002, 0.016, d)) * (0.9 + 0.55 * clamp(-n.dot(W.N), 0, 1));
+      },
+      uv: 'keep',
+    }));
+    // die Innenraumkamera des Autos (wie beim Model 3 knapp über dem Spiegel): Zierring und dunkle Linse
+    const kLens = 0.85;
+    const lensAt = new THREE.Vector3(HOUSING.x, HOUSING.v0 + kLens * (HOUSING.v1 - HOUSING.v0), housingDepth(0, kLens) - 0.0008);
+    const lensM = new THREE.Matrix4().makeBasis(W.X, W.N.clone().negate(), W.U.clone().negate()).setPosition(lensAt.applyMatrix4(toGlass));
+    const lensRing = lathe([[0.0036, 0], [0.0056, 0], [0.0056, 0.0012, 0.0006], [0.0046, 0.0019, 0.0006], [0.0036, 0.0015]], 20);
+    S.satin.push(prep(lensRing.applyMatrix4(lensM), PAL.satin));
+    const lensGlass = new THREE.SphereGeometry(0.0046, 18, 5, 0, Math.PI * 2, 0, 0.9);
+    lensGlass.translate(0, 0.0014 - 0.0046 * Math.cos(0.9), 0);
+    S.gloss.push(prep(lensGlass.applyMatrix4(lensM), 0x0d1a2c));
+    // Kugelgelenk: sitzt am Spiegelrücken und steckt mit einem kurzen Hals in der Unterseite des Gehäuses
+    const footEnd = new THREE.Vector3(-0.08, 1.258, -0.2385);
+    const footTop = new THREE.Vector3(-0.08, 1.278, -0.243);
+    S.gloss.push(prep(roundBeam(footTop, footEnd, 0.013, 0.011), PAL.mirror));
+    S.gloss.push(prep(place(new THREE.SphereGeometry(0.0105, 16, 12), footEnd.x, footEnd.y, footEnd.z), PAL.mirror));
 
     // Außenspiegel links (zeigt den linken Teil der Rückansicht): Model-3-Form – außen groß
     // gerundet, innen niedriger und straffer –, Gehäuse als gerundete Schale nach vorne,
@@ -495,8 +564,8 @@ export class Cockpit {
     const side = new THREE.Group();
     side.position.set(-1.0, 1.045, -0.6);
     side.rotation.y = 0.62;
-    const housingMat = new THREE.MeshPhysicalMaterial({ color: 0x050607, metalness: 0.5, roughness: 0.3, clearcoat: 1 });
-    const housing = new THREE.Mesh(mirrorHousingGeometry(-1), housingMat);
+    side.updateMatrix();
+    S.paint.push(prep(mirrorHousingGeometry(-1).applyMatrix4(side.matrix), 0x0b0c0e, { uv: 'keep' }));
     const sGeo = new THREE.ShapeGeometry(mirrorShape(0.9, -1), 12);
     sGeo.computeBoundingBox();
     const bb = sGeo.boundingBox;
@@ -511,11 +580,10 @@ export class Cockpit {
     this.sideMirrorMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const sGlass = new THREE.Mesh(sGeo, this.sideMirrorMat);
     sGlass.position.z = 0.002;
-    side.add(housing, sGlass);
-    side.updateMatrix();
+    side.add(sGlass);
     const armEnd = new THREE.Vector3(0.095, -0.028, -0.05).applyMatrix4(side.matrix);
-    const arm = roundBeam(new THREE.Vector3(-0.79, 0.99, -0.66), armEnd, 0.05, 0.035, housingMat);
-    this.root.add(side, arm);
+    S.soft.push(prep(roundBeam(new THREE.Vector3(-0.79, 0.99, -0.66), armEnd, 0.05, 0.035), 0x26282c, { uv: 'keep' }));
+    this.root.add(side);
   }
 
   setMirrorTexture(tex) {
@@ -526,6 +594,13 @@ export class Cockpit {
     this.mirrorFrame.visible = true;
   }
 
+  /** Das Live-Display der Action-Cam zeigt das Weltbild (main.js reicht die Textur des Welt-Renderziels herein). */
+  setLiveTexture(tex) {
+    const u = this.liveDisplay.material.uniforms;
+    u.tLive.value = tex;
+    u.uOn.value = tex ? 1 : 0;
+  }
+
   /** Innenspiegel zeigt die Kofferraum-Kamera (ohne Heckfenster-Rahmen), der Außenspiegel bleibt. */
   setTrunkView(tex) {
     this.mirrorMat.map = tex;
@@ -533,53 +608,42 @@ export class Cockpit {
     this.mirrorFrame.visible = false;
   }
 
-  buildWipers(M) {
-    const W = WINDSHIELD;
-    const basis = new THREE.Matrix4().makeBasis(W.X, W.U, W.N.clone().negate());
-    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
-    this.wiperObjs = WIPERS.map((wp) => {
-      const pivot = new THREE.Group();
-      pivot.position.copy(wp.pivot).addScaledVector(W.N, 0.02);
-      pivot.quaternion.copy(q);
-      const arm = new THREE.Group();
-      pivot.add(arm);
-      const armMesh = new THREE.Mesh(new THREE.BoxGeometry(wp.length, 0.016, 0.012), M.wiper);
-      armMesh.position.set(wp.length / 2, 0, -0.012);
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(wp.length * 0.92, 0.022, 0.008), M.wiper);
-      blade.position.set(wp.length * 0.52, 0.01, -0.001);
-      arm.add(armMesh, blade);
-      this.root.add(pivot);
-      return arm;
-    });
+  buildWipers() {
+    this.wipers = buildWipers(WINDSHIELD, WIPERS);
+    this.root.add(this.wipers.group);
   }
 
-  buildExtras(M) {
-    // Stream-Kamera mit rotem REC-Licht: filmt durch die Frontscheibe nach vorne und sitzt
-    // links oben am Kameragehäuse des Innenspiegels (Mini Adam sieht nur die Rückseite)
-    const cam = new THREE.Group();
-    cam.position.copy(this.mirrorHousing.onGlass(-0.098, 0.9, 0.049));
-    const body = new THREE.Mesh(new RoundedBoxGeometry(0.06, 0.044, 0.036, 2, 0.006), M.black);
-    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.012, 16), new THREE.MeshStandardMaterial({ color: 0x1a2a3a, metalness: 0.9, roughness: 0.1 }));
-    lens.rotation.x = Math.PI / 2;
-    lens.position.z = -0.022;
-    this.recLed = new THREE.Mesh(new THREE.SphereGeometry(0.0055, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff2020, toneMapped: false }));
-    this.recLed.position.set(0.019, -0.008, 0.0175);
-    // Klemme zum Gehäuse
-    const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, 0.03), M.black);
-    clamp.position.set(0, 0.026, -0.004);
-    cam.add(body, lens, this.recLed, clamp);
-    this.root.add(cam);
+  buildExtras(S) {
+    // Stream-Technik: Action-Cam an der Scheibe (ihr roter REC-Punkt ist recLed, main.js blendet ihn unter dem
+    // Chat aus), Facecam auf dem Bildschirm, Bonding-Box auf dem Armaturenbrett, Kabel
+    const rig = buildRig(S, {
+      W: WINDSHIELD, screenM: this.screenMatrix, eye: EYE, onPillar: (t) => pillarPoint(WINDSHIELD, 1, t, 1.25, 0.004),
+    });
+    this.recLed = rig.led;
+    this.liveDisplay = rig.display;
+    this.rigOnGlass = rig.glass;
+    this.root.add(rig.led, rig.display);
+    // Mitbringsel: Bananensaft und Dampfcola in den Becherhaltern, Megafon und Pandamütze auf dem Beifahrersitz
+    buildProps(S, { x: 0.37, y: SEAT.y + SEAT.h / 2 + SEAT.puff, z: SEAT.z, tilt: SEAT.tilt });
+    // NOMI steht auf dem Armaturenbrett
+    blob(S, -0.27, dashTopY(-0.27, -0.53), -0.53, 0.058, 0.05);
 
     // Wackel-Elsa (Shop)
     this.elsa = buildElsa({ curved: false });
+    // aus 38 Einzelteilen werden 8 (je Material eins, die winkenden Flossen bleiben beweglich)
+    mergeByMaterial(this.elsa, [this.elsa.userData.finL, this.elsa.userData.finR]);
     this.elsa.scale.setScalar(0.11);
     this.elsaSpring = new THREE.Group();
-    this.elsaSpring.position.set(-0.6, 0.913, -0.68);
+    this.elsaSpring.position.set(-0.6, dashTopY(-0.6, -0.68), -0.68);
     this.elsaSpring.rotation.y = 0.5;
-    const springBase = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.012, 16), M.black);
-    this.elsaSpring.add(springBase, this.elsa);
-    // die Schwanzflosse steht auf dem Rand des Sockels (Oberkante bei y = 0.006)
-    this.elsa.position.y = 0.0045;
+    const springBase = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.012, 24), new THREE.MeshPhysicalMaterial({ color: PAL.gloss, roughness: 0.3, clearcoat: 1 }));
+    springBase.position.y = 0.006;
+    const springShadow = new THREE.Mesh(new THREE.PlaneGeometry(0.075, 0.075).rotateX(-Math.PI / 2), this.shadowMat);
+    springShadow.position.y = 0.0012;
+    springShadow.renderOrder = 1;
+    this.elsaSpring.add(springBase, springShadow, this.elsa);
+    // die Schwanzflosse steht auf dem Rand des Sockels (Oberkante bei y = 0.012)
+    this.elsa.position.y = 0.0105;
     this.elsaSpring.visible = false;
     this.root.add(this.elsaSpring);
 
@@ -600,10 +664,20 @@ export class Cockpit {
     const zq = new THREE.Quaternion();
     const colors = [0xff3b6b, 0xffd23f, 0x3bceac, 0x5a8dee, 0xff8c42, 0xb47cff, 0xffffff];
     const c = new THREE.Color();
-    for (let i = 0; i < n && this.confetti.count < 400; i++) {
+    // nicht dort, wo etwas am Glas sitzt oder es berührt: Spiegelgehäuse, Saugnapf und Kabel der Action-Cam,
+    // Oberkante des Bildschirms mit der Facecam (ein Schnipsel stäke sonst darin oder läge davor)
+    const busy = [
+      [HOUSING.x - HOUSING.hw - 0.02, HOUSING.x + HOUSING.hw + 0.02, HOUSING.v0 - 0.025, HOUSING.v1 + 0.02],
+      [-0.21, 0.21, 0.4, 0.58],
+      ...this.rigOnGlass,
+    ];
+    const blocked = (x, u) => busy.some(([x0, x1, u0, u1]) => x > x0 && x < x1 && u > u0 && u < u1);
+    for (let i = 0, tries = 0; i < n && this.confetti.count < 400 && tries < n * 4; tries++) {
       const u = Math.random() * W.length * 0.9 + 0.03;
       const half = W.halfBase + (W.halfTop - W.halfBase) * (u / W.length) - 0.05;
       const x = (Math.random() * 2 - 1) * half;
+      if (blocked(x, u)) continue;
+      i++;
       const p = W.base.clone().addScaledVector(W.U, u);
       p.x = x;
       p.addScaledVector(W.N, -0.006);
@@ -642,7 +716,8 @@ export class Cockpit {
   }
 
   /**
-   * @param {object} st steer (-1..1), speed (m/s), latAcc, t, dt, wiperAngles [a, b], sunDir, overcast
+   * @param {object} st steer (-1..1), speed (m/s), latAcc, t, dt, wiperAngles [a, b], sunDir, overcast,
+   *   adam (Animationswerte der Figur, wie sie main.js für Mini Adam im Auto und in der Facecam rechnet)
    */
   update(st) {
     const { dt, t } = st;
@@ -654,26 +729,9 @@ export class Cockpit {
       this.grip = Math.abs(this.grip - this.gripTarget) < 0.002 ? this.gripTarget : damp(this.grip, this.gripTarget, 5, dt);
       this.placeHands();
     }
-    // Arme ausrichten: Ärmel ab der Schulter, Unterarm ab der Hand, beide Richtung Schulter → Hand
-    this.root.updateMatrixWorld(true);
-    const inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert();
-    const hp = new THREE.Vector3();
-    const dir = new THREE.Vector3();
-    const up = new THREE.Vector3(0, 1, 0);
-    this.arms.forEach((a, i) => {
-      this.hands[i].getWorldPosition(hp);
-      hp.applyMatrix4(inv);
-      dir.subVectors(hp, a.shoulder).normalize();
-      a.sleeve.position.copy(a.shoulder);
-      a.sleeve.quaternion.setFromUnitVectors(up, dir);
-      a.fore.position.copy(hp);
-      a.fore.quaternion.copy(a.sleeve.quaternion);
-    });
+    this.placeArms();
     // Wischer
-    if (st.wiperAngles) {
-      this.wiperObjs[0].rotation.z = st.wiperAngles[0];
-      this.wiperObjs[1].rotation.z = st.wiperAngles[1];
-    }
+    if (st.wiperAngles) this.wipers.set(st.wiperAngles, st.wiperFlex, 1 - 0.35 * (st.overcast || 0));
     // Wackel-Elsa: Feder-Dämpfer auf Querbeschleunigung
     if (this.elsaSpring.visible) {
       const k = 60;
@@ -692,8 +750,21 @@ export class Cockpit {
       this.sun.position.copy(this.root.position).addScaledVector(st.sunDir, 10);
       this.sun.target.position.copy(this.root.position);
     }
-    this.sun.intensity = 2.1 * (1 - o * 0.85);
-    this.hemi.intensity = 1.2 - o * 0.25;
+    this.sun.intensity = LIGHT.sun * (1 - o * 0.85);
+    this.hemi.intensity = LIGHT.hemi - o * 0.4;
+    this.back.intensity = LIGHT.back - o * 0.25;
+    // Spiegelnde Teile bekommen die Umgebung direkt (mit eigener Stärke), sobald main.js sie setzt oder tauscht
+    const env = this.scene.environment;
+    if (env !== this.env) {
+      this.env = env;
+      for (const m of this.mirrorish) {
+        m.envMap = env;
+        m.needsUpdate = true;
+      }
+    }
+    // Mit eigener envMap gilt die Drehung des Materials, nicht die der Szene: mit dem Kurs mitdrehen wie die Welt
+    for (const m of this.mirrorish) m.envMapRotation.copy(this.scene.environmentRotation);
+    if (this.driver && this.driver.root.visible) this.driver.animate(t, st.adam || { steer: st.steer });
     this.nomi.update(dt, t, -0.16);
     this.screen.update(dt, st.screen);
   }

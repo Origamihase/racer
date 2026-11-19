@@ -13,10 +13,12 @@ import { installDebug } from './world/xxl/debug.js';
 import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
+import { createNatureKit } from './world/kit/nature.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
 import { Cockpit } from './cockpit/cockpit.js';
+import { Facecam } from './cockpit/facecam.js';
 import { Windshield, createCompositeMaterial } from './fx/windshield.js';
 import { Rain } from './fx/rain.js';
 import { Audio } from './audio.js';
@@ -101,9 +103,13 @@ scene.add(tesla.root);
 const cockpit = new Cockpit();
 // letzter Karosserie-Punkt vom Fahrerplatz aus: Haube springt vorn auf und zittert, Dampf, ab und zu ein Ruckeln
 const cabinDamage = new CabinDamage(cockpit, tesla.damageHooks);
+// Facecam (unten links in der Cockpit-Ansicht): eigenes kleines Studio mit eigenem Mini Adam am gleichen Lenkrad
+const facecam = new Facecam();
+facecam.setWheel(tesla.adam.wheel.m, tesla.adam.wheel.r);
 cockpit.scene.environment = sky.envTarget.texture;
 sky.onEnv = (tex) => {
   cockpit.scene.environment = tex;
+  facecam.scene.environment = tex;
 };
 // Verlauf der Straße: im klassischen Spiel ein entworfener Endlos-Kurs. Die XXL-Welt entwirft ihn aus der Karte
 // (MapPlanner) für die Abschnitte ihrer Fahrt (courseTrip = xxl.trip, siehe xxlStart): Autobahn, Landstraße und
@@ -137,13 +143,19 @@ function drawSize() {
 }
 drawSize();
 const worldRT = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: quality.msaa, depthBuffer: true });
+// das Rückdisplay der Action-Cam im Cockpit zeigt das Weltbild (kein eigenes Rendern)
+cockpit.setLiveTexture(worldRT.texture);
 const mirrorRT = new THREE.WebGLRenderTarget(768, 226, { type: THREE.HalfFloatType, samples: 4, depthBuffer: true });
 cockpit.setMirrorTexture(mirrorRT.texture);
+// durch die Heckscheibe der Facecam sieht man, was hinter dem Auto ist
+facecam.setRearView(mirrorRT.texture);
 const compMat = createCompositeMaterial(worldRT.texture, windshield);
 const compScene = new THREE.Scene();
 const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compMat);
 quad.frustumCulled = false;
 compScene.add(quad);
+// Die Regentropfen liegen außen auf der Frontscheibe: im Cockpitbild hinter allem im Innenraum und hinter den Wischern
+cockpit.root.add(windshield.layer);
 const compCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const U = compMat.uniforms;
 // Bildeffekte über dem fertigen Bild aus Welt und Cockpit (sonst wirkt das Cockpit wie aufgeklebt):
@@ -270,6 +282,7 @@ speech.enabled = settings.speech;
 const input = new Input();
 const ui = new UI(app);
 ui.setChat(settings.chat);
+ui.setFacecam(settings.facecam !== false);
 
 // Touch-Knöpfe (nur auf Geräten mit Touchscreen sichtbar)
 const touchEl = document.createElement('div');
@@ -322,6 +335,7 @@ const uiFacade = {
   toast: (t, k, sub) => ui.toast(t, k, sub),
   banner: (t, d, sub) => ui.banner(t, d, sub),
   nomi: (t, d) => ui.nomi(t, d),
+  studio: (t, d) => ui.studio(t, d),
   money: (a, l) => ui.money(a, l),
   durchsage: (l, t, d, b) => ui.durchsage(l, t, d, b),
   rahmen: (r, b) => ui.rahmen(r, b),
@@ -337,6 +351,117 @@ const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, 
 // Krümmung (1/m, links positiv) und Steigung unter dem Wagen für die Lenkung: course.fill() misst sie am Ende jedes
 // Bildes, also genau dort, wo das nächste beginnt; beim Fahren gehen sie mit den Eingaben (ctl) an game.update
 const courseEnv = { kappa: 0, grade: 0 };
+
+// --- Mini Adams Mimik ------------------------------------------------------------------
+// Spielereignisse kommen über game.onMood und werden zu Stimmung, Geste und Blick – für beide Figuren gleich: die im
+// Auto (Drohne, Titel, Abspann) und die in der Facecam. Eine Stimme hat Adam nicht: er „redet“ in kurzen Stücken mit
+// dem Chat (Mund im Silbentakt, Blick in die Kamera) und hört zu, solange NOMI oder eine Sprachdurchsage spricht.
+const adams = [tesla.adam, facecam.adam];
+const adamCtl = { talkFrom: 0, talkUntil: 0, talk: 0, chatK: 0, nextChat: 14, megafon: -1, voice: null, camUntil: 0, quiet: 0, doze: 0, wiperT: 0 };
+const hash01 = (k) => {
+  const x = Math.sin(k * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+function adamDo(fn) {
+  for (const a of adams) fn(a);
+  // dazu die Figur, die freie Kameras im Cockpit sehen (baut das Cockpit erst beim ersten Blick von außen)
+  if (cockpit.driver) fn(cockpit.driver);
+}
+/** In die Kamera schauen; so lange zieht ihn auch NOMI nicht weg. */
+function adamToCamera(sec) {
+  adamDo((a) => a.lookAt('camera', sec));
+  adamCtl.camUntil = Math.max(adamCtl.camUntil, simT + sec);
+}
+/** Adam spricht in inSec Sekunden für dur Sekunden (verlängert, was schon läuft). */
+function adamSay(dur, inSec = 0) {
+  const c = adamCtl;
+  const from = simT + inSec;
+  if (from > c.talkUntil) c.talkFrom = from;
+  c.talkUntil = Math.max(c.talkUntil, from + dur);
+}
+/** Stimmung aus dem Spiel (MOODS in adamMimic.js) oder ein Auftritt: wave, donation, cheer, wiper, megafon. */
+function adamMood(name, k = 1) {
+  adamCtl.quiet = 0;
+  switch (name) {
+    case 'wave':
+      // Begrüßung zum Start: in die Kamera schauen, winken, „Hallo Chat!“
+      adamDo((a) => {
+        a.gesture('wave');
+        a.setMood('happy', 2.4, 0.6);
+      });
+      adamToCamera(2.6);
+      adamSay(1.6, 0.5);
+      break;
+    case 'donation':
+      // kurz aufs Handy mit dem Chat, freuen, bedanken; bei großen Spenden jubelt er
+      adamDo((a) => {
+        a.lookAt('chat', 1.1);
+        a.setMood('happy', 1.4 + 1.6 * k, 0.45 + 0.55 * k);
+        if (k >= 0.75) a.gesture('cheer');
+      });
+      adamSay(1.2 + k, 1.2);
+      break;
+    case 'cheer':
+      // Ziel erreicht
+      adamDo((a) => {
+        a.gesture('cheer');
+        a.setMood('happy', 3, k);
+      });
+      adamToCamera(2.2);
+      adamSay(2, 0.9);
+      break;
+    case 'wiper':
+      // der Wischer zuckt nur: hinschauen – im Schauer zucken die stehenden Wischer alle paar Sekunden, dann schaut er
+      // nur ab und zu hin (sonst blickte er den ganzen Schauer lang nach oben und nie mehr in die Kamera)
+      if (simT < adamCtl.wiperT) break;
+      adamCtl.wiperT = simT + 6 + 4 * hash01(simT);
+      adamDo((a) => a.setMood('rain', 2.2, k));
+      break;
+    case 'megafon':
+      // durchs Megafon spricht er selbst (k = Dauer)
+      adamCtl.megafon = simT + k;
+      adamSay(k, 0.1);
+      break;
+    default:
+      adamDo((a) => a.setMood(name, undefined, k));
+  }
+}
+game.onMood = adamMood;
+
+/** Pro Bild: Sprechen, Zuhören und Müdigkeit (leerer Akku) zu den Animationswerten o dazurechnen. */
+function adamFrame(dt, o) {
+  const c = adamCtl;
+  const cur = speech.current;
+  // wer gerade spricht (während des Megafons ist er es selbst)
+  const voice = cur && simT > c.megafon ? cur.voiceKey : null;
+  if (voice !== c.voice) {
+    if (simT > c.camUntil) {
+      if (voice === 'board') adamDo((a) => a.lookAt('nomi', 1.4));
+      else if (voice) adamDo((a) => a.lookAt('chat', 1.6));
+    }
+    c.voice = voice;
+  }
+  // von selbst ab und zu ein paar Worte in die Kamera – nur in der Fahrt und wenn sonst niemand spricht
+  if (state === 'drive' && !voice) {
+    c.nextChat -= dt;
+    if (c.nextChat <= 0) {
+      c.chatK++;
+      c.nextChat = 16 + 26 * hash01(c.chatK);
+      const dur = 1.4 + 2.2 * hash01(c.chatK + 0.5);
+      adamSay(dur);
+      adamToCamera(dur + 0.3);
+    }
+  }
+  const talking = simT >= c.talkFrom && simT < c.talkUntil && !voice;
+  c.talk = clamp(c.talk + (talking ? dt / 0.15 : -dt / 0.25), 0, 1);
+  o.talk = c.talk;
+  // müde: fast leerer Akku, oder lange passiert nichts (dann langsam schwere Lider, bis das nächste Ereignis kommt)
+  c.quiet = state === 'drive' && !voice ? c.quiet + dt : 0;
+  c.doze = clamp(c.doze + (c.quiet > 50 ? dt / 12 : -dt / 0.6), 0, 1);
+  const battery = state === 'drive' ? clamp((14 - game.player.battery) / 14, 0, 1) : 0;
+  o.sleepy = Math.max(battery * 0.85, c.doze * 0.5);
+  return o;
+}
 
 // --- Zustände ------------------------------------------------------------------
 let state = 'loading';
@@ -407,6 +532,7 @@ function applyCosmetics() {
   const up = save.upgrades;
   tesla.setStarlink(!!up.starlink);
   tesla.setVest(!!up.weste);
+  facecam.adam.setVest(!!up.weste);
   cockpit.setElsa(!!up.elsa);
 }
 
@@ -426,6 +552,7 @@ function applySettings(key) {
   speech.enabled = settings.speech;
   if (!settings.speech) speech.stopAll();
   ui.setChat(settings.chat);
+  ui.setFacecam(settings.facecam !== false);
   if (!key || key === 'quality') {
     const before = quality;
     quality = qualityPreset();
@@ -515,8 +642,8 @@ function finishRun() {
   save.stats.totalKm += km;
   save.stats.naviReached += o.stats.naviReached;
   save.stats.crashes += o.stats.crashes;
-  save.stats.leftLaneEuro += o.breakdown['Linke Spur'] || 0;
   storeSave(save);
+  if (newRecord) adamMood('proud');
   lastOver = { ...o, newRecord, best: save.best.distance, wallet: save.wallet, photos: ui.photos.slice() };
 }
 
@@ -1182,8 +1309,12 @@ function adaptResolution(dt) {
 
 // --- Rendern --------------------------------------------------------------------------
 let frameNo = 0;
+// Lage der Facecam in diesem Bild (ui.placeFacecam) oder null
+let facecamBox = null;
 function renderWorld(cam, { cockpitOn, drops }) {
   tesla.root.visible = !cockpitOn;
+  // Ist der Wagen von außen zu sehen (Drohne, Titel, Blitzerfoto), stehen seine Wischer wie im Cockpit
+  if (!cockpitOn) tesla.setWipers(windshield.angles[0], windshield.angles[1]);
   renderer.shadowMap.needsUpdate = quality.shadows;
   renderer.setRenderTarget(worldRT);
   renderer.render(scene, cam);
@@ -1229,6 +1360,18 @@ function renderFrame(cockpitOn) {
     renderer.clearDepth();
     renderer.render(cockpit.scene, cockpitCam);
     postPass();
+    // Facecam als Teil des Stream-Overlays über allem (Rahmen aus ui.js); neu gefilmt nur jedes 2. bzw. 3. Bild,
+    // in der Pause gar nicht
+    const fc = facecamBox;
+    if (fc) {
+      // (nach einem Zeitsprung – Pause, Test – sofort, damit nie ein altes Bild stehen bleibt)
+      const due = !paused && (frameNo % Math.max(2, quality.mirrorEvery) === 0 || Math.abs(simT - facecam.shotT) > 0.3);
+      if (!facecam.ready || due) {
+        facecam.render(renderer, fc, settings.quality === 'auto' ? 'hoch' : settings.quality);
+        facecam.shotT = simT;
+      }
+      facecam.draw(renderer, fc, { alpha: fc.alpha, glitch: U.uGlitch.value, t: simT });
+    }
     renderer.autoClear = true;
   }
 }
@@ -1382,6 +1525,8 @@ function step(dt, { render = true } = {}) {
         state = 'drive';
         stateT = 0;
         ui.show(true);
+        // die Facecam geht an: Mini Adam schaut hinein und winkt
+        adamMood('wave');
         // beim ersten Start auf diesem Gerät „So steuerst du“, danach der kurze Tipp
         if (!showDriveHint(ui, input.lastDevice, driveSettings(settings))) {
           ui.toast(matchMedia('(pointer: coarse)').matches ? 'Tipp: ◀ ▶ lenken · Strom und Bremse rechts · 🎥 Kamera' : 'Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
@@ -1476,6 +1621,8 @@ function step(dt, { render = true } = {}) {
   // --- Welt aktualisieren -------------------------------------------------------
   const s = p.s;
   const w = game.weather ? game.weather.level : 0;
+  // der Himmel zieht schon vor dem Schauer zu und klart erst danach auf
+  const cloud = Math.max(w, game.weather ? game.weather.sky || 0 : 0);
   const frozen = paused;
   if (!frozen) {
     // XXL: zuerst die Fahrt fortschreiben (trip.update) – der Kurs liest gleich danach, welchen Weg sie nimmt
@@ -1504,18 +1651,22 @@ function step(dt, { render = true } = {}) {
     curveSigns.update(course, s, xxl ? xxlSignShear : null);
     road.setWet(w);
     scenery.update(s, dt);
-    sky.setOvercast(w * 0.95);
+    sky.setOvercast(cloud * 0.95);
     rain.update(dt, simT, { speed: p.speed, s, camX: camera.position.x, intensity: w });
     tesla.update(dt, p.speed, p.wheel, simT);
     teslaDamage.update(dt, simT, p.damage, p.speed);
     cabinDamage.update(dt, simT, p.damage, p.speed, cockpitOn);
     tesla.setBrake(p.braking > 0.1 || p.speed < 1);
-    tesla.adam.animate(simT, { steer: p.wheel, wave: adamWave, look: adamLook });
+    const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook });
+    tesla.adam.animate(simT, adamOpts);
+    facecam.adam.animate(simT, adamOpts);
+    facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake });
     tesla.cabinLight.intensity = cockpitOn ? 0 : state === 'title' || state === 'intro' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     cockpit.update({
-      dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, sunDir: sky.sunDir, overcast: w,
+      dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
+      sunDir: sky.sunDir, overcast: cloud, adam: adamOpts,
       screen: game.screenState ? safeScreen() : null,
     });
     if (fxState.trunk > 0) {
@@ -1536,16 +1687,17 @@ function step(dt, { render = true } = {}) {
   fxState.glitch = Math.max(0, fxState.glitch - dt);
   fxState.green = Math.max(0, fxState.green - dt);
   U.uTime.value = simT;
-  U.uRain.value = w;
   U.uFlash.value = fxState.flash;
   U.uGlitch.value = fxState.glitch > 0 ? 0.6 + 0.4 * Math.sin(simT * 40) : 0;
   U.uGreen.value = fxState.green > 0 ? (Math.sin(simT * 26) > 0.2 ? 1 : 0.15) : 0;
   U.uFade.value = state === 'intro' ? clamp(fxState.fade, 0, 1) : 0;
-  U.uSat.value = 1.08 - w * 0.25;
+  U.uSat.value = 1.08 - cloud * 0.25;
 
   if (DEBUG && window.__MA && window.__MA.camHook) window.__MA.camHook(camera, carMatrix);
   document.body.classList.toggle('playing', state === 'drive' && !paused);
   document.body.classList.toggle('drone', view === 'drone');
+  // Facecam-Rahmen vor dem Rendern setzen, damit Bild und Rahmen im selben Bild an derselben Stelle sind
+  facecamBox = ui.placeFacecam(paused ? 0 : dt, state === 'drive' && cockpitOn);
   if (render) renderFrame(cockpitOn);
   // in der Pause bleiben Banner, Geld-Anzeigen und Funkloch stehen
   ui.update(paused ? 0 : dt, state === 'drive' || state === 'intro' ? game : null);
@@ -1657,6 +1809,8 @@ function boot() {
   try {
     renderer.compile(scene, camera);
     renderer.compile(cockpit.scene, camera);
+    renderer.compile(facecam.scene, facecam.camera);
+    renderer.compile(facecam.quadScene, facecam.quadCam);
   } catch (e) {
     /* egal */
   }
@@ -1673,7 +1827,7 @@ function boot() {
 // Debug-Schnittstelle für Tests (?debug)
 if (DEBUG) {
   window.__MA = {
-    game, traffic, scenery, cockpit, windshield, tesla, ui, menus, input, renderer, camera, save,
+    game, traffic, scenery, cockpit, windshield, tesla, ui, menus, input, renderer, camera, save, facecam, adamMood,
     // für Prüfstände: Szene, three.js und die Weltmaterial-Fabrik (siehe curve.js)
     scene, THREE, W, sky, road,
     get state() {
@@ -1698,6 +1852,7 @@ if (DEBUG) {
       game.weather.active = v > 0;
       game.weather.target = v;
       game.weather.level = v;
+      game.weather.next = v;
       game.weather.dur = 999;
       windshield.setRain(v);
     },
@@ -1736,6 +1891,7 @@ if (DEBUG) {
     },
   };
   if (xxl) installDebug(window.__MA, xxl, () => game.player, { afterWarp: () => { traffic.reset(); pickups.reset(); scenery.reset(); } });
+  window.__MA.kit = { ...window.__MA.kit, nature: createNatureKit(W) };
 }
 
 /** Prüfstand: den Spieler an die Stelle s setzen (Verkehr, Sammelsachen und Landschaft neu). */
