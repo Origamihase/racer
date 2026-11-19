@@ -1,7 +1,7 @@
 // Der große Mittelbildschirm (wie im Model 3): links die Fahrzeugansicht mit Spuren und
 // Verkehr, rechts die Navi-Karte mit Route – ferngesteuert von den Zuschauern.
 import * as THREE from 'three';
-import { clamp, lerp, fbm1, mulberry32, fmtNum } from '../util.js';
+import { clamp, lerp, fbm1, mulberry32, fmtNum, tachoKmh } from '../util.js';
 import { roundRect } from '../textures.js';
 import { drawDamageCar, damageBand } from './screen-damage.js';
 import { NaviScreen } from '../map/navview.js';
@@ -60,6 +60,8 @@ export class CenterScreen {
     this.texture.colorSpace = THREE.SRGBColorSpace;
     this.texture.anisotropy = 8;
     this.zoom = 0.16;
+    this.live = false;
+    this.kmh = null; // die Zahl des Tachos im letzten Bild (null: noch keins)
     this.acc = 0;
     this.spin = 0;
     this.featureCache = new Map();
@@ -69,9 +71,11 @@ export class CenterScreen {
   update(dt, st) {
     this.acc += dt;
     this.spin += dt;
+    // XXL: zeichnen und hochladen nur, solange das Cockpit zu sehen ist (live: dann zeigt das HUD die Zahl des Tachos
+    // hier, this.kmh, damit beide in jedem Bild dieselbe Geschwindigkeit nennen)
+    this.live = !(st.nav && st.nav.visible === false);
     if (this.acc < 1 / 15) return;
-    // XXL: zeichnen und hochladen nur, solange das Cockpit zu sehen ist
-    if (st.nav && st.nav.visible === false) return;
+    if (!this.live) return;
     this.step = this.acc;
     this.acc = 0;
     this.draw(st);
@@ -146,7 +150,8 @@ export class CenterScreen {
     ctx.textAlign = 'center';
     ctx.font = '600 104px "Helvetica Neue", Arial, sans-serif';
     ctx.fillStyle = T.text;
-    ctx.fillText(String(Math.round(st.speedKmh)), SPLIT / 2, 196);
+    this.kmh = tachoKmh(st.speedKmh);
+    ctx.fillText(String(this.kmh), SPLIT / 2, 196);
     ctx.font = '500 26px "Helvetica Neue", Arial, sans-serif';
     ctx.fillStyle = T.sub;
     ctx.fillText('km/h', SPLIT / 2, 232);

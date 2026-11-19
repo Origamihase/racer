@@ -1962,7 +1962,7 @@ function step(dt, { render = true } = {}) {
   facecamBox = ui.placeFacecam(paused ? 0 : dt, state === 'drive' && cockpitOn);
   if (render) renderFrame(cockpitOn);
   // in der Pause bleiben Banner, Geld-Anzeigen und Funkloch stehen
-  ui.update(paused ? 0 : dt, state === 'drive' || state === 'intro' || state === 'charge' ? game : null);
+  ui.update(paused ? 0 : dt, state === 'drive' || state === 'intro' || state === 'charge' ? game : null, cockpit.screen.live ? cockpit.screen.kmh : null);
   input.endFrame();
 }
 

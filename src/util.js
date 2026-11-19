@@ -50,6 +50,9 @@ export const fmtKm = (meters, digits = 2) => nf(digits, digits).format(meters / 
 export const fmtEuro = (v, digits = 0) => nf(digits, digits).format(v) + '\u00a0€';
 export const fmtCent = (v) => nf(2, 2).format(v) + '\u00a0€';
 
+// Tacho: ganze km/h – die eine Rundung für den Mittelbildschirm und das HUD (das zeigt die Zahl des Bildschirms)
+export const tachoKmh = (kmh) => Math.round(kmh);
+
 export function fmtClock(minutesOfDay) {
   const m = Math.floor(minutesOfDay) % (24 * 60);
   const h = Math.floor(m / 60);

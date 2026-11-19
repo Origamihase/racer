@@ -1,7 +1,7 @@
 // Das Stream-Overlay über dem Spiel: LIVE-Anzeige, Zuschauer, Strecke, Guthaben, Akku, Karosserie-Punkte, Chat mit
 // Bots, die Streifen oben (Navi, Hinweise) und unten (Untertitel, BrunnenTV), Rahmen und Blitzerfotos. Wo was wohnt
 // und welches Rechteck dabei frei bleibt, steht in sicht.js: Über der Bildmitte liegt nichts, solange gefahren wird.
-import { fmtNum, fmtCent, fmtKm, fmtDuration, fmtClock, clamp } from '../util.js';
+import { fmtNum, fmtCent, fmtKm, fmtDuration, fmtClock, clamp, tachoKmh } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
@@ -704,7 +704,15 @@ export class UI {
   }
 
   // --- pro Bild ------------------------------------------------------------------------
-  update(dt, g) {
+  /** Tempo im HUD (ganze km/h, siehe tachoKmh); nur bei einer neuen Zahl in den DOM. */
+  showKmh(kmh) {
+    if (kmh === this.kmhShown) return;
+    this.kmhShown = kmh;
+    this.speedEl.textContent = kmh + ' km/h';
+  }
+
+  /** g: das laufende Spiel (sonst null); tacho: die Zahl, die der Mittelbildschirm gerade zeigt (null: er zeichnet nicht). */
+  update(dt, g, tacho = null) {
     // Zeitgesteuerte Elemente
     this.tickNotices(dt);
     if (this.lines.length) {
@@ -736,6 +744,8 @@ export class UI {
       const uhr = fmtClock(g.clock) + '\u202fUhr';
       if (uhr !== this.timeText) this.timeEl.textContent = this.timeText = uhr;
     }
+    // Tempo: Zeichnet der Mittelbildschirm (tacho = seine Zahl), wechselt es im selben Bild wie dort
+    if (g && tacho !== null) this.showKmh(tacho);
     // Zahlen nur 10× pro Sekunde
     this.lastHud -= dt;
     if (this.lastHud > 0 || !g) return;
@@ -750,7 +760,7 @@ export class UI {
     const best = (g.worldNavi ? g.save.best.reise : g.save.best.distance) || 0;
     this.recordEl.textContent = odo > best && best > 0 ? '🏆 neuer Rekord!' : best > 0 ? 'Rekord ' + strecke(best) : '';
     this.recordEl.classList.toggle('record', odo > best && best > 0);
-    this.speedEl.textContent = Math.round(p.kmh) + ' km/h';
+    if (tacho === null) this.showKmh(tachoKmh(p.kmh));
     this.moneyRow.textContent = fmtCent(g.money);
     this.batteryEl.textContent = Math.round(p.battery) + ' %';
     this.batteryFill.style.width = clamp(p.battery, 0, 100) + '%';
