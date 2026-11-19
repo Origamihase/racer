@@ -1,6 +1,6 @@
 // Innenraum des Außenmodells: was man von außen durch Frontscheibe, Seitenfenster und Glasdach sieht
 // (Kameraschwenk beim Start, Drohne, Titelbild, Blitzerfoto). Dieselben Dinge wie im Cockpit, nur in groben
-// Zügen: flaches Armaturenbrett mit Holzleiste, Bildschirm mit Karte, Lenkrad mit drei Speichen,
+// Zügen: flaches Armaturenbrett mit Holzleiste, Bildschirm mit seinen Leisten, Lenkrad mit drei Speichen,
 // Sitze mit Kopfstützen, Konsole mit Bananensaft und Dampfcola, Pandamütze und Megafon auf dem Beifahrersitz
 // und die Stream-Technik (Action-Cam mit roter REC-Lampe, Facecam, Bonding-Box mit Antennen).
 // Alles mit Vertexfarben in einem Mesh – ein Zeichenaufruf, dazu der Bildschirm und die REC-Lampe.
@@ -21,52 +21,34 @@ const C = {
   rubber: 0x1a1b1e,
 };
 
-/** Kartenbild für den Mittelbildschirm: von außen nur als helle Fläche mit Route und Leisten zu erkennen. */
+/**
+ * Mittelbildschirm von außen: nur die Aufteilung des echten Bildschirms (cockpit/screen.js) in dessen hellen
+ * Farben – Fahrzeugspalte mit Tempo und Spuren, Kopfleiste, dunkle Symbolleiste. Keine Karte: Das Navi zeigt nur,
+ * was die Welt wirklich hat, und ein Kartenbild hier hätte mit der Strecke nichts zu tun.
+ */
 function screenTexture() {
   const c = document.createElement('canvas');
   c.width = 256;
   c.height = 156;
   const g = c.getContext('2d');
-  g.fillStyle = '#eef0e9';
+  // Kartenseite ohne Inhalt, oben die Kopfleiste mit Name und Uhrzeit als graue Zeilen
+  g.fillStyle = '#eceef0';
   g.fillRect(0, 0, 256, 156);
-  // Karte: Grünflächen, Straßen, blaue Route
-  g.fillStyle = '#cfe8c4';
-  g.beginPath();
-  g.arc(190, 52, 26, 0, Math.PI * 2);
-  g.arc(120, 118, 20, 0, Math.PI * 2);
-  g.fill();
-  g.strokeStyle = '#ffffff';
-  g.lineWidth = 6;
-  g.beginPath();
-  g.moveTo(70, 140);
-  g.lineTo(150, 30);
-  g.lineTo(256, 20);
-  g.stroke();
-  g.strokeStyle = '#f5b640';
-  g.lineWidth = 4;
-  g.beginPath();
-  g.moveTo(60, 70);
-  g.lineTo(256, 90);
-  g.stroke();
-  g.strokeStyle = '#2f6fe0';
-  g.lineWidth = 5;
-  g.lineCap = 'round';
-  g.beginPath();
-  g.moveTo(150, 130);
-  g.quadraticCurveTo(140, 60, 200, 48);
-  g.lineTo(230, 50);
-  g.stroke();
-  // links die helle Fahr-Spalte mit Tempo, oben die Abbiegeleiste, unten die rote Spenden-Leiste
-  g.fillStyle = '#ffffff';
-  g.fillRect(0, 0, 70, 156);
-  g.fillStyle = '#20232a';
-  g.fillRect(14, 30, 40, 20);
-  g.fillStyle = '#2b2f37';
-  g.fillRect(80, 8, 168, 24);
-  g.fillStyle = '#d42a3c';
-  g.fillRect(80, 122, 168, 16);
-  g.fillStyle = '#1b1d22';
-  g.fillRect(0, 142, 256, 14);
+  g.fillStyle = '#9097a1';
+  g.fillRect(100, 5, 36, 3);
+  g.fillRect(212, 5, 36, 3);
+  // links die Fahrzeugspalte: Tempo oben, darunter drei Spuren mit dem eigenen Wagen
+  g.fillStyle = '#f4f5f6';
+  g.fillRect(0, 0, 93, 156);
+  g.fillStyle = '#1d1f22';
+  g.fillRect(12, 12, 30, 14);
+  g.fillStyle = '#c3c7cc';
+  for (const x of [22, 46, 70]) g.fillRect(x, 40, 2, 92);
+  g.fillStyle = '#9aa0a8';
+  g.fillRect(52, 98, 12, 22);
+  // unten die dunkle Symbolleiste
+  g.fillStyle = '#1b1c1f';
+  g.fillRect(0, 140, 256, 16);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
