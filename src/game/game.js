@@ -119,8 +119,8 @@ export class Game {
     // gewählt, dass sie mit dem Shop-Artikel länger offen ist und trotzdem etwas öfter freigeschaltet wird)
     const ls = up.linksspur || 0;
     this.left = { open: false, timer: 0, dur: 60 + 10 * ls, next: rand(22, 30), warned: false, glow: 0, rg: 0, grace: 0, freq: 1 - 0.3 * ls, idle: 0, teased: 0, donor: '' };
-    // Wetter
-    this.weather = { level: 0, target: 0, active: false, dur: 0, cool: 0, announced: false, twitches: 0, laughT: 0 };
+    // Wetter: der erste Schauer kommt erst nach einem trockenen Start (cool, siehe updateWeather)
+    this.weather = { level: 0, target: 0, active: false, dur: 0, cool: rand(100, 140), announced: false, twitches: 0, laughT: 0, sky: 0, front: 0, next: 0, calm: 0, crashes: 0 };
     // Ereignis-Uhren (Sekunden) und Strecken-Marken (Meter); das erste Navi-Gebot plant die Stream-Kasse (siehe unten)
     this.T = {
       bid: 0, durchsage: rand(28, 40), rahmen: rand(70, 100), funkloch: rand(110, 170), frog: rand(160, 260),
@@ -156,6 +156,7 @@ export class Game {
     this.windshield.clear();
     this.windshield.setRain(0);
     this.windshield.setFirmware(up.wischer || 0);
+    this.windshield.setAuto(true);
     this.windshield.onEvent = (type) => this.onWiper(type);
     this.cockpit.clearConfetti();
     this.cockpit.setElsa(!!up.elsa);
@@ -182,11 +183,12 @@ export class Game {
     this.player.reset({});
     this.player.x = 1.875;
     this.player.speed = 118 * KMH;
-    this.weather = { level: 0, target: 0, active: false, dur: 0, cool: 0, announced: false };
+    this.weather = { level: 0, target: 0, active: false, dur: 0, cool: 0, announced: false, sky: 0, front: 0, next: 0, calm: 0, crashes: 0 };
     this.left = { open: false, timer: 0, glow: 0 };
     this.sirenLevel = 0;
-    // nach einer Regenfahrt: Scheibe trocken, Wischer still
+    // nach einer Regenfahrt: Scheibe trocken, Wischer still (auch kein Fehlalarm im Titelbild)
     this.windshield.setRain(0);
+    this.windshield.setAuto(false);
     this.windshield.clear();
     this.scenery.reset();
     this.navi.reset(0);
@@ -526,29 +528,44 @@ export class Game {
   }
 
   // --- Wetter ------------------------------------------------------------------
+  // Regen kommt als Schauer: gut 30 bis 75 s, dazwischen mehrere Minuten trocken. Der erste erst nach einem
+  // trockenen Start und nur, wenn eine Weile kein Rempler war (geschickte Spieler bekommen ihn eher). Alles
+  // läuft nach Fahrzeit, nicht nach Strecke. Vor dem Schauer zieht der Himmel ein paar Sekunden lang zu
+  // (front, sky), danach klart er langsam wieder auf.
   updateWeather(dt, ds) {
     const W = this.weather;
-    const p = this.player;
-    if (!W.active) {
-      W.cool -= dt;
-      const skilled = p.s >= 4000 && this.stats.cleanDistance >= 2500;
-      if (W.cool <= 0 && (skilled || p.s >= 7500)) {
+    if (W.crashes !== this.stats.crashes) {
+      W.crashes = this.stats.crashes;
+      W.calm = 0;
+    }
+    W.calm += dt;
+    if (W.front > 0) {
+      W.front -= dt;
+      if (W.front <= 0) {
         W.active = true;
-        W.target = rand(0.6, 1);
-        W.dur = rand(95, 150);
+        W.target = W.next;
+        W.dur = rand(28, 70);
         W.announced = false;
+      }
+    } else if (!W.active) {
+      W.cool -= dt;
+      if (W.cool <= 0 && (W.calm >= 30 || W.cool <= -60)) {
+        W.front = rand(6, 9);
+        W.next = rand(0.6, 1);
       }
     } else {
       W.dur -= dt;
       if (W.dur <= 0) {
         W.active = false;
         W.target = 0;
-        W.cool = rand(60, 100);
+        W.cool = rand(170, 290);
         this.later(8, () => this.chat(pick(['Endlich trocken ☀️', 'Regen vorbei!', 'Der Wischer hat sich erholt'])));
       }
     }
-    const rate = W.target > W.level ? 0.07 : 0.05;
+    const rate = W.target > W.level ? 0.12 : 0.15;
     W.level += clamp(W.target - W.level, -rate * dt, rate * dt);
+    const sky = W.active || W.front > 0 ? W.next : 0;
+    W.sky += clamp(sky - W.sky, -dt / 12, dt / 6);
     if (W.active && !W.announced && W.level > 0.12) {
       W.announced = true;
       this.say(BOARD.rain, 'worried');
@@ -568,18 +585,48 @@ export class Game {
     this.windshield.setRain(W.level);
   }
 
+  /**
+   * Ereignisse des Scheibenwischers: 'twitch' je Anlauf (im Schauer jeder kräftige Ruck der stehenden Wischer) und
+   * 'wipe' je ganzem Wisch, 'stand' wenn sie im Schauer stehen bleiben, der Rest nur für Geräusche.
+   */
   onWiper(type) {
-    if (type === 'twitch') {
-      this.audio.wiperTwitch();
-      this.stats.twitches++;
-    } else {
-      this.audio.wiperSweep();
+    const A = this.audio;
+    const wet = this.running && this.weather.level > 0.2;
+    if (type === 'wipe') {
+      A.wiperSweep();
       this.stats.wipes++;
-    }
-    if (this.running && type === 'twitch' && this.T.wiperChat <= 0 && this.weather.level > 0.2 && chance(0.3)) {
-      this.T.wiperChat = 14;
-      this.chat(pick(CHAT.wiper));
-    }
+      // mit früher Firmware ist ein ganzer Wisch ein kleines Wunder
+      if (wet && this.windshield.firmware < 2 && chance(0.5)) this.later(1.3, () => this.chat(pick(CHAT.wiperWipe)));
+    } else if (type === 'twitch') {
+      A.wiperStrain();
+      this.stats.twitches++;
+      if (wet && this.T.wiperChat <= 0 && chance(0.3)) {
+        this.T.wiperChat = 14;
+        // ab dem fünften Zucken zählt der Chat auch mal mit
+        const n = this.stats.twitches;
+        this.chat(n >= 5 && chance(0.4) ? fillTemplate(pick(CHAT.wiperCount), { n, w: this.stats.wipes }) : pick(CHAT.wiper));
+      }
+    } else if (type === 'phantom') {
+      // Fehlalarm bei trockener Scheibe
+      A.wiperSqueak();
+      this.stats.twitches++;
+      if (this.running) {
+        if (chance(0.5)) this.later(1, () => this.chat(pick(CHAT.wiperPhantom)));
+        else if (chance(0.5)) this.say(BOARD.wiperPhantom, 'think', { priority: false });
+      }
+    } else if (type === 'stand' || type === 'stuck') {
+      A.wiperStutter(3);
+      // stehen die Wischer im Schauer, entschuldigt sich NOMI ab und zu für die Beta-Software (nach der Regenansage;
+      // die Uhr läuft mit den anderen in this.T)
+      if (type === 'stand' && wet && !(this.T.wiperSorry > 0) && chance(0.6)) {
+        this.T.wiperSorry = rand(70, 110);
+        this.later(rand(5, 8), () => this.say(pick(BOARD.wiperSorry), 'worried', { priority: false }));
+      }
+    } else if (type === 'jerk') {
+      A.wiperTwitch();
+      A.wiperStutter(4, 0.1);
+    } else if (type === 'release') A.wiperGiveUp();
+    else if (type === 'park') A.wiperClack();
   }
 
   manualWiper() {

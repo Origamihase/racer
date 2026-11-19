@@ -8,6 +8,8 @@ import { plateTexture, aeroWheelTexture, liveLogoTexture, contactShadowTexture }
 import { buildMiniAdam } from './miniAdam.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { loft, loftPoint, sideArches, surfacePatch, curve1, withArches, tireGeometry, discX, boxAt, mirrorShape, mirrorHousingGeometry } from './loft.js';
+import { WINDSHIELD, WIPERS } from '../cockpit/cockpit.js';
+import { buildCarWipers } from '../cockpit/wipers.js';
 
 export const TESLA = {
   length: 4.69,
@@ -489,6 +491,26 @@ export function buildTesla() {
     if (o.isMesh && o !== glassMesh && o !== ground) o.castShadow = true;
   });
 
+  // Scheibenwischer außen auf der Glaskuppel, in derselben Stellung wie im Cockpit (setWipers). Sie werfen
+  // keinen eigenen Schatten: Der läge nur auf dem Glas darunter.
+  // Höhe der Kuppel über (x, z): Ihr Querschnitt ist über einen Winkel beschrieben, also wird der Winkel
+  // gesucht, dessen Punkt bei x liegt (Halbierung, 18 Schritte reichen für Bruchteile eines Millimeters).
+  const wiperGlassY = (x, z) => {
+    let lo = 0;
+    let hi = Math.PI / 2;
+    const p = new THREE.Vector3();
+    const ax = Math.abs(x);
+    for (let i = 0; i < 18; i++) {
+      const mid = (lo + hi) / 2;
+      glassPoint(z + L / 2, mid, p);
+      if (p.x > ax) lo = mid;
+      else hi = mid;
+    }
+    return glassPoint(z + L / 2, (lo + hi) / 2, p).y;
+  };
+  const wipers = buildCarWipers(WINDSHIELD, WIPERS, wiperGlassY, W.std({ vertexColors: true, roughness: 0.42, metalness: 0.25 }));
+  root.add(wipers.group);
+
   let wheelAngle = 0;
   let brake = false;
 
@@ -510,6 +532,10 @@ export function buildTesla() {
     },
     setVest(v) {
       adam.setVest(v);
+    },
+    /** Armwinkel der beiden Scheibenwischer (rad, wie windshield.angles). */
+    setWipers(a0, a1) {
+      wipers.set(a0, a1);
     },
     setBrake(b) {
       if (b === brake) return;

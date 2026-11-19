@@ -136,6 +136,8 @@ const compScene = new THREE.Scene();
 const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compMat);
 quad.frustumCulled = false;
 compScene.add(quad);
+// Die Regentropfen liegen außen auf der Frontscheibe: im Cockpitbild hinter allem im Innenraum und hinter den Wischern
+cockpit.root.add(windshield.layer);
 const compCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const U = compMat.uniforms;
 // Bildeffekte über dem fertigen Bild aus Welt und Cockpit (sonst wirkt das Cockpit wie aufgeklebt):
@@ -1174,6 +1176,8 @@ function adaptResolution(dt) {
 let frameNo = 0;
 function renderWorld(cam, { cockpitOn, drops }) {
   tesla.root.visible = !cockpitOn;
+  // Ist der Wagen von außen zu sehen (Drohne, Titel, Blitzerfoto), stehen seine Wischer wie im Cockpit
+  if (!cockpitOn) tesla.setWipers(windshield.angles[0], windshield.angles[1]);
   renderer.shadowMap.needsUpdate = quality.shadows;
   renderer.setRenderTarget(worldRT);
   renderer.render(scene, cam);
@@ -1465,6 +1469,8 @@ function step(dt, { render = true } = {}) {
   // --- Welt aktualisieren -------------------------------------------------------
   const s = p.s;
   const w = game.weather ? game.weather.level : 0;
+  // der Himmel zieht schon vor dem Schauer zu und klart erst danach auf
+  const cloud = Math.max(w, game.weather ? game.weather.sky || 0 : 0);
   const frozen = paused;
   if (!frozen) {
     // Verlauf der Straße in die Tabelle des Shaders; Prüfstand (?debug): flache Welt, damit Bausteine unverzerrt
@@ -1491,7 +1497,7 @@ function step(dt, { render = true } = {}) {
     curveSigns.update(course, s);
     road.setWet(w);
     scenery.update(s, dt);
-    sky.setOvercast(w * 0.95);
+    sky.setOvercast(cloud * 0.95);
     rain.update(dt, simT, { speed: p.speed, s, camX: camera.position.x, intensity: w });
     tesla.update(dt, p.speed, p.wheel, simT);
     teslaDamage.update(dt, simT, p.damage, p.speed);
@@ -1502,7 +1508,8 @@ function step(dt, { render = true } = {}) {
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     cockpit.update({
-      dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, sunDir: sky.sunDir, overcast: w,
+      dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
+      sunDir: sky.sunDir, overcast: cloud,
       screen: game.screenState ? safeScreen() : null,
     });
     if (fxState.trunk > 0) {
@@ -1528,7 +1535,7 @@ function step(dt, { render = true } = {}) {
   U.uGlitch.value = fxState.glitch > 0 ? 0.6 + 0.4 * Math.sin(simT * 40) : 0;
   U.uGreen.value = fxState.green > 0 ? (Math.sin(simT * 26) > 0.2 ? 1 : 0.15) : 0;
   U.uFade.value = state === 'intro' ? clamp(fxState.fade, 0, 1) : 0;
-  U.uSat.value = 1.08 - w * 0.25;
+  U.uSat.value = 1.08 - cloud * 0.25;
 
   if (DEBUG && window.__MA && window.__MA.camHook) window.__MA.camHook(camera, carMatrix);
   document.body.classList.toggle('playing', state === 'drive' && !paused);
@@ -1617,6 +1624,7 @@ if (DEBUG) {
       game.weather.active = v > 0;
       game.weather.target = v;
       game.weather.level = v;
+      game.weather.next = v;
       game.weather.dur = 999;
       windshield.setRain(v);
     },

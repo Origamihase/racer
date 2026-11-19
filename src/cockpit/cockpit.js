@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { liveLogoTexture, softDotTexture } from '../textures.js';
 import { Nomi } from './nomi.js';
 import { CenterScreen } from './screen.js';
+import { buildWipers } from './wipers.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
 import { damp, clamp, smoothstep, lerp } from '../util.js';
 import { mirrorShape, mirrorHousingGeometry } from '../models/loft.js';
@@ -34,12 +35,23 @@ export const WINDSHIELD = (() => {
   return { base, top, U, X, N, length, halfBase: 0.74, halfTop: 0.63 };
 })();
 
-// Wischer: Drehpunkt (unten, außen), Länge, maximaler Winkel
-export const WIPERS = [
-  // max so, dass die Wischerspitze vor der A-Säule bleibt (nicht über das Seitenfenster)
-  { pivot: new THREE.Vector3(-0.64, 0.884, -0.905), length: 0.62, max: 1.55 },
-  { pivot: new THREE.Vector3(0.06, 0.884, -0.905), length: 0.56, max: 1.75 },
-];
+// Wischer (Fahrer-, dann Beifahrerseite). pivot: Fuß der Achse auf der Scheibe, knapp über ihrer Unterkante;
+// park/max: Winkel des Arms in Parkstellung und am oberen Anschlag (rad; 0 = waagerecht nach rechts, positiv
+// gegen den Uhrzeigersinn aus Fahrersicht); arm: Abstand Achse–Adapter; blade: Wischblatt von … bis (längs des
+// Arms ab der Achse); offset: seitlicher Versatz des Blatts durch die Kröpfung des Arms (zur Wischrichtung hin).
+export const WIPERS = (() => {
+  const W = WINDSHIELD;
+  const foot = (x, u) => W.base.clone().addScaledVector(W.U, u).setX(x);
+  // das Fahrerblatt endet oben parallel zur linken Scheibenkante (A-Säule), 7 cm vor ihr. Die Beifahrerachse sitzt
+  // 20 cm links der Mitte und schwenkt weiter: Bleiben beide im Schauer stehen (STAND in windshield.js), steht aus
+  // Fahrersicht jedes Blatt senkrecht – das Fahrerblatt links im Blick, das Beifahrerblatt nahe der Mitte, links
+  // vom Innenspiegel. Das Beifahrerblatt reicht in Parkstellung rechts neben den Mittelbildschirm hinaus.
+  const edge = Math.atan2(W.length, W.halfBase - W.halfTop);
+  return [
+    { pivot: foot(-0.64, 0.065), park: 0.2, max: edge, arm: 0.41, blade: [0.1, 0.72], offset: 0.022 },
+    { pivot: foot(-0.2, 0.065), park: 0.2, max: 1.83, arm: 0.4, blade: [0.12, 0.68], offset: 0.02 },
+  ];
+})();
 
 // Kameragehäuse an der Scheibe, an dem der Innenspiegel hängt: ein kleines, weich gepolstertes Kissen, das hinter
 // dem Spiegel beginnt (vom Fahrer aus verdeckt der Spiegel die untere Hälfte) und 10 cm die Scheibe hinaufreicht –
@@ -596,24 +608,9 @@ export class Cockpit {
     this.mirrorFrame.visible = false;
   }
 
-  buildWipers(M) {
-    const W = WINDSHIELD;
-    const basis = new THREE.Matrix4().makeBasis(W.X, W.U, W.N.clone().negate());
-    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
-    this.wiperObjs = WIPERS.map((wp) => {
-      const pivot = new THREE.Group();
-      pivot.position.copy(wp.pivot).addScaledVector(W.N, 0.02);
-      pivot.quaternion.copy(q);
-      const arm = new THREE.Group();
-      pivot.add(arm);
-      const armMesh = new THREE.Mesh(new THREE.BoxGeometry(wp.length, 0.016, 0.012), M.wiper);
-      armMesh.position.set(wp.length / 2, 0, -0.012);
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(wp.length * 0.92, 0.022, 0.008), M.wiper);
-      blade.position.set(wp.length * 0.52, 0.01, -0.001);
-      arm.add(armMesh, blade);
-      this.root.add(pivot);
-      return arm;
-    });
+  buildWipers() {
+    this.wipers = buildWipers(WINDSHIELD, WIPERS);
+    this.root.add(this.wipers.group);
   }
 
   buildExtras(S) {
@@ -733,10 +730,7 @@ export class Cockpit {
     }
     this.placeArms();
     // Wischer
-    if (st.wiperAngles) {
-      this.wiperObjs[0].rotation.z = st.wiperAngles[0];
-      this.wiperObjs[1].rotation.z = st.wiperAngles[1];
-    }
+    if (st.wiperAngles) this.wipers.set(st.wiperAngles, st.wiperFlex, 1 - 0.35 * (st.overcast || 0));
     // Wackel-Elsa: Feder-Dämpfer auf Querbeschleunigung
     if (this.elsaSpring.visible) {
       const k = 60;
