@@ -1362,6 +1362,8 @@ const CHARGE_KEYS = [
   { t: 4.6, pos: [-2.7, 1.55, -3.4], look: [-0.37, 1.12, 0.22] },
   { t: SCENE.inside - 0.2, pos: [-1.72, 1.26, 0.2], look: [-0.37, 1.16, 0.28] },
 ];
+// im Titel: der ganze Wagen schräg von vorne, Säule und Stecker rechts daneben (links liegt das Menü)
+const CHARGE_TITLE = { pos: [-2.8, 2.6, -4.6], look: [-0.25, 0.85, 0.9] };
 const CHARGE_LINES = { live: 'Wir sind live.', greet: 'Hallo Mini Adam! Akku voll, gute Fahrt!' };
 // town: der Startort (Towns.of: plan, group, charge), port: Ladeklappe des Wagens, keep: Spieler vor der Szene,
 // skipT: wann übersprungen wurde (dann erst abblenden), greetT: wann NOMI grüßt (Spielzeit simT)
@@ -1397,11 +1399,11 @@ function chargeBegin() {
   return true;
 }
 
-/** Titel der Reise am Supercharger: Der Wagen lädt, die Kamera schwebt langsam vor Buchse und Säule. */
+/** Titel der Reise am Supercharger: Der Wagen lädt, die Kamera schwebt langsam vor ihm. */
 function chargeTitle() {
   chargePose(0);
-  const k = CHARGE_KEYS[0];
-  const pos = tmpV.set(k.pos[0] + 0.5 * Math.sin(simT * 0.21), k.pos[1] + 0.12 * Math.sin(simT * 0.17), k.pos[2] - 0.6 + 0.6 * Math.sin(simT * 0.13));
+  const k = CHARGE_TITLE;
+  const pos = tmpV.set(k.pos[0] + 0.5 * Math.sin(simT * 0.21), k.pos[1] + 0.12 * Math.sin(simT * 0.17), k.pos[2] + 0.6 * Math.sin(simT * 0.13));
   camera.position.copy(pos.applyMatrix4(carMatrix));
   camera.lookAt(tmpV2.fromArray(k.look).applyMatrix4(carMatrix));
   setFov(44);
