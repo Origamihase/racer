@@ -781,9 +781,13 @@ function juiceBottle(b, x, y, z, near) {
     if (!near) return;
     F.lathe(0, 0.045, 0, [[0.0352, 0], [0.0352, 0.06]], C.cream, { seg, top: false });
     for (const yy of [0.045, 0.1]) F.lathe(0, yy, 0, [[0.0356, 0], [0.0356, 0.005]], 0x7cb35b, { seg, top: false });
-    // kleine Banane aufs Etikett gemalt: ein flacher Bogen dicht vor dem Etikett
-    // (in der Ebene z = 0,0345: die Mitte steht 2,8 mm vor dem runden Etikett, die Spitzen stecken darin)
-    b.xf([0, 0.096, 0.0345], [Math.PI / 2, 0, 0], 1, () => F.torus(0, 0, 0, 0.016, 0.0035, 0xf6cf3a, { seg: 8, tube: 4, a0: -1.1, a1: 1.1 }));
+    // kleine Banane aufs Etikett: ein Bogen, der dem runden Etikett folgt (Rohr 2,6 mm, auch zwischen den Kanten des
+    // Etiketts gut 0,7 mm darin versenkt); ihre Enden tauchen in die Flasche, kein offenes Rohrende bleibt zu sehen
+    const banana = [-1.2, -1, -0.5, 0, 0.5, 1, 1.2].map((t) => {
+      const rho = Math.abs(t) > 1 ? 0.029 : 0.0362;
+      return [rho * Math.sin(0.4 * t), 0.068 + 0.009 * t * t, rho * Math.cos(0.4 * t)];
+    });
+    cord(F, banana, 0.0026, 0xf6cf3a, 16, 6);
   });
 }
 
