@@ -13,7 +13,7 @@ import { Economy } from './economy.js';
 import { Vector3 } from 'three';
 import { EYE } from '../cockpit/cockpit.js';
 import { ELSA_STATUE } from '../world/scenery.js';
-import { curvePoint, curveUniforms } from '../curve.js';
+import { curvePoint } from '../curve.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
 // „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
@@ -22,8 +22,11 @@ const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST',
 // oder Elsa sind nur kurz da und selten, ein Laster, Regen oder eine lange Gerade öfter.
 const LAGE_SHARE = 0.4;
 const OFFER_EARLY = { ziel: 100, brunnen: 100, elsa: 100, laster: 50, regen: 50, gerade: 40 };
-// so schwach gebogen, dass die Straße bis zum Horizont geradeaus läuft (seitlich unter 8 m auf 1 km, siehe curve.js)
-const STRAIGHT = 0.00002;
+// Lange Gerade: Die Krümmung unter dem Wagen (aus dem Kurs, siehe course.js) bleibt so klein, dass die Straße auf
+// 200 m höchstens 1 m zur Seite läuft, und das schon so viele Meter lang. Auf dem klassischen Kurs ist die Hälfte der
+// Geraden kürzer als 300 m; so zählt etwa ein Fünftel der Strecke als lange Gerade.
+const STRAIGHT_KAPPA = 1 / 20000;
+const STRAIGHT_RUN = 400;
 // Rechts oben deckt der Innenspiegel aus Mini Adams Sicht ab etwa 17,8° rechts der Blickrichtung ab
 // (auf dem Handy hochkant endet dort fast schon das Bild): bis 16° steht Elsa frei in der Scheibe.
 const ELSA_VIEW = (16 * Math.PI) / 180;
@@ -125,8 +128,8 @@ export class Game {
       studio: rand(26, 34), greet: rand(100, 170), cent5: rand(100, 160),
     };
     // „5 Cent, wenn du …“: welche Angebote in diesem Stream schon kamen (keins doppelt), wer zuletzt geboten hat, wie
-    // lange die Straße schon geradeaus läuft und wann zuletzt ein Ziel erreicht wurde (für Angebote zur Lage)
-    this.cent5 = { used: new Set(), name: '', straightT: 0, arrivedT: -99, lage: chance(LAGE_SHARE) };
+    // lange die Straße schon geradeaus läuft (Meter) und wann zuletzt ein Ziel erreicht wurde (für Angebote zur Lage)
+    this.cent5 = { used: new Set(), name: '', straightS: 0, arrivedT: -99, lage: chance(LAGE_SHARE) };
     this.S = {
       blitzer: rand(3000, 3800), elefant: rand(3200, 4200), landmark: rand(1400, 2000), charge: rand(700, 1000),
       banana: rand(1100, 1500), koriander: rand(2200, 2800),
@@ -407,7 +410,7 @@ export class Game {
     this.updateEvents(dt, camera);
     this.updatePickups(dt, camera);
     this.updateViewers(dt);
-    this.updateChat(dt);
+    this.updateChat(dt, ctl.kappa || 0);
     this.updateStudio();
     this.updateJobs();
 
@@ -1300,8 +1303,8 @@ export class Game {
     }
   }
 
-  updateChat(dt) {
-    this.updateCentOffers(dt);
+  updateChat(dt, kappa = 0) {
+    this.updateCentOffers(dt, kappa);
     this.chatT -= dt;
     if (this.chatT <= 0) {
       // Die heimliche Stimmung färbt den Chat: wie flott er schreibt und was. Im Regen ist er ohnehin gesprächig.
@@ -1323,10 +1326,11 @@ export class Game {
    * darauf ein: kein Geld, keine Aufgabe, kein Zähler, keine Antwort von NOMI oder dem Sprachstudio. Nur der Chat legt
    * noch 2 Cent drauf, frotzelt, und wer geboten hat, bleibt manchmal stur.
    */
-  updateCentOffers(dt) {
+  updateCentOffers(dt, kappa = 0) {
     const C = this.cent5;
-    const straight = Math.abs(curveUniforms.uCurve.value.x) < STRAIGHT && this.player.kmh > 90;
-    C.straightT = straight ? C.straightT + dt : 0;
+    // kappa: Krümmung unter dem Wagen (1/m), kommt mit den Eingaben aus dem Kurs (main.js courseEnv)
+    const straight = Math.abs(kappa) < STRAIGHT_KAPPA && this.player.kmh > 90;
+    C.straightS = straight ? C.straightS + this.player.speed * dt : 0;
     const T = this.T;
     // nicht ins Funkloch (da schreiben alle F) und nicht ins Bieter-Chaos oder Duell (da fliegen ohnehin Cent-Beträge;
     // nach einer Ankunft geht es erst mit dem ersten Gebot der neuen Runde los)
@@ -1386,7 +1390,7 @@ export class Game {
       if (c.truck && d > 25 && d < 110 && Math.abs(c.x - p.x) < 2) return 'laster';
     }
     if (this.weather.level > 0.4) return 'regen';
-    if (this.cent5.straightT > 6) return 'gerade';
+    if (this.cent5.straightS > STRAIGHT_RUN) return 'gerade';
     return null;
   }
 
