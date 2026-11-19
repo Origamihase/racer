@@ -593,7 +593,10 @@ export class Game {
   /** Soll der Touch-Knopf „Ladestopp einplanen“ zu sehen sein? (Reise, kein Stopp geplant, Akku halb leer oder Warnung) */
   stopOffer() {
     if (!this.worldNavi || !this.running || this.charging) return false;
-    return this.world.trip().stop < 0 && (this.player.battery <= 50 || this.batteryWarned > 0);
+    const trip = this.world.trip();
+    // im Park selbst nicht: dort hält der Wagen ohnehin an der Säule
+    if (trip.section && trip.section.kind === 'park') return false;
+    return trip.stop < 0 && (this.player.battery <= 50 || this.batteryWarned > 0);
   }
 
   /**
@@ -615,6 +618,7 @@ export class Game {
       return;
     }
     trip.setStop(r.park);
+    this.ui.dropKey('ladestopp');
     this.stats.stopsPlanned++;
     this.say(fillTemplate(A.set, { park: r.name, km: kmWords(r.km) }), 'happy');
   }
