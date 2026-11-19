@@ -539,6 +539,14 @@ export function fmtKm(km) {
   if (!isFinite(km)) return '– km';
   return km < 10 ? km.toFixed(1).replace('.', ',') + ' km' : Math.round(km).toLocaleString('de-DE') + ' km';
 }
+/**
+ * Entfernung zum Ziel, wie Kärtchen und HUD-Zeile sie nennen: Kartenkilometer. Kündigt die Ansage schon die Ankunft in
+ * den letzten 2 km an (arriveDist: ihre Meter der Fahrt, sonst 0), sind es dieselben Meter wie dort (COMMON.md §9.5:
+ * ein so naher Ort steht auf keiner Kilometertafel mehr).
+ */
+export function fmtToTarget(km, arriveDist = 0) {
+  return arriveDist > 0 && arriveDist < 2000 ? fmtMeters(arriveDist) : fmtKm(km);
+}
 
 /**
  * Was das Navi gerade wissen muss, aus einer Fahrt (Trip). update() einmal je Bild aufrufen (billig); teuer wird es nur,

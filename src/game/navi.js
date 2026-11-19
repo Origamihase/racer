@@ -6,6 +6,7 @@
 import { NAVI_TARGETS, BANK_FARBEN, INSIDER_ORTE } from '../data.js';
 import { rand, chance, pick, weightedPick, fmtCent, fmtClock, clamp } from '../util.js';
 import { places } from '../map/graph.js';
+import { fmtMeters, fmtToTarget } from '../map/navroute.js';
 
 /** Kurzer Name für Schilderbrücken und das Navi-Kärtchen. */
 export function shortName(t) {
@@ -281,9 +282,16 @@ export class WorldNavi {
     this.listKey = '';
   }
 
-  /** Kartenkilometer bis zum Ziel, wie sie das Kärtchen im Auto zeigt (Infinity ohne Ziel). */
+  /** Kartenkilometer bis zum Ziel (Infinity ohne Ziel). */
   get km() {
     return this.target ? this.trip.stateAhead().km : Infinity;
+  }
+
+  /** Entfernung zum Ziel in Worten, genau wie auf dem Kärtchen im Auto (fmtToTarget: zuletzt die Meter der Ansage). */
+  get distance() {
+    if (this.stopping) return fmtMeters(0);
+    const g = this.trip.guidance();
+    return fmtToTarget(this.km, g.type === 'arrive' ? g.dist : 0);
   }
 
   /** Sekunden bis zum Ziel im Tempo, das das Navi annimmt (für die Pause bis zum nächsten Gebot, siehe economy.js). */
@@ -304,11 +312,19 @@ export class WorldNavi {
     return !!this.target && sec.kind === 'stadt' && sec.place === trip.target && !sec.spotDone;
   }
 
+  /**
+   * Das Ziel, das HUD-Zeile, Pause-Karte und roter Balken nennen: das Ziel der Runde – auch noch auf den letzten
+   * Metern vom Zielpunkt bis zum Halt. Erreicht ist es für die Bieter erst, wenn der Wagen am Brunnen steht.
+   */
+  get shown() {
+    return this.target || this.stopping;
+  }
+
   /** Das Navi-Ziel in Worten (Pause-Karte). */
   get label() {
-    if (this.target) return this.target.name;
-    const r = this.stopping || this.reached;
-    return r ? r.name + ' (erreicht)' : 'noch offen';
+    const t = this.shown;
+    if (t) return t.name;
+    return this.reached ? this.reached.name + ' (erreicht)' : 'noch offen';
   }
 
   /**
@@ -316,8 +332,7 @@ export class WorldNavi {
    * verpassten Ankunft.
    */
   get waitLine() {
-    const r = this.stopping || this.reached;
-    if (r) return `📍 Ziel erreicht: ${r.name} – warte auf das nächste Gebot …`;
+    if (this.reached) return `📍 Ziel erreicht: ${this.reached.name} – warte auf das nächste Gebot …`;
     return this.missed ? '📍 Am Brunnen vorbeigerollt – gleich kommt das nächste Gebot …' : '📍 Wohin geht die Reise? Gleich kommt das erste Gebot …';
   }
 
@@ -331,8 +346,9 @@ export class WorldNavi {
    */
   screen() {
     const S = this.screenOut;
-    S.bidder = this.target ? this.bidder : '';
-    S.bid = this.target ? fmtCent(this.bid) : '';
+    S.bidder = this.shown ? this.bidder : '';
+    S.bid = this.shown ? fmtCent(this.bid) : '';
+    // (das Navi selbst meldet „Ziel erreicht“ schon am Zielpunkt, wie jedes Navi – darum gilt das Kärtchen ab dort)
     const r = this.stopping || this.reached;
     S.bar = r ? '📡 Neue Runde: Gebote ab 0,01 €' : this.missed ? '📡 Der Chat bietet weiter …' : '📡 Der Chat bietet: Gebote ab 0,01 €';
     S.wait = r ? '⛲ Ziel erreicht: ' + r.name : this.missed ? '⏳ Vorbeigerollt – gleich kommt das nächste Gebot …' : '⏳ Gleich kommt das erste Gebot …';

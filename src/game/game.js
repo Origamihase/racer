@@ -9,7 +9,6 @@ import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fm
 import { Player, KMH } from './player.js';
 import { damageLine } from './damage.js';
 import { Navi, WorldNavi, shortName } from './navi.js';
-import { fmtKm as fmtMapKm } from '../map/navroute.js';
 import { Economy } from './economy.js';
 import { Vector3 } from 'three';
 import { EYE } from '../cockpit/cockpit.js';
@@ -789,12 +788,12 @@ export class Game {
       this.onMood('curious', 1);
       if (this.worldNavi) {
         // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt);
-        // Kilometer wie auf dem Kärtchen im Auto: Kartenkilometer der Fahrt
+        // die Entfernung steht da wie auf dem Kärtchen im Auto
         if (nv.wende) {
           this.later(1.5, () => this.chat(this.chatLine(CHAT.ortWende)));
           this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'info'));
         }
-        this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${fmtMapKm(nv.km)})`, 'info', t.note);
+        this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${nv.distance})`, 'info', t.note);
         return;
       }
       if (nv.wende) this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info'));
@@ -848,7 +847,8 @@ export class Game {
       this.ui.damage(p.hits, p.maxHits);
       this.later(2.2, () => this.ui.toast('🩹 ' + damageLine('repair'), 'good'));
     }
-    this.ui.banner(`🏁 Ziel erreicht: ${t.name}`, 4);
+    // (XXL: Dort nennt die BrunnenTV-Titelkarte den Ort und führt die Mittelspalte an – ein Banner darunter wäre doppelt)
+    if (!this.worldNavi) this.ui.banner(`🏁 Ziel erreicht: ${t.name}`, 4);
     this.burst(this.worldNavi ? CHAT.ortReached : CHAT.naviReached, 4, 3);
     // Fürs Ankommen selbst gibt es nichts – aber der Chat feiert es mit einem Schwung Ortsspenden (Siegen: doppelt;
     // am Drive-In ist die erste natürlich für „Pommes ohne Rückfragen“)

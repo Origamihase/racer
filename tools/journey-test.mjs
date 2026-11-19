@@ -195,6 +195,8 @@ function stream(driver, hours, seed) {
     const km = nv.km;
     const secs = nv.driveSecs();
     ok(km > 0 && isFinite(km) && secs > 0 && isFinite(secs), `Ziel ${t.name} ist von hier nicht erreichbar (${km} km, ${secs} s)`);
+    // HUD-Zeile, Pause-Karte und roter Balken nennen sofort das neue Ziel, seine Entfernung und den Bieter
+    ok(nv.shown === t && nv.label === t.name && /^[\d.,]+ (km|m)$/.test(nv.distance) && nv.screen().bidder === nv.bidder && nv.bidder, `Nach dem Gebot auf ${t.name} zeigt das Navi „${nv.label} · ${nv.distance}“ von „${nv.screen().bidder}“`);
     // die nächste Runde findet immer ein Ziel: Von überall stehen genug Orte zur Wahl
     m.minChoice = Math.min(m.minChoice, game.bidTargets().length);
     m.bands[km < BID_PLACES.nearKm ? 0 : km <= BID_PLACES.farKm ? 1 : km <= 500 ? 2 : 3]++;
@@ -340,13 +342,19 @@ function stream(driver, hours, seed) {
       if (lastPlan) m.legs.push({ km: lastPlan.km, navi: lastPlan.secs, secs: game.t - lastPlan.t });
       if (lastPlan && lastPlan.stand) lastPlan.stand.reached = true;
       tvT0 = game.t;
+      // ab jetzt gilt „Ziel erreicht“, und der rote Balken nennt keinen Bieter mehr: Die neue Runde ist offen
+      ok(!nv.shown && nv.waitLine.includes('Ziel erreicht: ' + places[game.tv.place].name) && nv.screen().bidder === '', 'Am Brunnen angekommen, aber die Anzeigen nennen noch ein Ziel oder einen Bieter');
       if (LOG) console.log(`  ${game.t.toFixed(0)} s: steht am Brunnen von ${places[game.tv.place].name}${rest ? '' : ' (knapp hinter dem Haltepunkt)'}`);
-    } else if (nv.stopping) halting = true;
-    else if (halting) {
+    } else if (nv.stopping) {
+      halting = true;
+      // bis der Wagen steht, nennen HUD-Zeile und roter Balken noch Ziel, Gebot und Bieter der Runde
+      ok(nv.shown === nv.stopping && nv.label === nv.stopping.name && nv.distance === '0 m' && nv.screen().bidder === nv.bidder, 'Zwischen Zielpunkt und Halt zeigen die Anzeigen nicht mehr das Ziel der Runde');
+    } else if (halting) {
       // am Brunnen vorbeigerollt: keine Ankunft, die Runde läuft weiter
       halting = false;
       m.rolled++;
       ok(nv.missed && !game.roundNew && game.T.bid <= 3.1, 'Vorbeigerollt, aber das Spiel wartet nicht auf das nächste Gebot der Runde');
+      ok(!nv.shown && nv.waitLine.includes('vorbeigerollt') && nv.screen().bidder === '', 'Vorbeigerollt, aber die Anzeigen sagen es nicht');
     }
     // kein Hänger: außerhalb der Folge kommt der Wagen voran
     if (game.tv) {

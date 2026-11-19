@@ -18,7 +18,7 @@ import {
 import { roadAhead, closeScene, curvePoint } from './roadahead.js';
 import { Persp, TiltView, ribbon } from './persp.js';
 import { places } from './graph.js';
-import { fmtMeters, fmtKm } from './navroute.js';
+import { fmtMeters, fmtKm, fmtToTarget } from './navroute.js';
 import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawCar, drawShield, drawFlag, drawHeart } from './symbols.js';
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
@@ -916,10 +916,8 @@ export class NaviScreen {
     // Ankunft in der Uhr des Spiels: guidance().mins sind Minuten Fahrt im angenommenen Tempo, die Uhr läuft timeScale-mal
     // so schnell wie die echte Zeit (klassisch 30; die Integration legt den Maßstab der XXL-Uhr fest, REISE A6)
     const eta = nav.eta || (isFinite(ins.mins) && nav.clockMin !== undefined ? 'Ankunft ' + clock(nav.clockMin + ins.mins * (nav.timeScale ?? CLOCK_SCALE)) : '');
-    // Kartenkilometer; kündigt die Ansage schon die Ankunft in den letzten 2 km an, dieselben Meter der Fahrt wie sie
-    // (COMMON.md §9.5: ein so naher Ort steht auf keiner Kilometertafel mehr)
-    const arriving = ins.turn === 'arrive' && ins.dist > 0 && ins.dist < 2000;
-    const right = (arriving ? fmtMeters(ins.dist) : fmtKm(km)) + (eta ? ' · ' + eta : '');
+    // Kartenkilometer, auf den letzten 2 km die Meter der Ansage (fmtToTarget – dieselbe Regel wie die HUD-Zeile)
+    const right = fmtToTarget(km, ins.turn === 'arrive' ? ins.dist : 0) + (eta ? ' · ' + eta : '');
     ctx.font = `600 21px ${FONT}`;
     const rw = ctx.measureText(right).width;
     ctx.textAlign = 'right';

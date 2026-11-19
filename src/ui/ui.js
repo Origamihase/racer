@@ -3,7 +3,7 @@
 import { fmtNum, fmtCent, fmtKm, fmtDuration, clamp } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
-import { fmtMeters, fmtKm as fmtMapKm } from '../map/navroute.js';
+import { fmtMeters } from '../map/navroute.js';
 import { drawTurnIcon } from '../map/symbols.js';
 
 function el(tag, cls, parent, text) {
@@ -843,12 +843,13 @@ export class UI {
       this.leftLaneFill.style.width = clamp(L.timer / (L.dur || 60), 0, 1) * 100 + '%';
     }
     // Navi-Zeile: Ziel, Entfernung, Gebot und Bieter. In der XXL-Welt ist das Ziel ein echter Ort, die Entfernung
-    // steht in Kartenkilometern wie auf dem Kärtchen im Auto, und zwischen Ankunft und erstem Gebot sagt die Zeile das
+    // steht da wie auf dem Kärtchen im Auto (nv.distance), und zwischen Ankunft und erstem Gebot sagt die Zeile das
     const nv = g.navi;
     if (g.worldNavi) {
-      this.naviTarget.textContent = nv.target ? '📍 ' + nv.target.name : nv.waitLine;
-      this.naviKm.textContent = nv.target ? '\u00a0· ' + fmtMapKm(nv.km) : '';
-      this.naviBid.textContent = nv.target ? `\u00a0· Gebot ${fmtCent(nv.bid)} von ${nv.bidder}` : '';
+      const t = nv.shown;
+      this.naviTarget.textContent = t ? '📍 ' + t.name : nv.waitLine;
+      this.naviKm.textContent = t ? '\u00a0· ' + nv.distance : '';
+      this.naviBid.textContent = t ? `\u00a0· Gebot ${fmtCent(nv.bid)} von ${nv.bidder}` : '';
     } else {
       const rem = Math.max(0, nv.targetS - p.s);
       this.naviTarget.textContent = nv.arrived ? '📍 Ziel erreicht – warte auf das nächste Gebot …' : '📍 ' + nv.target.name;
