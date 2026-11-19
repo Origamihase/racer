@@ -804,6 +804,124 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
     ok(k2.dpsi.length > 50 && med < 2, 'K2-Adapter: Karte und Nahansicht zeigen am Auto in verschiedene Richtungen (Median ' + med + '°)');
     console.log('  K2-Adapter (course.preview): ' + JSON.stringify({ frames: k2.frames, lines: k2.lines, headings: k2.dpsi.length, medianDeg: +med.toFixed(2) }));
   } else console.log('  K2-Adapter: übersprungen (src/game/course.js kommt mit ausbau)');
+  // --- Ein Name je Ort (COMMON.md §9.4): Navi und Schilder zeigen denselben, unverwechselbaren Namen ---------------
+  // Der Name eines Orts ist überall der der Karte (places[].name) mit allem, was Orte auseinanderhält: „Frankfurt
+  // (Oder)“ ist nicht „Frankfurt“ (das wäre in diesem Spiel Frankfurt am Main). Kürzen darf nur die Schrift: kleiner
+  // setzen, zuletzt Auslassungspunkte am Ende, und davor bleibt stehen, was den Ort von jedem anderen unterscheidet.
+  // Für alle Orte der Karte: Ortstafel, Ortsende und Zielschild des Schilderplans nennen den Namen, die Tafel bricht
+  // ihn höchstens um; das Navi zeigt ihn im Kärtchen und in der Ansage der Ankunft ungekürzt (neben der breitesten
+  // Angabe rechts bzw. der längsten Entfernung), in der Nebenzeile „dann zum Ziel …“ neben fünf Spurpfeilen und im
+  // Routenstreifen höchstens hinter dem Stück gekürzt, das ihn eindeutig macht; die große Karte führt denselben Namen.
+  // Kein Modul der XXL-Welt ruft die Kurznamen des klassischen Spiels (shortName, signName), die Zusätze streichen.
+  // Schriftbreiten schätzt eine Tabelle nach oben ab (je Zeichen das breitere aus Arial fett und Inter fett, der
+  // Ersatzschrift ohne Helvetica und Arial, dazu 2 %; im Browser misst die Leinwand). Der Ort aus dem Stadtbaukasten
+  // heißt ebenso (tools/citykit-test.mjs).
+  {
+    const { splitName } = await import('../src/world/xxl/signs.js');
+    const { sectionSigns } = await import('../src/world/xxl/signplan.js');
+    const { fit } = await import('../src/map/symbols.js');
+    const names = places.map((p) => p.name);
+    ok(new Set(names).size === names.length, 'Ortsnamen: zwei Orte heißen gleich');
+    const lcp = (a, b) => {
+      let i = 0;
+      while (i < a.length && i < b.length && a[i] === b[i]) i++;
+      return i;
+    };
+    // so viele Zeichen vom Anfang machen den Namen eindeutig (mehr als er hat: er darf nie gekürzt werden)
+    const keepLen = names.map((a, i) => 1 + Math.max(...names.map((b, j) => (i === j ? 0 : lcp(a, b)))));
+    const EM = new Map();
+    const put = (chars, w) => {
+      for (const c of chars) EM.set(c, w);
+    };
+    put(' ', 0.28);
+    put("ilIî.,:;'!|·", 0.34);
+    put('jtfr()', 0.41);
+    put('-/', 0.47);
+    put('abcdeghknopqsuvxyzàãäèéöüß', 0.66);
+    put('w', 0.85);
+    put('m', 0.92);
+    put('ABCDEFHJKLNPRSTUVXYZÄÈÜ', 0.77);
+    put('GOQÖ', 0.78);
+    put('M', 0.94);
+    put('W', 1.04);
+    put('0123456789', 0.68);
+    put('–', 0.56);
+    put('…', 1.01);
+    const emOf = (text) => {
+      let w = 0;
+      for (const c of text) w += EM.get(c) ?? (c.codePointAt(0) > 0x2000 ? 1.4 : 0.74);
+      return w;
+    };
+    const texts = [];
+    const ctx = new Proxy({ font: '10px x' }, {
+      get: (t, k) => (k in t ? t[k] : k === 'measureText' ? (s) => ({ width: emOf(String(s)) * parseFloat(/([\d.]+)px/.exec(t.font)[1]) * 1.02 }) : k === 'fillText' ? (s) => void texts.push(String(s)) : k === 'createLinearGradient' ? () => ({ addColorStop: nop }) : nop),
+      set: (t, k, v) => ((t[k] = v), true),
+    });
+    // ganz gezeigt, oder am Ende gekürzt hinter einem Anfang, der den Namen eindeutig macht
+    const shown = (text, i) => {
+      const name = names[i];
+      if (text.includes(name)) return true;
+      if (!text.endsWith('…')) return false;
+      for (let n = name.length - 1; n >= keepLen[i]; n--) if (text.endsWith(name.slice(0, n) + '…')) return true;
+      return false;
+    };
+    const trip = new Trip({});
+    const nav = new NavModel(trip);
+    const navi = new NaviScreen();
+    const st = { bidder: '', bid: '', clockMin: 23 * 60 };
+    const e = { places: 0, card: 0, split: 0, subCut: 0, stripCut: 0, noRoute: 0 };
+    const wrong = [];
+    for (const p of places) {
+      const i = p.i;
+      const name = p.name;
+      e.places++;
+      // Welt: Ortstafel, Ortsende, Zielschild
+      const sec = { kind: 'stadt', place: i, s0: 1000, s1: 1500, spotS: 1300, node: 0, frame: 1 };
+      const sg = sectionSigns(null, [sec], sec, [], { tables: false, target: i });
+      if (!['ort', 'ortsende', 'ziel'].every((kind) => sg.some((q) => q.kind === kind && q.texts.length === 1 && q.texts[0] === name))) wrong.push(`${name}: Schilderplan nennt ihn anders`);
+      const lines = splitName(name);
+      if (lines.length > 1) e.split++;
+      // umbrochen an einem Leerzeichen (es entfällt) oder hinter einem Bindestrich (er bleibt): sonst fehlt kein Zeichen
+      if (lines.length > 2 || (lines.join(' ') !== name && lines.join('') !== name) || lines.some((ln) => !ln || ln !== ln.trim())) wrong.push(`${name}: Ortstafel zeigt „${lines.join(' / ')}“`);
+      if (PLACE_BY_INDEX[i].name !== name) wrong.push(`${name}: große Karte nennt ihn „${PLACE_BY_INDEX[i].name}“`);
+      // Navi: Ansage der Ankunft mit der längsten Entfernung davor
+      texts.length = 0;
+      navi.drawBanner(ctx, { turn: 'arrive', dist: 1900, head: name, sub: 'Ziel liegt in der Ortsmitte', lanes: null }, W, 'light', null);
+      if (!texts.includes(name)) wrong.push(`${name}: Ansage der Ankunft zeigt „${texts.find((q) => q.includes(name.slice(0, 3)))}“`);
+      // Nebenzeile vor der Ausfahrt des Ziels, neben fünf Spurpfeilen
+      texts.length = 0;
+      navi.drawBanner(ctx, { turn: 'exit', dist: 950, head: 'Ausfahrt', sub: 'dann zum Ziel ' + name, lanes: { n: 5, use: [4], exit: true } }, W, 'light', null);
+      const sub = texts.find((q) => q.startsWith('dann zum Ziel '));
+      if (!sub || !shown(sub, i)) wrong.push(`${name}: Nebenzeile zeigt „${sub}“`);
+      else if (!sub.includes(name)) e.subCut++;
+      // Routenstreifen (Orte unterwegs, höchstens 150 Bildpunkte)
+      ctx.font = '600 16px x';
+      const stop = fit(ctx, name, 150);
+      if (!shown(stop, i)) wrong.push(`${name}: Routenstreifen zeigt „${stop}“`);
+      else if (stop !== name) e.stripCut++;
+      // Kärtchen unten: der ganze Name neben der breitesten Angabe rechts
+      trip.setTarget(i);
+      nav.update(0.1);
+      if (!nav.route || trip.target !== i) {
+        e.noRoute++;
+        continue;
+      }
+      texts.length = 0;
+      navi.drawBottom(ctx, nav, { ...nav.instruction(), turn: 'straight', mapKm: 8888, mins: 59 }, st, W, H, 'light');
+      const card = texts.find((q) => q.startsWith('🏁 '));
+      if (card !== '🏁 ' + name) wrong.push(`${name}: Kärtchen zeigt „${card}“ neben „${texts.find((q) => q.includes('Ankunft'))}“`);
+      else e.card++;
+    }
+    ok(!wrong.length, 'Ein Name je Ort: ' + wrong.slice(0, 12).join(' | '));
+    ok(e.places === 426 && e.card >= 420 && e.noRoute <= 3 && e.split > 20, 'Ein Name je Ort: zu wenig geprüft ' + JSON.stringify(e));
+    // die Kurznamen des klassischen Spiels streichen Zusätze („Frankfurt (Oder)“ → „Frankfurt“): Navi, Karte, Schilder
+    // und Orte der XXL-Welt rufen sie nicht
+    const src = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8');
+    const callers = ['map/navroute.js', 'map/navview.js', 'map/mapview.js', 'map/roadahead.js', 'map/symbols.js', 'ui/mapscreen.js', 'world/xxl/signplan.js', 'world/xxl/signs.js', 'world/xxl/towns.js', 'world/xxl/world.js']
+      .filter((f) => /\b(shortName|signName)\(/.test(src(f)));
+    ok(!callers.length, 'Ein Name je Ort: Kurznamen des klassischen Spiels in ' + callers.join(', '));
+    console.log('  Ein Name je Ort: ' + JSON.stringify(e));
+  }
   globalThis.OffscreenCanvas = keep.O;
   globalThis.Path2D = keep.P;
   Warp.create = keep.create;

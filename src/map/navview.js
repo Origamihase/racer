@@ -902,9 +902,9 @@ export class NaviScreen {
     ctx.fillStyle = '#ffffff';
     ctx.fillText(right, x + bw - 16, cy + 31);
     ctx.textAlign = 'left';
-    ctx.font = `700 22px ${FONT}`;
     ctx.fillStyle = '#c9d6ff';
-    ctx.fillText(fit(ctx, '🏁 ' + pl.name, bw - rw - 50), x + 16, cy + 31);
+    // der Name des Ziels wie auf seiner Ortstafel: lange Namen kleiner gesetzt, nie um einen Zusatz gekürzt
+    ctx.fillText(shrink(ctx, '🏁 ' + pl.name, bw - rw - 50, 700, 22, 16), x + 16, cy + 31);
     this.drawStrip(ctx, m, x + 18, cy + 68, bw - 36, km);
   }
 

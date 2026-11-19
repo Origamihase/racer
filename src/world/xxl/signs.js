@@ -250,8 +250,11 @@ function townTexture(name, end, wM, hM) {
   }
   return toTexture(c);
 }
-/** Name für die Ortstafel: über 14 Zeichen an einem Leerzeichen oder Bindestrich nahe der Mitte umbrechen. */
-function splitName(name) {
+/**
+ * Name für die Ortstafel: über 14 Zeichen an einem Leerzeichen oder Bindestrich nahe der Mitte umbrechen. Jedes Zeichen
+ * bleibt stehen (die Tafel staucht lange Zeilen, sie kürzt nie): die Tafel zeigt denselben Namen wie das Navi.
+ */
+export function splitName(name) {
   if (name.length <= 14) return [name];
   let best = -1;
   for (let i = 1; i < name.length - 1; i++) {
