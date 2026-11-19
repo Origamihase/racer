@@ -7,7 +7,7 @@
 // gedrehten Navi kommen Namen, Schilder, Route, Auto und Ziel jedes Bild neu und stehen immer aufrecht.
 //
 // Kartenkoordinaten: project() aus graph.js (Mercator, x = Länge, y nach Süden, Einheit = Grad Länge am Äquator).
-import { places, nodes, edges, roads, project } from './graph.js';
+import { places, nodes, edges, roads, project, distKm } from './graph.js';
 import { Q, LAND, PATCHES, REGIONS, COUNTRIES, SEAS } from './land.js';
 import { FONT, drawShield, drawTransitBadge, drawHeart } from './symbols.js';
 import { Warp } from './warp.js';
@@ -303,10 +303,12 @@ export function netData() {
     }
     return { i: e.i, kind: e.kind, road: roads[e.road], pts, box: boxOf(pts), len: polyLength(pts) };
   });
-  // Zubringer: vom Knoten (Anschlussstelle) zum Ort, wenn er nicht direkt dort liegt
+  // Zubringer: vom Knoten (Anschlussstelle) zum Ort, wenn er sichtbar abseits liegt. Entscheidend ist die Lage, nicht
+  // zubKm: die Fahrt baut zu jedem Ort einen Zubringer, und ein paar Orte liegen trotz kurzem zubKm Kilometer neben
+  // ihrem Knoten (Bad Sassendorf 4 km neben Soest)
   const feeders = [];
   for (const p of places) {
-    if (p.node < 0 || p.zubKm < 0.3) continue;
+    if (p.node < 0 || distKm(nodes[p.node].lat, nodes[p.node].lon, p.lat, p.lon) < 0.3) continue;
     const a = project(nodes[p.node].lat, nodes[p.node].lon);
     const b = project(p.lat, p.lon);
     feeders.push({ pts: Float64Array.of(a.x, a.y, b.x, b.y), place: p.i });
