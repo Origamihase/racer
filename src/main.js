@@ -1393,7 +1393,7 @@ function chargePlug() {
 function chargeBegin() {
   if (!chargePlug()) return false;
   const p = game.player;
-  Object.assign(chargeRun, { chimed: false, said: false, skipT: -1, greetT: Infinity });
+  Object.assign(chargeRun, { chimed: false, said: false, unplugged: false, shifted: false, skipT: -1, greetT: Infinity });
   chargeRun.keep = { speed: p.speed, wheel: p.wheel, throttle: p.throttle, braking: p.braking };
   ui.show(false, true);
   return true;
@@ -1444,6 +1444,15 @@ function chargeStep(dt) {
   run.town.charge.set((t - S.plug[0]) / (S.plug[1] - S.plug[0]));
   // der Leuchtring erlischt, sobald der Stecker sich löst; die Klappe schließt, wenn er draußen ist
   run.port.set(1 - smoothstep(S.flap[0], S.flap[1], t), 1 - smoothstep(S.plug[0], S.plug[0] + 0.15, t));
+  // Klick, wenn der Stecker sich löst, und der Zirper von P nach D, wenn der Wagen anrollt (übersprungen: keiner)
+  if (t >= S.plug[0] && !run.unplugged) {
+    run.unplugged = true;
+    if (t < S.plug[0] + 0.3) audio.unplug();
+  }
+  if (t >= S.roll && !run.shifted) {
+    run.shifted = true;
+    if (t < S.roll + 0.3) audio.gear('D');
+  }
   if (t >= S.chime && !run.chimed) {
     run.chimed = true;
     audio.nomiChime();
