@@ -101,7 +101,7 @@ function routeFromCached(de) {
 
 /**
  * Orte geradeaus auf der Autobahn ab s (secs: die Abschnitte eines Wegs, s liegt in einem Autobahnabschnitt) mit den
- * Kartenkilometern, die das Navi für sie zeigen würde: genau wie trip.stateAhead(), wäre der Ort das Ziel (Rest der
+ * Kartenkilometern, die das Navi für sie zeigen würde: genau wie trip.reach(), wäre der Ort das Ziel (Rest der
  * Kante, die Kanten geradeaus, die Abfahrt, der Abstecher bis zum Zielpunkt im Ort). Nur Orte, die das Navi auch über
  * diese Autobahn und genau diese Ausfahrt anfahren würde (sonst zeigte es eine andere Zahl), und keine, deren
  * Ausfahrt näher als NEAR_ROAD Meter Straße liegt (deren Tafeln zeigen Meter).
@@ -116,10 +116,8 @@ export function placesAhead(secs, s) {
   let d = c0.s1 - s; // Meter Straße bis zu seiner Gabelung
   let cost = 0; // Kosten geradeaus ab dem Zustand c0.de bis zu diesem Knoten (wie in graph.js)
   let de = c0.de;
-  // Die Abfahrt kostet in der Kartenrechnung 0,3 km; trip.stateAhead zählt sie nicht, solange die Gabelung schon als
-  // Abschnitt angelegt ist. Hier: an der nächsten Gabelung nicht, weiter vorn schon (die liegt beim Vorbeifahren an
-  // der Tafel meist noch hinter dem Horizont) – beides weit innerhalb der Toleranz von 1 km.
-  let exitKm = 0;
+  // die Rampe der Abfahrt ist echte Straße: ihre Meter zählen als Kilometer mit, wie trip.reach() sie zählt
+  const exitKm = J.ramp / 1000;
   for (let guard = 0; guard < 80; guard++) {
     const N = deTo(de);
     if (d >= NEAR_ROAD && Math.abs(R.cost[stateOfNode(N)] - (cost + COST.exit)) < 1e-6) {
@@ -135,7 +133,6 @@ export function placesAhead(secs, s) {
     d += edgeLen(e);
     cost += e.km;
     de = st;
-    exitKm = 0.3;
   }
   return out;
 }

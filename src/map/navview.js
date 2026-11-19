@@ -18,7 +18,7 @@ import {
 import { roadAhead, closeScene, curvePoint } from './roadahead.js';
 import { Persp, TiltView, ribbon } from './persp.js';
 import { places } from './graph.js';
-import { fmtMeters, fmtKm, fmtToTarget } from './navroute.js';
+import { fmtKm } from './navroute.js';
 import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawCar, drawShield, drawFlag, drawHeart } from './symbols.js';
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
@@ -789,7 +789,11 @@ export class NaviScreen {
     ctx.textBaseline = 'alphabetic';
     let head = ins.head;
     let sub = ins.sub;
-    let dist = ins.dist > 0 && ins.turn !== 'none' && ins.turn !== 'straight' && ins.turn !== 'merge' ? fmtMeters(ins.dist) : '';
+    // Entfernung zur Stelle der Ansage in Worten (ins.say). Weit vor einer Ausfahrt ist sie eine ruhige Vorschau
+    // (ins.calm): der Name groß, „in 55 km“ in der Nebenzeile – die große Zahl links gehört allein den Metern, die ab
+    // dem ersten Vorwegweiser bis zur Gabelung herunterzählen
+    let dist = ins.dist > 0 && ins.turn !== 'none' && ins.turn !== 'straight' && ins.turn !== 'merge' && !ins.calm ? ins.say : '';
+    if (ins.calm && ins.say) sub = 'in ' + ins.say + (sub ? ' · ' + sub : '');
     if (hop) {
       head = ins.head && ins.turn === hop.kind ? ins.head : { faehre: 'Überfahrt mit der Fähre', zug: 'Mit dem Autozug', flug: 'Im Frachtflieger' }[hop.kind];
       sub = 'Gute Reise – gleich geht es weiter';
@@ -916,8 +920,8 @@ export class NaviScreen {
     // Ankunft in der Uhr des Spiels: guidance().mins sind Minuten Fahrt im angenommenen Tempo, die Uhr läuft timeScale-mal
     // so schnell wie die echte Zeit (klassisch 30; die Integration legt den Maßstab der XXL-Uhr fest, REISE A6)
     const eta = nav.eta || (isFinite(ins.mins) && nav.clockMin !== undefined ? 'Ankunft ' + clock(nav.clockMin + ins.mins * (nav.timeScale ?? CLOCK_SCALE)) : '');
-    // Kartenkilometer, auf den letzten 2 km die Meter der Ansage (fmtToTarget – dieselbe Regel wie die HUD-Zeile)
-    const right = fmtToTarget(km, ins.turn === 'arrive' ? ins.dist : 0) + (eta ? ' · ' + eta : '');
+    // die Entfernung zum Ziel in Worten: dieselbe wie in der HUD-Zeile und, im Zielort, in der Ansage (fmtDistance)
+    const right = ins.toTarget + (eta ? ' · ' + eta : '');
     ctx.font = `600 21px ${FONT}`;
     const rw = ctx.measureText(right).width;
     ctx.textAlign = 'right';

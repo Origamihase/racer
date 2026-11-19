@@ -6,7 +6,7 @@
 import { NAVI_TARGETS, BANK_FARBEN, INSIDER_ORTE } from '../data.js';
 import { rand, chance, pick, weightedPick, fmtCent, fmtClock, clamp } from '../util.js';
 import { places } from '../map/graph.js';
-import { fmtMeters, fmtToTarget } from '../map/navroute.js';
+import { fmtRoad, fmtDistance } from '../map/navroute.js';
 
 /** Kurzer Name für Schilderbrücken und das Navi-Kärtchen. */
 export function shortName(t) {
@@ -282,21 +282,25 @@ export class WorldNavi {
     this.listKey = '';
   }
 
-  /** Kartenkilometer bis zum Ziel (Infinity ohne Ziel). */
+  /** Reisekilometer bis zum Ziel (Infinity ohne Ziel). */
   get km() {
-    return this.target ? this.trip.stateAhead().km : Infinity;
+    return this.target ? this.trip.reach().km : Infinity;
   }
 
-  /** Entfernung zum Ziel in Worten, genau wie auf dem Kärtchen im Auto (fmtToTarget: zuletzt die Meter der Ansage). */
+  /**
+   * Entfernung zum Ziel in Worten, genau wie auf dem Kärtchen im Auto und in der Ansage (fmtDistance: Reisekilometer,
+   * und Meter, sobald bis zum Brunnen nur noch echte Straße liegt).
+   */
   get distance() {
-    if (this.stopping) return fmtMeters(0);
-    const g = this.trip.guidance();
-    return fmtToTarget(this.km, g.type === 'arrive' ? g.dist : 0);
+    return this.stopping ? fmtRoad(0) : fmtDistance(this.trip.reach());
   }
 
-  /** Sekunden bis zum Ziel im Tempo, das das Navi annimmt (für die Pause bis zum nächsten Gebot, siehe economy.js). */
+  /**
+   * Echte Sekunden bis zum Ziel im Tempo, das das Navi annimmt (für die Pause bis zum nächsten Gebot, siehe
+   * economy.js – die Bieter warten in echter Zeit, nicht in der Reisezeit der Uhr).
+   */
   driveSecs() {
-    return this.target ? this.trip.stateAhead().secs : 0;
+    return this.target ? this.trip.reach().secs : 0;
   }
 
   /** Sekunden bis zum Zielpunkt bei diesem Tempo – nur im Zielort, auf den letzten Metern (sonst Infinity). */

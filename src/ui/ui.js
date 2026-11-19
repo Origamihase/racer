@@ -3,7 +3,6 @@
 import { fmtNum, fmtCent, fmtKm, fmtDuration, clamp } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
-import { fmtMeters } from '../map/navroute.js';
 import { drawTurnIcon } from '../map/symbols.js';
 
 function el(tag, cls, parent, text) {
@@ -346,9 +345,12 @@ export class UI {
       c.fill();
       drawTurnIcon(c, ins.turn, 28, 28, 40, '#ffffff');
     }
-    const dist = ins.dist > 0 && ins.turn !== 'straight' && ins.turn !== 'merge' ? fmtMeters(ins.dist) : '';
+    // die Entfernung in den Worten des Mittelbildschirms (ins.say); weit vor einer Ausfahrt (ins.calm) steht sie ruhig
+    // hinter dem Namen – die Zahl vorn gehört den Metern, die ab dem ersten Vorwegweiser herunterzählen
+    const dist = ins.dist > 0 && ins.turn !== 'straight' && ins.turn !== 'merge' && !ins.calm ? ins.say : '';
+    const text = ins.calm && ins.say ? ins.head + ' · in ' + ins.say : ins.head;
     if (this.turnDist.textContent !== dist) this.turnDist.textContent = dist;
-    if (this.turnText.textContent !== ins.head) this.turnText.textContent = ins.head;
+    if (this.turnText.textContent !== text) this.turnText.textContent = text;
   }
 
   /** Unterkante der sichtbaren Teile der Mittelspalte (ohne Animationen). */

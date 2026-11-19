@@ -7,7 +7,7 @@
 // NavModel hält dazu, was Navi, große Karte und HUD-Zeile brauchen: Lage und Kurs des Autos (über eine Sehne
 // geglättet, damit der Kurs an Knicken nicht zuckt), die geplante Route bis zum Ziel, den gefahrenen Weg, die Orte
 // entlang der Route, Überfahrten (Fähre, Autozug, Flug) als Hüpfer und die Ansage für das Navi. Läuft auch unter Node.
-import { nodes, places, edges, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle } from './graph.js';
+import { nodes, places, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle } from './graph.js';
 import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm } from './mapview.js';
 
 const NODE_XY = nodes.map((n) => project(n.lat, n.lon));
@@ -528,24 +528,42 @@ function thenText(th) {
   if (TRANSIT_NAME[th.type]) return 'dann ' + TRANSIT_NAME[th.type] + ' nach ' + nodes[th.to].name;
   return '';
 }
-/** Deutsche Entfernungsangabe: „800 m“, „2,4 km“, „38 km“. */
-export function fmtMeters(m) {
-  if (m < 950) return Math.max(0, Math.round(m / 50) * 50) + ' m';
-  if (m < 9950) return (m / 1000).toFixed(1).replace('.', ',') + ' km';
-  return Math.round(m / 1000) + ' km';
-}
-/** Kartenkilometer kurz: „412 km“, „8,5 km“. */
-export function fmtKm(km) {
-  if (!isFinite(km)) return '– km';
-  return km < 10 ? km.toFixed(1).replace('.', ',') + ' km' : Math.round(km).toLocaleString('de-DE') + ' km';
+// Entfernungen in Worten. Zwei Einheiten, jede mit einer Bedeutung, auf jedem Bildschirm und jeder Tafel: „km“ sind
+// Reisekilometer – das Maß der Fahrt (trip.km, trip.reach().km), auf der offenen Strecke gerafft. „m“ sind Meter
+// Straße, wie das Auge sie sieht. Eine Zahl in Metern ist nie eine geraffte Entfernung, eine Zahl in Kilometern nie
+// eine Straßenlänge auf geraffter Strecke.
+/**
+ * Der erste Vorwegweiser steht so viele Meter Straße vor jeder Gabelung (signplan.js BOARD_D[0]; tools/journey-test.mjs
+ * hält beide gleich). Ab ihm zählt die Ansage die Meter bis zur Gabelung herunter, genau wie Tafeln und Baken.
+ */
+export const BOARD_M = 1000;
+/** Meter Straße: „1000 m“, „450 m“, „80 m“ – in Schritten von 50 m, auf den letzten 100 m von 10 m. */
+export function fmtRoad(m) {
+  const step = m < 95 ? 10 : 50;
+  return Math.max(0, Math.round(m / step) * step) + ' m';
 }
 /**
- * Entfernung zum Ziel, wie Kärtchen und HUD-Zeile sie nennen: Kartenkilometer. Kündigt die Ansage schon die Ankunft in
- * den letzten 2 km an (arriveDist: ihre Meter der Fahrt, sonst 0), sind es dieselben Meter wie dort (COMMON.md §9.5:
- * ein so naher Ort steht auf keiner Kilometertafel mehr).
+ * Reisekilometer bis zu einer Stelle: „412 km“ (gerundet, wie auf den Entfernungstafeln), unter 10 km mit einer
+ * Nachkommastelle und aufgerundet: „0,5 km“ heißt „höchstens noch so weit“. So steigt die Zahl nie, wenn die Anzeige
+ * auf echter Straße zu Metern wechselt (aus „1,2 km“ wird „1150 m“, nie aus „1,1 km“).
  */
-export function fmtToTarget(km, arriveDist = 0) {
-  return arriveDist > 0 && arriveDist < 2000 ? fmtMeters(arriveDist) : fmtKm(km);
+export function fmtKm(km) {
+  if (!isFinite(km)) return '– km';
+  const up = Math.ceil(km * 10 - 1e-6) / 10;
+  return up < 10 ? up.toFixed(1).replace('.', ',') + ' km' : Math.round(km).toLocaleString('de-DE') + ' km';
+}
+/** Gefahrene Reisekilometer (Kilometerzähler): abgerundet – „100 km“ steht da, sobald sie voll sind. */
+export function fmtOdo(km) {
+  const down = Math.floor(km * 10 + 1e-6) / 10;
+  return down < 10 ? down.toFixed(1).replace('.', ',') + ' km' : Math.floor(down).toLocaleString('de-DE') + ' km';
+}
+/**
+ * Die eine Entfernungsangabe des Spiels – für das Ziel, die nächste Handlung, jeden Ort: d = {km, m, real} von
+ * trip.reach(). Liegt bis zur Stelle nur echte Straße (real), nennt sie die Meter, sonst die Reisekilometer. Am
+ * Wechsel (an der Gabelung, an der Ortstafel) ist es dieselbe Strecke in der anderen Einheit: aus „0,5 km“ wird „500 m“.
+ */
+export function fmtDistance(d) {
+  return d.real ? fmtRoad(d.m) : fmtKm(d.km);
 }
 
 /**
@@ -924,16 +942,25 @@ export class NavModel {
 
   /**
    * Die Ansage für Navi und HUD-Zeile, nur aus trip.guidance() und den Schildtexten (trip.signs): {turn, dist (Meter
-   * der Fahrt bis zur genannten Stelle), km (Kartenkilometer bis dorthin, für den Maßstab), head (Hauptzeile), sub
-   * (Nebenzeile), road (Schild), lanes (Spurpfeile), fork (die Gabelung, die die Ansage meint), node, mapKm (bis zum
-   * Ziel), mins, target}. Ohne bekannte Stelle (dem Straßenverlauf folgen) ist dist 0 und wird nicht gezeigt.
+   * der Fahrt bis zur genannten Stelle), km (Kartenkilometer bis dorthin auf der Karte, für ihren Maßstab), say (die
+   * Entfernung in Worten, '' ohne Stelle), calm, head (Hauptzeile), sub (Nebenzeile), road (Schild), lanes
+   * (Spurpfeile), fork (die Gabelung, die die Ansage meint), node, mapKm (Reisekilometer bis zum Ziel), toTarget
+   * (dieselben in Worten, wie Kärtchen und HUD-Zeile sie nennen), clock (Restfahrzeit in Sekunden der Uhr), mins,
+   * target}. Ohne bekannte Stelle (dem Straßenverlauf folgen) ist dist 0 und wird nicht gezeigt.
    * Ohne Ziel nennt die Ansage nur die Straße – und ein Autobahnende, das auf dem eigenen Weg liegt.
+   *
+   * Die Ausfahrt hat zwei Zustände, der Wechsel liegt am ersten Vorwegweiser (BOARD_M): Davor ist sie eine ruhige
+   * Vorschau (calm: Name der Ausfahrt, darunter „in 55 km“ in Reisekilometern); ab der Tafel zählt say die Meter
+   * Straße bis zur Gabelung herunter, genau wie Tafeln und Baken – und die Spurpfeile erscheinen.
    */
   instruction() {
     const trip = this.trip;
     let g = trip.guidance();
     const sec = trip.section;
-    const out = { turn: 'none', dist: 0, km: 0, head: '', sub: '', road: '', lanes: null, node: -1, fork: null, mapKm: g.km, mins: g.mins, target: trip.target };
+    const out = {
+      turn: 'none', dist: 0, km: 0, say: '', calm: false, head: '', sub: '', road: '', lanes: null, node: -1, fork: null,
+      mapKm: g.km, toTarget: g.type === 'none' ? '' : fmtDistance(g), clock: g.clock, mins: g.mins, target: trip.target,
+    };
     // gerade unterwegs zu einem Terminal? Dann ist die Überfahrt die nächste Handlung (Stelle: das Terminal der Fahrt)
     for (const c of trip.cur.sections) {
       if (c.s1 <= trip.s) continue;
@@ -944,6 +971,7 @@ export class NavModel {
         out.head = TRANSIT_NAME[c.transit] + ' nach ' + nodes[c.transitTo].name;
         out.sub = c.transit === 'flug' ? 'Bitte zum Frachtterminal' : c.transit === 'zug' ? 'Bitte auf den Autozug fahren' : 'Bitte auf die Fähre fahren';
         out.km = this.kmAhead(out.dist);
+        out.say = fmtDistance(trip.reach(trip.s + out.dist));
         return out;
       }
       if (c.kind === 'stadt' && c.place === trip.target) break;
@@ -957,12 +985,13 @@ export class NavModel {
       }
       // Ohne Ziel führt das Navi nirgendwohin. Ein Autobahnende sagt es trotzdem an: dort führen alle Spuren hinaus,
       // Schilder und Baken der Welt zeigen es – also zeigt es auch das Navi, wie eine geplante Ausfahrt
-      g = { type: 'exit', dist: end.s - trip.s, fork: end, node: end.node, then: trip.afterExit(end) };
+      g = { type: 'exit', dist: end.s - trip.s, toKm: trip.reach(end.s).km, fork: end, node: end.node, then: trip.afterExit(end) };
     }
     if (g.type === 'arrive') {
       out.turn = 'arrive';
       out.dist = g.dist;
       out.km = this.kmAhead(g.dist);
+      out.say = out.toTarget;
       out.head = places[trip.target].name;
       out.sub = 'Ziel liegt in der Ortsmitte';
       return out;
@@ -971,6 +1000,8 @@ export class NavModel {
       out.turn = 'exit';
       out.dist = g.dist;
       out.km = this.kmAhead(g.dist);
+      out.calm = g.far || g.dist > BOARD_M;
+      out.say = out.calm ? fmtKm(g.toKm) : fmtRoad(g.dist);
       out.node = g.node;
       out.fork = g.fork || null;
       // der Name wie auf dem Schild an der Gabelung (hinter dem Horizont, wo es sie noch nicht gibt, der Titel der Ansage)
@@ -980,7 +1011,7 @@ export class NavModel {
       if (g.then && (g.then.type === 'ab' || g.then.type === 'land')) out.road = g.then.road;
       // Spurpfeile ab dem 1000-m-Schild: vier Spuren geradeaus, rechts der Verzögerungsstreifen, der abgeht (am
       // Autobahnende führen alle Spuren hinaus)
-      if (!g.far && g.dist <= 1000 && sec.kind === 'ab' && g.fork) out.lanes = { n: 5, use: g.fork.forced ? [0, 1, 2, 3, 4] : [4], exit: true };
+      if (!out.calm && sec.kind === 'ab' && g.fork) out.lanes = { n: 5, use: g.fork.forced ? [0, 1, 2, 3, 4] : [4], exit: true };
       return out;
     }
     // dem Straßenverlauf folgen (die nächste Handlung liegt hinter dem Horizont): Straße und Richtung wie auf den
@@ -1025,17 +1056,9 @@ export class NavModel {
   nodeXY(n) {
     return NODE_XY[n];
   }
-  /**
-   * Kartenkilometer bis zum Ziel. Liegt eine Überfahrt schon auf dem eigenen Weg, zählt die Fahrt sie nicht mehr
-   * mit (sie hat auf dem Band keine Länge): hier kommt sie dazu, damit die Anzeige vor der Fähre nicht springt.
-   */
+  /** Reisekilometer bis zum Ziel (trip.reach: eine Überfahrt zählt mit, bis das Auto drüben ist). */
   remainingKm(ins) {
-    let km = ins.mapKm;
-    const trip = this.trip;
-    for (const c of trip.cur.sections) {
-      if (c.kind === 'term' && c.arrival && c.s0 > trip.s && c.de >= 0) km += edges[c.de >> 1].km;
-    }
-    return km;
+    return ins.mapKm;
   }
   /**
    * Wo die Fahrt gerade ist (Ansage ohne Ziel): auf Autobahn und Landstraße Straße und Richtung, auf der Ausfahrt ihr

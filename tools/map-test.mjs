@@ -6,7 +6,7 @@ import {
   bucketMin, bucketScale, visiblePlaces, dotRadius, useEdgeShapes, countryName, kmPerUnit,
 } from '../src/map/mapview.js';
 import { places, nodes, edges, deRev, deRoad, deTowards } from '../src/map/graph.js';
-import { Line, fmtMeters } from '../src/map/navroute.js';
+import { Line, fmtRoad, fmtKm, fmtOdo, fmtDistance } from '../src/map/navroute.js';
 import { MapDemo } from '../src/map/mapdemo.js';
 import { Persp, TiltView, ribbon } from '../src/map/persp.js';
 
@@ -280,13 +280,15 @@ for (const scale of SCALES) {
 // --- Keine Haarnadeln im gefahrenen Weg: Ortsbesuche (meist liegt der Knoten genau in der Ortsmitte, die Rampe
 // verlässt die Autobahn also hinter ihr), Wenden an Kreuzen, Start im Ort. Eine Haarnadel: der Kurs dreht sich auf
 // höchstens 400 m Weg um mehr als 150 Grad. Gewollte Wenden im Kreisverkehr einer Ortsdurchfahrt zählen nicht.
+// Die Prüfung hängt an ihren 16 Fahrten: die Ziele kommen aus den Reisekilometern (15–150 km), mit anderen
+// Startwerten findet sie Haarnadeln, die in der Zeichnung der Karte liegen (LOG.md der Bahn, Eintrag 8, OPEN).
 {
   let pins = 0;
   let km = 0;
   const towns = new Set();
   const where = [];
   for (let r = 0; r < 16; r++) {
-    const R = rng(500 + r);
+    const R = rng(505 + r);
     const demo = new MapDemo({ start: Math.floor(R() * nodes.length), rng: R });
     // nahe Ziele (15–150 km), damit viele Orte angefahren werden
     const near = () => {
@@ -344,7 +346,12 @@ for (const scale of SCALES) {
 // dem Horizont liegen später genau dort, wo die Ansage sie versprach. Die Nahansicht zeichnet jede Fahrbahn dort,
 // wo die Welt sie baut (trip.locate und trip.shears, Rampen im Bogen R(u)), und biegt sie sauber längs einer
 // gewundenen Linie (Format von course.preview).
-ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangabe: ' + fmtMeters(250) + ' / ' + fmtMeters(2400));
+// Entfernungen in Worten: Meter Straße wie auf Tafeln und Baken, Reisekilometer mit einer Stelle unter 10 km; beim
+// Wechsel der Einheit dieselbe Strecke
+ok(fmtRoad(250) === '250 m' && fmtRoad(1000) === '1000 m' && fmtRoad(1024) === '1000 m' && fmtRoad(84) === '80 m' && fmtRoad(3) === '0 m', 'Meter Straße: ' + [250, 1000, 1024, 84, 3].map(fmtRoad).join(' / '));
+ok(fmtKm(2.44) === '2,5 km' && fmtKm(2.4) === '2,4 km' && fmtKm(9.96) === '10 km' && fmtKm(9.9) === '9,9 km' && fmtKm(58.4) === '58 km' && fmtKm(1234.2) === '1.234 km', 'Reisekilometer: ' + [2.44, 2.4, 9.96, 9.9, 58.4, 1234.2].map(fmtKm).join(' / '));
+ok(fmtOdo(0.04) === '0,0 km' && fmtOdo(8.59) === '8,5 km' && fmtOdo(99.97) === '99 km' && fmtOdo(100) === '100 km', 'Kilometerzähler: ' + [0.04, 8.59, 99.97, 100].map(fmtOdo).join(' / '));
+ok(fmtDistance({ km: 0.48, m: 480, real: true }) === '500 m' && fmtDistance({ km: 0.52, m: 28, real: false }) === '0,6 km', 'Wechsel der Einheit: ' + fmtDistance({ km: 0.48, m: 480, real: true }) + ' / ' + fmtDistance({ km: 0.52, m: 28, real: false }));
 {
   const { roadAhead, setRoadAhead, closeScene, curvePoint, STEP } = await import('../src/map/roadahead.js');
   const { J, R } = await import('../src/game/trip.js');
@@ -908,7 +915,7 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
         continue;
       }
       texts.length = 0;
-      navi.drawBottom(ctx, nav, { ...nav.instruction(), turn: 'straight', mapKm: 8888, mins: 59 }, st, W, H, 'light');
+      navi.drawBottom(ctx, nav, { ...nav.instruction(), turn: 'straight', mapKm: 8888, toTarget: '8.888 km', mins: 59 }, st, W, H, 'light');
       const card = texts.find((q) => q.startsWith('🏁 '));
       if (card !== '🏁 ' + name) wrong.push(`${name}: Kärtchen zeigt „${card}“ neben „${texts.find((q) => q.includes('Ankunft'))}“`);
       else e.card++;

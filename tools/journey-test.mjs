@@ -13,16 +13,24 @@
 //   hat, und wer dem Navi folgt, wird an keiner Gabelung „falsch“ gefahren sein.
 // - Ankunft: nur am Brunnenplatz des aktuellen Ziels, und jede ist eine BrunnenTV-Folge; ein Gebot, das vorher das
 //   Ziel ändert (auch mitten im Zielort), nimmt sie weg – dann hält der Wagen nicht.
+// - Die Zahlen passen zusammen (ein Maß für die Reise, siehe trip.js): in jedem Schritt jedes Streams –
+//   Entfernung zum Ziel = Entfernung zur nächsten Handlung + der Rest dahinter; sie fällt um genau das, was der
+//   Kilometerzähler steigt, und steigt nie, solange das Ziel steht und die Fahrt nicht neu plant; Meter nennt eine
+//   Anzeige nur, wo bis zur Stelle echte Straße (1:1) liegt – oder in der Ansage ab dem ersten Vorwegweiser, und dann
+//   sagt sie an jeder Tafel und Bake genau deren Meter; Ansage, Kärtchen und HUD-Zeile nennen im Zielort dieselbe
+//   Zahl; eine Entfernungstafel, die das Ziel nennt, zeigt die Kilometer des Navis; jeder Abschnitt zählt, was die
+//   Karte für seine Kante sagt (Rampen, Verbindungen und Orte: ihre Meter).
 // Dazu misst es das Tempo der Reise (Fahrzeiten, Ankünfte je Stunde, Gebote und Einnahmen je Minute). Die Zahlen
 // stehen am Ende der Ausgabe; wer an den Bieterregeln dreht, liest sie dort ab.
 import { PerspectiveCamera } from 'three';
-import { places, nodeTitle } from '../src/map/graph.js';
+import { places, nodeTitle, deEdge, OFF_KM } from '../src/map/graph.js';
 import { Trip, J } from '../src/game/trip.js';
 import { Game } from '../src/game/game.js';
 import { BID_PLACES } from '../src/game/navi.js';
 import { INSIDER_ORTE } from '../src/data.js';
-import { NavModel } from '../src/map/navroute.js';
+import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
+import { signsAlong, BOARD_D } from '../src/world/xxl/signplan.js';
 
 const HOURS = Number(process.argv[2]) || 3;
 const LOG = process.argv[3] === 'log';
@@ -68,7 +76,9 @@ const DRIVERS = [
 /**
  * Härtetest für den Halt am Brunnen: Auf den letzten 150 m im Zielort bricht jedes Mal ein hastiges Bieterduell aus,
  * das Ziel springt bis zum Brunnen hin und her. Der Wagen steht danach am Brunnen (BrunnenTV), ist vorbeigerollt
- * (keine Ankunft) oder das Ziel ist weg – aber nie bleibt er hängen.
+ * (keine Ankunft) oder das Ziel ist weg – aber nie bleibt er hängen. Dazu fällt an jeder zehnten Gabelung ein Gebot
+ * mitten in ihre Sperrzone (J.lock): Der Zweig dort bleibt, wie er gebaut ist, und Ansage und Zahlen müssen trotzdem
+ * stimmen.
  */
 const DUELLIST = { name: 'zügig, Duell im Zielort', cruise: 185, miss: 0, skip: true, duel: true };
 
@@ -125,6 +135,167 @@ function checkNavi(trip, nav, promised, n, where) {
   n.checks++;
 }
 
+// --- Die Zahlen passen zusammen -------------------------------------------------------------------------------------
+// was graph.js und navroute.js von den Maßen der Fahrt und der Schilder wissen müssen, stimmt mit ihnen überein
+ok(OFF_KM.exit * 1000 === J.ramp && Math.abs(OFF_KM.enterAb * 1000 - (J.conn + J.auf)) < 1e-9, `graph.js OFF_KM ${JSON.stringify(OFF_KM)} passt nicht zu J.ramp ${J.ramp}, J.conn ${J.conn}, J.auf ${J.auf}`);
+ok(BOARD_M === BOARD_D[0], `Die Ansage wechselt bei ${BOARD_M} m, der erste Vorwegweiser steht bei ${BOARD_D[0]} m`);
+
+/** Anzeige „… km“ oder „… m“ als Meter (für den Vergleich zweier Anzeigen). */
+function shownMetres(text) {
+  const n = Number(text.replace(/\./g, '').replace(',', '.').replace(/ (km|m)$/, ''));
+  return text.endsWith(' km') ? n * 1000 : n;
+}
+
+/**
+ * Prüft in jedem Schritt eines Streams, dass Kilometerzähler, Entfernungen und Anzeigen dasselbe Maß meinen.
+ * replan(): die Fahrt plant neu (Gebot, Gabelung anders als angesagt) – nur dann darf eine Entfernung steigen.
+ * step(evs, sBefore, quick): nach trip.update; quick = nur die billigen Prüfungen dieses Schritts.
+ */
+function numbers(trip, nav, nv, N) {
+  let odo = trip.km;
+  let D = Infinity; // Entfernung zum Ziel beim letzten Schritt
+  let fresh = true; // seit dem letzten Schritt wurde neu geplant
+  let shown = Infinity; // die zuletzt angezeigte Entfernung in Metern
+  let inMetres = false;
+  const calmDone = new WeakSet(); // Gabelungen, an denen die Ansage schon Meter zählt
+  let before = null; // der Abschnitt vor dem zuletzt verlassenen
+  // Kilometerzähler gegen die Abschnitte: was voll durchfahren ist, plus das Stück im aktuellen
+  let full = trip.km - (trip.s - trip.section.s0) * trip.section.kmPerM;
+  const legKm = (from, to) => {
+    // Reisekilometer zwischen zwei Stellen des geplanten Wegs, unabhängig von reach() aus den Abschnitten gezählt
+    let km = 0;
+    let real = true;
+    for (const L of trip.plan().legs) {
+      const a = Math.max(L.s0, from);
+      const b = Math.min(L.s1, to);
+      if (b <= a) continue;
+      km += (b - a) * L.sec.kmPerM;
+      if (L.sec.kmPerM !== 0.001) real = false;
+    }
+    return { km, real };
+  };
+  return {
+    replan() {
+      fresh = true;
+    },
+    step(evs, sBefore, quick) {
+      N.steps++;
+      for (const e of evs) {
+        if (e.type === 'enter') {
+          // jeder Abschnitt zählt seine Meter mal seinen Maßstab – Autobahn und Landstraße genau die Kilometer der Karte
+          const c = e.prev;
+          const km = c.len * c.kmPerM;
+          if (c.kind === 'ab' || c.kind === 'land') {
+            ok(Math.abs(km - deEdge(c.de).km) < 1e-9, `${c.kind} zählt ${km} km, die Karte sagt ${deEdge(c.de).km} km`);
+            N.edges++;
+            N.edgeKm += km;
+          } else if (c.kind === 'zub' && c.kmPerM !== 0.001) {
+            // ein langer Zubringer zählt den Weg der Karte zum Ort – ab dem Ort davor, wenn die Fahrt von dort kommt
+            const from = before && before.kind === 'stadt' && before.node === c.node && before.s1 === c.s0 ? places[before.place].zubKm : 0;
+            const want = places[c.place].zubKm - from;
+            ok(km > c.len / 1000 && Math.abs(km - want) < 1e-9, `Zubringer nach ${places[c.place].name} zählt ${km} km, die Karte sagt ${want} km`);
+            N.feederKm += km;
+          } else {
+            ok(c.kmPerM === 0.001, `${c.kind} zählt ${c.kmPerM * 1000} Reisemeter je Meter Straße statt 1`);
+            N.realKm += km;
+            N.realBy[c.kind] = (N.realBy[c.kind] || 0) + km;
+          }
+          if (c.s0 >= 0) full += km;
+          else full = trip.km - (trip.s - e.sec.s0) * e.sec.kmPerM; // der Startort begann vor dem Start
+          before = c;
+        } else if ((e.type === 'fork' && e.wrong) || e.type === 'arrive') fresh = true;
+      }
+      const sec = trip.section;
+      ok(Math.abs(trip.km - (full + (trip.s - sec.s0) * sec.kmPerM)) < 1e-6, `Kilometerzähler ${trip.km} ≠ Summe der Abschnitte ${full + (trip.s - sec.s0) * sec.kmPerM}`);
+      const gain = trip.km - odo;
+      odo = trip.km;
+      const d = trip.reach();
+      if (trip.target < 0 || !isFinite(d.km)) {
+        D = Infinity;
+        shown = Infinity;
+        inMetres = false;
+        fresh = false;
+        return;
+      }
+      // die Entfernung zum Ziel fällt um genau das, was der Zähler steigt, und steigt nie ohne neuen Plan
+      if (!fresh && isFinite(D)) {
+        N.falls++;
+        const err = Math.abs(D - d.km - gain);
+        N.maxErr = Math.max(N.maxErr, err);
+        ok(err < 1e-6, `Entfernung zum Ziel fällt um ${(D - d.km).toFixed(6)} km, der Zähler steigt um ${gain.toFixed(6)} km (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
+      } else N.plans++;
+      D = d.km;
+      // die angezeigte Zahl: nie höher als eben, und von Kilometern zu Metern wechselt sie höchstens einmal
+      const text = nv.distance;
+      const now = shownMetres(text);
+      const m = text.endsWith(' m');
+      if (!fresh) {
+        ok(now <= shown, `Die Anzeige steigt von ${shown} m auf „${text}“ (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
+        ok(m || !inMetres, `Die Anzeige wechselt von Metern zurück zu „${text}“`);
+        if (m && !inMetres) {
+          N.units++;
+          N.unitDrop = Math.max(N.unitDrop, shown - now);
+        }
+      }
+      shown = now;
+      inMetres = m;
+      fresh = false;
+      // Meter nur, wo bis zum Ziel echte Straße liegt – und dann auch Meter
+      const way = legKm(trip.s, trip.plan().end);
+      ok(m === way.real, `„${text}“ zum Ziel, aber der Weg dorthin ist ${way.real ? 'echte Straße' : 'gerafft'} (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
+      ok(Math.abs(way.km - d.km) < 1e-9 && (!way.real || Math.abs(d.km * 1000 - d.m) < 1e-6), `reach ${d.km} km / ${d.m} m, Abschnitte ${way.km} km`);
+      if (m) N.metres++;
+      else N.kms++;
+      // Tafeln, Baken und Entfernungstafeln, an denen der Wagen in diesem Schritt vorbeigekommen ist
+      const signs = signsAlong(trip, trip.cur, sBefore, trip.s, { target: trip.target });
+      let ins = null;
+      for (const e of signs) {
+        if (e.s <= sBefore) continue;
+        if (e.kind === 'vorweg' || e.kind === 'bake') {
+          ins = ins || nav.instruction();
+          if (ins.turn !== 'exit' || !ins.fork || ins.fork.id !== e.fork) continue;
+          const want = e.kind === 'vorweg' ? e.board.dist : e.dist + ' m';
+          ok(ins.say === want && !ins.calm, `Tafel „${want}“ vor ${ins.head}, die Ansage sagt „${ins.say}“${ins.calm ? ' (noch als Vorschau)' : ''}`);
+          if (e.kind === 'vorweg') N.boards++;
+          else N.beacons++;
+        } else if (e.kind === 'tafel') {
+          N.tables++;
+          const row = e.rows.find((r) => r.place === trip.target);
+          if (!row) continue;
+          N.tableRows++;
+          N.tableDev = Math.max(N.tableDev, Math.abs(row.km - d.km));
+          ok(row.km + ' km' === text, `Entfernungstafel: ${row.name} ${row.km} km, das Navi zeigt „${text}“ (${d.km.toFixed(2)} km)`);
+        }
+      }
+      if (quick && !ins) return;
+      // Ansage: Ziel = nächste Handlung + Rest; ihre Zahl in dem Maß, das ihr Zustand verspricht
+      ins = ins || nav.instruction();
+      const g = trip.guidance();
+      if (g.type === 'exit' || g.type === 'arrive') {
+        const to = legKm(trip.s, trip.s + g.dist);
+        const rest = legKm(trip.s + g.dist, trip.plan().end);
+        ok(Math.abs(g.toKm - to.km) < 1e-9 && Math.abs(g.km - (g.toKm + rest.km)) < 1e-9, `Ziel ${g.km} km ≠ Handlung ${g.toKm} km + Rest ${rest.km} km`);
+        N.sums++;
+      }
+      if (ins.turn === 'arrive') {
+        ok(ins.say === text && ins.toTarget === text, `Im Zielort: Ansage „${ins.say}“, Kärtchen „${ins.toTarget}“, HUD-Zeile „${text}“`);
+        N.same++;
+      } else if (ins.turn === 'exit') {
+        ok(ins.toTarget === text, `Kärtchen „${ins.toTarget}“, HUD-Zeile „${text}“`);
+        if (ins.calm) {
+          ok(ins.say === fmtKm(g.toKm) && (g.far || g.dist > BOARD_M), `Vorschau „${ins.say}“ ${g.dist.toFixed(0)} m vor ${ins.head}`);
+          ok(!ins.fork || !calmDone.has(ins.fork), `Die Ansage vor ${ins.head} fällt von Metern zurück in die Vorschau`);
+          N.calm++;
+        } else {
+          ok(ins.say === fmtRoad(g.dist) && g.dist <= BOARD_M && !!ins.fork, `Ansage „${ins.say}“ ${g.dist.toFixed(0)} m vor ${ins.head}`);
+          calmDone.add(ins.fork);
+          N.near++;
+        }
+      }
+    },
+  };
+}
+
 /** Ein Stream: hours Stunden Spielzeit mit einem Fahrer. Liefert die Messwerte. */
 function stream(driver, hours, seed) {
   Math.random = mulberry32(seed);
@@ -161,7 +332,12 @@ function stream(driver, hours, seed) {
     bids: 0, bidSum: 0, earnN: 0, earnSum: 0, chaos: 0, calm: 0, late: 0, snatched: 0, spots: 0, rolled: 0, arrivals: 0, rests: 0, late2: 0, tvEnds: 0, duels: 0,
     lockFork: 0, lockNode: 0, wrong: 0, wende: 0, first1: 0, firstN: 0, maxGap: 0, maxTv: 0, minTv: Infinity, passed: 0,
     bands: [0, 0, 0, 0], legs: [], navi: { checks: 0, exit: 0, far: 0, farKept: 0, arrive: 0, wende: 0 }, reroutes: 0, standing: 0, ratio: 0, stand: [], flipped: 0, minChoice: Infinity,
+    num: {
+      steps: 0, falls: 0, plans: 0, maxErr: 0, metres: 0, kms: 0, units: 0, unitDrop: 0, boards: 0, beacons: 0, tables: 0, tableRows: 0, tableDev: 0, sums: 0, same: 0, calm: 0, near: 0,
+      edges: 0, edgeKm: 0, feederKm: 0, realKm: 0, realBy: {},
+    },
   };
+  const num = numbers(trip, nav, nv, m.num);
   const promised = new Map();
   const sloppy = new WeakMap(); // Gabelung → fährt dieser Fahrer hier am Navi vorbei?
   const planSince = new WeakMap(); // Gabelung → {plan, s}: was das Navi dort will und seit welchem Meter
@@ -173,6 +349,8 @@ function stream(driver, hours, seed) {
   let halting = false; // zwischen Zielpunkt und Halt am Brunnen
   let duelSec = null; // Härtetest: die Ortsdurchfahrt, in der gerade das Duell tobt
   let duelPace = 0; // … und wie viele Sekunden dort höchstens zwischen zwei Geboten liegen
+  let lockFork = null; // … und die Gabelung, in deren Sperrzone der Wagen zuletzt kam
+  let lockForks = 0;
   let tvT0 = -1;
   let tvEndT = -1;
   let progressS = p.s;
@@ -218,6 +396,7 @@ function stream(driver, hours, seed) {
     if (LOG) console.log(`  ${game.t.toFixed(0)} s: ${plan.kind}${plan.late ? ' (spät)' : ''} ${nv.bid.toFixed(2)} € → ${t.name}, ${km.toFixed(0)} km, Navi ${secs.toFixed(0)} s${zone ? ', Sperrzone ' + zone : ''}${inTown ? ', im Zielort weggeboten' : ''}`);
     promised.clear();
     pendingCheck = true;
+    num.replan();
     lastPlan = { t: game.t, km, secs };
     return t;
   };
@@ -305,6 +484,11 @@ function stream(driver, hours, seed) {
         game.bidPlan = { increment: 0.1, delay: 0, kind: 'duel', first: true };
         game.T.bid = 0;
       } else if (sec === duelSec && !sec.spotDone && game.bidPlan.kind === 'duel' && game.T.bid > duelPace) game.T.bid = duelPace * (0.5 + 0.5 * Math.random());
+      const f = sec.fork;
+      if (sec.kind === 'ab' && f && f !== lockFork && !f.taken && f.branch && f.s - trip.s < 350 && nv.target) {
+        lockFork = f;
+        if (++lockForks % 10 === 0) game.T.bid = 0;
+      }
     }
     game.offAutobahn = sec.kind !== 'ab';
     const tvBefore = game.tv;
@@ -322,7 +506,9 @@ function stream(driver, hours, seed) {
       tvEndT = game.t;
       ok(!arrival.held, 'Die Folge ist vorbei, aber der Wagen wird noch gehalten');
     }
+    const sBefore = trip.s;
     const evs = trip.update(p.s, p.x);
+    num.step(evs, sBefore, !(pendingCheck || i % 10 === 0));
     for (let k = 0; k < evs.length; k++) onEvent(evs[k]);
     const rest = arrival.update(trip, evs, p.speed);
     if (rest) {
@@ -383,13 +569,27 @@ function stream(driver, hours, seed) {
   ok(m.minChoice >= 100, `Nur ${m.minChoice} Orte standen bei einem Gebot zur Wahl`);
   m.hours = game.t / 3600;
   m.km = (p.s - trip.cur.s0) / 1000;
-  m.roadKm = game.stats.distance / 1000;
+  m.roadKm = p.s / 1000;
+  m.tripKm = trip.km;
   m.money = game.money;
   return m;
 }
 
 // --- Die Streams ---------------------------------------------------------------------------------------------------
 const fmt = (x, d = 1) => x.toFixed(d).replace('.', ',');
+/** Die Zahlen passen zusammen: was in einem Stream geprüft wurde und was die echten Straßen zu den Kilometern beitragen. */
+function numbersLine(m) {
+  const N = m.num;
+  const all = N.edgeKm + N.feederKm + N.realKm;
+  const by = Object.entries(N.realBy).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${fmt(v, 0)}`).join(', ');
+  return (
+    `Die Zahlen passen zusammen: ${N.steps} Schritte, ${fmt(m.tripKm, 0)} Reisekilometer auf ${fmt(m.roadKm, 0)} km Straße · ${N.falls}× fiel die Entfernung zum Ziel genau wie der Zähler stieg (größter Fehler ${N.maxErr.toExponential(1)} km), ${N.plans} neue Pläne` +
+    ` · Anzeige in km ${N.kms}×, in Metern ${N.metres}× (nur auf echter Straße), ${N.units} Wechsel km → m (größter Sprung der Zahl ${fmt(N.unitDrop, 0)} m)` +
+    ` · ${N.sums}× Ziel = Handlung + Rest, ${N.same}× im Zielort dieselbe Zahl auf Ansage, Kärtchen und HUD-Zeile, Ausfahrt ${N.calm}× als Vorschau in km und ${N.near}× in Metern, ${N.boards} Vorwegweiser und ${N.beacons} Baken mit der Zahl der Ansage` +
+    ` · ${N.tables} Entfernungstafeln, ${N.tableRows} nannten das Ziel (größte Abweichung ${fmt(N.tableDev, 2)} km)` +
+    ` · ${N.edges} Kanten = ${fmt(N.edgeKm, 0)} km laut Karte, Zubringer ${fmt(N.feederKm, 0)} km, echte Straße ${fmt(N.realKm, 0)} km (${fmt((100 * N.realKm) / Math.max(all, 1e-9), 1)} %: ${by})`
+  );
+}
 const rows = [];
 const t0 = Date.now();
 DRIVERS.forEach((driver, k) => {
@@ -421,7 +621,8 @@ for (const { driver, m } of rows) {
       `\n    Fahrzeit zum Ziel: ~30 km ${legs(18, 45)} · ~100 km ${legs(75, 130)} · ~250 km ${legs(190, 320)}` +
       `\n    Ziele nach Entfernung: <${BID_PLACES.nearKm} km ${fmt((100 * m.bands[0]) / tot, 0)} % · bis ${BID_PLACES.farKm} km ${fmt((100 * m.bands[1]) / tot, 0)} % · bis 500 km ${fmt((100 * m.bands[2]) / tot, 0)} % · weiter ${fmt((100 * m.bands[3]) / tot, 0)} %` +
       ` · zur Wahl standen stets ≥ ${m.minChoice} Orte · in Sperrzonen geboten: ${m.lockFork} vor Gabelungen, ${m.lockNode} vor Knoten · an der Gabelung anders als angesagt ${m.wrong}× (${m.flipped}× kippte ein Gebot den Plan kurz davor) · Einnahmen ${fmt(m.money / h / 60, 2)} €/min` +
-      `\n    Navi und Welt: ${m.navi.checks} Ansagen geprüft (${m.navi.exit} Ausfahrten, ${m.navi.far} hinter dem Horizont, ${m.navi.farKept} davon eingelöst, ${m.navi.arrive} Ziel voraus, ${m.navi.wende}× „dann wenden“), ${m.reroutes} Neuberechnungen`,
+      `\n    Navi und Welt: ${m.navi.checks} Ansagen geprüft (${m.navi.exit} Ausfahrten, ${m.navi.far} hinter dem Horizont, ${m.navi.farKept} davon eingelöst, ${m.navi.arrive} Ziel voraus, ${m.navi.wende}× „dann wenden“), ${m.reroutes} Neuberechnungen` +
+      `\n    ${numbersLine(m)}`,
   );
 }
 // Härtetest: Bieterduell auf den letzten Metern
@@ -430,7 +631,9 @@ for (const { driver, m } of rows) {
   const m = stream(DUELLIST, HOURS, 815);
   console.log(
     `${DUELLIST.name}: ${fmt(m.hours)} h, ${m.duels} Duelle auf den letzten 150 m, ${m.bids} Gebote · danach ${m.arrivals}× am Brunnen gestanden (BrunnenTV;` +
-      ` ${m.late2}× knapp hinter dem Haltepunkt), ${m.rolled}× vorbeigerollt, ${m.duels - m.spots}× war das Ziel am Brunnen gerade ein anderes`,
+      ` ${m.late2}× knapp hinter dem Haltepunkt), ${m.rolled}× vorbeigerollt, ${m.duels - m.spots}× war das Ziel am Brunnen gerade ein anderes` +
+      ` · in Sperrzonen geboten: ${m.lockFork} vor Gabelungen, ${m.lockNode} vor Knoten · an der Gabelung anders als angesagt ${m.wrong}× (${m.flipped}× kippte ein Gebot den Plan kurz davor)` +
+      `\n    ${numbersLine(m)}`,
   );
   if (HOURS >= 3) ok(m.duels >= 10 && m.arrivals >= 3 && m.rolled >= 1, `Duell im Zielort: zu wenig geprüft (${m.duels} Duelle, ${m.arrivals} Ankünfte, ${m.rolled} vorbeigerollt, ${m.late2} knapp dahinter)`);
   rows.push({ driver: DUELLIST, m });
