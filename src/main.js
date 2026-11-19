@@ -327,6 +327,16 @@ for (const [action, label, cls] of [
   touchEl.appendChild(b);
   input.bindTouch(b, action);
 }
+// Reise: „Ladestopp einplanen“ (wie Taste L), zu sehen, wenn der Akku halb leer ist oder NOMI gewarnt hat
+const stopBtn = xxl ? document.createElement('button') : null;
+if (stopBtn) {
+  stopBtn.type = 'button';
+  stopBtn.className = 't-stop';
+  stopBtn.setAttribute('aria-label', 'Ladestopp einplanen');
+  stopBtn.innerHTML = '<span>🔌</span> Ladestopp einplanen';
+  touchEl.appendChild(stopBtn);
+  input.bindTouch(stopBtn, 'ladestopp');
+}
 app.appendChild(touchEl);
 const touch = new TouchControls(touchEl, input);
 const jolt = new Jolt();
@@ -1792,6 +1802,7 @@ function step(dt, { render = true } = {}) {
         horn: input.take('horn'),
         wiper: input.take('wiper'),
         megafon: input.take('megafon'),
+        ladestopp: input.take('ladestopp'),
         device: input.lastDevice,
         // Krümmung und Steigung unter dem Wagen aus dem Kurs (courseEnv); auf dem Prüfstand (?debug) lässt sich
         // stattdessen eine Probe einhängen: __MA.kappaProbe(s), __MA.gradeProbe(s)
@@ -1800,6 +1811,7 @@ function step(dt, { render = true } = {}) {
       };
       if (xxl && DEBUG && window.__MA.xxl && window.__MA.xxl.auto) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
+      if (stopBtn) stopBtn.classList.toggle('show', game.stopOffer());
       driveHintTick(dt, ctl);
       // Leitplanke: der Kopf ruckt zur Planke hin, Gamepad und Handy rütteln kurz
       for (const e of p.events) {

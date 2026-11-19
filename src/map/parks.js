@@ -147,6 +147,19 @@ export function parkExcursion() {
   return { cost: ((zl + PARK.halt) / 1000) * COST.land, km: (zl + PARK.halt) / 1000, secs: zl / PACE.land + PARK.halt / PACE.stadt, m: zl + PARK.halt };
 }
 
+let NEAR = null;
+/**
+ * Für jeden Zustand der Karte der nächste Ladepark über Straßen (eine Suche von allen Parks zugleich, einmal gerechnet):
+ * { park: Int32Array (Index in PARKS oder −1), km: Kartenkilometer bis zum Halt im Park, wie routeToPark sie zählt }.
+ */
+export function nearestParks() {
+  if (!NEAR) {
+    const r = routeGoal(PARKS.map((p) => stateOfNode(p.node)), parkExcursion(), true);
+    NEAR = { park: r.goalOf, km: r.km };
+  }
+  return NEAR;
+}
+
 /**
  * Der beste Weg von überall zum Ladepark i (wie routeTo zu einem Ort, Ziel ist sein Knoten). Ergebnis wie routeTo, dazu
  * park = i und place = −1. road: nur über Straßen.

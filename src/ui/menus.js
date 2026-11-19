@@ -479,6 +479,7 @@ export class Menus {
       ['Hupen (Brunnen & Elsa grüßen)', 'Leertaste', 'A', '📯'],
       ['Scheibenwischer von Hand', 'E', 'X', '🌧️'],
       ['Megafon (aus dem Shop)', 'H', 'Y', '📢'],
+      ...(this.h.mode === 'xxl' ? [['Ladestopp einplanen (nächster Ladepark)', 'L', '–', '🔌 Ladestopp']] : []),
       ['Kamera (Cockpit / Drohne)', 'V', 'B', '🎥'],
       ['Chat ein/aus', 'C', '–', '–'],
       ['Ton aus', 'M', '–', '–'],

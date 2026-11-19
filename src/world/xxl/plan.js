@@ -4,6 +4,7 @@
 import { J, PROFILES } from '../../game/trip.js';
 import { places } from '../../map/graph.js';
 import { islandRadius } from '../kit/layout.js';
+import { PARKS, PARK_STOP_AFTER } from '../../map/parks.js';
 
 /** So weit hinter dem Spieler gibt es Welt (Boden, Straßen, Autobahn); dahinter beginnt der Himmel wie bisher. */
 export const XXL_BEHIND = 300;
@@ -218,11 +219,14 @@ export function squareWeight(sq, s) {
 /**
  * Ankunft am Navi-Ziel: kennt den Haltepunkt (vor der Ankunft aus dem Ziel, danach bis zum Stillstand) und meldet,
  * wenn der Wagen dort steht ({type: 'rest', place, sec, square}). Das Spiel kann daran die Brunnen-Szene hängen.
+ * Ebenso im Ladepark (geplanter Ladestopp oder rechts hinein, ohne Plan): Halt PARK_STOP_AFTER hinter dem Haltepunkt,
+ * neben der freien Heldenbucht, dann {type: 'charge', park, name, sec}. Einen Park hat der eigene Weg erst, wenn der Wagen
+ * an seiner Ausfahrt abgefahren ist.
  */
 export class Arrival {
   constructor() {
-    this.pending = null; // {s, sec, place, square} nach dem Ereignis 'arrive', bis der Wagen steht
-    this.stopOut = { s: 0, sec: null, place: -1 };
+    this.pending = null; // {s, sec, place, park, square} nach dem Ereignis 'arrive' bzw. 'park', bis der Wagen steht
+    this.stopOut = { s: 0, sec: null, place: -1, park: -1 };
     this.hold = false; // true: nach dem Halt stehen bleiben, bis release() (z. B. während der Brunnen-Szene)
     this.held = null;
   }
@@ -238,16 +242,19 @@ export class Arrival {
   stop(trip) {
     if (this.pending) return this.pending;
     if (this.held) return this.held;
-    if (trip.target < 0) return null;
     const L = trip.cur.sections;
     for (let i = 0; i < L.length; i++) {
       const c = L[i];
-      if (c.kind !== 'stadt' || c.place !== trip.target || c.spotDone || c.spotS === undefined || c.start) continue;
-      if (c.spotS + STOP_AFTER_SPOT < trip.s || c.spotS - trip.s > 1500) continue;
+      const park = c.kind === 'park';
+      if (!park && (c.kind !== 'stadt' || c.place !== trip.target || trip.target < 0)) continue;
+      if (c.spotDone || c.spotS === undefined || c.start) continue;
+      const after = park ? PARK_STOP_AFTER : STOP_AFTER_SPOT;
+      if (c.spotS + after < trip.s || c.spotS - trip.s > 1500) continue;
       const o = this.stopOut;
-      o.s = c.spotS + STOP_AFTER_SPOT;
+      o.s = c.spotS + after;
       o.sec = c;
-      o.place = c.place;
+      o.place = park ? -1 : c.place;
+      o.park = park ? c.park : -1;
       return o;
     }
     return null;
@@ -256,13 +263,15 @@ export class Arrival {
   update(trip, events, speed) {
     for (let i = 0; i < events.length; i++) {
       const e = events[i];
-      if (e.type === 'arrive' && !e.sec.start) this.pending = { s: e.sec.spotS + STOP_AFTER_SPOT, sec: e.sec, place: e.place, square: squareOf(e.sec) };
+      if (e.type === 'arrive' && !e.sec.start) this.pending = { s: e.sec.spotS + STOP_AFTER_SPOT, sec: e.sec, place: e.place, park: -1, square: squareOf(e.sec) };
+      if (e.type === 'park') this.pending = { s: e.sec.spotS + PARK_STOP_AFTER, sec: e.sec, place: -1, park: e.park, square: null };
     }
     const p = this.pending;
     if (!p) return null;
     if (speed < 0.15 && Math.abs(trip.s - p.s) < 2) {
       this.pending = null;
-      if (this.hold) this.held = { s: trip.s + 0.3, sec: p.sec, place: p.place };
+      if (this.hold) this.held = { s: trip.s + 0.3, sec: p.sec, place: p.place, park: p.park };
+      if (p.park >= 0) return { type: 'charge', park: p.park, name: PARKS[p.park].name, sec: p.sec };
       return { type: 'rest', place: p.place, sec: p.sec, square: p.square };
     }
     if (trip.s > p.s + 5 || trip.section !== p.sec) this.pending = null;

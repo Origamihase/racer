@@ -2,7 +2,7 @@
 // Sprachdurchsagen, Rahmen, Funkloch, Zuschauer, Spenden, Jobs) und die Abrechnung am Ende.
 // Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
 import {
-  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_JOBS, INCOME, SPENDEN_ZWECKE, AKTIONEN,
+  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_JOBS, REISE_AKKU, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, NAVI_TARGETS, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
@@ -37,6 +37,14 @@ const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
 // Brunnen (hold); wer neu Gas gibt, bremst, lenkt oder hupt, fährt sofort weiter, sobald die Karte kurz zu sehen
 // war (guard); das erste Gebot der nächsten Runde kommt frühestens pause Sekunden, nachdem der Wagen fahren darf.
 const BRUNNEN_TV = { hold: 6, guard: 0.6, pause: 1.5 };
+/** Entfernung für NOMIs Ansage: „39 Kilometern“, unter 10 km mit einer Nachkommastelle („4,5 Kilometern“). */
+function kmWords(km) {
+  if (km < 10) {
+    const v = Math.max(0.1, Math.ceil(km * 10 - 1e-6) / 10);
+    return v === 1 ? 'einem Kilometer' : v.toFixed(1).replace('.', ',').replace(',0', '') + ' Kilometern';
+  }
+  return Math.round(km) + ' Kilometern';
+}
 // Erste Runde: Fährt der Wagen schon im Zielort, wartet das nächste Gebot – höchstens so viele Sekunden nach der
 // Einfahrt (wer dort parkt, statt zum Brunnen zu fahren, hält die Bieter nicht ewig auf)
 export const TOWN_HOLD = 75;
@@ -130,9 +138,14 @@ export class Game {
       leftLaneTime: 0, naviReached: 0, nearMisses: 0, maxSpeedKmh: 0, bananas: 0, cleanDistance: 0, naviChanges: 0,
       maxViewers: 0, charges: 0, distance: 0, blitzerClean: 0, rainDistance: 0, crashes: 0, koriander: 0, fines: 0,
       wipes: 0, twitches: 0, photos: 0, donations: 0, subs: 0, vips: 0, topBid: 0, overtakes: 0, brunnenTV: 0,
+      stopsPlanned: 0, parkCharges: 0,
     };
     // laufende BrunnenTV-Folge am Navi-Ziel (XXL) oder null
     this.tv = null;
+    // Reise: Laden im Ladepark ({ t0, from, secs, park }) oder null; Verbrauch seit dem letzten Laden (Reisemeter und
+    // Akku, für die Reichweite in NOMIs Warnung) und wann sie wieder rechnet
+    this.charging = null;
+    this.akku = { m: 0, b: 100, next: 0 };
     // zwischen Zielpunkt und Halt am Brunnen: { sec: Ortsdurchfahrt, still: so lange steht der Wagen schon }
     this.halt = null;
     // Für jeden der fünf Jobs hat jemand im Chat eine Spende versprochen – und einer für alle zusammen
@@ -459,6 +472,7 @@ export class Game {
     if (ctl.horn) this.honk();
     if (ctl.wiper) this.manualWiper();
     if (ctl.megafon) this.useMegafon();
+    if (ctl.ladestopp) this.planStop();
 
     // --- Verkehr ---------------------------------------------------------------
     const tev = this.traffic.update(dt, this.t, p, { difficulty: clamp(p.s / 16000, 0, 1), leftOpen: this.left.open, rain: W.level });
@@ -485,6 +499,7 @@ export class Game {
 
     this.updateLeftLane(dt);
     this.updateWeather(dt, ds);
+    if (this.charging) this.tickCharge(dt);
     if (this.tv) this.tickBrunnenTV(ctl);
     else if (this.navi.stopping) this.tickHalt(dt);
     this.updateNavi(dt);
@@ -510,7 +525,15 @@ export class Game {
     }
     if (p.shoulderTime <= 0) this.shoulderWarned = false;
 
-    // Akku
+    // Akku: auf der Reise nennt NOMI den nächsten Ladepark (journeyBattery), klassisch warnt sie wie immer
+    if (this.worldNavi) this.journeyBattery();
+    else this.classicBattery();
+    if (p.empty && p.speed < 1.5) this.end('akku');
+  }
+
+  /** Akku-Warnungen der klassischen Strecke (dort füllen Lade-Ringe den Akku). */
+  classicBattery() {
+    const p = this.player;
     // nach dem Laden wieder scharf schalten (mit etwas Abstand, damit es nicht flackert)
     if (p.battery > 30) this.batteryWarned = 0;
     else if (p.battery > 12 && this.batteryWarned > 1) this.batteryWarned = 1;
@@ -523,7 +546,105 @@ export class Game {
       this.batteryWarned = 2;
       this.say(BOARD.veryLowBattery, 'worried');
     }
-    if (p.empty && p.speed < 1.5) this.end('akku');
+  }
+
+  /**
+   * Akku auf der Reise (REISE.md A5): Geladen wird in den Ladeparks an den Ausfahrten. NOMI warnt bei REISE_AKKU.warn
+   * (25 % und 10 %) und nennt den nächsten Ladepark in Reichweite mit Entfernung (trip.nextRest: auf dem Weg, sonst
+   * der nächste über Straßen, ein Abstecher). Schon früher, unter REISE_AKKU.early, warnt sie, sobald er der letzte in
+   * Reichweite ist (die schätzt range): Der übernächste und das Ziel liegen weiter weg, wer an ihm vorbeifährt, kommt
+   * nicht mehr an. Ist ein Stopp geplant, sagt sie nur, wie weit es bis dorthin ist. batteryWarned: 1 früh, 2 bei 25 %,
+   * 3 bei 10 %; nach dem Laden wieder 0.
+   */
+  journeyBattery() {
+    const p = this.player;
+    const A = REISE_AKKU;
+    if (this.charging || this.t < this.akku.next) return;
+    this.akku.next = this.t + 1;
+    if (p.battery > A.early + 5) this.batteryWarned = 0;
+    const lvl = p.battery < A.warn[1] ? 3 : p.battery < A.warn[0] ? 2 : 0;
+    if (lvl && lvl <= this.batteryWarned) return;
+    if (!lvl && (this.batteryWarned || p.battery > A.early)) return;
+    const range = this.range();
+    const trip = this.world.trip();
+    const [r, r2] = trip.restsAhead(2, range);
+    // früh nur, wenn hinter dem nächsten Park weder der übernächste noch das Ziel in Reichweite liegt
+    const beyond = Math.min(r2 ? r2.km : Infinity, trip.target >= 0 ? trip.reach().km : Infinity);
+    if (!lvl && (!r || r.planned || (r.km <= range && beyond <= range))) return;
+    this.batteryWarned = lvl || 1;
+    const vars = { pct: Math.round(p.battery), park: r ? r.name : '', km: r ? kmWords(r.km) : '' };
+    const text = !r ? A.none : r.planned ? A.planned : lvl === 3 ? A.veryLow : lvl || r.km > range ? A.low : A.last;
+    this.say(fillTemplate(text, vars), 'worried');
+    if (r && !r.planned) this.ui.toast(this.device === 'touch' ? '🔌 Ladestopp einplanen: Knopf unten' : '🔌 Ladestopp einplanen: Taste L', 'info', 'ladestopp');
+    this.chat(pick(['Akku! 🔋', 'Ab in den Ladepark!', 'Popcorn-Pause? 🍿', 'Lade-Pause!']));
+  }
+
+  /** Reichweite in Reisekilometern mit Reserve: Akku × Reisekilometer je Prozent seit dem letzten Laden (kmPerPct). */
+  range() {
+    return this.player.battery * this.kmPerPct() * REISE_AKKU.reserve;
+  }
+
+  /** Reisekilometer je Prozent Akku seit dem letzten Laden (vorsichtig geschätzt, bis 4 % verbraucht sind). */
+  kmPerPct() {
+    const used = this.akku.b - this.player.battery;
+    return used >= 4 ? Math.max(0.2, (this.odometer - this.akku.m) / 1000 / used) : REISE_AKKU.kmPerPct;
+  }
+
+  /** Soll der Touch-Knopf „Ladestopp einplanen“ zu sehen sein? (Reise, kein Stopp geplant, Akku halb leer oder Warnung) */
+  stopOffer() {
+    if (!this.worldNavi || !this.running || this.charging) return false;
+    return this.world.trip().stop < 0 && (this.player.battery <= 50 || this.batteryWarned > 0);
+  }
+
+  /**
+   * Ladestopp einplanen (Reise; Taste L, Touch-Knopf „Ladestopp einplanen“): Der nächste Ladepark auf dem Weg wird
+   * Zwischenziel, das Navi führt hinein und danach weiter zum Ziel. Ein zweiter Druck streicht den Stopp wieder.
+   */
+  planStop() {
+    if (!this.worldNavi || !this.running || this.charging) return;
+    const A = REISE_AKKU;
+    const trip = this.world.trip();
+    if (trip.stop >= 0) {
+      trip.setStop(-1);
+      this.say(A.cancel, 'think', { priority: false });
+      return;
+    }
+    const r = trip.nextRest(this.range());
+    if (!r) {
+      this.say(A.noPark, 'think', { priority: false });
+      return;
+    }
+    trip.setStop(r.park);
+    this.stats.stopsPlanned++;
+    this.say(fillTemplate(A.set, { park: r.name, km: kmWords(r.km) }), 'happy');
+  }
+
+  /**
+   * Der Wagen steht im Ladepark neben der freien Säule (Ereignis 'charge' der Welt). Platzhalter, bis die Szene mit
+   * Andocken kommt: NOMI sagt es einmal, der Akku füllt sich in höchstens REISE_AKKU.secs Sekunden (eine Funktion der
+   * Zeit, tickCharge), dann rollt der Wagen weiter.
+   */
+  startCharge(e) {
+    const p = this.player;
+    this.charging = { t0: this.t, from: p.battery, secs: Math.max(2.5, (REISE_AKKU.secs * (100 - p.battery)) / 100), park: e.park };
+    this.say(fillTemplate(REISE_AKKU.start, { park: e.name }), 'happy');
+    this.audio.chime();
+  }
+
+  tickCharge() {
+    const c = this.charging;
+    const p = this.player;
+    const q = clamp((this.t - c.t0) / c.secs, 0, 1);
+    p.battery = c.from + (100 - c.from) * q * q * (3 - 2 * q);
+    p.empty = false;
+    if (q < 1) return;
+    this.charging = null;
+    this.stats.parkCharges++;
+    this.akku.m = this.odometer;
+    this.akku.b = p.battery;
+    this.batteryWarned = 0;
+    this.ui.toast('🔋 Akku voll', 'good');
+    this.world.release();
   }
 
   // --- Linke Spur ------------------------------------------------------------
@@ -1004,9 +1125,12 @@ export class Game {
     else if (e.type === 'rest') {
       // (hat tickHalt den Halt schon selbst festgestellt, ist die Ankunft längst gefeiert)
       if (this.navi.stopping) this.arriveAtFountain();
-    } else if (e.type === 'fork') {
-      // anders gefahren als angesagt: Die Fahrt plant von dort neu, und NOMI sagt es
-      if (e.wrong) this.say('Route wird neu berechnet.', 'think', { priority: false });
+    } else if (e.type === 'charge') this.startCharge(e);
+    else if (e.type === 'fork') {
+      // anders gefahren als angesagt: Die Fahrt plant von dort neu, und NOMI sagt es (am geplanten Ladestopp vorbei:
+      // der Stopp ist weg, die nächste Warnung bietet den nächsten Park an)
+      if (e.wrong) this.say(e.stop ? REISE_AKKU.missed : 'Route wird neu berechnet.', 'think', { priority: false });
+      if (e.wrong && e.stop) this.batteryWarned = 0;
       if (e.wrong && e.planned === 'exit') {
         this.missedTarget();
         this.onMood('startled', 0.5);

@@ -364,6 +364,11 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .touch .t-brake { right: 128px; bottom: 26px; background: rgba(170,40,40,0.5); font-size: 16px; font-family: var(--font); font-weight: 700; }
 .touch .t-small { width: 54px; height: 54px; font-size: 22px; bottom: 140px; }
 .touch .t-horn { right: 18px; } .touch .t-wiper { right: 80px; } .touch .t-megafon { right: 142px; } .touch .t-camera { left: 18px; } .touch .t-pause { left: 80px; }
+/* Reise: „Ladestopp einplanen“ (Taste L), eine Pille in der Reihe der kleinen Knöpfe, nur wenn das Spiel sie anbietet */
+.touch .t-stop { display: none; left: 142px; bottom: 140px; width: 118px; height: 54px; border-radius: 27px; padding: 0 8px;
+  background: rgba(20,82,168,0.62); font-family: var(--font); font-size: 12px; font-weight: 700; line-height: 1.15; }
+.touch .t-stop span { font-family: var(--emoji); font-size: 16px; }
+.touch .t-stop.show { display: block; }
 @media (pointer: coarse) { body.playing .touch { display: block; } }
 /* schmale Handys hochkant: Knöpfe kleiner, damit „Bremse“ nicht über dem Pfeil liegt */
 @media (max-width: 480px) {
@@ -376,6 +381,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .touch .t-small { width: 48px; height: 48px; font-size: 20px; bottom: calc(var(--tb) * 1.14 + 40px); }
   .touch .t-camera { left: 12px; } .touch .t-pause { left: 66px; }
   .touch .t-horn { right: 12px; } .touch .t-wiper { right: 66px; } .touch .t-megafon { right: 120px; }
+  .touch .t-stop { left: 120px; width: calc(100vw - 300px); max-width: 118px; height: 48px; bottom: calc(var(--tb) * 1.14 + 40px); font-size: 11px; }
 }
 /* Handy quer: unten rechts liegt im Cockpit der Mittelbildschirm – Pfeile und Pedale kleiner und tiefer, rechts nur so
    viele kleine Knöpfe, wie neben den Bildschirm passen: das Megafon steht links, auf schmalen Handys auch der Scheibenwischer.
@@ -390,6 +396,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .touch .t-small { bottom: 108px; }
   .touch .t-horn { right: 14px; } .touch .t-wiper { right: 76px; }
   .touch .t-camera { left: 14px; } .touch .t-pause { left: 76px; } .touch .t-megafon { right: auto; left: 138px; }
+  .touch .t-stop { left: 200px; bottom: 108px; }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) and (max-aspect-ratio: 2.08/1) {
   :root { --touch-top: 152px; }
@@ -397,6 +404,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .touch .t-brake { width: 76px; height: 76px; right: 104px; }
   .touch .t-small { width: 44px; height: 44px; font-size: 19px; bottom: 100px; }
   .touch .t-pause { left: 64px; } .touch .t-megafon { left: 114px; } .touch .t-wiper { right: auto; left: 164px; }
+  .touch .t-stop { left: 214px; bottom: 100px; height: 44px; }
 }
 
 /* --- Touch-Lenkung (src/ui/touch.js) ------------------------------------------ */

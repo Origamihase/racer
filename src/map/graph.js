@@ -335,7 +335,8 @@ export function routeTo(placeIdx, road = false) {
 }
 /**
  * Dieselbe Suche zu einem Ziel am Knotenzustand goal mit dem Abstecher ex ({cost, km, secs} ab dem Ende der Rampe):
- * für Orte (routeTo) und Ladeparks (parks.js routeToPark).
+ * für Orte (routeTo) und Ladeparks (parks.js routeToPark). goal darf auch eine Liste von Zuständen sein: dann gilt je
+ * Zustand das nächste von ihnen, goalOf nennt seinen Index in der Liste (parks.js nearestParks).
  */
 export function routeGoal(goal, ex, road = false) {
   if (!TRANS) buildTransitions();
@@ -344,11 +345,15 @@ export function routeGoal(goal, ex, road = false) {
   const km = new Float64Array(n).fill(Infinity);
   const secs = new Float64Array(n).fill(Infinity);
   const next = new Array(n).fill(null);
-  cost[goal] = ex.cost;
-  km[goal] = ex.km;
-  secs[goal] = ex.secs;
+  const goalOf = new Int32Array(n).fill(-1);
   const heap = new Heap();
-  heap.push(ex.cost, goal);
+  (Array.isArray(goal) ? goal : [goal]).forEach((g, i) => {
+    cost[g] = ex.cost;
+    km[g] = ex.km;
+    secs[g] = ex.secs;
+    goalOf[g] = i;
+    heap.push(ex.cost, g);
+  });
   while (heap.size) {
     const [c, st] = heap.pop();
     if (c > cost[st]) continue;
@@ -360,11 +365,12 @@ export function routeGoal(goal, ex, road = false) {
         km[t.from] = km[st] + t.km;
         secs[t.from] = secs[st] + t.secs;
         next[t.from] = t;
+        goalOf[t.from] = goalOf[st];
         heap.push(nc, t.from);
       }
     }
   }
-  return { goal, cost, km, secs, next, road };
+  return { goal, cost, km, secs, next, road, goalOf };
 }
 
 /**

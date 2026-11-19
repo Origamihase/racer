@@ -746,6 +746,27 @@ export const REISE_JOBS = {
   rain1: { text: '8 km im Regen fahren', goal: 8000, wenn: 'du 8 km im Regen durchhältst' },
 };
 
+// Reise: NOMIs Akku-Warnungen nennen den nächsten Ladepark auf dem Weg mit Entfernung (trip.js nextRest); Taste L oder
+// der Knopf „Ladestopp einplanen“ machen ihn zum Zwischenziel. Bis die Szene mit Andocken kommt, lädt ein Platzhalter
+// den Akku neben der freien Säule in wenigen Sekunden voll (Game.startCharge). {pct} Prozent, {park} Name, {km} Weg.
+export const REISE_AKKU = {
+  warn: [25, 10], // Prozent: NOMI warnt, und noch einmal, wenn es knapp wird
+  early: 70, // darunter warnt sie früher, sobald der nächste Park der letzte in Reichweite ist
+  reserve: 0.85, // so viel der geschätzten Reichweite gilt als sicher
+  kmPerPct: 0.8, // Reisekilometer je Prozent, solange noch nichts gemessen ist (vorsichtig geschätzt)
+  secs: 6, // so lange dauert das Laden von 0 auf 100 % (mindestens 2,5 s)
+  low: 'Akku {pct} Prozent. Nächster Ladepark: {park}, in {km}. Ladestopp einplanen?',
+  last: 'Akku {pct} Prozent. {park} in {km} liegt noch in Reichweite. Ladestopp einplanen?',
+  veryLow: 'Akku nur noch {pct} Prozent! {park} in {km}. Bitte dort laden.',
+  planned: 'Akku {pct} Prozent. Der Ladestopp im {park} ist eingeplant, in {km}.',
+  none: 'Akku {pct} Prozent, und kein Ladepark auf dem Weg. Bitte sparsam fahren.',
+  set: 'Ladestopp eingeplant: {park}, in {km}.',
+  cancel: 'Ladestopp gestrichen.',
+  noPark: 'Kein Ladepark auf dem Weg.',
+  missed: 'Ladestopp verpasst. Ich suche den nächsten Ladepark.',
+  start: 'Ladestopp im {park}. Ich lade den Akku voll.',
+};
+
 // ---------------------------------------------------------------------------
 // Tesla-Shop (bezahlt wird mit den Stream-Einnahmen)
 export const SHOP = [
