@@ -8,8 +8,8 @@ import {
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
 import { Player, KMH } from './player.js';
 import { damageLine } from './damage.js';
-import { Navi, shortName } from './navi.js';
-import { places } from '../map/graph.js';
+import { Navi, WorldNavi, shortName } from './navi.js';
+import { fmtKm as fmtMapKm } from '../map/navroute.js';
 import { Economy } from './economy.js';
 import { Vector3 } from 'three';
 import { EYE } from '../cockpit/cockpit.js';
@@ -36,19 +36,25 @@ const ELSA_HEAD = { top: 5.65, chin: 3.1, half: 1.3 };
 const elsaTmp = new Vector3();
 // Wie flott der Chat schreibt, je nach Stufe der heimlichen Chat-Stimmung (0 im Keller … 4 bester Laune)
 const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
+// BrunnenTV am Navi-Ziel (XXL, bis die Szene gebaut ist: Titelkarte und Jubel): so viele Sekunden steht der Wagen am
+// Brunnen (hold); wer neu Gas gibt, bremst, lenkt oder hupt, fährt sofort weiter, sobald die Karte kurz zu sehen
+// war (guard); das erste Gebot der nächsten Runde kommt frühestens pause Sekunden, nachdem der Wagen fahren darf.
+const BRUNNEN_TV = { hold: 6, guard: 0.6, pause: 1.5 };
 
 export class Game {
   /**
    * @param {object} ctx traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui, fx, pickups;
-   *   worldNavi: true in der XXL-Welt. Dort führt das Navi die Fahrt über die echte Karte (trip.js, Anzeige in
-   *   src/map), und die Ankunft meldet onTrip am Brunnenplatz. Das klassische Bieten auf erfundene Ziele ruht dann,
-   *   bis auf echte Orte geboten wird: sonst widerspräche jede Zeile davon dem Navi und der Welt.
+   *   world: nur in der XXL-Welt, { trip(): die Fahrt über die echte Karte (trip.js), stopping(): bremst der Wagen
+   *   gerade zum Halt am Brunnen des Ziels?, release(): der Wagen am Brunnen darf weiterfahren, square(sec) und
+   *   town(sec): Brunnenplatz und Ort einer Ortsdurchfahrt für die BrunnenTV-Szene }. Dann wird
+   *   auf echte Orte geboten (WorldNavi): Jedes Gebot setzt das Ziel der Fahrt, das Navi im Auto zeigt sie
+   *   (src/map), und die Ankunft meldet onTrip am Brunnenplatz. worldNavi sagt der Anzeige, welches Navi führt.
    */
   constructor(ctx) {
     Object.assign(this, ctx);
-    this.worldNavi = !!this.worldNavi;
+    this.worldNavi = !!this.world;
     this.player = new Player();
-    this.navi = new Navi(this.scenery, this.worldNavi);
+    this.navi = this.world ? new WorldNavi(this.world) : new Navi(this.scenery);
     // Stream-Kasse samt heimlicher Chat-Stimmung, und was sie in jedem Schritt vom Fahren wissen will
     this.eco = new Economy();
     this.ecoIn = { kmh: 0, limit: false, stuck: false, leftOpen: false, inLeft: false, funkloch: false };
@@ -67,6 +73,8 @@ export class Game {
     this.offAutobahn = false;
     // Mini Adams Mimik (main.js hängt sich ein): onMood(name, Stärke 0 … 1) bei Spenden, Schreck, Rempler, Ziel …
     this.onMood = () => {};
+    // BrunnenTV am Navi-Ziel der XXL-Welt: Hier hängt sich die Szene ein (siehe startBrunnenTV)
+    this.onBrunnenTV = () => {};
   }
 
   // ------------------------------------------------------------------------
@@ -116,13 +124,15 @@ export class Game {
     this.stats = {
       leftLaneTime: 0, naviReached: 0, nearMisses: 0, maxSpeedKmh: 0, bananas: 0, cleanDistance: 0, naviChanges: 0,
       maxViewers: 0, charges: 0, distance: 0, blitzerClean: 0, rainDistance: 0, crashes: 0, koriander: 0, fines: 0,
-      wipes: 0, twitches: 0, photos: 0, donations: 0, subs: 0, vips: 0, topBid: 0, overtakes: 0,
+      wipes: 0, twitches: 0, photos: 0, donations: 0, subs: 0, vips: 0, topBid: 0, overtakes: 0, brunnenTV: 0,
     };
-    // Für jeden der fünf Jobs hat jemand im Chat eine Spende versprochen – und einer für alle zusammen. In der
-    // XXL-Welt ruht das Bieten (worldNavi): was nur ein Gebot erfüllen kann, verspricht dort niemand
+    // laufende BrunnenTV-Folge am Navi-Ziel (XXL) oder null
+    this.tv = null;
+    // zwischen Zielpunkt und Halt am Brunnen: { sec: Ortsdurchfahrt, still: so lange steht der Wagen schon }
+    this.halt = null;
+    // Für jeden der fünf Jobs hat jemand im Chat eine Spende versprochen – und einer für alle zusammen
     const pledges = this.eco.pledges(5);
-    const pool = this.worldNavi ? JOB_TEMPLATES.filter((j) => j.stat !== 'naviChanges' && j.stat !== 'naviReached') : JOB_TEMPLATES;
-    this.jobs = shuffle(pool).slice(0, 5).map((j, i) => ({ ...j, done: false, progress: 0, pledger: viewerName(), pledge: pledges.list[i] }));
+    this.jobs = shuffle(JOB_TEMPLATES).slice(0, 5).map((j, i) => ({ ...j, done: false, progress: 0, pledger: viewerName(), pledge: pledges.list[i] }));
     this.allJobs = { pledger: viewerName(), pledge: pledges.all };
     this.allJobsPaid = false;
 
@@ -176,7 +186,8 @@ export class Game {
     this.bot('hugo', 'Der Stream läuft! Viel Spaß beim Zuschauen.');
     this.later(1.2, () => this.chat('Hallo Mini Adam ❤'));
     this.later(2.0, () => this.chat('Wohin fahren wir heute?'));
-    if (!this.worldNavi) this.later(3.2, () => this.bot('james', `Startgebot: ${fmtCent(this.navi.bid)} – Ziel: ${this.navi.target.name}`));
+    // klassisch steht das erste Ziel schon fest; in der XXL-Welt sucht es der Chat erst aus
+    this.later(3.2, () => this.bot('james', this.worldNavi ? 'Die Gebote sind eröffnet: Wohin soll die Reise gehen? Ab 0,01 € seid ihr dabei.' : `Startgebot: ${fmtCent(this.navi.bid)} – Ziel: ${this.navi.target.name}`));
     // die Challenges des Abends: Wer was verspricht, steht im Chat
     this.jobs.forEach((j, i) => this.later(10 + i * 11 + rand(0, 5), () => {
       if (!j.done) this.chat(fillTemplate(pick(CHAT.pledge), { wenn: j.wenn, betrag: fmtBetrag(j.pledge) }), j.pledger);
@@ -216,7 +227,7 @@ export class Game {
     p.hits = 0;
     if (!p.damage.pristine) p.damage.reset(p.maxHits);
     this.navi.update(dt, p.s);
-    if (this.navi.arrived) this.navi.overbid(p.s, 'Demo', 0.01, this.pickBidTarget());
+    if (this.navi.arrived && !this.worldNavi) this.navi.overbid(p.s, 'Demo', 0.01, this.pickBidTarget());
     this.traffic.update(dt, this.demoT, p, { difficulty: 0.15, leftOpen: false, rain: 0 });
   }
 
@@ -420,6 +431,8 @@ export class Game {
 
     this.updateLeftLane(dt);
     this.updateWeather(dt, ds);
+    if (this.tv) this.tickBrunnenTV(ctl);
+    else if (this.navi.stopping) this.tickHalt(dt);
     this.updateNavi(dt);
     this.updateEvents(dt, camera);
     this.updatePickups(dt, camera);
@@ -656,13 +669,13 @@ export class Game {
 
   // --- Navi ------------------------------------------------------------------------
   updateNavi(dt) {
-    if (this.worldNavi) return;
     const p = this.player;
     const nv = this.navi;
     // Kurz vor dem Ziel doch noch überboten – ein Klassiker. (Nur hier muss das Spiel wissen, wie viele Sekunden
-    // es noch bis zum Ziel sind.)
-    const eta = nv.arrived ? Infinity : (nv.targetS - p.s) / Math.max(p.speed, 8);
-    if (eta < 8 && this.T.bid > eta && this.T.bid < 45 && this.eco.lateBid()) {
+    // es noch bis zum Ziel sind: klassisch aus den gezählten Metern, in der XXL-Welt kennt sie die Fahrt.) Dort sind
+    // die Pausen zwischen den Geboten mit der Fahrzeit gestreckt (bidPlan.stretch), also auch dieses Zeitfenster.
+    const eta = this.worldNavi ? nv.eta(p.speed) : nv.arrived ? Infinity : (nv.targetS - p.s) / Math.max(p.speed, 8);
+    if (eta < 8 && this.T.bid > eta && this.T.bid < 45 * (this.bidPlan.stretch || 1) && this.eco.lateBid()) {
       this.T.bid = rand(0.4, Math.max(0.5, eta - 2.5));
       this.bidPlan.late = true;
     }
@@ -683,7 +696,8 @@ export class Game {
         if (this.gantryStale()) this.scenery.relabelGantries();
         // bis das Gegengebot da ist, ruht die Uhr
         this.T.bid = 99;
-        this.later(2.2, () => this.changeNavi(true));
+        // (XXL: Hält der Wagen in der Zwischenzeit am Brunnen von Siegen, gehört das nächste Gebot zur neuen Runde)
+        this.later(2.2, () => (this.worldNavi && (this.roundNew || this.navi.stopping) ? null : this.changeNavi(true)));
       } else this.changeNavi(false);
     }
     for (const e of this.navi.update(dt, p.s)) {
@@ -720,16 +734,20 @@ export class Game {
       bidder = d.name;
       target = d.target;
     }
+    // XXL: Fährt der Wagen schon durch den Zielort, nimmt ihm dieses Gebot das BrunnenTV vor der Nase weg
+    const snatched = this.worldNavi && nv.inTown;
     const t = nv.overbid(p.s, bidder, plan.increment, target || this.pickBidTarget());
     this.stats.naviChanges++;
     this.stats.topBid = Math.max(this.stats.topBid, nv.bid);
     // Cent-Gebote lassen eine frische größere Gutschrift am Guthaben stehen
     this.earn(nv.bid, 'Navi-Gebote', { silent: nv.bid < 1 && this.t - this.popT < 1.6 });
     // im Chaos fasst James sich kurz, sonst schieben seine Meldungen den ganzen Chat aus dem Fenster
-    this.bot('james', `${bidder} bietet ${fmtCent(nv.bid)} – neues Ziel: ${chaos ? shortName(t) : t.name}`);
+    // (echte Orte heißen überall wie auf ihrer Ortstafel, auch wenn es eilt)
+    this.bot('james', `${bidder} bietet ${fmtCent(nv.bid)} – neues Ziel: ${chaos && !this.worldNavi ? shortName(t) : t.name}`);
     if (siegenOverbid) this.later(0.8, () => this.chat(pick(['Siegen wurde überboten. Wie immer 😂', 'Nicht schon wieder Siegen verpasst', 'Klassiker'])));
     this.eco.cheer(chaos ? 'bidChaos' : plan.kind === 'big' ? 'bidBig' : 'bid');
-    const next = this.eco.nextBid({ bid: nv.bid });
+    // XXL: Echte Orte liegen Minuten auseinander – die Stream-Kasse plant die Ruhe danach mit der Fahrzeit des Navis
+    const next = this.eco.nextBid(this.worldNavi ? { bid: nv.bid, drive: nv.driveSecs() } : { bid: nv.bid });
     this.bidPlan = next;
     this.T.bid = next.delay;
 
@@ -752,8 +770,9 @@ export class Game {
         this.ui.toast(`🤑 Großes Gebot: ${fmtCent(nv.bid)} von ${bidder}`, 'good');
         this.burst(CHAT.bidBig, 3, 2.5);
       } else if (plan.late) this.burst(CHAT.bidLate, 3, 2);
-      else this.burst(CHAT.naviChanged, 2, 3);
+      else this.burst(this.worldNavi ? CHAT.ortChanged : CHAT.naviChanged, 2, 3);
     }
+    if (snatched) this.later(1, () => this.burst(CHAT.brunnenWeg, 2, 2.5));
     if (t.special === 'siegen') this.later(1.4, () => this.chat('SIEGEN SETZT SICH DURCH?! 😱'));
     // Die Navi-Tafeln der Schilderbrücken zeigen immer dasselbe Ziel wie das Navi, auch im Bieter-Chaos (Navi und Welt
     // dürfen sich nie widersprechen). Liegt das Ziel vor allen Brücken voraus, zeigen sie Orte statt eines Navi-Ziels –
@@ -768,17 +787,28 @@ export class Game {
         this.say(BOARD.naviChanged, 'think');
       }
       this.onMood('curious', 1);
+      if (this.worldNavi) {
+        // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt);
+        // Kilometer wie auf dem Kärtchen im Auto: Kartenkilometer der Fahrt
+        if (nv.wende) {
+          this.later(1.5, () => this.chat(this.chatLine(CHAT.ortWende)));
+          this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'info'));
+        }
+        this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${fmtMapKm(nv.km)})`, 'info', t.note);
+        return;
+      }
       if (nv.wende) this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info'));
       this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${fmtNum(nv.km, 1)} km)`, 'info', t.note);
     }
   }
 
   /**
-   * Die Ziele, auf die gerade geboten werden kann. Heute die feste Liste aus data.js – die eine Stelle, die man
-   * tauscht, wenn die Ziele echte Orte der Karte werden (je Ziel: name, km, optional weight, special, note).
+   * Die Ziele, auf die gerade geboten werden kann (je Ziel: name, optional weight, special, note): klassisch die feste
+   * Liste aus data.js, in der XXL-Welt die echten Orte der Karte, die die Fahrt von hier über Straßen erreicht –
+   * gewichtet nach Bekanntheit, Entfernung und Neuheit (WorldNavi.candidates).
    */
   bidTargets() {
-    return NAVI_TARGETS;
+    return this.worldNavi ? this.navi.candidates() : NAVI_TARGETS;
   }
 
   /** Wohin der nächste Bieter will (nie dorthin, wo es ohnehin gerade hingeht). */
@@ -819,7 +849,7 @@ export class Game {
       this.later(2.2, () => this.ui.toast('🩹 ' + damageLine('repair'), 'good'));
     }
     this.ui.banner(`🏁 Ziel erreicht: ${t.name}`, 4);
-    this.burst(CHAT.naviReached, 4, 3);
+    this.burst(this.worldNavi ? CHAT.ortReached : CHAT.naviReached, 4, 3);
     // Fürs Ankommen selbst gibt es nichts – aber der Chat feiert es mit einem Schwung Ortsspenden (Siegen: doppelt;
     // am Drive-In ist die erste natürlich für „Pommes ohne Rückfragen“)
     const gifts = this.eco.arrive({ double: t.special === 'siegen' });
@@ -849,7 +879,9 @@ export class Game {
         this.stats.charges++;
         break;
       case 'gifhorn':
-        this.later(1.5, () => this.callPolice('GIFHORN GRÜSST!'));
+        // (im Ort der XXL-Welt fährt kein Verkehr, also auch kein Streifenwagen vor: dort grüßt der Chat)
+        if (this.worldNavi) this.burst(CHAT.gifhornOrt, 3, 2.5);
+        else this.later(1.5, () => this.callPolice('GIFHORN GRÜSST!'));
         break;
       case 'brunnen':
         this.later(1.2, () => this.speech.say('Ein sehr schöner Brunnen. Vielen Dank.', 'schoennbrun'));
@@ -857,7 +889,7 @@ export class Game {
         this.burst(CHAT.brunnen, 3, 2);
         break;
       case 'elsa':
-        this.burst(CHAT.elsa, 3, 2);
+        this.burst(this.worldNavi ? CHAT.elsaKassel : CHAT.elsa, 3, 2);
         break;
       case 'propper':
         this.later(4.5, () => this.say('Meister Pünktlich ist leider noch nicht da.', 'worried', { priority: false }));
@@ -894,21 +926,99 @@ export class Game {
 
   /**
    * Ereignisse der XXL-Fahrt (trip.js, main.js reicht sie von der Welt durch): Dort liegen Ankunft, Ausfahrten und
-   * Abzweige in der Strecke. Das Navi-Ziel ist erreicht, wo die Fahrt es meldet – am Brunnenplatz des Zielorts –, und
-   * wird dort gefeiert wie jedes klassische Ziel (onArrive jubelt selbst). Mini Adams Mimik reagiert auch sonst wie an
-   * den klassischen Stellen (neuer Weg: Blick aufs Navi), und wer an der geplanten Ausfahrt vorbeifährt, verstimmt
-   * den Chat.
+   * Abzweige in der Strecke. Am Zielpunkt des Brunnenplatzes ('arrive') bremst der Wagen zum Halt; erreicht ist das
+   * Navi-Ziel, wenn er am Brunnen steht ('rest') – dann wird gefeiert wie an jedem klassischen Ziel (onArrive jubelt
+   * selbst), und BrunnenTV beginnt. Mini Adams Mimik reagiert auch sonst wie an den klassischen Stellen (neuer Weg:
+   * Blick aufs Navi), und wer an der geplanten Ausfahrt vorbeifährt, verstimmt den Chat.
    */
   onTrip(e) {
     if (!this.running) return;
-    if (e.type === 'arrive') this.onArrive({ target: { name: places[e.place].name } });
-    else if (e.type === 'rest') this.onMood('happy', 0.6);
-    else if (e.type === 'fork') {
+    if (e.type === 'arrive') {
+      this.navi.stop(e.place);
+      this.halt = { sec: e.sec, still: 0 };
+    } else if (e.type === 'pass') this.navi.visit(e.place);
+    else if (e.type === 'rest') {
+      // (hat tickHalt den Halt schon selbst festgestellt, ist die Ankunft längst gefeiert)
+      if (this.navi.stopping) this.arriveAtFountain();
+    } else if (e.type === 'fork') {
+      // anders gefahren als angesagt: Die Fahrt plant von dort neu, und NOMI sagt es
+      if (e.wrong) this.say('Route wird neu berechnet.', 'think', { priority: false });
       if (e.wrong && e.planned === 'exit') {
         this.missedTarget();
         this.onMood('startled', 0.5);
       } else if (e.taken === 'exit') this.onMood('curious', 0.7);
     }
+  }
+
+  /**
+   * Zwischen Zielpunkt und Halt am Brunnen warten die Bieter. Kommt der Wagen nicht zum Stehen – das Ziel wechselte
+   * erst im letzten Moment wieder hierher, etwa mitten im Bieterduell –, gibt die Welt den Halt auf: Dann war es keine
+   * Ankunft, der Chat neckt, und die Runde läuft mit dem nächsten Gebot weiter (ohne neuen Start bei 1 Cent).
+   */
+  tickHalt(dt) {
+    this.T.bid = Math.max(this.T.bid, BRUNNEN_TV.pause);
+    if (!this.world.stopping()) {
+      this.halt = null;
+      this.navi.miss();
+      this.T.bid = rand(1.5, 3);
+      this.burst(CHAT.brunnenVorbei, 3, 2.5);
+      return;
+    }
+    // Die Welt meldet den Halt nur auf 2 m genau am Haltepunkt. Kam das Ziel so spät zurück, dass der Wagen erst ein
+    // paar Meter dahinter steht, bliebe er dort für immer gebremst – er steht am Brunnen, also zählt es als Ankunft.
+    this.halt.still = this.player.speed < 0.15 ? this.halt.still + dt : 0;
+    if (this.halt.still > 0.5) this.arriveAtFountain();
+  }
+
+  /** Der Wagen steht am Brunnen des Navi-Ziels: Ankunft feiern (wie klassisch), dann BrunnenTV. */
+  arriveAtFountain() {
+    const sec = this.halt.sec;
+    this.halt = null;
+    const t = this.navi.arrive();
+    this.onArrive({ target: t });
+    this.onMood('happy', 0.6);
+    this.startBrunnenTV(t, sec);
+  }
+
+  /**
+   * BrunnenTV. Die Regel des Eigentümers: „Wenn das Navi-Ziel (in einer Stadt) vor der nächsten Änderung erreicht
+   * wurde, gibt es am Ziel BrunnenTV.“ Eine Ankunft gibt es nur am Brunnenplatz des aktuellen Ziels – steht der
+   * Wagen dort, wurde es vor der nächsten Änderung erreicht: Jede Ankunft ist eine Folge. Weg nimmt sie nur ein
+   * Gebot, das das Ziel ändert, bevor der Wagen am Brunnen steht (siehe changeNavi, snatched, und tickHalt).
+   * Bis die Szene gebaut ist (REISE Stufe B), steht hier ihr Platzhalter: Die Folge wird gezählt, eine Titelkarte
+   * „BrunnenTV · Folge N“ erscheint, der Chat jubelt, und der Wagen bleibt kurz am Brunnen stehen. Die Szene hängt
+   * sich an onBrunnenTV({ n, place, name, sec, fountain, town }): Folge, Ort (Index und Name), Abschnitt der Fahrt,
+   * Brunnenplatz der Welt (XxlWorld.square: Lage, Haltepunkt, Brunnen) und der Ort aus dem Stadtbaukasten
+   * (XxlWorld.town: plan.fountains, plan.layout).
+   */
+  startBrunnenTV(t, sec) {
+    const n = ++this.stats.brunnenTV;
+    this.tv = { n, place: t.place, t0: this.t, until: this.t + BRUNNEN_TV.hold, busy: true };
+    this.ui.brunnenTV(n, t.name);
+    this.audio.brunnenJingle();
+    this.burst(CHAT.brunnenTV, 5, 3);
+    this.onBrunnenTV({ n, place: t.place, name: t.name, sec, fountain: this.world.square(sec), town: this.world.town(sec) });
+  }
+
+  /**
+   * Solange die Folge läuft: Die nächste Bieterrunde wartet, und die Zeit oder eine neue Eingabe beendet den Halt.
+   * Neu heißt: Wer beim Anhalten noch auf dem Gas steht, muss es erst loslassen (busy) – sonst wäre die Folge für
+   * jeden, der einfach durchfährt, sofort vorbei.
+   */
+  tickBrunnenTV(ctl) {
+    const tv = this.tv;
+    this.T.bid = Math.max(this.T.bid, BRUNNEN_TV.pause);
+    const busy = ctl.throttle > 0.1 || ctl.brake > 0.1 || !!ctl.steer || Math.abs(ctl.analog || 0) > 0.2 || !!ctl.horn || !!ctl.megafon;
+    const fresh = busy && !tv.busy;
+    tv.busy = busy;
+    if (this.t >= tv.until || (fresh && this.t - tv.t0 > BRUNNEN_TV.guard)) this.endBrunnenTV();
+  }
+
+  /** Die Folge ist vorbei (oder übersprungen): Karte weg, der Wagen darf weiter – durch den Ort hinaus zur nächsten Straße. */
+  endBrunnenTV() {
+    this.tv = null;
+    this.ui.brunnenTV(0);
+    this.world.release();
   }
 
   // --- Ereignisse ------------------------------------------------------------------

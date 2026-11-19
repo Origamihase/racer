@@ -3,7 +3,7 @@
 import { fmtNum, fmtCent, fmtKm, fmtDuration, clamp } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
-import { fmtMeters } from '../map/navroute.js';
+import { fmtMeters, fmtKm as fmtMapKm } from '../map/navroute.js';
 import { drawTurnIcon } from '../map/symbols.js';
 
 function el(tag, cls, parent, text) {
@@ -126,6 +126,13 @@ export class UI {
     // NOMI-Untertitel, Banner, Hinweise und die Kamera-Anzeige teilen sich eine Spalte (siehe .center-stack)
     const stack = el('div', 'center-stack', this.hud);
     this.stackEl = stack;
+    // BrunnenTV am Navi-Ziel der XXL-Welt: die Titelkarte der Folge führt die Spalte an, alles andere rückt darunter
+    this.tvEl = el('div', 'brunnentv hidden', stack);
+    const tvLogo = el('div', 'brunnentv-logo', this.tvEl);
+    el('span', 'brunnentv-drop', tvLogo, '⛲');
+    el('span', '', tvLogo, 'BrunnenTV');
+    this.tvEpisode = el('div', 'brunnentv-episode', this.tvEl, '');
+    this.tvPlace = el('div', 'brunnentv-place', this.tvEl, '');
     // Navi-Ansage für Ansichten ohne Mittelbildschirm (XXL: Drohne, schmale Formate): Pfeil, Entfernung, Ausfahrt
     this.turnEl = el('div', 'navi-turn', stack);
     this.turnIcon = el('canvas', 'navi-turn-icon', this.turnEl);
@@ -524,6 +531,7 @@ export class UI {
     this.bannerEl.classList.add('hidden');
     this.nomiEl.classList.add('hidden');
     this.durchsageEl.classList.add('hidden');
+    this.tvEl.classList.add('hidden');
     this.photoEl.classList.add('hidden');
     // Funkloch-Anzeige samt „● LIVE“-Schild zurück (eine Fahrt kann mitten im Funkloch enden)
     this.funkloch(false);
@@ -646,6 +654,22 @@ export class UI {
     el('div', 'durchsage-text', this.durchsageEl, '»' + text + '«');
     this.durchsageEl.classList.remove('hidden');
     this.durchsageT = clamp(dur, 3, 14);
+    this.fitStack();
+  }
+
+  /**
+   * BrunnenTV am Navi-Ziel (XXL-Welt): die Titelkarte der Folge n aus dem Ort name. n = 0 blendet sie aus. (Bis die
+   * Szene am Brunnen gebaut ist, ist diese Karte die ganze Sendung.)
+   */
+  brunnenTV(n, name = '') {
+    this.tvEl.classList.toggle('hidden', !n);
+    if (n) {
+      this.tvEpisode.textContent = 'Folge ' + fmtNum(n);
+      this.tvPlace.textContent = 'Heute aus ' + name;
+      this.tvEl.classList.remove('pop');
+      void this.tvEl.offsetWidth;
+      this.tvEl.classList.add('pop');
+    }
     this.fitStack();
   }
 
@@ -818,13 +842,19 @@ export class UI {
       this.leftLaneEl.classList.toggle('warn', L.timer < 10);
       this.leftLaneFill.style.width = clamp(L.timer / (L.dur || 60), 0, 1) * 100 + '%';
     }
-    // Navi-Zeile (XXL-Welt: Sie zeigte das ruhende klassische Navi statt des Ziels der Fahrt und bleibt deshalb weg)
-    this.naviEl.classList.toggle('hidden', g.worldNavi);
+    // Navi-Zeile: Ziel, Entfernung, Gebot und Bieter. In der XXL-Welt ist das Ziel ein echter Ort, die Entfernung
+    // steht in Kartenkilometern wie auf dem Kärtchen im Auto, und zwischen Ankunft und erstem Gebot sagt die Zeile das
     const nv = g.navi;
-    const rem = Math.max(0, nv.targetS - p.s);
-    this.naviTarget.textContent = nv.arrived ? '📍 Ziel erreicht – warte auf das nächste Gebot …' : '📍 ' + nv.target.name;
-    this.naviKm.textContent = nv.arrived ? '' : '\u00a0· ' + fmtKm(rem, rem < 10000 ? 1 : 0);
-    this.naviBid.textContent = nv.arrived ? '' : `\u00a0· Gebot ${fmtCent(nv.bid)} von ${nv.bidder}`;
+    if (g.worldNavi) {
+      this.naviTarget.textContent = nv.target ? '📍 ' + nv.target.name : nv.waitLine;
+      this.naviKm.textContent = nv.target ? '\u00a0· ' + fmtMapKm(nv.km) : '';
+      this.naviBid.textContent = nv.target ? `\u00a0· Gebot ${fmtCent(nv.bid)} von ${nv.bidder}` : '';
+    } else {
+      const rem = Math.max(0, nv.targetS - p.s);
+      this.naviTarget.textContent = nv.arrived ? '📍 Ziel erreicht – warte auf das nächste Gebot …' : '📍 ' + nv.target.name;
+      this.naviKm.textContent = nv.arrived ? '' : '\u00a0· ' + fmtKm(rem, rem < 10000 ? 1 : 0);
+      this.naviBid.textContent = nv.arrived ? '' : `\u00a0· Gebot ${fmtCent(nv.bid)} von ${nv.bidder}`;
+    }
     // passt die ganze Zeile nicht zwischen Info-Feld und Chat, fällt das Gebot weg (es steht auch im Chat und im Auto)
     const need = this.naviTarget.scrollWidth + this.naviKm.scrollWidth + this.naviBid.scrollWidth + 30;
     this.naviEl.classList.toggle('short', need > (this.naviMax || 760));

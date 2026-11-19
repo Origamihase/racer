@@ -290,8 +290,8 @@ export class Menus {
     };
     item('Strecke', fmtKm(g.player.s));
     item('Einnahmen dieser Fahrt', fmtCent(g.money));
-    // XXL-Welt: das klassische Navi ruht dort (game.worldNavi), sein Ziel gibt es in der Welt nicht
-    if (!g.worldNavi) item('Navi-Ziel', g.navi.target.name);
+    // XXL-Welt: ein echter Ort – oder, zwischen Ankunft und erstem Gebot der Runde, was gerade gilt (WorldNavi.label)
+    item('Navi-Ziel', g.worldNavi ? g.navi.label : g.navi.target.name);
     item('Navi-Gebote', fmtNum(g.stats.naviChanges));
     item('Zuschauer', fmtNum(Math.round(g.viewers)));
     item('Sendezeit', fmtDuration(g.t));
@@ -354,6 +354,7 @@ export class Menus {
       el('span', '', row, v);
     };
     line('Navi-Ziele erreicht', fmtNum(st.naviReached));
+    if (st.brunnenTV) line('BrunnenTV-Folgen', fmtNum(st.brunnenTV));
     line('Navi-Gebote · höchstes', fmtNum(st.naviChanges) + ' · ' + fmtCent(st.topBid));
     line('Spenden · Abos · neue VIPs', fmtNum(st.donations) + ' · ' + fmtNum(st.subs) + ' · ' + fmtNum(st.vips));
     line('Haarscharf überholt', fmtNum(st.nearMisses));

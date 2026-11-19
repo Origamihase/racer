@@ -117,6 +117,16 @@ const CHAOS_JUMPS = [0.02, 0.02, 0.03, 0.05];
 const SMALL_JUMPS = [0.02, 0.05, 0.1, 0.1, 0.25, 0.5];
 const DUEL_STEPS = [0.1, 0.5, 0.5, 1, 1, 1.5, 2, 2, 2.5, 3, 5];
 const BIG_BIDS = [10, 15, 20, 25, 33.33, 50];
+// Die Ruhe nach einem Gebot ist für klassische Ziele gemacht, eine knappe Minute voraus. In der XXL-Welt liegen echte
+// Orte Minuten entfernt (30 Kartenkilometer gut 4 Minuten, 100 gut 6, 250 gut 11): Dort wächst die Ruhe mit der
+// Fahrzeit, die das Navi nennt – um (Fahrzeit / CALM_DRIVE) hoch CALM_GROW, also etwas langsamer als die Fahrzeit
+// selbst (nahe Ziele halten eher bis zur Ankunft als ferne), und nie länger als CALM_MAX × Fahrzeit (auch nach einem
+// großen Gebot schweigt der Chat nicht ewig). Die Werte sind mit tools/journey-test.mjs gemessen: Bei kleinen Geboten
+// ist die Ruhe im Mittel etwa so lang wie die Fahrt – wer zügig fährt, steht bei gut der Hälfte der Ziele am
+// Brunnen, bevor wieder jemand überbietet, ein gemütlicher Fahrer bei einem Drittel.
+const CALM_DRIVE = 18;
+const CALM_GROW = 0.8;
+const CALM_MAX = 2;
 
 // Sammelaktionen: Zielbeträge und was einzelne dazugeben
 const SAMMEL_GOALS = [20, 25, 30, 30, 35, 40, 50];
@@ -436,11 +446,14 @@ export class Economy {
    * findet sich jemand, der noch einen drauflegt (jeder zahlt sein ganzes Gebot, zurück gibt es nichts). Ab und zu
    * schaukeln sich zwei im Duell hoch, ganz selten setzt jemand mit einem großen Gebot ein Zeichen; danach ist
    * erst einmal Ruhe.
-   * @param {{bid:number}} state aktueller Preis in Euro
-   * @returns {{increment:number, delay:number, kind:'chaos'|'step'|'duel'|'big', first?:boolean}}
-   *   first: erstes Gebot einer Runde bzw. eines Duells
+   * @param {{bid:number, drive?:number}} state aktueller Preis in Euro; drive (nur XXL-Welt): Sekunden Fahrt bis zum
+   *   neuen Ziel, wie das Navi sie kennt. Die Ruhe nach einem Gebot ist für klassische Ziele gemacht; liegt ein
+   *   echter Ort Minuten entfernt, wächst sie mit der Fahrzeit (stretch, siehe CALM_DRIVE) – wer zügig fährt, kommt
+   *   so oft an, bevor wieder jemand überbietet, aber nie sicher.
+   * @returns {{increment:number, delay:number, kind:'chaos'|'step'|'duel'|'big', first?:boolean, stretch?:number}}
+   *   first: erstes Gebot einer Runde bzw. eines Duells · stretch: um diesen Faktor ist die Ruhe gestreckt
    */
-  nextBid({ bid = 0 } = {}) {
+  nextBid({ bid = 0, drive = 0 } = {}) {
     const B = this.bids;
     const act = clamp(Math.sqrt(this.activity()), 0.75, 1.4);
     const plan = { increment: 0.01, delay: 0, kind: 'step' };
@@ -473,6 +486,10 @@ export class Economy {
         B.duel = this.int(3, 6);
       } else if (r < 0.6) plan.increment = this.pick(SMALL_JUMPS);
       plan.delay = (this.rand(0.7, 1.4) * (40 + 26 * Math.pow(bid, 0.6)) * (B.quiet ? 1.5 : 1)) / act;
+      if (drive > CALM_DRIVE) {
+        plan.stretch = Math.pow(drive / CALM_DRIVE, CALM_GROW);
+        plan.delay = Math.min(plan.delay * plan.stretch, Math.max(plan.delay, CALM_MAX * drive));
+      }
       B.quiet = quiet;
     }
     B.n++;

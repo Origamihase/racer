@@ -367,13 +367,22 @@ const uiFacade = {
   photo: (kmh, clock) => {
     photoRequest = { kmh, clock };
   },
+  brunnenTV: (n, name) => ui.brunnenTV(n, name),
 };
 
-const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, worldNavi: !!xxl });
-// XXL: Ankunft, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht, Mimik, Chat); jeder Ort,
-// durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
+// XXL: Das Spiel bietet auf echte Orte und braucht dafür die Fahrt der Welt (jedes Gebot setzt ihr Ziel), den Halt am
+// Brunnen (stopping: der Wagen bremst gerade dorthin · release: weiterfahren, auch wenn er knapp hinter dem
+// Haltepunkt zum Stehen kam) sowie Brunnenplatz und Ort für die BrunnenTV-Szene
+const gameWorld = xxl
+  ? { trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec) }
+  : null;
+const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld });
+// XXL: Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht,
+// BrunnenTV, Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
 if (xxl) xxl.on((e) => {
   game.onTrip(e);
+  // an der angesagten Ausfahrt vorbei: Die Fahrt plant neu, das Navi im Auto zeigt es
+  if (e.type === 'fork' && e.wrong && game.running) xxlNav.replanned();
   if (game.running && (e.type === 'arrive' || e.type === 'pass')) {
     recordVisit(save, e.place);
     storeSave(save);
@@ -1706,6 +1715,10 @@ function step(dt, { render = true } = {}) {
     } else if (xxl && scr) {
       // XXL: Karte, Route, Ansage und Ziel des Mittelbildschirms kommen aus der Fahrt der Welt (COMMON.md §9)
       xxlScreenNav.model = xxlNav;
+      xxlScreenNav.bidder = scr.navi.bidder;
+      xxlScreenNav.bid = scr.navi.bid;
+      xxlScreenNav.bar = scr.navi.bar;
+      xxlScreenNav.wait = scr.navi.wait;
       xxlScreenNav.clockMin = game.clock;
       xxlScreenNav.visible = cockpitOn;
       scr.nav = xxlScreenNav;
@@ -1795,15 +1808,18 @@ const xxlLimits = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null
 let xxlTrafficFrame = null;
 // Navi der XXL-Fahrt (src/map/navroute.js): Lage auf der Karte, Route und Ansage, alles aus xxl.trip; je Fahrt ein Modell
 let xxlNav = null;
-// was der Mittelbildschirm davon bekommt (st.nav, src/map/navview.js). Einen Bieter gibt es erst, wenn auf echte Orte
-// geboten wird; die Uhr ist bis dahin die klassische, mit deren Maßstab navview.js die Ankunftszeit ohnehin rechnet
-const xxlScreenNav = { model: null, bidder: '', bid: '', clockMin: 0, visible: false, visited: null };
+// was der Mittelbildschirm davon bekommt (st.nav, src/map/navview.js): Bieter und Gebot im roten Balken kommen vom
+// Spiel (WorldNavi.screen), ohne Gebot dessen Texte für Balken (bar) und Kärtchen (wait); die Uhr ist die klassische,
+// mit deren Maßstab navview.js die Ankunftszeit rechnet
+const xxlScreenNav = { model: null, bidder: '', bid: '', bar: '', wait: '', clockMin: 0, visible: false, visited: null };
 // und von der Straße für die Spuransicht (st.road, src/cockpit/screen.js)
 const xxlScreenRoad = { lanes: null, extraLane: null, autobahn: true };
 /** Neue Fahrt (Erlensee) bzw. Titel: der Titel fährt gleich auf der ersten Autobahn (die Kamera kreist dort). */
 function xxlStart(title) {
   const p = game.player;
   xxl.reset();
+  // am Navi-Ziel bleibt der Wagen am Brunnen stehen, bis das Spiel ihn weiterfahren lässt (BrunnenTV)
+  xxl.arrival.hold = !title;
   courseTrip = xxl.trip;
   xxlNav = new NavModel(xxl.trip);
   traffic.reset();

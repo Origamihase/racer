@@ -44,6 +44,22 @@ export const NAVI_TARGETS = [
 
 export const BANK_FARBEN = ['rot', 'blau', 'weiß', 'rot (wie immer)', 'überraschend orange'];
 
+// Navi ferngesteuert XXL: Dort wird auf die echten Orte der Karte geboten (src/game/navi.js WorldNavi). Die Insider
+// der Liste oben hängen an ihrem Ort – Schlüssel wie in der Karte (places[].key; tools/journey-test.mjs prüft jeden).
+// special: besondere Ankunft (Game.onArrive) · note: Zeile unter dem Hinweis aufs neue Ziel.
+// Nicht dabei, weil die Karte den Ort nicht hat oder die Welt das Ding dort nicht baut: Megahub Lehrte, Liberec,
+// Burg Ronneburg, Schäferborn Ost, der Drive-In und die Farbe der Bank am Markt.
+export const INSIDER_ORTE = {
+  Kassel: { special: 'elsa', note: 'Elsa besuchen, das Spirit-Animal von SkylineTV LIVE.' },
+  Dortmund: { special: 'bude', note: 'Zur richtigen Currywurstbude. Diesmal ganz sicher. Und Phoenix West liegt auch hier.' },
+  Norderstedt: { special: 'malte', note: 'Malte abholen. Die Bahn fällt mal wieder aus.' },
+  Gifhorn: { special: 'gifhorn', note: 'Zum Supermarkt-Parkplatz. Historisch bedeutsam.' },
+  Siegen: { special: 'siegen', note: 'Wurde schon oft gespendet. Setzt sich fast nie durch.' },
+  Eisenach: { note: 'Zur Wartburg: Dort gibt es einen Automaten mit 0-Euro-Geldscheinen.' },
+  Haunetal: { note: 'Zur Burg Hauneck, dem ersten Ziel, das 2022 wirklich erreicht wurde.' },
+  Beverungen: { note: 'Zum Weser-Skywalk: Aussicht mit Wackelfaktor.' },
+};
+
 // ---------------------------------------------------------------------------
 // Zuschauernamen (frei erfunden)
 const NAME_A = ['Ebbelwoi', 'Handkäs', 'Brunnen', 'Schnitzel', 'Navi', 'Plüsch', 'Kürbis', 'Elsa', 'Kaffeekassen',
@@ -260,6 +276,27 @@ export const CHAT = {
     'Und das Navi stellt schon wieder um 😂', 'Ziel weg, Geld auch weg. Ich liebe dieses Format',
     '30 Sekunden hat mein Ziel gehalten. War schön.'],
   naviReached: ['ANGEKOMMEN! 🎉', 'Geschafft!!!', 'Und jetzt?', 'Gibt es hier einen Brunnen?', 'Wo ist der Guide?', 'Ziel erreicht 🏁'],
+  // Navi ferngesteuert XXL: Ziele sind echte Orte, die Fahrt dorthin dauert Minuten, gewendet wird nur über eine
+  // Ausfahrt, und jede Ankunft endet am Brunnen des Orts
+  ortChanged: ['Wer war das? 😂', 'Nicht schon wieder!', 'Überboten! 🤑', 'Navi ferngesteuert 🔥',
+    'Das Navi weiß auch nicht mehr weiter', 'Kaum gewöhnt man sich an ein Ziel …', 'Klassiker', 'Jetzt aber wirklich!', 'NEIN 😂',
+    'Und das Navi stellt schon wieder um 😂', 'Ziel weg, Geld auch weg. Ich liebe dieses Format',
+    'Neuer Ort, neues Glück 🗺️', 'Da wollte ich schon immer mal hin'],
+  ortWende: ['Wendemanöver incoming', 'Einmal umdrehen bitte 😂', 'Das liegt ja hinter uns!', 'Nächste Ausfahrt raus und zurück'],
+  ortReached: ['ANGEKOMMEN! 🎉', 'Geschafft!!!', 'Ziel erreicht 🏁', 'Vor dem nächsten Gebot da. Stark!', 'Wo ist der Guide?',
+    'Und da ist auch schon der Brunnen ⛲', 'Schneller als der Chat bieten kann 😎'],
+  // ein Gebot kam, als der Wagen schon durch den Zielort fuhr: kein BrunnenTV, der Chat neckt liebevoll
+  brunnenWeg: ['Der Brunnen war schon in Sicht 😭⛲', 'Kein BrunnenTV. So knapp!', 'Winkt dem Brunnen im Vorbeifahren 👋⛲',
+    'Der Chat war schneller als der Brunnen 😇', 'Nächstes Mal, Brunnen. Versprochen ❤', 'BrunnenTV fällt heute hier aus 😂',
+    'Einmal durch den Ort und weiter. Schön war es trotzdem'],
+  // das Ziel wechselte erst im letzten Moment zurück in den Ort: am Brunnen vorbeigerollt, keine Ankunft
+  brunnenVorbei: ['Vorbeigerollt! 😂⛲', 'Da war er doch, der Brunnen!', 'Zu schnell für BrunnenTV 😅', 'Der Brunnen winkt hinterher 👋',
+    'Knapp daneben ist auch vorbei', 'Der Chat hat sich mal wieder nicht entscheiden können 😇'],
+  brunnenTV: ['BRUNNENTV!!! ⛲', 'BrunnenTV! BrunnenTV!', 'Neue Folge BrunnenTV!', 'Herr Schönnbrun, übernehmen Sie!', '⛲⛲⛲',
+    'Endlich wieder BrunnenTV ❤', 'Darauf hat der Chat gewartet', 'Was für ein Brunnen!', 'Die Folge speichere ich mir',
+    '#BrunnenTV', 'Brunnen gesichtet, Ziel erreicht, alles richtig gemacht'],
+  elsaKassel: ['ELSA!!! ❤🐟', 'Elsa ❤', 'Kassel ist Elsa-Stadt 👑🐟', 'Grüß Elsa von uns!'],
+  gifhornOrt: ['Gifhorn! Historisch bedeutsam 😂', 'Polizei Gifhorn grüßt bestimmt gleich 👮', 'Wo ist der Supermarkt-Parkplatz?'],
   crash: ['Rezeption!', 'Uff 🙈', 'Das gibt Ärger', 'Polizei Gifhorn ist unterwegs 🚓', 'Blechschaden!', 'Hoffentlich hat das keiner gesehen',
     'Eskalation! 😂', 'Das war die falsche Spur'],
   nearMiss: ['WAS WAR DAS 😱', 'Knapp!!!', 'Millimeterarbeit', 'CLIP!', 'Clip it!', 'Puh…', 'Mutig!'],

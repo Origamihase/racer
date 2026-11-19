@@ -320,6 +320,8 @@ export class Trip {
     if (pol && isFinite(pol.cost[st])) {
       let bc = Infinity;
       for (const t of transitions(st)) {
+        // ein Ziel nur über Straßen (setTarget mit road): an keinem Knoten lockt eine Überfahrt
+        if (pol.road && t.type !== 'enter') continue;
         const c = t.cost + pol.cost[t.to];
         if (c < bc) {
           bc = c;
@@ -443,11 +445,15 @@ export class Trip {
   }
 
   // --- Navi-Ziel ------------------------------------------------------------------------
-  /** Neues Navi-Ziel (Index in places) oder −1. Zweige vor uns werden neu geplant, wenn sie noch weit genug weg sind. */
-  setTarget(placeIdx) {
+  /**
+   * Neues Navi-Ziel (Index in places) oder −1. Zweige vor uns werden neu geplant, wenn sie noch weit genug weg sind.
+   * road: der Weg dorthin führt nur über Straßen, nie über Fähre, Autozug oder Luftfracht (für Ziele, auf die im
+   * Spiel geboten wird, solange die Welt keine Terminals baut; siehe distances).
+   */
+  setTarget(placeIdx, road = false) {
     if (this.endless) return;
     this.target = placeIdx;
-    this.policy = placeIdx >= 0 ? routeTo(placeIdx) : null;
+    this.policy = placeIdx >= 0 ? routeTo(placeIdx, road) : null;
     this.replan(this.cur);
     for (const sec of this.cur.sections) {
       const fork = sec.fork;
@@ -498,9 +504,9 @@ export class Trip {
     if (sec.kind === 'auf') return sec.de;
     return stateOfNode(sec.node);
   }
-  /** Entfernungen von hier zu allen Orten (für die Auswahl neuer Ziele). */
-  distances() {
-    return routeFrom(this.state());
+  /** Entfernungen von hier zu allen Orten (für die Auswahl neuer Ziele). road: nur über Straßen (sonst Infinity). */
+  distances(road = false) {
+    return routeFrom(this.state(), road);
   }
 
   // --- Fahren ---------------------------------------------------------------------------

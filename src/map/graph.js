@@ -278,11 +278,15 @@ export function excursion(placeIdx) {
   return { cost: km * COST.land, km, secs: zubLen(p.zubKm) / PACE.land + (0.6 * townLen(p.pop)) / PACE.stadt };
 }
 
+/** Überfahrt (Fähre, Autozug, Luftfracht)? Alle anderen Übergänge sind Straße. */
+const isTransit = (t) => COST.transit[t.type] !== undefined;
+
 /**
  * Der beste Weg von überall zu einem Ort. Ergebnis je Zustand: Kosten (cost), Kartenkilometer (km),
  * geschätzte Fahrzeit auf der Spielstrecke in Sekunden (secs) und der nächste Schritt (next: Übergang, am Ziel null).
+ * road: nur über Straßen, ohne Überfahrten (das Ergebnis trägt road: true; unerreichbar bleibt dann Infinity).
  */
-export function routeTo(placeIdx) {
+export function routeTo(placeIdx, road = false) {
   if (!TRANS) buildTransitions();
   const n = TRANS.length;
   const cost = new Float64Array(n).fill(Infinity);
@@ -300,6 +304,7 @@ export function routeTo(placeIdx) {
     const [c, st] = heap.pop();
     if (c > cost[st]) continue;
     for (const t of BACK[st]) {
+      if (road && isTransit(t)) continue;
       const nc = c + t.cost;
       if (nc < cost[t.from]) {
         cost[t.from] = nc;
@@ -310,11 +315,14 @@ export function routeTo(placeIdx) {
       }
     }
   }
-  return { place: placeIdx, goal, cost, km, secs, next };
+  return { place: placeIdx, goal, cost, km, secs, next, road };
 }
 
-/** Kosten, Kartenkilometer und Fahrzeit von einem Zustand zu allen Knoten (für die Auswahl neuer Navi-Ziele). */
-export function routeFrom(state) {
+/**
+ * Kosten, Kartenkilometer und Fahrzeit von einem Zustand zu allen Knoten (für die Auswahl neuer Navi-Ziele).
+ * road: nur über Straßen, ohne Überfahrten.
+ */
+export function routeFrom(state, road = false) {
   if (!TRANS) buildTransitions();
   const n = TRANS.length;
   const cost = new Float64Array(n).fill(Infinity);
@@ -329,6 +337,7 @@ export function routeFrom(state) {
     const [c, st] = heap.pop();
     if (c > cost[st]) continue;
     for (const t of TRANS[st]) {
+      if (road && isTransit(t)) continue;
       const nc = c + t.cost;
       if (nc < cost[t.to]) {
         cost[t.to] = nc;

@@ -783,6 +783,15 @@ export class NavModel {
   }
 
   /**
+   * Die Fahrt hat neu geplant, ohne dass sich das Ziel geändert hat (an der angesagten Ausfahrt vorbei): Die Anzeige
+   * zeichnet die Route von vorn, wie nach einem neuen Ziel.
+   */
+  replanned() {
+    this.oldRoute = null;
+    this.reroute = 0;
+  }
+
+  /**
    * Einmal je Bild: Lage des Autos, gefahrener Weg, Überfahrt, neues Ziel. dt in Sekunden. Liefert Ereignisse
    * ('reroute', 'hop') für die Anzeige.
    */

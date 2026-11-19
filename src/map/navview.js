@@ -25,6 +25,8 @@ const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 /** Farben der Karten über der Karte (wie im klassischen Bildschirm, etwas deckender: keine Ortspunkte scheinen durch). */
 const CARD = { light: 'rgba(32,34,38,0.96)', dark: 'rgba(10,11,13,0.96)' };
+// so viele Sekunden nach einer Neuplanung der Fahrt steht „Route wird neu berechnet“ unter der Ansage
+const REROUTE_NOTE = 2.4;
 /** Spielminuten je echter Minute, wenn st.nav.timeScale fehlt (die klassische Uhr läuft 30-mal so schnell). */
 export const CLOCK_SCALE = 30;
 /** Ansagen, die eine Stelle auf dem Weg meinen (Überfahrten). */
@@ -349,6 +351,7 @@ export class NaviScreen {
     } else drawGroundCar(ctx, ox, oy, 40, cam.c, theme === 'dark' ? 'rgba(76,141,255,0.24)' : 'rgba(47,111,228,0.17)');
 
     this.drawBanner(ctx, ins, w, theme, hop);
+    if (m.trip.target >= 0 && m.reroute < REROUTE_NOTE) this.drawReroute(ctx, w, theme, m.reroute);
     this.drawBottom(ctx, m, ins, nav, w, h, theme);
     ctx.restore();
 
@@ -807,6 +810,26 @@ export class NaviScreen {
   }
 
   /**
+   * Hinweis unter der Ansage, solange die Fahrt gerade neu geplant hat (neues Ziel oder an der angesagten Ausfahrt
+   * vorbei; t: Sekunden seither) – nur dann, nie als bloße Zierde.
+   */
+  drawReroute(ctx, w, theme, t) {
+    const text = '🔄 Route wird neu berechnet …';
+    ctx.font = `600 20px ${FONT}`;
+    const bw = ctx.measureText(text).width + 36;
+    const y = 172;
+    ctx.globalAlpha = clamp((REROUTE_NOTE - t) / 0.4, 0, 1);
+    ctx.fillStyle = CARD[theme];
+    rrect(ctx, (w - bw) / 2, y, bw, 38, 19);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, w / 2, y + 20);
+    ctx.globalAlpha = 1;
+  }
+
+  /**
    * Spurpfeile (rechts in der zweiten Zeile der Ansage): die genutzten Spuren hell, exit = es gibt einen
    * Verzögerungsstreifen. Liefert die belegte Breite.
    */
@@ -869,7 +892,8 @@ export class NaviScreen {
     const bidW = ctx.measureText(bid).width;
     ctx.textAlign = 'left';
     ctx.font = `700 22px ${FONT}`;
-    ctx.fillText(fit(ctx, '📡 Ferngesteuert von ' + (nav.bidder || '—'), bw - bidW - 44), x + 16, by + 26);
+    // ohne Gebot (XXL-Welt zwischen Ankunft und erstem Gebot der Runde) sagt der Balken, was gerade gilt (nav.bar)
+    ctx.fillText(fit(ctx, !nav.bidder && nav.bar ? nav.bar : '📡 Ferngesteuert von ' + (nav.bidder || '—'), bw - bidW - 44), x + 16, by + 26);
     // Ziel und Route
     const cy = h - 160;
     ctx.fillStyle = CARD[theme];
@@ -881,7 +905,7 @@ export class NaviScreen {
       ctx.font = `600 22px ${FONT}`;
       ctx.fillStyle = '#c9d6ff';
       ctx.textAlign = 'left';
-      ctx.fillText('⏳ Warte auf das nächste Gebot …', x + 18, cy + 36);
+      ctx.fillText(fit(ctx, nav.wait || '⏳ Warte auf das nächste Gebot …', bw - 36), x + 18, cy + 36);
       ctx.font = `500 19px ${FONT}`;
       ctx.fillStyle = 'rgba(255,255,255,0.75)';
       ctx.fillText('Gefahren: ' + fmtKm(trip.km), x + 18, cy + 68);
