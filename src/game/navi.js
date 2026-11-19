@@ -1,6 +1,6 @@
 // Das ferngesteuerte Navi: Zuschauer überbieten sich (mindestens 1 Cent mehr), das Ziel wechselt
 // automatisch, die Route wird neu berechnet – manchmal mit „Bitte wenden“ auf der Autobahn.
-import { NAVI_TARGETS, SPARKASSEN_FARBEN } from '../data.js';
+import { NAVI_TARGETS, BANK_FARBEN } from '../data.js';
 import { rand, chance, pick, weightedPick, fmtCent, fmtClock, clamp } from '../util.js';
 
 /** Kurzer Name für Schilderbrücken und das Navi-Kärtchen. */
@@ -60,7 +60,7 @@ export class Navi {
     this.wendeS = s + rand(380, 820);
     this.arrived = false;
     this.side = chance(0.5) ? 1 : -1;
-    this.sparkColor = pick(SPARKASSEN_FARBEN);
+    this.sparkColor = pick(BANK_FARBEN);
     this.history.push({ name: target.name, bidder, bid: this.bid });
     if (this.history.length > 12) this.history.shift();
     this.placeLandmarks();

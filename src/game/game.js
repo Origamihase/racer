@@ -804,7 +804,7 @@ export class Game {
         this.burst(['SIEGEN!!! Es ist tatsächlich passiert 😱', 'Geschichte wurde geschrieben', 'Doppelte Ortsspenden für Siegen!'], 3, 2);
         break;
       case 'sparkasse':
-        this.later(1.5, () => this.ui.chat({ name: 'Wissenschaftlicher Dienst', text: `🔬 Ergebnis: Die Sparkasse ist ${this.navi.sparkColor}.`, bot: 'claudia', icon: '🔬' }));
+        this.later(1.5, () => this.ui.chat({ name: 'Wissenschaftlicher Dienst', text: `🔬 Ergebnis: Die Bank am Markt ist ${this.navi.sparkColor}.`, bot: 'claudia', icon: '🔬' }));
         break;
       case 'pommes':
         this.burst(['Pommes ohne Rückfragen 🍟', 'Mit Mayo!', 'Keine Rückfragen!'], 3, 2);

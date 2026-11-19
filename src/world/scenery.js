@@ -1497,13 +1497,15 @@ export class Scenery {
     g.rotation.y = -Math.PI / 2 + 0.25;
     g.userData.setColor = (color) => {
       const tex = this.canvasTex('spk:' + color, 512, 100, (ctx, w, h) => {
-        ctx.fillStyle = '#ffffff';
+        // helle Schrift (die Bank ist weiß) steht auf Blaugrau, sonst verschwände sie auf dem weißen Schild
+        const light = [1, 3, 5].reduce((a, i) => a + parseInt(color.slice(i, i + 2), 16), 0) > 600;
+        ctx.fillStyle = light ? '#5f7fa3' : '#ffffff';
         ctx.fillRect(0, 0, w, h);
         ctx.fillStyle = color;
-        ctx.font = 'bold 64px Arial, sans-serif';
+        ctx.font = 'bold 54px Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('Sparkasse', w / 2, h / 2 + 3);
+        ctx.fillText('Bank am Markt', w / 2, h / 2 + 3);
       });
       face.map = tex;
       face.needsUpdate = true;

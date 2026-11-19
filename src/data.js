@@ -39,10 +39,10 @@ export const NAVI_TARGETS = [
   { name: 'Dortmund – die richtige Currywurstbude', note: 'Diesmal ganz sicher die richtige.', km: [1.8, 3.2], special: 'bude' },
   { name: 'Ein sehr schöner Brunnen', note: 'Für eine neue Folge BrunnenTV.', km: [1.4, 2.8], special: 'brunnen' },
   { name: 'Meister Pünktlich abholen', note: 'Er ist ganz bestimmt gleich da.', km: [1.6, 3.0], special: 'propper' },
-  { name: 'Sparkasse (Farbe prüfen)', note: 'Der Wissenschaftliche Dienst braucht Daten.', km: [1.4, 2.6], special: 'sparkasse' },
+  { name: 'Bank am Markt (Farbe prüfen)', note: 'Der Wissenschaftliche Dienst braucht Daten.', km: [1.4, 2.6], special: 'sparkasse' },
 ];
 
-export const SPARKASSEN_FARBEN = ['rot', 'blau', 'weiß', 'rot (wie immer)', 'überraschend orange'];
+export const BANK_FARBEN = ['rot', 'blau', 'weiß', 'rot (wie immer)', 'überraschend orange'];
 
 // ---------------------------------------------------------------------------
 // Zuschauernamen (frei erfunden)
