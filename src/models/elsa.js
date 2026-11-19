@@ -1,5 +1,5 @@
 // Elsa – das Heringsmaskottchen aus Kassel und Spirit-Animal von SkylineTV LIVE, so wie die Plüsch-Elsa vom
-// Zisselfest: königsblauer Samtplüsch, ein breiter Fischmund wie ein Entenschnabel mit hellblauen Lippen und roter
+// Zisselfest: königsblauer Samtplüsch, ein offener Fischmund wie ein Entenschnabel mit hellblauen Lippen und roter
 // Filzzunge, große braune Glasaugen mit langen Wimpern oben auf dem Kopf, dazwischen ein goldenes Krönchen, quer
 // über Brust und Bauch zwei weiße Schärpenbänder und ringsum weiße Kleeblätter, Stummelarme mit Paddelhänden und
 // große Füße mit drei Zehennähten.
@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { curve } from '../curve.js';
+import { clamp } from '../util.js';
 import { plush } from './plushMaterial.js';
 import { ell, cone, smin, smax, netMesh, SoftPart, toGeometry } from './softMesh.js';
 
@@ -34,7 +35,8 @@ const CLOVERS = [
 const C = {
   fur: new THREE.Color(0x113fb6),
   lip: new THREE.Color(0x78b2ee),
-  tongue: new THREE.Color(0xe32a3e),
+  mouth: new THREE.Color(0x2f62c4),
+  tongue: new THREE.Color(0xdc1f33),
   felt: new THREE.Color(0xf3f2ec),
   lash: new THREE.Color(0x0b0b10),
   iris: new THREE.Color(0x6a3716),
@@ -43,7 +45,7 @@ const C = {
 };
 
 // --- Form ---------------------------------------------------------------------------------------
-const mouthSdf = (x, y, z) => ell(x, y, z, 0, 0.841, 0.175, 0.104, 0.031, 0.09);
+const mouthSdf = (x, y, z) => ell(x, y, z, 0, 0.841, 0.172, 0.106, 0.039, 0.1);
 
 /** Kopf, Bauch, Beine und Füße in einem Stück (ohne Arme) */
 function bodySdf(x, y, z) {
@@ -56,7 +58,7 @@ function bodySdf(x, y, z) {
   d = smin(d, ell(ax, y, z, EYE.c[0], EYE.c[1], EYE.c[2], EYE.hill, EYE.hill, EYE.hill), 0.03);
   d = smin(d, ell(x, y, z, 0, 0.925, 0.085, 0.034, 0.05, 0.05), 0.04);
   // Entenschnabel: zwei flache Lippen, dazwischen der offene Mund
-  const bill = smin(ell(x, y, z, 0, 0.875, 0.108, 0.126, 0.031, 0.088), ell(x, y, z, 0, 0.807, 0.1, 0.12, 0.031, 0.082), 0.015);
+  const bill = smin(ell(x, y, z, 0, 0.881, 0.108, 0.126, 0.031, 0.088), ell(x, y, z, 0, 0.801, 0.1, 0.12, 0.031, 0.082), 0.015);
   d = smax(smin(d, bill, 0.03), -mouthSdf(x, y, z), 0.02);
   // dicke gerade Beine, große flache Füße mit ebener Sohle
   const leg = cone(ax, y, z, 0.09, 0.38, 0, 0.094, 0.06, 0.004, 0.068, 0.062);
@@ -125,10 +127,10 @@ function buildEye(side, soft, glass) {
   // Glanzpunkt: sitzt halb im Glas, bei beiden Augen oben links
   const glint = new THREE.Vector3(-0.42, 0.5, 0).add(axis).normalize().multiplyScalar(EYE.glass * 0.94).addScaledVector(axis, 0.052).add(c);
   glass.push(glassPart(C.glint, new THREE.Matrix4().compose(glint, turn, one), 0.0068, 0, Math.PI, 6));
-  // Wimpern: in der Ebene quer zur Blickachse, von außen bis knapp über die Senkrechte
+  // Wimpern: in der Ebene quer zur Blickachse, von schräg außen nach oben bis ein Stück über die Senkrechte
   const up = new THREE.Vector3(0, 1, 0).addScaledVector(axis, -axis.y).normalize();
   const out = new THREE.Vector3().crossVectors(up, axis).multiplyScalar(side);
-  for (const deg of [4, 31, 58, 85, 112]) {
+  for (const deg of [20, 45, 70, 95, 120]) {
     const a = (deg * Math.PI) / 180;
     const radial = out.clone().multiplyScalar(Math.cos(a)).addScaledVector(up, Math.sin(a));
     const dir = radial.clone().addScaledVector(axis, 0.22).normalize();
@@ -176,6 +178,8 @@ function elsaGeometry() {
   const body = netMesh(bodySdf, [-0.21, -0.02, -0.16], [0.21, 1.01, 0.22], MESH).flat(C.fur, 1);
   // Lippen und Mundhöhle aus hellblauem Stoff: von der Höhle bis um die Lippenkante herum
   body.tint(C.lip, (x, y, z) => (0.03 - mouthSdf(x, y, z)) / 0.024);
+  // tief drinnen liegt das Futter im Schatten: so liest sich der Mund auch von weitem als offen
+  body.tint(C.mouth, (x, y, z) => clamp((0.01 - mouthSdf(x, y, z)) / 0.01, 0, 1) * clamp((0.158 - z) / 0.03, 0, 1));
   body.seams((x, y, z, o) => {
     o[0] = (y < 0.2 ? toeSeam(x, z) : ringSeam(y)) * PLUSH;
   });
@@ -198,8 +202,9 @@ function elsaGeometry() {
   const glass = [];
   buildEye(1, soft, glass);
   buildEye(-1, soft, glass);
-  // rote Filzzunge auf der Unterlippe
-  soft.push(partOf(new THREE.SphereGeometry(1, 18, 10), new THREE.Matrix4().makeScale(0.042, 0.012, 0.036).setPosition(0, 0.818, 0.14)).flat(C.tongue, 0.4));
+  // rote Filzzunge drinnen auf dem Unterkiefer, hinten angehoben: von vorn sieht man sie als Halbrund im Mund
+  const tongue = new THREE.Matrix4().makeRotationX(0.4).scale(new THREE.Vector3(0.046, 0.014, 0.04)).setPosition(0, 0.808, 0.13);
+  soft.push(partOf(new THREE.SphereGeometry(1, 18, 10), tongue).flat(C.tongue, 0.4));
   const eyes = mergeGeometries(glass);
   for (const g of glass) g.dispose();
   shared = { body: toGeometry(soft), armL: toGeometry([armL]), armR: toGeometry([armR]), eyes, crown: crownGeometry() };
