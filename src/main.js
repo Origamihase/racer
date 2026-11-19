@@ -127,6 +127,8 @@ function drawSize() {
 }
 drawSize();
 const worldRT = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: quality.msaa, depthBuffer: true });
+// das Rückdisplay der Action-Cam im Cockpit zeigt das Weltbild (kein eigenes Rendern)
+cockpit.setLiveTexture(worldRT.texture);
 const mirrorRT = new THREE.WebGLRenderTarget(768, 226, { type: THREE.HalfFloatType, samples: 4, depthBuffer: true });
 cockpit.setMirrorTexture(mirrorRT.texture);
 const compMat = createCompositeMaterial(worldRT.texture, windshield);

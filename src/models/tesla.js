@@ -1,6 +1,7 @@
 // Schwarzer Tesla Model 3 Long Range AWD (stilisiert, ohne Markenlogos) mit Mini Adam am Steuer.
 // Wird für den Kameraschwenk beim Start, die Drohnenkamera und den Titelbildschirm gebraucht.
 import * as THREE from 'three';
+import { buildTeslaCabin } from './teslaCabin.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../curve.js';
 import { plateTexture, aeroWheelTexture, liveLogoTexture, contactShadowTexture } from '../textures.js';
@@ -134,6 +135,28 @@ function bodyTopY(u, x) {
   return bodyPoint(u, (lo + hi) / 2, p).y;
 }
 
+/**
+ * Kabinenöffnung: Innerhalb der Glaskuppel ist das Blech oben offen – sonst läge auf Höhe der Gürtellinie ein
+ * lackierter Deckel über dem Innenraum, und durchs Glas sähe man nur Mini Adams Kopf. Entfernt werden die
+ * Dreiecke der Oberseite zwischen Frontscheibe und Rückbank bis |x| = x (die Ringpunkte der Karosserie liegen
+ * dort bei 0,645 und 0,705: Die Kante läuft gerade, außen bleibt ein schmaler Türsims unter dem Glas).
+ * Wanne, Boden, Türverkleidungen und Polster auf der Kante bringt teslaCabin.js mit.
+ */
+const CABIN_OPEN = { u0: 1.62, u1: 3.88, x: 0.66 };
+function openCabin(geo) {
+  const pos = geo.attributes.position;
+  const idx = geo.index.array;
+  const inside = (i) => {
+    const u = pos.getZ(i) + L / 2;
+    return u >= CABIN_OPEN.u0 && u <= CABIN_OPEN.u1 && Math.abs(pos.getX(i)) <= CABIN_OPEN.x && pos.getY(i) > 0.8;
+  };
+  const keep = [];
+  for (let i = 0; i < idx.length; i += 3) {
+    if (!(inside(idx[i]) && inside(idx[i + 1]) && inside(idx[i + 2]))) keep.push(idx[i], idx[i + 1], idx[i + 2]);
+  }
+  geo.setIndex(keep);
+}
+
 /** Höhe des Glasdachs an Position (u, x) (für Dinge, die auf dem Dach stehen). */
 function roofY(u, x) {
   let lo = ROOF_PHI;
@@ -166,7 +189,7 @@ export function buildTesla() {
     metalness: 0.25,
     roughness: 0.04,
     transparent: true,
-    opacity: 0.74,
+    opacity: 0.62,
     envMapIntensity: 2.6,
     depthWrite: false,
   });
@@ -177,12 +200,11 @@ export function buildTesla() {
   const lampChrome = W.phys({ color: 0xaeb6bf, metalness: 1, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.04, side: THREE.DoubleSide });
   const lampLens = W.phys({ color: 0x0c1016, metalness: 0.5, roughness: 0.1, clearcoat: 1, side: THREE.DoubleSide });
   const tailMat = W.std({ color: 0x3a0505, emissive: 0xff0000, emissiveIntensity: 0.2, roughness: 0.25, side: THREE.DoubleSide });
-  const interior = W.std({ color: 0x1b1b1e, roughness: 0.85 });
-  const screenMat = W.basic({ color: 0x7fa4c8 });
 
   // --- Karosserie --------------------------------------------------------
   // Bug und Heck mit gewölbter Schattierung (capDome), sonst wirkt das Heck wie ein schwarzes Loch
   const bodyGeo = loft({ u0: 0, u1: L, ...BODY, segs: 150, ring: 44, H: 1.5, capDome: 0.8 });
+  openCabin(bodyGeo);
   const body = new THREE.Mesh(bodyGeo, paint);
   body.castShadow = true;
   root.add(body);
@@ -206,8 +228,11 @@ export function buildTesla() {
     // Fensterleiste unten (deckt den Übergang Glas/Karosserie ab)
     trim.push(patchOnGlass((a, t) => [lerp(1.52, 4.1, t), sidePhi(s, lerp(-0.86, -0.66, a))], { ns: 2, nt: 30, lift: 0.004 }));
   }
-  // Getöntes Glasdach mit Heckscheibe: von außen schwarz glänzend
-  trim.push(patchOnGlass((a, t) => [lerp(2.3, 4.24, t), lerp(ROOF_PHI, Math.PI - ROOF_PHI, a)], { ns: 18, nt: 34, lift: 0.004 }));
+  // Glasdach mit Heckscheibe: getöntes Glas wie die Frontscheibe (von oben sieht man Mini Adam und den
+  // Innenraum dunkel durchschimmern), vorn am Scheibenrahmen und über den B-Säulen je ein schwarzer Steg
+  for (const [u0, u1] of [[2.3, 2.4], [2.76, 2.88]]) {
+    trim.push(patchOnGlass((a, t) => [lerp(u0, u1, t), lerp(ROOF_PHI, Math.PI - ROOF_PHI, a)], { ns: 18, nt: 2, lift: 0.004 }));
+  }
   const trimMesh = new THREE.Mesh(mergeGeometries(trim), pianoBlack);
   trimMesh.castShadow = true;
   root.add(trimMesh);
@@ -363,50 +388,17 @@ export function buildTesla() {
   }
 
   // --- Innenraum -------------------------------------------------------
-  const rbox = (w, h, d, x, y, z, rx = 0, r = 0.03) => {
-    const g = new RoundedBoxGeometry(w, h, d, 3, Math.min(r, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001));
-    if (rx) g.rotateX(rx);
-    g.translate(x, y, z);
-    return g;
-  };
-  const inner = [];
-  // Armaturenbrett
-  // (schmaler und tiefer als früher: die oberen Ecken stachen an der A-Säule durchs Blech)
-  inner.push(rbox(1.3, 0.18, 0.42, 0, 0.79, uToZ(1.74), 0, 0.05));
-  // Sitze (gepolstert). Außen nicht weiter als |x| 0,52: Unter den Seitenfenstern steigt die Unterkante
-  // des Glases nach außen über die Gürtellinie, was dort hineinragt, liegt sichtbar auf dem Türblech
-  for (const s of [-1, 1]) {
-    inner.push(rbox(0.42, 0.12, 0.5, s * 0.31, 0.5, uToZ(2.72), 0, 0.04));
-    inner.push(rbox(0.42, 0.64, 0.12, s * 0.31, 0.86, uToZ(3.0), -0.2, 0.05));
-    inner.push(rbox(0.27, 0.19, 0.1, s * 0.31, 1.25, uToZ(3.07), -0.1, 0.045));
-  }
-  inner.push(rbox(1.36, 0.16, 0.5, 0, 0.5, uToZ(3.62), 0, 0.04));
-  inner.push(rbox(1.12, 0.55, 0.12, 0, 0.82, uToZ(3.92), -0.18, 0.05));
-  inner.push(rbox(0.22, 0.2, 0.8, 0, 0.55, uToZ(2.6), 0, 0.04)); // Mittelkonsole
-  const interiorMesh = new THREE.Mesh(mergeGeometries(inner), interior);
-  root.add(interiorMesh);
-  // Mittelbildschirm (leuchtet)
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.33, 0.2), screenMat);
-  screen.position.set(0, 1.0, uToZ(1.93));
-  screen.rotation.x = -0.2;
-  root.add(screen);
-  // Lenkrad mit Nabe und Lenksäule zum Armaturenbrett (dort, wo Mini Adams Hände hinreichen)
-  // Fahrerplatz etwas zur Mitte gerückt (wie die Sitze): sonst ragen Mini Adams Schulter und beim
-  // Winken sein Ärmel auf der Fensterseite unter dem Seitenfenster heraus aufs Türblech
+  // Armaturenbrett mit Holzleiste, Bildschirm, Spiegel, Lenkrad, Sitze, Konsole, Mitbringsel und Stream-Technik:
+  // teslaCabin.js. Der Fahrerplatz ist etwas zur Mitte gerückt (wie die Sitze): sonst ragen Mini Adams Schulter
+  // und beim Winken sein Ärmel auf der Fensterseite unter dem Seitenfenster heraus aufs Türblech.
   const SEAT_X = -0.3;
-  const wheelRing = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.022, 10, 28), interior);
+  // Lenkradmitte (Achse = lokales z): an ihr richten sich Mini Adams Hände aus
+  const wheelRing = new THREE.Group();
   wheelRing.position.set(SEAT_X, 0.84, uToZ(2.4));
   wheelRing.rotation.x = -0.35;
   root.add(wheelRing);
-  const wheelAxis = new THREE.Vector3(0, 0, 1).applyEuler(wheelRing.rotation);
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.04, 18), interior);
-  hub.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), wheelAxis);
-  hub.position.copy(wheelRing.position).addScaledVector(wheelAxis, -0.01);
-  const column = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.036, 0.46, 12), interior);
-  column.quaternion.copy(hub.quaternion);
-  column.position.copy(wheelRing.position).addScaledVector(wheelAxis, -0.25);
-  root.add(hub, column);
-
+  const cabin = buildTeslaCabin({ uToZ, bodyY: bodyTopY, open: CABIN_OPEN, wheel: wheelRing });
+  root.add(cabin.group);
   // Mini Adam auf einem Kissen hinterm Steuer
   const adam = buildMiniAdam({ curved: true });
   adam.setPose('drive');
@@ -445,44 +437,40 @@ export function buildTesla() {
   ground.renderOrder = -1;
   root.add(ground);
 
-  // Stream-Kamera vorne auf dem Glasdach (Saugfuß) + drei Mobilfunkantennen auf Magnetfüßen
-  // (Telekom, Vodafone, O₂ gebündelt)
+  // Antennenleiste hinten auf dem Glasdach: drei kurze Mobilfunkantennen (Telekom, Vodafone, O₂ gebündelt) auf
+  // einer flachen Leiste mit zwei Gummifüßen. Die Stream-Kamera sitzt innen an der Frontscheibe (teslaCabin.js).
+  const rbox = (w, h, d, x, y, z, rx = 0, r = 0.03) => {
+    const g = new RoundedBoxGeometry(w, h, d, 3, Math.min(r, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001));
+    if (rx) g.rotateX(rx);
+    g.translate(x, y, z);
+    return g;
+  };
   const gear = [];
-  const camU = 2.5;
-  const camY = roofY(camU, 0);
-  const suction = new THREE.CylinderGeometry(0.05, 0.055, 0.012, 20);
-  suction.translate(0, camY + 0.004, uToZ(camU));
-  gear.push(suction);
-  const neck = new THREE.CylinderGeometry(0.012, 0.016, 0.03, 10);
-  neck.translate(0, camY + 0.024, uToZ(camU));
-  gear.push(neck);
-  gear.push(rbox(0.12, 0.068, 0.1, 0, camY + 0.07, uToZ(camU), 0, 0.012));
   const antU = 3.45;
+  const antZ = uToZ(antU);
+  const barY = roofY(antU, 0) + 0.016;
+  gear.push(rbox(0.44, 0.016, 0.05, 0, barY, antZ, 0, 0.008));
+  for (const x of [-0.17, 0.17]) {
+    const y0 = roofY(antU, x);
+    const h = barY - y0;
+    gear.push(new THREE.CylinderGeometry(0.02, 0.024, h, 14).translate(x, y0 + h / 2, antZ));
+  }
   for (let i = 0; i < 3; i++) {
-    const x = -0.18 + i * 0.18;
-    const y = roofY(antU, x);
-    const foot = new THREE.CylinderGeometry(0.03, 0.034, 0.014, 16);
-    foot.translate(x, y + 0.005, uToZ(antU));
-    gear.push(foot);
-    const rod = new THREE.CylinderGeometry(0.005, 0.009, 0.17, 8);
-    rod.translate(0, 0.085, 0);
-    rod.rotateX(0.22); // leicht nach hinten geneigt
-    rod.translate(x, y + 0.01, uToZ(antU));
+    const x = -0.14 + i * 0.14;
+    const rod = new THREE.CylinderGeometry(0.0045, 0.008, 0.1, 8);
+    rod.translate(0, 0.05, 0);
+    rod.rotateX(0.25); // leicht nach hinten geneigt
+    rod.translate(x, barY + 0.006, antZ);
     gear.push(rod);
-    const tip = new THREE.SphereGeometry(0.009, 8, 6);
-    tip.translate(0, 0.17, 0);
-    tip.rotateX(0.22);
-    tip.translate(x, y + 0.01, uToZ(antU));
+    const tip = new THREE.SphereGeometry(0.008, 8, 6);
+    tip.translate(0, 0.1, 0);
+    tip.rotateX(0.25);
+    tip.translate(x, barY + 0.006, antZ);
     gear.push(tip);
   }
   root.add(new THREE.Mesh(mergeGeometries(gear.map((g) => (g.index ? g.toNonIndexed() : g))), plastic));
-  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.025, 14), W.std({ color: 0x223344, metalness: 0.9, roughness: 0.1 }));
-  lens.position.set(0, camY + 0.07, uToZ(camU) - 0.051);
-  lens.rotation.y = Math.PI;
-  root.add(lens);
-  const recLed = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 6), W.basic({ color: 0xff2222 }));
-  recLed.position.set(0.04, camY + 0.092, uToZ(camU) - 0.048);
-  root.add(recLed);
+  // rote REC-Lampe vorn an der Action-Cam (blinkt in update)
+  const recLed = cabin.recLed;
 
   // Starlink-Schüssel (Shop)
   const starlink = new THREE.Group();
