@@ -576,13 +576,15 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .tribute { margin-top: 22px; padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); display: flex; gap: 10px; align-items: center; font-weight: 600; }
 .tribute .heart { font-size: 22px; font-family: var(--emoji); }
 
-/* --- Navi-Ansage ohne Mittelbildschirm (XXL: Drohnenansicht und schmale Formate), oben in der Mittelspalte ---- */
-.navi-turn { display: none; align-items: center; gap: 9px; max-width: 100%; white-space: nowrap; background: var(--panel-strong); border: 1px solid var(--line);
-  border-radius: 999px; padding: 5px 16px 5px 5px; font-size: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+/* --- Navi-Ansage ohne Mittelbildschirm (XXL: Drohnenansicht und schmale Formate), oben in der Mittelspalte ----
+   Ein Ortsname bleibt ganz: ist die Spalte schmal (Handy), bricht der Text um, statt hinten gekürzt zu werden – aus
+   „Ausfahrt Frankfurt (Oder)“ würde sonst „Ausfahrt Frank…“. Der Radius ist die halbe Höhe der einzeiligen Ansage. */
+.navi-turn { display: none; align-items: center; gap: 9px; max-width: 100%; background: var(--panel-strong); border: 1px solid var(--line);
+  border-radius: 20px; padding: 5px 16px 5px 5px; font-size: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
 body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 .navi-turn-icon { width: 28px; height: 28px; flex: none; }
-.navi-turn-dist { flex: none; font-size: 17px; }
-.navi-turn-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #e3e6ec; }
+.navi-turn-dist { flex: none; font-size: 17px; white-space: nowrap; }
+.navi-turn-text { min-width: 0; overflow-wrap: anywhere; color: #e3e6ec; }
 
 /* --- Große Karte (src/ui/mapscreen.js) ------------------------------------------------- */
 .screen-karte { padding: 0; display: block; overflow: hidden; background: #a9d3ec; }

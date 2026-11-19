@@ -812,6 +812,7 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
   // ihn höchstens um; das Navi zeigt ihn im Kärtchen und in der Ansage der Ankunft ungekürzt (neben der breitesten
   // Angabe rechts bzw. der längsten Entfernung), in der Nebenzeile „dann zum Ziel …“ neben fünf Spurpfeilen und im
   // Routenstreifen höchstens hinter dem Stück gekürzt, das ihn eindeutig macht; die große Karte führt denselben Namen.
+  // Die Ansage im HUD (Drohnenansicht, schmale Formate) bricht lange Zeilen um und kürzt nie (docs/style.css).
   // Kein Modul der XXL-Welt ruft die Kurznamen des klassischen Spiels (shortName, signName), die Zusätze streichen.
   // Schriftbreiten schätzt eine Tabelle nach oben ab (je Zeichen das breitere aus Arial fett und Inter fett, der
   // Ersatzschrift ohne Helvetica und Arial, dazu 2 %; im Browser misst die Leinwand). Der Ort aus dem Stadtbaukasten
@@ -920,6 +921,11 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
     const callers = ['map/navroute.js', 'map/navview.js', 'map/mapview.js', 'map/roadahead.js', 'map/symbols.js', 'ui/mapscreen.js', 'world/xxl/signplan.js', 'world/xxl/signs.js', 'world/xxl/towns.js', 'world/xxl/world.js']
       .filter((f) => /\b(shortName|signName)\(/.test(src(f)));
     ok(!callers.length, 'Ein Name je Ort: Kurznamen des klassischen Spiels in ' + callers.join(', '));
+    // die Ansage im HUD steht auf dem Handy in einer Spalte von rund 240 Bildpunkten: dort passt kaum ein Name in eine
+    // Zeile. Weder ihre Regel noch die ihres Texts hält ihn deshalb in einer Zeile oder setzt Auslassungspunkte
+    const css = readFileSync(new URL('../docs/style.css', import.meta.url), 'utf8');
+    const rule = (sel) => (css.match(new RegExp('^' + sel.replace(/\./g, '\\.') + ' \\{([^}]*)\\}', 'm')) || [])[1] || '';
+    ok(/overflow-wrap: anywhere/.test(rule('.navi-turn-text')) && !/nowrap|text-overflow|line-clamp/.test(rule('.navi-turn') + rule('.navi-turn-text')), 'Ein Name je Ort: die Ansage im HUD kürzt den Namen (.navi-turn in docs/style.css)');
     console.log('  Ein Name je Ort: ' + JSON.stringify(e));
   }
   globalThis.OffscreenCanvas = keep.O;
