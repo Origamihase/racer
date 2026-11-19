@@ -533,8 +533,11 @@ export function buildTesla() {
     };
     const both = { side: THREE.DoubleSide };
     const g = new THREE.Group();
-    const socket = new THREE.Mesh(patchOnBody(squircle(PORT.hu, PORT.hp), { ns: 2, nt: 40, lift: 0.0025 }), W.std({ color: 0x15171a, roughness: 0.7, ...both }));
-    const inlet = new THREE.Mesh(patchOnBody(ring(0, 0.032), { ns: 2, nt: 28, lift: 0.0034 }), W.std({ color: 0x30353c, roughness: 0.45, metalness: 0.3, ...both }));
+    // Mulde und Einsatz in grauem Kunststoff (auf dem schwarzen Lack wäre eine schwarze Öffnung nicht zu sehen); der
+    // Leuchtring färbt die Mulde beim Laden leicht grün
+    const socketMat = W.std({ color: 0x3a4047, emissive: 0x39d98a, emissiveIntensity: 0, roughness: 0.72, ...both });
+    const socket = new THREE.Mesh(patchOnBody(squircle(PORT.hu, PORT.hp), { ns: 2, nt: 40, lift: 0.0025 }), socketMat);
+    const inlet = new THREE.Mesh(patchOnBody(ring(0, 0.032), { ns: 2, nt: 28, lift: 0.0034 }), W.std({ color: 0x5b626b, roughness: 0.45, metalness: 0.3, ...both }));
     const ringMat = W.std({ color: 0x0d1a12, emissive: 0x39d98a, emissiveIntensity: 0, roughness: 0.3, toneMapped: false, ...both });
     const led = new THREE.Mesh(patchOnBody(ring(0.034, 0.042), { ns: 1, nt: 32, lift: 0.0038 }), ringMat);
     g.add(socket, inlet, led);
@@ -548,7 +551,12 @@ export function buildTesla() {
     flapGeo.translate(-hinge.position.x, -hinge.position.y, -hinge.position.z);
     const flap = new THREE.Mesh(flapGeo, W.phys({ color: 0x060708, metalness: 0.5, roughness: 0.34, clearcoat: 1, clearcoatRoughness: 0.12, envMapIntensity: 1.25, ...both }));
     flap.castShadow = true;
-    hinge.add(flap);
+    // Innenseite der Klappe: hellgraue Verkleidung, 3 mm kleiner und 1,5 mm unter dem Lack (zu nur bei offener Klappe)
+    const lin = PORT.seam + 0.003;
+    const linerGeo = patchOnBody(squircle(PORT.hu - lin, PORT.hp - lin / PORT.mPerRad), { ns: 3, nt: 40, lift: 0.0037 });
+    linerGeo.translate(-hinge.position.x, -hinge.position.y, -hinge.position.z);
+    const liner = new THREE.Mesh(linerGeo, W.std({ color: 0x858b92, roughness: 0.62, ...both }));
+    hinge.add(flap, liner);
     const axis = b.sub(a).normalize();
     g.add(hinge);
     root.add(g);
@@ -565,8 +573,9 @@ export function buildTesla() {
       set(open, glow) {
         q.setFromAxisAngle(axis, -open * 1.75);
         hinge.quaternion.copy(q);
-        socket.visible = inlet.visible = led.visible = open > 0.002;
+        socket.visible = inlet.visible = led.visible = liner.visible = open > 0.002;
         ringMat.emissiveIntensity = 1.6 * glow;
+        socketMat.emissiveIntensity = 0.12 * glow;
       },
     };
   }
