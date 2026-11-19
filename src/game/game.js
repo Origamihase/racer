@@ -1239,10 +1239,12 @@ export class Game {
     const d = this.ecoIn;
     const b = this.blitzer;
     d.kmh = p.kmh;
-    // in der Tempo-120-Zone ist langsam fahren richtig
-    d.limit = !!b && p.s > b.limitS - 200 && p.s < b.endS;
+    // in der Tempo-120-Zone ist langsam fahren richtig – genauso, wo die Strecke selbst das Tempo begrenzt (XXL-Welt:
+    // Rampen, Landstraßen, Orte, der Halt am Ziel)
+    d.limit = (!!b && p.s > b.limitS - 200 && p.s < b.endS) || p.limits.vmax < Infinity;
     d.stuck = this.stuck && !d.limit;
-    d.leftOpen = this.left.open;
+    // abseits der Autobahn gibt es keine linke Spur, die er nutzen oder liegen lassen könnte
+    d.leftOpen = this.left.open && !this.offAutobahn;
     d.inLeft = p.inLeftLane;
     d.funkloch = this.funkloch > 0;
     for (const e of this.eco.update(dt, d)) this.onStream(e);
@@ -1270,6 +1272,11 @@ export class Game {
     this.trafficT -= dt;
     if (this.trafficT > 0) return;
     this.trafficT = 0.25;
+    // abseits der Autobahn (XXL-Welt) fährt deren Verkehr woanders weiter: Dort überholt und bremst ihn niemand
+    if (this.offAutobahn) {
+      this.stuck = false;
+      return;
+    }
     const p = this.player;
     const ahead = this.seenAhead;
     let stuck = false;
@@ -1457,7 +1464,8 @@ export class Game {
     // gerade angekommen: nach Jubel und Ortsspenden, solange noch niemand fürs nächste Ziel bietet
     const since = this.t - this.cent5.arrivedT;
     if (since > 0.6 && since < 20 && this.roundNew) return 'ziel';
-    const lm = this.landmark;
+    // Wahrzeichen am Rand und Laster voraus gibt es nur auf der Autobahn (XXL-Welt: abseits ist ihr Verkehr woanders)
+    const lm = this.offAutobahn ? null : this.landmark;
     // Brunnen und Elsa erst, wenn der Jubel über die Sichtung durch ist – sonst rutscht das Angebot gleich wieder weg
     if (lm && lm.seen && this.t - lm.seenT > 2.5) {
       const d = lm.s - p.s;
@@ -1465,9 +1473,11 @@ export class Game {
       // Elsa nur, solange sie frei in der Scheibe steht (dann steht auch ihr Hinweis da, siehe elsaView)
       if (lm.type === 'elsa' && lm.toast && d > 40) return 'elsa';
     }
-    for (const c of this.traffic.cars) {
-      const d = c.s - p.s;
-      if (c.truck && d > 25 && d < 110 && Math.abs(c.x - p.x) < 2) return 'laster';
+    if (!this.offAutobahn) {
+      for (const c of this.traffic.cars) {
+        const d = c.s - p.s;
+        if (c.truck && d > 25 && d < 110 && Math.abs(c.x - p.x) < 2) return 'laster';
+      }
     }
     if (this.weather.level > 0.4) return 'regen';
     if (this.cent5.straightS > STRAIGHT_RUN) return 'gerade';
