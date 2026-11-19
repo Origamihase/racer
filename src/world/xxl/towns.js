@@ -28,6 +28,9 @@ const START_GOAL = 40;
 // Autobahn an seiner Ausfahrt vorbeifährt, braucht sie nie)
 const BUILD_NOW = 450;
 const BUILD_NEAR = 900;
+// Schon der Plan kostet beim ersten Mal Zeit (er lässt die Geometrien seiner Bausteine entstehen, K.planTown): weit
+// voraus bekommt er je Bild nur so viele Millisekunden und wird in Raten fertig
+const PLAN_MS = 5;
 // Bis in diese Entfernung regt sich ein Ort (Fangruppe, Mühlenflügel, Riesenrad)
 const ALIVE = 400;
 
@@ -49,12 +52,13 @@ export function islandOf(sec) {
  * Plan des Orts einer Ortsdurchfahrt: für denselben Ort immer derselbe (der Zufall hängt am Ort), mit dem Namen der
  * Karte (den auch Navi und Ortstafel zeigen) und seinem Hauptbrunnen (goalKind) auf der Insel des Straßenbaus bzw.,
  * wo die Fahrt beginnt, auf dem Platz rechts kurz vor dem Wagen. Ortstafeln stellt der Schilderplan (signplan.js).
+ * budget (ms): Zeit je Aufruf für einen Plan in Raten; null, solange er noch nicht steht (K.planTown).
  */
-export function townPlan(K, sec) {
+export function townPlan(K, sec, budget = Infinity) {
   const p = places[sec.place];
   const island = islandOf(sec);
   return K.planTown(p, {
-    len: sec.s1 - sec.s0, mainKind: goalKind(p), pavement: false, signs: false, signName: p.name,
+    budget, len: sec.s1 - sec.s0, mainKind: goalKind(p), pavement: false, signs: false, signName: p.name,
     ...(island ? { island } : sec.start ? { goal: START_GOAL - sec.s0 } : {}),
   });
 }
@@ -64,7 +68,8 @@ export class Towns {
   constructor(root) {
     this.kit = cityKit();
     this.root = root;
-    this.items = new Map(); // Schlüssel des Abschnitts → { key, sec, path, place, plan, group, hidden }
+    // Schlüssel des Abschnitts → { key, sec, path, place, plan, group, hidden }; plan und group erst, wenn der Plan steht
+    this.items = new Map();
     this.want = new Set();
   }
 
@@ -90,24 +95,38 @@ export class Towns {
     this.want.clear();
   }
 
-  /** Die Ortsdurchfahrt sec (auf dem Weg path) ist im Sichtbereich: ihr Ort wird geplant und aufgebaut bzw. behalten. */
+  /**
+   * Die Ortsdurchfahrt sec (auf dem Weg path) ist im Sichtbereich: ihr Ort wird vorgemerkt (geplant und gebaut wird er
+   * in update) bzw. behalten.
+   */
   need(sec, path) {
     const key = secSeedKey(sec) + '@' + Math.round(sec.s0);
     this.want.add(key);
     let t = this.items.get(key);
     if (!t) {
-      const plan = townPlan(this.kit, sec);
-      const group = this.kit.buildTown(plan, { lazy: true });
-      // der Ort fährt starr im Rahmen seines Abschnitts mit (siehe update)
-      group.matrixAutoUpdate = false;
-      group.visible = false;
-      this.root.add(group);
-      t = { key, place: sec.place, plan, group, hidden: false };
+      t = { key, place: sec.place, plan: null, group: null, hidden: false };
       this.items.set(key, t);
     }
     // derselbe Abschnitt, vielleicht in einem neu angelegten Zweig: neue Rahmen-ID übernehmen
     t.sec = sec;
     t.path = path;
+  }
+
+  /**
+   * Plant den Ort von it und legt ihn an (seine verschmolzenen Teile baut update danach Stück für Stück). now: am
+   * Stück, sonst in Raten von PLAN_MS je Aufruf. false, solange der Plan noch nicht steht.
+   */
+  lay(it, now) {
+    const plan = townPlan(this.kit, it.sec, now ? Infinity : PLAN_MS);
+    if (!plan) return false;
+    const group = this.kit.buildTown(plan, { lazy: true });
+    // der Ort fährt starr im Rahmen seines Abschnitts mit (siehe update)
+    group.matrixAutoUpdate = false;
+    group.visible = false;
+    this.root.add(group);
+    it.plan = plan;
+    it.group = group;
+    return true;
   }
 
   sweep() {
@@ -119,6 +138,7 @@ export class Towns {
   }
 
   drop(t) {
+    if (!t.group) return;
     this.root.remove(t.group);
     // geteilte Geometrien des Baukastens bleiben; frei wird, was eigens für diesen Ort verschmolzen wurde
     this.kit.release(t.group);
@@ -130,8 +150,8 @@ export class Towns {
   }
 
   /**
-   * Einmal je Bild: Orte in ihre Rahmen stellen, weiterbauen, bewegen. s: Ort des Wagens, shear: Scherungen der
-   * Rahmen (trip.shearsInto), t: Spielzeit in Sekunden, rain: Regen 0 … 1 (Wasser der Brunnen).
+   * Einmal je Bild: Orte planen, in ihre Rahmen stellen, weiterbauen, bewegen. s: Ort des Wagens, shear: Scherungen
+   * der Rahmen (trip.shearsInto), t: Spielzeit in Sekunden, rain: Regen 0 … 1 (Wasser der Brunnen).
    *
    * Ein Rahmen mit Scherung {a, b} zeigt seine Straße geschert (x' = x + a + b·d, die Tiefe bleibt). Häuser sollen
    * dabei rechtwinklige Kästen bleiben: der Ort wird stattdessen um den Winkel der Scherung gedreht, längs wie die
@@ -143,20 +163,30 @@ export class Towns {
   update(s, shear, t, rain) {
     this.kit.setWater(t, rain);
     const xr = STREET.lane;
+    let planning = false;
     for (const it of this.items.values()) {
+      const d0 = it.sec.s0 - s;
+      // hinter dem Wagen zählt ein Ort, solange sein Ende im Sichtbereich liegt
+      const here = d0 + it.sec.s1 - it.sec.s0 > -XXL_BEHIND;
+      // unterwegs wächst ein Ort weit voraus Stück für Stück; wer mitten hinein gesetzt wird, sieht ihn fertig
+      const now = here && d0 < BUILD_NOW;
+      if (!it.group) {
+        // in Raten plant je Bild nur ein Ort; steht sein Plan, kommt er im nächsten Bild in seinen Rahmen
+        if (!now) {
+          if (planning) continue;
+          planning = true;
+        }
+        if (!this.lay(it, now) || !now) continue;
+      }
       const g = it.group;
       const sh = shear.get(it.sec.frame);
       g.visible = !!sh && !it.hidden;
       if (!sh) continue;
-      const d0 = it.sec.s0 - s;
       const q = 1 / (1 + sh.b * sh.b);
       g.matrix.set(q, 0, -sh.b, xr + sh.a + sh.b * d0 - q * xr, 0, 1, 0, 0, sh.b * q, 0, 1, -d0 - sh.b * q * xr, 0, 0, 0, 1);
       g.matrixWorldNeedsUpdate = true;
-      // hinter dem Wagen zählt ein Ort, solange sein Ende im Sichtbereich liegt
-      const here = d0 + it.plan.len > -XXL_BEHIND;
       if (g.pending) {
-        // unterwegs wächst ein Ort weit voraus Teil für Teil; wer mitten hinein gesetzt wird, sieht ihn fertig
-        if (here && d0 < BUILD_NOW) while (g.step());
+        if (now) while (g.step());
         else if (g.pendingFar || d0 < BUILD_NEAR) g.step();
       }
       if (here && d0 < ALIVE) g.update(t);
@@ -166,16 +196,16 @@ export class Towns {
   /**
    * Der Ort einer Ortsdurchfahrt für Navi-Karte und Brunnen-Szene: { place (Index in places), sec, plan (layout.js
    * planTown), group (K.buildTown: layout, fountains, fountainsInView, watchFountains) } oder null, solange keines
-   * ihrer Stücke im Sichtbereich liegt. plan.layout (= group.layout) ist der Lageplan in Ortskoordinaten (x seitlich
-   * wie die Straße, z = −(s − sec.s0)), plan.fountains[0] der Zielbrunnen auf der Insel.
+   * ihrer Stücke im Sichtbereich liegt oder ihr Plan noch nicht steht. plan.layout (= group.layout) ist der Lageplan
+   * in Ortskoordinaten (x seitlich wie die Straße, z = −(s − sec.s0)), plan.fountains[0] der Zielbrunnen auf der Insel.
    */
   of(sec) {
-    for (const t of this.items.values()) if (t.sec === sec) return t;
+    for (const t of this.items.values()) if (t.sec === sec) return t.group ? t : null;
     return null;
   }
 
-  /** Alle Orte im Sichtbereich in Fahrtrichtung geordnet (wie of). */
+  /** Alle geplanten Orte im Sichtbereich in Fahrtrichtung geordnet (wie of). */
   list() {
-    return [...this.items.values()].sort((a, b) => a.sec.s0 - b.sec.s0);
+    return [...this.items.values()].filter((t) => t.group).sort((a, b) => a.sec.s0 - b.sec.s0);
   }
 }

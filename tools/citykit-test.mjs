@@ -300,15 +300,19 @@ const { Towns } = await import('../src/world/xxl/towns.js');
   towns.begin();
   towns.need(sec, null);
   towns.sweep();
+  ok(towns.items.size === 1 && towns.of(sec) === null && towns.list().length === 0 && root.children.length === 0, 'XXL-Ort: schon vor dem ersten Bild geplant');
+  const sh = { a: -120, b: 0.348 };
+  const shear = new Map([[7, sh]]);
+  let s = S0 - 1700;
+  // weit voraus: der Plan steht nach wenigen Bildern (hier sind die Bausteine schon bekannt: nach dem ersten)
+  for (let i = 0; i < 40 && !towns.of(sec); i++) towns.update(s, shear, 0, 0);
   const t = towns.of(sec);
-  ok(t && root.children.includes(t.group) && t.group.pendingFar > 0 && t.group.pending > t.group.pendingFar, 'XXL-Ort: nicht angelegt');
+  ok(t && root.children.includes(t.group) && !t.group.visible && t.group.pendingFar > 0 && t.group.pending > t.group.pendingFar, 'XXL-Ort: nicht angelegt');
+  ok(t && JSON.stringify(t.plan) === JSON.stringify(townPlan(city, sec)), 'XXL-Ort: in Raten anders geplant als am Stück');
   const total = t.group.pending;
   const farN = t.group.pendingFar;
   const lods = [];
   t.group.traverse((o) => o.isLOD && lods.push(o));
-  const sh = { a: -120, b: 0.348 };
-  const shear = new Map([[7, sh]]);
-  let s = S0 - 1700;
   for (let i = 0; i < farN + 6; i++) towns.update(s, shear, 0, 0);
   ok(t.group.pendingFar === 0 && t.group.pending === total - farN, `XXL-Ort: in der Ferne sollen nur die Fernfassungen entstehen (Rest ${t.group.pending} von ${total})`);
   ok(lods.length > 0 && lods.every((o) => o.levels.length === 1 && o.levels[0].distance > 0), 'XXL-Ort: Fernfassungen fehlen');
@@ -340,7 +344,34 @@ const { Towns } = await import('../src/world/xxl/towns.js');
   towns.begin();
   towns.sweep();
   ok(towns.items.size === 0 && root.children.length === 0, 'XXL-Ort: nicht abgeräumt');
+  // wer mitten in einen Ort gesetzt wird (Start der Fahrt), sieht ihn im ersten Bild fertig
+  towns.begin();
+  towns.need(sec, null);
+  towns.update(S0 + 300, new Map([[7, { a: 0, b: 0 }]]), 0, 0);
+  const u = towns.of(sec);
+  ok(u && u.group.visible && u.group.pending === 0, 'XXL-Ort: mitten im Ort nicht sofort fertig');
+  towns.reset();
+  ok(towns.items.size === 0 && root.children.length === 0, 'XXL-Ort: nach reset nicht leer');
   xxl.parts = total;
+}
+
+// Plan in Raten (K.planTown mit budget, so plant die XXL-Welt weit voraus): ein frischer Baukasten kennt noch keine
+// Maße. Ohne Zeit (budget 0) schafft jeder Aufruf genau einen neuen Baustein und gibt null zurück, bis alle da sind;
+// der fertige Plan ist derselbe wie am Stück.
+{
+  const fresh = createCityKit(W);
+  const p = places.find((q) => q.name === 'Hanau') ?? places[0];
+  const opts = { len: townLen(p.pop), goal: 200 };
+  let calls = 0;
+  let plan = null;
+  while (!plan && calls < 1000) {
+    plan = fresh.planTown(p, { ...opts, budget: 0 });
+    calls++;
+  }
+  ok(plan && calls > 10, `Plan in Raten: nach ${calls} Aufrufen ${plan ? 'zu schnell fertig' : 'nicht fertig'}`);
+  ok(plan && JSON.stringify(plan) === JSON.stringify(city.planTown(p, opts)), 'Plan in Raten: anders als am Stück');
+  ok(JSON.stringify(fresh.planTown(p, { ...opts, budget: 0 })) === JSON.stringify(plan), 'Plan in Raten: mit bekannten Bausteinen nicht im ersten Aufruf fertig');
+  xxl.calls = calls;
 }
 
 // Gebaute Meshes gegen den Lageplan, je Größe ein Ort (dazu Frankfurt mit Skyline): die verschmolzenen Ortsstücke reichen
@@ -533,7 +564,7 @@ console.log('Lageplan gegen Meshes:', meshChecks.join(' · '));
 console.log('Rastanlagen:', restChecks.join(' · '));
 console.log(`Bausteine: ${blocks} Fassungen, Geometrie im Rahmen von info (Ursprung, w, d, h); ${terrainEdges.length} Gelände ohne offene Ränder`);
 console.log('Zielbrunnen-Arten:', Object.entries(goalKinds).map(([k, v]) => `${k} ${v}`).join(', '));
-console.log(`Orte in der XXL-Welt: ${xxl.towns} mit Insel und als Startort, ${xxl.houses} Häuser, ${xxl.fountains} Brunnen, je einer davon das Ziel auf der Insel; Lebenslauf: ${xxl.parts} Teile in Schritten gebaut, starr im gescherten Rahmen`);
+console.log(`Orte in der XXL-Welt: ${xxl.towns} mit Insel und als Startort, ${xxl.houses} Häuser, ${xxl.fountains} Brunnen, je einer davon das Ziel auf der Insel; Lebenslauf: ${xxl.parts} Teile in Schritten gebaut, starr im gescherten Rahmen; Plan in Raten: ${xxl.calls} Aufrufe für Hanau, derselbe Plan`);
 console.log('Hauptbrunnen der Orte (auf der Insel am Ziel):', Object.entries(islands).map(([k, v]) => `${k} ${v}`).join(', '));
 console.log(fails ? `${fails} FEHLER` : 'Alles in Ordnung: jeder Ort hat mindestens einen Brunnen, frei sichtbar und beleuchtet.');
 process.exit(fails ? 1 : 0);

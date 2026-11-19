@@ -36,6 +36,9 @@ export function createCityKit(F, { bend = null } = {}) {
     return k;
   };
   const info = (name) => kitOf(name).info(name);
+  // Bausteine, nach deren Maßen ein Plan schon gefragt hat, und das Zeichen, mit dem ein Plan in Raten abbricht
+  const sized = new Set();
+  const PAUSE = Symbol('Ortsplan unterbrochen');
 
   /** Stellt ein Einzelstück (eigenes build) oder die Zusatz-Meshes eines Bausteins an die Stelle von it. */
   const placeGroup = (obj, it) => {
@@ -132,8 +135,29 @@ export function createCityKit(F, { bend = null } = {}) {
     /**
      * Ort planen (rein rechnerisch, siehe layout.js): place = { key, name, cc, pop, n, lat }, opts = { len, seed, goal,
      * landmarks } – ohne landmarks wählt landmarkFor(place) die Wahrzeichen.
+     * Die Maße eines Bausteins stehen in seiner Geometrie: der erste Plan eines Orts lässt die seiner Bausteine
+     * entstehen, eine Großstadt braucht dafür um 100 ms. opts.budget (ms) verteilt das auf mehrere Aufrufe: hat einer
+     * so lange an neuen Bausteinen gebaut, bricht der Plan am nächsten neuen ab und gibt null zurück (mindestens einen
+     * schafft jeder Aufruf). Der nächste Aufruf findet die fertigen vor und kommt weiter; der Plan ist am Ende derselbe.
      */
-    planTown: (place, opts = {}) => planTown(place, { ...opts, infoOf: info, has: (n) => owner.has(n), landmarks: opts.landmarks ?? landmarkFor(place) }),
+    planTown: (place, { budget = Infinity, ...opts } = {}) => {
+      let spent = 0;
+      const infoOf = (name) => {
+        if (sized.has(name)) return info(name);
+        if (spent > budget) throw PAUSE;
+        const t0 = performance.now();
+        const out = info(name);
+        spent += performance.now() - t0;
+        sized.add(name);
+        return out;
+      };
+      try {
+        return planTown(place, { ...opts, infoOf, has: (n) => owner.has(n), landmarks: opts.landmarks ?? landmarkFor(place) });
+      } catch (e) {
+        if (e !== PAUSE) throw e;
+        return null;
+      }
+    },
     /** Zielbrunnen planen: { size | pop, seed, place, kind, people } → Rahmen des Platzes, Brunnen im Ursprung. */
     planGoal: (opts = {}) => planGoal({ ...opts, infoOf: info }),
 
