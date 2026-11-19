@@ -800,7 +800,7 @@ export const SHOP = [
   },
   {
     id: 'elsa', icon: '👑', name: 'Wackel-Elsa', cat: 'Deko', prices: [120],
-    desc: 'Das Spirit-Animal von SkylineTV LIVE als Wackelfigur fürs Armaturenbrett.',
+    desc: 'Das Spirit-Animal von SkylineTV LIVE als Wackelfigur fürs Armaturenbrett: die blaue Plüsch-Elsa mit Krönchen und Schärpe.',
     effect: () => 'Wackelt bei jeder Kurve mit',
   },
   {
