@@ -237,9 +237,11 @@ function back(g, sec, each) {
   let far = p.s;
   let down = 0;
   let lastD = game.stats.distance;
+  let lastO = game.odometer;
   const watch = () => {
-    if (game.stats.distance < lastD - 1e-9) down++;
+    if (game.stats.distance < lastD - 1e-9 || game.odometer < lastO - 1e-9) down++;
     lastD = game.stats.distance;
+    lastO = game.odometer;
     if (p.gear === 'R' && !before) {
       before = { d: game.stats.distance, c: game.stats.cleanDistance, r: game.stats.rainDistance, l: game.stats.leftLaneTime };
       far = p.s;
@@ -258,7 +260,32 @@ function back(g, sec, each) {
   ok(down === 0, 'Die Strecke zählt rückwärts (wieder vorwärts)');
   ok(p.s > far + 100, 'Der Wagen kommt nicht wieder nach vorn');
   ok(Math.abs(game.stats.distance - p.sFar) < 1e-6, `Die Strecke (${game.stats.distance.toFixed(1)}) ist nicht der weiteste Punkt (${p.sFar.toFixed(1)})`);
+  ok(Math.abs(game.odometer - p.sFar) < 1e-6, `Der Kilometerzähler (HUD, Menü, Ergebnis: ${game.odometer.toFixed(1)}) ist nicht der weiteste Punkt`);
   ok(game.stats.rainDistance - before.r < 1 && game.stats.cleanDistance - before.c <= p.s - far + 1e-6, 'Wieder vorwärts zählt eine Strecke doppelt');
+}
+
+{
+  // Rempler rückwärts gegen ein stehendes Auto: zählt wie jeder Rempler, der Wagen bleibt davor stehen, und der Stoß
+  // nach vorn ist keine neue Strecke (Kilometerzähler und Statistik bleiben am weitesten Punkt)
+  const g = classic(31);
+  const { game, p } = g;
+  play(g, 20, { throttle: 1 });
+  for (let i = 0; i < 600 && p.speed > 0.3; i++) play(g, DT, { brake: 1 });
+  back(g, 4);
+  ok(p.gear === 'R' && p.speed > 1, 'Kein R für den Rempler');
+  const far = p.sFar;
+  const car = { s: p.s - (4.7 + p.len) / 2 + 0.3, len: 4.7, speed: 0, x: p.x };
+  const crashes = game.stats.crashes;
+  const hits = p.hits;
+  const update = game.traffic.update;
+  game.traffic.update = () => [{ type: 'crash', car, ds: car.s - p.s, dx: 0, latOverlap: 1.8, lonOverlap: 0.3 }];
+  play(g, DT, { brake: 1 });
+  game.traffic.update = update;
+  ok(game.stats.crashes === crashes + 1 && p.hits === hits + 1, `Der Rempler rückwärts zählt nicht (${game.stats.crashes - crashes}, ${p.hits - hits})`);
+  ok(p.speed === 0 && Math.abs(p.s - (car.s + (car.len + p.len) / 2 + 0.35)) < 1e-9, 'Nach dem Rempler steht der Wagen nicht vor dem anderen');
+  ok(Math.abs(game.odometer - far) < 1e-6 && Math.abs(game.stats.distance - far) < 1e-6, `Der Stoß nach vorn zählt als Strecke (${(game.odometer - far).toFixed(2)} m)`);
+  play(g, 0.5, {});
+  ok(Math.abs(game.odometer - far) < 1e-6, 'Nach dem Rempler zählt die Strecke');
 }
 
 {

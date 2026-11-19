@@ -69,6 +69,7 @@ export class Player {
     this.sFar = 0;
     this.revFloor = -REVERSE.back;
     this.revEnd = false;
+    this.bumpFwd = 0; // so weit hat ein Rempler rückwärts den Wagen nach vorn geschoben (Game zieht es von revDebt ab)
     this.x = ROAD.laneCenter(3);
     // Querdynamik (siehe steering.js): Lenkbefehl u (mit Vorstufe u1), Anteile Spieler / Kurve / Stoß
     this.u1 = 0;
@@ -478,7 +479,9 @@ export class Player {
       // rückwärts angestoßen: unser Rempler, der Wagen steht vor dem anderen
       ev.zone = 'rear';
       ev.power = this.speed + Math.max(0, c.speed);
-      this.s = c.s + (c.len + this.len) / 2 + 0.35;
+      const s1 = c.s + (c.len + this.len) / 2 + 0.35;
+      this.bumpFwd += Math.max(0, s1 - this.s);
+      this.s = s1;
       this.speed = 0;
       if (counts) c.speed = Math.max(0, c.speed - 2);
     } else if (!sideHit && ev.ds < 0) {

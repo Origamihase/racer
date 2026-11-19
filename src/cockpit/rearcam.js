@@ -1,7 +1,8 @@
 // Rückfahrkamera wie im Model 3: Solange R eingelegt ist, zeigt der Mittelbildschirm oben rechts groß das Bild der
 // Kamera über dem Kennzeichen – gespiegelt wie ein Spiegel (links im Bild ist links vom Auto), mit Hilfslinien, die der
 // Lenkung folgen. Gerendert wird nur in R und nur, solange das Cockpit zu sehen ist: klein (RES) und in halber
-// Bildrate. In D kostet sie nichts (die beiden Flächen sind versteckt, es wird nichts gerendert oder gezeichnet).
+// Bildrate. In D kostet sie nichts: bis zum ersten R gibt es weder Bild noch Flächen (build), danach sind die beiden
+// Flächen versteckt, es wird nichts gerendert oder gezeichnet.
 import * as THREE from 'three';
 import { REAR_RECT, SCREEN_PX } from './screen.js';
 
@@ -16,6 +17,24 @@ const GUIDE = { half: 0.82, len: 6.5, k: 0.17, marks: [[1, '#ff5a4c'], [2.5, '#f
 
 export class RearCam {
   constructor() {
+    this.on = false;
+    this.wheel = NaN;
+    this.acc = 0;
+    this.shotT = -Infinity;
+    this.place = null;
+    this.picture = this.overlay = null;
+  }
+
+  /** Platz über dem Fenster des Mittelbildschirms (REAR_RECT) in dessen Gruppe; pw × ph: Größe der Anzeige (m). */
+  attach(group, pw, ph, z) {
+    this.place = { group, pw, ph, z };
+  }
+
+  /**
+   * Beim ersten R: Bild, Kameras, Hilfslinien, Maske und die beiden Flächen anlegen. Erst hier, damit D keinen
+   * Speicher kostet und die Kennungen der three.js-Objekte (die ziehen Zufallszahlen) den Lauf ohne R nicht verändern.
+   */
+  build() {
     const [w, h] = REAR_CAM.res;
     this.rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: 4, depthBuffer: true });
     this.cam = new THREE.PerspectiveCamera(REAR_CAM.fov, w / h, REAR_CAM.near, REAR_CAM.far);
@@ -25,10 +44,6 @@ export class RearCam {
     this.local.lookAt(new THREE.Vector3().fromArray(REAR_CAM.look));
     this.local.updateMatrixWorld(true);
     this.local.updateProjectionMatrix();
-    this.on = false;
-    this.wheel = NaN;
-    this.acc = 0;
-    this.shotT = -Infinity;
     this.v = new THREE.Vector3();
     this.eye = new THREE.Vector3();
     this.at = new THREE.Vector3();
@@ -52,10 +67,9 @@ export class RearCam {
     mc.roundRect(0, 0, w, h, r);
     mc.fill();
     this.mask = new THREE.CanvasTexture(m);
-  }
-
-  /** Zwei Flächen genau über dem Fenster des Mittelbildschirms (REAR_RECT) in dessen Gruppe; pw × ph: Größe der Anzeige (m). */
-  attach(group, pw, ph, z) {
+    if (!this.place) return;
+    // zwei Flächen genau über dem Fenster
+    const { group, pw, ph, z } = this.place;
     const R = REAR_RECT;
     const geo = new THREE.PlaneGeometry((R.w / SCREEN_PX[0]) * pw, (R.h / SCREEN_PX[1]) * ph);
     // gespiegelt wie ein Spiegel: links im Bild ist links vom Auto
@@ -78,7 +92,10 @@ export class RearCam {
   /** Pro Bild (Cockpit): on = R eingelegt und Cockpit zu sehen; wheel: Lenkradstellung für die Hilfslinien. */
   update(dt, on, wheel) {
     // eben eingelegt: gleich im nächsten Bild rendern (nie ein altes Bild von der letzten Rückwärtsfahrt)
-    if (on && !this.on) this.shotT = -Infinity;
+    if (on && !this.on) {
+      if (!this.rt) this.build();
+      this.shotT = -Infinity;
+    }
     this.on = on;
     if (this.picture) this.picture.visible = this.overlay.visible = on;
     if (!on) {

@@ -465,6 +465,11 @@ export class Game {
         this.chat(pick(['Polizei überholt?! Mutig! 😅', 'Tschüss Polizei Gifhorn 👋', 'Das gibt einen Eintrag ins Fahrtenbuch']));
       }
     }
+    // ein Rempler rückwärts schiebt den Wagen ein Stück nach vorn, über schon gefahrene Straße: das ist keine Strecke
+    if (p.bumpFwd > 0) {
+      this.revDebt = Math.max(0, this.revDebt - p.bumpFwd);
+      p.bumpFwd = 0;
+    }
     if (this.over) return;
 
     // Polizei (Martinshorn-Lautstärke)
@@ -1891,9 +1896,12 @@ export class Game {
     return { secs, m };
   }
 
-  /** Die gefahrene Strecke auf jedem Schirm (Meter): in der XXL-Welt der Kilometerzähler der Fahrt, sonst die Straße. */
+  /**
+   * Die gefahrene Strecke auf jedem Schirm (Meter): in der XXL-Welt der Kilometerzähler der Fahrt, sonst die Straße bis
+   * zum weitesten Punkt (rückwärts und wieder vorwärts bis dorthin zählt nichts, siehe revDebt).
+   */
   get odometer() {
-    return this.worldNavi ? this.world.trip().km * 1000 : this.player.s;
+    return this.worldNavi ? this.world.trip().km * 1000 : this.player.s + (this.revDebt || 0);
   }
 
   /** Sendezeit in Sekunden: klassisch die gespielte Zeit, in der XXL-Welt die Reisezeit seit 18 Uhr (start). */

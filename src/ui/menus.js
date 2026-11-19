@@ -318,7 +318,7 @@ export class Menus {
       el('span', 'k', r, k);
       el('span', 'v', r, v);
     };
-    item('Strecke', g.worldNavi ? fmtOdo(g.odometer / 1000) : fmtKm(g.player.s));
+    item('Strecke', g.worldNavi ? fmtOdo(g.odometer / 1000) : fmtKm(g.odometer));
     item('Einnahmen dieser Fahrt', fmtCent(g.money));
     // XXL-Welt: ein echter Ort – oder, zwischen Ankunft und erstem Gebot der Runde, was gerade gilt (WorldNavi.label)
     item('Navi-Ziel', g.worldNavi ? g.navi.label : g.navi.target.name);

@@ -334,7 +334,7 @@ export const CHAT = {
   // Mini Adam legt auf der Autobahn den Rückwärtsgang ein
   rueckwaerts: ['Retourgang! Endlich 🎉', 'Rückwärts?! 😂', 'Moonwalk im Tesla 🕺', 'Einmal zurückspulen bitte ⏪',
     'Hast du was vergessen? 😅', 'Rückfahrkamera an, Chat schaut mit 📹', 'Adam parkt auf der Autobahn ein 🅿️',
-    'Kurz zurück, der Brunnen war so schön ⛲'],
+    'Rückwärts ist auch eine Richtung 😄'],
   trunk: ['Kofferraum auf! 😂', 'Was ist da drin?', 'Bitspende-Eskalation', 'Konfetti im Kofferraum?'],
   brunnen: ['BRUNNENTV!!!', 'Herr Schönnbrun!', 'Brunnen gesichtet! ⛲', 'Neue Folge BrunnenTV!'],
   elsa: ['ELSA!!! ❤🐟', 'Elsa ❤', 'Spirit-Animal gesichtet!', '👑🐟'],
