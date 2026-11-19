@@ -491,10 +491,15 @@ export class Menus {
     }
     const tips = el('div', 'tips', card);
     el('h3', '', tips, 'Tipps');
+    // in der Reise sind die Ziele echte Orte mit Brunnen, und das Navi führt über Ausfahrten dorthin
+    const reise = this.h.mode === 'xxl';
     for (const t of [
       'Geld gibt es nur vom Publikum: Spenden, Abos, Navi-Gebote. Fürs Fahren selbst zahlt niemand – aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.',
       'Wenn NOMI sagt „Die linke Fahrspur ist freigeschaltet.“, hat jemand dafür gespendet: Eine Minute lang darfst du ganz links fahren. Nutzt du sie, freut sich der Chat. Danach gilt wieder das Rechtsfahrgebot, sonst kommt die Polizei Gifhorn.',
-      'Das Navi-Ziel ändert sich ständig – jeder Bieter legt mindestens einen Cent drauf. Kommst du trotzdem an, feiert der Chat mit Ortsspenden.',
+      reise
+        ? 'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Cent drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV.'
+        : 'Das Navi-Ziel ändert sich ständig – jeder Bieter legt mindestens einen Cent drauf. Kommst du trotzdem an, feiert der Chat mit Ortsspenden.',
+      ...(reise ? ['Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.'] : []),
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
       'Lade-Ringe füllen den Akku. Bananensaft ist super, Koriander leider nicht.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',

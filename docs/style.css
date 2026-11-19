@@ -444,6 +444,22 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
   .screen-title { align-items: flex-start; background: linear-gradient(180deg, rgba(6,7,10,0.8) 0%, rgba(6,7,10,0.6) 42%, rgba(6,7,10,0) 66%); }
   .title-card .title-stats { text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
 }
+/* Handy hochkant: Mit dem Eintrag für den anderen Modus bleibt die Karte so hoch, wie sie war – enger gesetzt, damit
+   die Zahlen weiter vor dem Himmel stehen und nicht auf dem hellen Horizont */
+@media (orientation: portrait) and (max-height: 900px) {
+  .title-card .tagline { margin: 6px 0 14px; }
+  .title-card .menu { gap: 6px; }
+  .title-card .menu .btn { padding-block: 9px; }
+  .title-card .title-stats { margin-top: 14px; }
+}
+/* niedrige Fenster quer (1280 × 720): auch dort etwas enger, und unten bleibt der Streifen des Tastenhinweises frei */
+@media (orientation: landscape) and (min-height: 561px) and (max-height: 780px) {
+  .screen-title { padding-bottom: 52px; }
+  .title-card h1 { font-size: clamp(54px, 7vw, 88px); margin: 8px 0 4px; }
+  .title-card .tagline { margin: 6px 0 16px; }
+  .title-card .menu { gap: 7px; }
+  .title-card .title-stats { margin-top: 16px; }
+}
 /* kurze Handys hochkant (375 × 667): kompakte Karte, damit unter den Knöpfen Platz für den ganzen Wagen bleibt */
 @media (orientation: portrait) and (max-height: 760px) {
   .title-card h1 { font-size: 44px; margin: 4px 0 2px; }
@@ -459,7 +475,8 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .btn.mode-entry { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
 .mode-sub { font-size: 0.74em; font-weight: 500; line-height: 1.25; color: #c5cbd6; }
 .mode-pad { font-size: calc(1em / 0.74); line-height: 0; visibility: hidden; }
-.title-stats { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 22px; color: #e1e4ea; font-size: 15px; font-weight: 600; }
+/* (die Zahlen dürfen breiter werden als die Karte: In der Reise sind es vier, und sie bleiben in einer Zeile, wo Platz ist) */
+.title-stats { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 22px; color: #e1e4ea; font-size: 15px; font-weight: 600; width: max-content; max-width: min(760px, calc(100vw - 56px)); }
 .title-hint { position: absolute; bottom: 18px; left: clamp(20px, 6vw, 110px); color: var(--sub); font-size: 13px; }
 
 .btn { font: inherit; font-size: 17px; font-weight: 600; padding: 11px 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.07);
@@ -714,7 +731,7 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .title-card h2 { font-size: 18px; }
   .tagline { margin: 4px 0 10px; font-size: 14px; }
   .title-stats { margin-top: 10px; font-size: 13px; }
-  .title-card .menu { display: grid; grid-template-columns: repeat(3, 1fr); max-width: 520px; }
+  .title-card .menu { display: grid; grid-template-columns: repeat(3, 1fr); width: 520px; max-width: 100%; }
   .title-card .menu .btn.primary, .title-card .menu .btn.mode-entry { grid-column: 1 / -1; }
   .title-card .menu .btn:not(.primary):not(.mode-entry) { padding-inline: 10px; }
   .title-card .menu .btn.mode-entry { flex-direction: row; align-items: baseline; gap: 10px; }
