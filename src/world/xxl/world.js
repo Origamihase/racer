@@ -5,6 +5,8 @@
 // - alle Abschnitte abseits der Autobahn, die trip.visible() erlaubt, als Straßenstücke (roadkit.js) mit Bewuchs
 //   (forest.js), in Stücken von höchstens CHUNK Metern, die einmal gebaut und behalten werden, solange sie im
 //   Sichtbereich [s − XXL_BEHIND, s + AHEAD] liegen,
+// - die Orte der Karte an ihren Ortsdurchfahrten aus dem Stadtbaukasten (towns.js): Häuser, Plätze, Brunnen, Menschen
+//   und Wahrzeichen, solange ein Stück ihres Abschnitts im Sichtbereich liegt,
 // - die Tafeln (signs.js nach signplan.js: Vorwegweiser, Entfernungstafeln, Ortstafeln …, alle Texte aus der Fahrt),
 // - der eine Boden (ground.js).
 // Jeder Zufall hängt an stabilen Schlüsseln der Abschnitte (Art, Knoten, Kante, Ort …), nie an IDs: ein neu

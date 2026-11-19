@@ -277,6 +277,65 @@ for (const p of places) {
   ok(L.sightBlockers(sp, sm, [[L.STREET.eye, -300]]).length === 0, `${where}: am Start ist der Brunnen verstellt`);
 }
 
+// Lebenslauf eines Orts in der XXL-Welt (towns.js Towns): angelegt, sobald ein Stück seines Abschnitts gebraucht wird;
+// weit voraus entsteht er Teil für Teil (erst alle Fernfassungen, die nahen erst bei der Anfahrt), nah steht er sofort
+// fertig da. Im gescherten Rahmen fährt er starr mit: die eigene Spur liegt genau auf der gescherten Straße, jede Linie
+// längs der Straße bleibt auf ihr, rechte Winkel bleiben rechte. Abgeräumt, wenn kein Stück mehr gebraucht wird.
+const THREE = await import('three');
+const { Towns } = await import('../src/world/xxl/towns.js');
+{
+  const root = new THREE.Group();
+  const towns = new Towns(root);
+  const p = places.find((q) => q.name === 'Frankfurt am Main') ?? places[0];
+  const len = townLen(p.pop);
+  const S0 = 5000;
+  const sec = { kind: 'stadt', place: p.i, s0: S0, s1: S0 + len, spotS: S0 + Math.round(len * 0.6), frame: 7 };
+  towns.begin();
+  towns.need(sec, null);
+  towns.sweep();
+  const t = towns.of(sec);
+  ok(t && root.children.includes(t.group) && t.group.pendingFar > 0 && t.group.pending > t.group.pendingFar, 'XXL-Ort: nicht angelegt');
+  const total = t.group.pending;
+  const farN = t.group.pendingFar;
+  const lods = [];
+  t.group.traverse((o) => o.isLOD && lods.push(o));
+  const sh = { a: -120, b: 0.348 };
+  const shear = new Map([[7, sh]]);
+  let s = S0 - 1700;
+  for (let i = 0; i < farN + 6; i++) towns.update(s, shear, 0, 0);
+  ok(t.group.pendingFar === 0 && t.group.pending === total - farN, `XXL-Ort: in der Ferne sollen nur die Fernfassungen entstehen (Rest ${t.group.pending} von ${total})`);
+  ok(lods.length > 0 && lods.every((o) => o.levels.length === 1 && o.levels[0].distance > 0), 'XXL-Ort: Fernfassungen fehlen');
+  const at = (x, u) => new THREE.Vector3(x, 0, -u).applyMatrix4(t.group.matrix);
+  for (const u of [0, 300, len]) {
+    const q = at(L.STREET.lane, u);
+    const d = S0 + u - s;
+    ok(near(q.x, L.STREET.lane + sh.a + sh.b * d, 1e-6) && near(q.z, -d, 1e-6), `XXL-Ort: eigene Spur bei u ${u} nicht auf der gescherten Straße`);
+  }
+  for (const x of [L.STREET.curbL, L.STREET.curbR, -20, 40]) {
+    // auf der gescherten Straße ist x' − a − b·d längs konstant
+    const [c0, c1] = [at(x, 0), at(x, len)].map((q) => q.x - sh.a + sh.b * q.z);
+    ok(near(c0, c1, 1e-6), `XXL-Ort: Linie x = ${x} verlässt die gescherte Straße`);
+  }
+  ok(Math.abs(at(1, 0).sub(at(0, 0)).dot(at(0, 1).sub(at(0, 0)))) < 1e-9, 'XXL-Ort: rechte Winkel bleiben in der Scherung nicht recht');
+  s = S0 - 800;
+  towns.update(s, shear, 0, 0);
+  ok(t.group.pending === total - farN - 1, 'XXL-Ort: bei der Anfahrt entstehen die nahen Fassungen nicht');
+  s = S0 - 400;
+  towns.update(s, shear, 0, 0);
+  ok(t.group.pending === 0 && lods.every((o) => o.levels.length === 2 && o.levels[0].distance === 0), 'XXL-Ort: nah nicht fertig gebaut');
+  shear.set(7, { a: 0, b: 0 });
+  towns.update(S0 + 100, shear, 0, 0);
+  const q = at(3, 50);
+  ok(t.group.visible && near(q.x, 3, 1e-9) && near(q.z, 50, 1e-9), 'XXL-Ort: im eigenen Rahmen nicht einfach verschoben');
+  shear.clear();
+  towns.update(S0 + 100, shear, 0, 0);
+  ok(!t.group.visible, 'XXL-Ort: ohne Rahmen noch zu sehen');
+  towns.begin();
+  towns.sweep();
+  ok(towns.items.size === 0 && root.children.length === 0, 'XXL-Ort: nicht abgeräumt');
+  xxl.parts = total;
+}
+
 // Gebaute Meshes gegen den Lageplan, je Größe ein Ort (dazu Frankfurt mit Skyline): die verschmolzenen Ortsstücke reichen
 // genau von 0 bis −len, die vier Ecken jedes Platzes liegen als Eckpunkte des Pflasters in Gehweghöhe im Mesh, die
 // Brunnenliste der Group liegt auf den Brunnen des Lageplans.
@@ -467,7 +526,7 @@ console.log('Lageplan gegen Meshes:', meshChecks.join(' · '));
 console.log('Rastanlagen:', restChecks.join(' · '));
 console.log(`Bausteine: ${blocks} Fassungen, Geometrie im Rahmen von info (Ursprung, w, d, h); ${terrainEdges.length} Gelände ohne offene Ränder`);
 console.log('Zielbrunnen-Arten:', Object.entries(goalKinds).map(([k, v]) => `${k} ${v}`).join(', '));
-console.log(`Orte in der XXL-Welt: ${xxl.towns} mit Insel und als Startort, ${xxl.houses} Häuser, ${xxl.fountains} Brunnen, je einer davon das Ziel auf der Insel`);
+console.log(`Orte in der XXL-Welt: ${xxl.towns} mit Insel und als Startort, ${xxl.houses} Häuser, ${xxl.fountains} Brunnen, je einer davon das Ziel auf der Insel; Lebenslauf: ${xxl.parts} Teile in Schritten gebaut, starr im gescherten Rahmen`);
 console.log('Hauptbrunnen der Orte (auf der Insel am Ziel):', Object.entries(islands).map(([k, v]) => `${k} ${v}`).join(', '));
 console.log(fails ? `${fails} FEHLER` : 'Alles in Ordnung: jeder Ort hat mindestens einen Brunnen, frei sichtbar und beleuchtet.');
 process.exit(fails ? 1 : 0);
