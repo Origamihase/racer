@@ -24,8 +24,9 @@
 //   Karte für seine Kante sagt (Rampen, Verbindungen und Orte: ihre Meter).
 // - Die erste Runde eines Streams (navi.js OPENING, economy.js OPENING_CALM): Bis zum ersten Halt an einem Brunnen
 //   nennen die Gebote nur nahe Orte (höchstens OPENING.secs im Tempo des Navis, nie den Startort, nie mit „Bitte
-//   wenden“ als erster Ansage), kein spätes Gebot kurz vor dem Ziel – und in vielen Streams von zehn Minuten je Fahrer
-//   steht der Wagen oft genug und früh genug am Brunnen des Ziels (Grenzen bei OPEN_BOUNDS).
+//   wenden“ als erster Ansage), kein spätes Gebot kurz vor dem Ziel und keins, während der Wagen schon im Zielort
+//   fährt – und in vielen Streams von zehn Minuten je Fahrer steht der Wagen oft genug und früh genug am Brunnen des
+//   Ziels (Grenzen bei OPEN_BOUNDS).
 // Dazu misst es das Tempo der Reise (Fahrzeiten, Ankünfte je Stunde, Gebote und Einnahmen je Minute). Die Zahlen
 // stehen am Ende der Ausgabe; wer an den Bieterregeln dreht, liest sie dort ab.
 import { PerspectiveCamera } from 'three';
@@ -453,6 +454,7 @@ function stream(driver, hours, seed, firstRound = false) {
       ok(Math.abs(guess.secs - secs) < 1, `Erste Runde: ${t.name} vorhergesagt ${guess.secs.toFixed(1)} s, nach dem Gebot ${secs.toFixed(1)} s (bei s=${trip.s.toFixed(0)})`);
       ok(secs <= OPENING.secs + 1 || game.bidTargets().length <= OPENING.min, `Erste Runde: ${t.name} liegt ${secs.toFixed(0)} s entfernt (erlaubt ${OPENING.secs} s), obwohl ${game.bidTargets().length} Orte zur Wahl standen`);
       ok(!plan.late, 'Erste Runde: ein spätes Gebot kurz vor dem Ziel');
+      ok(!inTown, `Erste Runde: Ein Gebot nimmt ${before ? before.name : 'das Ziel'} weg, während der Wagen schon im Zielort fährt`);
     } else {
       // die nächste Runde findet immer ein Ziel: Von überall stehen genug Orte zur Wahl
       m.minChoice = Math.min(m.minChoice, game.bidTargets().length);
@@ -730,8 +732,9 @@ for (const { driver, m } of rows) {
 // Härtetest: Bieterduell auf den letzten Metern
 {
   if (LOG) console.log(DUELLIST.name + ':');
-  // (Startwert so gewählt, dass der Stream alles Verlangte enthält: 18 Duelle, 8 Ankünfte, 5× vorbeigerollt)
-  const m = stream(DUELLIST, HOURS, 821);
+  // (Startwert so gewählt, dass der Stream alles Verlangte enthält: 15 Duelle, 4 Ankünfte, 5× vorbeigerollt, 1× knapp
+  // hinter dem Haltepunkt – wer an den Bieterregeln dreht, verschiebt den Zufall und sucht hier notfalls neu)
+  const m = stream(DUELLIST, HOURS, 823);
   console.log(
     `${DUELLIST.name}: ${fmt(m.hours)} h, ${m.duels} Duelle auf den letzten 150 m, ${m.bids} Gebote · danach ${m.arrivals}× am Brunnen gestanden (BrunnenTV;` +
       ` ${m.late2}× knapp hinter dem Haltepunkt), ${m.rolled}× vorbeigerollt, ${m.duels - m.spots}× war das Ziel am Brunnen gerade ein anderes` +
@@ -788,12 +791,12 @@ function atNaviPace(seed, lo, hi) {
 // Brunnen. Gemessen wird, wie oft der Wagen am Brunnen des Ziels steht, das nach dem Bieter-Chaos stehen blieb, bevor
 // ein Gebot es änderte („gehalten“), wie oft die erste Runde überhaupt mit einer Folge endet, und nach wie vielen
 // echten Sekunden ab dem Start der Wagen steht. Gewollt sind etwa neun von zehn gehaltenen Zielen beim zügigen Fahrer,
-// drei von vier beim mittleren und mindestens die Hälfte beim gemütlichen (gemessen mit je 300: 88, 78 und 68 %).
-// Die Grenzen (Anteile in Prozent, Sekunden; p90: höchstens ein Zehntel der Streams braucht länger) lassen dem Zufall
-// von 60 Streams Luft und gelten ab OPENINGS = 60; wer an OPENING, OPENING_CALM oder den Pausen des Chaos dreht,
-// sieht hier, was es mit den ersten Minuten macht.
+// drei von vier beim mittleren und mindestens die Hälfte beim gemütlichen (gemessen mit je 300: 93, 80 und 64 %; die
+// 60 Streams von npm test messen 97, 73 und 67 %). Die Grenzen (Anteile in Prozent, Sekunden; p90: höchstens ein
+// Zehntel der Streams braucht länger) lassen dem Zufall von 60 Streams Luft und gelten ab OPENINGS = 60; wer an
+// OPENING, OPENING_CALM oder den Pausen des Chaos dreht, sieht hier, was es mit den ersten Minuten macht.
 const OPEN_BOUNDS = {
-  'zügig': { kept: [78, 98], episode: 95, median: 240, p90: 420 },
+  'zügig': { kept: [80, 100], episode: 95, median: 240, p90: 420 },
   mittel: { kept: [62, 92], episode: 90, median: 270, p90: 540 },
   'gemütlich': { kept: [50, 85], episode: 82, median: 320, p90: Infinity },
 };

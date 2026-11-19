@@ -685,6 +685,9 @@ export class Game {
       this.T.bid = rand(0.4, Math.max(0.5, eta - 2.5));
       this.bidPlan.late = true;
     }
+    // (… und ist der Wagen dort schon im Zielort, wartet das nächste Gebot, bis er am Brunnen steht oder vorbeigerollt
+    // ist: Die erste Runde soll an einem Brunnen enden, nicht zweihundert Meter davor)
+    if (nv.opening && this.worldNavi && nv.inTown) this.T.bid = Math.max(this.T.bid, 1);
     if (this.T.bid <= 0) {
       const plan = this.bidPlan;
       const siegen = this.bidTargets().find((x) => x.special === 'siegen');

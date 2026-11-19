@@ -129,10 +129,12 @@ const CALM_GROW = 0.8;
 const CALM_MAX = 2;
 // Die erste Runde eines Streams (WorldNavi.opening: bis zum ersten Halt an einem Brunnen) bietet nur auf nahe Orte,
 // und nach dem Bieter-Chaos bleibt das Ziel so lange stehen, dass die meisten dort ankommen: die Fahrzeit des Navis
-// mal einem Faktor aus diesem Bereich. Gemessen mit tools/journey-test.mjs (erste Runden zu je 10 Minuten): Der zügige
-// Fahrer steht bei etwa neun von zehn am Brunnen des Ziels, bevor ein Gebot es ändert, der mittlere bei drei von
-// vier, der gemütliche bei gut der Hälfte. Die Regel selbst bleibt: Ein Gebot vor dem Halt nimmt die Folge weg.
-const OPENING_CALM = [0.7, 2.3];
+// mal einem Faktor aus diesem Bereich. Fährt der Wagen schon im Zielort, wartet das nächste Gebot ohnehin, bis er am
+// Brunnen steht oder vorbeigerollt ist (Game.updateNavi) – die Ruhe muss also nur bis zum Ortseingang reichen.
+// Gemessen mit tools/journey-test.mjs (je Fahrer 300 erste Runden zu 10 Minuten): Der zügige Fahrer steht bei 93 %
+// am Brunnen des Ziels, bevor ein Gebot es ändert, der mittlere bei 80 %, der gemütliche bei 64 %. Die Regel selbst
+// bleibt: Ein Gebot vor dem Halt nimmt die Folge weg.
+const OPENING_CALM = [0.6, 1.7];
 // Wem ein Gebot das erste stehende Ziel doch genommen hat, der hat die Regel gesehen – das nächste bleibt länger
 // stehen, damit auch die erste Runde eines gemütlichen Fahrers an einem Brunnen endet.
 const OPENING_AGAIN = [1.2, 2.4];
