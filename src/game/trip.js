@@ -864,7 +864,7 @@ export class Trip {
         const t = pol.next[de];
         if (!t || t.type !== 'stay') {
           const node = deTo(de);
-          return { ...base, type: 'exit', far: true, dist, node, title: nodeTitle(node), then: this.afterExitAt(node) };
+          return { ...base, type: 'exit', far: true, dist, node, title: nodeTitle(node), then: this.afterExitAt(node, de) };
         }
         de = t.to;
         dist += edgeLen(deEdge(de));
@@ -905,20 +905,23 @@ export class Trip {
     if (st < 0 || !isFinite(pol.cost[st])) return { km: Infinity, secs: Infinity, sec };
     return { km: km + pol.km[st], secs: secs + pol.secs[st] };
   }
-  /** Was kommt nach der Ausfahrt an dieser Gabelung (laut aktuellem Zweig)? */
+  /**
+   * Was kommt nach der Ausfahrt an dieser Gabelung (laut aktuellem Zweig, sonst laut Routenplan)? wende: die Route
+   * fährt dieselbe Straße zurück (über die Rampen).
+   */
   afterExit(fork) {
     const br = fork.branch;
     if (br) {
       for (const sec of br.sections) {
         if (sec.kind === 'stadt' && sec.place === this.target) return { type: 'ziel', place: sec.place };
         if (sec.kind === 'term' && !sec.arrival) return { type: sec.transit, to: sec.transitTo };
-        if (sec.kind === 'ab') return { type: 'ab', road: deRoad(sec.de).label, towards: deTowards(sec.de).name, wende: sec.de === deRev(fork.de) };
-        if (sec.kind === 'land') return { type: 'land', road: deRoad(sec.de).label, towards: deTowards(sec.de).name };
+        if (sec.kind === 'ab' || sec.kind === 'land') return { type: sec.kind, road: deRoad(sec.de).label, towards: deTowards(sec.de).name, wende: sec.de === deRev(fork.de) };
       }
     }
-    return this.afterExitAt(fork.node);
+    return this.afterExitAt(fork.node, fork.de);
   }
-  afterExitAt(node) {
+  /** Was am Knoten laut Routenplan kommt. via: die Kante, auf der die Fahrt ankommt (für wende wie in afterExit). */
+  afterExitAt(node, via = -1) {
     const pol = this.policy;
     if (!pol) return null;
     const st = stateOfNode(node);
@@ -926,7 +929,7 @@ export class Trip {
     const t = pol.next[st];
     if (!t) return null;
     const kind = deKind(t.de);
-    if (kind === 'ab' || kind === 'land') return { type: kind, road: deRoad(t.de).label, towards: deTowards(t.de).name };
+    if (kind === 'ab' || kind === 'land') return { type: kind, road: deRoad(t.de).label, towards: deTowards(t.de).name, wende: via >= 0 && t.de === deRev(via) };
     return { type: kind, to: deTo(t.de) };
   }
 

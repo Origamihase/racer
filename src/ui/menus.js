@@ -1,8 +1,9 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
-// Einstellungen und „Über das Spiel“. Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
+// Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
 import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, GAME_TITLE, GAME_SUBTITLE, TAGLINE, INCOME, FINES, fmtBetrag, nameBreak } from '../data.js';
 import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration } from '../util.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
+import { MapScreen } from './mapscreen.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -54,7 +55,7 @@ export class Menus {
     this.screens = {};
     this.current = null;
     this.stack = [];
-    for (const name of ['title', 'pause', 'over', 'shop', 'about', 'controls', 'settings']) {
+    for (const name of ['title', 'pause', 'over', 'shop', 'about', 'controls', 'settings', 'karte']) {
       const s = el('section', 'screen screen-' + name + ' hidden', this.root);
       this.screens[name] = s;
     }
@@ -72,6 +73,7 @@ export class Menus {
   }
 
   show(name, data) {
+    if (this.current === 'karte' && name !== 'karte') this.mapScreen.stop();
     if (this.current && this.current !== name) this.screens[this.current].classList.add('hidden');
     this.current = name;
     this.data = data;
@@ -80,7 +82,7 @@ export class Menus {
     this.watchScroll(s);
     s.classList.remove('hidden');
     this.root.classList.add('active');
-    this.root.classList.toggle('dim', name !== 'title');
+    this.root.classList.toggle('dim', name !== 'title' && name !== 'karte');
     requestAnimationFrame(() => {
       const first = s.querySelector('.btn.primary:not([disabled])') || s.querySelector('.btn:not([disabled])');
       first?.focus({ preventScroll: true });
@@ -138,6 +140,7 @@ export class Menus {
   }
 
   hide() {
+    if (this.current === 'karte') this.mapScreen.stop();
     if (this.current) this.screens[this.current].classList.add('hidden');
     this.current = null;
     this.stack = [];
@@ -153,6 +156,7 @@ export class Menus {
       case 'about':
       case 'controls':
       case 'settings':
+      case 'karte':
         this.push(a, this.h.dataFor ? this.h.dataFor(a) : null);
         break;
       case 'buy': {
@@ -211,6 +215,7 @@ export class Menus {
 
   onKey(e) {
     if (!this.current) return;
+    if (this.current === 'karte' && this.mapScreen.onKey(e)) return;
     // Eingabefelder behalten ihre Tasten – der Lautstärke-Regler nur ← →, mit ↑ ↓ geht es weiter
     if (e.target && /input/i.test(e.target.tagName) && e.target.type !== 'range' && e.code !== 'Escape') return;
     const s = this.screens[this.current];
@@ -261,6 +266,7 @@ export class Menus {
     const menu = el('div', 'menu', card);
     button(menu, '▶  Losfahren', 'start', 'primary');
     button(menu, '🛒  Tesla-Shop', 'shop');
+    button(menu, '🗺️  Karte', 'karte');
     button(menu, '🎮  Steuerung', 'controls');
     button(menu, '⚙️  Einstellungen', 'settings');
     button(menu, 'ℹ️  Über das Spiel', 'about');
@@ -305,6 +311,7 @@ export class Menus {
     const menu = el('div', 'menu row', card);
     button(menu, '▶ Weiterfahren', 'resume', 'primary');
     button(menu, '↻ Neustart', 'restart');
+    button(menu, '🗺️ Karte', 'karte');
     button(menu, '⚙️ Einstellungen', 'settings');
     button(menu, '⏹ Stream beenden', 'quit');
   }
@@ -505,6 +512,10 @@ export class Menus {
     button(menu, '← Zurück', 'back', 'primary');
   }
 
+  render_karte(s, d) {
+    (this.mapScreen || (this.mapScreen = new MapScreen())).mount(s, d);
+  }
+
   render_about(s) {
     s.textContent = '';
     const card = el('div', 'card about-card', s);
@@ -514,6 +525,7 @@ export class Menus {
     p('Fast alle Witze stammen aus dem SkylineTV LIVE Wiki: die freigeschaltete linke Spur, das Navi-Bieten mit einem Cent mehr, BrunnenTV mit Herrn Schönnbrun, Elsa, die Polizei Gifhorn, Meister Pünktlich (kommt gleich), Malte, die Farbe der Bank, Rahmen aus dem Live-Bereich, Sprachdurchsagen von Fräulein Kassandra und Brüll-William, das Sprachstudio in Mini Adams Ohr, Bananensaft statt Koriander, „You had 5 Jobs“ und die erlogenen Berufsbezeichnungen im Abspann.');
     p('Geld gibt es wie im echten Stream nur vom Publikum: Spenden, Ortsspenden, Abos, VIPs und Navi-Gebote. Wie der Chat gerade gelaunt ist, steht nirgends – das Sprachstudio sagt es Mini Adam ins Ohr.');
     p('NOMI ist der Boardcomputer auf dem Armaturenbrett. Alle Grafiken, Geräusche und Stimmen entstehen direkt im Browser – ohne Bilder- oder Tondateien.');
+    p('Kartenumrisse: Natural Earth (gemeinfrei).');
     const link = el('a', 'link', card, 'SkylineTV LIVE Wiki öffnen');
     link.href = 'https://skylinetv.live/wiki/index.php?title=Hauptseite';
     link.target = '_blank';

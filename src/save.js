@@ -9,6 +9,8 @@ export const DEFAULT_SAVE = {
   stats: { runs: 0, totalKm: 0, naviReached: 0, crashes: 0 },
   settings: { sound: true, speech: true, chat: true, facecam: true, quality: 'auto', volume: 0.8 },
   seenIntro: false,
+  // besuchte Orte der großen Karte: Wiki-Name → Zahl der Besuche
+  visits: {},
 };
 
 export function loadSave() {
@@ -23,6 +25,7 @@ export function loadSave() {
       stats: { ...DEFAULT_SAVE.stats, ...(data.stats || {}) },
       settings: { ...DEFAULT_SAVE.settings, ...(data.settings || {}) },
       upgrades: { ...(data.upgrades || {}) },
+      visits: { ...(data.visits || {}) },
     };
   } catch (e) {
     return structuredClone(DEFAULT_SAVE);

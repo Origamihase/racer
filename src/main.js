@@ -36,6 +36,9 @@ import { Pickups } from './game/pickups.js';
 import { UI } from './ui/ui.js';
 import { Menus } from './ui/menus.js';
 import { SHOP, UPGRADE_LIMITS } from './data.js';
+import { MapDemo } from './map/mapdemo.js';
+import { setRoadAhead } from './map/roadahead.js';
+import { recordVisit } from './ui/mapscreen.js';
 import { clamp, lerp, damp, easeInOut, smoothstep } from './util.js';
 
 const QUALITY = {
@@ -46,6 +49,10 @@ const QUALITY = {
 const DEBUG = /[?&]debug/.test(location.search);
 // Die neue Welt mit Ausfahrten, Rampen, Landstraßen und Orten (noch hinter dem Schalter, siehe src/world/xxl)
 const XXL = /[?&]xxl/.test(location.search);
+// Prüfstand für Navi und Karte: eine echte Fahrt über die XXL-Karte neben dem klassischen Spiel (src/map/mapdemo.js);
+// in der XXL-Welt gibt es ihn nicht, dort führt das Navi die Fahrt der Welt
+const mapDemo = DEBUG && !XXL && /[?&]mapdemo/.test(location.search) ? new MapDemo() : null;
+let mapHudT = 0; // die HUD-Zeile des Prüfstands folgt viermal je Sekunde
 
 // ---------------------------------------------------------------------------
 const app = document.getElementById('app');
@@ -118,6 +125,17 @@ sky.onEnv = (tex) => {
 let course = xxl ? new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) }) : new Course();
 let courseTrip = null;
 let courseTick = null;
+// Navi-Prüfstand (?debug&mapdemo): seine Fahrt ist die Fahrt der Welt. Der Kurs entwirft sie aus der Karte, sie folgt
+// dem Spieler (p.s, vor course.fill), und das Navi liest die Straße voraus nur aus diesem Kurs (COMMON.md §9)
+if (mapDemo) {
+  course = new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) });
+  courseTick = (s, dt) => {
+    mapDemo.follow(s, dt);
+    courseTrip = mapDemo.trip;
+  };
+}
+// die Straße voraus des Navis: der Verlauf, den die Welt zeichnet (preview reicht 4 km weit)
+setRoadAhead((trip, s, dMax) => course.preview(trip, s, Math.min(dMax, 4000)));
 // Kurvenschilder rücken von Möbeln am Rand weg: vom Raster der Landschaft und von Blitzern, Tempo-Schildern und
 // Navi-Zielen, die das Spiel dort bestellt hat
 const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'ziel', 'elsa']);
@@ -493,6 +511,7 @@ const menus = new Menus(app, {
     if (name === 'settings') return { ...settings, speechSupported: speech.supported };
     if (name === 'title') return save;
     if (name === 'pause') return game;
+    if (name === 'karte') return { save, nav: mapDemo ? mapDemo.model : null };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
     if (name === 'over') return lastOver ? { ...lastOver, wallet: save.wallet } : data;
     return data;
@@ -1460,8 +1479,9 @@ function frame(now) {
   if (DEBUG && window.__MA && window.__MA.frozen) return;
   if (!(dt > 0)) dt = 1 / 60;
   dt = Math.min(dt, 1 / 20);
-  step(dt);
-  adaptResolution(dt);
+  const mapOpen = menus.current === 'karte'; // die große Karte deckt alles zu: dahinter kein 3D-Bild
+  step(dt, { render: !mapOpen });
+  if (!mapOpen) adaptResolution(dt);
 }
 
 function step(dt, { render = true } = {}) {
@@ -1636,7 +1656,7 @@ function step(dt, { render = true } = {}) {
       courseEnv.kappa = courseEnv.grade = 0;
       sky.turn(0);
     } else {
-      if (courseTick) courseTick(s);
+      if (courseTick) courseTick(s, dt);
       const st = course.fill(courseTrip, s, curveTable, dt);
       courseEnv.kappa = st.kappa;
       courseEnv.grade = st.grade;
@@ -1666,10 +1686,22 @@ function step(dt, { render = true } = {}) {
     tesla.cabinLight.intensity = cockpitOn ? 0 : state === 'title' || state === 'intro' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
+    const scr = game.screenState ? safeScreen() : null;
+    if (mapDemo && scr) {
+      const visits = mapDemo.takeVisits();
+      for (const i of visits) recordVisit(save, i);
+      if (visits.length) storeSave(save);
+      scr.nav = mapDemo.nav(scr, cockpitOn, scr.navi);
+      scr.nav.visited = save.visits;
+      if ((mapHudT -= dt) <= 0) {
+        mapHudT = 0.25;
+        ui.setTurn(state === 'drive' ? mapDemo.model.instruction() : null);
+      }
+    }
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
       sunDir: sky.sunDir, overcast: cloud, adam: adamOpts,
-      screen: game.screenState ? safeScreen() : null,
+      screen: scr,
     });
     if (fxState.trunk > 0) {
       fxState.trunk -= dt;
@@ -1831,7 +1863,7 @@ if (DEBUG) {
   window.__MA = {
     game, traffic, scenery, cockpit, windshield, tesla, ui, menus, input, renderer, camera, save, facecam, adamMood,
     // für Prüfstände: Szene, three.js und die Weltmaterial-Fabrik (siehe curve.js)
-    scene, THREE, W, sky, road,
+    scene, THREE, W, sky, road, mapdemo: mapDemo,
     get state() {
       return state;
     },

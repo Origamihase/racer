@@ -12,8 +12,10 @@
 //   weiche Übergänge wie eine Klothoide. Die Knicke an den Knoten teilen sich die Abschnitte davor und danach.
 //   Passt nicht alles hinein, werden erst Schlenker hin und her kleiner (die Fahrtrichtung bleibt), zuletzt alle
 //   Bögen (der Rest geht in den nächsten Abschnitt).
-// - Kennt die Karte keinen echten Verlauf (matched < 2), kommen entworfene Bögen dazu: lange Bögen, S-Kurven, ab und
-//   zu eine enge Kurve mit Tempo-Schild – immer in Gruppen ohne Richtungswirkung, so dass die Karte stimmt.
+// - Hat ein Verlauf kein Vorbild (matched 0: Ersatzverlauf), füllen entworfene Bögen seine geraden Stücke: lange
+//   Bögen, S-Kurven, ab und zu eine enge Kurve mit Tempo-Schild – immer in Gruppen ohne Richtungswirkung, so dass die
+//   Karte stimmt. Gerade Stücke eines Verlaufs mit Vorbild sind echte Geraden und bekommen, wenn sie lang sind, nur
+//   sanfte Schwünge.
 // - Verbindungsfahrbahnen sind entworfene Rampen nach dem Abbiegewinkel des Kreuzes (nach rechts ein Bogen, nach
 //   links die Schleife des Kleeblatts), Ortsdurchfahrten fast gerade, Rampen und Auffahrten gerade (ihr Bogen ist
 //   der Knotenpunkt selbst).
@@ -43,6 +45,12 @@ const CALM_SWAP = J.hide + CALM - J.ramp;
 const CALM_SHOW = J.back + J.auf - J.show + CALM;
 /** Vor einer Auffahrt: gerade bis CALM vor dem Einfädelpunkt am Ende der Auffahrt. */
 const CALM_MERGE = CALM - J.auf;
+/**
+ * So weit vor einer Gabelung entscheidet die Spur des Spielers über den gezeichneten Zweig. Beide Zweige laufen bis
+ * CALM hinter der Gabelung gerade und eben (siehe plan), ein Wechsel ab hier ändert die Welt also erst weiter als
+ * 600 m voraus: dort, wo auch die Überblendung (BLEND_RATE) nichts mehr bewegen muss. Liegt im Verzögerungsstreifen.
+ */
+const LANE_AT = 600 - CALM;
 /** Knoten zweier Landstraßen ohne Ort (kein Rahmenwechsel). */
 const CALM_NODE = 150;
 /** Am Anfang und Ende jedes Abschnitts läuft die Steigung auf dieser Länge weich gegen 0. */
@@ -814,13 +822,15 @@ export class Course {
   }
 
   // --- Weg für die Tabelle ------------------------------------------------------------------------------------
-  /** Nimmt der Weg an dieser Gabelung den Zweig? Geplant laut Navi, kurz davor nach der Spur des Spielers. */
+  /**
+   * Nimmt der Weg an dieser Gabelung den Zweig? Geplant laut Navi; ab LANE_AT davor nach der Spur des Spielers, genau
+   * wie trip.js an der Gabelung entscheidet. So springt der Weg nicht erst an der Gabelung um, wenn jemand in der
+   * rechten Spur am geplanten Abzweig vorbeifährt (dann bewegte sich die Welt 400 bis 600 m voraus).
+   */
   takesBranch(trip, f, s) {
     if (!f.branch || !f.branch.sections.length) return false;
     if (f.forced) return true;
-    const d = f.s - s;
-    if (d < J.decel && trip.x > J.laneEdge) return true;
-    if (d < J.decel * 0.6 && trip.x < J.laneEdge - 2.5) return false;
+    if (f.s - s < LANE_AT) return trip.x > J.laneEdge;
     return trip.planFor(f) === 'exit';
   }
 
@@ -1366,9 +1376,10 @@ export class MapPlanner {
       runs[best].A += rest;
     } else if (!runs.length && Math.abs(total) > 1e-4) runs.push({ A: total, c: len / 2, s: 0, e: len });
     if (matched >= 1 && spec.amin) prune(runs, spec.amin * RAD);
-    // Steigung aus den Höhen: dy/ds = E · d(Höhe)/d(Kartenweg)
+    // Steigung aus den Höhen: dy/ds = E · d(Höhe)/d(Kartenweg). Die Höhen gelten bei jedem matched (das beschreibt nur
+    // die Lage): Auch Ersatzverläufe und Bögen in Ortsknoten folgen dem Gelände
     let grade = null;
-    if (elev && matched >= 1) {
+    if (elev) {
       grade = new Float64Array(n);
       for (let i = 1; i + 1 < n; i++) grade[i] = (EXAGGERATE * (ev[i + 1] - ev[i - 1])) / (2 * DS * c);
       grade = gauss(grade, 120 / DS);
@@ -1495,12 +1506,15 @@ export class MapPlanner {
       const endPart = hn === null ? 0 : wrap(hn - m.he) / 2;
       const startPart = wrap(m.hs - P.th0);
       net = startPart + m.total + endPart;
-      // ein Bogen, der in maximal lmax Metern an der Ruhezone anliegt (end: am Ende). Ohne echten Verlauf ist der Knick
-      // am Knoten nur die Ecke eines groben Polygons: Dann wird er ein langer, weiter Bogen statt einer engen Kurve
-      const coarse = m.matched < 2;
+      // Echter Verlauf, Stück für Stück: Ein Verlauf mit Vorbild (matched ≥ 1) folgt ihm, wo er gerade ist und wo seine
+      // Bögen liegen. Was ihm bei „teilweise“ am Vorbild fehlt, ist der Bogen in einen Ortsknoten: selbst eine Kurve,
+      // kein gerades Stück, in das entworfene Bögen gehörten. Ohne Vorbild (matched 0: Ersatzverlauf oder grobe Punkte)
+      // ist der Knick am Knoten nicht belegt und wird ein langer, weiter Bogen statt einer engen Kurve
+      const real = m.matched >= 1;
+      const coarse = !real;
       // Spaß: kleine Bögen werden merklich enger, große gedeckelt; der Winkel bleibt. Bögen echter Verläufe bleiben
       // dabei weit (ksoft); enger wird nur, was sonst nicht in den Platz passt (layout)
-      const fun = (q) => clamp(spec.kmax * Math.tanh((spec.gain * q) / spec.kmax), spec.kmin, m.matched >= 1 ? spec.ksoft : spec.kmax);
+      const fun = (q) => clamp(spec.kmax * Math.tanh((spec.gain * q) / spec.kmax), spec.kmin, real ? spec.ksoft : spec.kmax);
       const edgeBend = (A, end, lmax) => {
         if (Math.abs(A) < 2e-4) return;
         const kd = Math.max(fun(Math.abs(A) / (coarse ? 900 : 600)), kind === 'ab' ? 1 / 2400 : 1 / 600, Math.abs(A) / Math.max(lmax - t, 1));
@@ -1514,28 +1528,33 @@ export class MapPlanner {
       const nRuns = items.length;
       edgeBend(startPart, false, lmax);
       edgeBend(endPart, true, lmax);
-      if (m.matched >= 1) {
+      if (real) {
         const knees = items.slice(nRuns).reduce((a, it) => a + bendLen(Math.abs(it.A), it.kd, t), 0);
         tame(items.slice(0, nRuns), spec.share * (hi - lo), spec.floor, knees);
       }
       const odd = sec.de & 1;
       const seedOf = (salt) => hash(this.seed, sec.de >> 1, salt);
       const fl = [];
-      if (m.matched < 2) {
-        // ohne echten Verlauf: Spaß-Gruppen in alle Lücken zwischen den Knicken und den Bögen der Karte
+      if (!real) {
+        // ohne Vorbild: Spaß-Gruppen in alle Lücken zwischen den Knicken und den Bögen der Karte
         const r = rng(seedOf(kind === 'ab' ? 3 : 4));
         const o = kind === 'ab' ? { kind, kmax: spec.kmax, t, gap: [30, 200], st: { since: 1500 + r() * 2000 } } : { kind, kmax: spec.kmax, t, gap: [60, 380], rmin: 110, rmax: 400 };
         for (const [a, b, sa, sb] of this.gaps(items, lo, hi, kind === 'ab' ? 120 : 60)) funFill(r, a, b, sa, sb, fl, o);
       } else if (kind === 'ab') {
-        // echter Verlauf: nur wo die Karte lange gerade ist, sanfte Schwünge (die Fahrtrichtung bleibt)
+        // mit Vorbild: nur wo die Karte lange gerade ist, sanfte Schwünge (die Fahrtrichtung bleibt)
         const r = rng(seedOf(5));
         const o = { kind, kmax: spec.kmax, t, gap: [100, 350], st: { since: 0, gentle: true } };
         for (const [a, b, sa, sb] of this.gaps(items, lo, hi, 170)) if (b - a > GENTLE) funFill(r, a, b, sa, sb, fl, o);
       }
       items.push(...fl);
-      if (m.grade) gradeArr = this.realGrade(m.grade, P.n, spec.gmax);
+      // Höhen-Ruhezone hinter einer Gabelung: Bis LANE_AT davor wählt die Spur des Spielers den gezeichneten Zweig
+      // (takesBranch), und der Weg wechselt dann auf den anderen. Die Rampe ist eben und gerade, die Autobahn dahinter
+      // auf CALM gerade (calmOf) und hier auch eben: Ein später Wechsel bewegt nichts in Autonähe. Entworfene Hügel
+      // liegen in beiden Richtungen gespiegelt (mirrorEls) und halten die Ruhezone deshalb an beiden Enden
+      if (m.grade) gradeArr = this.realGrade(m.grade, P.n, spec.gmax, sec.afterFork ? Math.round(CALM / DS) : 0);
       else {
-        hills(rng(seedOf(9)), FLAT, L - FLAT, kind === 'land' ? Math.min(1, m.relief * 1.25) : m.relief, spec.gmax, gel);
+        const h0 = kind === 'ab' ? CALM : FLAT;
+        hills(rng(seedOf(9)), h0, L - h0, kind === 'land' ? Math.min(1, m.relief * 1.25) : m.relief, spec.gmax, gel);
         if (odd) mirrorEls(gel, L);
       }
     } else if (kind === 'conn') {
@@ -1617,23 +1636,29 @@ export class MapPlanner {
     return out.filter(([a, b]) => b > a);
   }
 
-  /** Echte Steigung: begrenzt, an den Enden eben, Kuppen und Wannen nie zu eng. */
-  realGrade(g0, n, gmax) {
+  /**
+   * Echte Steigung: begrenzt, an den Enden eben, Kuppen und Wannen nie zu eng. Die ersten i0 Abtastschritte bleibt sie
+   * genau 0 (Ruhezone hinter einer Gabelung), erst danach beginnt der weiche Anlauf.
+   */
+  realGrade(g0, n, gmax, i0 = 0) {
     const g = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      const w = sstep(Math.min(i * DS, (n - 1 - i) * DS) / FLAT);
+    for (let i = i0; i < n; i++) {
+      const w = sstep(Math.min((i - i0) * DS, (n - 1 - i) * DS) / FLAT);
       g[i] = gmax * Math.tanh(g0[i] / gmax) * w;
     }
     const dc = DS / R_CREST;
     const dsg = DS / R_SAG;
     // erst in den Bereich, aus dem beide Enden eben erreichbar sind; dann hält jeder Durchgang ihn und die Enden, und
     // schon einer allein lässt keine Kuppe und keine Wanne zu eng (die Enden bleiben genau 0, ohne Sprung)
-    g[0] = 0;
+    g[i0] = 0;
     g[n - 1] = 0;
-    for (let i = 1; i < n - 1; i++) g[i] = clamp(g[i], Math.max(-i * dc, -(n - 1 - i) * dsg), Math.min(i * dsg, (n - 1 - i) * dc));
+    for (let i = i0 + 1; i < n - 1; i++) {
+      const u = i - i0;
+      g[i] = clamp(g[i], Math.max(-u * dc, -(n - 1 - i) * dsg), Math.min(u * dsg, (n - 1 - i) * dc));
+    }
     for (let pass = 0; pass < 4; pass++) {
-      for (let i = 1; i < n - 1; i++) g[i] = clamp(g[i], g[i - 1] - dc, g[i - 1] + dsg);
-      for (let i = n - 2; i > 0; i--) g[i] = clamp(g[i], g[i + 1] - dsg, g[i + 1] + dc);
+      for (let i = i0 + 1; i < n - 1; i++) g[i] = clamp(g[i], g[i - 1] - dc, g[i - 1] + dsg);
+      for (let i = n - 2; i > i0; i--) g[i] = clamp(g[i], g[i + 1] - dsg, g[i + 1] + dc);
     }
     return g;
   }

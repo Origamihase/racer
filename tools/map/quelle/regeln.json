@@ -1,0 +1,5 @@
+{
+  "_doc": "Regeln, die die Pipeline (hoehen.py, verlauf.py, qa_bilder.py), tools/map/export.mjs und tools/shape-test.mjs teilen. steigung: höchste Steigung je Straßenart (ROUTES §3.4); die Pipeline säubert und klemmt mit Luft darunter (hoehen.STEIGUNG, verlauf.END_STEIGUNG), Export und Test halten genau diese Werte. alpen: Breite von/bis, Länge von/bis; dort Höhenkacheln mit Zoom 9 und eine breitere Talsuche.",
+  "steigung": { "ab": 0.08, "land": 0.12 },
+  "alpen": [45.3, 48.3, 5.3, 16.8]
+}

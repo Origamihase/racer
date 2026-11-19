@@ -486,7 +486,7 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .card p { line-height: 1.5; color: #dfe2e8; }
 .sub { color: var(--sub) !important; margin-top: 0; }
 
-.pause-card { max-width: 720px; }
+.pause-card { max-width: 880px; } /* breit genug für fünf Knöpfe in einer Zeile (mit „Karte“) */
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin: 14px 0; }
 .sum { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; }
 .sum .k { font-size: 12px; color: var(--sub); }
@@ -575,6 +575,70 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .link { color: #8fb4ff; font-weight: 700; }
 .tribute { margin-top: 22px; padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); display: flex; gap: 10px; align-items: center; font-weight: 600; }
 .tribute .heart { font-size: 22px; font-family: var(--emoji); }
+
+/* --- Navi-Ansage ohne Mittelbildschirm (XXL: Drohnenansicht und schmale Formate), oben in der Mittelspalte ---- */
+.navi-turn { display: none; align-items: center; gap: 9px; max-width: 100%; white-space: nowrap; background: var(--panel-strong); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 16px 5px 5px; font-size: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
+.navi-turn-icon { width: 28px; height: 28px; flex: none; }
+.navi-turn-dist { flex: none; font-size: 17px; }
+.navi-turn-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #e3e6ec; }
+
+/* --- Große Karte (src/ui/mapscreen.js) ------------------------------------------------- */
+.screen-karte { padding: 0; display: block; overflow: hidden; background: #a9d3ec; }
+.map-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+.map-canvas:active { cursor: grabbing; }
+.map-top { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  padding: 14px 16px; pointer-events: none; }
+.map-top > * { pointer-events: auto; }
+.map-head { background: var(--panel-strong); border: 1px solid var(--line); border-radius: 16px; padding: 10px 14px 12px; min-width: 0;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.22); }
+.map-head h2 { margin: 0 0 8px; font-size: 22px; }
+.map-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.map-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
+  background: rgba(255,255,255,0.08); border: 1px solid var(--line); white-space: nowrap; }
+.map-chip-icon, .mc-icon { font-family: var(--emoji); }
+.menu.row.map-back { margin: 0; flex: none; }
+.map-back .btn { box-shadow: 0 6px 22px rgba(0,0,0,0.22); }
+.map-zoom { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 8px; }
+.btn.map-zbtn { width: 46px; height: 46px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; line-height: 1;
+  background: var(--panel-strong); box-shadow: 0 4px 14px rgba(0,0,0,0.22); }
+.map-card { position: absolute; left: 16px; bottom: 16px; width: min(360px, calc(100% - 32px)); background: var(--panel-strong); border: 1px solid var(--line);
+  border-radius: 18px; padding: 14px 18px 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); animation: mapcard 0.22s ease-out; }
+@keyframes mapcard { from { transform: translateY(14px); opacity: 0; } }
+.map-card-x { position: absolute; right: 8px; top: 8px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255,255,255,0.07);
+  color: var(--text); font: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
+.map-card-x:hover, .map-card-x:focus-visible { background: rgba(255,255,255,0.16); outline: none; }
+.mc-name { font-size: 24px; font-weight: 700; padding-right: 40px; line-height: 1.2; overflow-wrap: anywhere; }
+.mc-sub { color: var(--sub); font-size: 14px; margin: 3px 0 10px; }
+.mc-row { display: flex; align-items: center; gap: 10px; font-size: 16px; padding: 4px 0; }
+.mc-icon { width: 22px; flex: none; text-align: center; }
+.mc-visited { color: #ffb8c6; font-weight: 600; }
+.map-hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); font-size: 13px; font-weight: 600; color: #2c3440;
+  background: rgba(255,255,255,0.8); padding: 5px 12px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
+.map-hint.gone { opacity: 0; transition: opacity 0.6s; }
+.map-card:not(.hidden) ~ .map-hint { display: none; }
+@media (max-width: 1000px) { .map-hint { display: none; } }
+@media (max-width: 600px) {
+  .map-top { padding: 10px; }
+  .map-head { padding: 8px 10px 10px; }
+  .map-head h2 { font-size: 18px; margin-bottom: 6px; }
+  .map-chip { font-size: 12.5px; padding: 4px 8px; gap: 4px; }
+  .map-back .btn { padding: 9px 12px; font-size: 15px; }
+  .map-zoom { right: 10px; }
+  .map-card { left: 10px; bottom: 10px; width: calc(100% - 20px); }
+}
+@media (max-height: 500px) {
+  .map-top { padding: 10px; }
+  .map-head { padding: 8px 10px 10px; }
+  .map-head h2 { font-size: 18px; margin-bottom: 6px; }
+  .map-chip { font-size: 12.5px; padding: 4px 8px; }
+  .map-zoom { right: 10px; top: auto; bottom: 10px; transform: none; }
+  .btn.map-zbtn { width: 42px; height: 42px; }
+  .map-card { left: 10px; bottom: 10px; padding: 12px 14px; }
+  .mc-name { font-size: 20px; }
+  .mc-row { font-size: 15px; padding: 2px 0; }
+}
 
 @media (max-width: 760px) {
   .over-cols { grid-template-columns: 1fr; }

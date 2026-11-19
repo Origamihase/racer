@@ -702,6 +702,9 @@ function oldTheta(D, d) {
 }
 
 const runs = [drive(shapes, `${SHAPES}-Verläufe`, 60000, 11), drive(synth, 'Künstliche Verläufe', 60000, 12), drive(shapes, `Zufallsfahrt (${SHAPES})`, 30000, 13, 0.5)];
+// Noch eine Zufallsfahrt nur für die Stetigkeit (nicht in den Kennzahlen): Sie fährt mehrmals in der rechten Spur an
+// einer geplanten Ausfahrt vorbei. Der gezeichnete Zweig muss dann vor der Gabelung wechseln, nicht erst an ihr
+drive(shapes, `Zufallsfahrt 2 (${SHAPES})`, 30000, 55, 0.5);
 
 // --- 7. Spaß: Kennzahlen je Straßenart und Karten-Treue --------------------------------------------------------
 /** Ereignisse und Kennzahlen eines Profils (Abschnitt) – Bögen aus den Elementen, Kuppen/Senken aus der Steigung. */
