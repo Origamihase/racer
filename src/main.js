@@ -1888,6 +1888,7 @@ function step(dt, { render = true } = {}) {
     cabinDamage.update(dt, simT, p.damage, p.speed, cockpitOn);
     // (am Supercharger, im Titel und in der Startszene, steht der Wagen beim Laden in P: ohne Bremslicht)
     tesla.setBrake(state !== 'charge' && !(state === 'title' && chargeRun.parked) && (p.braking > 0.1 || p.speed < 1));
+    tesla.setReverse(p.gear === 'R');
     const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook });
     tesla.adam.animate(simT, adamOpts);
     facecam.adam.animate(simT, adamOpts);
