@@ -12,7 +12,7 @@ import { XxlWorld, ROAD_OPTS, autoTarget, autoDrive, AUTO } from './world/xxl/wo
 import { installDebug } from './world/xxl/debug.js';
 import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
-import { CurveSigns, gridBusy } from './world/kit/curvesigns.js';
+import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
@@ -116,6 +116,8 @@ let courseTick = null;
 // Navi-Zielen, die das Spiel dort bestellt hat
 const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'ziel', 'elsa']);
 const curveSigns = new CurveSigns(scene, {
+  // XXL: am Rand des Querschnitts, den der Abschnitt hat (zweispurige Straßen sind schmaler als die Autobahn)
+  layout: xxl ? profileLayout : undefined,
   busy(s) {
     if (gridBusy(s)) return true;
     for (const r of scenery.requests) if (EDGE_REQUESTS.has(r.type) && Math.abs(r.s - s) < 8) return true;
@@ -1499,7 +1501,7 @@ function step(dt, { render = true } = {}) {
     cockpit.scene.environmentRotation.copy(sky.envRotation);
     const L = game.left || { glow: 0 };
     road.update(s, dt, simT, L.glow || 0, L.open && L.timer < 10 ? 1 : 0);
-    curveSigns.update(course, s);
+    curveSigns.update(course, s, xxl ? xxlSignShear : null);
     road.setWet(w);
     scenery.update(s, dt);
     sky.setOvercast(w * 0.95);
@@ -1598,6 +1600,18 @@ function xxlStart(title) {
   xxl.update(p.s, p.x, 0);
   p.setLimits(xxl.limitsFor(xxlLimits));
   scenery.reset();
+}
+/**
+ * Kurvenschilder der XXL-Fahrt stehen im Rahmen ihres Abschnitts: dessen Scherung für dieses Bild, oder null, solange
+ * der Abschnitt nicht gezeichnet wird (eine Autobahn nur als die eine sichtbare, alles andere nach trip.visible).
+ * Ohne das stünden die Tafeln einer Kurve hinter der Ausfahrt am Rand der Autobahn, bis man abgebogen ist.
+ */
+function xxlSignShear(sec, path) {
+  if (sec.kind === 'ab') {
+    const v = xxl.view;
+    if (!v || v.frame !== sec.frame) return null;
+  } else if (!path || !xxl.trip.visible(sec, path)) return null; // ohne Weg: längst zurückgelassen
+  return xxl.shear.get(sec.frame) || null;
 }
 /** Einmal pro Bild nach der Bewegung: Strecke fortschreiben, Grenzen setzen, Verkehr und Sammelsachen einordnen. */
 function xxlStep(p, w) {

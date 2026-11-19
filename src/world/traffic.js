@@ -211,7 +211,8 @@ export class Traffic {
       const lane = this.leftOpen ? 1 : chance(0.6) ? 0 : 1;
       const s = player.s - rand(150, 190);
       // startet hinter dem Spieler: zählt nicht als „überholt“
-      if (this.laneFree(lane, s, 40) && !(this.begin !== null && s < this.begin + 40)) this.spawn(s, lane, { speed: rand(170, 215) * KMH }).passed = true;
+      // nicht mehr kurz vor dem Ende der Autobahn: so schnell käme er dort nicht mehr sanft herunter (endSpeed)
+      if (this.laneFree(lane, s, 40) && !(this.begin !== null && s < this.begin + 40) && !(E && s > E.fs - 2 * END_ROOM)) this.spawn(s, lane, { speed: rand(170, 215) * KMH }).passed = true;
     }
 
     const objs = this.cars;
@@ -241,13 +242,13 @@ export class Traffic {
         }
       }
       if (E) this.towardsEnd(c, objs, P);
-      // Abstandsregelung (Wunschtempo vor Kurven und am Berg gedeckelt)
+      // Abstandsregelung (Wunschtempo vor Kurven, am Berg und vor dem Ende der Autobahn gedeckelt)
       const lead = this.leader(c, objs, P);
       const T = c.truck ? 1.7 : 1.25 + (c.careless ? -0.4 : 0);
       const aMax = c.truck ? 0.6 : 1.6;
       const b = 2.8;
       const s0 = 3;
-      const vc = curveSpeed(c, c.s - player.s);
+      const vc = E ? Math.min(curveSpeed(c, c.s - player.s), endSpeed(c, E)) : curveSpeed(c, c.s - player.s);
       let acc = aMax * (1 - Math.pow(c.speed / Math.max(1, Math.min(c.v0, vc)), 4));
       if (lead) {
         const gap = Math.max(0.1, lead.s - c.s - (lead.len + c.len) / 2);
@@ -256,7 +257,7 @@ export class Traffic {
         acc -= aMax * Math.pow(sStar / gap, 2);
         if (gap < 4 && dv > 0) acc = Math.min(acc, -9);
       }
-      // vor einer Kurve sichtbar (mit Bremslicht), aber sanft abbremsen
+      // vor einer Kurve (und vor dem Ende der Autobahn) sichtbar (mit Bremslicht), aber sanft abbremsen
       let curveBrake = false;
       if (c.speed > vc + 0.4) {
         const a = -Math.min(c.truck ? 1.4 : 2.2, 0.5 + (c.speed - vc) * 0.5);
@@ -444,12 +445,15 @@ export class Traffic {
     }
     if (c.s < E.fs - END_ROOM) return;
     const left = (s) => ROAD.laneCenter(c.lane) - c.w / 2 - 0.4 < E.openLeft(s);
-    if (!c.change && left(c.s + 30 + c.speed * 4) && this.safe(c, c.lane + 1, objs, P, true)) {
+    // Bremsweg bei den 4 m/s², mit denen ein Fahrzeug vor der Sperrfläche hält (c.closed): er zählt bei beiden
+    // Blicken voraus mit, sonst wäre der Wagen schon zu nah, wenn er die Verengung bemerkt
+    const stop = (c.speed * c.speed) / 8;
+    if (!c.change && left(c.s + stop + 30 + c.speed * 4) && this.safe(c, c.lane + 1, objs, P, true)) {
       this.startChange(c, c.lane + 1);
       c.change.delay = 0.3;
     }
     // die Spur endet gleich und es ging nicht hinüber: anhalten und warten
-    c.closed = !c.change && left(c.s + c.len / 2 + 10 + c.speed * 1.2);
+    c.closed = !c.change && left(c.s + stop + c.len / 2 + 10 + c.speed * 1.2);
   }
 
   startChange(c, to) {
@@ -518,6 +522,19 @@ export class Traffic {
 
 // so weit vor der letzten Ausfahrt einer endenden Autobahn kommen keine Fahrzeuge mehr hinzu und alle ordnen sich rechts ein
 const END_ROOM = 650;
+// END_SLOW Meter vor ihr rollen alle nur noch mit END_V, dem Tempo der Rampe: schneller reicht die Verengung nicht,
+// um Spur für Spur nach rechts zu kommen oder vor der Sperrfläche zu halten (towardsEnd)
+const END_SLOW = 250;
+const END_V = 80 * KMH;
+
+/**
+ * XXL: Höchsttempo vor dem Ende einer Autobahn (E = traffic.end) – wie vor einer Kurve so früh gedeckelt, dass
+ * sanftes Bremsen bis END_SLOW vor der letzten Ausfahrt genügt; von dort an und auf der Rampe gilt END_V.
+ */
+function endSpeed(c, E) {
+  const dec = (c.truck ? CURVE.truck : CURVE.car).dec;
+  return Math.sqrt(END_V * END_V + 2 * dec * Math.max(0, E.fs - END_SLOW - c.s));
+}
 
 /**
  * Höchsttempo, mit dem das Fahrzeug d Meter vor dem Spieler jetzt fahren darf, damit es jede Kurve der nächsten
