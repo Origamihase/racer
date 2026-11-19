@@ -3,7 +3,9 @@
 // (Cockpit, Drohne, Kameraschwenk beim Start, Vorführmodus), Zustände und Menüs.
 import * as THREE from 'three';
 import { W, curveTable, curveAt, curveOffset } from './curve.js';
-import { Course, PROBE_MARKS } from './game/course.js';
+import { Course, MapPlanner, PROBE_MARKS } from './game/course.js';
+import * as mapGraph from './map/graph.js';
+import * as mapShapes from './map/shapes.js';
 import { setMaxAnisotropy, ROAD, roundRect } from './textures.js';
 import { Road } from './world/road.js';
 import { Sky } from './world/sky.js';
@@ -31,6 +33,7 @@ import { UI } from './ui/ui.js';
 import { Menus } from './ui/menus.js';
 import { SHOP, UPGRADE_LIMITS } from './data.js';
 import { MapDemo } from './map/mapdemo.js';
+import { setRoadAhead } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
 import { clamp, lerp, damp, easeInOut, smoothstep } from './util.js';
 
@@ -108,6 +111,17 @@ sky.onEnv = (tex) => {
 let course = new Course();
 let courseTrip = null;
 let courseTick = null;
+// Navi-Prüfstand (?debug&mapdemo): seine Fahrt ist die Fahrt der Welt. Der Kurs entwirft sie aus der Karte, sie folgt
+// dem Spieler (p.s, vor course.fill), und das Navi liest die Straße voraus nur aus diesem Kurs (COMMON.md §9)
+if (mapDemo) {
+  course = new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) });
+  courseTick = (s, dt) => {
+    mapDemo.follow(s, dt);
+    courseTrip = mapDemo.trip;
+  };
+}
+// die Straße voraus des Navis: der Verlauf, den die Welt zeichnet (preview reicht 4 km weit)
+setRoadAhead((trip, s, dMax) => course.preview(trip, s, Math.min(dMax, 4000)));
 // Kurvenschilder rücken von Möbeln am Rand weg: vom Raster der Landschaft und von Blitzern, Tempo-Schildern und
 // Navi-Zielen, die das Spiel dort bestellt hat
 const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'ziel', 'elsa']);
@@ -1478,7 +1492,7 @@ function step(dt, { render = true } = {}) {
       courseEnv.kappa = courseEnv.grade = 0;
       sky.turn(0);
     } else {
-      if (courseTick) courseTick(s);
+      if (courseTick) courseTick(s, dt);
       const st = course.fill(courseTrip, s, curveTable, dt);
       courseEnv.kappa = st.kappa;
       courseEnv.grade = st.grade;
@@ -1507,7 +1521,6 @@ function step(dt, { render = true } = {}) {
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     const scr = game.screenState ? safeScreen() : null;
     if (mapDemo && scr) {
-      if (state === 'drive') mapDemo.advance(p.speed * dt, dt);
       const visits = mapDemo.takeVisits();
       for (const i of visits) recordVisit(save, i);
       if (visits.length) storeSave(save);

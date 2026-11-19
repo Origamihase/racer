@@ -1,7 +1,8 @@
 // Prüfstand für Navi und Karte (nur mit ?debug&mapdemo): eine echte Fahrt (src/game/trip.js) über die XXL-Karte, auf
-// der ein gedachtes Auto mit der Geschwindigkeit des Spielers fährt. Es nimmt die geplanten Ausfahrten, sucht nach
-// jeder Ankunft ein neues Ziel und liefert dem Mittelbildschirm st.nav. Im fertigen Spiel ersetzt die echte Fahrt
-// der XXL-Welt das gedachte Auto; NavModel, NaviScreen und die Karte bleiben dieselben.
+// der ein gedachtes Auto fährt. Es nimmt die geplanten Ausfahrten, sucht nach jeder Ankunft ein neues Ziel und liefert
+// dem Mittelbildschirm st.nav. Im Spiel folgt es dem Spieler (follow), und der Kurs der Welt wird aus derselben Fahrt
+// gebaut (src/main.js): Windschutzscheibe und Navi zeigen dieselben Bögen. Im fertigen Spiel ersetzt die Fahrt der
+// XXL-Welt das gedachte Auto; NavModel, NaviScreen und die Karte bleiben dieselben.
 import { Trip, J } from '../game/trip.js';
 import { places, findPlace, findNode } from './graph.js';
 import { NavModel } from './navroute.js';
@@ -46,11 +47,27 @@ export class MapDemo {
     return pool.length ? this.target(pool[0][0]) : -1;
   }
 
-  /** ds Meter weiterfahren; die Spur folgt dem Navi (Verzögerungsstreifen vor geplanten Ausfahrten). */
+  /** ds Meter weiterfahren (ohne Bild: Ziel suchen, Navi nachführen). */
   advance(ds, dt) {
+    this.move(this.trip.s + ds);
+    return this.tick(dt);
+  }
+
+  /**
+   * Mit dem Spieler fahren (vor course.fill): bis zur Stelle s, in Schritten von höchstens 4 m, damit keine Gabelung
+   * übersprungen wird. Springt s weit zurück (neue Runde), beginnt eine neue Fahrt.
+   */
+  follow(s, dt) {
+    if (s < this.trip.s - 20) this.reset();
+    for (let n = Math.ceil((s - this.trip.s) / 4); n > 1; n--) this.move(this.trip.s + (s - this.trip.s) / n);
+    if (s > this.trip.s) this.move(s);
+    return this.tick(dt);
+  }
+
+  /** Bis zur Stelle s fahren; die Spur folgt dem Navi (Verzögerungsstreifen vor geplanten Ausfahrten). */
+  move(s) {
     const trip = this.trip;
     const sec = trip.section;
-    const s = trip.s + ds;
     if (sec.kind === 'ab') {
       const f = sec.fork;
       if (f && !f.taken && f.s - s < J.decel - 20) this.x = trip.planFor(f) === 'exit' ? J.L0 : 5.625;
@@ -59,7 +76,11 @@ export class MapDemo {
     const p = trip.profile(s);
     this.x = Math.min(Math.max(this.x, p.xmin), p.xmax);
     for (const e of trip.update(s, this.x)) if (e.type === 'arrive' || e.type === 'pass') this.visits.push(e.place);
-    if (trip.target < 0 && (this.wait -= dt) <= 0) {
+  }
+
+  /** Ohne Ziel nach kurzer Pause ein neues wählen, dann das Navi nachführen. */
+  tick(dt) {
+    if (this.trip.target < 0 && (this.wait -= dt) <= 0) {
       this.wait = 2.5;
       this.pickTarget();
     }
