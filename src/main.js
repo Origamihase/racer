@@ -1400,6 +1400,11 @@ function renderFrame(cockpitOn) {
     renderer.setRenderTarget(mirrorRT);
     renderer.render(scene, rearCam);
   }
+  // Rückfahrkamera für den Mittelbildschirm: nur in R und nur mit Cockpit (cockpit.rear.on), in halber Bildrate
+  if (cockpitOn && cockpit.rear.on) {
+    tesla.root.visible = false;
+    cockpit.rear.render(renderer, scene, localToWorld);
+  }
   if (photoRequest) {
     takePhoto(photoRequest);
     photoRequest = null;
@@ -1764,7 +1769,7 @@ function step(dt, { render = true } = {}) {
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
       sunDir: sky.sunDir, overcast: cloud, adam: adamOpts,
-      screen: scr, radar: game.radarAlarm,
+      screen: scr, radar: game.radarAlarm, rear: cockpitOn && p.gear === 'R',
     });
     if (fxState.trunk > 0) {
       fxState.trunk -= dt;

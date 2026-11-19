@@ -1891,6 +1891,7 @@ export class Game {
     return {
       dark: W.level > 0.45,
       battery: p.battery,
+      gear: p.gear,
       speedKmh: p.kmh,
       limit,
       playerX: p.x,

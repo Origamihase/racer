@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { liveLogoTexture, softDotTexture } from '../textures.js';
 import { Nomi } from './nomi.js';
 import { CenterScreen } from './screen.js';
+import { RearCam } from './rearcam.js';
 import { buildWipers } from './wipers.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
 import { damp, clamp, smoothstep, lerp } from '../util.js';
@@ -490,6 +491,9 @@ export class Cockpit {
     );
     display.position.z = 0.0005;
     g.add(display);
+    // Rückfahrkamera: liegt in R knapp vor der Anzeige über deren Fenster oben rechts
+    this.rear = new RearCam();
+    this.rear.attach(g, 0.336, 0.21, 0.0011);
     this.root.add(g);
     this.displayMat = display.material;
   }
@@ -727,7 +731,8 @@ export class Cockpit {
   /**
    * @param {object} st steer (-1..1), speed (m/s), latAcc, t, dt, wiperAngles [a, b], sunDir, overcast,
    *   adam (Animationswerte der Figur, wie sie main.js für Mini Adam im Auto und in der Facecam rechnet),
-   *   radar (warnt der Radarwarner gerade? Dann blinkt sein Lämpchen)
+   *   radar (warnt der Radarwarner gerade? Dann blinkt sein Lämpchen), rear (R eingelegt und das Cockpit zu sehen? Dann
+   *   zeigt der Mittelbildschirm die Rückfahrkamera)
    */
   update(st) {
     const { dt, t } = st;
@@ -778,5 +783,6 @@ export class Cockpit {
     if (this.driver && this.driver.root.visible) this.driver.animate(t, st.adam || { steer: st.steer });
     this.nomi.update(dt, t, -0.16);
     this.screen.update(dt, st.screen);
+    this.rear.update(dt, !!st.rear, st.steer);
   }
 }
