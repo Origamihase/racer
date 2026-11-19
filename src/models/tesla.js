@@ -580,11 +580,11 @@ export function buildTesla() {
     };
   }
 
-  // Rückfahrlicht: ein weißes Feld im hinteren, nach hinten schauenden Teil jeder Rückleuchte, 2,5 mm über ihr. Erst
+  // Rückfahrlicht: ein weißes Feld am inneren Ende jeder Rückleuchte (rundum bleibt Rot), 2,5 mm über ihr. Erst
   // beim ersten Rückwärtsgang gebaut und nur im R sichtbar: Im D (und im klassischen Spiel) bleibt alles wie zuvor.
   let reverseMesh = null;
   function buildReverse() {
-    const parts = [-1, 1].map((s) => patchOnBody((a, t) => lampUV.tail(s)(lerp(0.2, 0.6, a), lerp(0.62, 0.97, t)), { ns: 3, nt: 6, lift: 0.0085 }));
+    const parts = [-1, 1].map((s) => patchOnBody((a, t) => lampUV.tail(s)(lerp(0.55, 0.9, a), lerp(0.8, 0.97, t)), { ns: 3, nt: 6, lift: 0.0085 }));
     const m = new THREE.Mesh(mergeGeometries(parts), W.std({ color: 0xf4f6f8, emissive: 0xf2f6ff, emissiveIntensity: 1.15, roughness: 0.2, side: THREE.DoubleSide }));
     root.add(m);
     return m;
