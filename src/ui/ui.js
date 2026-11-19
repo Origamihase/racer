@@ -128,9 +128,9 @@ export class UI {
     this.stackEl = stack;
     // BrunnenTV am Navi-Ziel der XXL-Welt: die Titelkarte der Folge führt die Spalte an, alles andere rückt darunter
     this.tvEl = el('div', 'brunnentv hidden', stack);
-    const tvLogo = el('div', 'brunnentv-logo', this.tvEl);
-    el('span', 'brunnentv-drop', tvLogo, '⛲');
-    el('span', '', tvLogo, 'BrunnenTV');
+    this.tvLogo = el('div', 'brunnentv-logo', this.tvEl);
+    el('span', 'brunnentv-drop', this.tvLogo, '⛲');
+    el('span', '', this.tvLogo, 'BrunnenTV');
     this.tvEpisode = el('div', 'brunnentv-episode', this.tvEl, '');
     this.tvPlace = el('div', 'brunnentv-place', this.tvEl, '');
     // Navi-Ansage für Ansichten ohne Mittelbildschirm (XXL: Drohne, schmale Formate): Pfeil, Entfernung, Ausfahrt
@@ -267,6 +267,20 @@ export class UI {
       }
     }
     this.naviMax = Math.min(760, mid);
+    this.fitTvLogo();
+  }
+
+  /**
+   * Der Schriftzug der BrunnenTV-Titelkarte bleibt eine Zeile. Ist die Mittelspalte schmaler als er (Handy quer: sie
+   * steht dort zwischen Chat und Knopfgruppen), schrumpft seine Schrift so weit, dass er wieder in die Karte passt.
+   */
+  fitTvLogo() {
+    if (this.tvEl.classList.contains('hidden')) return;
+    const logo = this.tvLogo;
+    logo.style.fontSize = '';
+    const room = logo.clientWidth;
+    const need = logo.scrollWidth;
+    if (room > 0 && need > room) logo.style.fontSize = Math.floor((parseFloat(getComputedStyle(logo).fontSize) * room) / need) + 'px';
   }
 
   /** Hat sich seit dem letzten layout() etwas geändert, wonach sich die Spalte richtet? */
@@ -666,6 +680,7 @@ export class UI {
     if (n) {
       this.tvEpisode.textContent = 'Folge ' + fmtNum(n);
       this.tvPlace.textContent = 'Heute aus ' + name;
+      this.fitTvLogo();
       this.tvEl.classList.remove('pop');
       void this.tvEl.offsetWidth;
       this.tvEl.classList.add('pop');
