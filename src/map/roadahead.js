@@ -202,7 +202,8 @@ export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = 
             }
             if (q.length >= 4) town.streets.push({ pts: q, w: st.w || 6 });
           }
-          if (L.square) town.square = { d: L.square.s - s, X: lat(sec, L.square.s, L.square.x), r: L.square.r || 12 };
+          // der Platz nur, wo auch die Straße des Orts gezeichnet ist (ein Zweig reicht erst bis trip.drawnEnd)
+          if (L.square && L.square.s >= a && L.square.s <= b) town.square = { d: L.square.s - s, X: lat(sec, L.square.s, L.square.x), r: L.square.r || 12 };
         }
         scene.towns.push(town);
       }

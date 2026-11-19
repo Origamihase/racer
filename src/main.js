@@ -14,7 +14,7 @@ import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
 import { createNatureKit } from './world/kit/nature.js';
-import { cityKit } from './world/xxl/towns.js';
+import { cityKit, naviLayout } from './world/xxl/towns.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
@@ -39,7 +39,7 @@ import { Menus } from './ui/menus.js';
 import { SHOP, UPGRADE_LIMITS } from './data.js';
 import { MapDemo } from './map/mapdemo.js';
 import { NavModel } from './map/navroute.js';
-import { setRoadAhead } from './map/roadahead.js';
+import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
 import { clamp, lerp, damp, easeInOut, smoothstep } from './util.js';
 
@@ -138,6 +138,8 @@ if (mapDemo) {
 }
 // die Straße voraus des Navis: der Verlauf, den die Welt zeichnet (preview reicht 4 km weit)
 setRoadAhead((trip, s, dMax) => course.preview(trip, s, Math.min(dMax, 4000)));
+// und die Orte der XXL-Welt in seiner Nahansicht: Brunnenplatz und Zielbrunnen dort, wo die Welt sie baut
+if (xxl) setTownLayout((trip, sec) => naviLayout(sec, xxl.town(sec)));
 // Kurvenschilder rücken von Möbeln am Rand weg: vom Raster der Landschaft und von Blitzern, Tempo-Schildern und
 // Navi-Zielen, die das Spiel dort bestellt hat
 const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'ziel', 'elsa']);

@@ -493,6 +493,68 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
   }
   ok(!bad.length, 'Navi und Welt: ' + bad.join(' | '));
   ok(n.trips >= 50 && n.exit > 200 && n.far > 50 && n.farKept > 20 && n.arrive > 50 && n.scenes > 2000 && n.roads > 6000 && n.ramps > 50 && n.forks > 300 && n.pins > 20, 'Navi und Welt: zu wenig geprüft ' + JSON.stringify(n));
+  // Die Orte der XXL-Welt in der Nahansicht (towns.js naviLayout über setTownLayout, wie src/main.js es anschließt):
+  // die Zielfahne steckt im Zielbrunnen auf der Insel des Straßenbaus (plan.js squareOf) statt am Zielpunkt davor,
+  // der Platz liegt in jedem Ort der Nahansicht um seinen Brunnen und reicht bis an den Bordstein der geweiteten
+  // Fahrbahn, Nebenstraßen gibt es keine. Die Route endet am Zielpunkt: von dort sind es längs höchstens 25 m bis
+  // zur Mitte des Brunnens, der links neben der eigenen Spur steht (der haltende Wagen hat ihn schräg vor sich).
+  {
+    const { setTownLayout } = await import('../src/map/roadahead.js');
+    const { naviLayout } = await import('../src/world/xxl/towns.js');
+    const { squareOf } = await import('../src/world/xxl/plan.js');
+    const { PROFILES } = await import('../src/game/trip.js');
+    setTownLayout((trip, sec) => naviLayout(sec));
+    const e = { trips: 0, scenes: 0, squares: 0, pins: 0 };
+    const rt = rng(78); // eigener Zufall: die Fahrten der anderen Blöcke bleiben, wie sie sind
+    for (let t = 0; t < 16; t++) {
+      const demo = new MapDemo({ start: starts[Math.floor(rt() * starts.length)], rng: rng(1700 + t) });
+      const trip = demo.trip;
+      const D = trip.distances();
+      const pool = places.filter((p) => {
+        const km = D.toPlace(p.i).km;
+        return km > 20 && km < 160;
+      });
+      if (!pool.length) continue;
+      demo.target(pool[Math.floor(rt() * pool.length)].i);
+      e.trips++;
+      for (let k = 0; k < 2600 && trip.target >= 0; k++) {
+        demo.advance(16, 0.4);
+        if (k % 5) continue;
+        e.scenes++;
+        const sc = closeScene(trip, 2200, 500, demo.model.instruction());
+        const sh = trip.shears();
+        const world = (sec, so, x) => {
+          const l = trip.locate(sec, so, x);
+          const f = sh.get(l.frame);
+          return f ? l.x + f.a + f.b * (so - trip.s) : NaN;
+        };
+        for (const tw of sc.towns) {
+          const sq = squareOf(tw.sec);
+          const q = tw.square;
+          if (tw.streets.length) fail(`${places[tw.place].name}: Nebenstraßen im Navi, die der Ort nicht hat`);
+          if (!sq || !q) {
+            // ohne Insel (Startort) kein Platz; mit Insel fehlt er nur, wo die Straße dort noch nicht gezeichnet ist
+            if (q || (sq && sq.s - trip.s > tw.pts[0] && sq.s - trip.s < tw.pts[tw.pts.length - 2])) fail(`${places[tw.place].name}: Platz des Navis ohne Insel der Welt oder umgekehrt`);
+            continue;
+          }
+          e.squares++;
+          if (!near(q.d, sq.s - trip.s) || !near(q.X, world(tw.sec, sq.s, sq.x)) || !near(q.r, sq.x - sq.aL)) fail(`${places[tw.place].name}: Platz des Navis nicht um die Insel der Welt`);
+        }
+        const pin = sc.marks.find((mk) => mk.type === 'pin');
+        if (!pin) continue;
+        e.pins++;
+        const c = trip.cur.sections.concat(...trip.paths().map((p) => p.path.sections)).find((q) => q.kind === 'stadt' && q.place === pin.place && q.spotS !== undefined && !q.spotDone);
+        const sq = c ? squareOf(c) : null;
+        if (!sq || !near(pin.d, sq.s - trip.s) || !near(pin.X, world(c, sq.s, sq.x))) fail('Zielfahne nicht im Zielbrunnen der Welt');
+        else if (!(sq.s - c.spotS > sq.r && sq.s - c.spotS <= 25 && sq.x + sq.r < PROFILES.stadt.lanes[0].x)) fail(`Zielbrunnen ${(sq.s - c.spotS).toFixed(1)} m hinter dem Zielpunkt, Mitte bei x ${sq.x.toFixed(1)}`);
+        else if (sc.route.length >= 2 && sc.route[sc.route.length - 2] > c.spotS - trip.s + 0.01) fail('Route führt über den Zielpunkt hinaus');
+      }
+    }
+    setTownLayout(null);
+    ok(!bad.length, 'Orte im Navi: ' + bad.join(' | '));
+    ok(e.trips >= 12 && e.scenes > 1000 && e.squares > 300 && e.pins > 30, 'Orte im Navi: zu wenig geprüft ' + JSON.stringify(e));
+    console.log('  Orte im Navi (Platz und Zielbrunnen aus der XXL-Welt):', JSON.stringify(e));
+  }
   // Ohne Ziel nennt das Navi nur eine Stelle, die die Straße erzwingt: das Autobahnende auf dem eigenen Weg – an der
   // Gabelung der Fahrt, mit dem Text des Schilds dort, ab 1000 m mit den Pfeilen aller Spuren, und die Nahansicht
   // führt dort die Rampe hinaus. Sonst nennt es keine Stelle, nur wo die Fahrt gerade ist (die erste Fahrt beginnt

@@ -63,6 +63,33 @@ export function townPlan(K, sec, budget = Infinity) {
   });
 }
 
+/**
+ * Was die Nahansicht des Navis von einer Ortsdurchfahrt zeigt (src/map/roadahead.js setTownLayout): den Brunnenplatz
+ * und den Zielbrunnen dort, wo Straßenbau und Baukasten sie bauen, in Metern der Fahrt (s) und seitlicher Lage x im
+ * Rahmen des Abschnitts: { streets, square: { s, x, r }, fountain: { s, x } } oder null. Nebenstraßen hat der Ort
+ * keine (streets bleibt leer), die Stecknadel des Navis steckt im Zielbrunnen.
+ * Die Insel legt der Straßenbau fest (islandOf), der Plan des Orts stellt seinen Hauptbrunnen genau darauf
+ * (tools/citykit-test.mjs prüft das für jeden Ort): sie steht, ehe der Ort geplant ist, das Navi wartet also nie auf
+ * einen Plan und stößt keinen an. Der Platz ist dort die Fahrbahn, die sich links um die Insel weitet, bis an ihren
+ * Bordstein. Wo die Fahrt beginnt, gibt es keine Insel: der Platz liegt rechts der Straße, wie ihn der Plan des Orts
+ * zeigt (town = Towns.of(sec): null, solange der Plan noch nicht steht).
+ */
+export function naviLayout(sec, town = null) {
+  const isl = islandOf(sec);
+  if (isl) {
+    const s = sec.s0 + isl.u;
+    return { streets: [], square: { s, x: isl.x, r: isl.x - isl.kerb(isl.u) }, fountain: { s, x: isl.x } };
+  }
+  const L = town ? town.plan.layout : null;
+  const q = L && L.goal ? L.squares[L.goal.square] : null;
+  if (!q) return null;
+  return {
+    streets: [],
+    square: { s: sec.s0 - (q.z0 + q.z1) / 2, x: (q.x0 + q.x1) / 2, r: Math.min(q.x1 - q.x0, q.z1 - q.z0) / 2 },
+    fountain: { s: sec.s0 - L.goal.z, x: L.goal.x },
+  };
+}
+
 export class Towns {
   /** @param {import('three').Object3D} root Gruppe der Welt im Raum vor der Krümmung (wie die Rahmen) */
   constructor(root) {

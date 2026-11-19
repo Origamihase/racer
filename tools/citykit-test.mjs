@@ -218,9 +218,11 @@ for (const row of PLACES) {
 // Zielbrunnen, es ist der Hauptbrunnen des Orts auf der Insel (und der Lageplan zeigt dorthin), kein zweiter Brunnen
 // in seiner Nähe, nichts steht auf der geweiteten Fahrbahn, Häuser weder übereinander noch auf Plätzen, freie Sicht
 // auf jeden Brunnen, Licht am Zielbrunnen, keine eigenen Gehwegkacheln und Ortsschilder, der Name wie auf der Karte.
-// Dazu der Ort, in dem eine Fahrt beginnt: sein Brunnenplatz liegt kurz vor dem Startpunkt.
+// Dazu der Ort, in dem eine Fahrt beginnt: sein Brunnenplatz liegt kurz vor dem Startpunkt. Und was das Navi vom Ort
+// zeigt (naviLayout): die Stecknadel steckt im Zielbrunnen des Lageplans, der Platz liegt um ihn und reicht bis an den
+// Bordstein der geweiteten Fahrbahn; am Start liegt er rechts neben der Straße um den Brunnen des Plans.
 const { places, townLen } = await import('../src/map/graph.js');
-const { townPlan, islandOf } = await import('../src/world/xxl/towns.js');
+const { townPlan, islandOf, naviLayout } = await import('../src/world/xxl/towns.js');
 const xxl = { towns: 0, houses: 0, fountains: 0 };
 for (const p of places) {
   const len = townLen(p.pop);
@@ -240,6 +242,9 @@ for (const p of places) {
   const lay = plan.layout;
   ok(lay.goal && near(lay.goal.x, isl.x) && near(lay.goal.z, -isl.u) && lay.squares[lay.goal.square].kind === 'island' && lay.squares[lay.goal.square].fountain === 0, `${where}: Lageplan zeigt nicht auf die Insel`);
   ok(lay.name === p.name && lay.signs.length === 0 && plan.texts.length === 0, `${where}: Name oder Schilder`);
+  const nl = naviLayout(sec);
+  ok(nl && nl.streets.length === 0 && near(nl.fountain.s, sec.s0 - lay.goal.z) && near(nl.fountain.x, lay.goal.x), `${where}: Stecknadel des Navis nicht im Zielbrunnen`);
+  ok(nl && near(nl.square.s, nl.fountain.s) && near(nl.square.x, nl.fountain.x) && near(nl.square.x - nl.square.r, isl.kerb(isl.u)) && nl.square.r > isl.r, `${where}: Platz des Navis nicht um die Insel`);
   ok(lay.walks.every((w) => w.z0 === -len && w.z1 === 0), `${where}: Gehwege des Lageplans`);
   ok(!plan.items.some((it) => it.name === 'pavement' || it.name === 'pavement4'), `${where}: Gehwegkacheln (den Gehweg baut der Straßenbau)`);
   for (const f of plan.fountains) {
@@ -275,6 +280,9 @@ for (const p of places) {
   const sm = sp.fountains[0];
   ok(sm && sm.goal && !sm.island && sm.kind === L.goalKind(p) && sm.x > L.STREET.curbR + L.STREET.pave && sm.u > 300 + 10 && sm.u < 300 + 80, `${where}: am Start kein Brunnen kurz voraus (u ${sm && sm.u})`);
   ok(L.sightBlockers(sp, sm, [[L.STREET.eye, -300]]).length === 0, `${where}: am Start ist der Brunnen verstellt`);
+  const ns = naviLayout(first, { plan: sp });
+  ok(naviLayout(first) === null && ns && near(ns.fountain.s, first.s0 + sm.u) && near(ns.fountain.x, sm.x), `${where}: am Start zeigt das Navi den Brunnen woanders`);
+  ok(ns && ns.square.x - ns.square.r >= L.STREET.curbR - 0.01 && Math.hypot(ns.fountain.s - ns.square.s, ns.fountain.x - ns.square.x) + sm.r <= ns.square.r + 0.01, `${where}: am Start liegt der Platz des Navis nicht um den Brunnen rechts der Straße`);
 }
 
 // Lebenslauf eines Orts in der XXL-Welt (towns.js Towns): angelegt, sobald ein Stück seines Abschnitts gebraucht wird;
