@@ -353,6 +353,8 @@ const hash01 = (k) => {
 };
 function adamDo(fn) {
   for (const a of adams) fn(a);
+  // dazu die Figur, die freie Kameras im Cockpit sehen (baut das Cockpit erst beim ersten Blick von außen)
+  if (cockpit.driver) fn(cockpit.driver);
 }
 /** In die Kamera schauen; so lange zieht ihn auch NOMI nicht weg. */
 function adamToCamera(sec) {
@@ -1645,7 +1647,7 @@ function step(dt, { render = true } = {}) {
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
-      sunDir: sky.sunDir, overcast: cloud,
+      sunDir: sky.sunDir, overcast: cloud, adam: adamOpts,
       screen: game.screenState ? safeScreen() : null,
     });
     if (fxState.trunk > 0) {

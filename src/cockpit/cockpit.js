@@ -716,7 +716,8 @@ export class Cockpit {
   }
 
   /**
-   * @param {object} st steer (-1..1), speed (m/s), latAcc, t, dt, wiperAngles [a, b], sunDir, overcast
+   * @param {object} st steer (-1..1), speed (m/s), latAcc, t, dt, wiperAngles [a, b], sunDir, overcast,
+   *   adam (Animationswerte der Figur, wie sie main.js für Mini Adam im Auto und in der Facecam rechnet)
    */
   update(st) {
     const { dt, t } = st;
@@ -763,7 +764,7 @@ export class Cockpit {
     }
     // Mit eigener envMap gilt die Drehung des Materials, nicht die der Szene: mit dem Kurs mitdrehen wie die Welt
     for (const m of this.mirrorish) m.envMapRotation.copy(this.scene.environmentRotation);
-    if (this.driver && this.driver.root.visible) this.driver.animate(t, { steer: st.steer });
+    if (this.driver && this.driver.root.visible) this.driver.animate(t, st.adam || { steer: st.steer });
     this.nomi.update(dt, t, -0.16);
     this.screen.update(dt, st.screen);
   }
