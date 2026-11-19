@@ -11,6 +11,14 @@ export const VIEW_BEHIND = 140;
 export const VIEW_AHEAD = 1700;
 // Helligkeit allen Grases (Bankett, Dämme an den Brücken): wird bei Regen dunkler, siehe setWet
 export const GRASS_TINT = new THREE.Color(1, 1, 1);
+// Asphalt trocken und bei Nässe w (0 … 1: dunkler und spiegelnder): für die Autobahn und für die Straßen der XXL-Welt
+// (roadkit.js), damit der Belag an Ausfahrt und Auffahrt ohne Kante weiterläuft
+export const ASPHALT = { roughness: 0.9, metalness: 0, envMapIntensity: 0.3 };
+export function wetAsphalt(m, w) {
+  m.roughness = ASPHALT.roughness - w * 0.64;
+  m.color.setScalar(1 - w * 0.42);
+  m.envMapIntensity = ASPHALT.envMapIntensity + w * 1.2;
+}
 
 /** z-Reihen: vorne dicht, in der Ferne grober (die Krümmung braucht Stützpunkte). */
 function makeRows(behind = VIEW_BEHIND, ahead = VIEW_AHEAD) {
@@ -59,24 +67,122 @@ export function stripGeometry(segments, rows = ROWS) {
   return g;
 }
 
+// Zonen der flachen Fahrbahn (XXL-Welt): w = Meter hinter der Gabelung bzw. vor dem Einfädelpunkt.
+// road: Blockmarkierung statt der rechten Fahrstreifenbegrenzung auf dem Verzögerungs- bzw. Beschleunigungsstreifen
+// (w −len…0), kein äußerer Rand in der Sperrfläche (w 0…gore) · verge: rechts nur bis zur Winkelhalbierenden des
+// Keils (das Gebiet der Rampe) · rail: rechte Planke, Pfosten und Leitpfosten offen, bis Rampe und Autobahn Platz
+// für eigene Planken haben (w 0…railGap). Alles: nur zwischen Anfang und Ende der Fahrbahn.
+// Z: { railGap, gore, lane (Länge der Streifen), cap, kappa, wedgeSum (Asphaltränder von Autobahn + Rampe) }
+function zoneGlsl(Z) {
+  return /* glsl */ `
+uniform vec4 uXxlJ;
+uniform vec2 uXxlClip;
+varying float vXxlX;
+varying float vXxlD;
+float xxlW(float dj, float t) { return t > 0.5 ? vXxlD - dj : t < -0.5 ? dj - vXxlD : -1e6; }
+float xxlR(float u) { float v = max(u, 0.0); float q = min(v, ${Z.cap.toFixed(3)}); return q * (v - q * 0.5) * ${Z.kappa.toFixed(6)}; }
+`;
+}
+// Lage für die Zonen: x quer und Meter voraus in der geraden Simulation, vor jeder Biegung der Welt. Hängt sich an
+// begin_vertex, das der Biege-Shader aus curve.js (alt wie neu) nicht ersetzt, auch nicht im Schattenpass.
+function zoneVertex(src) {
+  return 'varying float vXxlX;\nvarying float vXxlD;\n' + src.replace(
+    '#include <begin_vertex>',
+    `#include <begin_vertex>
+  #ifdef USE_INSTANCING
+    vXxlX = (instanceMatrix * vec4(transformed, 1.0)).x;
+    vXxlD = -(modelMatrix * instanceMatrix * vec4(transformed, 1.0)).z;
+  #else
+    vXxlX = transformed.x;
+    vXxlD = -(modelMatrix * vec4(transformed, 1.0)).z;
+  #endif`,
+  );
+}
+function zonePatch(material, kind, uniforms, Z) {
+  const base = material.onBeforeCompile;
+  material.onBeforeCompile = (sh) => {
+    base(sh);
+    Object.assign(sh.uniforms, uniforms);
+    sh.vertexShader = zoneVertex(sh.vertexShader);
+    let frag = /* glsl */ `
+      if (vXxlD < uXxlClip.x || vXxlD > uXxlClip.y) discard;
+      float xxlW0 = xxlW(uXxlJ.x, uXxlJ.y);
+      float xxlW1 = xxlW(uXxlJ.z, uXxlJ.w);`;
+    if (kind === 'verge') {
+      frag += /* glsl */ `
+      if (vXxlX > ${ROAD.right.toFixed(2)}) {
+        if (xxlW0 >= 0.0 && vXxlX > (${Z.wedgeSum.toFixed(3)} + xxlR(xxlW0)) * 0.5) discard;
+        if (xxlW1 >= 0.0 && vXxlX > (${Z.wedgeSum.toFixed(3)} + xxlR(xxlW1)) * 0.5) discard;
+      }`;
+    } else if (kind === 'rail') {
+      frag += /* glsl */ `
+      if (vXxlX > ${ROAD.right.toFixed(2)} && ((xxlW0 >= 0.0 && xxlW0 < ${Z.railGap.toFixed(2)}) || (xxlW1 >= 0.0 && xxlW1 < ${Z.railGap.toFixed(2)}))) discard;`;
+    }
+    sh.fragmentShader = zoneGlsl(Z) + sh.fragmentShader.replace('#include <clipping_planes_fragment>', frag + '\n#include <clipping_planes_fragment>');
+    if (kind === 'road') {
+      // Lücken der Blockmarkierung und die gelöschte Randlinie zeigen den Asphalt daneben (gleiche Ableitungen, keine Naht)
+      sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', /* glsl */ `
+      vec2 xxlUv = vMapUv;
+      float xxlShift = 0.0;
+      if (vXxlX > 7.42 && vXxlX < 7.88) {
+        if ((xxlW0 > -${Z.lane.toFixed(1)} && xxlW0 < 0.0 && mod(-xxlW0, 12.0) > 6.0) || (xxlW1 > -${Z.lane.toFixed(1)} && xxlW1 < 0.0 && mod(-xxlW1, 12.0) > 6.0)) xxlShift = 0.6;
+      } else if (vXxlX > 10.08 && vXxlX < 10.42) {
+        if ((xxlW0 >= 0.0 && xxlW0 < ${Z.gore.toFixed(1)}) || (xxlW1 >= 0.0 && xxlW1 < ${Z.gore.toFixed(1)})) xxlShift = 0.6;
+      }
+      xxlUv.x -= xxlShift / ${ROAD.width.toFixed(4)};
+      vec4 sampledDiffuseColor = textureGrad( map, xxlUv, dFdx( vMapUv ), dFdy( vMapUv ) );
+      diffuseColor *= sampledDiffuseColor;`);
+    }
+  };
+  material.customProgramCacheKey = () => 'curved-world-xxl-' + kind;
+}
+
+/**
+ * Schattenmaterial der Pfosten (XXL): dieselben Lücken und Enden wie zonePatch(…, 'rail'). Der Schattenpass zeichnet
+ * sonst mit dem Standard-Tiefenmaterial, und unsichtbare Pfosten hinter dem Ende einer Autobahn oder in der Lücke der
+ * Planke am Keil würden Schatten werfen.
+ */
+function zoneDepth(uniforms, Z) {
+  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, uniforms);
+    sh.vertexShader = zoneVertex(sh.vertexShader);
+    sh.fragmentShader = zoneGlsl(Z) + sh.fragmentShader.replace('#include <clipping_planes_fragment>', /* glsl */ `
+      if (vXxlD < uXxlClip.x || vXxlD > uXxlClip.y) discard;
+      float xxlW0 = xxlW(uXxlJ.x, uXxlJ.y);
+      float xxlW1 = xxlW(uXxlJ.z, uXxlJ.w);
+      if (vXxlX > ${ROAD.right.toFixed(2)} && ((xxlW0 >= 0.0 && xxlW0 < ${Z.railGap.toFixed(2)}) || (xxlW1 >= 0.0 && xxlW1 < ${Z.railGap.toFixed(2)}))) discard;
+#include <clipping_planes_fragment>`);
+  };
+  m.customProgramCacheKey = () => 'xxl-depth-rail';
+  return m;
+}
+
 export class Road {
-  constructor(scene) {
+  /**
+   * opts.flat (XXL-Welt): Bankette flach bei y = 0 (Breite opts.verge, Polygon-Offset opts.vergeLayer), kein ferner
+   * Boden (den liefert die Welt), Zonen für Lücken in der rechten Planke, Blockmarkierung und Anfang/Ende der Fahrbahn
+   * (opts.zone, siehe setZones), opts.behind: so weit reichen die Reihen nach hinten.
+   */
+  constructor(scene, opts = {}) {
     this.group = new THREE.Group();
     this.group.name = 'Road';
     scene.add(this.group);
     this.s = 0;
     this.wet = 0;
+    this.flat = !!opts.flat;
+    const rows = this.flat ? makeRows(opts.behind || VIEW_BEHIND) : ROWS;
 
     // --- Fahrbahnen ------------------------------------------------------
     this.roadTex = roadTexture();
-    this.roadMat = W.std({ map: this.roadTex, roughness: 0.88, metalness: 0.0, envMapIntensity: 0.6 });
+    this.roadMat = W.std({ map: this.roadTex, ...ASPHALT });
     const L = ROAD.texLength;
     const roadUV = (x, y, z) => [(x - ROAD.left) / ROAD.width, -z / L];
     const oppUV = (x, y, z) => [(ONCOMING(x) - ROAD.left) / ROAD.width, -z / L];
     const roadGeo = stripGeometry([
       { a: [ROAD.left, 0], b: [ROAD.right, 0], uv: roadUV },
       { a: [ONCOMING(ROAD.right), 0], b: [ONCOMING(ROAD.left), 0], uv: oppUV },
-    ]);
+    ], rows);
     this.road = new THREE.Mesh(roadGeo, this.roadMat);
     this.road.receiveShadow = true;
     this.road.frustumCulled = false;
@@ -88,13 +194,21 @@ export class Road {
     this.grassMat = W.lambert({ map: this.grassTex });
     this.grassMat.color = GRASS_TINT;
     const gUV = (x, y, z) => [x / 6, -z / 6];
-    const verge = stripGeometry([
-      { a: [ROAD.right, 0.0], b: [ROAD.right + 3.2, 0.15], uv: gUV },
-      { a: [ROAD.right + 3.2, 0.15], b: [36, 0.25], uv: gUV },
-      { a: [ONCOMING(ROAD.left), 0], b: [ROAD.left, 0], uv: gUV },
-      { a: [-52, 0.25], b: [ONCOMING(ROAD.right) - 3.2, 0.15], uv: gUV },
-      { a: [ONCOMING(ROAD.right) - 3.2, 0.15], b: [ONCOMING(ROAD.right), 0.0], uv: gUV },
-    ]);
+    const verge = this.flat
+      ? stripGeometry([
+        // flach: ein gemähter Streifen je Seite, Mittelstreifen wie bisher; dahinter liegt der Boden der Welt
+        { a: [ROAD.right - 0.02, 0], b: [ROAD.right + opts.verge, 0], uv: gUV },
+        { a: [ONCOMING(ROAD.left), 0], b: [ROAD.left, 0], uv: gUV },
+        { a: [ONCOMING(ROAD.right) - opts.verge, 0], b: [ONCOMING(ROAD.right) + 0.02, 0], uv: gUV },
+      ], rows)
+      : stripGeometry([
+        { a: [ROAD.right, 0.0], b: [ROAD.right + 3.2, 0.15], uv: gUV },
+        { a: [ROAD.right + 3.2, 0.15], b: [36, 0.25], uv: gUV },
+        { a: [ONCOMING(ROAD.left), 0], b: [ROAD.left, 0], uv: gUV },
+        { a: [-52, 0.25], b: [ONCOMING(ROAD.right) - 3.2, 0.15], uv: gUV },
+        { a: [ONCOMING(ROAD.right) - 3.2, 0.15], b: [ONCOMING(ROAD.right), 0.0], uv: gUV },
+      ]);
+    if (this.flat) Object.assign(this.grassMat, opts.vergeLayer);
     this.verge = new THREE.Mesh(verge, this.grassMat);
     this.verge.receiveShadow = true;
     this.verge.frustumCulled = false;
@@ -112,7 +226,7 @@ export class Road {
     this.ground = new THREE.Mesh(ground, this.fieldMat);
     this.ground.receiveShadow = true;
     this.ground.frustumCulled = false;
-    this.group.add(this.ground);
+    if (!this.flat) this.group.add(this.ground);
 
     // --- Schutzplanken --------------------------------------------------
     this.railTex = guardrailTexture();
@@ -130,7 +244,7 @@ export class Road {
     addRail(MEDIAN_X - 0.16, -1);
     addRail(ROAD.right + 0.55, -1);
     addRail(ONCOMING(ROAD.right) - 0.55, 1);
-    this.rails = new THREE.Mesh(stripGeometry(rails), this.railMat);
+    this.rails = new THREE.Mesh(stripGeometry(rails, rows), this.railMat);
     this.rails.castShadow = false;
     this.rails.receiveShadow = true;
     this.rails.frustumCulled = false;
@@ -176,7 +290,8 @@ export class Road {
     const bMesh = new THREE.InstancedMesh(bandGeo, blackMat, nD);
     const rMesh = new THREE.InstancedMesh(reflGeo, reflMat, nD);
     for (let i = 0; i < nD; i++) {
-      m4.makeTranslation(ROAD.right + 1.05, 0.12, VIEW_BEHIND * 0.5 - i * this.delinSpacing);
+      // flach: der Pfosten reicht 2 cm in den Boden (das Bankett liegt bei y = 0)
+      m4.makeTranslation(ROAD.right + 1.05, this.flat ? 0.07 : 0.12, VIEW_BEHIND * 0.5 - i * this.delinSpacing);
       dMesh.setMatrixAt(i, m4);
       bMesh.setMatrixAt(i, m4);
       rMesh.setMatrixAt(i, m4);
@@ -187,6 +302,13 @@ export class Road {
     }
     this.delin = delin;
     this.group.add(delin);
+    if (this.flat) {
+      this.zoneU = { uXxlJ: { value: new THREE.Vector4(1e6, 0, 1e6, 0) }, uXxlClip: { value: new THREE.Vector2(-1e6, 1e6) } };
+      zonePatch(this.roadMat, 'road', this.zoneU, opts.zone);
+      zonePatch(this.grassMat, 'verge', this.zoneU, opts.zone);
+      for (const m of [this.railMat, postMat, whiteMat, blackMat, reflMat]) zonePatch(m, 'rail', this.zoneU, opts.zone);
+      this.posts.customDepthMaterial = zoneDepth(this.zoneU, opts.zone);
+    }
 
     // --- Leuchtende linke Spur ------------------------------------------
     this.laneUniforms = {
@@ -195,8 +317,11 @@ export class Road {
       uOpacity: { value: 0 },
       uWarn: { value: 0 },
     };
+    // Anfang und Ende der Fahrbahn in Metern vor dem Spieler (XXL-Welt, siehe setZones): Das Leuchten hört mit dem
+    // Asphalt auf, statt hinter dem Ende einer Autobahn über die Wiese weiterzulaufen. Klassisch: keine Grenzen.
+    const laneClip = this.flat ? this.zoneU.uXxlClip : { value: new THREE.Vector2(-1e6, 1e6) };
     const laneMat = new THREE.ShaderMaterial({
-      uniforms: { ...this.laneUniforms, uCurve: { value: null } },
+      uniforms: { ...this.laneUniforms, uCurve: { value: null }, uXxlClip: laneClip },
       vertexShader: CURVE_GLSL + /* glsl */ `
         varying vec2 vUv;
         varying float vDist;
@@ -212,9 +337,11 @@ export class Road {
         uniform float uS;
         uniform float uOpacity;
         uniform float uWarn;
+        uniform vec2 uXxlClip;
         varying vec2 vUv;
         varying float vDist;
         void main() {
+          if (vDist < uXxlClip.x || vDist > uXxlClip.y) discard;
           float p = uS + vDist;
           float x = vUv.x * 2.0 - 1.0;
           float chev = fract((p + abs(x) * 2.2) / 7.0 - uTime * 0.35);
@@ -242,12 +369,19 @@ export class Road {
     this.group.add(this.lane);
   }
 
+  /**
+   * Nur flach (XXL): bis zu zwei Knotenpunkte in Metern vor dem Spieler (dist, type +1 Ausfahrt / −1 Einfädeln,
+   * 0 = keiner) und das Stück der Fahrbahn, das existiert (begin, end, ebenfalls in Metern vor dem Spieler).
+   */
+  setZones(d0, t0, d1, t1, begin, end) {
+    this.zoneU.uXxlJ.value.set(d0, t0, d1, t1);
+    this.zoneU.uXxlClip.value.set(begin, end);
+  }
+
   /** Nässe 0…1 (Regen): Asphalt dunkler und spiegelnder. */
   setWet(w) {
     this.wet = w;
-    this.roadMat.roughness = 0.88 - w * 0.62;
-    this.roadMat.color.setScalar(1 - w * 0.42);
-    this.roadMat.envMapIntensity = 0.6 + w * 0.9;
+    wetAsphalt(this.roadMat, w);
     this.railMat.roughness = 0.38 - w * 0.2;
     this.grassMat.color.setScalar(1 - w * 0.25);
     this.fieldMat.color.setScalar(1 - w * 0.28);

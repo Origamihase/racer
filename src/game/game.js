@@ -1,41 +1,79 @@
 // Eine Fahrt: Regie für alle Ereignisse (linke Spur, Navi-Gebote, Regen, Blitzer, Polizei Gifhorn,
 // Sprachdurchsagen, Rahmen, Funkloch, Zuschauer, Spenden, Jobs) und die Abrechnung am Ende.
+// Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
 import {
-  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, VOICES, JOB_TEMPLATES,
-  viewerName, fillTemplate, alterReaction, randomDonation, berufFor,
+  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, VOICES, JOB_TEMPLATES, REISE_JOBS, INCOME, SPENDEN_ZWECKE, AKTIONEN,
+  MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, NAVI_TARGETS, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
 } from '../data.js';
-import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtNum, fmtClock } from '../util.js';
+import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
 import { Player, KMH } from './player.js';
-import { Navi, shortName } from './navi.js';
+import { damageLine } from './damage.js';
+import { Navi, WorldNavi, shortName } from './navi.js';
+import { Economy } from './economy.js';
 import { Vector3 } from 'three';
 import { EYE } from '../cockpit/cockpit.js';
 import { ELSA_STATUE } from '../world/scenery.js';
 import { curvePoint } from '../curve.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
+// „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
+// aus dem großen Vorrat – sonst gäbe es fast nur Regen- und Brunnen-Angebote, denn eins von beiden ist fast immer.
+// Passt eins zur Lage, darf es kommen, sobald die Uhr weniger als so viele Sekunden zeigt: Ein Ziel, ein Brunnen
+// oder Elsa sind nur kurz da und selten, ein Laster, Regen oder eine lange Gerade öfter.
+const LAGE_SHARE = 0.4;
+const OFFER_EARLY = { ziel: 100, brunnen: 100, elsa: 100, laster: 50, regen: 50, gerade: 40 };
+// Lange Gerade: Die Krümmung unter dem Wagen (aus dem Kurs, siehe course.js) bleibt so klein, dass die Straße auf
+// 200 m höchstens 1 m zur Seite läuft, und das schon so viele Meter lang. Auf dem klassischen Kurs ist die Hälfte der
+// Geraden kürzer als 300 m; so zählt etwa ein Fünftel der Strecke als lange Gerade.
+const STRAIGHT_KAPPA = 1 / 20000;
+const STRAIGHT_RUN = 400;
 // Rechts oben deckt der Innenspiegel aus Mini Adams Sicht ab etwa 17,8° rechts der Blickrichtung ab
 // (auf dem Handy hochkant endet dort fast schon das Bild): bis 16° steht Elsa frei in der Scheibe.
 const ELSA_VIEW = (16 * Math.PI) / 180;
 // Elsas Kopf an der Statue (Maßstab 1): Kronenspitze, Kinn und halbe Kopfbreite in Metern
 const ELSA_HEAD = { top: 5.65, chin: 3.1, half: 1.3 };
 const elsaTmp = new Vector3();
+// Wie flott der Chat schreibt, je nach Stufe der heimlichen Chat-Stimmung (0 im Keller … 4 bester Laune)
+const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
+// BrunnenTV am Navi-Ziel (XXL, bis die Szene gebaut ist: Titelkarte und Jubel): so viele Sekunden steht der Wagen am
+// Brunnen (hold); wer neu Gas gibt, bremst, lenkt oder hupt, fährt sofort weiter, sobald die Karte kurz zu sehen
+// war (guard); das erste Gebot der nächsten Runde kommt frühestens pause Sekunden, nachdem der Wagen fahren darf.
+const BRUNNEN_TV = { hold: 6, guard: 0.6, pause: 1.5 };
 
 export class Game {
   /**
-   * @param {object} ctx traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui, fx, pickups
+   * @param {object} ctx traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui, fx, pickups;
+   *   world: nur in der XXL-Welt, { trip(): die Fahrt über die echte Karte (trip.js), stopping(): bremst der Wagen
+   *   gerade zum Halt am Brunnen des Ziels?, release(): der Wagen am Brunnen darf weiterfahren, square(sec) und
+   *   town(sec): Brunnenplatz und Ort einer Ortsdurchfahrt für die BrunnenTV-Szene }. Dann wird
+   *   auf echte Orte geboten (WorldNavi): Jedes Gebot setzt das Ziel der Fahrt, das Navi im Auto zeigt sie
+   *   (src/map), und die Ankunft meldet onTrip am Brunnenplatz. worldNavi sagt der Anzeige, welches Navi führt.
    */
   constructor(ctx) {
     Object.assign(this, ctx);
+    this.worldNavi = !!this.world;
     this.player = new Player();
-    this.navi = new Navi(this.scenery);
-    // Entfernung zum Navi-Ziel ab der Schilderbrücke (die wird gut 1,7 km voraus gebaut)
+    this.navi = this.world ? new WorldNavi(this.world) : new Navi(this.scenery);
+    // Stream-Kasse samt heimlicher Chat-Stimmung, und was sie in jedem Schritt vom Fahren wissen will
+    this.eco = new Economy();
+    this.ecoIn = { kmh: 0, limit: false, stuck: false, leftOpen: false, inLeft: false, funkloch: false };
+    this.seenAhead = new WeakSet();
+    // Entfernung zum Navi-Ziel ab der Schilderbrücke (die wird gut 1,7 km voraus gebaut). Was jede Brücke als Navi-Ziel
+    // zeigt (Schildposition → Ziel oder null), merkt sich gantryShown – so weiß changeNavi, ob es neu beschriften muss.
+    this.gantryShown = new Map();
     this.scenery.gantryInfo = (sSign = this.player.s) => {
-      const km = (this.navi.targetS - sSign) / 1000;
-      if (km < 0.2) return null;
-      return { target: shortName(this.navi.target), km };
+      const info = this.gantryNavi(sSign);
+      this.gantryShown.set(sSign, info);
+      return info;
     };
     this.running = false;
     this.over = null;
+    // XXL-Welt: abseits der Autobahn ruhen Ereignisse, die nur dort Sinn ergeben (setzt main.js jedes Bild)
+    this.offAutobahn = false;
+    // Mini Adams Mimik (main.js hängt sich ein): onMood(name, Stärke 0 … 1) bei Spenden, Schreck, Rempler, Ziel …
+    this.onMood = () => {};
+    // BrunnenTV am Navi-Ziel der XXL-Welt: Hier hängt sich die Szene ein (siehe startBrunnenTV)
+    this.onBrunnenTV = () => {};
   }
 
   // ------------------------------------------------------------------------
@@ -55,33 +93,65 @@ export class Game {
     this._greeted = false;
     this._introChime = false;
     this.clock = 18 * 60;
-    this.viewers = 240;
-    this.hype = 0;
+    this.travel = null; // XXL: Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
+    this.eco.reset(up);
+    this.viewers = this.eco.viewers;
     this.peakViewers = 240;
     this.recordShown = false;
     this.lastHorn = -99;
     this.megafonCd = 0;
-    this.leftTick = 0;
     this.chatT = 1.5;
-    this.donationT = rand(6, 10);
+    this.chatSeen = [];
+    // wann zuletzt eine Gutschrift aufgeblitzt ist, die Leitplanke gekratzt hat, NOMI das Navi angesagt hat
+    this.popT = -9;
+    this.scrapeT = -9;
+    this.naviSaidT = -99;
+    // Verkehr aus Sicht des Chats: hängt Mini Adam hinter jemandem fest? (siehe watchTraffic)
+    this.trafficT = 0;
+    this.stuck = false;
+    this.stuckChatT = 0;
+    // Stimmen: bis wann NOMI oder eine Durchsage zu hören ist und bis wann das Sprachstudio (Spielzeit)
+    this.voiceUntil = 0;
+    this.studioUntil = 0;
+    // Sprachstudio: wann es zuletzt gesprochen und zuletzt die Stimmung angesagt hat, wohin sie gerade gekippt ist
+    // (trend), der zuletzt genannte Anlass (why), was es sonst noch loswerden will (extra), wen es gleich begrüßt
+    // (greet), die nächste runde Summe für den Kassensturz (mark) und welche Sätze gerade erst dran waren (used)
+    this.studio = { last: -99, moodT: -99, trend: null, why: null, extra: null, extraT: -99, greet: null, mark: 500, used: {} };
+    this.sammel = null;
+    this.duel = null;
+    // für den Abspann: die größte Spende, wer wie viele Abos verschenkt hat und wer neu VIP geworden ist
+    this.fans = { top: null, gifts: {}, vips: [] };
     this.stats = {
       leftLaneTime: 0, naviReached: 0, nearMisses: 0, maxSpeedKmh: 0, bananas: 0, cleanDistance: 0, naviChanges: 0,
       maxViewers: 0, charges: 0, distance: 0, blitzerClean: 0, rainDistance: 0, crashes: 0, koriander: 0, fines: 0,
-      wipes: 0, twitches: 0, photos: 0,
+      wipes: 0, twitches: 0, photos: 0, donations: 0, subs: 0, vips: 0, topBid: 0, overtakes: 0, brunnenTV: 0,
     };
-    this.jobs = shuffle(JOB_TEMPLATES).slice(0, 5).map((j) => ({ ...j, done: false, progress: 0 }));
+    // laufende BrunnenTV-Folge am Navi-Ziel (XXL) oder null
+    this.tv = null;
+    // zwischen Zielpunkt und Halt am Brunnen: { sec: Ortsdurchfahrt, still: so lange steht der Wagen schon }
+    this.halt = null;
+    // Für jeden der fünf Jobs hat jemand im Chat eine Spende versprochen – und einer für alle zusammen
+    const pledges = this.eco.pledges(5);
+    // (in der XXL-Welt zählen die Strecken-Aufträge Reisekilometer: REISE_JOBS)
+    this.jobs = shuffle(JOB_TEMPLATES).slice(0, 5).map((j, i) => ({ ...j, ...(this.worldNavi ? REISE_JOBS[j.id] : null), done: false, progress: 0, pledger: viewerName(), pledge: pledges.list[i] }));
+    this.allJobs = { pledger: viewerName(), pledge: pledges.all };
     this.allJobsPaid = false;
 
-    // Linke Spur
+    // Linke Spur (dur: so lange bleibt sie nach einer Freischaltung offen · freq: Faktor für die Pause danach – so
+    // gewählt, dass sie mit dem Shop-Artikel länger offen ist und trotzdem etwas öfter freigeschaltet wird)
     const ls = up.linksspur || 0;
-    this.left = { open: false, timer: 0, next: rand(22, 30), warned: false, glow: 0, rg: 0, grace: 0, bonusMul: 1 + 0.25 * ls, freq: 1 - 0.14 * ls, earned: 0 };
-    // Wetter
-    this.weather = { level: 0, target: 0, active: false, dur: 0, cool: 0, announced: false, regenzulage: false };
-    // Ereignis-Uhren (Sekunden) und Strecken-Marken (Meter)
+    this.left = { open: false, timer: 0, dur: 60 + 10 * ls, next: rand(22, 30), warned: false, glow: 0, rg: 0, grace: 0, freq: 1 - 0.3 * ls, idle: 0, teased: 0, donor: '' };
+    // Wetter: der erste Schauer kommt erst nach einem trockenen Start (cool, siehe updateWeather)
+    this.weather = { level: 0, target: 0, active: false, dur: 0, cool: rand(100, 140), announced: false, twitches: 0, laughT: 0, sky: 0, front: 0, next: 0, calm: 0, crashes: 0 };
+    // Ereignis-Uhren (Sekunden) und Strecken-Marken (Meter); das erste Navi-Gebot plant die Stream-Kasse (siehe unten)
     this.T = {
-      bid: rand(38, 52), durchsage: rand(28, 40), rahmen: rand(70, 100), funkloch: rand(110, 170), frog: rand(160, 260),
-      trunk: rand(120, 200), numbers: rand(80, 130), police: rand(200, 300), wiperChat: 0,
+      bid: 0, durchsage: rand(28, 40), rahmen: rand(70, 100), funkloch: rand(110, 170), frog: rand(160, 260),
+      trunk: rand(120, 200), numbers: rand(80, 130), police: rand(200, 300), wiperChat: 0, sammel: rand(75, 110),
+      studio: rand(26, 34), greet: rand(100, 170), cent5: rand(100, 160),
     };
+    // „5 Cent, wenn du …“: welche Angebote in diesem Stream schon kamen (keins doppelt), wer zuletzt geboten hat, wie
+    // lange die Straße schon geradeaus läuft (Meter) und wann zuletzt ein Ziel erreicht wurde (für Angebote zur Lage)
+    this.cent5 = { used: new Set(), name: '', straightS: 0, arrivedT: -99, lage: chance(LAGE_SHARE) };
     this.S = {
       blitzer: rand(3000, 3800), elefant: rand(3200, 4200), landmark: rand(1400, 2000), charge: rand(700, 1000),
       banana: rand(1100, 1500), koriander: rand(2200, 2800),
@@ -95,7 +165,12 @@ export class Game {
     this.lastHugo = 0;
 
     this.scenery.reset();
+    this.gantryShown.clear();
     this.navi.reset(0);
+    // die erste Bieterrunde: Kaum läuft der Stream, hagelt es Cent-Gebote
+    this.bidPlan = this.eco.nextBid({ bid: this.navi.bid });
+    this.T.bid = this.bidPlan.delay;
+    this.roundNew = false;
     this.traffic.reset();
     this.traffic.populate(0, p.speed);
     this.pickups.reset();
@@ -103,6 +178,7 @@ export class Game {
     this.windshield.clear();
     this.windshield.setRain(0);
     this.windshield.setFirmware(up.wischer || 0);
+    this.windshield.setAuto(true);
     this.windshield.onEvent = (type) => this.onWiper(type);
     this.cockpit.clearConfetti();
     this.cockpit.setElsa(!!up.elsa);
@@ -111,7 +187,15 @@ export class Game {
     this.bot('hugo', 'Der Stream läuft! Viel Spaß beim Zuschauen.');
     this.later(1.2, () => this.chat('Hallo Mini Adam ❤'));
     this.later(2.0, () => this.chat('Wohin fahren wir heute?'));
-    this.later(3.2, () => this.bot('james', `Startgebot: ${fmtCent(this.navi.bid)} – Ziel: ${this.navi.target.name}`));
+    // klassisch steht das erste Ziel schon fest; in der XXL-Welt sucht es der Chat erst aus
+    this.later(3.2, () => this.bot('james', this.worldNavi ? 'Die Gebote sind eröffnet: Wohin soll die Reise gehen? Ab 0,01 € seid ihr dabei.' : `Startgebot: ${fmtCent(this.navi.bid)} – Ziel: ${this.navi.target.name}`));
+    // die Challenges des Abends: Wer was verspricht, steht im Chat
+    this.jobs.forEach((j, i) => this.later(10 + i * 11 + rand(0, 5), () => {
+      if (!j.done) this.chat(fillTemplate(pick(CHAT.pledge), { wenn: j.wenn, betrag: fmtBetrag(j.pledge) }), j.pledger);
+    }));
+    this.later(68, () => {
+      if (!this.allJobsPaid) this.chat(`Und wenn du alle fünf Jobs schaffst, lege ich ${fmtBetrag(this.allJobs.pledge)} drauf! 🏆`, this.allJobs.pledger);
+    });
   }
 
   /** Vorführmodus für den Titelbildschirm: nur fahren, kein Stream-Trubel. */
@@ -122,11 +206,12 @@ export class Game {
     this.player.reset({});
     this.player.x = 1.875;
     this.player.speed = 118 * KMH;
-    this.weather = { level: 0, target: 0, active: false, dur: 0, cool: 0, announced: false, regenzulage: false };
+    this.weather = { level: 0, target: 0, active: false, dur: 0, cool: 0, announced: false, sky: 0, front: 0, next: 0, calm: 0, crashes: 0 };
     this.left = { open: false, timer: 0, glow: 0 };
     this.sirenLevel = 0;
-    // nach einer Regenfahrt: Scheibe trocken, Wischer still
+    // nach einer Regenfahrt: Scheibe trocken, Wischer still (auch kein Fehlalarm im Titelbild)
     this.windshield.setRain(0);
+    this.windshield.setAuto(false);
     this.windshield.clear();
     this.scenery.reset();
     this.navi.reset(0);
@@ -141,8 +226,9 @@ export class Game {
     p.update(dt, ctl, { wet: 0 });
     p.battery = 100;
     p.hits = 0;
+    if (!p.damage.pristine) p.damage.reset(p.maxHits);
     this.navi.update(dt, p.s);
-    if (this.navi.arrived) this.navi.overbid(p.s, 'Demo');
+    if (this.navi.arrived && !this.worldNavi) this.navi.overbid(p.s, 'Demo', 0.01, this.pickBidTarget());
     this.traffic.update(dt, this.demoT, p, { difficulty: 0.15, leftOpen: false, rain: 0 });
   }
 
@@ -158,12 +244,29 @@ export class Game {
   bot(key, text) {
     const b = BOTS[key];
     this.ui.chat({ name: b.name, text, bot: key, icon: b.icon });
+    // haben die Bots viel zu melden, plaudert der Chat etwas weniger – so bleibt er lesbar
+    this.chatT += 0.9;
+  }
+
+  /**
+   * Eine Zeile aus dem Vorrat, die nicht gerade erst im Chat stand – zweimal derselbe Satz untereinander sähe nach
+   * einem Fehler aus. Kurze Rufe („F“) dürfen sich häufen, die merkt sich der Chat nicht.
+   */
+  chatLine(pool) {
+    const seen = this.chatSeen;
+    let line = pick(pool);
+    for (let i = 0; i < 4 && seen.includes(line); i++) line = pick(pool);
+    if (line.length > 3) {
+      seen.push(line);
+      if (seen.length > 14) seen.shift();
+    }
+    return line;
   }
 
   burst(pool, n = 3, spread = 2.5) {
     const list = typeof pool === 'function' ? null : pool;
     for (let i = 0; i < n; i++) {
-      this.later(rand(0.1, spread), () => this.chat(list ? pick(list) : pool()));
+      this.later(rand(0.1, spread), () => this.chat(list ? this.chatLine(list) : pool()));
     }
   }
 
@@ -178,19 +281,28 @@ export class Game {
         onStart: (d) => nomi.speak(d),
       });
       this.ui.nomi(text, dur + 0.8);
+      this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.8);
     };
+    // NOMI hat das Wort: Das Sprachstudio verstummt mitten im Satz und wartet, bis sie fertig ist
+    this.voiceUntil = Math.max(this.voiceUntil, this.t + 1.2);
+    if (this.t < this.studioUntil) {
+      this.studioUntil = this.t;
+      if (this.speech.current?.voiceKey === 'sprachstudio') this.speech.cancelCurrent();
+    }
     if (this.running) this.later(0.35, go);
     else go();
   }
 
-  earn(amount, label, { mult = true, silent = false } = {}) {
+  /** Einnahme verbuchen. label: Zeile der Abrechnung (siehe INCOME) · silent: ohne Einblendung am Guthaben */
+  earn(amount, label, { silent = false } = {}) {
     if (amount <= 0) return 0;
-    const m = mult && this.weather.regenzulage ? 1.5 : 1;
-    const v = amount * m;
-    this.money += v;
-    this.breakdown[label] = (this.breakdown[label] || 0) + v;
-    if (!silent) this.ui.money(v, label);
-    return v;
+    this.money += amount;
+    this.breakdown[label] = (this.breakdown[label] || 0) + amount;
+    if (!silent) {
+      this.popT = this.t;
+      this.ui.money(amount, INCOME[label] || label);
+    }
+    return amount;
   }
 
   fine(amount, label) {
@@ -203,16 +315,39 @@ export class Game {
     this.audio.bad();
   }
 
-  donate(name, amount, what) {
-    // Angesagt wird, was der Zuschauer zahlt; Starlink-Bonus und Regenzulage zeigt nur die Gutschrift
-    const v = this.earn(amount * (this.up.starlink ? 1.2 : 1), 'Spenden', { silent: true });
-    this.bot('james', `${name} hat ${fmtCent(amount)} ${what ? 'für »' + what + '« ' : ''}gespendet!`);
-    this.ui.money(v, 'Spende');
+  /**
+   * Jemand gibt Geld: Finanz-Bot James sagt es an, die Kasse klingelt.
+   * what: wofür · label: Zeile der Abrechnung · line: eigener Satz für James statt „… hat … gespendet!“
+   */
+  donate(name, amount, what, { label = 'Spenden', line } = {}) {
+    this.earn(amount, label);
+    this.bot('james', line || `${name} hat ${fmtCent(amount)} ${what ? 'für »' + what + '« ' : ''}gespendet!`);
     this.audio.pling();
+    this.stats.donations++;
+    if (!(this.fans.top?.amount >= amount)) this.fans.top = { name, amount };
+    // die Alter-Skala: Ab 100 € ruft der ganze Chat, darunter kommentiert er nur ab und zu (sonst wird es ein Sprechchor –
+    // bei bester Laune kommen Mittelalter im Minutentakt)
     const alter = alterReaction(amount);
-    if (alter) this.later(0.6, () => this.chat(alter + (amount >= 33 ? ' 😱' : '')));
-    this.hype += v * 2;
-    return v;
+    if (alter && amount >= 100) this.burst(alter, 3, 1.8);
+    else if (alter && chance(amount >= 50 ? 0.35 : amount >= 20 ? 0.4 : 0.15)) this.later(0.6, () => this.chat(this.chatLine(alter)));
+    // genau 4 €: Ab diesem Betrag gibt es im Stream eine Dankeseinblendung – das wissen die Stammgäste
+    else if (amount === 4 && chance(0.5)) this.later(0.7, () => this.chat(this.chatLine(CHAT.einblendung)));
+    this.eco.donated(amount);
+    this.onMood('donation', clamp(amount / 20, 0.25, 1));
+    // eine richtig große Spende gibt das Sprachstudio gern weiter, sobald es Luft hat (die größte zuerst) – und ab
+    // 100 € ruft es sofort „Alter!“, so wie das echte Sprachstudio
+    const S = this.studio;
+    if (amount >= 50 && !(S.extra?.amount >= amount)) S.extra = { kind: amount >= 100 ? 'alter' : 'thanks', name, amount, until: this.t + 20 };
+    return amount;
+  }
+
+  /**
+   * Ein schöner Moment (haarscharf überholt, Brunnen gegrüßt, brav am Blitzer vorbei …): Das hebt die Stimmung,
+   * und manchmal lässt ein begeisterter Zuschauer dafür eine Kleinigkeit springen. Einen festen Lohn gibt es nie.
+   */
+  thrill(kind, what) {
+    const v = this.eco.thrill(kind);
+    if (v) this.later(rand(0.9, 2), () => this.donate(viewerName(), v, what));
   }
 
   // ------------------------------------------------------------------------
@@ -239,20 +374,40 @@ export class Game {
 
     // --- Fahren ------------------------------------------------------------
     const sBefore = p.s;
-    p.update(dt, ctl, { wet: W.level });
+    // Krümmung und Steigung unter dem Wagen (Kurven-Paket, sonst 0)
+    p.update(dt, ctl, { wet: W.level, kappa: ctl.kappa || 0, grade: ctl.grade || 0 });
     const ds = p.s - sBefore;
     for (const e of p.events) {
       if (e.type === 'rail') {
         this.audio.scrape();
         this.fx.shake(e.hard ? 0.5 : 0.2);
+        // wer an der Leitplanke entlangschrammt, verstimmt den Chat nicht mit jedem Funken neu
+        if (this.t - this.scrapeT > 1.5) {
+          this.scrapeT = this.t;
+          this.eco.cheer(e.hard ? 'scrapeHard' : 'scrape');
+        }
         if (e.hard && chance(0.4)) this.chat(pick(['Leitplanke! 😬', 'Uff, die Leitplanke', 'Kratz kratz']));
+      } else if (e.type === 'understeer' && this.t > (this.understeerSaid ?? -99) + 25) {
+        // zu schnell für die Kurve: NOMI sagt es freundlich (höchstens alle 25 s)
+        this.understeerSaid = this.t;
+        this.say(damageLine('understeer'), 'worried', { priority: false });
       }
     }
-    st.distance = p.s;
+    // XXL: Uhr und Strecken zählen Reisezeit und Reisemeter (travelStep), klassisch Spielzeit und Meter der Straße
+    const go = this.worldNavi ? this.travelStep(dt) : null;
+    const dm = go ? go.m : ds;
+    st.distance = go ? this.odometer : p.s;
     st.maxSpeedKmh = Math.max(st.maxSpeedKmh, p.kmh);
-    st.cleanDistance += ds;
-    if (W.level > 0.3) st.rainDistance += ds;
-    this.clock += dt * 0.5;
+    // neue Höchstgeschwindigkeit dieser Fahrt: Der Chat schaut auf den Tacho
+    const mark = this.eco.speedMark(p.kmh);
+    if (mark) {
+      this.chat(fillTemplate(pick(CHAT.speedMark), { kmh: mark }));
+      this.thrill('topSpeed', `${mark} km/h`);
+    }
+    st.cleanDistance += dm;
+    if (W.level > 0.3) st.rainDistance += dm;
+    // die Uhr: klassisch 30 Spielminuten je Minute, in der XXL-Welt die Reisezeit
+    this.clock += go ? go.secs / 60 : dt * 0.5;
     this.megafonCd = Math.max(0, this.megafonCd - dt);
 
     // --- Eingaben ------------------------------------------------------------
@@ -281,11 +436,14 @@ export class Game {
 
     this.updateLeftLane(dt);
     this.updateWeather(dt, ds);
+    if (this.tv) this.tickBrunnenTV(ctl);
+    else if (this.navi.stopping) this.tickHalt(dt);
     this.updateNavi(dt);
     this.updateEvents(dt, camera);
     this.updatePickups(dt, camera);
     this.updateViewers(dt);
-    this.updateChat(dt);
+    this.updateChat(dt, ctl.kappa || 0);
+    this.updateStudio();
     this.updateJobs();
 
     // Standstreifen
@@ -297,6 +455,7 @@ export class Game {
     if (p.shoulderTime > 4.5) {
       p.shoulderTime = 0;
       this.fine(10, 'Verwarngeld');
+      this.eco.cheer('fine');
       this.ui.toast('🚓 Standstreifen: 10\u00a0€ Verwarngeld', 'bad');
       this.callPolice('STANDSTREIFEN? NEIN!');
     }
@@ -323,19 +482,22 @@ export class Game {
     const L = this.left;
     const p = this.player;
     if (!L.open) {
-      L.next -= dt;
+      if (!this.offAutobahn) L.next -= dt;
       if (L.next <= 0) this.openLeftLane();
     } else {
       L.timer -= dt;
+      // Geld gibt es fürs Linksfahren nicht – aber jemand hat dafür gespendet und will es jetzt auch sehen
       if (p.inLeftLane) {
-        const rate = 1.25 * (0.45 + 0.55 * clamp(p.speed / 50, 0, 1.3)) * L.bonusMul;
-        const v = this.earn(rate * dt, 'Linke Spur', { silent: true });
-        L.earned += v;
-        this.leftTick += v;
         this.stats.leftLaneTime += dt;
-        if (this.leftTick >= 1) {
-          this.ui.money(this.leftTick, 'Linke Spur');
-          this.leftTick = 0;
+        L.idle = 0;
+      } else {
+        L.idle += dt;
+        if (L.idle > 14 && L.teased < 2 && L.timer > 8) {
+          L.idle = 0;
+          L.teased++;
+          // erst fragt, wer gespendet hat, dann stupst der Rest des Chats
+          if (L.teased === 1) this.chat(pick(CHAT.leftLaneDonor), L.donor);
+          else this.chat(this.chatLine(CHAT.leftLaneTease));
         }
       }
       if (L.timer <= 10 && !L.warned) {
@@ -359,6 +521,7 @@ export class Game {
         L.rg = 0;
         L.rgWarned = false;
         this.fine(10, 'Verwarngeld');
+        this.eco.cheer('fine');
         this.ui.toast('🚓 Rechtsfahrgebot missachtet: 10\u00a0€ Verwarngeld', 'bad');
       }
     } else {
@@ -370,75 +533,133 @@ export class Game {
   openLeftLane() {
     const L = this.left;
     L.open = true;
-    L.timer = 60;
+    L.timer = L.dur;
     L.warned = false;
-    const name = viewerName();
+    L.idle = 0;
+    L.teased = 0;
+    L.donor = viewerName();
+    this.eco.laneOpened();
     this.say(BOARD.leftLane, 'happy');
     this.audio.chime();
-    this.later(0.2, () => this.donate(name, pick([3.33, 5, 2.5, 10, 4.2]), 'Linke Spur freischalten'));
+    this.later(0.2, () => this.donate(L.donor, this.eco.laneDonation(), 'Linke Spur freischalten', { label: 'Aktionen' }));
     this.burst(CHAT.leftLane, 3, 3);
-    this.ui.banner('⬅️ Linke Spur freigeschaltet!', 4, 'Eine Minute Bonusguthaben auf der ganz linken Spur');
-    this.hype += 40;
+    this.ui.banner('⬅️ Linke Spur freigeschaltet!', 4, `${L.dur === 60 ? 'Eine Minute' : L.dur + ' Sekunden'} lang darfst du ganz links fahren`);
   }
 
   closeLeftLane() {
     const L = this.left;
     L.open = false;
-    L.next = rand(45, 70) * L.freq;
+    // genutzt: Der Chat freut sich, und die nächste Freischaltung kommt eher – links liegen gelassen: umgekehrt
+    const { used, wait } = this.eco.laneClosed(L.freq);
+    L.next = wait;
     L.grace = 5;
     this.say(BOARD.leftLaneEnd, 'idle');
-    if (L.earned > 0.5) this.ui.toast(`⬅️ Linke Spur: ${fmtCent(L.earned)} Bonusguthaben`, 'good');
-    L.earned = 0;
-    this.burst(CHAT.leftLaneEnd, 2, 2.5);
+    this.burst(used >= 0.6 ? CHAT.leftLaneUsed : used < 0.2 ? CHAT.leftLaneIgnored : CHAT.leftLaneEnd, 2, 2.5);
   }
 
   // --- Wetter ------------------------------------------------------------------
+  // Regen kommt als Schauer: gut 30 bis 75 s, dazwischen mehrere Minuten trocken. Der erste erst nach einem
+  // trockenen Start und nur, wenn eine Weile kein Rempler war (geschickte Spieler bekommen ihn eher). Alles
+  // läuft nach Fahrzeit, nicht nach Strecke. Vor dem Schauer zieht der Himmel ein paar Sekunden lang zu
+  // (front, sky), danach klart er langsam wieder auf.
   updateWeather(dt, ds) {
     const W = this.weather;
-    const p = this.player;
-    if (!W.active) {
-      W.cool -= dt;
-      const skilled = p.s >= 4000 && this.stats.cleanDistance >= 2500;
-      if (W.cool <= 0 && (skilled || p.s >= 7500)) {
+    if (W.crashes !== this.stats.crashes) {
+      W.crashes = this.stats.crashes;
+      W.calm = 0;
+    }
+    W.calm += dt;
+    if (W.front > 0) {
+      W.front -= dt;
+      if (W.front <= 0) {
         W.active = true;
-        W.target = rand(0.6, 1);
-        W.dur = rand(95, 150);
+        W.target = W.next;
+        W.dur = rand(28, 70);
         W.announced = false;
+      }
+    } else if (!W.active) {
+      W.cool -= dt;
+      if (W.cool <= 0 && (W.calm >= 30 || W.cool <= -60)) {
+        W.front = rand(6, 9);
+        W.next = rand(0.6, 1);
       }
     } else {
       W.dur -= dt;
       if (W.dur <= 0) {
         W.active = false;
         W.target = 0;
-        W.cool = rand(60, 100);
+        W.cool = rand(170, 290);
         this.later(8, () => this.chat(pick(['Endlich trocken ☀️', 'Regen vorbei!', 'Der Wischer hat sich erholt'])));
       }
     }
-    const rate = W.target > W.level ? 0.07 : 0.05;
+    const rate = W.target > W.level ? 0.12 : 0.15;
     W.level += clamp(W.target - W.level, -rate * dt, rate * dt);
+    const sky = W.active || W.front > 0 ? W.next : 0;
+    W.sky += clamp(sky - W.sky, -dt / 12, dt / 6);
     if (W.active && !W.announced && W.level > 0.12) {
       W.announced = true;
       this.say(BOARD.rain, 'worried');
-      this.burst(CHAT.rainStart, 3, 4);
-      this.later(4, () => this.ui.banner('🌧️ Regenzulage!', 4, 'Solange es regnet, gibt es 1,5-fach Guthaben'));
+      this.onMood('rain', 1);
+      // Regen ist Unterhaltung: Der Chat wird wach (Geld gibt es dafür nicht)
+      this.eco.cheer('rainStart');
+      this.burst(CHAT.rainStart, 5, 5);
       this.audio.whoosh();
     }
-    W.regenzulage = W.level > 0.3;
+    // der zuckende Wischer ist ein Dauerbrenner (gezählt wird in onWiper): alle paar Sekunden ein Lacher
+    if (this.stats.twitches !== W.twitches) {
+      W.twitches = this.stats.twitches;
+      if (W.level > 0.2 && this.t > W.laughT) {
+        W.laughT = this.t + 10;
+        this.thrill('wiperTwitch', 'den zuckenden Wischer');
+      }
+    }
     this.windshield.setRain(W.level);
   }
 
+  /**
+   * Ereignisse des Scheibenwischers: 'twitch' je Anlauf (im Schauer jeder kräftige Ruck der stehenden Wischer) und
+   * 'wipe' je ganzem Wisch, 'stand' wenn sie im Schauer stehen bleiben, der Rest nur für Geräusche.
+   */
   onWiper(type) {
-    if (type === 'twitch') {
-      this.audio.wiperTwitch();
-      this.stats.twitches++;
-    } else {
-      this.audio.wiperSweep();
+    const A = this.audio;
+    const wet = this.running && this.weather.level > 0.2;
+    if (type === 'wipe') {
+      A.wiperSweep();
       this.stats.wipes++;
-    }
-    if (this.running && type === 'twitch' && this.T.wiperChat <= 0 && this.weather.level > 0.2 && chance(0.3)) {
-      this.T.wiperChat = 14;
-      this.chat(pick(CHAT.wiper));
-    }
+      // mit früher Firmware ist ein ganzer Wisch ein kleines Wunder
+      if (wet && this.windshield.firmware < 2 && chance(0.5)) this.later(1.3, () => this.chat(pick(CHAT.wiperWipe)));
+    } else if (type === 'twitch') {
+      A.wiperStrain();
+      this.stats.twitches++;
+      this.onMood('wiper', 1);
+      if (wet && this.T.wiperChat <= 0 && chance(0.3)) {
+        this.T.wiperChat = 14;
+        // ab dem fünften Zucken zählt der Chat auch mal mit
+        const n = this.stats.twitches;
+        this.chat(n >= 5 && chance(0.4) ? fillTemplate(pick(CHAT.wiperCount), { n, w: this.stats.wipes }) : pick(CHAT.wiper));
+      }
+    } else if (type === 'phantom') {
+      // Fehlalarm bei trockener Scheibe
+      A.wiperSqueak();
+      this.stats.twitches++;
+      if (this.running) {
+        if (chance(0.5)) this.later(1, () => this.chat(pick(CHAT.wiperPhantom)));
+        else if (chance(0.5)) this.say(BOARD.wiperPhantom, 'think', { priority: false });
+      }
+    } else if (type === 'stand' || type === 'stuck') {
+      A.wiperStutter(3);
+      this.onMood('wiper', 1);
+      // stehen die Wischer im Schauer, entschuldigt sich NOMI ab und zu für die Beta-Software (nach der Regenansage;
+      // die Uhr läuft mit den anderen in this.T)
+      if (type === 'stand' && wet && !(this.T.wiperSorry > 0) && chance(0.6)) {
+        this.T.wiperSorry = rand(70, 110);
+        this.later(rand(5, 8), () => this.say(pick(BOARD.wiperSorry), 'worried', { priority: false }));
+      }
+    } else if (type === 'jerk') {
+      A.wiperTwitch();
+      A.wiperStutter(4, 0.1);
+    } else if (type === 'release') A.wiperGiveUp();
+    else if (type === 'park') A.wiperClack();
   }
 
   manualWiper() {
@@ -446,6 +667,7 @@ export class Game {
     if (r === 'wipe') this.ui.toast('🌧️ Wisch! Klare Sicht.', 'info');
     else if (r === 'twitch') {
       this.ui.toast('🌧️ Der Wischer zuckt nur …', 'info');
+      this.onMood('wiper', 1);
       if (chance(0.4)) this.chat(pick(CHAT.wiper));
     }
   }
@@ -453,16 +675,34 @@ export class Game {
   // --- Navi ------------------------------------------------------------------------
   updateNavi(dt) {
     const p = this.player;
+    const nv = this.navi;
+    // Kurz vor dem Ziel doch noch überboten – ein Klassiker. (Nur hier muss das Spiel wissen, wie viele Sekunden
+    // es noch bis zum Ziel sind: klassisch aus den gezählten Metern, in der XXL-Welt kennt sie die Fahrt.) Dort sind
+    // die Pausen zwischen den Geboten mit der Fahrzeit gestreckt (bidPlan.stretch), also auch dieses Zeitfenster.
+    const eta = this.worldNavi ? nv.eta(p.speed) : nv.arrived ? Infinity : (nv.targetS - p.s) / Math.max(p.speed, 8);
+    if (eta < 8 && this.T.bid > eta && this.T.bid < 45 * (this.bidPlan.stretch || 1) && this.eco.lateBid()) {
+      this.T.bid = rand(0.4, Math.max(0.5, eta - 2.5));
+      this.bidPlan.late = true;
+    }
     if (this.T.bid <= 0) {
-      this.T.bid = rand(36, 72);
-      if (chance(0.16)) {
+      const plan = this.bidPlan;
+      const siegen = this.bidTargets().find((x) => x.special === 'siegen');
+      if (plan.kind === 'step' && !plan.late && siegen && nv.target !== siegen && chance(0.16)) {
         // Siegen wird geboten … und sofort überboten
         const n = viewerName();
-        // das Siegen-Gebot zählt wirklich, damit das Gegengebot danach mindestens 1 Cent mehr ist
-        this.navi.bid = Math.round((this.navi.bid + 0.01) * 100) / 100;
-        this.bot('james', `${n} bietet ${fmtCent(this.navi.bid)} – neues Ziel: Siegen`);
+        // Das Siegen-Gebot zählt wirklich: Das Navi stellt kurz auf Siegen um (Navi, Schilderbrücken und James sagen
+        // dasselbe), die Kasse bekommt den Cent, und das Gegengebot danach liegt mindestens 1 Cent darüber.
+        nv.overbid(p.s, n, 0.01, siegen);
+        this.stats.naviChanges++;
+        this.stats.topBid = Math.max(this.stats.topBid, nv.bid);
+        this.earn(nv.bid, 'Navi-Gebote', { silent: true });
+        this.bot('james', `${n} bietet ${fmtCent(nv.bid)} – neues Ziel: Siegen`);
         this.chat(pick(['SIEGEN!', 'Siegen? 👀', 'Diesmal Siegen!']));
-        this.later(2.2, () => this.changeNavi(true));
+        if (this.gantryStale()) this.scenery.relabelGantries();
+        // bis das Gegengebot da ist, ruht die Uhr
+        this.T.bid = 99;
+        // (XXL: Hält der Wagen in der Zwischenzeit am Brunnen von Siegen, gehört das nächste Gebot zur neuen Runde)
+        this.later(2.2, () => (this.worldNavi && (this.roundNew || this.navi.stopping) ? null : this.changeNavi(true)));
       } else this.changeNavi(false);
     }
     for (const e of this.navi.update(dt, p.s)) {
@@ -473,35 +713,166 @@ export class Game {
     }
   }
 
+  /**
+   * Ein Zuschauer überbietet. Jedes Gebot wird bezahlt (zurück gibt es nichts) und landet in der Stream-Kasse;
+   * wie viel draufgelegt wird und wann das nächste Gebot kommt, plant economy.js (bidPlan).
+   */
   changeNavi(siegenOverbid) {
     const p = this.player;
-    const bidder = viewerName();
-    const t = this.navi.overbid(p.s, bidder);
-    this.scenery.relabelGantries();
+    const nv = this.navi;
+    const plan = this.bidPlan;
+    const chaos = plan.kind === 'chaos';
+    // neue Runde nach einer Ankunft: Es geht wieder bei 1 Cent los
+    if (this.roundNew) {
+      this.roundNew = false;
+      nv.bid = 0;
+    }
+    let bidder = viewerName();
+    let target;
+    if (plan.kind === 'duel') {
+      // Bieterduell: Zwei schaukeln sich hoch, jeder mit seinem Ziel – der Herausforderer und wer gerade vorn lag
+      if (plan.first || !this.duel) {
+        const holder = nv.bidder === 'Mini Adam' ? viewerName() : nv.bidder;
+        this.duel = { n: 0, who: [{ name: bidder, target: this.pickBidTarget() }, { name: holder, target: nv.target }] };
+      }
+      const d = this.duel.who[this.duel.n++ % 2];
+      bidder = d.name;
+      target = d.target;
+    }
+    // XXL: Fährt der Wagen schon durch den Zielort, nimmt ihm dieses Gebot das BrunnenTV vor der Nase weg
+    const snatched = this.worldNavi && nv.inTown;
+    const t = nv.overbid(p.s, bidder, plan.increment, target || this.pickBidTarget());
     this.stats.naviChanges++;
-    this.bot('james', `${bidder} bietet ${fmtCent(this.navi.bid)} – neues Ziel: ${t.name}`);
+    this.stats.topBid = Math.max(this.stats.topBid, nv.bid);
+    // Cent-Gebote lassen eine frische größere Gutschrift am Guthaben stehen
+    this.earn(nv.bid, 'Navi-Gebote', { silent: nv.bid < 1 && this.t - this.popT < 1.6 });
+    // im Chaos fasst James sich kurz, sonst schieben seine Meldungen den ganzen Chat aus dem Fenster
+    // (echte Orte heißen überall wie auf ihrer Ortstafel, auch wenn es eilt)
+    this.bot('james', `${bidder} bietet ${fmtCent(nv.bid)} – neues Ziel: ${chaos && !this.worldNavi ? shortName(t) : t.name}`);
     if (siegenOverbid) this.later(0.8, () => this.chat(pick(['Siegen wurde überboten. Wie immer 😂', 'Nicht schon wieder Siegen verpasst', 'Klassiker'])));
-    this.say(BOARD.naviChanged, 'think');
-    this.audio.naviAlert();
-    this.burst(CHAT.naviChanged, 2, 3);
+    this.eco.cheer(chaos ? 'bidChaos' : plan.kind === 'big' ? 'bidBig' : 'bid');
+    // XXL: Echte Orte liegen Minuten auseinander – die Stream-Kasse plant die Ruhe danach mit der Fahrzeit des Navis
+    const next = this.eco.nextBid(this.worldNavi ? { bid: nv.bid, drive: nv.driveSecs() } : { bid: nv.bid });
+    this.bidPlan = next;
+    this.T.bid = next.delay;
+
+    // Was der Chat dazu sagt
+    if (chaos) {
+      this.audio.tone(1174.7, 0.07, 'triangle', 0.035);
+      if (plan.first) {
+        this.ui.toast('🤑 Bieter-Chaos im Chat: Jeder legt einen Cent drauf!', 'info');
+        this.burst(CHAT.bidChaos, 2, 2.5);
+      } else if (chance(0.3)) this.chat(this.chatLine(CHAT.bidChaos));
+    } else {
+      this.audio.naviAlert();
+      if (plan.kind === 'duel') {
+        if (plan.first) {
+          this.ui.toast(`🤑 Bieterduell: ${this.duel.who[0].name} gegen ${this.duel.who[1].name}`, 'info');
+          this.burst(CHAT.bidDuel, 3, 3);
+        } else if (chance(0.4)) this.chat(this.chatLine(CHAT.bidDuel));
+        if (next.kind !== 'duel' || next.first) this.later(1.6, () => this.chat(this.chatLine(CHAT.bidDuelEnd)));
+      } else if (plan.kind === 'big') {
+        this.ui.toast(`🤑 Großes Gebot: ${fmtCent(nv.bid)} von ${bidder}`, 'good');
+        this.burst(CHAT.bidBig, 3, 2.5);
+      } else if (plan.late) this.burst(CHAT.bidLate, 3, 2);
+      else this.burst(this.worldNavi ? CHAT.ortChanged : CHAT.naviChanged, 2, 3);
+    }
+    if (snatched) this.later(1, () => this.burst(CHAT.brunnenWeg, 2, 2.5));
     if (t.special === 'siegen') this.later(1.4, () => this.chat('SIEGEN SETZT SICH DURCH?! 😱'));
-    if (this.navi.wende) this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info'));
-    this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${fmtNum(this.navi.km, 1)} km)`, 'info', t.note);
-    this.hype += 25;
+    // Die Navi-Tafeln der Schilderbrücken zeigen immer dasselbe Ziel wie das Navi, auch im Bieter-Chaos (Navi und Welt
+    // dürfen sich nie widersprechen). Liegt das Ziel vor allen Brücken voraus, zeigen sie Orte statt eines Navi-Ziels –
+    // die bleiben dann stehen, statt bei jedem Cent neu gewürfelt zu werden.
+    if (this.gantryStale()) this.scenery.relabelGantries();
+    // NOMI und der Hinweis aufs neue Ziel kommen erst, wenn es kurz stehen bleibt – im Chaos und im Duell kämen sie
+    // nicht hinterher
+    if (next.delay > 6) {
+      if (chaos) this.later(rand(2.5, 4), () => this.chat(this.chatLine(CHAT.bidCalm)));
+      if (this.t - this.naviSaidT > 10) {
+        this.naviSaidT = this.t;
+        this.say(BOARD.naviChanged, 'think');
+      }
+      this.onMood('curious', 1);
+      if (this.worldNavi) {
+        // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt);
+        // die Entfernung steht da wie auf dem Kärtchen im Auto
+        if (nv.wende) {
+          this.later(1.5, () => this.chat(this.chatLine(CHAT.ortWende)));
+          this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'info'));
+        }
+        this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${nv.distance})`, 'info', t.note);
+        return;
+      }
+      if (nv.wende) this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info'));
+      this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${fmtNum(nv.km, 1)} km)`, 'info', t.note);
+    }
+  }
+
+  /**
+   * Die Ziele, auf die gerade geboten werden kann (je Ziel: name, optional weight, special, note): klassisch die feste
+   * Liste aus data.js, in der XXL-Welt die echten Orte der Karte, die die Fahrt von hier über Straßen erreicht –
+   * gewichtet nach Bekanntheit, Entfernung und Neuheit (WorldNavi.candidates).
+   */
+  bidTargets() {
+    return this.worldNavi ? this.navi.candidates() : NAVI_TARGETS;
+  }
+
+  /** Wohin der nächste Bieter will (nie dorthin, wo es ohnehin gerade hingeht). */
+  pickBidTarget() {
+    return this.eco.pickTarget(this.bidTargets(), this.navi.target);
+  }
+
+  /**
+   * Was die Navi-Tafel einer Schilderbrücke bei sSign zeigt: das Ziel des Navis (gleicher Kurzname wie überall) und
+   * die Entfernung ab dem Schild – oder null, wenn das Ziel schon vor dem Schild liegt (dann stehen dort Orte).
+   */
+  gantryNavi(sSign) {
+    const km = (this.navi.targetS - sSign) / 1000;
+    return km < 0.2 ? null : { target: shortName(this.navi.target), km };
+  }
+
+  /** Zeigt eine Schilderbrücke voraus ein Navi-Ziel oder muss jetzt eins zeigen? (Vorbeigefahrene vergisst sie.) */
+  gantryStale() {
+    const s = this.player.s;
+    let stale = false;
+    for (const [sSign, shown] of this.gantryShown) {
+      if (sSign < s - 60) this.gantryShown.delete(sSign);
+      else if (shown || this.gantryNavi(sSign)) stale = true;
+    }
+    return stale;
   }
 
   onArrive(e) {
     const p = this.player;
     const t = e.target;
     this.stats.naviReached++;
-    let bonus = Math.round(20 + e.km * 14);
-    if (t.special === 'siegen') bonus *= 2;
     this.say(BOARD.arrived, 'love');
+    this.onMood('cheer', 1);
     this.audio.jingle();
-    this.earn(bonus, 'Navi-Ziele');
-    this.ui.banner(`🏁 Ziel erreicht: ${t.name}`, 4);
-    this.burst(CHAT.naviReached, 4, 3);
-    this.hype += 120;
+    // klassisches Spiel: an jedem erreichten Navi-Ziel wird ein Karosserie-Punkt repariert (mit Pflaster)
+    if (p.repair(1)) {
+      this.ui.damage(p.hits, p.maxHits);
+      this.later(2.2, () => this.ui.toast('🩹 ' + damageLine('repair'), 'good'));
+    }
+    // (XXL: Dort nennt die BrunnenTV-Titelkarte den Ort und führt die Mittelspalte an – ein Banner darunter wäre doppelt)
+    if (!this.worldNavi) this.ui.banner(`🏁 Ziel erreicht: ${t.name}`, 4);
+    this.burst(this.worldNavi ? CHAT.ortReached : CHAT.naviReached, 4, 3);
+    // Fürs Ankommen selbst gibt es nichts – aber der Chat feiert es mit einem Schwung Ortsspenden (Siegen: doppelt;
+    // am Drive-In ist die erste natürlich für „Pommes ohne Rückfragen“)
+    const gifts = this.eco.arrive({ double: t.special === 'siegen' });
+    // bis hier steht die letzte Ortsspende spätestens im Chat (ein „5 Cent“-Angebot zum Ziel kommt erst danach)
+    this.cent5.arrivedT = this.t + 2.4 + (gifts.length - 1) * 1.1;
+    gifts.forEach((v, i) => this.later(1.8 + i * 1.1 + rand(0, 0.6), () => {
+      // kurz gehalten, es kommen ja mehrere hintereinander: „Ortsspende von …: 5,00 €“
+      const name = viewerName();
+      const what = i === 0 && t.special === 'pommes' ? 'Pommes ohne Rückfragen' : 'Ortsspende';
+      this.donate(name, v, what, { label: 'Ortsspenden', line: `${what} von ${name}: ${fmtCent(v)}` });
+    }));
+    this.later(1.2, () => this.chat(this.chatLine(CHAT.ortsspende)));
+    // danach beginnt eine neue Bieterrunde bei 1 Cent
+    this.duel = null;
+    this.roundNew = true;
+    this.bidPlan = this.eco.nextBid({ bid: 0 });
+    this.T.bid = this.bidPlan.delay;
     if (this.up.konfetti) {
       this.cockpit.addConfetti(70);
       this.audio.confetti();
@@ -514,7 +885,9 @@ export class Game {
         this.stats.charges++;
         break;
       case 'gifhorn':
-        this.later(1.5, () => this.callPolice('GIFHORN GRÜSST!'));
+        // (im Ort der XXL-Welt fährt kein Verkehr, also auch kein Streifenwagen vor: dort grüßt der Chat)
+        if (this.worldNavi) this.burst(CHAT.gifhornOrt, 3, 2.5);
+        else this.later(1.5, () => this.callPolice('GIFHORN GRÜSST!'));
         break;
       case 'brunnen':
         this.later(1.2, () => this.speech.say('Ein sehr schöner Brunnen. Vielen Dank.', 'schoennbrun'));
@@ -522,23 +895,22 @@ export class Game {
         this.burst(CHAT.brunnen, 3, 2);
         break;
       case 'elsa':
-        this.burst(CHAT.elsa, 3, 2);
+        this.burst(this.worldNavi ? CHAT.elsaKassel : CHAT.elsa, 3, 2);
         break;
       case 'propper':
-        this.later(4.5, () => this.say('Meister Propper ist leider noch nicht da.', 'worried', { priority: false }));
+        this.later(4.5, () => this.say('Meister Pünktlich ist leider noch nicht da.', 'worried', { priority: false }));
         this.later(6, () => this.chat(pick(['Wie immer 😂', 'Er ist bestimmt gleich da', 'Fünf Minuten noch!'])));
         break;
       case 'malte':
         this.burst(['Malte Malte Malte Malte', 'MALTE!', 'MaLTE', 'Malte ist eingestiegen ✔️'], 5, 3);
         break;
       case 'siegen':
-        this.burst(['SIEGEN!!! Es ist tatsächlich passiert 😱', 'Geschichte wurde geschrieben', 'Doppelter Bonus für Siegen!'], 3, 2);
+        this.burst(['SIEGEN!!! Es ist tatsächlich passiert 😱', 'Geschichte wurde geschrieben', 'Doppelte Ortsspenden für Siegen!'], 3, 2);
         break;
       case 'sparkasse':
-        this.later(1.5, () => this.ui.chat({ name: 'Wissenschaftlicher Dienst', text: `🔬 Ergebnis: Die Sparkasse ist ${this.navi.sparkColor}.`, bot: 'claudia', icon: '🔬' }));
+        this.later(1.5, () => this.ui.chat({ name: 'Wissenschaftlicher Dienst', text: `🔬 Ergebnis: Die Bank am Markt ist ${this.navi.sparkColor}.`, bot: 'claudia', icon: '🔬' }));
         break;
       case 'pommes':
-        this.earn(10, 'Navi-Ziele');
         this.burst(['Pommes ohne Rückfragen 🍟', 'Mit Mayo!', 'Keine Rückfragen!'], 3, 2);
         break;
       case 'bude':
@@ -547,8 +919,112 @@ export class Game {
       default:
         break;
     }
-    // nach kurzer Zeit kommt das nächste Gebot
-    this.T.bid = Math.min(this.T.bid, rand(6, 10));
+  }
+
+  /**
+   * Am Navi-Ziel vorbeigefahren: Das verstimmt den Chat. Klassisch liegt jedes Ziel an der Strecke und kann nicht
+   * verfehlt werden; in der XXL-Welt mit ihren echten Ausfahrten meldet es onTrip.
+   */
+  missedTarget() {
+    this.eco.cheer('missedTarget');
+    this.burst(CHAT.missedTarget, 3, 2.5);
+  }
+
+  /**
+   * Ereignisse der XXL-Fahrt (trip.js, main.js reicht sie von der Welt durch): Dort liegen Ankunft, Ausfahrten und
+   * Abzweige in der Strecke. Am Zielpunkt des Brunnenplatzes ('arrive') bremst der Wagen zum Halt; erreicht ist das
+   * Navi-Ziel, wenn er am Brunnen steht ('rest') – dann wird gefeiert wie an jedem klassischen Ziel (onArrive jubelt
+   * selbst), und BrunnenTV beginnt. Mini Adams Mimik reagiert auch sonst wie an den klassischen Stellen (neuer Weg:
+   * Blick aufs Navi), und wer an der geplanten Ausfahrt vorbeifährt, verstimmt den Chat.
+   */
+  onTrip(e) {
+    if (!this.running) return;
+    if (e.type === 'arrive') {
+      this.navi.stop(e.place);
+      this.halt = { sec: e.sec, still: 0 };
+    } else if (e.type === 'pass') this.navi.visit(e.place);
+    else if (e.type === 'rest') {
+      // (hat tickHalt den Halt schon selbst festgestellt, ist die Ankunft längst gefeiert)
+      if (this.navi.stopping) this.arriveAtFountain();
+    } else if (e.type === 'fork') {
+      // anders gefahren als angesagt: Die Fahrt plant von dort neu, und NOMI sagt es
+      if (e.wrong) this.say('Route wird neu berechnet.', 'think', { priority: false });
+      if (e.wrong && e.planned === 'exit') {
+        this.missedTarget();
+        this.onMood('startled', 0.5);
+      } else if (e.taken === 'exit') this.onMood('curious', 0.7);
+    }
+  }
+
+  /**
+   * Zwischen Zielpunkt und Halt am Brunnen warten die Bieter. Kommt der Wagen nicht zum Stehen – das Ziel wechselte
+   * erst im letzten Moment wieder hierher, etwa mitten im Bieterduell –, gibt die Welt den Halt auf: Dann war es keine
+   * Ankunft, der Chat neckt, und die Runde läuft mit dem nächsten Gebot weiter (ohne neuen Start bei 1 Cent).
+   */
+  tickHalt(dt) {
+    this.T.bid = Math.max(this.T.bid, BRUNNEN_TV.pause);
+    if (!this.world.stopping()) {
+      this.halt = null;
+      this.navi.miss();
+      this.T.bid = rand(1.5, 3);
+      this.burst(CHAT.brunnenVorbei, 3, 2.5);
+      return;
+    }
+    // Die Welt meldet den Halt nur auf 2 m genau am Haltepunkt. Kam das Ziel so spät zurück, dass der Wagen erst ein
+    // paar Meter dahinter steht, bliebe er dort für immer gebremst – er steht am Brunnen, also zählt es als Ankunft.
+    this.halt.still = this.player.speed < 0.15 ? this.halt.still + dt : 0;
+    if (this.halt.still > 0.5) this.arriveAtFountain();
+  }
+
+  /** Der Wagen steht am Brunnen des Navi-Ziels: Ankunft feiern (wie klassisch), dann BrunnenTV. */
+  arriveAtFountain() {
+    const sec = this.halt.sec;
+    this.halt = null;
+    const t = this.navi.arrive();
+    this.onArrive({ target: t });
+    this.onMood('happy', 0.6);
+    this.startBrunnenTV(t, sec);
+  }
+
+  /**
+   * BrunnenTV. Die Regel des Eigentümers: „Wenn das Navi-Ziel (in einer Stadt) vor der nächsten Änderung erreicht
+   * wurde, gibt es am Ziel BrunnenTV.“ Eine Ankunft gibt es nur am Brunnenplatz des aktuellen Ziels – steht der
+   * Wagen dort, wurde es vor der nächsten Änderung erreicht: Jede Ankunft ist eine Folge. Weg nimmt sie nur ein
+   * Gebot, das das Ziel ändert, bevor der Wagen am Brunnen steht (siehe changeNavi, snatched, und tickHalt).
+   * Bis die Szene gebaut ist (REISE Stufe B), steht hier ihr Platzhalter: Die Folge wird gezählt, eine Titelkarte
+   * „BrunnenTV · Folge N“ erscheint, der Chat jubelt, und der Wagen bleibt kurz am Brunnen stehen. Die Szene hängt
+   * sich an onBrunnenTV({ n, place, name, sec, fountain, town }): Folge, Ort (Index und Name), Abschnitt der Fahrt,
+   * Brunnenplatz der Welt (XxlWorld.square: Lage, Haltepunkt, Brunnen) und der Ort aus dem Stadtbaukasten
+   * (XxlWorld.town: plan.fountains, plan.layout).
+   */
+  startBrunnenTV(t, sec) {
+    const n = ++this.stats.brunnenTV;
+    this.tv = { n, place: t.place, t0: this.t, until: this.t + BRUNNEN_TV.hold, busy: true };
+    this.ui.brunnenTV(n, t.name);
+    this.audio.brunnenJingle();
+    this.burst(CHAT.brunnenTV, 5, 3);
+    this.onBrunnenTV({ n, place: t.place, name: t.name, sec, fountain: this.world.square(sec), town: this.world.town(sec) });
+  }
+
+  /**
+   * Solange die Folge läuft: Die nächste Bieterrunde wartet, und die Zeit oder eine neue Eingabe beendet den Halt.
+   * Neu heißt: Wer beim Anhalten noch auf dem Gas steht, muss es erst loslassen (busy) – sonst wäre die Folge für
+   * jeden, der einfach durchfährt, sofort vorbei.
+   */
+  tickBrunnenTV(ctl) {
+    const tv = this.tv;
+    this.T.bid = Math.max(this.T.bid, BRUNNEN_TV.pause);
+    const busy = ctl.throttle > 0.1 || ctl.brake > 0.1 || !!ctl.steer || Math.abs(ctl.analog || 0) > 0.2 || !!ctl.horn || !!ctl.megafon;
+    const fresh = busy && !tv.busy;
+    tv.busy = busy;
+    if (this.t >= tv.until || (fresh && this.t - tv.t0 > BRUNNEN_TV.guard)) this.endBrunnenTV();
+  }
+
+  /** Die Folge ist vorbei (oder übersprungen): Karte weg, der Wagen darf weiter – durch den Ort hinaus zur nächsten Straße. */
+  endBrunnenTV() {
+    this.tv = null;
+    this.ui.brunnenTV(0);
+    this.world.release();
   }
 
   // --- Ereignisse ------------------------------------------------------------------
@@ -556,18 +1032,25 @@ export class Game {
     const p = this.player;
     const T = this.T;
     for (const k of Object.keys(T)) T[k] -= dt;
+    // ein großes, gut gelauntes Publikum bucht öfter Durchsagen, Rahmen und Aktionen
+    const eager = (clamp(this.eco.activity(), 0.6, 1.8) - 1) * dt;
+    T.durchsage -= eager;
+    T.rahmen -= eager;
+    T.trunk -= eager;
 
-    // Sprachdurchsage
-    if (T.durchsage <= 0) {
+    // Sprachdurchsage (wartet, bis das Sprachstudio ausgeredet hat)
+    if (T.durchsage <= 0 && this.t >= this.studioUntil) {
       T.durchsage = rand(48, 85);
       const pool = this.weather.level > 0.3 && chance(0.5) ? DURCHSAGEN_REGEN : DURCHSAGEN;
       const d = pick(pool);
       const text = fillTemplate(d.text);
       const name = viewerName();
-      this.donate(name, 3, 'Sprachdurchsage');
+      this.donate(name, this.eco.durchsagePrice(), 'Sprachdurchsage', { label: 'Sprachdurchsagen' });
+      this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
       this.later(1.2, () => {
         const dur = this.speech.say(text, d.voice);
         this.ui.durchsage(VOICES[d.voice].label, text, dur + 1, name);
+        this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 1);
       });
     }
 
@@ -576,9 +1059,10 @@ export class Game {
       T.rahmen = rand(75, 130);
       const r = pick(RAHMEN);
       const name = viewerName();
-      this.donate(name, r.price, r.name);
+      this.donate(name, r.price, r.name, { label: 'Rahmen' });
+      this.eco.cheer('funny');
       this.ui.rahmen(r, name);
-      this.later(2, () => this.chat(pick(CHAT.rahmen)));
+      this.later(2, () => this.chat(this.chatLine(CHAT.rahmen)));
     }
 
     // Funkloch (mit Starlink gibt es keins)
@@ -594,34 +1078,63 @@ export class Game {
       T.funkloch = rand(120, 220);
       if (!this.up.starlink) {
         this.funkloch = rand(2.2, 3.2);
+        this.eco.cheer('funkloch');
         this.fx.glitch(this.funkloch);
         this.ui.funkloch(true);
         this.burst(CHAT.funkloch, 5, 1.6);
         if (chance(0.5)) this.later(0.5, () => this.say(BOARD.funkloch, 'worried', { priority: false }));
       } else if (chance(0.5)) {
-        this.chat(pick(['Starlink sei Dank: kein Funkloch 🛰️', 'Bild bleibt stabil ✔️', 'Starlink 🔥']));
+        this.chat(pick(['Satellit sei Dank: kein Funkloch 🛰️', 'Bild bleibt stabil ✔️', 'Schüssel 🔥']));
       }
     }
 
     // Frosch-Flackern
     if (T.frog <= 0) {
       T.frog = rand(170, 300);
+      this.eco.cheer('funny');
       this.fx.green(1.4);
       this.burst(CHAT.frog, 4, 1.5);
     }
 
-    // Kofferraum (Bitspende)
+    // Aktion aus dem Live-Bereich: Kofferraum öffnen, hupen lassen oder ein Wunsch fürs Megafon
     if (T.trunk <= 0 && p.s > 2000) {
       T.trunk = rand(140, 220);
+      const a = pick(AKTIONEN.filter((x) => !x.needs || this.up[x.needs]));
       const name = viewerName();
-      this.donate(name, 5, 'Kofferraum öffnen');
-      this.fx.trunk(7);
-      this.burst(CHAT.trunk, 3, 2.5);
+      this.donate(name, a.price, a.name, { label: 'Aktionen' });
+      this.eco.cheer('funny');
+      if (a.id === 'trunk') {
+        this.fx.trunk(7);
+        this.burst(CHAT.trunk, 3, 2.5);
+      } else if (a.id === 'hupe') {
+        this.later(0.9, () => this.honk());
+        this.later(1.4, () => this.chat('Bimmel hurra! 📯'));
+      } else {
+        const text = pick(MEGAFON_WUENSCHE);
+        this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
+        this.later(1, () => {
+          this.audio.megafon();
+          const dur = this.speech.say(text, 'william');
+          this.ui.toast(`📢 Megafon-Wunsch von ${name}`, 'info', '»' + text + '«');
+          this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
+        });
+      }
+    }
+
+    // Sammelaktion: Aktions-Bot Claudia nennt das Ziel, der Chat legt zusammen (die Beiträge meldet die
+    // Stream-Kasse, siehe onStream), und wenn es erreicht ist, passiert es
+    if (T.sammel <= 0 && !this.sammel) {
+      T.sammel = rand(170, 260);
+      this.sammel = pick(SAMMELAKTIONEN);
+      const goal = this.eco.startSammel();
+      this.bot('claudia', `Sammelaktion gestartet: »${this.sammel.name}« – Ziel: ${fmtEuro(goal)}. Jeder Beitrag zählt!`);
+      this.burst(CHAT.sammel, 2, 3);
     }
 
     // Zahlen im Chat
     if (T.numbers <= 0) {
       T.numbers = rand(90, 150);
+      this.eco.cheer('funny');
       this.bot('claudia', 'Kanalpunkte-Aktion: Mini Adam möchte eine Zahl im Chat sehen!');
       const nums = [];
       for (let i = 0; i < randInt(6, 9); i++) nums.push(CHAT.zahl());
@@ -631,13 +1144,14 @@ export class Game {
     }
 
     // Polizei Gifhorn einfach mal so
-    if (T.police <= 0 && p.s > 2500) {
+    if (T.police <= 0 && p.s > 2500 && !this.offAutobahn) {
       T.police = rand(220, 340);
+      this.eco.cheer('funny');
       this.callPolice(pick(POLICE_TEXTS));
     }
 
     // Blitzer mit Tempo-120-Zone
-    if (!this.blitzer && p.s > this.S.blitzer) {
+    if (!this.blitzer && p.s > this.S.blitzer && !this.offAutobahn) {
       const s = p.s;
       this.blitzer = { limitS: s + 520, camS: s + 1120, endS: s + 1300, announced: false, checked: false };
       this.scenery.request('speed', this.blitzer.limitS, { limit: 120 });
@@ -655,6 +1169,7 @@ export class Game {
         if (p.kmh > 126) {
           this.fx.flash(1);
           this.audio.flash();
+          this.onMood('startled', 1);
           this.scenery.flashBlitzer(true);
           this.later(0.15, () => this.scenery.flashBlitzer(false));
           this.stats.photos++;
@@ -667,9 +1182,11 @@ export class Game {
           });
           this.burst(CHAT.blitzer, 3, 2);
           this.cockpit.nomi.setMood('surprised', 2);
+          // teuer für Mini Adam, aber der Chat liebt das Foto
+          this.eco.cheer('blitzerFlash');
         } else {
           this.stats.blitzerClean++;
-          this.earn(5, 'Vorbildlich');
+          this.thrill('blitzerClean', 'vorbildliches Fahren');
           this.ui.toast('📸 Nicht geblitzt – vorbildlich!', 'good');
         }
       }
@@ -680,15 +1197,15 @@ export class Game {
     }
 
     // Elefantenrennen
-    if (p.s > this.S.elefant) {
+    if (p.s > this.S.elefant && !this.offAutobahn) {
       this.S.elefant = p.s + rand(3200, 5200);
       this.traffic.elefantenrennen(p.s);
       this.say(BOARD.elefant, 'worried', { priority: false });
       this.later(3, () => this.burst(CHAT.elefant, 3, 3));
     }
 
-    // Brunnen und Elsa am Straßenrand (Hupen bringt Bonus)
-    if (!this.landmark && p.s > this.S.landmark) {
+    // Brunnen und Elsa am Straßenrand (Hupen freut den Chat – und manchmal spendet dann jemand)
+    if (!this.landmark && p.s > this.S.landmark && !this.offAutobahn) {
       const type = chance(0.55) ? 'brunnen' : 'elsa';
       // hinten in einem Abschnitt ohne Lärmschutzwand und ohne Brücke davor
       const s = this.scenery.landmarkSpot(p.s + 1500);
@@ -701,6 +1218,7 @@ export class Game {
       const view = elsa && this.elsaView(lm, d, camera);
       if (!lm.seen && (elsa ? d < view.show : d < 260)) {
         lm.seen = true;
+        lm.seenT = this.t;
         this.burst(lm.type === 'brunnen' ? CHAT.brunnen : CHAT.elsa, 3, 2);
         const key = this.hornKey();
         const t = this.ui.toast(lm.type === 'brunnen' ? `⛲ Ein Brunnen! Hupen für BrunnenTV (${key})` : `👑 Elsa! Hupen zum Grüßen (${key})`, 'info');
@@ -713,12 +1231,11 @@ export class Game {
       if (!lm.greeted && (elsa ? lm.seen : d < 220) && d > -40 && this.t - this.lastHorn < 0.3) {
         lm.greeted = true;
         if (lm.type === 'brunnen') {
-          this.earn(10, 'BrunnenTV');
           this.audio.brunnenJingle();
+          this.voiceUntil = Math.max(this.voiceUntil, this.t + 4);
           this.later(0.5, () => this.speech.say('Ein sehr schöner Brunnen.', 'schoennbrun'));
-          this.ui.toast('⛲ BrunnenTV-Bonus!', 'good');
+          this.ui.toast('⛲ Neue Folge BrunnenTV! Der Chat freut sich', 'good');
         } else {
-          this.earn(10, 'Elsa-Gruß');
           this.cockpit.nomi.setMood('love', 2.5);
           this.scenery.waveBack(lm.id);
           // Antwort statt Hinweis; ist sie schon hinter dem Spiegel oder vorbei, winkt sie hinterher
@@ -726,7 +1243,7 @@ export class Game {
           const reply = this.ui.toast(view.visible ? '👑 Elsa winkt zurück!' : '👑 Elsa winkt dir hinterher!', 'good');
           if (view.visible) this.elsaToast(lm, reply);
         }
-        this.hype += 60;
+        this.thrill('greet', lm.type === 'brunnen' ? 'BrunnenTV' : 'einen Gruß an Elsa');
       }
       if (d < -80) {
         this.landmark = null;
@@ -755,7 +1272,9 @@ export class Game {
     const p = this.player;
     const { x, scale } = this.scenery.placed(lm.id) || ELSA_STATUE;
     const side = x - (p.x + EYE.x);
-    const visible = d > 0 && Math.atan2(side, d) - p.yaw < ELSA_VIEW;
+    // Blickwinkel in der gebogenen Welt (in einer Linkskurve rückt sie weiter nach rechts)
+    const seen = d > 0 ? curvePoint(elsaTmp.set(x, 0, -d)) : null;
+    const visible = d > 0 && Math.atan2(seen.x - (p.x + EYE.x), -seen.z) - p.yaw < ELSA_VIEW;
     const fov = ((camera?.fov || 58) * Math.PI) / 180;
     const clear = (4.3 * scale) / (0.08 * Math.tan(fov / 2));
     const show = Math.min(175, Math.max(clear, side / Math.tan(ELSA_VIEW) + p.speed * 1.5));
@@ -800,19 +1319,20 @@ export class Game {
   updatePickups(dt, camera) {
     const p = this.player;
     const S = this.S;
-    if (p.s > S.charge) {
+    const spawn = !this.offAutobahn;
+    if (p.s > S.charge && spawn) {
       S.charge = p.s + rand(900, 1500);
       this.pickups.spawnAhead('charge', p.s, this.traffic);
     }
-    if (p.s > S.banana) {
+    if (p.s > S.banana && spawn) {
       S.banana = p.s + rand(1200, 1900);
       this.pickups.spawnAhead('banana', p.s, this.traffic);
     }
-    if (p.s > S.koriander) {
+    if (p.s > S.koriander && spawn) {
       S.koriander = p.s + rand(1300, 2300);
       this.pickups.spawnAhead('koriander', p.s, this.traffic);
     }
-    for (const it of this.pickups.update(dt, this.t, p, camera)) {
+    for (const it of this.pickups.update(dt, this.t, p, camera, spawn)) {
       if (it.type === 'charge') {
         p.charge(12);
         this.stats.charges++;
@@ -822,13 +1342,13 @@ export class Game {
         this.stats.bananas++;
         p.sugar = 6;
         this.audio.coin();
-        this.earn(15, 'Bananensaft');
+        this.thrill('banana', 'Bananensaft');
         this.ui.toast('🍌 Bananensaft! Zuckerschub', 'good');
         if (chance(0.7)) this.chat(pick(CHAT.banana));
       } else {
         this.stats.koriander++;
         p.wobble = 2.2;
-        this.fine(5, 'Koriander');
+        this.audio.bad();
         this.ui.toast('🌿 Koriander … bäh!', 'bad');
         this.cockpit.nomi.setMood('dizzy', 2.5);
         this.burst(CHAT.koriander, 2, 1.5);
@@ -839,45 +1359,346 @@ export class Game {
   // --- Zuschauer, Spenden, Chat ------------------------------------------------------
   updateViewers(dt) {
     const p = this.player;
-    const km = p.s / 1000;
-    this.hype *= Math.exp(-dt * 0.04);
-    let target = 220 + 95 * km + 25 * Math.sin(this.t / 23) + this.hype;
-    if (this.up.starlink) target *= 1.25;
-    if (this.funkloch > 0) target *= 0.8;
-    this.viewers = damp(this.viewers, target, 0.4, dt);
+    this.watchTraffic(dt);
+    // Die Stream-Kasse rechnet: Stimmung, Zuschauer und wer gerade etwas gibt (siehe economy.js). Wie viele
+    // zuschauen, hängt an Sendezeit, Stimmung und Trubel – nicht an der gefahrenen Strecke.
+    const d = this.ecoIn;
+    const b = this.blitzer;
+    d.kmh = p.kmh;
+    // in der Tempo-120-Zone ist langsam fahren richtig – genauso, wo die Strecke selbst das Tempo begrenzt (XXL-Welt:
+    // Rampen, Landstraßen, Orte, der Halt am Ziel)
+    d.limit = (!!b && p.s > b.limitS - 200 && p.s < b.endS) || p.limits.vmax < Infinity;
+    d.stuck = this.stuck && !d.limit;
+    // abseits der Autobahn gibt es keine linke Spur, die er nutzen oder liegen lassen könnte
+    d.leftOpen = this.left.open && !this.offAutobahn;
+    d.inLeft = p.inLeftLane;
+    d.funkloch = this.funkloch > 0;
+    for (const e of this.eco.update(dt, d)) this.onStream(e);
+    this.viewers = this.eco.viewers;
     this.peakViewers = Math.max(this.peakViewers, this.viewers);
     this.stats.maxViewers = this.peakViewers;
     const best = Math.max(500, this.save.best.viewers || 0);
-    if (!this.recordShown && this.viewers > best && p.s > 1500) {
+    if (!this.recordShown && this.viewers > best && this.t > 45) {
       this.recordShown = true;
+      this.eco.cheer('record');
       this.bot('victoria', `Neuer Zuschauerrekord: ${fmtNum(Math.round(this.viewers))} Zuschauer!`);
       this.audio.record();
+      this.onMood('proud', 1);
       this.burst(CHAT.record, 4, 2.5);
       this.ui.banner('🏆 Neuer Zuschauerrekord!', 3.5);
       if (this.up.konfetti) this.cockpit.addConfetti(30);
     }
-    this.donationT -= dt;
-    if (this.donationT <= 0) {
-      this.donationT = rand(8, 17) * clamp(500 / Math.max(this.viewers, 1), 0.5, 1.5);
-      const name = viewerName();
-      const v = randomDonation(1, 22);
-      this.donate(name, v);
-      if (chance(0.35)) this.later(0.9, () => this.chat(pick(['Danke!', 'Ehrenmensch 🙏', 'Bimmel hurra!', 'Fünftel-Alter', '❤'])));
+  }
+
+  /**
+   * Was der Chat am Verkehr sieht: Überholen unterhält, lange hinter jemandem herzuckeln langweilt.
+   * Viermal pro Sekunde hinschauen genügt.
+   */
+  watchTraffic(dt) {
+    this.trafficT -= dt;
+    if (this.trafficT > 0) return;
+    this.trafficT = 0.25;
+    // abseits der Autobahn (XXL-Welt) fährt deren Verkehr woanders weiter: Dort überholt und bremst ihn niemand
+    if (this.offAutobahn) {
+      this.stuck = false;
+      return;
+    }
+    const p = this.player;
+    const ahead = this.seenAhead;
+    let stuck = false;
+    for (const c of this.traffic.cars) {
+      const ds = c.s - p.s;
+      if (ds > 0) {
+        ahead.add(c);
+        // dicht hinter jemandem auf derselben Spur, ohne schneller zu sein
+        if (ds < 34 + c.len / 2 && Math.abs(c.x - p.x) < 1.5 && p.speed < c.speed + 2.5) stuck = true;
+      } else if (ahead.delete(c) && p.speed > c.speed + 1) {
+        this.stats.overtakes++;
+        this.eco.cheer('overtake');
+      }
+    }
+    this.stuck = stuck && p.kmh < 125;
+    if (this.stuck && this.eco.stuckT > 9 && this.t > this.stuckChatT) {
+      this.stuckChatT = this.t + 25;
+      this.chat(pick(CHAT.stuck));
     }
   }
 
-  updateChat(dt) {
+  /** Was das Publikum gerade getan hat (Ereignisse der Stream-Kasse, siehe Economy.update). */
+  onStream(e) {
+    switch (e.type) {
+      case 'donation':
+        this.donate(viewerName(), e.amount, chance(0.35) ? pick(SPENDEN_ZWECKE) : '');
+        if (chance(0.25)) this.later(0.9, () => this.chat(this.chatLine(CHAT.thanks)));
+        break;
+      case 'sub': {
+        const name = viewerName();
+        const gift = e.kind === 'gift';
+        const tier = e.tier > 1 ? ` (Stufe ${e.tier})` : '';
+        this.bot('james', gift ? `${name} verschenkt ${e.count === 1 ? 'ein Abo' : e.count + ' Abos'} an den Chat! 🎁`
+          : e.kind === 'resub' ? `${name} verlängert das Abo${tier} – schon ${e.months} Monate dabei! 🎉`
+            : `${name} hat ein Abo abgeschlossen${tier}! 🎉`);
+        this.earn(e.amount, 'Abos');
+        this.audio.coin();
+        this.stats.subs += gift ? e.count : 1;
+        if (gift) this.fans.gifts[name] = (this.fans.gifts[name] || 0) + e.count;
+        this.eco.donated(e.amount);
+        this.burst(gift ? CHAT.subGift : CHAT.sub, gift ? Math.min(3, 1 + e.count) : randInt(1, 2), 2.5);
+        break;
+      }
+      case 'vip': {
+        const name = viewerName();
+        this.bot('james', e.amount > 7.99 ? `Neuer VIP im Live-Bereich: ${name} – und legt freiwillig ${fmtCent(e.amount)} hin! 👑`
+          : `Neuer VIP im Live-Bereich: ${name} (${fmtCent(e.amount)} im Monat) 👑`);
+        this.earn(e.amount, 'VIP-Abos');
+        this.audio.coin();
+        this.stats.vips++;
+        this.fans.vips.push(name);
+        this.eco.donated(e.amount);
+        if (chance(0.7)) this.later(0.8, () => this.chat(this.chatLine(CHAT.vip)));
+        break;
+      }
+      case 'sammel': {
+        const S = this.sammel;
+        if (!S) break;
+        const name = viewerName();
+        // der letzte Beitrag schießt meist übers Ziel hinaus: dann kein „22,00 € von 20 €“, sondern Jubel
+        const now = e.done ? 'Ziel erreicht! 🎯' : `jetzt ${fmtCent(e.sum)} von ${fmtEuro(e.goal)}`;
+        this.donate(name, e.amount, '', { label: 'Sammelaktionen', line: `Sammelaktion: ${name} legt ${fmtCent(e.amount)} dazu – ${now}` });
+        if (e.half) this.later(0.6, () => this.bot('claudia', `Sammelaktion »${S.name}«: ${fmtCent(e.sum)} von ${fmtEuro(e.goal)} – ${e.sum * 2 > e.goal ? 'schon über die Hälfte' : 'Halbzeit'}!`));
+        if (e.done) this.later(0.9, () => this.finishSammel(S, e.sum));
+        break;
+      }
+      case 'clean':
+        // eine volle Minute ohne Kratzer: Das fällt auch dem Chat auf
+        if (chance(0.5)) this.chat(this.chatLine(CHAT.clean));
+        if (e.amount) this.later(rand(0.9, 2), () => this.donate(viewerName(), e.amount, 'sauberes Fahren'));
+        break;
+      case 'level':
+        // die Stimmung ist deutlich umgeschlagen: Das Sprachstudio sagt es bald an (frühestens eine halbe Minute nach
+        // der letzten Ansage, damit es bei einer Laune an der Kante nicht ständig hin und her meldet)
+        this.studio.trend = e.level > e.from ? 'up' : 'down';
+        this.T.studio = Math.min(this.T.studio, Math.max(2.5, 30 - (this.t - this.studio.moodT)));
+        // steigt sie, freut sich Mini Adam mit (sein Gesicht hängt an diesem Ereignis, nie am Stimmungswert selbst)
+        if (e.level > e.from) this.onMood('happy', 0.6);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** Sammelziel erreicht: Claudia verkündet es – und dann passiert, wofür gesammelt wurde. */
+  finishSammel(S, sum) {
+    this.sammel = null;
+    this.bot('claudia', `Sammelaktion »${S.name}« geschafft: ${fmtCent(sum)} gesammelt! 🎉`);
+    this.ui.banner(`🎉 Sammelaktion geschafft: ${S.name}`, 3.5);
+    this.audio.record();
+    this.eco.cheer('funny');
+    this.burst(CHAT.sammelDone, 3, 2.5);
+    switch (S.id) {
+      case 'konfetti':
+        this.cockpit.addConfetti(30);
+        this.audio.confetti();
+        break;
+      case 'hupen':
+        for (let i = 0; i < 3; i++) this.later(0.5 + i * 0.45, () => this.audio.horn());
+        break;
+      case 'kofferraum':
+        this.fx.trunk(7);
+        break;
+      case 'frosch':
+        this.fx.green(1.4);
+        this.burst(CHAT.frog, 3, 1.5);
+        break;
+      default:
+        this.callPolice('DANKE, CHAT!');
+        break;
+    }
+  }
+
+  updateChat(dt, kappa = 0) {
+    this.updateCentOffers(dt, kappa);
     this.chatT -= dt;
     if (this.chatT <= 0) {
-      this.chatT = rand(1.3, 3.4) * clamp(600 / Math.max(this.viewers, 1), 0.6, 1.4);
-      this.chat(pick(CHAT.ambient));
+      // Die heimliche Stimmung färbt den Chat: wie flott er schreibt und was. Im Regen ist er ohnehin gesprächig.
+      const lv = this.eco.level;
+      const rainy = this.weather.level > 0.3;
+      this.chatT = rand(1.5, 3.8) * clamp(600 / Math.max(this.viewers, 1), 0.75, 1.4) * CHAT_PACE[lv] * (rainy ? 0.9 : 1);
+      const pool = rainy && chance(0.22) ? CHAT.rain
+        : lv < 2 && chance(lv === 0 ? 0.65 : 0.4) ? CHAT.restless
+          : lv > 2 && chance(lv === 4 ? 0.65 : 0.4) ? CHAT.cheerful : CHAT.ambient;
+      this.chat(this.chatLine(pool));
     }
+  }
+
+  // --- „5 Cent, wenn du …“ ------------------------------------------------------------------
+  /**
+   * Ein Meme aus dem Stream: Alle paar Minuten bietet jemand lächerliche 5 Cent für eine Albernheit – nie zwei
+   * Angebote kurz hintereinander, keins zweimal im selben Stream. Ab und zu passt eins zur Lage (Ziel erreicht,
+   * Brunnen oder Elsa in Sicht, Laster vor uns, Regen, lange Gerade); das darf etwas früher kommen. Mini Adam geht nie
+   * darauf ein: kein Geld, keine Aufgabe, kein Zähler, keine Antwort von NOMI oder dem Sprachstudio. Nur der Chat legt
+   * noch 2 Cent drauf, frotzelt, und wer geboten hat, bleibt manchmal stur.
+   */
+  updateCentOffers(dt, kappa = 0) {
+    const C = this.cent5;
+    // kappa: Krümmung unter dem Wagen (1/m), kommt mit den Eingaben aus dem Kurs (main.js courseEnv)
+    const straight = Math.abs(kappa) < STRAIGHT_KAPPA && this.player.kmh > 90;
+    C.straightS = straight ? C.straightS + this.player.speed * dt : 0;
+    const T = this.T;
+    // nicht ins Funkloch (da schreiben alle F) und nicht ins Bieter-Chaos oder Duell (da fliegen ohnehin Cent-Beträge;
+    // nach einer Ankunft geht es erst mit dem ersten Gebot der neuen Runde los)
+    if (T.cent5 > 100 || this.funkloch > 0) return;
+    const lage = C.lage ? this.offerSituation() : null;
+    const bidding = this.bidPlan.kind === 'chaos' || this.bidPlan.kind === 'duel';
+    if (bidding && !(lage === 'ziel' && this.roundNew)) return;
+    if (T.cent5 > 0 && !(lage && T.cent5 < OFFER_EARLY[lage])) return;
+    let pool = lage ? CHAT.fuenfCentLage[lage].filter((x) => !C.used.has(x)) : [];
+    if (!pool.length) {
+      // früher nur mit einem Angebot zur Lage; ist die Uhr abgelaufen, eins aus dem großen Vorrat
+      if (T.cent5 > 0) return;
+      pool = CHAT.fuenfCent.filter((x) => !C.used.has(x));
+    }
+    T.cent5 = rand(170, 290);
+    C.lage = chance(LAGE_SHARE);
+    // alle schon dran: Für heute hat der Chat genug geboten
+    if (!pool.length) return;
+    const text = pick(pool);
+    C.used.add(text);
+    const name = viewerName();
+    C.name = name;
+    // „5 Cent“ und „2 Cent“ brechen nie zwischen Zahl und Wort um
+    const nb = (s) => s.replace(/(\d) Cent/g, '$1\u00a0Cent');
+    this.chat(nb(text), name);
+    // ein paar Sekunden lang plaudert der Chat nicht dazwischen, damit man das Angebot lesen kann (am Handy steht oft
+    // nur eine Zeile); Nachschlag und Frotzelei kommen von anderen Zuschauern
+    this.chatT = Math.max(this.chatT, 4.5);
+    const other = () => {
+      let n = viewerName();
+      for (let i = 0; i < 8 && n === name; i++) n = viewerName();
+      return n;
+    };
+    if (chance(0.5)) this.later(rand(2.6, 3.8), () => this.chat(nb(this.chatLine(CHAT.fuenfCentDrauf)), other()));
+    if (chance(0.35)) this.later(rand(5, 7), () => this.chat(nb(this.chatLine(CHAT.fuenfCentNecken)), other()));
+    if (chance(0.15)) this.later(rand(30, 55), () => {
+      if (C.name === name && this.funkloch <= 0) this.chat(nb(pick(CHAT.fuenfCentStur)), name);
+    });
+  }
+
+  /** Wozu gerade ein „5 Cent“-Angebot passt – nur, was es in diesem Moment wirklich gibt (sonst null). */
+  offerSituation() {
+    const p = this.player;
+    // gerade angekommen: nach Jubel und Ortsspenden, solange noch niemand fürs nächste Ziel bietet
+    const since = this.t - this.cent5.arrivedT;
+    if (since > 0.6 && since < 20 && this.roundNew) return 'ziel';
+    // Wahrzeichen am Rand und Laster voraus gibt es nur auf der Autobahn (XXL-Welt: abseits ist ihr Verkehr woanders)
+    const lm = this.offAutobahn ? null : this.landmark;
+    // Brunnen und Elsa erst, wenn der Jubel über die Sichtung durch ist – sonst rutscht das Angebot gleich wieder weg
+    if (lm && lm.seen && this.t - lm.seenT > 2.5) {
+      const d = lm.s - p.s;
+      if (lm.type === 'brunnen' && d > 40 && d < 240) return 'brunnen';
+      // Elsa nur, solange sie frei in der Scheibe steht (dann steht auch ihr Hinweis da, siehe elsaView)
+      if (lm.type === 'elsa' && lm.toast && d > 40) return 'elsa';
+    }
+    if (!this.offAutobahn) {
+      for (const c of this.traffic.cars) {
+        const d = c.s - p.s;
+        if (c.truck && d > 25 && d < 110 && Math.abs(c.x - p.x) < 2) return 'laster';
+      }
+    }
+    if (this.weather.level > 0.4) return 'regen';
+    if (this.cent5.straightS > STRAIGHT_RUN) return 'gerade';
+    return null;
+  }
+
+  // --- Sprachstudio ---------------------------------------------------------------------
+  /**
+   * Die ruhige Stimme in Mini Adams Ohr liest den Chat mit und sagt, wie er drauf ist: der einzige Weg, auf dem die
+   * heimliche Chat-Stimmung nach außen kommt (als Satz, nie als Zahl oder Balken). Etwa einmal pro Minute und wenn
+   * die Stimmung deutlich umschlägt – aber nie, während NOMI oder eine Sprachdurchsage zu hören ist. Dazwischen gibt
+   * es höchstens einmal etwas anderes weiter (den Dank für eine große Spende, einen Kassensturz) und begrüßt, wer neu
+   * im Chat Hallo sagt.
+   */
+  updateStudio() {
+    const S = this.studio;
+    const T = this.T;
+    // Kassensturz bei jeder runden Summe, und ab und zu ein Gruß an jemanden, der neu im Chat ist
+    if (this.money >= S.mark) {
+      const step = S.mark < 2000 ? 500 : 1000;
+      S.mark = (Math.floor(this.money / step) + 1) * step;
+      S.extra = S.extra || { kind: 'total', until: this.t + 30 };
+    }
+    if (T.greet <= 0) {
+      T.greet = rand(150, 240);
+      // wer neu ist, meldet sich erst im Chat – und das Sprachstudio begrüßt genau ihn, sobald es Luft hat
+      if (!S.greet) {
+        const name = viewerName();
+        S.greet = { name, until: this.t + 40 };
+        this.chat(this.chatLine(CHAT.newViewer), name);
+      }
+    }
+    if (S.extra && this.t > S.extra.until) S.extra = null;
+    if (S.greet && this.t > S.greet.until) S.greet = null;
+    const x = S.extra;
+    // Außer der Reihe nur mit Abstand: zur letzten Zugabe, zum letzten Satz und zur nächsten Stimmungsansage. Nur ein
+    // „Alter!“ muss gleich raus, sobald niemand spricht – die Stimmungsansage wartet dann einen Moment (und hält auch
+    // sonst ein paar Sekunden Abstand zum letzten Satz, etwa wenn die Stufe gleich nach einem Dank wechselt). Ein Gruß
+    // wartet nicht auf die Pause zwischen den Zugaben: Der Neue hat ja schon Hallo gesagt.
+    const alter = x?.kind === 'alter' && this.t - S.last > 3;
+    const mood = !alter && T.studio <= 0 && this.t - S.last > 8;
+    const greet = !alter && !mood && S.greet && this.t - S.last > 10 && T.studio > 6;
+    if (!alter && !mood && !greet && !(x && this.t - S.extraT > 75 && this.t - S.last > 15 && T.studio > 10)) return;
+    if (this.funkloch > 0 || this.t < this.voiceUntil + 0.6 || this.t < this.studioUntil || this.speech.busy || this.speech.queue.length) return;
+    let text;
+    if (mood) {
+      // Woran es liegt, sagt es gern dazu: bei guter Laune das Schöne, bei schlechter den Kummer – und in der Mitte
+      // das, was die Stimmung gerade dorthin gebracht hat.
+      const lv = this.eco.level;
+      const dir = lv > 2 ? 'up' : lv < 2 ? 'down' : S.trend;
+      const why = dir && chance(0.75) ? this.eco.why(dir, S.why) : null;
+      if (lv === 2 && S.trend) text = this.fresh(STUDIO.turn[S.trend], 'turn' + S.trend);
+      else text = why ? this.fresh(STUDIO.short[lv], 'short' + lv) : this.fresh(STUDIO.levels[lv], 'level' + lv);
+      if (why) {
+        text += ' ' + this.fresh(STUDIO.why[dir][why], dir + why);
+        S.why = why;
+      }
+      S.trend = null;
+      S.moodT = this.t;
+      T.studio = rand(52, 72);
+    } else if (greet) {
+      text = fillTemplate(this.fresh(STUDIO.greet, 'greet'), { name: S.greet.name });
+      S.greet = null;
+    } else {
+      S.extra = null;
+      S.extraT = this.t;
+      if (alter) {
+        text = fillTemplate(this.fresh(STUDIO.alter, 'alter'), { name: x.name, betrag: fmtCent(x.amount) });
+        T.studio = Math.max(T.studio, 12);
+      } else if (x.kind === 'thanks') text = fillTemplate(this.fresh(STUDIO.thanks, 'thanks'), { name: x.name, betrag: fmtCent(x.amount) });
+      else text = fillTemplate(this.fresh(STUDIO.total, 'total'), { summe: fmtEuro(Math.floor(this.money)) });
+    }
+    // ein leiser Zweiklang, damit man hört, dass jetzt nicht NOMI spricht
+    this.audio.tone(659.25, 0.16, 'sine', 0.05);
+    this.audio.tone(523.25, 0.24, 'sine', 0.05, 0.13);
+    const dur = this.speech.say(text.replace(/_/g, ' '), 'sprachstudio');
+    this.ui.studio(text, dur + 0.8);
+    S.last = this.t;
+    this.studioUntil = this.t + dur + 0.8;
+  }
+
+  /** Ein Satz aus der Liste, aber keiner der beiden zuletzt gesagten (key: je Liste ein Gedächtnis). */
+  fresh(list, key) {
+    const used = this.studio.used[key] || (this.studio.used[key] = []);
+    const i = pick(list.map((_, n) => n).filter((n) => !used.includes(n)));
+    used.push(i);
+    if (used.length > Math.min(2, list.length - 1)) used.shift();
+    return list[i];
   }
 
   // --- Jobs ---------------------------------------------------------------------------
   updateJobs() {
     const st = this.stats;
     let changed = false;
+    let last = null;
     for (const j of this.jobs) {
       if (j.done) continue;
       const v = st[j.stat] || 0;
@@ -891,19 +1712,29 @@ export class Game {
         j.done = true;
         j.progress = 1;
         changed = true;
-        this.earn(25, 'Jobs', { mult: false });
+        last = j;
         this.ui.toast(`✅ Job erledigt: ${j.text}`, 'good');
         this.audio.chime();
         this.chat(pick(CHAT.fiveJobs));
+        // Geld gibt es, weil jemand genau das versprochen hat – und Wort hält
+        this.eco.cheer('challenge');
+        this.later(1, () => this.donate(j.pledger, j.pledge, '', { label: 'Challenges', line: `${j.pledger} hält Wort: ${fmtCent(j.pledge)} für »${j.text}«` }));
       }
     }
     if (changed) this.ui.jobs(this.jobs);
     if (!this.allJobsPaid && this.jobs.every((j) => j.done)) {
       this.allJobsPaid = true;
-      this.earn(100, 'Jobs', { mult: false });
-      this.bot('victoria', 'You had 5 Jobs – und alle erledigt! 100\u00a0€ Bonus!');
-      this.audio.record();
-      this.ui.banner('🏆 Alle 5 Jobs erledigt!', 4);
+      const A = this.allJobs;
+      // Kam der letzte Job mit einer Ankunft (Navi-Ziel, Supercharger), gehört das Banner erst dem Ziel – die Feier
+      // für alle fünf folgt, wenn es durch ist, statt es gleich wieder zu verdrängen
+      const wait = last && (last.stat === 'naviReached' || last.stat === 'charges') ? 3.6 : 0;
+      this.later(wait, () => {
+        this.bot('victoria', 'You had 5 Jobs – und alle erledigt! 🏆');
+        this.onMood('proud', 1);
+        this.later(2.4, () => this.donate(A.pledger, A.pledge, '', { label: 'Challenges', line: `${A.pledger} hatte ${fmtBetrag(A.pledge)} auf alle fünf Jobs gesetzt – und zahlt mit Freuden!` }));
+        this.audio.record();
+        this.ui.banner('🏆 Alle 5 Jobs erledigt!', 4);
+      });
     }
   }
 
@@ -911,6 +1742,7 @@ export class Game {
   honk() {
     this.audio.horn();
     this.lastHorn = this.t;
+    this.onMood('startled', 0.45);
     if (chance(0.12)) this.chat(pick(['Bimmel hurra! 📯', 'HUP HUP', 'Hupkonzert!']));
   }
 
@@ -927,6 +1759,9 @@ export class Game {
     this.audio.megafon();
     const n = this.traffic.megafon(this.player);
     this.speech.say('Achtung, Achtung! Bitte machen Sie die Spur frei!', 'william');
+    this.voiceUntil = Math.max(this.voiceUntil, this.t + 4);
+    this.eco.cheer('megafon');
+    this.onMood('megafon', 2.6);
     this.ui.toast(n ? `📢 ${n} Fahrzeug${n > 1 ? 'e machen' : ' macht'} Platz` : '📢 Durchsage!', 'info');
     this.chat(pick(['Wie in Gifhorn 📢', 'MEGAFON 😂', 'Platz da!']));
   }
@@ -937,11 +1772,15 @@ export class Game {
     if (!p.collide(e)) return;
     this.stats.crashes++;
     this.stats.cleanDistance = 0;
-    this.audio.crash();
-    this.fx.shake(1);
+    this.eco.cheer('crash');
+    this.audio.crash(e.zone, e.power);
+    this.fx.shake(1, e.zone);
+    this.onMood('ouch', 1);
     this.cockpit.nomi.setMood('dizzy', 3);
     const left = p.maxHits - p.hits;
     this.ui.damage(p.hits, p.maxHits);
+    // NOMI tröstet (nie über Verletzungen): erster Rempler, weitere, der letzte Punkt
+    if (left > 0) this.later(0.6, () => this.say(damageLine(left === 1 ? 'last' : p.hits === 1 ? 'first' : 'more', e.zone), left === 1 ? 'worried' : 'talk', { priority: false }));
     if (e.car.behavior === 'polizei') this.chat('Ausgerechnet die Polizei Gifhorn 😱');
     this.burst(CHAT.crash, 3, 2);
     if (left <= 0) {
@@ -953,8 +1792,8 @@ export class Game {
 
   onNearMiss(e) {
     this.stats.nearMisses++;
-    this.earn(3, 'Haarscharf');
-    this.hype += 15;
+    this.thrill('nearMiss', 'dieses Manöver');
+    this.onMood('startled', 0.75);
     if (chance(0.5)) this.chat(pick(CHAT.nearMiss));
   }
 
@@ -963,13 +1802,16 @@ export class Game {
     if (this.over) return;
     this.running = false;
     const p = this.player;
-    const km = p.s / 1000;
+    const km = p.s / 1000; // der Beruf des Tages richtet sich nach den Metern der Straße (keine Zahl auf dem Schirm)
     this.over = {
       reason,
-      distance: p.s,
+      distance: this.odometer,
+      travel: this.worldNavi, // Reisekilometer (XXL) statt Meter der Straße
+      air: this.worldNavi ? this.airtime : null,
       money: Math.max(0, Math.round(this.money * 100) / 100),
       breakdown: { ...this.breakdown },
-      jobs: this.jobs.map((j) => ({ text: j.text, done: j.done })),
+      jobs: this.jobs.map((j) => ({ text: j.text, done: j.done, pledge: j.pledge, pledger: j.pledger })),
+      fans: this.supporters(),
       stats: { ...this.stats },
       peakViewers: Math.round(this.peakViewers),
       beruf: berufFor(km),
@@ -980,6 +1822,45 @@ export class Game {
     this.speech.stopAll();
     if (reason === 'akku') this.say('Akku leer. Die Stream-Technik verabschiedet sich.', 'sleep');
     else if (reason === 'werkstatt') this.say('Bitte einen Werkstatttermin vereinbaren.', 'dizzy');
+    if (reason === 'akku' || reason === 'werkstatt') this.onMood(reason === 'akku' ? 'sleepy' : 'ouch', 1);
+  }
+
+  /**
+   * Wem der Abspann dankt – wie im echten SkylineTV-Abspann, der die Unterstützenden nach VIPs und Abo-Verschenkern
+   * aufteilt: die größte Spende, die eifrigsten Verschenker (meiste Abos zuerst) und die neuen VIPs.
+   */
+  supporters() {
+    const F = this.fans;
+    const gifters = Object.entries(F.gifts).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
+    return { top: F.top, gifters, vips: F.vips.slice() };
+  }
+
+  /**
+   * Die Uhr der XXL-Welt ist die Reisezeit, der Zwilling des Kilometerzählers: Je Schritt gewinnt sie dessen Sekunden
+   * mal so viele Reisemeter, wie die Fahrt dort je Meter Straße zählt (auf echter Straße und im Stand 1). Mit 130 km/h
+   * schafft der Wagen so überall 130 Reisekilometer je Stunde der Uhr, und wer im Tempo des Navis fährt, sieht die
+   * Ankunftszeit stillstehen (Uhr + Reisezeit des Rests, trip.reach().clock). Die Fahrt rückt erst nach game.update
+   * vor (src/main.js): gezählt wird darum der Schritt davor, mit dessen Zeit. Liefert { secs: Sekunden der Uhr,
+   * m: Reisemeter } dieses Schritts.
+   */
+  travelStep(dt) {
+    const trip = this.world.trip();
+    const was = this.travel && this.travel.trip === trip ? this.travel : null;
+    const ds = was ? trip.s - was.s : 0;
+    const m = was ? (trip.km - was.km) * 1000 : 0;
+    const secs = !was ? 0 : ds > 1e-6 ? (was.dt * m) / ds : was.dt;
+    this.travel = { trip, s: trip.s, km: trip.km, dt };
+    return { secs, m };
+  }
+
+  /** Die gefahrene Strecke auf jedem Schirm (Meter): in der XXL-Welt der Kilometerzähler der Fahrt, sonst die Straße. */
+  get odometer() {
+    return this.worldNavi ? this.world.trip().km * 1000 : this.player.s;
+  }
+
+  /** Sendezeit in Sekunden: klassisch die gespielte Zeit, in der XXL-Welt die Reisezeit seit 18 Uhr (start). */
+  get airtime() {
+    return this.worldNavi ? (this.clock - 18 * 60) * 60 : this.t;
   }
 
   /** Daten für den Mittelbildschirm. */
@@ -1001,6 +1882,7 @@ export class Game {
       temp: Math.round(17 - W.level * 6),
       funkloch: this.funkloch > 0 ? 1 : 0,
       wiperOn: W.level > 0.05,
+      damage: p.damage,
     };
   }
 }

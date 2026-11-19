@@ -6,13 +6,22 @@
 // Bezugsrahmen sie liegen (frames, shears), welche Spuren und Grenzen gelten (profile) und was das Navi ansagt
 // (guidance). Sie läuft auch unter Node (siehe tools/trip-test.mjs).
 //
-// Koordinaten: s = gefahrene Meter auf dem Band (Kilometerzähler des Spielers), x = seitliche Lage in Metern
+// Koordinaten: s = gefahrene Meter auf dem Band (Meter Straße, wie das Auge sie sieht), x = seitliche Lage in Metern
 // (rechts positiv). Auf der Autobahn liegen die vier Spuren bei x = −5,625 … +5,625, der Standstreifen bei
 // 7,5 … 10,5. Abseits der Autobahn liegt unsere Spur immer bei x = 9 (J.L0): genau dort, wo auf der Autobahn
 // der Verzögerungsstreifen liegt. So muss beim Abfahren nichts umgerechnet werden.
+//
+// Ein Maß für die Reise (wie beim Euro Truck Simulator 2): Jeder Abschnitt zählt Reisekilometer (kmPerM je Meter
+// Straße). Die offene Strecke ist ein gleichmäßiger Zeitraffer – Autobahn und Landstraße tragen die Kartenkilometer
+// ihrer Kante über ihre ganze Länge (rund 19 Reisemeter je Meter Straße, siehe edgeLen), ein Zubringer die
+// Kartenkilometer zu seinem Ort. Wo der Wagen die offene Strecke verlässt, ist alles echt (J.real, 1:1): Rampen,
+// Verbindungsfahrbahnen, Zubringer zurück zur Auffahrt, Ortsdurchfahrten, Terminals. km = Reisekilometer seit dem
+// Start (der Kilometerzähler), reach() = Reisekilometer bis zu jeder Stelle voraus – beides aus denselben Abschnitten,
+// darum fällt die Entfernung zum Ziel um genau das, was der Zähler steigt. Auch die Uhr des Spiels läuft in diesem
+// Maßstab (game.js), also gilt überall: Tacho × Uhr = Reisekilometer.
 import {
   nodes, edges, places, K, deEdge, deTo, deFrom, deRev, deKind, deRoad, deTowards, straight, edgeLen, routeTo, routeFrom,
-  stateOfNode, transitions, townLen, zubLen, nodeTitle, dePos, turnAngle,
+  stateOfNode, transitions, townLen, zubLen, spotIn, visitList, nodeTitle, dePos, turnAngle, PACE,
 } from '../map/graph.js';
 
 /** Maße der Knotenpunkte in Metern. */
@@ -48,8 +57,7 @@ export const J = {
   beginCap: 120, // so weit vor dem Einfädelpunkt beginnt die Fahrbahn einer Autobahn, die hier anfängt
   gore: 70, // Länge der Sperrfläche hinter der Gabelung
   close: 300, // am Autobahnende werden die Spuren auf dieser Länge nach rechts zur Ausfahrt verengt
-  kmOff: 0.0012, // Kartenkilometer je Meter auf Rampen und Zubringern (ein Abstecher soll nur ein, zwei Kilometer zählen)
-  kmTown: 0.003, // Kartenkilometer je Meter in der Ortsdurchfahrt
+  real: 0.001, // Reisekilometer je Meter, wo die Straße echt ist (1:1): abseits der offenen Strecke, siehe oben
 };
 /** Winkel (als Steigung), mit dem Rampe und Autobahn nach dem Bogen auseinanderlaufen. */
 export const BETA = J.kappa * J.cap;
@@ -120,6 +128,7 @@ export class Trip {
     this.km = 0;
     this.target = -1;
     this.policy = null;
+    this.planned = null;
     this.ghosts = [];
     this.visited = [];
     this.events = [];
@@ -127,7 +136,7 @@ export class Trip {
     this.country = 'DE';
     const path = new Path(-1000, this.newFrame('ab'));
     this.cur = path;
-    this.add(path, 'ab', 1e9, { kmPerM: 0.001 });
+    this.add(path, 'ab', 1e9);
   }
 
   reset(startNode) {
@@ -137,9 +146,10 @@ export class Trip {
     this.links = []; // {id, type: 'exit'|'merge', a: Autobahnrahmen, b: Rahmen abseits, s}
     this.s = 0;
     this.x = J.L0;
-    this.km = 0; // gefahrene Kartenkilometer
+    this.km = 0; // gefahrene Reisekilometer
     this.target = -1;
     this.policy = null;
+    this.planned = null; // der geplante Weg zum Ziel (siehe plan)
     this.ghosts = []; // {path, from, until, link}
     this.visited = []; // erreichte Ziele
     this.events = [];
@@ -201,7 +211,7 @@ export class Trip {
       place: -1,
       fork: null, // Gabelung am Ende (nur Autobahn)
       link: null, // Knotenpunkt, dessen Bogen in diesem Abschnitt liegt
-      kmPerM: kind === 'stadt' ? J.kmTown : J.kmOff,
+      kmPerM: J.real,
       ...extra,
     };
     path.sections.push(sec);
@@ -259,12 +269,7 @@ export class Trip {
   }
   /** Orte, die auf dem Abstecher zum Ziel durchfahren werden: erst der Ort an der Ausfahrt, dann das Ziel. */
   visitList(node, target) {
-    const nd = nodes[node];
-    const main = nd.places.find((p) => p.zubKm < 1.5);
-    const out = [];
-    if (main && main.place !== target) out.push(main.place);
-    out.push(target);
-    return out;
+    return visitList(node, target);
   }
   /** Navi-Empfehlung an einer Gabelung: 'exit', 'stay' oder null (kein Ziel). */
   planFor(fork) {
@@ -296,16 +301,21 @@ export class Trip {
     return path;
   }
 
-  /** Zubringer und Ortsdurchfahrten für eine Liste von Orten, danach der Zubringer zurück. */
+  /**
+   * Zubringer und Ortsdurchfahrten für eine Liste von Orten, danach der Zubringer zurück. Der Zubringer trägt die
+   * Kartenkilometer zu seinem Ort über seine Länge; liegt der Ort gleich an der Ausfahrt, ist er echte Straße (1:1,
+   * wie graph.js feederKm – nie zählt ein Meter Straße weniger als einen Meter Reise).
+   */
   addVisits(path, node, visits, fromKm) {
     let km = fromKm;
     for (const pi of visits) {
       const p = places[pi];
-      const zl = zubLen(Math.max(p.zubKm - km, 0));
-      this.add(path, 'zub', zl, { node, place: pi, kmPerM: Math.max(p.zubKm - km, 0.4) / zl });
+      const far = Math.max(p.zubKm - km, 0);
+      const zl = zubLen(far);
+      this.add(path, 'zub', zl, { node, place: pi, kmPerM: far * 1000 > zl ? far / zl : J.real });
       const tl = townLen(p.pop);
       const town = this.add(path, 'stadt', tl, { node, place: pi });
-      town.spotS = town.s0 + Math.round(tl * 0.6);
+      town.spotS = town.s0 + spotIn(tl);
       km = p.zubKm;
     }
     this.add(path, 'zub', J.back, { node, place: visits[visits.length - 1], back: true });
@@ -320,6 +330,8 @@ export class Trip {
     if (pol && isFinite(pol.cost[st])) {
       let bc = Infinity;
       for (const t of transitions(st)) {
+        // ein Ziel nur über Straßen (setTarget mit road): an keinem Knoten lockt eine Überfahrt
+        if (pol.road && t.type !== 'enter') continue;
         const c = t.cost + pol.cost[t.to];
         if (c < bc) {
           bc = c;
@@ -391,7 +403,7 @@ export class Trip {
       this.add(path, 'zub', J.feed, { node: n, transitTo: m });
       const term = this.add(path, 'term', J.term, { node: n, de, transit: kind, transitTo: m });
       term.spotS = term.s0 + Math.round(J.term * 0.7);
-      this.add(path, 'term', J.termOut, { node: m, de, transit: kind, arrival: true, kmPerM: 0 });
+      this.add(path, 'term', J.termOut, { node: m, de, transit: kind, arrival: true });
       this.add(path, 'zub', J.back, { node: m, back: true });
       path.frontier = { t: 'node', n: m, via: de };
     }
@@ -407,7 +419,7 @@ export class Trip {
     if (town) {
       const tl = townLen(places[town.place].pop);
       const sec = this.add(path, 'stadt', tl, { node: h, place: town.place, inline: true });
-      sec.spotS = sec.s0 + Math.round(tl * 0.6);
+      sec.spotS = sec.s0 + spotIn(tl);
     }
     path.frontier = { t: 'node', n: h, via: de };
   }
@@ -443,11 +455,15 @@ export class Trip {
   }
 
   // --- Navi-Ziel ------------------------------------------------------------------------
-  /** Neues Navi-Ziel (Index in places) oder −1. Zweige vor uns werden neu geplant, wenn sie noch weit genug weg sind. */
-  setTarget(placeIdx) {
+  /**
+   * Neues Navi-Ziel (Index in places) oder −1. Zweige vor uns werden neu geplant, wenn sie noch weit genug weg sind.
+   * road: der Weg dorthin führt nur über Straßen, nie über Fähre, Autozug oder Luftfracht (für Ziele, auf die im
+   * Spiel geboten wird, solange die Welt keine Terminals baut; siehe distances).
+   */
+  setTarget(placeIdx, road = false) {
     if (this.endless) return;
     this.target = placeIdx;
-    this.policy = placeIdx >= 0 ? routeTo(placeIdx) : null;
+    this.policy = placeIdx >= 0 ? routeTo(placeIdx, road) : null;
     this.replan(this.cur);
     for (const sec of this.cur.sections) {
       const fork = sec.fork;
@@ -498,9 +514,9 @@ export class Trip {
     if (sec.kind === 'auf') return sec.de;
     return stateOfNode(sec.node);
   }
-  /** Entfernungen von hier zu allen Orten (für die Auswahl neuer Ziele). */
-  distances() {
-    return routeFrom(this.state());
+  /** Entfernungen von hier zu allen Orten (für die Auswahl neuer Ziele). road: nur über Straßen (sonst Infinity). */
+  distances(road = false) {
+    return routeFrom(this.state(), road);
   }
 
   // --- Fahren ---------------------------------------------------------------------------
@@ -515,7 +531,7 @@ export class Trip {
    */
   update(s, x) {
     if (this.endless) {
-      this.km += Math.max(0, s - this.s) * 0.001;
+      this.km += Math.max(0, s - this.s) * J.real;
       this.s = s;
       this.x = x;
       return (this.events = []);
@@ -836,89 +852,171 @@ export class Trip {
     };
   }
 
+  // --- Der geplante Weg: eine Rechnung für jede Entfernung -----------------------------------------------------------
+  /**
+   * Der Weg, den das Navi von hier bis zum Ziel plant, Abschnitt für Abschnitt: erst was schon angelegt ist (der eigene
+   * Weg, an jeder Gabelung mit Plan 'exit' ihr Zweig), dann was die Fahrt hinter ihrem Horizont anlegen wird – gebaut
+   * mit ihren eigenen Regeln (shadow). Darum zählt der Kilometerzähler später genau das, was reach() heute nennt.
+   * Ergebnis (dasselbe Objekt, bis sich Wege oder Ziel ändern): {legs, end, done}. legs: [{sec, s0, s1 (Meter auf dem
+   * Band, lückenlos; der Zielort endet am Zielpunkt), k (Reisekilometer je Meter), pace (Tempo des Navis, m/s), fork
+   * (die Gabelung am Ende, an der der Plan abfährt, sonst null), hop (Kartenkilometer einer Überfahrt davor, sonst
+   * 0)}], end: Zielpunkt, done: der Weg reicht bis zum Ziel. Ohne Ziel ist es der eigene Weg, so weit er angelegt ist.
+   */
+  plan() {
+    const pol = this.target >= 0 ? this.policy : null;
+    let P = this.planned;
+    if (P && P.version === this.version && P.policy === pol && P.target === this.target) return P;
+    P = this.planned = { version: this.version, policy: pol, target: this.target, legs: [], end: this.s, done: false };
+    const legs = P.legs;
+    const take = (c) => {
+      const goal = c.kind === 'stadt' && c.place === this.target && !c.spotDone && c.spotS > this.s;
+      const hop = c.kind === 'term' && c.arrival && c.de >= 0 ? edges[c.de >> 1].km : 0;
+      legs.push({ sec: c, s0: c.s0, s1: goal ? c.spotS : c.s1, k: c.kmPerM, pace: PROFILES[c.profile].pace, fork: null, hop });
+      P.end = goal ? c.spotS : c.s1;
+      return goal;
+    };
+    const dry = this.shadow();
+    let path = this.cur;
+    let i = path.sections.indexOf(this.section);
+    let own = false; // path gehört dem Schatten und darf wachsen
+    for (let guard = 0; guard < 4000; guard++) {
+      if (i < path.sections.length) {
+        const c = path.sections[i++];
+        if (take(c)) {
+          P.done = true;
+          break;
+        }
+        const f = c.fork;
+        if (f && !f.taken && this.planFor(f) === 'exit') {
+          // der Plan fährt hier ab: weiter auf dem Zweig – dem angelegten oder dem, den die Fahrt hier anlegen wird
+          legs[legs.length - 1].fork = f;
+          own = !f.branch;
+          path = f.branch || dry.buildBranch({ ...f });
+          i = 0;
+        }
+        continue;
+      }
+      // Ende des Angelegten: so weiter, wie die Fahrt es tun wird (extend) – auf einem eigenen Weg des Schattens
+      const fr = path.frontier;
+      if (!pol || !fr || !isFinite(pol.cost[fr.t === 'fork' ? fr.fork.de : stateOfNode(fr.n)])) break;
+      if (!own) {
+        const last = path.sections[path.sections.length - 1];
+        const next = new Path(path.s1, path.frame);
+        next.sections.push(last); // leave() schaut auf den Abschnitt davor
+        next.frontier = fr;
+        path = next;
+        i = 1;
+        own = true;
+      }
+      if (fr.t === 'fork') dry.addAb(path, fr.fork.stay);
+      else dry.leave(path, fr.n, fr.via);
+    }
+    return P;
+  }
+  /**
+   * Schatten der Fahrt für plan(): baut mit ihren Regeln und ihrem Ziel Abschnitte auf eigenen Wegen, ohne Rahmen,
+   * Knotenpunkte oder den Stand der Fahrt anzufassen.
+   */
+  shadow() {
+    const t = Object.create(this);
+    t.frames = new Map();
+    t.links = [];
+    t.version = 0;
+    return t;
+  }
+
+  /**
+   * Die eine Entfernung des Spiels: vom Wagen bis zur Stelle to auf dem geplanten Weg (Meter auf dem Band; ohne Angabe
+   * der Zielpunkt). km: Reisekilometer – genau das, was der Kilometerzähler bis dorthin zählen wird · m: Meter Straße ·
+   * real: dazwischen liegt nur echte Straße (1:1), dann sind beide dieselbe Strecke und die Anzeigen nennen Meter ·
+   * secs: Fahrzeit im Tempo des Navis in echten Sekunden · clock: dieselbe Fahrt in Sekunden der Uhr (Reisezeit: jede
+   * Sekunde zählt im Maßstab ihres Abschnitts). Eine Überfahrt bis dorthin zählt mit ihren Kartenkilometern zu km
+   * (gefahren wird sie nicht: der Zähler lässt sie aus). Ohne Ziel oder ohne Weg dorthin ist alles Infinity; eine
+   * Stelle auf dem eigenen Weg hat ihre Entfernung auch ohne Ziel.
+   */
+  reach(to) {
+    const P = this.plan();
+    if (to === undefined && !P.done) return { km: Infinity, m: Infinity, real: false, secs: Infinity, clock: Infinity };
+    if (to === undefined) to = P.end;
+    const s = this.s;
+    let km = 0;
+    let secs = 0;
+    let clock = 0;
+    let real = true;
+    for (const L of P.legs) {
+      if (L.s1 <= s) continue;
+      if (L.s0 >= to) break;
+      if (L.hop && L.s0 >= s) {
+        km += L.hop;
+        secs += PACE.transit;
+        real = false;
+      }
+      const len = Math.min(L.s1, to) - Math.max(L.s0, s);
+      const t = len / L.pace;
+      km += len * L.k;
+      secs += t;
+      clock += t * L.k * 1000;
+      if (L.k !== J.real) real = false;
+    }
+    return { km, m: Math.max(to - s, 0), real, secs, clock };
+  }
+  /** Reisemeter je Meter Straße unter dem Wagen: der Maßstab, in dem Kilometerzähler und Uhr gerade laufen. */
+  get scale() {
+    return this.section.kmPerM * 1000;
+  }
+
   /**
    * Die nächste Navi-Ansage. type: 'arrive' (Ziel voraus) · 'exit' (an der nächsten geplanten Gabelung abfahren) ·
-   * 'follow' (dem Straßenverlauf folgen) · 'none' (kein Ziel). dist in Metern auf dem Band, km = Kartenkilometer bis
-   * zum Ziel, mins = geschätzte Restfahrzeit, then = was nach der Ausfahrt kommt.
+   * 'follow' (dem Straßenverlauf folgen) · 'none' (kein Ziel). dist in Metern auf dem Band bis zur Stelle der Ansage,
+   * toKm = Reisekilometer bis dorthin; km, m, real = die Entfernung zum Ziel (reach), mins = geschätzte Restfahrzeit,
+   * clock = dieselbe in Sekunden der Uhr, then = was nach der Ausfahrt kommt. far: die Ausfahrt liegt hinter dem
+   * Horizont der Fahrt (ihre Gabelung gibt es noch nicht).
    */
   guidance() {
     if (this.target < 0 || !this.policy) return { type: 'none' };
-    const pol = this.policy;
-    const st = this.stateAhead();
-    const base = { target: this.target, km: st.km, mins: st.secs / 60 };
+    const all = this.reach();
+    const base = { target: this.target, km: all.km, m: all.m, real: all.real, mins: all.secs / 60, clock: all.clock };
     for (const sec of this.cur.sections) {
       if (sec.s1 <= this.s) continue;
-      if (sec.kind === 'stadt' && sec.place === this.target && !sec.spotDone) return { ...base, type: 'arrive', dist: sec.spotS - this.s, sec };
+      if (sec.kind === 'stadt' && sec.place === this.target && !sec.spotDone) return { ...base, type: 'arrive', dist: sec.spotS - this.s, toKm: all.km, sec };
       const f = sec.fork;
       if (f && !f.taken && this.planFor(f) === 'exit') {
-        return { ...base, type: 'exit', dist: f.s - this.s, fork: f, node: f.node, title: f.forced ? 'Autobahnende' : nodeTitle(f.node), then: this.afterExit(f) };
+        return { ...base, type: 'exit', dist: f.s - this.s, toKm: this.reach(f.s).km, fork: f, node: f.node, title: f.forced ? 'Autobahnende' : nodeTitle(f.node), then: this.afterExit(f) };
       }
     }
-    // weiter voraus: der Route folgen, bis die nächste Ausfahrt kommt
+    // weiter voraus: der Route folgen, bis die nächste Ausfahrt kommt (die erste des geplanten Wegs)
     const fr = this.cur.frontier;
-    let dist = this.cur.s1 - this.s;
     if (fr && fr.t === 'fork') {
-      let de = fr.fork.de;
-      let guard = 0;
-      while (guard++ < 200) {
-        const t = pol.next[de];
-        if (!t || t.type !== 'stay') {
-          const node = deTo(de);
-          return { ...base, type: 'exit', far: true, dist, node, title: nodeTitle(node), then: this.afterExitAt(node) };
-        }
-        de = t.to;
-        dist += edgeLen(deEdge(de));
+      const P = this.plan();
+      const L = P.legs.find((q) => q.fork && q.s1 > this.s);
+      if (L) {
+        const f = L.fork;
+        return { ...base, type: 'exit', far: true, dist: f.s - this.s, toKm: this.reach(f.s).km, node: f.node, title: f.forced ? 'Autobahnende' : nodeTitle(f.node), then: this.afterExitAt(f.node, f.de) };
       }
     }
-    return { ...base, type: 'follow', dist };
+    return { ...base, type: 'follow', dist: this.cur.s1 - this.s };
   }
-  /** Restkilometer und Restzeit bis zum Ziel ab der Spielerposition. */
+  /** Restkilometer und Restzeit bis zum Ziel ab der Spielerposition (reach bis zum Zielpunkt). */
   stateAhead() {
-    const pol = this.policy;
-    const sec = this.section;
-    let km = 0;
-    let secs = 0;
-    // Rest des eigenen Wegs bis zu dessen Ende, dann laut Route
-    let reached = false;
-    for (const c of this.cur.sections) {
-      if (c.s1 <= this.s) continue;
-      const from = Math.max(c.s0, this.s);
-      let to = c.s1;
-      if (c.kind === 'stadt' && c.place === this.target && !c.spotDone) {
-        to = c.spotS;
-        reached = true;
-      }
-      km += (to - from) * c.kmPerM;
-      secs += (to - from) / PROFILES[c.profile].pace;
-      if (reached) break;
-      const f = c.fork;
-      if (f && !f.taken && this.planFor(f) === 'exit') {
-        const stn = stateOfNode(f.node);
-        return { km: km + pol.km[stn], secs: secs + pol.secs[stn] + 12 };
-      }
-    }
-    if (reached) return { km, secs };
-    const fr = this.cur.frontier;
-    let st = -1;
-    if (fr && fr.t === 'fork') st = fr.fork.de;
-    else if (fr && fr.t === 'node') st = stateOfNode(fr.n);
-    if (st < 0 || !isFinite(pol.cost[st])) return { km: Infinity, secs: Infinity, sec };
-    return { km: km + pol.km[st], secs: secs + pol.secs[st] };
+    return this.reach();
   }
-  /** Was kommt nach der Ausfahrt an dieser Gabelung (laut aktuellem Zweig)? */
+  /**
+   * Was kommt nach der Ausfahrt an dieser Gabelung (laut aktuellem Zweig, sonst laut Routenplan)? wende: die Route
+   * fährt dieselbe Straße zurück (über die Rampen).
+   */
   afterExit(fork) {
     const br = fork.branch;
     if (br) {
       for (const sec of br.sections) {
         if (sec.kind === 'stadt' && sec.place === this.target) return { type: 'ziel', place: sec.place };
         if (sec.kind === 'term' && !sec.arrival) return { type: sec.transit, to: sec.transitTo };
-        if (sec.kind === 'ab') return { type: 'ab', road: deRoad(sec.de).label, towards: deTowards(sec.de).name, wende: sec.de === deRev(fork.de) };
-        if (sec.kind === 'land') return { type: 'land', road: deRoad(sec.de).label, towards: deTowards(sec.de).name };
+        if (sec.kind === 'ab' || sec.kind === 'land') return { type: sec.kind, road: deRoad(sec.de).label, towards: deTowards(sec.de).name, wende: sec.de === deRev(fork.de) };
       }
     }
-    return this.afterExitAt(fork.node);
+    return this.afterExitAt(fork.node, fork.de);
   }
-  afterExitAt(node) {
+  /** Was am Knoten laut Routenplan kommt. via: die Kante, auf der die Fahrt ankommt (für wende wie in afterExit). */
+  afterExitAt(node, via = -1) {
     const pol = this.policy;
     if (!pol) return null;
     const st = stateOfNode(node);
@@ -926,8 +1024,57 @@ export class Trip {
     const t = pol.next[st];
     if (!t) return null;
     const kind = deKind(t.de);
-    if (kind === 'ab' || kind === 'land') return { type: kind, road: deRoad(t.de).label, towards: deTowards(t.de).name };
+    if (kind === 'ab' || kind === 'land') return { type: kind, road: deRoad(t.de).label, towards: deTowards(t.de).name, wende: via >= 0 && t.de === deRev(via) };
     return { type: kind, to: deTo(t.de) };
+  }
+
+  // --- Ergänzung der Engine (Paket G): shears() ohne neue Objekte je Bild ------------------------------------------
+  /**
+   * Dasselbe wie shears(), aber in die wiederverwendete Map out (Rahmen-ID → {a, b, gen}): vorhandene Einträge werden
+   * überschrieben, nicht mehr gültige gelöscht. Gleiche Formeln wie offset() und offsetLin(), nur ohne Zwischenobjekte.
+   */
+  shearsInto(out) {
+    const gen = (this.shearGen = (this.shearGen || 0) + 1);
+    const sec = this.section;
+    const s = this.s;
+    const l = sec.link;
+    if (l && Trip.inCurve(l, s)) {
+      const u = l.type === 'exit' ? s - l.s : l.s - s;
+      this.putShear(out, l.a.id, -R(u), l.type === 'exit' ? -dR(u) : dR(u), gen);
+    } else this.putShear(out, sec.frame, 0, 0, gen);
+    let grown = true;
+    let guard = 0;
+    while (grown && guard++ < 10) {
+      grown = false;
+      for (const k of this.links) {
+        const A = out.get(k.a.id);
+        const B = out.get(k.b.id);
+        const hasA = !!A && A.gen === gen;
+        const hasB = !!B && B.gen === gen;
+        if (hasA === hasB) continue;
+        const exit = k.type === 'exit';
+        const off = BETA * ((exit ? s - k.s : k.s - s) - J.cap / 2);
+        const slope = exit ? BETA : -BETA;
+        if (hasA) this.putShear(out, k.b.id, A.a + off, A.b + slope, gen);
+        else this.putShear(out, k.a.id, B.a - off, B.b - slope, gen);
+        grown = true;
+      }
+    }
+    out.forEach(this.dropStaleShear, this);
+    return out;
+  }
+  dropStaleShear(e, id, out) {
+    if (e.gen !== this.shearGen) out.delete(id);
+  }
+  putShear(out, id, a, b, gen) {
+    let e = out.get(id);
+    if (!e) {
+      e = { a: 0, b: 0, gen: 0 };
+      out.set(id, e);
+    }
+    e.a = a;
+    e.b = b;
+    e.gen = gen;
   }
 
   /** Position auf der Landkarte (Breite, Länge, Kurs) für die Kartenansicht. */

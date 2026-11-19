@@ -57,6 +57,12 @@ export function fmtClock(minutesOfDay) {
   return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
 }
 
+/** Eine Spanne der Uhr (Sekunden) wie „47 min“ oder „2 h 05 min“ (Sendezeit der XXL-Welt). */
+export function fmtSpan(seconds) {
+  const m = Math.max(0, Math.floor(seconds / 60));
+  return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min';
+}
+
 export function fmtDuration(seconds) {
   const s = Math.max(0, Math.round(seconds));
   const m = Math.floor(s / 60);

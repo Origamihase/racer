@@ -2,26 +2,45 @@
 // Hauptprogramm: Renderer, Bildkomposition (Welt → Regentropfen/Effekte → Cockpit), Kameras
 // (Cockpit, Drohne, Kameraschwenk beim Start, Vorführmodus), Zustände und Menüs.
 import * as THREE from 'three';
-import { curveUniforms, W } from './curve.js';
+import { W, curveTable, curveAt, curveOffset } from './curve.js';
+import { Course, MapPlanner, PROBE_MARKS } from './game/course.js';
+import * as mapGraph from './map/graph.js';
+import * as mapShapes from './map/shapes.js';
 import { setMaxAnisotropy, ROAD, roundRect } from './textures.js';
 import { Road } from './world/road.js';
+import { XxlWorld, ROAD_OPTS, autoTarget, autoDrive, AUTO } from './world/xxl/world.js';
+import { installDebug } from './world/xxl/debug.js';
 import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
+import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
+import { createNatureKit } from './world/kit/nature.js';
+import { cityKit, naviLayout } from './world/xxl/towns.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
 import { Cockpit } from './cockpit/cockpit.js';
+import { Facecam } from './cockpit/facecam.js';
 import { Windshield, createCompositeMaterial } from './fx/windshield.js';
 import { Rain } from './fx/rain.js';
 import { Audio } from './audio.js';
 import { Speech } from './speech.js';
 import { Input } from './input.js';
+import { TouchControls } from './ui/touch.js';
+import { driveSettings, playerOptions } from './ui/drive-settings.js';
+import { showDriveHint, driveHintTick } from './ui/drive-hint.js';
+import { Jolt } from './fx/jolt.js';
+import { TeslaDamage } from './models/damage-fx.js';
+import { CabinDamage } from './cockpit/damage-cabin.js';
 import { loadSave, storeSave, resetSave } from './save.js';
 import { Game } from './game/game.js';
 import { Pickups } from './game/pickups.js';
 import { UI } from './ui/ui.js';
 import { Menus } from './ui/menus.js';
 import { SHOP, UPGRADE_LIMITS } from './data.js';
+import { MapDemo } from './map/mapdemo.js';
+import { NavModel } from './map/navroute.js';
+import { setRoadAhead, setTownLayout } from './map/roadahead.js';
+import { recordVisit } from './ui/mapscreen.js';
 import { clamp, lerp, damp, easeInOut, smoothstep } from './util.js';
 
 const QUALITY = {
@@ -30,6 +49,12 @@ const QUALITY = {
   niedrig: { pr: 0.75, msaa: 0, shadows: false, shadowSize: 1024, mirrorEvery: 3 },
 };
 const DEBUG = /[?&]debug/.test(location.search);
+// Die neue Welt mit Ausfahrten, Rampen, Landstraßen und Orten (noch hinter dem Schalter, siehe src/world/xxl)
+const XXL = /[?&]xxl/.test(location.search);
+// Prüfstand für Navi und Karte: eine echte Fahrt über die XXL-Karte neben dem klassischen Spiel (src/map/mapdemo.js);
+// in der XXL-Welt gibt es ihn nicht, dort führt das Navi die Fahrt der Welt
+const mapDemo = DEBUG && !XXL && /[?&]mapdemo/.test(location.search) ? new MapDemo() : null;
+let mapHudT = 0; // die Navi-Zeile des HUD (XXL-Fahrt, Prüfstand) folgt viermal je Sekunde
 
 // ---------------------------------------------------------------------------
 const app = document.getElementById('app');
@@ -73,19 +98,63 @@ const rearCam = new THREE.PerspectiveCamera(21, 0.245 / 0.072, 0.6, 700);
 const photoCam = new THREE.PerspectiveCamera(24, 16 / 9, 0.2, 900);
 
 const sky = new Sky(renderer, scene, { shadows: quality.shadows, shadowSize: quality.shadowSize });
-const road = new Road(scene);
+const road = new Road(scene, XXL ? ROAD_OPTS : undefined);
 const scenery = new Scenery(scene);
+const xxl = XXL ? new XxlWorld({ scene, road, scenery }) : null;
 const rain = new Rain(scene);
 const traffic = new Traffic(scene, rain);
 const pickups = new Pickups(scene);
 prewarmVehicles();
 const tesla = buildTesla();
+// Schaden außen: Dellen, Schrammen, Pflaster, Leuchten, Dampf (baut nur neu, wenn sich der Schaden ändert)
+const teslaDamage = new TeslaDamage(tesla.damageHooks);
 scene.add(tesla.root);
 const cockpit = new Cockpit();
+// letzter Karosserie-Punkt vom Fahrerplatz aus: Haube springt vorn auf und zittert, Dampf, ab und zu ein Ruckeln
+const cabinDamage = new CabinDamage(cockpit, tesla.damageHooks);
+// Facecam (unten links in der Cockpit-Ansicht): eigenes kleines Studio mit eigenem Mini Adam am gleichen Lenkrad
+const facecam = new Facecam();
+facecam.setWheel(tesla.adam.wheel.m, tesla.adam.wheel.r);
 cockpit.scene.environment = sky.envTarget.texture;
 sky.onEnv = (tex) => {
   cockpit.scene.environment = tex;
+  facecam.scene.environment = tex;
 };
+// Verlauf der Straße: im klassischen Spiel ein entworfener Endlos-Kurs. Die XXL-Welt entwirft ihn aus der Karte
+// (MapPlanner) für die Abschnitte ihrer Fahrt (courseTrip = xxl.trip, siehe xxlStart): Autobahn, Landstraße und
+// Ortszufahrt biegen und steigen, wie die Karte sie zeigt; rund um Ausfahrten, Einfädelpunkte und Enden bleibt es gerade.
+// Prüfstand: __MA.course.drive(kurs, fahrt, tick) fährt einen Kurs über eine Fahrt (trip.js), tick(s) vor jedem Bild
+let course = xxl ? new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) }) : new Course();
+let courseTrip = null;
+let courseTick = null;
+// Navi-Prüfstand (?debug&mapdemo): seine Fahrt ist die Fahrt der Welt. Der Kurs entwirft sie aus der Karte, sie folgt
+// dem Spieler (p.s, vor course.fill), und das Navi liest die Straße voraus nur aus diesem Kurs (COMMON.md §9)
+if (mapDemo) {
+  course = new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) });
+  courseTick = (s, dt) => {
+    mapDemo.follow(s, dt);
+    courseTrip = mapDemo.trip;
+  };
+}
+// die Straße voraus des Navis: der Verlauf, den die Welt zeichnet (preview reicht 4 km weit)
+setRoadAhead((trip, s, dMax) => course.preview(trip, s, Math.min(dMax, 4000)));
+// und die Orte der XXL-Welt in seiner Nahansicht: Brunnenplatz und Zielbrunnen dort, wo die Welt sie baut
+if (xxl) setTownLayout((trip, sec) => naviLayout(sec, xxl.town(sec)));
+// Kurvenschilder rücken von Möbeln am Rand weg: vom Raster der Landschaft und von Blitzern, Tempo-Schildern und
+// Navi-Zielen, die das Spiel dort bestellt hat
+const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'ziel', 'elsa']);
+const curveSigns = new CurveSigns(scene, {
+  // XXL: am Rand des Querschnitts, den der Abschnitt hat (zweispurige Straßen sind schmaler als die Autobahn)
+  layout: xxl ? profileLayout : undefined,
+  busy(s) {
+    if (gridBusy(s)) return true;
+    for (const r of scenery.requests) if (EDGE_REQUESTS.has(r.type) && Math.abs(r.s - s) < 8) return true;
+    return false;
+  },
+  // jede neue Bestellung kommt hinten an die Liste
+  edge: () => (scenery.requests.length ? scenery.requests[scenery.requests.length - 1].id : ''),
+});
+const skyView = { mapX: 0, mapZ: 0, hillY: 0 };
 const windshield = new Windshield();
 
 // Render-Ziele
@@ -96,13 +165,19 @@ function drawSize() {
 }
 drawSize();
 const worldRT = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: quality.msaa, depthBuffer: true });
+// das Rückdisplay der Action-Cam im Cockpit zeigt das Weltbild (kein eigenes Rendern)
+cockpit.setLiveTexture(worldRT.texture);
 const mirrorRT = new THREE.WebGLRenderTarget(768, 226, { type: THREE.HalfFloatType, samples: 4, depthBuffer: true });
 cockpit.setMirrorTexture(mirrorRT.texture);
+// durch die Heckscheibe der Facecam sieht man, was hinter dem Auto ist
+facecam.setRearView(mirrorRT.texture);
 const compMat = createCompositeMaterial(worldRT.texture, windshield);
 const compScene = new THREE.Scene();
 const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compMat);
 quad.frustumCulled = false;
 compScene.add(quad);
+// Die Regentropfen liegen außen auf der Frontscheibe: im Cockpitbild hinter allem im Innenraum und hinter den Wischern
+cockpit.root.add(windshield.layer);
 const compCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const U = compMat.uniforms;
 // Bildeffekte über dem fertigen Bild aus Welt und Cockpit (sonst wirkt das Cockpit wie aufgeklebt):
@@ -229,12 +304,13 @@ speech.enabled = settings.speech;
 const input = new Input();
 const ui = new UI(app);
 ui.setChat(settings.chat);
+ui.setFacecam(settings.facecam !== false);
 
 // Touch-Knöpfe (nur auf Geräten mit Touchscreen sichtbar)
 const touchEl = document.createElement('div');
 touchEl.className = 'touch';
+// Lenken, Bremse und Strom kommen aus src/ui/touch.js (Daumen-Zug oder Lenkknöpfe)
 for (const [action, label, cls] of [
-  ['left', '◀', 't-left'], ['right', '▶', 't-right'], ['brake', 'Bremse', 't-brake'], ['gas', 'Strom', 't-gas'],
   ['horn', '📯', 't-small t-horn'], ['wiper', '🌧️', 't-small t-wiper'], ['megafon', '📢', 't-small t-megafon'],
   ['camera', '🎥', 't-small t-camera'], ['pause', '⏸', 't-small t-pause'],
 ]) {
@@ -246,6 +322,8 @@ for (const [action, label, cls] of [
   input.bindTouch(b, action);
 }
 app.appendChild(touchEl);
+const touch = new TouchControls(touchEl, input);
+const jolt = new Jolt();
 
 let photoRequest = null;
 const fxState = { flash: 0, glitch: 0, green: 0, trunk: 0, fade: 0, fadeTarget: 0 };
@@ -259,8 +337,13 @@ const fx = {
   green: (dur) => {
     fxState.green = Math.max(fxState.green, dur);
   },
-  shake: (v) => {
+  shake: (v, zone) => {
     cockpit.shake = Math.max(cockpit.shake, v);
+    // Rempler: Kopf ruckt in Stoßrichtung, Gamepad und Handy rütteln
+    if (zone) {
+      jolt.hit(zone, v);
+      input.rumble(0.9, 220);
+    }
   },
   trunk: (dur) => {
     fxState.trunk = dur;
@@ -274,6 +357,7 @@ const uiFacade = {
   toast: (t, k, sub) => ui.toast(t, k, sub),
   banner: (t, d, sub) => ui.banner(t, d, sub),
   nomi: (t, d) => ui.nomi(t, d),
+  studio: (t, d) => ui.studio(t, d),
   money: (a, l) => ui.money(a, l),
   durchsage: (l, t, d, b) => ui.durchsage(l, t, d, b),
   rahmen: (r, b) => ui.rahmen(r, b),
@@ -283,9 +367,141 @@ const uiFacade = {
   photo: (kmh, clock) => {
     photoRequest = { kmh, clock };
   },
+  brunnenTV: (n, name) => ui.brunnenTV(n, name),
 };
 
-const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups });
+// XXL: Das Spiel bietet auf echte Orte und braucht dafür die Fahrt der Welt (jedes Gebot setzt ihr Ziel), den Halt am
+// Brunnen (stopping: der Wagen bremst gerade dorthin · release: weiterfahren, auch wenn er knapp hinter dem
+// Haltepunkt zum Stehen kam) sowie Brunnenplatz und Ort für die BrunnenTV-Szene
+const gameWorld = xxl
+  ? { trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec) }
+  : null;
+const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld });
+// XXL: Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht,
+// BrunnenTV, Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
+if (xxl) xxl.on((e) => {
+  game.onTrip(e);
+  // an der angesagten Ausfahrt vorbei: Die Fahrt plant neu, das Navi im Auto zeigt es
+  if (e.type === 'fork' && e.wrong && game.running) xxlNav.replanned();
+  if (game.running && (e.type === 'arrive' || e.type === 'pass')) {
+    recordVisit(save, e.place);
+    storeSave(save);
+  }
+});
+// Krümmung (1/m, links positiv) und Steigung unter dem Wagen für die Lenkung: course.fill() misst sie am Ende jedes
+// Bildes, also genau dort, wo das nächste beginnt; beim Fahren gehen sie mit den Eingaben (ctl) an game.update
+const courseEnv = { kappa: 0, grade: 0 };
+
+// --- Mini Adams Mimik ------------------------------------------------------------------
+// Spielereignisse kommen über game.onMood und werden zu Stimmung, Geste und Blick – für beide Figuren gleich: die im
+// Auto (Drohne, Titel, Abspann) und die in der Facecam. Eine Stimme hat Adam nicht: er „redet“ in kurzen Stücken mit
+// dem Chat (Mund im Silbentakt, Blick in die Kamera) und hört zu, solange NOMI oder eine Sprachdurchsage spricht.
+const adams = [tesla.adam, facecam.adam];
+const adamCtl = { talkFrom: 0, talkUntil: 0, talk: 0, chatK: 0, nextChat: 14, megafon: -1, voice: null, camUntil: 0, quiet: 0, doze: 0, wiperT: 0 };
+const hash01 = (k) => {
+  const x = Math.sin(k * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+function adamDo(fn) {
+  for (const a of adams) fn(a);
+  // dazu die Figur, die freie Kameras im Cockpit sehen (baut das Cockpit erst beim ersten Blick von außen)
+  if (cockpit.driver) fn(cockpit.driver);
+}
+/** In die Kamera schauen; so lange zieht ihn auch NOMI nicht weg. */
+function adamToCamera(sec) {
+  adamDo((a) => a.lookAt('camera', sec));
+  adamCtl.camUntil = Math.max(adamCtl.camUntil, simT + sec);
+}
+/** Adam spricht in inSec Sekunden für dur Sekunden (verlängert, was schon läuft). */
+function adamSay(dur, inSec = 0) {
+  const c = adamCtl;
+  const from = simT + inSec;
+  if (from > c.talkUntil) c.talkFrom = from;
+  c.talkUntil = Math.max(c.talkUntil, from + dur);
+}
+/** Stimmung aus dem Spiel (MOODS in adamMimic.js) oder ein Auftritt: wave, donation, cheer, wiper, megafon. */
+function adamMood(name, k = 1) {
+  adamCtl.quiet = 0;
+  switch (name) {
+    case 'wave':
+      // Begrüßung zum Start: in die Kamera schauen, winken, „Hallo Chat!“
+      adamDo((a) => {
+        a.gesture('wave');
+        a.setMood('happy', 2.4, 0.6);
+      });
+      adamToCamera(2.6);
+      adamSay(1.6, 0.5);
+      break;
+    case 'donation':
+      // kurz aufs Handy mit dem Chat, freuen, bedanken; bei großen Spenden jubelt er
+      adamDo((a) => {
+        a.lookAt('chat', 1.1);
+        a.setMood('happy', 1.4 + 1.6 * k, 0.45 + 0.55 * k);
+        if (k >= 0.75) a.gesture('cheer');
+      });
+      adamSay(1.2 + k, 1.2);
+      break;
+    case 'cheer':
+      // Ziel erreicht
+      adamDo((a) => {
+        a.gesture('cheer');
+        a.setMood('happy', 3, k);
+      });
+      adamToCamera(2.2);
+      adamSay(2, 0.9);
+      break;
+    case 'wiper':
+      // der Wischer zuckt nur: hinschauen – im Schauer zucken die stehenden Wischer alle paar Sekunden, dann schaut er
+      // nur ab und zu hin (sonst blickte er den ganzen Schauer lang nach oben und nie mehr in die Kamera)
+      if (simT < adamCtl.wiperT) break;
+      adamCtl.wiperT = simT + 6 + 4 * hash01(simT);
+      adamDo((a) => a.setMood('rain', 2.2, k));
+      break;
+    case 'megafon':
+      // durchs Megafon spricht er selbst (k = Dauer)
+      adamCtl.megafon = simT + k;
+      adamSay(k, 0.1);
+      break;
+    default:
+      adamDo((a) => a.setMood(name, undefined, k));
+  }
+}
+game.onMood = adamMood;
+
+/** Pro Bild: Sprechen, Zuhören und Müdigkeit (leerer Akku) zu den Animationswerten o dazurechnen. */
+function adamFrame(dt, o) {
+  const c = adamCtl;
+  const cur = speech.current;
+  // wer gerade spricht (während des Megafons ist er es selbst)
+  const voice = cur && simT > c.megafon ? cur.voiceKey : null;
+  if (voice !== c.voice) {
+    if (simT > c.camUntil) {
+      if (voice === 'board') adamDo((a) => a.lookAt('nomi', 1.4));
+      else if (voice) adamDo((a) => a.lookAt('chat', 1.6));
+    }
+    c.voice = voice;
+  }
+  // von selbst ab und zu ein paar Worte in die Kamera – nur in der Fahrt und wenn sonst niemand spricht
+  if (state === 'drive' && !voice) {
+    c.nextChat -= dt;
+    if (c.nextChat <= 0) {
+      c.chatK++;
+      c.nextChat = 16 + 26 * hash01(c.chatK);
+      const dur = 1.4 + 2.2 * hash01(c.chatK + 0.5);
+      adamSay(dur);
+      adamToCamera(dur + 0.3);
+    }
+  }
+  const talking = simT >= c.talkFrom && simT < c.talkUntil && !voice;
+  c.talk = clamp(c.talk + (talking ? dt / 0.15 : -dt / 0.25), 0, 1);
+  o.talk = c.talk;
+  // müde: fast leerer Akku, oder lange passiert nichts (dann langsam schwere Lider, bis das nächste Ereignis kommt)
+  c.quiet = state === 'drive' && !voice ? c.quiet + dt : 0;
+  c.doze = clamp(c.doze + (c.quiet > 50 ? dt / 12 : -dt / 0.6), 0, 1);
+  const battery = state === 'drive' ? clamp((14 - game.player.battery) / 14, 0, 1) : 0;
+  o.sleepy = Math.max(battery * 0.85, c.doze * 0.5);
+  return o;
+}
 
 // --- Zustände ------------------------------------------------------------------
 let state = 'loading';
@@ -310,11 +526,13 @@ const menus = new Menus(app, {
     } else if (a === 'menu') toTitle();
   },
   back: () => {},
+  travel: !!xxl, // XXL-Welt: Rekord und Summe auf dem Titel in Reisekilometern
   dataFor: (name, data) => {
     if (name === 'shop') return { wallet: save.wallet, upgrades: save.upgrades };
     if (name === 'settings') return { ...settings, speechSupported: speech.supported };
     if (name === 'title') return save;
     if (name === 'pause') return game;
+    if (name === 'karte') return { save, nav: xxl ? xxlNav : mapDemo ? mapDemo.model : null, travel: !!xxl, odo: xxl && paused ? game.odometer : null };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
     if (name === 'over') return lastOver ? { ...lastOver, wallet: save.wallet } : data;
     return data;
@@ -356,16 +574,27 @@ function applyCosmetics() {
   const up = save.upgrades;
   tesla.setStarlink(!!up.starlink);
   tesla.setVest(!!up.weste);
+  facecam.adam.setVest(!!up.weste);
   cockpit.setElsa(!!up.elsa);
 }
 
+/** Fahr-Einstellungen auf Fahrphysik, Eingabe und Touch übertragen. */
+function applyDrive() {
+  const ds = driveSettings(settings);
+  game.player.configure(playerOptions(ds));
+  input.vibration = ds.vibration;
+  touch.configure(ds);
+}
+
 function applySettings(key) {
+  applyDrive();
   audio.enabled = settings.sound;
   audio.volume = settings.volume;
   audio.setEnabled(settings.sound);
   speech.enabled = settings.speech;
   if (!settings.speech) speech.stopAll();
   ui.setChat(settings.chat);
+  ui.setFacecam(settings.facecam !== false);
   if (!key || key === 'quality') {
     const before = quality;
     quality = qualityPreset();
@@ -401,6 +630,7 @@ function toTitle() {
   ui.show(false);
   speech.stopAll();
   game.startDemo();
+  if (xxl) xxlStart(true);
   applyCosmetics();
   menus.hide();
   menus.show('title', save);
@@ -411,6 +641,7 @@ function startRun() {
   menus.hide();
   paused = false;
   game.start(save);
+  if (xxl) xxlStart(false);
   applyCosmetics();
   state = 'intro';
   stateT = 0;
@@ -428,12 +659,14 @@ function resume() {
   menus.hide();
   speech.pause(false);
   input.pressed.clear();
-  input.keys.clear();
+  input.releaseAll();
 }
 
 function pause() {
   if (state !== 'drive' || paused) return;
   paused = true;
+  // gehaltene Tasten und Daumen loslassen: nach dem Weiterfahren lenkt nichts von allein
+  input.releaseAll();
   speech.pause(true);
   menus.show('pause', game);
 }
@@ -441,19 +674,22 @@ function pause() {
 function finishRun() {
   const o = game.over;
   const km = o.distance / 1000;
-  const best = save.best.distance || 0;
+  // XXL: Reisemeter mit eigenem Rekord und eigener Summe; die klassischen Zahlen bleiben Meter der Straße
+  const rec = o.travel ? 'reise' : 'distance';
+  const best = save.best[rec] || 0;
   const newRecord = o.distance > best && o.distance > 50;
   save.wallet = Math.round((save.wallet + o.money) * 100) / 100;
-  save.best.distance = Math.max(best, o.distance);
+  save.best[rec] = Math.max(best, o.distance);
   save.best.earned = Math.max(save.best.earned || 0, o.money);
   save.best.viewers = Math.max(save.best.viewers || 0, o.peakViewers);
   save.stats.runs++;
-  save.stats.totalKm += km;
+  if (o.travel) save.stats.reiseKm = (save.stats.reiseKm || 0) + km;
+  else save.stats.totalKm += km;
   save.stats.naviReached += o.stats.naviReached;
   save.stats.crashes += o.stats.crashes;
-  save.stats.leftLaneEuro += o.breakdown['Linke Spur'] || 0;
   storeSave(save);
-  lastOver = { ...o, newRecord, best: save.best.distance, wallet: save.wallet, photos: ui.photos.slice() };
+  if (newRecord) adamMood('proud');
+  lastOver = { ...o, newRecord, best: save.best[rec], wallet: save.wallet, photos: ui.photos.slice() };
 }
 
 // --- Autopilot (Titel, Kameraschwenk, Abspann) -------------------------------------
@@ -510,13 +746,31 @@ const drone = { pos: new THREE.Vector3(0, 4, 10), look: new THREE.Vector3(0, 1, 
 function updateCarMatrix() {
   const p = game.player;
   carPos.set(p.x, 0, 0);
-  carEuler.set(0, -p.yaw, clamp(p.latAcc * 0.0025, -0.03, 0.03), 'YXZ');
+  carEuler.set(0, -p.yaw, clamp(p.latAccSm * 0.0025, -0.03, 0.03), 'YXZ');
   carQuat.setFromEuler(carEuler);
   carMatrix.compose(carPos, carQuat, ONE);
   tesla.root.position.copy(carPos);
   tesla.root.quaternion.copy(carQuat);
   cockpit.root.position.copy(carPos);
   cockpit.root.quaternion.copy(carQuat);
+}
+
+// Blick in die Kurve: Cockpit und Verfolgerdrohne drehen sich sacht zum Straßenpunkt 25–60 m voraus und neigen
+// sich ein wenig mit Kuppen und Senken. Geglättet (gut 0,4 s), damit nichts schwimmt.
+const lookAhead = { yaw: 0, pitch: 0 };
+const UP_AXIS = new THREE.Vector3(0, 1, 0);
+const RIGHT_AXIS = new THREE.Vector3(1, 0, 0);
+function updateLookAhead(dt, p) {
+  const d = clamp(25 + p.speed * 0.9, 25, 60);
+  const c = curveAt(d);
+  const f = curveOffset(p.x, c.k, c.xr);
+  const x = c.x + f * Math.cos(c.th) - p.x;
+  const z = c.z - f * Math.sin(c.th);
+  const yaw = Math.atan2(-x, -z);
+  const pitch = Math.atan2(c.y, d);
+  const k = 1 - Math.exp(-dt / 0.42);
+  lookAhead.yaw += (yaw - lookAhead.yaw) * k;
+  lookAhead.pitch += (pitch - lookAhead.pitch) * k;
 }
 
 function setFov(vfovCockpit) {
@@ -963,6 +1217,10 @@ function placeDrone(dt, mode) {
   } else {
     pos = new THREE.Vector3(-p.vx * 0.25, 3.3, 9.2).applyMatrix4(carMatrix);
     look = new THREE.Vector3(0, 1.0, -14).applyMatrix4(carMatrix);
+    // in die Kurve schauen (um die Kamera gedreht) und mit der Straße etwas hoch oder runter
+    look.sub(pos).applyAxisAngle(UP_AXIS, lookAhead.yaw * 0.6);
+    look.y += Math.tan(lookAhead.pitch * 0.6) * 23;
+    look.add(pos);
   }
   const k = 1 - Math.exp(-dt * (mode === 'orbit' ? 3 : 6));
   if (mode === 'orbit') {
@@ -1096,8 +1354,12 @@ function adaptResolution(dt) {
 
 // --- Rendern --------------------------------------------------------------------------
 let frameNo = 0;
+// Lage der Facecam in diesem Bild (ui.placeFacecam) oder null
+let facecamBox = null;
 function renderWorld(cam, { cockpitOn, drops }) {
   tesla.root.visible = !cockpitOn;
+  // Ist der Wagen von außen zu sehen (Drohne, Titel, Blitzerfoto), stehen seine Wischer wie im Cockpit
+  if (!cockpitOn) tesla.setWipers(windshield.angles[0], windshield.angles[1]);
   renderer.shadowMap.needsUpdate = quality.shadows;
   renderer.setRenderTarget(worldRT);
   renderer.render(scene, cam);
@@ -1143,6 +1405,18 @@ function renderFrame(cockpitOn) {
     renderer.clearDepth();
     renderer.render(cockpit.scene, cockpitCam);
     postPass();
+    // Facecam als Teil des Stream-Overlays über allem (Rahmen aus ui.js); neu gefilmt nur jedes 2. bzw. 3. Bild,
+    // in der Pause gar nicht
+    const fc = facecamBox;
+    if (fc) {
+      // (nach einem Zeitsprung – Pause, Test – sofort, damit nie ein altes Bild stehen bleibt)
+      const due = !paused && (frameNo % Math.max(2, quality.mirrorEvery) === 0 || Math.abs(simT - facecam.shotT) > 0.3);
+      if (!facecam.ready || due) {
+        facecam.render(renderer, fc, settings.quality === 'auto' ? 'hoch' : settings.quality);
+        facecam.shotT = simT;
+      }
+      facecam.draw(renderer, fc, { alpha: fc.alpha, glitch: U.uGlitch.value, t: simT });
+    }
     renderer.autoClear = true;
   }
 }
@@ -1229,8 +1503,9 @@ function frame(now) {
   if (DEBUG && window.__MA && window.__MA.frozen) return;
   if (!(dt > 0)) dt = 1 / 60;
   dt = Math.min(dt, 1 / 20);
-  step(dt);
-  adaptResolution(dt);
+  const mapOpen = menus.current === 'karte'; // die große Karte deckt alles zu: dahinter kein 3D-Bild
+  step(dt, { render: !mapOpen });
+  if (!mapOpen) adaptResolution(dt);
 }
 
 function step(dt, { render = true } = {}) {
@@ -1296,7 +1571,12 @@ function step(dt, { render = true } = {}) {
         state = 'drive';
         stateT = 0;
         ui.show(true);
-        ui.toast(matchMedia('(pointer: coarse)').matches ? 'Tipp: ◀ ▶ lenken · Strom und Bremse rechts · 🎥 Kamera' : 'Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
+        // die Facecam geht an: Mini Adam schaut hinein und winkt
+        adamMood('wave');
+        // beim ersten Start auf diesem Gerät „So steuerst du“, danach der kurze Tipp
+        if (!showDriveHint(ui, input.lastDevice, driveSettings(settings))) {
+          ui.toast(matchMedia('(pointer: coarse)').matches ? 'Tipp: ◀ ▶ lenken · Strom und Bremse rechts · 🎥 Kamera' : 'Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
+        }
       }
       break;
     }
@@ -1317,18 +1597,40 @@ function step(dt, { render = true } = {}) {
         ui.cameraLabel(view === 'cockpit' ? '🎥 Cockpit' : '🎥 Drohne');
       }
       ctl = {
+        // Lenktasten mit Zeitstempel (steerLog) und Tastenstand am Bildende, Stick/Touch-Zug, Wisch-Spurwechsel
         steer: input.steer,
+        steerKey: input.steerKey,
+        steerLog: input.steerLog,
+        analog: input.analog,
+        lane: input.lane,
         throttle: input.throttle,
         brake: input.brake,
         horn: input.take('horn'),
         wiper: input.take('wiper'),
         megafon: input.take('megafon'),
         device: input.lastDevice,
+        // Krümmung und Steigung unter dem Wagen aus dem Kurs (courseEnv); auf dem Prüfstand (?debug) lässt sich
+        // stattdessen eine Probe einhängen: __MA.kappaProbe(s), __MA.gradeProbe(s)
+        kappa: DEBUG && window.__MA && window.__MA.kappaProbe ? window.__MA.kappaProbe(p.s) : courseEnv.kappa,
+        grade: DEBUG && window.__MA && window.__MA.gradeProbe ? window.__MA.gradeProbe(p.s) : courseEnv.grade,
       };
+      if (xxl && DEBUG && window.__MA.xxl && window.__MA.xxl.auto) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
+      driveHintTick(dt, ctl);
+      // Leitplanke: der Kopf ruckt zur Planke hin, Gamepad und Handy rütteln kurz
+      for (const e of p.events) {
+        if (e.type !== 'rail') continue;
+        jolt.hit(e.side < 0 ? 'left' : 'right', e.hard ? 0.5 : 0.3);
+        input.rumble(e.hard ? 0.6 : 0.3, e.hard ? 140 : 80);
+      }
       updateCarMatrix();
+      updateLookAhead(dt, p);
+      jolt.update(dt);
       if (view === 'cockpit') {
-        cockpit.placeCamera(camera, carMatrix, simT, p.speed, p.latAcc, dt);
+        cockpit.placeCamera(camera, carMatrix, simT, p.speed, p.latAccSm, dt);
+        camera.rotateOnWorldAxis(UP_AXIS, lookAhead.yaw * 0.5);
+        camera.rotateOnAxis(RIGHT_AXIS, lookAhead.pitch * 0.45);
+        jolt.apply(camera, carMatrix);
         setFov(58);
         cockpitOn = true;
       } else placeDrone(dt, 'follow');
@@ -1365,37 +1667,94 @@ function step(dt, { render = true } = {}) {
   // --- Welt aktualisieren -------------------------------------------------------
   const s = p.s;
   const w = game.weather ? game.weather.level : 0;
+  // der Himmel zieht schon vor dem Schauer zu und klart erst danach auf
+  const cloud = Math.max(w, game.weather ? game.weather.sky || 0 : 0);
   const frozen = paused;
   if (!frozen) {
-    const cu = curveUniforms.uCurve.value;
-    cu.x = 0.000125 * (0.62 * Math.sin(s / 1900 + 1.3) + 0.38 * Math.sin(s / 740 + 0.4));
-    cu.y = 0.000045 * Math.sin(s / 1300 + 2.1) * (0.5 + 0.5 * Math.sin(s / 3100));
-    // Prüfstand (?debug): flache Welt, damit Bausteine unverzerrt begutachtet werden können
-    if (DEBUG && window.__MA && window.__MA.flat) cu.set(0, 0);
+    // XXL: zuerst die Fahrt fortschreiben (trip.update) – der Kurs liest gleich danach, welchen Weg sie nimmt
+    if (xxl) xxlStep(p, w, dt);
+    // Verlauf der Straße in die Tabelle des Shaders; Prüfstand (?debug): flache Welt, damit Bausteine unverzerrt
+    // begutachtet werden können
+    if (DEBUG && window.__MA && window.__MA.flat) {
+      curveTable.flat();
+      courseEnv.kappa = courseEnv.grade = 0;
+      sky.turn(0);
+    } else {
+      if (courseTick) courseTick(s, dt);
+      const st = course.fill(courseTrip, s, curveTable, dt);
+      courseEnv.kappa = st.kappa;
+      courseEnv.grade = st.grade;
+      sky.turn(st.psi);
+      skyView.mapX = st.mapX;
+      skyView.mapZ = st.mapZ;
+    }
+    curveTable.commit(renderer);
+    // die Hügelkette am Horizont steigt und sinkt mit der Straße, wo sie im Dunst verschwindet
+    skyView.hillY = clamp(curveAt(1500).y * 0.7, -90, 90);
+    cockpit.scene.environmentRotation.copy(sky.envRotation);
     const L = game.left || { glow: 0 };
     road.update(s, dt, simT, L.glow || 0, L.open && L.timer < 10 ? 1 : 0);
+    curveSigns.update(course, s, xxl ? xxlSignShear : null);
     road.setWet(w);
     scenery.update(s, dt);
-    sky.setOvercast(w * 0.95);
+    sky.setOvercast(cloud * 0.95);
     rain.update(dt, simT, { speed: p.speed, s, camX: camera.position.x, intensity: w });
-    tesla.update(dt, p.speed, p.steer, simT);
+    tesla.update(dt, p.speed, p.wheel, simT);
+    teslaDamage.update(dt, simT, p.damage, p.speed);
+    cabinDamage.update(dt, simT, p.damage, p.speed, cockpitOn);
     tesla.setBrake(p.braking > 0.1 || p.speed < 1);
-    tesla.adam.animate(simT, { steer: p.steer, wave: adamWave, look: adamLook });
+    const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook });
+    tesla.adam.animate(simT, adamOpts);
+    facecam.adam.animate(simT, adamOpts);
+    facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake });
     tesla.cabinLight.intensity = cockpitOn ? 0 : state === 'title' || state === 'intro' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
+    const scr = game.screenState ? safeScreen() : null;
+    if (mapDemo && scr) {
+      const visits = mapDemo.takeVisits();
+      for (const i of visits) recordVisit(save, i);
+      if (visits.length) storeSave(save);
+      scr.nav = mapDemo.nav(scr, cockpitOn, scr.navi);
+    } else if (xxl && scr) {
+      // XXL: Karte, Route, Ansage und Ziel des Mittelbildschirms kommen aus der Fahrt der Welt (COMMON.md §9)
+      xxlScreenNav.model = xxlNav;
+      xxlScreenNav.bidder = scr.navi.bidder;
+      xxlScreenNav.bid = scr.navi.bid;
+      xxlScreenNav.bar = scr.navi.bar;
+      xxlScreenNav.wait = scr.navi.wait;
+      xxlScreenNav.clockMin = game.clock;
+      xxlScreenNav.visible = cockpitOn;
+      scr.nav = xxlScreenNav;
+      // die Spuransicht daneben zeigt den Querschnitt, auf dem der Wagen fährt (Rampe, Landstraße, Ort), und die
+      // gesperrte linke Spur samt Verkehr nur auf der Autobahn
+      xxlScreenRoad.lanes = xxlLimits.lanes;
+      xxlScreenRoad.extraLane = xxlLimits.extraLane;
+      xxlScreenRoad.autobahn = !game.offAutobahn;
+      scr.road = xxlScreenRoad;
+    }
+    if (scr && scr.nav) {
+      scr.nav.visited = save.visits;
+      if ((mapHudT -= dt) <= 0) {
+        mapHudT = 0.25;
+        ui.setTurn(state === 'drive' ? scr.nav.model.instruction() : null);
+      }
+    }
     cockpit.update({
-      dt, t: simT, steer: p.steer, latAcc: p.latAcc, wiperAngles: windshield.angles, sunDir: sky.sunDir, overcast: w,
-      screen: game.screenState ? safeScreen() : null,
+      dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
+      sunDir: sky.sunDir, overcast: cloud, adam: adamOpts,
+      screen: scr,
     });
     if (fxState.trunk > 0) {
       fxState.trunk -= dt;
       if (fxState.trunk <= 0) cockpit.setMirrorTexture(mirrorRT.texture);
     }
   }
-  sky.update(frozen ? 0 : dt, camera, s, simT);
+  sky.update(frozen ? 0 : dt, camera, s, simT, skyView);
   audio.update(dt, {
     speed: p.speed, throttle: p.throttle, rain: w, sirenLevel: game.sirenLevel || 0, inCabin: cockpitOn, paused: frozen || state === 'over',
+    // Quietschen an der Haftgrenze; Klappern wächst mit den verbrauchten Karosserie-Punkten (0 … 3)
+    squeal: state === 'drive' ? p.squeal : 0, rattle: state === 'drive' ? (3 * p.hits) / p.maxHits : 0,
   });
 
   // Effekte
@@ -1404,16 +1763,17 @@ function step(dt, { render = true } = {}) {
   fxState.glitch = Math.max(0, fxState.glitch - dt);
   fxState.green = Math.max(0, fxState.green - dt);
   U.uTime.value = simT;
-  U.uRain.value = w;
   U.uFlash.value = fxState.flash;
   U.uGlitch.value = fxState.glitch > 0 ? 0.6 + 0.4 * Math.sin(simT * 40) : 0;
   U.uGreen.value = fxState.green > 0 ? (Math.sin(simT * 26) > 0.2 ? 1 : 0.15) : 0;
   U.uFade.value = state === 'intro' ? clamp(fxState.fade, 0, 1) : 0;
-  U.uSat.value = 1.08 - w * 0.25;
+  U.uSat.value = 1.08 - cloud * 0.25;
 
   if (DEBUG && window.__MA && window.__MA.camHook) window.__MA.camHook(camera, carMatrix);
   document.body.classList.toggle('playing', state === 'drive' && !paused);
   document.body.classList.toggle('drone', view === 'drone');
+  // Facecam-Rahmen vor dem Rendern setzen, damit Bild und Rahmen im selben Bild an derselben Stelle sind
+  facecamBox = ui.placeFacecam(paused ? 0 : dt, state === 'drive' && cockpitOn);
   if (render) renderFrame(cockpitOn);
   // in der Pause bleiben Banner, Geld-Anzeigen und Funkloch stehen
   ui.update(paused ? 0 : dt, state === 'drive' || state === 'intro' ? game : null);
@@ -1447,15 +1807,99 @@ document.addEventListener('visibilitychange', () => {
   } else audio.resume();
 });
 
+// --- XXL-Welt ------------------------------------------------------------------
+const xxlLimits = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+let xxlTrafficFrame = null;
+// Navi der XXL-Fahrt (src/map/navroute.js): Lage auf der Karte, Route und Ansage, alles aus xxl.trip; je Fahrt ein Modell
+let xxlNav = null;
+// was der Mittelbildschirm davon bekommt (st.nav, src/map/navview.js): Bieter und Gebot im roten Balken kommen vom
+// Spiel (WorldNavi.screen), ohne Gebot dessen Texte für Balken (bar) und Kärtchen (wait); die Uhr ist die Reisezeit
+// (Game.travelStep), in der navview.js die Ankunft rechnet
+const xxlScreenNav = { model: null, bidder: '', bid: '', bar: '', wait: '', clockMin: 0, visible: false, visited: null };
+// und von der Straße für die Spuransicht (st.road, src/cockpit/screen.js)
+const xxlScreenRoad = { lanes: null, extraLane: null, autobahn: true };
+/** Neue Fahrt (Erlensee) bzw. Titel: der Titel fährt gleich auf der ersten Autobahn (die Kamera kreist dort). */
+function xxlStart(title) {
+  const p = game.player;
+  xxl.reset();
+  // am Navi-Ziel bleibt der Wagen am Brunnen stehen, bis das Spiel ihn weiterfahren lässt (BrunnenTV)
+  xxl.arrival.hold = !title;
+  courseTrip = xxl.trip;
+  xxlNav = new NavModel(xxl.trip);
+  traffic.reset();
+  pickups.reset();
+  xxlTrafficFrame = null;
+  if (title) {
+    xxl.advance(p, 1300);
+    p.x = 1.875;
+  } else {
+    p.x = xxl.trip.x;
+    p.speed = 40 / 3.6;
+  }
+  xxl.update(p.s, p.x, 0);
+  xxlNav.update(0);
+  p.setLimits(xxl.limitsFor(xxlLimits));
+  scenery.reset();
+}
+/**
+ * Kurvenschilder der XXL-Fahrt stehen im Rahmen ihres Abschnitts: dessen Scherung für dieses Bild, oder null, solange
+ * der Abschnitt nicht gezeichnet wird (eine Autobahn nur als die eine sichtbare, alles andere nach trip.visible).
+ * Ohne das stünden die Tafeln einer Kurve hinter der Ausfahrt am Rand der Autobahn, bis man abgebogen ist.
+ */
+function xxlSignShear(sec, path) {
+  if (sec.kind === 'ab') {
+    const v = xxl.view;
+    if (!v || v.frame !== sec.frame) return null;
+  } else if (!path || !xxl.trip.visible(sec, path)) return null; // ohne Weg: längst zurückgelassen
+  return xxl.shear.get(sec.frame) || null;
+}
+/** Einmal pro Bild nach der Bewegung: Strecke und Navi fortschreiben, Grenzen setzen, Verkehr und Sammelsachen einordnen. */
+function xxlStep(p, w, dt) {
+  xxl.update(p.s, p.x, w, p.speed, simT);
+  xxlNav.update(dt);
+  p.setLimits(xxl.limitsFor(xxlLimits));
+  const v = xxl.view;
+  const frame = v ? v.frame : null;
+  traffic.end = xxl.abEnd;
+  traffic.begin = xxl.abBegin;
+  if (frame !== xxlTrafficFrame) {
+    // eine andere Autobahn (im Wald gewechselt): ihr Verkehr beginnt neu, die Szenerie wird neu gebaut
+    xxlTrafficFrame = frame;
+    traffic.reset();
+    pickups.reset();
+    scenery.reset();
+    if (v && v.role === 'ahead') traffic.populate(p.s, p.speed);
+  } else if (xxl.zonesChanged) scenery.invalidate(p.s + 1300);
+  xxl.zonesChanged = false;
+  const sh = v ? xxl.shear.get(v.frame) : null;
+  traffic.shear = sh || null;
+  traffic.passive = !v || v.role !== 'cur';
+  traffic.group.visible = !!sh && !xxl.maskAutobahn;
+  traffic.placeAll(p.s);
+  if (sh) pickups.applyShear(sh, p.s);
+  pickups.group.visible = traffic.group.visible;
+  game.offAutobahn = !v || v.role !== 'cur';
+}
+/** Autopilot zum Prüfen (?debug, __MA.xxl.auto): folgt dem Navi, hält Spur und Tempo, lenkt in den Kurven mit. */
+function xxlAuto(p, ctl) {
+  let k = 0;
+  for (let d = 0; d <= AUTO.ahead; d += 20) k = Math.max(k, Math.abs(curveAt(d).k));
+  autoDrive(ctl, p, autoTarget(xxl.trip, xxl.choice), xxlLimits.vmax, k);
+}
+
 function boot() {
   applyCosmetics();
+  applyDrive();
   game.startDemo();
+  if (xxl) xxlStart(true);
   // Ein paar Bilder vorab rendern (Shader kompilieren), dann Titel zeigen
   updateCarMatrix();
   placeDrone(0.016, 'orbit');
   try {
     renderer.compile(scene, camera);
     renderer.compile(cockpit.scene, camera);
+    renderer.compile(facecam.scene, facecam.camera);
+    renderer.compile(facecam.quadScene, facecam.quadCam);
   } catch (e) {
     /* egal */
   }
@@ -1472,9 +1916,13 @@ function boot() {
 // Debug-Schnittstelle für Tests (?debug)
 if (DEBUG) {
   window.__MA = {
-    game, traffic, scenery, cockpit, windshield, tesla, ui, menus, input, renderer, camera, save,
+    game, traffic, scenery, cockpit, windshield, tesla, ui, menus, input, renderer, camera, save, facecam, adamMood,
     // für Prüfstände: Szene, three.js und die Weltmaterial-Fabrik (siehe curve.js)
-    scene, THREE, W, sky, road,
+    scene, THREE, W, sky, road, mapdemo: mapDemo,
+    // der eine Stadtbaukasten des Spiels (die XXL-Welt baut ihre Orte daraus), auch für Prüfstände
+    get city() {
+      return cityKit();
+    },
     get state() {
       return state;
     },
@@ -1497,12 +1945,62 @@ if (DEBUG) {
       game.weather.active = v > 0;
       game.weather.target = v;
       game.weather.level = v;
+      game.weather.next = v;
       game.weather.dur = 999;
       windshield.setRain(v);
     },
     pause: () => pause(),
     resume: () => resume(),
+    // Kurven (src/game/course.js): Zustand ansehen, Kurs wählen ('classic' | 'probe'), an eine Stelle springen
+    course: {
+      get inst() {
+        return course;
+      },
+      table: curveTable,
+      at: curveAt,
+      marks: PROBE_MARKS,
+      get state() {
+        return course.state;
+      },
+      mode(m, s) {
+        course.mode = m;
+        course.resetVirtual(m);
+        if (s !== undefined) teleport(s);
+      },
+      teleport: (s) => teleport(s),
+      drive(c, trip, tick) {
+        course = c;
+        courseTrip = trip;
+        courseTick = tick;
+      },
+      bends(dMax = 3000) {
+        const out = [];
+        const s = game.player.s;
+        course.eachBend((s0, s1, k, t, kind) => {
+          if (s1 > s && s0 < s + dMax) out.push({ d0: Math.round(s0 - s), d1: Math.round(s1 - s), R: Math.round(1 / Math.abs(k)), dir: k > 0 ? 'links' : 'rechts', kind });
+        });
+        return out;
+      },
+    },
   };
+  if (xxl) {
+    installDebug(window.__MA, xxl, () => game.player, {
+      afterWarp: () => { traffic.reset(); pickups.reset(); scenery.reset(); },
+      // ein Sprung plant den Kurs unterwegs wie eine Fahrt mit 30 m/s (ohne die Tabelle des Shaders zu schreiben)
+      eachStep: (s, step) => course.fill(xxl.trip, s, null, step / 30),
+    });
+  }
+  window.__MA.kit = { ...window.__MA.kit, nature: createNatureKit(W) };
+}
+
+/** Prüfstand: den Spieler an die Stelle s setzen (Verkehr, Sammelsachen und Landschaft neu). */
+function teleport(sNew) {
+  const p = game.player;
+  p.s = sNew;
+  traffic.populate(sNew, p.speed);
+  pickups.reset();
+  game.navi.reset?.(sNew);
+  scenery.update(sNew, 0);
 }
 
 boot();

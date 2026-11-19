@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Vehicle, randomKind, setVehicleEnvIntensity } from '../models/vehicles.js';
 import { ROAD } from '../textures.js';
 import { ONCOMING } from './road.js';
+import { curveAt } from '../curve.js';
 import { clamp, lerp, rand, chance, pick, smoothstep } from '../util.js';
 
 const LANE_SPEEDS = [
@@ -13,8 +14,24 @@ const LANE_SPEEDS = [
   [95, 120],
 ];
 const KMH = 1 / 3.6;
+// Vor Kurven nimmt der Verkehr Gas weg, wo die Querbeschleunigung sonst über diesen Komfortwert stiege (m/s²),
+// und bremst dafür sanft (m/s²). Lkw kriechen an langen Steigungen etwas (km/h weniger je Prozent über 2 %).
+const CURVE = { car: { lat: 2.5, dec: 1.2 }, truck: { lat: 1.8, dec: 0.8 }, look: 250, climb: 4.5 };
+const _cf = { x: 0, z: 0, th: 0, y: 0, k: 0, dk: 0, xr: 0, g: 0 };
 
 let nextId = 1;
+
+const NONE = Object.freeze([]);
+
+/**
+ * Gierwinkel eines Fahrzeugs in unserer Richtung: Spurwechsel, dazu die Scherung seines Rahmens (XXL) und hinter dem
+ * Ende der Autobahn E der Bogen der Rampe, über die es hinausfährt (siehe towardsEnd).
+ */
+function carYaw(c, sh, E) {
+  const lane = c.change && c.change.t > c.change.delay ? (c.change.to > c.change.from ? -0.035 : 0.035) : 0;
+  const ramp = E && c.lane === 4 && !c.change ? E.rampSlope(c.s - E.fs) : 0;
+  return lane - Math.atan((sh ? sh.b : 0) + ramp);
+}
 
 export class Traffic {
   constructor(scene, rain) {
@@ -32,6 +49,14 @@ export class Traffic {
     this.t = 0;
     this.events = [];
     this.policeText = null;
+    // XXL-Welt: Scherung {a, b} des Rahmens der Autobahn, auf der der Verkehr fährt (null = klassisch), und ob der
+    // Spieler gerade woanders fährt (passive: kein Nachschub, keine Begegnungen mit dem Spieler)
+    this.shear = null;
+    this.passive = false;
+    // XXL-Welt: Ende dieser Autobahn ({fs: Gabelung, s1: Ende der Fahrbahn, openLeft(s): linke Kante des offenen
+    // Teils, rampX(u): Versatz der Rampe u Meter hinter der Gabelung}) bzw. ihr Anfang (s), sonst null
+    this.end = null;
+    this.begin = null;
   }
 
   acquire(kind, opts) {
@@ -114,19 +139,28 @@ export class Traffic {
     v.group.rotation.y = Math.PI;
     const truck = k === 'lkw';
     const speed = truck ? rand(80, 89) * KMH : rand(LANE_SPEEDS[lane][0] - 15, LANE_SPEEDS[lane][1]) * KMH;
-    const o = { v, s: sPlayer + (ahead ? rand(700, 1300) : rand(100, 1200)), x: ONCOMING(ROAD.laneCenter(truck ? 2 + Math.round(Math.random()) : lane)), speed, len: v.length };
+    const s = sPlayer + (ahead ? rand(700, 1300) : rand(100, 1200));
+    // XXL: hinter dem Ende bzw. vor dem Anfang der Autobahn kommt niemand
+    if ((this.end && s > this.end.s1 - 30) || (this.begin !== null && s < this.begin + 30)) {
+      this.releaseVehicle(v);
+      v.group.rotation.y = 0;
+      return false;
+    }
+    const o = { v, s, x: ONCOMING(ROAD.laneCenter(truck ? 2 + Math.round(Math.random()) : lane)), speed, v0: speed, truck, len: v.length };
     // gleich an seinen Platz, sonst steht es ein Bild lang mitten auf dem eigenen Auto
-    v.group.position.set(o.x, 0, -(o.s - sPlayer));
+    this.placeOncoming(o, sPlayer);
     this.oncoming.push(o);
+    return true;
   }
 
   populate(sPlayer, playerSpeed) {
     this.reset();
     this.sPlayer = sPlayer;
     for (let i = 0; i < 18; i++) {
-      const lane = pickLane(this.leftOpen);
+      const lane = pickLane();
       const s = sPlayer + 40 + i * 45 + rand(0, 30);
-      if (this.laneFree(lane, s, 30)) this.spawn(s, lane);
+      // XXL: nur auf der Fahrbahn (nicht vor dem Anfang der Autobahn, nicht vor ihrem Ende)
+      if (this.laneFree(lane, s, 30) && !(this.begin !== null && s < this.begin + 40) && !(this.end && s > this.end.fs - END_ROOM)) this.spawn(s, lane);
     }
     for (let i = 0; i < 10; i++) this.spawnOncoming(sPlayer, false);
   }
@@ -138,8 +172,30 @@ export class Traffic {
     return true;
   }
 
+  /** Offene Fahrbahn auf dieser Spur bei s? XXL: nicht hinter der letzten Ausfahrt, nicht in der Sperrfläche davor. */
+  laneOpen(lane, s) {
+    const E = this.end;
+    return !E || (s < E.fs && ROAD.laneCenter(lane) - LANE_CLEAR >= E.openLeft(s));
+  }
+
   place(c, sPlayer) {
-    c.v.group.position.set(c.x, 0, -(c.s - sPlayer));
+    const d = c.s - sPlayer;
+    const sh = this.shear;
+    c.v.group.position.set(c.x + (sh ? sh.a + sh.b * d : 0), 0, -d);
+    c.v.group.rotation.y = carYaw(c, sh, this.end);
+  }
+
+  placeOncoming(o, sPlayer) {
+    const d = o.s - sPlayer;
+    const sh = this.shear;
+    o.v.group.position.set(o.x + (sh ? sh.a + sh.b * d : 0), 0, -d);
+    o.v.group.rotation.y = Math.PI - (sh ? Math.atan(sh.b) : 0);
+  }
+
+  /** XXL: alle Fahrzeuge mit der aktuellen Scherung neu setzen (nach dem Abgleich der Welt in diesem Bild). */
+  placeAll(sPlayer) {
+    for (const c of this.cars) this.place(c, sPlayer);
+    for (const o of this.oncoming) this.placeOncoming(o, sPlayer);
   }
 
   /** Spieler-Infos: { s, x, speed, len, w } */
@@ -154,17 +210,19 @@ export class Traffic {
 
     const target = Math.round(lerp(15, 32, this.difficulty));
     // Fahrzeuge vorne nachliefern
-    if (this.cars.length < target) {
-      const lane = pickLane(this.leftOpen);
+    const E = this.end;
+    if (this.cars.length < target && !this.passive) {
+      const lane = pickLane();
       const s = player.s + rand(620, 950);
-      if (this.laneFree(lane, s, 60)) this.spawn(s, lane);
+      if (this.laneFree(lane, s, 60) && !(E && s > E.fs - END_ROOM)) this.spawn(s, lane);
     }
     // Schnelle Autos von hinten, wenn der Spieler gemütlich fährt
-    if (player.speed < 34 && chance(dt * 0.35) && this.cars.length < target + 4) {
-      const lane = this.leftOpen ? 1 : chance(0.6) ? 0 : 1;
+    if (player.speed < 34 && chance(dt * 0.35) && this.cars.length < target + 4 && !this.passive) {
+      const lane = chance(0.6) ? 0 : 1;
       const s = player.s - rand(150, 190);
       // startet hinter dem Spieler: zählt nicht als „überholt“
-      if (this.laneFree(lane, s, 40)) this.spawn(s, lane, { speed: rand(170, 215) * KMH }).passed = true;
+      // nicht mehr kurz vor dem Ende der Autobahn: so schnell käme er dort nicht mehr sanft herunter (endSpeed)
+      if (this.laneFree(lane, s, 40) && !(this.begin !== null && s < this.begin + 40) && !(E && s > E.fs - 2 * END_ROOM)) this.spawn(s, lane, { speed: rand(170, 215) * KMH }).passed = true;
     }
 
     const objs = this.cars;
@@ -193,13 +251,15 @@ export class Traffic {
           }
         }
       }
-      // Abstandsregelung
+      if (E) this.towardsEnd(c, objs, P);
+      // Abstandsregelung (Wunschtempo vor Kurven, am Berg und vor dem Ende der Autobahn gedeckelt)
       const lead = this.leader(c, objs, P);
       const T = c.truck ? 1.7 : 1.25 + (c.careless ? -0.4 : 0);
       const aMax = c.truck ? 0.6 : 1.6;
       const b = 2.8;
       const s0 = 3;
-      let acc = aMax * (1 - Math.pow(c.speed / Math.max(1, c.v0), 4));
+      const vc = E ? Math.min(curveSpeed(c, c.s - player.s), endSpeed(c, E)) : curveSpeed(c, c.s - player.s);
+      let acc = aMax * (1 - Math.pow(c.speed / Math.max(1, Math.min(c.v0, vc)), 4));
       if (lead) {
         const gap = Math.max(0.1, lead.s - c.s - (lead.len + c.len) / 2);
         const dv = c.speed - lead.speed;
@@ -207,9 +267,19 @@ export class Traffic {
         acc -= aMax * Math.pow(sStar / gap, 2);
         if (gap < 4 && dv > 0) acc = Math.min(acc, -9);
       }
+      // vor einer Kurve (und vor dem Ende der Autobahn) sichtbar (mit Bremslicht), aber sanft abbremsen
+      let curveBrake = false;
+      if (c.speed > vc + 0.4) {
+        const a = -Math.min(c.truck ? 1.4 : 2.2, 0.5 + (c.speed - vc) * 0.5);
+        if (a < acc) {
+          acc = a;
+          curveBrake = true;
+        }
+      }
+      if (c.closed) acc = Math.min(acc, -4);
       acc = clamp(acc, -10, aMax);
       c.speed = Math.max(0, c.speed + acc * dt);
-      c.brake = acc < -1.2;
+      c.brake = acc < -1.2 || curveBrake;
       c.v.setBrake(c.brake || (c.speed < 3));
       c.s += c.speed * dt;
     }
@@ -232,7 +302,7 @@ export class Traffic {
     }
 
     // Spieler-Interaktion: Unfälle, knappe Überholmanöver, Auffahrschutz von hinten
-    for (const c of objs) {
+    for (const c of this.passive ? NONE : objs) {
       const dx = Math.abs(c.x - player.x);
       const ds = c.s - player.s;
       const latOverlap = (c.w + player.w) / 2 - dx;
@@ -263,13 +333,15 @@ export class Traffic {
     const keep = [];
     for (const c of objs) {
       const rel = c.s - player.s;
-      if (rel < -240 || rel > 1250) {
+      // wer am Ende der Autobahn über die Rampe hinaus ist, steht schon im Wald der Rampe (solange der Spieler noch
+      // auf der Autobahn ist; sonst verschwindet er mit dem Wechsel der Autobahn)
+      const gone = E && c.lane === 4 && c.s > E.fs + 160 && !this.passive;
+      if (rel < -240 || rel > 1250 || gone) {
         this.releaseVehicle(c.v);
         continue;
       }
       keep.push(c);
       this.place(c, player.s);
-      c.v.group.rotation.y = c.change && c.change.t > c.change.delay ? (c.change.to > c.change.from ? -0.035 : 0.035) : 0;
       c.v.updateLights(t, c.sirens);
       if (rainy && rel > -10 && rel < 140) {
         const z = -(rel) + c.len / 2;
@@ -281,18 +353,21 @@ export class Traffic {
     // Gegenverkehr
     const okeep = [];
     for (const o of this.oncoming) {
+      // auch der Gegenverkehr nimmt vor Kurven Gas weg (seine Fahrtrichtung zeigt zum Spieler)
+      const vt = Math.min(o.v0, curveSpeed(o, o.s - player.s, -1));
+      o.speed += clamp(vt - o.speed, -1.6 * dt, 0.8 * dt);
       o.s -= o.speed * dt;
       const rel = o.s - player.s;
-      if (rel < -200) {
+      if (rel < -200 || (this.begin !== null && o.s < this.begin + 2)) {
         this.releaseVehicle(o.v);
         o.v.group.rotation.y = 0;
         continue;
       }
-      o.v.group.position.set(o.x, 0, -rel);
+      this.placeOncoming(o, player.s);
       okeep.push(o);
     }
     this.oncoming = okeep;
-    while (this.oncoming.length < 11) this.spawnOncoming(player.s, true);
+    while (this.oncoming.length < 11 && !this.passive) if (!this.spawnOncoming(player.s, true)) break;
     return this.events;
   }
 
@@ -316,7 +391,8 @@ export class Traffic {
 
   /** Spurwechsel-Logik (vereinfachtes MOBIL mit Rechtsfahrgebot). */
   decide(c, objs, P) {
-    if (c.behavior === 'elefant') return;
+    if (c.behavior === 'elefant' || c.lane === 4) return;
+    if (this.end && c.s > this.end.fs - END_ROOM) return; // vor dem Ende der Autobahn nur noch nach rechts (towardsEnd)
     const lead = this.leader(c, objs, P);
     const minLane = c.truck ? 2 : 0;
     // Überholen nach links
@@ -327,9 +403,9 @@ export class Traffic {
         if (!(c.truck && to < 2) && this.safe(c, to, objs, P)) return this.startChange(c, to);
       }
     }
-    // Rechtsfahrgebot (bei freigeschalteter linker Spur besonders eifrig)
+    // Rechtsfahrgebot
     if (c.lane < 3 && !(c.truck && c.lane >= 3)) {
-      const eager = c.lane === 0 && this.leftOpen ? 0.65 : c.behavior === 'schleicher' ? 0.02 : 0.25;
+      const eager = c.behavior === 'schleicher' ? 0.02 : 0.25;
       if (chance(eager)) {
         const to = c.lane + 1;
         if (this.laneClearAhead(c, to, objs, P, 90) && this.safe(c, to, objs, P)) return this.startChange(c, to);
@@ -367,6 +443,27 @@ export class Traffic {
       }
     }
     return true;
+  }
+
+  /** XXL: vor dem Ende der Autobahn rechtzeitig nach rechts und über die Rampe hinaus (this.end). */
+  towardsEnd(c, objs, P) {
+    const E = this.end;
+    c.closed = false;
+    if (c.lane === 4) {
+      if (!c.change) c.x = ROAD.laneCenter(4) + (c.s > E.fs ? E.rampX(c.s - E.fs) : 0);
+      return;
+    }
+    if (c.s < E.fs - END_ROOM) return;
+    const left = (s) => ROAD.laneCenter(c.lane) - c.w / 2 - 0.4 < E.openLeft(s);
+    // Bremsweg bei den 4 m/s², mit denen ein Fahrzeug vor der Sperrfläche hält (c.closed): er zählt bei beiden
+    // Blicken voraus mit, sonst wäre der Wagen schon zu nah, wenn er die Verengung bemerkt
+    const stop = (c.speed * c.speed) / 8;
+    if (!c.change && left(c.s + stop + 30 + c.speed * 4) && this.safe(c, c.lane + 1, objs, P, true)) {
+      this.startChange(c, c.lane + 1);
+      c.change.delay = 0.3;
+    }
+    // die Spur endet gleich und es ging nicht hinüber: anhalten und warten
+    c.closed = !c.change && left(c.s + stop + c.len / 2 + 10 + c.speed * 1.2);
   }
 
   startChange(c, to) {
@@ -415,6 +512,7 @@ export class Traffic {
   /** Polizei Gifhorn kommt von hinten auf der Überholspur. */
   police(sPlayer, text) {
     this.policeText = text;
+    // einzige Rücksicht auf die freigeschaltete Spur: Dort säße sie Mini Adam sonst im Nacken
     const lane = this.leftOpen ? 1 : 0;
     const car = this.spawn(sPlayer - 170, lane, { kind: 'polizei', speed: 185 * KMH, behavior: 'polizei' });
     car.v0 = 185 * KMH;
@@ -433,6 +531,44 @@ export class Traffic {
   }
 }
 
+// so weit vor der letzten Ausfahrt einer endenden Autobahn kommen keine Fahrzeuge mehr hinzu und alle ordnen sich rechts ein
+const END_ROOM = 650;
+// END_SLOW Meter vor ihr rollen alle nur noch mit END_V, dem Tempo der Rampe: schneller reicht die Verengung nicht,
+// um Spur für Spur nach rechts zu kommen oder vor der Sperrfläche zu halten (towardsEnd)
+const END_SLOW = 250;
+const END_V = 80 * KMH;
+// so viel Fahrbahn links der Spurmitte braucht, was vor der Sperrfläche auf einer Spur liegen soll (laneOpen)
+const LANE_CLEAR = 1.4;
+
+/**
+ * XXL: Höchsttempo vor dem Ende einer Autobahn (E = traffic.end) – wie vor einer Kurve so früh gedeckelt, dass
+ * sanftes Bremsen bis END_SLOW vor der letzten Ausfahrt genügt; von dort an und auf der Rampe gilt END_V.
+ */
+function endSpeed(c, E) {
+  const dec = (c.truck ? CURVE.truck : CURVE.car).dec;
+  return Math.sqrt(END_V * END_V + 2 * dec * Math.max(0, E.fs - END_SLOW - c.s));
+}
+
+/**
+ * Höchsttempo, mit dem das Fahrzeug d Meter vor dem Spieler jetzt fahren darf, damit es jede Kurve der nächsten
+ * CURVE.look Meter mit sanftem Bremsen bequem nimmt (Infinity: keine Grenze). Lkw zusätzlich langsamer am Berg.
+ * dir: Fahrtrichtung entlang d (+1 mit dem Spieler, −1 Gegenverkehr).
+ */
+function curveSpeed(c, d, dir = 1) {
+  const C = c.truck ? CURVE.truck : CURVE.car;
+  let v = Infinity;
+  for (let u = 0; u <= CURVE.look; u += 25) {
+    const k = Math.abs(curveAt(d + dir * u, _cf).k);
+    if (k < 1e-5) continue;
+    v = Math.min(v, Math.sqrt(C.lat / k + 2 * C.dec * u));
+  }
+  if (c.truck) {
+    const g = dir * curveAt(d, _cf).g;
+    if (g > 0.02) v = Math.min(v, c.v0 - (g - 0.02) * 100 * CURVE.climb * KMH);
+  }
+  return v;
+}
+
 function laneOverlap(o, lane) {
   const c = ROAD.laneCenter(lane);
   const lo = Math.max(o.x - o.w / 2, c - 1.875);
@@ -440,9 +576,8 @@ function laneOverlap(o, lane) {
   return hi - lo > 0.35;
 }
 
-function pickLane(leftOpen) {
+function pickLane() {
   const r = Math.random();
-  if (leftOpen) return r < 0.08 ? 0 : r < 0.32 ? 1 : r < 0.62 ? 2 : 3;
   return r < 0.17 ? 0 : r < 0.4 ? 1 : r < 0.66 ? 2 : 3;
 }
 

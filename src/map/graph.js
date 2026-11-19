@@ -178,6 +178,12 @@ export const COST = {
 };
 /** Richtgeschwindigkeiten in m/s für die Schätzung der Fahrzeit auf der Spielstrecke. */
 export const PACE = { ab: 38, land: 24, stadt: 13, rampe: 21, transit: 25 };
+/**
+ * Abseits der offenen Strecke ist die Straße echt (1:1, ein Meter Straße ist ein Meter Reise). Reisekilometer der Rampe
+ * einer Ausfahrt und des Wegs von dort auf die nächste Autobahn (Verbindungsfahrbahn und Auffahrt): dieselben Längen
+ * wie J.ramp bzw. J.conn + J.auf in src/game/trip.js (tools/journey-test.mjs prüft beides gegeneinander).
+ */
+export const OFF_KM = { exit: 0.25, enterAb: 1.9 };
 /** Länge einer Ortsdurchfahrt in Spielmetern nach Einwohnerzahl. */
 export function townLen(pop) {
   return pop >= 300000 ? 1200 : pop >= 50000 ? 800 : pop >= 5000 ? 500 : 300;
@@ -185,6 +191,21 @@ export function townLen(pop) {
 /** Länge des Zubringers in Spielmetern. */
 export function zubLen(zubKm) {
   return Math.min(2500, Math.max(450, Math.round((zubKm * 1000) / K / 10) * 10));
+}
+/** Stelle des Zielpunkts (Brunnenplatz) in einer Ortsdurchfahrt der Länge len: so viele Meter hinter der Ortstafel. */
+export function spotIn(len) {
+  return Math.round(len * 0.6);
+}
+/**
+ * Orte, die auf dem Abstecher von einer Ausfahrt zum Ziel durchfahren werden: erst der Ort an der Ausfahrt (wenn er
+ * nicht selbst das Ziel ist), dann das Ziel.
+ */
+export function visitList(node, target) {
+  const main = nodes[node].places.find((p) => p.zubKm < 1.5);
+  const out = [];
+  if (main && main.place !== target) out.push(main.place);
+  out.push(target);
+  return out;
 }
 
 let TRANS = null; // Übergänge vorwärts: je Zustand [{to, cost, km, type, de}]
@@ -205,17 +226,18 @@ function buildTransitions() {
     if (e.kind === 'ab') {
       const st = straight(de);
       if (st >= 0) add(de, st, edges[st >> 1].km, edges[st >> 1].km, edgeLen(edges[st >> 1]) / PACE.ab, 'stay', st);
-      add(de, NE + h, COST.exit, 0.3, 250 / PACE.rampe, 'exit');
+      add(de, NE + h, COST.exit, OFF_KM.exit, 250 / PACE.rampe, 'exit');
     } else {
-      // Landstraße: der Ort am Ende wird durchfahren
+      // Landstraße: der Ort am Ende wird durchfahren (seine Straße ist echt: so viele Kilometer, wie sie lang ist)
       const town = nodes[h].places.find((p) => p.zubKm < 1.5);
-      add(de, NE + h, town ? COST.town : 0, 0, town ? townLen(places[town.place].pop) / PACE.stadt : 0, 'node');
+      const tl = town ? townLen(places[town.place].pop) : 0;
+      add(de, NE + h, town ? COST.town : 0, tl / 1000, tl / PACE.stadt, 'node');
     }
   }
   for (const nd of nodes) {
     for (const de of nd.edges) {
       const e = edges[de >> 1];
-      if (e.kind === 'ab') add(NE + nd.i, de, COST.enterAb + e.km, e.km + 1, 850 / PACE.rampe + edgeLen(e) / PACE.ab, 'enter', de);
+      if (e.kind === 'ab') add(NE + nd.i, de, COST.enterAb + e.km, e.km + OFF_KM.enterAb, 850 / PACE.rampe + edgeLen(e) / PACE.ab, 'enter', de);
       else if (e.kind === 'land') add(NE + nd.i, de, COST.enterLand + e.km * COST.land, e.km, edgeLen(e) / PACE.land, 'enter', de);
       else add(NE + nd.i, NE + deTo(de), COST.transit[e.kind](e.km), e.km, PACE.transit, e.kind, de);
     }
@@ -271,18 +293,44 @@ class Heap {
   }
 }
 
-/** Kosten, Kartenkilometer und Fahrzeit für den Abstecher von der Ausfahrt bis ins Ziel. */
+/**
+ * Reisekilometer eines Zubringers, der far Kartenkilometer auf len Metern Straße überbrückt: die Kartenkilometer, aber
+ * nie weniger als die Straße selbst (ein Ort gleich an der Ausfahrt hat einen echten Zubringer, 1:1).
+ */
+export function feederKm(far, len) {
+  return far * 1000 > len ? far : len / 1000;
+}
+/**
+ * Kosten, Reisekilometer und Fahrzeit für den Abstecher vom Ende der Rampe einer Ausfahrt bis zum Zielpunkt im Ort –
+ * genau die Abschnitte, die die Fahrt dafür anlegt (Trip.addVisits mit visitList): Zubringer in ihrem Maßstab, die
+ * Orte echt (1:1). Die Kosten wählen nur den Weg und bleiben, wie sie waren (Ortsmeter dreifach).
+ */
 export function excursion(placeIdx) {
   const p = places[placeIdx];
-  const km = Math.max(p.zubKm, 0.4) + 0.6 * townLen(p.pop) * 0.003;
-  return { cost: km * COST.land, km, secs: zubLen(p.zubKm) / PACE.land + (0.6 * townLen(p.pop)) / PACE.stadt };
+  let km = 0;
+  let secs = 0;
+  let from = 0;
+  for (const pi of visitList(p.node, placeIdx)) {
+    const q = places[pi];
+    const far = Math.max(q.zubKm - from, 0);
+    const zl = zubLen(far);
+    const tl = pi === placeIdx ? spotIn(townLen(q.pop)) : townLen(q.pop);
+    km += feederKm(far, zl) + tl / 1000;
+    secs += zl / PACE.land + tl / PACE.stadt;
+    from = q.zubKm;
+  }
+  return { cost: (Math.max(p.zubKm, 0.4) + 0.6 * townLen(p.pop) * 0.003) * COST.land, km, secs };
 }
+
+/** Überfahrt (Fähre, Autozug, Luftfracht)? Alle anderen Übergänge sind Straße. */
+const isTransit = (t) => COST.transit[t.type] !== undefined;
 
 /**
  * Der beste Weg von überall zu einem Ort. Ergebnis je Zustand: Kosten (cost), Kartenkilometer (km),
  * geschätzte Fahrzeit auf der Spielstrecke in Sekunden (secs) und der nächste Schritt (next: Übergang, am Ziel null).
+ * road: nur über Straßen, ohne Überfahrten (das Ergebnis trägt road: true; unerreichbar bleibt dann Infinity).
  */
-export function routeTo(placeIdx) {
+export function routeTo(placeIdx, road = false) {
   if (!TRANS) buildTransitions();
   const n = TRANS.length;
   const cost = new Float64Array(n).fill(Infinity);
@@ -300,6 +348,7 @@ export function routeTo(placeIdx) {
     const [c, st] = heap.pop();
     if (c > cost[st]) continue;
     for (const t of BACK[st]) {
+      if (road && isTransit(t)) continue;
       const nc = c + t.cost;
       if (nc < cost[t.from]) {
         cost[t.from] = nc;
@@ -310,11 +359,14 @@ export function routeTo(placeIdx) {
       }
     }
   }
-  return { place: placeIdx, goal, cost, km, secs, next };
+  return { place: placeIdx, goal, cost, km, secs, next, road };
 }
 
-/** Kosten, Kartenkilometer und Fahrzeit von einem Zustand zu allen Knoten (für die Auswahl neuer Navi-Ziele). */
-export function routeFrom(state) {
+/**
+ * Kosten, Kartenkilometer und Fahrzeit von einem Zustand zu allen Knoten (für die Auswahl neuer Navi-Ziele).
+ * road: nur über Straßen, ohne Überfahrten.
+ */
+export function routeFrom(state, road = false) {
   if (!TRANS) buildTransitions();
   const n = TRANS.length;
   const cost = new Float64Array(n).fill(Infinity);
@@ -329,6 +381,7 @@ export function routeFrom(state) {
     const [c, st] = heap.pop();
     if (c > cost[st]) continue;
     for (const t of TRANS[st]) {
+      if (road && isTransit(t)) continue;
       const nc = c + t.cost;
       if (nc < cost[t.to]) {
         cost[t.to] = nc;

@@ -58,6 +58,18 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 @keyframes lowbat { 50% { opacity: 0.4; } }
 .stat.shake { animation: shake 0.5s; }
 @keyframes shake { 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+.stat-icon.dmg-icon { width: 30px; margin-right: -3px; display: flex; align-items: center; justify-content: center; }
+.dmg-icon svg { display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.45)); }
+.dmg-row .stat-val { letter-spacing: 0.02em; }
+.dmg-row.dmg-last .stat-val { color: #ff9b95; animation: dmglast 1.6s ease-in-out infinite; }
+.dmg-row.dmg-pop .dmg-icon svg { animation: dmgpop 0.55s cubic-bezier(.2,1.6,.4,1); }
+.dmg-row.dmg-heal .dmg-icon svg { animation: dmgheal 1.1s ease-out; }
+@keyframes dmgpop { 0% { transform: scale(1); } 30% { transform: scale(1.45) rotate(-8deg); } 60% { transform: scale(0.92) rotate(4deg); } 100% { transform: scale(1); } }
+@keyframes dmgheal { 0% { filter: drop-shadow(0 0 0 rgba(80,230,140,0)); } 30% { filter: drop-shadow(0 0 6px rgba(80,230,140,0.95)); transform: scale(1.18); } 100% { filter: drop-shadow(0 1px 1px rgba(0,0,0,0.45)); transform: scale(1); } }
+@keyframes dmglast { 50% { opacity: 0.55; } }
+.cruise-badge { font-size: 11.5px; font-weight: 700; line-height: 16px; padding: 0 7px; border-radius: 999px; color: #d8f0ff; background: rgba(40, 110, 200, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(120, 180, 255, 0.55); white-space: nowrap; }
+.cruise-badge.hidden { display: none; }
 .stat-val:has(+ .stat-label) { min-width: 0; }
 .money-slot { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; align-self: stretch; }
 .money-slot .stat-label { transition: opacity 0.3s; }
@@ -68,7 +80,6 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .money-pop.plus { color: #a4ffc2; background: rgba(22, 96, 50, 0.92); box-shadow: inset 0 0 0 1px rgba(100, 235, 150, 0.55); }
 .money-pop.minus { color: #ffc9c4; background: rgba(120, 26, 22, 0.92); box-shadow: inset 0 0 0 1px rgba(255, 125, 115, 0.6); }
 @keyframes moneypop { 0% { transform: scale(0.7); opacity: 0; } 9% { transform: scale(1.08); opacity: 1; } 16% { transform: scale(1); } 82% { opacity: 1; } 100% { opacity: 0; } }
-.zulage { margin-top: 6px; font-size: 13px; color: #9fd0ff; font-weight: 700; }
 .jobs-mini { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; max-width: 250px; }
 .jobs-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sub); }
 .job { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #dfe2e8; flex-wrap: wrap; }
@@ -119,6 +130,15 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .nomi-eyes { display: inline-flex; gap: 4px; flex: none; width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #3b3d44, #070708 70%); align-items: center; justify-content: center; }
 .nomi-eyes i { width: 7px; height: 10px; border: 2px solid #fff; border-radius: 3px; animation: blink 2.6s infinite; }
 @keyframes fadein { from { opacity: 0; transform: translateY(-6px); } }
+/* am selben Platz spricht das Sprachstudio (die Stimme in Mini Adams Ohr): Kopfhörer statt NOMIs Augen, der Name
+   über dem Satz und ein warmer statt blauer Rahmen – damit man es auch ohne Ton nie mit NOMI verwechselt */
+.nomi-words { min-width: 0; }
+.studio-icon, .studio-label { display: none; }
+.nomi-sub.studio { border-color: rgba(255, 196, 120, 0.5); box-shadow: 0 0 20px rgba(255, 170, 80, 0.22); }
+.nomi-sub.studio .nomi-eyes { display: none; }
+.nomi-sub.studio .studio-icon { display: inline-flex; flex: none; width: 34px; height: 34px; border-radius: 50%; align-items: center; justify-content: center;
+  font-size: 19px; line-height: 1; background: radial-gradient(circle at 35% 30%, #54401f, #17110a 70%); }
+.nomi-sub.studio .studio-label { display: block; font-size: 11px; font-weight: 700; line-height: 1.25; text-transform: uppercase; letter-spacing: 0.08em; color: #ffcf8a; }
 
 /* die Schrift richtet sich nach der Spaltenbreite, damit lange Zielnamen nicht vier, fünf Zeilen hoch werden */
 .banner { margin-top: clamp(0px, 7vh, 70px); font-size: clamp(20px, min(3.2vw, var(--mid, 600px) / 13), 38px); font-weight: 800; text-align: center; max-width: 100%; text-wrap: balance;
@@ -132,6 +152,23 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .toast-good { border-color: rgba(53, 200, 106, 0.7); }
 .toast-bad { border-color: rgba(255, 90, 79, 0.8); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
+/* „So steuerst du“ (src/ui/drive-hint.js): einmal pro Gerät, die Tasten als weiche Tastenkappen */
+.toast-hint { padding: 9px 16px 11px; text-align: left; border-color: rgba(255, 215, 106, 0.6); }
+.hint-title { font-size: 16px; font-weight: 800; text-align: center; margin-bottom: 2px; }
+.hint-row { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 6px; margin-top: 7px; font-size: 14.5px; }
+.hint-more { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }
+.hint-sub { font-size: 12.5px; font-weight: 500; color: #c9d2e3; margin: 3px 0 0 2px; }
+.hint-or { font-size: 12.5px; font-weight: 600; color: var(--sub); }
+.hint-key { display: inline-flex; align-items: center; justify-content: center; min-width: 25px; height: 25px; padding: 0 6px; border-radius: 7px;
+  font: 700 14px/1 var(--font); color: #20242c; background: linear-gradient(#fbfcfd, #dfe3ea); box-shadow: 0 2px 0 #9ca3b0, 0 3px 6px rgba(0,0,0,0.35); }
+.hint-key.wide { padding: 0 9px; font-size: 13px; }
+@media (max-width: 480px), (max-height: 500px) {
+  .toast-hint { padding: 6px 11px 8px; }
+  .hint-title { font-size: 14px; }
+  .hint-row { margin-top: 5px; font-size: 13px; }
+  .hint-sub { font-size: 11.5px; }
+  .hint-key { min-width: 21px; height: 21px; font-size: 12px; border-radius: 6px; }
+}
 .toasts.squeezed, .durchsage.squeezed, .rahmen-caption.squeezed { visibility: hidden; }
 /* knapper Platz über dem eigenen Auto (Drohnenansicht auf dem Handy quer, ui.js fitStack): das Banner wird kleiner,
    höchstens zwei Zeilen (.tight2: eine) und ohne Unterzeile; NOMI-Untertitel und Kamera-Anzeige warten (NOMI ist zu hören) */
@@ -163,6 +200,9 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .msg .name { font-weight: 700; margin-right: 2px; }
 .msg .text { color: #eceef2; }
 .msg.bot { background: rgba(255, 215, 106, 0.09); border-radius: 6px; padding: 2px 6px; }
+/* eine Nachricht, die allein schon höher ist als der Chat (Handy quer): auf die passenden Zeilen gekürzt, mit …;
+   ohne Rand oben und unten, damit zwei Zeilen von James hineinpassen (flex: none, sonst drückt die Spalte sie auf null) */
+.msg.cut { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; flex: none; padding-block: 0; }
 .bot-icon { margin-right: 4px; font-family: var(--emoji); }
 .bot-tag { font-size: 9px; font-weight: 800; background: rgba(255,215,106,0.25); color: var(--gold); border-radius: 3px; padding: 0 4px; margin-right: 2px; vertical-align: 1px; white-space: nowrap; }
 @keyframes msgin { from { opacity: 0; transform: translateX(10px); } }
@@ -174,6 +214,16 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .durchsage-head { font-size: 12px; color: #d9b8ff; font-weight: 700; margin-bottom: 3px; }
 .durchsage-text { font-size: 17px; font-style: italic; }
 @keyframes fadein2 { from { opacity: 0; transform: translateY(10px); } }
+/* BrunnenTV am Navi-Ziel (XXL): Titelkarte der Folge, wie eine Sendungs-Einblendung des Streams – sie führt die
+   Mittelspalte an (.center-stack), Untertitel, Banner und Hinweise rücken darunter statt dahinter */
+.brunnentv { flex: none; max-width: 100%; text-align: center;
+  padding: clamp(10px, 2vh, 18px) clamp(18px, 3.4vw, 40px) clamp(9px, 1.8vh, 16px); border-radius: 18px; border: 2px solid rgba(190, 236, 255, 0.85);
+  background: linear-gradient(160deg, rgba(18, 96, 150, 0.94), rgba(10, 44, 92, 0.94)); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
+.brunnentv.pop { animation: pop 0.5s cubic-bezier(.2,1.6,.4,1); }
+.brunnentv-logo { font-size: clamp(26px, 4.6vw, 58px); font-weight: 900; letter-spacing: 0.01em; line-height: 1.05; color: #fff; text-shadow: 0 2px 0 rgba(0, 40, 80, 0.6); white-space: nowrap; }
+.brunnentv-drop { margin-right: 0.22em; }
+.brunnentv-episode { margin-top: 4px; font-size: clamp(14px, 1.9vw, 24px); font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
+.brunnentv-place { margin-top: 2px; font-size: clamp(14px, 1.9vw, 24px); font-weight: 700; color: #dff3ff; text-wrap: balance; }
 /* Drohne: wo im Cockpit das Lenkrad ist, fährt hier das eigene Auto – die Durchsage rückt unter das Auto */
 body.drone .durchsage { bottom: max(10px, 2.5vh); }
 /* liegt sie dabei auf dem unteren Rahmen-Streifen, deckt sie ihn ab, statt ihn durchscheinen zu lassen; was
@@ -211,6 +261,14 @@ body.drone .hud:has(> .durchsage:not(.hidden)) .rahmen:not(.corner-only) .strip-
 @media (pointer: coarse) and (orientation: landscape) {
   body.drone .hud:has(> .photo:not(.hidden)) .rahmen-caption { visibility: hidden; }
 }
+
+/* Facecam unten links: nur Rahmen und Namensschild – das Bild zeichnet WebGL genau darunter (ui.js placeFacecam setzt
+   Lage, Größe und Deckkraft; der Eckradius gehört zu FC_RADIUS in ui.js). Unter allen anderen HUD-Elementen. */
+.facecam { position: absolute; display: none; border-radius: 12px; border: 1.5px solid rgba(255, 255, 255, 0.32); z-index: 1;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.38), inset 0 0 0 1px rgba(0, 0, 0, 0.28); }
+.facecam-tag { position: absolute; left: 7px; bottom: 7px; display: flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 999px;
+  background: rgba(10, 10, 14, 0.62); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; line-height: 17px; white-space: nowrap; }
+.facecam-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 6px rgba(232, 33, 46, 0.85); animation: lowbat 1.6s infinite; }
 
 /* --- Rahmen ------------------------------------------------------------------ */
 .rahmen-layer { position: absolute; inset: 0; z-index: 2; }
@@ -255,8 +313,7 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 @media (pointer: coarse) and (orientation: portrait) {
   .hud:has(.rahmen-kuerbis) .durchsage, body .hud .rahmen-kuerbis .rahmen-caption { right: calc(var(--pk) + 20px); max-width: calc(100vw - var(--pk) - 48px); }
 }
-.rettich { width: 3.2vh; height: 6vh; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 80'%3E%3Cpath d='M20 30 L14 2 M20 30 L22 0 M20 30 L30 4' stroke='%2336a032' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M8 30 Q20 24 32 30 Q34 56 20 78 Q6 56 8 30Z' fill='%23fbfbf4' stroke='%23c9c9b0' stroke-width='2'/%3E%3C/svg%3E") center/contain no-repeat; display: block; }
-.rahmen-rettich .strip { background: rgba(60, 120, 40, 0.35); }
+.rahmen-sonnenblumen .strip { background: rgba(150, 105, 10, 0.35); }
 .boxes { position: absolute; left: 0; right: 0; bottom: 0; height: 26vh; }
 .box { position: absolute; width: 8.2%; height: 11vh; background: linear-gradient(#c49360, #a8774a); border: 2px solid #7a5530; border-radius: 3px; animation: boxdrop 0.5s ease-in backwards; }
 .box::after { content: ''; position: absolute; left: 42%; width: 16%; top: 0; bottom: 0; background: rgba(230, 210, 160, 0.7); }
@@ -329,6 +386,43 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
   .touch .t-pause { left: 64px; } .touch .t-megafon { left: 114px; } .touch .t-wiper { right: auto; left: 164px; }
 }
 
+/* --- Touch-Lenkung (src/ui/touch.js) ------------------------------------------ */
+/* Wischen: links eine unsichtbare Lenkfläche – der Daumen setzt irgendwo auf, ein weicher Knopf zeigt den Ausschlag;
+   in Ruhe steht dort, wo früher die Pfeile waren, ein kleiner Hinweis. Tasten: die zwei großen Lenkknöpfe.
+   Rechts Bremse (groß) und Strom, auf derselben Fläche wie früher (die HUD-Maße bleiben gültig). */
+.touch .tc-zone { position: absolute; left: 0; bottom: 0; width: 46vw; height: 100%; pointer-events: auto; touch-action: none; -webkit-touch-callout: none; }
+.touch.tc-tasten .tc-zone, .touch:not(.tc-tasten) .tc-key { display: none; }
+.tc-base, .tc-knob { position: absolute; left: 0; top: 0; pointer-events: none; opacity: 0; transition: opacity 0.25s; }
+.tc-base { --tc-w: calc(var(--tc-r, 70px) * 2 + 58px); width: var(--tc-w); height: 58px; margin: -29px 0 0 calc(var(--tc-w) / -2); border-radius: 29px;
+  border: 2px solid rgba(255,255,255,0.3); background: linear-gradient(90deg, rgba(10,10,14,0.42), rgba(10,10,14,0.22) 50%, rgba(10,10,14,0.42)); }
+.tc-knob { width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: radial-gradient(circle at 38% 32%, rgba(255,255,255,0.95), rgba(214,222,236,0.72) 62%, rgba(170,182,204,0.6));
+  box-shadow: 0 3px 12px rgba(0,0,0,0.38), inset 0 -3px 6px rgba(0,0,0,0.12); }
+.tc-zone.active .tc-base, .tc-zone.active .tc-knob { opacity: 1; transition: none; }
+.tc-hint { position: absolute; left: 18px; bottom: 40px; width: 184px; height: 56px; border-radius: 28px; display: flex; align-items: center; justify-content: center;
+  border: 2px dashed rgba(255,255,255,0.32); background: rgba(10,10,14,0.32); color: rgba(255,255,255,0.88); font: 700 15px var(--font); letter-spacing: 0.04em;
+  pointer-events: none; transition: opacity 0.3s; }
+.tc-hint.gone { color: transparent; opacity: 0.55; }
+.tc-zone.active .tc-hint { opacity: 0; transition: none; }
+.touch .t-brake.tc-pedal { right: 116px; width: 96px; height: 96px; font-size: 17px; }
+.touch .t-gas.tc-pedal { width: 84px; height: 84px; font-size: 16px; }
+.touch .tc-pedal.down, .touch .tc-key.down { transform: scale(0.94); filter: brightness(1.35); border-color: rgba(255,255,255,0.75); }
+.touch.tc-cruise .t-gas.tc-pedal { background: rgba(40,150,80,0.36); font-size: 15px; }
+@media (max-width: 480px) {
+  .tc-hint { left: 12px; bottom: 30px; width: calc(var(--tb) * 2 + 10px); height: 52px; font-size: 13px; }
+  .touch .t-brake.tc-pedal { right: calc(22px + var(--tb)); width: calc(var(--tb) * 1.14); height: calc(var(--tb) * 1.14); font-size: 15px; }
+  .touch .t-gas.tc-pedal { width: var(--tb); height: var(--tb); font-size: 13px; }
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .tc-hint { left: 14px; bottom: 22px; width: 168px; height: 52px; font-size: 14px; }
+  .touch .t-brake.tc-pedal { right: 102px; width: 84px; height: 84px; bottom: 10px; }
+  .touch .t-gas.tc-pedal { right: 14px; width: 78px; height: 78px; bottom: 10px; }
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) and (max-aspect-ratio: 2.08/1) {
+  .tc-hint { width: 160px; height: 48px; }
+  .touch .t-brake.tc-pedal { right: 100px; width: 80px; height: 80px; }
+  .touch .t-gas.tc-pedal { width: 76px; height: 76px; }
+}
+
 /* --- Menüs ------------------------------------------------------------------- */
 .screens { position: fixed; inset: 0; z-index: 30; display: none; --scr-pad: 28px; }
 .screens.active { display: block; }
@@ -385,17 +479,37 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .card.more > .menu.row:last-child::before { height: 48px; }
 /* mit Pfeiltasten oder Gamepad angesteuerte Knöpfe scrollen über die Knopfzeile, nicht dahinter */
 .card:has(> .menu.row:last-child) { scroll-padding-bottom: calc(var(--pad-y) + 80px); }
+/* heruntergescrollt (menus.js setzt .less): Oben läuft der Inhalt unter einem Verlauf aus, statt angeschnitten am Rand zu
+   kleben. Der Verlauf klebt am oberen Kartenrand und nimmt im Fluss keinen Platz weg; angesteuerte Knöpfe bleiben darunter. */
+.card { scroll-padding-top: 44px; }
+.card::before { content: ''; display: block; position: sticky; top: calc(-1 * var(--pad-y)); z-index: 1; height: 44px; pointer-events: none;
+  margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-x)) calc(var(--pad-y) - 44px);
+  background: linear-gradient(rgb(18, 19, 23) 25%, rgba(18, 19, 23, 0)); opacity: 0; transition: opacity 0.2s; }
+.card.less::before { opacity: 1; }
+/* Abspann: Seine Knöpfe stehen oben, eine Knopfzeile am Kartenende gibt es nicht – dort läuft der untere Rand selbst aus,
+   solange darunter noch etwas kommt (.more) */
+.over-card::after { content: ''; display: block; position: sticky; bottom: calc(-1 * var(--pad-y)); z-index: 1; height: 56px; pointer-events: none;
+  margin: -56px calc(-1 * var(--pad-x)) 0; background: linear-gradient(rgba(18, 19, 23, 0), rgb(18, 19, 23) 75%); opacity: 0; transition: opacity 0.2s; }
+.over-card.more::after { opacity: 1; }
 .card h2 { margin: 0 0 6px; font-size: 30px; }
 .card h3 { margin: 18px 0 8px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--sub); }
 .card p { line-height: 1.5; color: #dfe2e8; }
 .sub { color: var(--sub) !important; margin-top: 0; }
 
-.pause-card { max-width: 720px; }
+.pause-card { max-width: 880px; } /* breit genug für fünf Knöpfe in einer Zeile (mit „Karte“) */
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin: 14px 0; }
 .sum { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; }
 .sum .k { font-size: 12px; color: var(--sub); }
 .sum .v { font-weight: 700; font-size: 16px; }
+/* Pause: woher das Geld bisher kam, als eine fortlaufende Zeile (Posten und Betrag bleiben zusammen) */
+.kasse { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: #cfd5e2; }
+.kasse-k { color: var(--sub); }
+.kasse-item { white-space: nowrap; }
+.kasse-item.minus { color: #ff8a80; }
 .job-list .job, .over-col .job { font-size: 14px; margin: 3px 0; }
+/* was im Chat für den Job versprochen wurde: rechtsbündig, und grün, sobald er erledigt ist */
+.job-pledge { margin-left: auto; padding-left: 10px; color: var(--sub); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.job.done .job-pledge { color: inherit; }
 
 .over-card { max-width: 1040px; }
 .abspann-tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.2em; background: rgba(255,255,255,0.1); padding: 3px 8px; border-radius: 4px; margin-bottom: 8px; }
@@ -420,7 +534,10 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .over-photos figcaption { font-size: 12px; font-weight: 700; margin-top: 3px; }
 .crew { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .crew-row .k { color: var(--sub); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; display: block; }
-.crew-row .v { font-weight: 700; }
+.crew-row .v { font-weight: 700; display: block; }
+/* „Danke an“: die Unterstützenden als eigener Abschnitt unter der Crew, die Überschrift über die ganze Breite */
+.crew.thanks { margin-top: 14px; }
+.crew.thanks h3 { grid-column: 1 / -1; margin: 0 0 2px; }
 
 .shop-card { max-width: 1180px; }
 /* schmal: das Guthaben rutscht unter den Titel, statt Titel und Betrag zu zerbrechen */
@@ -460,11 +577,80 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .seg { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .range { width: 200px; accent-color: var(--blue); }
 .note { font-size: 13px; color: var(--sub) !important; }
+.set-head { margin: 10px 0 -2px; font-size: 16px; font-weight: 800; letter-spacing: 0.01em; }
+.set-note { margin: -6px 0 2px; padding: 0 12px; font-size: 12.5px; line-height: 1.35; color: var(--sub); }
+.set-drive .seg .btn { min-width: 64px; }
 
 .about-card { max-width: 760px; }
 .link { color: #8fb4ff; font-weight: 700; }
 .tribute { margin-top: 22px; padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); display: flex; gap: 10px; align-items: center; font-weight: 600; }
 .tribute .heart { font-size: 22px; font-family: var(--emoji); }
+
+/* --- Navi-Ansage ohne Mittelbildschirm (XXL: Drohnenansicht und schmale Formate), oben in der Mittelspalte ----
+   Ein Ortsname bleibt ganz: ist die Spalte schmal (Handy), bricht der Text um, statt hinten gekürzt zu werden – aus
+   „Ausfahrt Frankfurt (Oder)“ würde sonst „Ausfahrt Frank…“. Der Radius ist die halbe Höhe der einzeiligen Ansage. */
+.navi-turn { display: none; align-items: center; gap: 9px; max-width: 100%; background: var(--panel-strong); border: 1px solid var(--line);
+  border-radius: 20px; padding: 5px 16px 5px 5px; font-size: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
+.navi-turn-icon { width: 28px; height: 28px; flex: none; }
+.navi-turn-dist { flex: none; font-size: 17px; white-space: nowrap; }
+.navi-turn-text { min-width: 0; overflow-wrap: anywhere; color: #e3e6ec; }
+
+/* --- Große Karte (src/ui/mapscreen.js) ------------------------------------------------- */
+.screen-karte { padding: 0; display: block; overflow: hidden; background: #a9d3ec; }
+.map-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+.map-canvas:active { cursor: grabbing; }
+.map-top { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  padding: 14px 16px; pointer-events: none; }
+.map-top > * { pointer-events: auto; }
+.map-head { background: var(--panel-strong); border: 1px solid var(--line); border-radius: 16px; padding: 10px 14px 12px; min-width: 0;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.22); }
+.map-head h2 { margin: 0 0 8px; font-size: 22px; }
+.map-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.map-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
+  background: rgba(255,255,255,0.08); border: 1px solid var(--line); white-space: nowrap; }
+.map-chip-icon, .mc-icon { font-family: var(--emoji); }
+.menu.row.map-back { margin: 0; flex: none; }
+.map-back .btn { box-shadow: 0 6px 22px rgba(0,0,0,0.22); }
+.map-zoom { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 8px; }
+.btn.map-zbtn { width: 46px; height: 46px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; line-height: 1;
+  background: var(--panel-strong); box-shadow: 0 4px 14px rgba(0,0,0,0.22); }
+.map-card { position: absolute; left: 16px; bottom: 16px; width: min(360px, calc(100% - 32px)); background: var(--panel-strong); border: 1px solid var(--line);
+  border-radius: 18px; padding: 14px 18px 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); animation: mapcard 0.22s ease-out; }
+@keyframes mapcard { from { transform: translateY(14px); opacity: 0; } }
+.map-card-x { position: absolute; right: 8px; top: 8px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255,255,255,0.07);
+  color: var(--text); font: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
+.map-card-x:hover, .map-card-x:focus-visible { background: rgba(255,255,255,0.16); outline: none; }
+.mc-name { font-size: 24px; font-weight: 700; padding-right: 40px; line-height: 1.2; overflow-wrap: anywhere; }
+.mc-sub { color: var(--sub); font-size: 14px; margin: 3px 0 10px; }
+.mc-row { display: flex; align-items: center; gap: 10px; font-size: 16px; padding: 4px 0; }
+.mc-icon { width: 22px; flex: none; text-align: center; }
+.mc-visited { color: #ffb8c6; font-weight: 600; }
+.map-hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); font-size: 13px; font-weight: 600; color: #2c3440;
+  background: rgba(255,255,255,0.8); padding: 5px 12px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
+.map-hint.gone { opacity: 0; transition: opacity 0.6s; }
+.map-card:not(.hidden) ~ .map-hint { display: none; }
+@media (max-width: 1000px) { .map-hint { display: none; } }
+@media (max-width: 600px) {
+  .map-top { padding: 10px; }
+  .map-head { padding: 8px 10px 10px; }
+  .map-head h2 { font-size: 18px; margin-bottom: 6px; }
+  .map-chip { font-size: 12.5px; padding: 4px 8px; gap: 4px; }
+  .map-back .btn { padding: 9px 12px; font-size: 15px; }
+  .map-zoom { right: 10px; }
+  .map-card { left: 10px; bottom: 10px; width: calc(100% - 20px); }
+}
+@media (max-height: 500px) {
+  .map-top { padding: 10px; }
+  .map-head { padding: 8px 10px 10px; }
+  .map-head h2 { font-size: 18px; margin-bottom: 6px; }
+  .map-chip { font-size: 12.5px; padding: 4px 8px; }
+  .map-zoom { right: 10px; top: auto; bottom: 10px; transform: none; }
+  .btn.map-zbtn { width: 42px; height: 42px; }
+  .map-card { left: 10px; bottom: 10px; padding: 12px 14px; }
+  .mc-name { font-size: 20px; }
+  .mc-row { font-size: 15px; padding: 2px 0; }
+}
 
 @media (max-width: 760px) {
   .over-cols { grid-template-columns: 1fr; }
@@ -519,6 +705,8 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
   .leftlane-bar { margin-top: 4px; height: 4px; }
   .nomi-sub { font-size: 14px; padding: 5px 10px; gap: 8px; border-radius: 12px; }
   .nomi-eyes { width: 26px; height: 26px; }
+  .nomi-sub.studio .studio-icon { width: 26px; height: 26px; font-size: 15px; }
+  .nomi-sub.studio .studio-label { font-size: 10px; }
   .banner { font-size: 18px; }
   .banner-sub { font-size: 12px; }
   .toast { font-size: 13px; padding: 4px 10px; }
