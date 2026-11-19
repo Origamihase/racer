@@ -509,7 +509,7 @@ function drawBananaPoster(c, w, h) {
 /**
  * Stecker (Zapfhahn) im Halter an einer Seitenwand x = xw (Außenseite s = ±1), Mitte des Halters in Höhe yp bei zp;
  * Kabel (Schlauch) hängt in einer Schlaufe (Radius R, Mitte in Höhe yc) in der Ebene der Wand und läuft auf der Seite
- * dir (±z) zurück in den Körper. Von vorn sieht man davon nur die Kante.
+ * −dir (±z) hinauf in eine Tülle an der Wand. Von vorn sieht man davon nur die Kante.
  */
 function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable, bare = false) {
   const { F } = b;
@@ -518,13 +518,61 @@ function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable, bare = false) {
   // bare: nur der Halter (Stecker und Kabel bringt die Startszene mit, xxl/chargerig.js)
   if (bare) return;
   F.rbox(xs, yp - 0.1, zp, 0.085, 0.21, 0.12, 0.035, C.plug, { seg: 1 });
-  const zc = zp - dir * 0.09;
-  const a = 0.45;
-  b.xf([xs, yc, zc], [0, 0, Math.PI / 2], 1, () => F.torus(0, 0, 0, R, 0.032, col, { seg: 10, tube: 4, a0: Math.PI + a, a1: TAU - a }));
-  const ey = yc - R * Math.sin(a);
-  const ez = R * Math.cos(a);
-  F.rod([xs, yp - 0.1, zp], [xs, ey, zc + dir * ez], 0.032, col, { seg: 5 });
-  F.rod([xs, ey, zc - dir * ez], [xw - s * 0.01, yc + 0.22, zc - dir * 0.11], 0.032, col, { seg: 5 });
+  // Tülle an der Wand, aus der das Kabel kommt
+  const zc = zp - dir * 0.07;
+  const zg = zc - dir * 0.11;
+  const yg = yc + 0.22;
+  F.rbox(xw + s * 0.04, yg, zg, 0.09, 0.07, 0.09, 0.025, C.plug, { seg: 1 });
+  // Ein Schlauch ohne Naht: vom Stecker auf der Tangente an den Kreis der Schlaufe, unten herum und auf der zweiten
+  // Tangente hinauf in die Tülle; beide Enden stecken 3 cm tief in Stecker und Tülle, offen ist nichts. Mittellinie in
+  // der Wandebene als (u, y), u = dir · (z − zc).
+  const r = 0.032;
+  const side = (pu, py, k) => {
+    const d = Math.hypot(pu, py);
+    return Math.atan2(py, pu) - k * Math.acos(Math.min(1, R / d));
+  };
+  const a0 = side(zp * dir - zc * dir, yp - 0.1 - yc, 1);
+  const a1 = side(zg * dir - zc * dir, yg - yc, -1) - TAU;
+  const n = 16;
+  const pts = [];
+  const tan = [];
+  // Ende im Stecker und im Kreis: die Tangente läuft vom Berührpunkt zum Stecker, 3 cm darüber hinaus
+  const arm = (a, pu, py, inward) => {
+    const tu = pu - R * Math.cos(a);
+    const ty = py - R * Math.sin(a);
+    const l = Math.hypot(tu, ty);
+    pts.push([pu + (tu / l) * 0.03, py + (ty / l) * 0.03]);
+    tan.push([(inward * tu) / l, (inward * ty) / l]);
+  };
+  arm(a0, (zp - zc) * dir, yp - 0.1 - yc, -1);
+  for (let i = 0; i <= n; i++) {
+    const a = a0 + ((a1 - a0) * i) / n;
+    pts.push([R * Math.cos(a), R * Math.sin(a)]);
+    tan.push([Math.sin(a), -Math.cos(a)]);
+  }
+  arm(a1, (zg - zc) * dir, yg - yc, 1);
+  const rad = 10;
+  const P = [];
+  const N = [];
+  const idx = [];
+  pts.forEach(([u, y], i) => {
+    // Rahmen des Rings: x (Wandnormale) und t × x in der Wandebene
+    const tz = tan[i][0] * dir;
+    const ty = tan[i][1];
+    for (let j = 0; j <= rad; j++) {
+      const v = (j / rad) * TAU;
+      const nx = Math.cos(v);
+      const ny = Math.sin(v) * tz;
+      const nz = -Math.sin(v) * ty;
+      P.push(xs + r * nx, yc + y + r * ny, zc + u * dir + r * nz);
+      N.push(nx, ny, nz);
+      if (i < pts.length - 1 && j < rad) {
+        const p = i * (rad + 1) + j;
+        idx.push(p, p + rad + 1, p + 1, p + rad + 1, p + rad + 2, p + 1);
+      }
+    }
+  });
+  F.mesh(P, N, idx, col);
 }
 
 /**
