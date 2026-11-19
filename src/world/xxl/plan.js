@@ -334,6 +334,23 @@ export function limitsFor(trip, out, stop = null) {
 }
 
 /**
+ * Fahrer des Autopiloten (Prüfhilfen in main.js, tools/xxl-test.mjs): lenkt und fährt, wie ein Mensch es täte, mit
+ * den Maßen des Fahrer-Bots (tools/steer-bot.mjs). Er lenkt auf die Stelle zu, an der der Wagen in AUTO.look
+ * Sekunden wäre (in einer Kurve treibt er nach außen), lässt kleine Abweichungen stehen und nimmt enge Kurven so
+ * langsam, dass sie sich gemütlich anfahren (AUTO.lat, nie unter AUTO.slow).
+ * ctl: Steuerung dieses Bilds (steer, throttle, brake werden gesetzt), p: Player, want: Ziel-x, vmax: Tempo-
+ * Obergrenze der Strecke (m/s), kappa: größte Krümmung der nächsten AUTO.ahead Meter (1/m).
+ */
+export const AUTO = { look: 0.45, tol: 0.3, gain: 0.6, cruise: 130 / 3.6, lat: 3.2, slow: 70 / 3.6, ahead: 140 };
+export function autoDrive(ctl, p, want, vmax, kappa) {
+  const dx = want - (p.x + p.vx * AUTO.look);
+  ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
+  const v = Math.min(vmax, AUTO.cruise, Math.max(AUTO.slow, Math.sqrt(AUTO.lat / Math.max(Math.abs(kappa), 1e-5))));
+  ctl.throttle = p.speed < v - 0.5 ? 0.7 : 0;
+  ctl.brake = p.speed > v + 3 ? 0.4 : 0;
+}
+
+/**
  * Ziel-x des Autopiloten (Titel, Prüfhilfen): geplante Ausfahrt nehmen, sonst rechte Spur bzw. unsere Spur.
  * choice: 'exit' | 'stay' entscheidet jede Gabelung, die nicht erzwungen ist, statt des Navis (null = Navi).
  */

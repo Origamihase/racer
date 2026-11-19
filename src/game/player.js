@@ -343,14 +343,19 @@ export class Player {
     this.s += this.speed * H;
   }
 
-  /** Leitplanken: sanft abprallen; wer weiter nach außen lenkt oder treibt, schrammt weiter. */
+  /**
+   * Leitplanken: sanft abprallen; wer weiter nach außen lenkt oder treibt, schrammt weiter. Eine Grenze, die auf den
+   * quer ruhenden Wagen zukommt (die XXL-Welt verengt so die Fahrbahn und führt um die Brunneninsel), schiebt ihn
+   * nur mit, ohne Schramme – „quer ruhend“ heißt unter 0,05 m/s wie beim Spurhalten (steering.js), denn die
+   * abklingenden Anteile der Querbewegung werden nie genau null.
+   */
   rails() {
     const L = this.limits;
     if (this.x >= L.left && this.x <= L.right) return;
     const side = this.x < L.left ? -1 : 1;
     this.x = side < 0 ? L.left : L.right;
     const out = (this.vs + this.vc + this.vi) * side;
-    if (out <= 0) return;
+    if (out <= 0.05) return;
     const hard = out > 1.2;
     if (this.vs * side > 0) this.vs = 0;
     if (this.vc * side > 0) this.vc = 0;

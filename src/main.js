@@ -8,7 +8,7 @@ import * as mapGraph from './map/graph.js';
 import * as mapShapes from './map/shapes.js';
 import { setMaxAnisotropy, ROAD, roundRect } from './textures.js';
 import { Road } from './world/road.js';
-import { XxlWorld, ROAD_OPTS, autoTarget } from './world/xxl/world.js';
+import { XxlWorld, ROAD_OPTS, autoTarget, autoDrive, AUTO } from './world/xxl/world.js';
 import { installDebug } from './world/xxl/debug.js';
 import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
@@ -1625,13 +1625,11 @@ function xxlStep(p, w) {
   pickups.group.visible = traffic.group.visible;
   game.offAutobahn = !v || v.role !== 'cur';
 }
-/** Autopilot zum Prüfen (?debug, __MA.xxl.auto): folgt dem Navi, hält Spur und Tempo. */
+/** Autopilot zum Prüfen (?debug, __MA.xxl.auto): folgt dem Navi, hält Spur und Tempo, lenkt in den Kurven mit. */
 function xxlAuto(p, ctl) {
-  const dx = autoTarget(xxl.trip, xxl.choice) - p.x;
-  ctl.steer = Math.abs(dx) > 0.3 ? clamp(dx * 0.6, -1, 1) : 0;
-  const want = Math.min(xxlLimits.vmax, 130 / 3.6);
-  ctl.throttle = p.speed < want - 0.5 ? 0.7 : 0;
-  ctl.brake = p.speed > want + 3 ? 0.4 : 0;
+  let k = 0;
+  for (let d = 0; d <= AUTO.ahead; d += 20) k = Math.max(k, Math.abs(curveAt(d).k));
+  autoDrive(ctl, p, autoTarget(xxl.trip, xxl.choice), xxlLimits.vmax, k);
 }
 
 function boot() {

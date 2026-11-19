@@ -72,16 +72,42 @@ function groundRows() {
   return rows;
 }
 
+const FLAT = 1100; // so weit nach beiden Seiten ist der Boden eben …
+const EDGE = [2700, -8]; // … und fällt dann bis hierher ab (x, y)
+
+/**
+ * Spalten des Bodens (x ≥ 0, links gespiegelt). Der Boden biegt und neigt sich mit dem Verlauf der Straße
+ * (curveWorld): in einer Kurve mit Steigung ist die wahre Fläche verwunden, jedes Dreieck dazwischen aber eben. Eine
+ * schmale Spalte weicht deshalb um bis zu Steigung · Reihenabstand · Spaltenbreite / (4 · Halbmesser) von ihr ab,
+ * eine Bahn von Rand zu Rand um die halbe Höhe zwischen zwei Reihen – der Boden läge dann in Balken quer über den
+ * Straßen, die nur 2 cm über ihm liegen. Deshalb 4 m schmale Spalten, wo Straßen nah am Spieler liegen (engste
+ * Landstraßenkurve, R 110 bei 10 %: unter 4 mm bis 100 m voraus, 1 cm in 400 m), nach außen je Spalte 12 % breiter:
+ * neben dem eigenen Weg stehen fremde Straßen nur an Knotenpunkten, wo der Verlauf gerade ist, oder in der Ferne.
+ */
+function groundCols() {
+  const xs = [0];
+  for (let x = 0; ;) {
+    const w = Math.max(4, x * 0.12);
+    // die letzte Spalte schließt bündig an die Böschung an, statt einen schmalen Rest zu lassen
+    if (x + w * 1.5 >= FLAT) break;
+    x += w;
+    xs.push(x);
+  }
+  xs.push(FLAT);
+  return xs;
+}
+
 export class Ground {
   constructor(parent) {
     this.tex = meadowTexture();
     this.mat = W.lambert({ map: this.tex, ...LAYER.ground });
     const uv = (x, y, z) => [x / TILE, -z / TILE];
-    const geo = stripGeometry([
-      { a: [-2700, -8], b: [-1100, GROUND_Y], uv },
-      { a: [-1100, GROUND_Y], b: [1100, GROUND_Y], uv },
-      { a: [1100, GROUND_Y], b: [2700, -8], uv },
-    ], groundRows());
+    const xs = groundCols();
+    const strips = [{ a: [-EDGE[0], EDGE[1]], b: [-FLAT, GROUND_Y], uv }];
+    for (let i = xs.length - 1; i > 0; i--) strips.push({ a: [-xs[i], GROUND_Y], b: [-xs[i - 1], GROUND_Y], uv });
+    for (let i = 1; i < xs.length; i++) strips.push({ a: [xs[i - 1], GROUND_Y], b: [xs[i], GROUND_Y], uv });
+    strips.push({ a: [FLAT, GROUND_Y], b: [EDGE[0], EDGE[1]], uv });
+    const geo = stripGeometry(strips, groundRows());
     this.mesh = new THREE.Mesh(geo, this.mat);
     this.mesh.name = 'XXL-Boden';
     this.mesh.frustumCulled = false;

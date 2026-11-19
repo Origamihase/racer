@@ -1,10 +1,14 @@
-// Prüft die Planung der XXL-Welt ohne Grafik (src/world/xxl/plan.js) zusammen mit der echten Fahrphysik (Player):
+// Prüft die Planung der XXL-Welt ohne Grafik (src/world/xxl/plan.js) zusammen mit der echten Fahrphysik (Player) und
+// dem Kurs der Karte (Course mit MapPlanner, gefüllt aus der Fahrt wie in main.js):
 // node tools/xxl-test.mjs [Anzahl Zufallsfahrten]
 // - Wald: jeder Vorhang des eigenen Wegs (trip.curtains) liegt in einem Waldstück (forestRanges), Waldstücke im
 //   Sichtbereich ändern sich nie, neue entstehen nur jenseits des Dunsts.
-// - Spieler: Grenzen und Spurhalteassistent lassen den Wagen nie an eine Planke stoßen, auch ohne Lenken; das Tempo
-//   liegt beim Einfahren in einen Abschnitt mit Limit höchstens knapp darüber; der Autopilot nimmt jede geplante
-//   Ausfahrt; am Navi-Ziel kommt der Wagen vor dem Brunnen zum Stehen.
+// - Spieler: Grenzen und Spurhalteassistent lassen den Wagen nie an eine Planke stoßen, auch ohne Lenken (auf gerader
+//   Strecke); in den Kurven der Karte hält ihn ein Fahrer, der lenkt wie ein Mensch (plan.js autoDrive), ohne
+//   Plankenstoß in der Spur; das Tempo liegt beim Einfahren in einen Abschnitt mit Limit höchstens knapp darüber, auch
+//   mit Tempomat; der Autopilot nimmt jede geplante Ausfahrt; am Navi-Ziel kommt der Wagen vor dem Brunnen zum Stehen.
+// - Kurs: rund um jede Gabelung und jeden Einfädelpunkt des eigenen Wegs ist die Straße auf ±400 m gerade (darauf
+//   bauen Rahmen, Scherungen und Knotenpunkte der Engine).
 // - Welt: trip.shearsInto (ohne neue Objekte je Bild) liefert dieselben Scherungen wie trip.shears(). Kein Straßenstück
 //   im Blickfeld wird neu gebaut (plan.js eachPiece wie XxlWorld.sync): ein Stück bekommt einen neuen Schlüssel nur,
 //   wenn sich ein Nachbar am Ende jenseits des Dunsts ändert (der Folgeabschnitt wird geplant), nie durch das
@@ -16,9 +20,12 @@
 //   zeigt, wäre er das Ziel, und das Navi führte über genau diese Ausfahrt hin; kein Schild nennt einen Ort oder eine
 //   Straße, die es in der Karte nicht gibt.
 import * as G from '../src/map/graph.js';
+import * as shapes from '../src/map/shapes.js';
 import { Trip, J, PROFILES } from '../src/game/trip.js';
 import { Player } from '../src/game/player.js';
-import { forestRanges, limitsFor, autoTarget, Arrival, squareOf, eachPiece, FOREST_IN, FOREST_OUT, AHEAD, XXL_BEHIND } from '../src/world/xxl/plan.js';
+import { Course, MapPlanner, CALM } from '../src/game/course.js';
+import { curveTable, curveAt } from '../src/curve.js';
+import { forestRanges, limitsFor, autoTarget, autoDrive, AUTO, Arrival, squareOf, eachPiece, FOREST_IN, FOREST_OUT, AHEAD, XXL_BEHIND } from '../src/world/xxl/plan.js';
 import { sectionSigns, tableAt, BOARD_D, BEACON_D, NEAR_ROAD } from '../src/world/xxl/signplan.js';
 import { crossSection } from '../src/world/xxl/roadkit.js';
 
@@ -43,7 +50,7 @@ function rng(seed) {
 }
 const FOG_END = 1550;
 const shearMap = new Map();
-const stats = { shears: 0, metres: 0, forks: 0, wrong: 0, rails: 0, entries: 0, over: 0, maxOver: 0, curtains: 0, forests: 0, stops: 0, rests: 0, island: 0, pieces: 0, rebuilt: 0, seams: 0 };
+const stats = { shears: 0, metres: 0, forks: 0, wrong: 0, rails: 0, entries: 0, over: 0, maxOver: 0, curtains: 0, forests: 0, stops: 0, rests: 0, island: 0, pieces: 0, rebuilt: 0, seams: 0, bendM: 0, tightM: 0, maxOff: 0, maxLat: 0, links: 0 };
 
 /**
  * Neubauten von Straßenstücken (wie XxlWorld.sync): built = Stück-Id (Abschnitt, Lage, Nummer) → Schlüssel. Ein
@@ -97,14 +104,23 @@ function checkPieces(trip, built) {
 }
 
 /**
- * Eine Fahrt mit der Fahrphysik. mode 'auto': lenkt wie der Autopilot (main.js xxlAuto) und hält das Tempo am Limit;
- * mode 'lazy': lenkt nie (nur Spurhalteassistent), fährt Vollgas (der Begrenzer muss bremsen).
+ * Eine Fahrt mit der Fahrphysik über den Kurs der Karte, im Takt von main.js: Grenzen setzen, steuern, bewegen,
+ * trip.update, dann course.fill – dessen Krümmung und Steigung unter dem Wagen gelten für die nächste Bewegung.
+ * mode 'auto': der Fahrer des Autopiloten (plan.js autoDrive wie main.js xxlAuto) lenkt in den Kurven mit, nimmt enge
+ * Kurven gemütlich und hält sonst das Tempo am Limit; mode 'lazy': lenkt nie (nur Spurhalteassistent), fährt
+ * Vollgas (der Begrenzer muss bremsen) – auf gerader Strecke, denn ohne Lenken trüge jede Kurve den Wagen an die
+ * Planke (so will es die Fahrphysik); Steigungen bleiben. cruise: mit Tempomat auf 130 km/h statt mit dem Fuß.
  */
-function drive(trip, metres, { mode = 'auto', decide = null, dt = 1 / 30, onEvent = null } = {}) {
+function drive(trip, metres, { mode = 'auto', decide = null, dt = 1 / 30, onEvent = null, cruise = false } = {}) {
   const p = new Player();
+  if (cruise) p.configure({ cruise: true });
   p.s = trip.s;
   p.x = trip.x;
   p.speed = 40 / 3.6;
+  if (cruise) p.cruiseSet = AUTO.cruise;
+  const course = new Course({ planner: new MapPlanner({ graph: G, shapes }) });
+  const env = { kappa: 0, grade: 0 };
+  course.fill(trip, p.s, curveTable, dt);
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, closing: 0 };
   const seen = new Map(); // Waldstücke im Sichtbereich: Schlüssel → Weg-ID
   const built = new Map(); // Straßenstücke: Id → Schlüssel (checkPieces)
@@ -126,11 +142,11 @@ function drive(trip, metres, { mode = 'auto', decide = null, dt = 1 / 30, onEven
       want = choice.get(f) ? J.L0 : 5.625;
     }
     if (mode === 'auto') {
-      const dx = want - p.x;
-      ctl.steer = Math.abs(dx) > 0.3 ? Math.max(-1, Math.min(1, dx * 0.6)) : 0;
-      const v = Math.min(lim.vmax, 130 / 3.6);
-      ctl.throttle = p.speed < v - 0.5 ? 0.7 : 0;
-      ctl.brake = p.speed > v + 3 ? 0.4 : 0;
+      let k = 0;
+      for (let d = 0; d <= AUTO.ahead; d += 20) k = Math.max(k, Math.abs(curveAt(d).k));
+      autoDrive(ctl, p, want, lim.vmax, k);
+      // mit Tempomat rührt der Fahrer die Pedale nicht an
+      if (cruise) ctl.throttle = ctl.brake = 0;
     }
     if (resting > 0) {
       // am Ziel kurz stehen, dann weiter
@@ -138,10 +154,19 @@ function drive(trip, metres, { mode = 'auto', decide = null, dt = 1 / 30, onEven
       resting -= dt;
     }
     const s0 = p.s;
-    p.update(dt, ctl, {});
+    env.kappa = mode === 'auto' ? course.state.kappa : 0;
+    env.grade = course.state.grade;
+    p.update(dt, ctl, env);
     for (const e of p.events) if (e.type === 'rail') {
       stats.rails++;
-      ok(false, `Planke (${mode}) bei s=${p.s.toFixed(0)} x=${p.x.toFixed(2)} in ${trip.section.kind} [${lim.left.toFixed(2)}, ${lim.right.toFixed(2)}] vx=${p.vx.toFixed(2)}`);
+      ok(false, `Planke (${mode}) bei s=${p.s.toFixed(0)} x=${p.x.toFixed(2)} in ${trip.section.kind} [${lim.left.toFixed(2)}, ${lim.right.toFixed(2)}] vx=${p.vx.toFixed(2)} R=${env.kappa ? (1 / env.kappa).toFixed(0) : '∞'} bei ${p.kmh.toFixed(0)} km/h`);
+    }
+    if (mode === 'auto' && Math.abs(env.kappa) > 1e-5) {
+      // in der Kurve: wie weit trägt es den Wagen von seiner Linie, wie stark drückt es zur Seite
+      stats.bendM += p.s - s0;
+      if (Math.abs(env.kappa) > 1 / 450) stats.tightM += p.s - s0;
+      if (!decide) stats.maxOff = Math.max(stats.maxOff, Math.abs(p.x - want));
+      stats.maxLat = Math.max(stats.maxLat, p.speed * p.speed * Math.abs(env.kappa));
     }
     ok(p.x >= lim.left - 1e-6 && p.x <= lim.right + 1e-6, 'außerhalb der Grenzen');
     // Brunneninsel: der Wagen (4,7 × 1,86 m) berührt sie nie
@@ -153,7 +178,16 @@ function drive(trip, metres, { mode = 'auto', decide = null, dt = 1 / 30, onEven
       ok(Math.hypot(cx - sq.x, cs - sq.s) > sq.r + 0.05, `Wagen an der Brunneninsel bei s=${p.s.toFixed(1)} x=${p.x.toFixed(2)}`);
     }
     const evs = trip.update(p.s, p.x);
+    course.fill(trip, p.s, curveTable, dt);
     stats.metres += p.s - s0;
+    // Knotenpunkte des eigenen Wegs: rundherum gerade
+    for (const c of trip.cur.sections) {
+      for (const at of [c.fork ? c.fork.s : NaN, c.kind === 'ab' && c.merge ? c.merge.s : NaN]) {
+        if (!(Math.abs(at - p.s) <= CALM)) continue;
+        stats.links++;
+        ok(Math.abs(course.state.kappa) < 1e-9, `Kurve am Knotenpunkt: R=${(1 / course.state.kappa).toFixed(0)} m bei s=${p.s.toFixed(0)}, ${(p.s - at).toFixed(0)} m vom Punkt (${c.kind})`);
+      }
+    }
     // Scherungen ohne neue Objekte (trip.shearsInto, von der Welt je Bild benutzt) = trip.shears()
     if ((guard & 7) === 0) {
       checkPieces(trip, built);
@@ -240,6 +274,14 @@ function drive(trip, metres, { mode = 'auto', decide = null, dt = 1 / 30, onEven
   const trip = new Trip({ rng: rng(2) });
   trip.setTarget(G.findPlace('Köln'));
   drive(trip, 20000, { mode: 'lazy' });
+}
+// --- Fahrt 2b: Erlensee → Hanau mit Tempomat (Limits und Halt am Brunnen ohne Pedale) ----------------------------
+{
+  const trip = new Trip({ rng: rng(1) });
+  trip.setTarget(G.findPlace('Hanau'));
+  const before = stats.rests;
+  drive(trip, 7000, { cruise: true });
+  ok(stats.rests === before + 1, 'Halt am Ziel in Hanau mit Tempomat: ' + (stats.rests - before));
 }
 // --- Fahrt 3: Sonderfälle (Autobahnende, -anfang, Landstraße, Grenze, Verbindung) --------------------------------
 for (const name of ['Wiesbaden', 'Adeje', 'Key West', 'Barcelona', 'Bacharach']) {
@@ -398,7 +440,7 @@ const sig = { trips: 0, km: 0, forks: 0, said: 0, boards: 0, tables: 0, rows: 0,
   ok(sig.trips >= 50 && sig.forks > 150 && sig.tables > 200 && sig.arrive > 5, `zu wenig geprüft: ${JSON.stringify(sig)}`);
 }
 console.log(`Schilder gegen Navi: ${sig.trips} Fahrten, ${sig.km.toFixed(0)} km, ${sig.forks} angesagte Gabelungen (${sig.boards} Vorwegweiser, ${sig.said} Ansagen genau an einer Tafel), ${sig.arrive} Ziele, ${sig.tables} Entfernungstafeln und ${sig.gantries} Schilderbrücken mit ${sig.rows} Zeilen (größte Abweichung zum Navi ${sig.maxDev.toFixed(2)} km), ${sig.towns} Ortstafeln`);
-console.log(`XXL-Planung: ${(stats.metres / 1000).toFixed(1)} km gefahren, ${stats.forks} Gabelungen, ${stats.entries} Einfahrten mit Limit (${stats.over} über +4 km/h, höchstens +${stats.maxOver.toFixed(1)} km/h), ${stats.forests} Waldstücke, ${stats.rests} Halte am Ziel, ${stats.island} Bilder neben einer Brunneninsel, ${stats.shears} Scherungsvergleiche, ${stats.pieces} Stückabgleiche (${stats.rebuilt} Neubauten, alle jenseits des Dunsts), ${stats.seams} Nähte zwischen Abschnitten, ${stats.rails} Plankenstöße`);
+console.log(`XXL-Planung: ${(stats.metres / 1000).toFixed(1)} km gefahren, ${stats.forks} Gabelungen, ${stats.entries} Einfahrten mit Limit (${stats.over} über +4 km/h, höchstens +${stats.maxOver.toFixed(1)} km/h), ${stats.forests} Waldstücke, ${stats.rests} Halte am Ziel, ${stats.island} Bilder neben einer Brunneninsel, ${stats.shears} Scherungsvergleiche, ${stats.pieces} Stückabgleiche (${stats.rebuilt} Neubauten, alle jenseits des Dunsts), ${stats.seams} Nähte zwischen Abschnitten, ${stats.rails} Plankenstöße; Kurven: ${(stats.bendM / 1000).toFixed(1)} km gelenkt (${(stats.tightM / 1000).toFixed(1)} km enger als R 450), höchstens ${stats.maxOff.toFixed(2)} m neben der Linie, Querbeschleunigung bis ${stats.maxLat.toFixed(1)} m/s², ${stats.links} Bilder an Knotenpunkten gerade`);
 for (const [k, n] of kinds) if (n > 3) console.log(`  … ${n}× ${k}`);
 console.log(fails ? `${fails} FEHLER` : 'alles in Ordnung');
 process.exit(fails ? 1 : 0);

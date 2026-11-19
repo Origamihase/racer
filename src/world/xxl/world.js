@@ -21,10 +21,10 @@ import { Junctions, closeLine } from './junction.js';
 import { Signs } from './signs.js';
 import { tableAt, tableS } from './signplan.js';
 import {
-  XXL_BEHIND, AHEAD, secSeedKey, eachPiece, limitsFor, autoTarget, Arrival, squareOf,
+  XXL_BEHIND, AHEAD, secSeedKey, eachPiece, limitsFor, autoTarget, autoDrive, AUTO, Arrival, squareOf,
 } from './plan.js';
 
-export { XXL_BEHIND, AHEAD, autoTarget };
+export { XXL_BEHIND, AHEAD, autoTarget, autoDrive, AUTO };
 const SYNC_STEP = 25; // spätestens nach so vielen Metern wird die Liste der Stücke abgeglichen
 // Bezugspunkt des Bewuchses eines Rahmens rückt erst nach, wenn der Spieler so weit von ihm weg ist (Instanzen bis
 // rund 4 km davon: float32 genau auf 0,5 mm)
