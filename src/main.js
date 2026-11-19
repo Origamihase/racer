@@ -346,7 +346,7 @@ const courseEnv = { kappa: 0, grade: 0 };
 // Auto (Drohne, Titel, Abspann) und die in der Facecam. Eine Stimme hat Adam nicht: er „redet“ in kurzen Stücken mit
 // dem Chat (Mund im Silbentakt, Blick in die Kamera) und hört zu, solange NOMI oder eine Sprachdurchsage spricht.
 const adams = [tesla.adam, facecam.adam];
-const adamCtl = { talkFrom: 0, talkUntil: 0, talk: 0, chatK: 0, nextChat: 14, megafon: -1, voice: null, camUntil: 0, quiet: 0, doze: 0 };
+const adamCtl = { talkFrom: 0, talkUntil: 0, talk: 0, chatK: 0, nextChat: 14, megafon: -1, voice: null, camUntil: 0, quiet: 0, doze: 0, wiperT: 0 };
 const hash01 = (k) => {
   const x = Math.sin(k * 127.1 + 311.7) * 43758.5453;
   return x - Math.floor(x);
@@ -400,7 +400,10 @@ function adamMood(name, k = 1) {
       adamSay(2, 0.9);
       break;
     case 'wiper':
-      // der Wischer zuckt nur: hinschauen
+      // der Wischer zuckt nur: hinschauen – im Schauer zucken die stehenden Wischer alle paar Sekunden, dann schaut er
+      // nur ab und zu hin (sonst blickte er den ganzen Schauer lang nach oben und nie mehr in die Kamera)
+      if (simT < adamCtl.wiperT) break;
+      adamCtl.wiperT = simT + 6 + 4 * hash01(simT);
       adamDo((a) => a.setMood('rain', 2.2, k));
       break;
     case 'megafon':
