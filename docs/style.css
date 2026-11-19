@@ -278,6 +278,8 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 
 /* --- Rahmen ------------------------------------------------------------------ */
 .rahmen-layer { position: absolute; inset: 0; z-index: 2; }
+/* die fliegende Elsa fliegt vor den Tafeln des HUD (Info, Chat, Navi-Zeile), nicht hinter ihnen hindurch */
+.rahmen-layer:has(> .rahmen-elsa) { z-index: 5; }
 .rahmen { position: absolute; inset: 0; animation: rahmenin 0.5s ease-out; }
 .rahmen.out { animation: rahmenout 0.6s ease-in forwards; }
 @keyframes rahmenin { from { opacity: 0; transform: scale(1.06); } }
