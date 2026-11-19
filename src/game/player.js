@@ -97,7 +97,7 @@ export class Player {
     this.kS = null;
     this.ctrl.reset();
     // Grenzen der Welt: klassisch die feste Autobahn; die XXL-Welt setzt sie jedes Bild neu (setLimits)
-    this.limits = { left: LEFT_LIMIT, right: RIGHT_LIMIT, shoulder: SHOULDER_X, lanes: null, extraLane: null, vmax: Infinity, decel: 0 };
+    this.limits = { left: LEFT_LIMIT, right: RIGHT_LIMIT, shoulder: SHOULDER_X, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0 };
     this.lanes = [];
     this.laneKey = null;
     this.setLimits(this.limits);
@@ -117,6 +117,8 @@ export class Player {
    * Spur bei x (Ein- und Ausfädelstreifen, null = keine), vmax: Tempo-Obergrenze in m/s (Infinity = keine, 0 = Halt),
    * decel: Verzögerung in m/s², mit der vmax gerade planmäßig fällt (die XXL-Welt bremst so vor einem Tempolimit und
    * vor dem Halt am Ziel; 0 = fester Wert): Drossel und Tempomat bremsen dann mit, statt der Grenze nachzulaufen.
+   * slack: Querbewegung nach außen in m/s, bis zu der eine Grenze den Wagen nur mitschiebt (siehe rails; 0 = feste
+   * Leitplanke wie klassisch, die XXL-Welt gibt ihren wandernden Grenzen dieses Spiel).
    */
   setLimits(l = {}) {
     const L = this.limits;
@@ -127,6 +129,7 @@ export class Player {
     if (l.extraLane !== undefined) L.extraLane = l.extraLane;
     if (l.vmax !== undefined) L.vmax = l.vmax >= 0 ? l.vmax : Infinity;
     if (l.decel !== undefined) L.decel = l.decel > 0 ? l.decel : 0;
+    if (l.slack !== undefined) L.slack = l.slack > 0 ? l.slack : 0;
     // befahrbare Spuren (unsere Richtung, nicht gesperrt, innerhalb der Grenzen) für den Spurhalteassistenten und den
     // Spurwechsel per Tipp: nur neu bestimmen, wenn sich etwas daran geändert hat, und ohne neue Felder
     const lanes = L.lanes || LANES;
@@ -346,8 +349,8 @@ export class Player {
   /**
    * Leitplanken: sanft abprallen; wer weiter nach außen lenkt oder treibt, schrammt weiter. Eine Grenze, die auf den
    * quer ruhenden Wagen zukommt (die XXL-Welt verengt so die Fahrbahn und führt um die Brunneninsel), schiebt ihn
-   * nur mit, ohne Schramme – „quer ruhend“ heißt unter 0,05 m/s wie beim Spurhalten (steering.js), denn die
-   * abklingenden Anteile der Querbewegung werden nie genau null.
+   * nur mit, ohne Schramme: dafür nennt die Welt mit limits.slack, bis zu welcher Querbewegung nach außen der Wagen
+   * als ruhend gilt (die abklingenden Anteile werden nie genau null). An der festen Leitplanke ist das 0.
    */
   rails() {
     const L = this.limits;
@@ -355,7 +358,7 @@ export class Player {
     const side = this.x < L.left ? -1 : 1;
     this.x = side < 0 ? L.left : L.right;
     const out = (this.vs + this.vc + this.vi) * side;
-    if (out <= 0.05) return;
+    if (out <= L.slack) return;
     const hard = out > 1.2;
     if (this.vs * side > 0) this.vs = 0;
     if (this.vc * side > 0) this.vc = 0;

@@ -121,7 +121,7 @@ function drive(trip, metres, { mode = 'auto', decide = null, dt = 1 / 30, onEven
   const course = new Course({ planner: new MapPlanner({ graph: G, shapes }) });
   const env = { kappa: 0, grade: 0 };
   course.fill(trip, p.s, curveTable, dt);
-  const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, closing: 0 };
+  const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
   const seen = new Map(); // Waldstücke im Sichtbereich: Schlüssel → Weg-ID
   const built = new Map(); // Straßenstücke: Id → Schlüssel (checkPieces)
   const arrival = new Arrival();

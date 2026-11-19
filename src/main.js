@@ -1580,7 +1580,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // --- XXL-Welt ------------------------------------------------------------------
-const xxlLimits = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, closing: 0 };
+const xxlLimits = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
 let xxlTrafficFrame = null;
 /** Neue Fahrt (Erlensee) bzw. Titel: der Titel fährt gleich auf der ersten Autobahn (die Kamera kreist dort). */
 function xxlStart(title) {

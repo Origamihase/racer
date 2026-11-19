@@ -282,6 +282,8 @@ export function squareXmin(sq, s, base) {
 export const BRAKE_PLAN = 2.4;
 /** Das Limit eines Abschnitts voraus soll schon so viele Meter vor seinem Anfang erreicht sein (der Begrenzer läuft nach). */
 const CAP_EARLY = 15;
+/** Bis zu dieser Querbewegung nach außen (m/s) gilt der Wagen als quer ruhend, wie beim Spurhalten (steering.js). */
+const LIMIT_SLACK = 0.05;
 
 /**
  * Tempo-Obergrenze out.vmax auf v senken, das in d Metern erreicht sein muss (v0: Tempo dort, m/s): bis dahin fällt
@@ -306,11 +308,12 @@ function capOver(sections, s, out) {
 
 /**
  * Grenzen, Spuren und Tempo für die nächste Bewegung des Spielers (trip.profile an seiner jetzigen Stelle, also vor der
- * Bewegung, mit Vorausschau). out: {left, right, shoulder, lanes, extraLane, vmax, decel, closing}.
+ * Bewegung, mit Vorausschau). out: {left, right, shoulder, lanes, extraLane, vmax, decel, slack, closing}.
  * - Verzögerungs-/Beschleunigungsstreifen zählen als Spur bei J.L0 (kein Standstreifen).
  * - Tempo: Limit hier und jedes Limit voraus mit BRAKE_PLAN erreichbar; wer auf dem Verzögerungsstreifen ist (oder an
  *   einem Autobahnende), plant schon mit der Rampe. decel: BRAKE_PLAN, solange vmax deshalb gerade fällt, sonst 0.
  * - Halt am Navi-Ziel: stop = {s} (Arrival.stop), dann fällt das Tempo bis dorthin auf 0.
+ * - slack: die Grenzen wandern mit der Strecke (Verengung, Brunneninsel) und schieben den quer ruhenden Wagen nur mit.
  */
 export function limitsFor(trip, out, stop = null) {
   const P = trip.profile();
@@ -322,6 +325,7 @@ export function limitsFor(trip, out, stop = null) {
   out.shoulder = P.kind === 'ab' && !P.decel && !P.accel ? 7.9 : Infinity;
   out.vmax = P.limit > 0 ? P.limit / 3.6 : Infinity;
   out.decel = 0;
+  out.slack = LIMIT_SLACK;
   capOver(trip.cur.sections, s, out);
   const f = P.sec.fork;
   if (f && !f.taken && f.branch && (f.forced || (P.decel && trip.x > J.laneEdge))) capOver(f.branch.sections, s, out);
