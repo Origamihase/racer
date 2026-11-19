@@ -1491,11 +1491,14 @@ export class Game {
     const p = this.player;
     const S = this.S;
     const spawn = !this.offAutobahn;
-    if (p.s > S.charge && spawn) {
+    // auf der Reise lädt der Akku in den Ladeparks: Lade-Ringe und Bananensaft liegen dort nicht auf der Straße
+    // (REISE.md A5), Koriander schon
+    const loot = spawn && !this.worldNavi;
+    if (p.s > S.charge && loot) {
       S.charge = p.s + rand(900, 1500);
       this.pickups.spawnAhead('charge', p.s, this.traffic);
     }
-    if (p.s > S.banana && spawn) {
+    if (p.s > S.banana && loot) {
       S.banana = p.s + rand(1200, 1900);
       this.pickups.spawnAhead('banana', p.s, this.traffic);
     }

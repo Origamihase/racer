@@ -740,10 +740,14 @@ export const JOB_TEMPLATES = [
 // In der XXL-Welt zählen die Strecken-Aufträge Reisekilometer (Game.odometer): je Auftrag etwa so lange gefahren wie
 // klassisch (tools/journey-test.mjs: rund 7,5 Reisekilometer je Kilometer Straße; die Strecke ab dem Start etwas
 // weniger, weil der Startort echte Straße ist).
+// Lade-Ringe und Bananensaft-Flaschen liegen auf der Reise nicht auf der Straße (REISE.md A5): Geladen wird in den
+// Ladeparks an den Ausfahrten, also gelten dort deren Aufträge.
 export const REISE_JOBS = {
   clean5: { text: '40 km ohne Blechschaden', goal: 40000, wenn: 'du 40 km ohne Blechschaden schaffst' },
   dist8: { text: '50 km Strecke schaffen', goal: 50000, wenn: 'du 50 km weit kommst' },
   rain1: { text: '8 km im Regen fahren', goal: 8000, wenn: 'du 8 km im Regen durchhältst' },
+  banana2: { text: 'Einen Ladestopp einplanen', goal: 1, stat: 'stopsPlanned', wenn: 'du einen Ladestopp einplanst' },
+  charge2: { text: 'Im Ladepark den Akku füllen', goal: 1, stat: 'parkCharges', wenn: 'du im Ladepark den Akku füllst' },
 };
 
 // Reise: NOMIs Akku-Warnungen nennen den nächsten Ladepark auf dem Weg mit Entfernung (trip.js nextRest); Taste L oder

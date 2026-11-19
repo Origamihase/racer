@@ -504,7 +504,9 @@ export class Menus {
       ...(reise ? ['Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.'] : []),
       'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Tesla-Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
-      'Lade-Ringe füllen den Akku. Bananensaft ist super, Koriander leider nicht.',
+      reise
+        ? 'Geladen wird in den Ladeparks an den Ausfahrten: Warnt NOMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) den nächsten Park ein, das Navi führt hinein und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.'
+        : 'Lade-Ringe füllen den Akku. Bananensaft ist super, Koriander leider nicht.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',
     ]) el('p', '', tips, '• ' + t);
     const menu = el('div', 'menu row', card);
