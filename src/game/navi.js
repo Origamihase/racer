@@ -162,8 +162,12 @@ export const BID_PLACES = { minKm: 12, nearKm: 30, farKm: 250, pull: 1.3, fade: 
  * Die erste Runde eines Streams – vom Start bis zum ersten Halt an einem Brunnen (oder dem ersten Vorbeirollen): Wer
  * neu ist, soll in seinen ersten Minuten erleben, worum es geht. Darum nennen die Gebote dort nur Orte in der Nähe:
  * höchstens secs Sekunden Fahrt im Tempo des Navis, von dort, wo der Wagen gerade ist (trip.whatIf – vom Start in
- * Erlensee sind das Hanau 2:22, Bad Vilbel 2:45, Frankfurt am Main 3:54, Eschborn 3:58 und Offenbach am Main 4:21),
- * mindestens aber die min nächsten. Unter ihnen entscheiden Bekanntheit und Neuheit wie sonst; die Entfernung zählt
+ * Erlensee sind das Hanau 2:22, Bad Vilbel 2:45, Frankfurt am Main 3:54, Eschborn 3:58 und Offenbach am Main 4:21);
+ * nur wenn weniger als min Orte so nah liegen, die min nächsten (zwei: neben dem aktuellen Ziel, auf das nie geboten
+ * wird, bleibt so immer ein anderer Ort). Das gilt für jedes Gebot der Runde, auch für eins, das ein stehendes Ziel
+ * wieder wegnimmt (tools/journey-test.mjs, 300 erste Runden je Fahrer: mit min 4 lagen 33 bis 47 % dieser Ziele
+ * weiter als secs entfernt, bis 363 s, mit min 2 sind es 24 bis 32 %, bis 345 s).
+ * Unter ihnen entscheiden Bekanntheit und Neuheit wie sonst; die Entfernung zählt
  * nicht weiter, auch minKm nicht (sonst fiele Hanau heraus). Nie zur Wahl stehen der Ort, in dem die Fahrt begonnen
  * hat (ein Gebot auf Erlensee wäre von Erlensee aus eine Schleife von 16 km), und Orte, zu denen das Navi erst
  * „Bitte wenden“ sagen müsste: Der Weg aus dem Startort liegt fest, bevor das erste Gebot kommt, und die erste
@@ -171,7 +175,7 @@ export const BID_PLACES = { minKm: 12, nearKm: 30, farKm: 250, pull: 1.3, fade: 
  * durchgerechnet. Wie lange das Ziel danach stehen bleibt, regelt economy.js (OPENING_CALM); im Zielort selbst wartet
  * das nächste Gebot, bis der Wagen am Brunnen steht oder vorbeigerollt ist (Game.updateNavi).
  */
-export const OPENING = { secs: 270, min: 4, pool: 16 };
+export const OPENING = { secs: 270, min: 2, pool: 16 };
 
 /** Gewicht der Entfernung (Kartenkilometer über Straßen): 0 = steht nicht zur Wahl. */
 export function placeWeight(km) {

@@ -450,7 +450,7 @@ function stream(driver, hours, seed, firstRound = false) {
     if (opening) {
       // erste Runde: ein naher Ort, nie der Startort, die Ansage zeigt nach vorn, und die Vorhersage stimmte
       const O = m.open;
-      O.bids.push({ place: t.place, secs, kind: plan.kind });
+      O.bids.push({ place: t.place, secs, kind: plan.kind, again: O.standT >= 0 });
       if (O.standT >= 0) O.changed++;
       if (plan.late) O.late++;
       O.dev = Math.max(O.dev, Math.abs(guess.secs - secs));
@@ -833,10 +833,14 @@ function atNaviPace(seed, lo, hi) {
 // Brunnen. Gemessen wird, wie oft der Wagen am Brunnen des Ziels steht, das nach dem Bieter-Chaos stehen blieb, bevor
 // ein Gebot es änderte („gehalten“), wie oft die erste Runde überhaupt mit einer Folge endet, und nach wie vielen
 // echten Sekunden ab dem Start der Wagen steht. Gewollt sind etwa neun von zehn gehaltenen Zielen beim zügigen Fahrer,
-// drei von vier beim mittleren und mindestens die Hälfte beim gemütlichen (gemessen mit je 300: 93, 80 und 64 %; die
-// 60 Streams von npm test messen 97, 73 und 67 %). Die Grenzen (Anteile in Prozent, Sekunden; p90: höchstens ein
-// Zehntel der Streams braucht länger) lassen dem Zufall von 60 Streams Luft und gelten ab OPENINGS = 60; wer an
-// OPENING, OPENING_CALM oder den Pausen des Chaos dreht, sieht hier, was es mit den ersten Minuten macht.
+// drei von vier beim mittleren und mindestens die Hälfte beim gemütlichen (gemessen mit je 300: 93, 80 und 63 %; die
+// 60 Streams von npm test messen 97, 75 und 63 %). Die Gebote nach dem Chaos nennen auch, wie weit ihre Ziele lagen:
+// Seit OPENING.min 2 statt 4 liegen 24 bis 32 % (vorher 33 bis 47 %) weiter als OPENING.secs, dort war nichts
+// anderes so nah; an den Halten ändert das nichts (gemütlich weiter 5 % ohne Halt in zehn Minuten: Er verliert das
+// erste Ziel vor der Ankunft, und für das zweite reicht die Zeit nicht). Die Grenzen (Anteile in Prozent, Sekunden;
+// p90: höchstens ein Zehntel der Streams braucht länger) lassen dem Zufall von 60 Streams Luft und gelten ab
+// OPENINGS = 60; wer an OPENING, OPENING_CALM oder den Pausen des Chaos dreht, sieht hier, was es mit den ersten
+// Minuten macht.
 const OPEN_BOUNDS = {
   'zügig': { kept: [80, 100], episode: 95, median: 240, p90: 420 },
   mittel: { kept: [62, 92], episode: 90, median: 270, p90: 540 },
@@ -870,11 +874,16 @@ if (OPENINGS > 0) {
     const kept = share((o) => o.kept);
     const episode = share((o) => o.end === 'folge');
     const sec = (x) => (isFinite(x) ? fmt(x, 0) + ' s' : 'über 600 s');
+    // die Gebote nach dem Chaos: wie weit (Sekunden im Tempo des Navis vom Wagen aus) liegen ihre Ziele?
+    const again = runs.flatMap((o) => o.bids.filter((b) => b.again).map((b) => b.secs)).sort((a, b) => a - b);
+    const againLine = again.length
+      ? `, ihre Ziele ${fmt(again[Math.floor(again.length / 2)], 0)} s (Median) bis ${fmt(again[again.length - 1], 0)} s entfernt, ${fmt((100 * again.filter((s) => s > OPENING.secs + 1).length) / again.length, 0)} % weiter als ${OPENING.secs} s`
+      : '';
     console.log(
       `Erste Runde, ${driver.name} (${driver.cruise} km/h), ${runs.length} Streams zu 10 min: am Brunnen des stehenden Ziels, bevor ein Gebot es änderte, ${fmt(kept, 0)} %` +
         ` · erste Runde endet mit einer Folge ${fmt(episode, 0)} % (vorbeigerollt ${fmt(share((o) => o.end === 'vorbei'), 0)} %, kein Halt in 10 min ${fmt(share((o) => !o.end), 0)} %)` +
         ` · der Wagen steht nach ${sec(q(0.5))} (Median), ${sec(q(0.9))} (9. Dezil), frühestens ${sec(times[0])}` +
-        ` · Bieter-Chaos ${fmt(chaos)} Gebote, das Ziel steht nach ${fmt(standT, 0)} s, Ruhe im Mittel ${fmt(calm, 2)} × Fahrzeit · Gebote nach dem Chaos ${fmt(runs.reduce((n, o) => n + o.changed, 0) / runs.length, 2)} je Stream`,
+        ` · Bieter-Chaos ${fmt(chaos)} Gebote, das Ziel steht nach ${fmt(standT, 0)} s, Ruhe im Mittel ${fmt(calm, 2)} × Fahrzeit · Gebote nach dem Chaos ${fmt(runs.reduce((n, o) => n + o.changed, 0) / runs.length, 2)} je Stream${againLine}`,
     );
     const B = OPEN_BOUNDS[driver.name];
     if (OPENINGS >= 60) {
