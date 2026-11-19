@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../../curve.js';
 import { colorize } from '../../models/loft.js';
-import { coniferGeo, decidGeo, bushGeo, houseGeo } from '../scenery.js';
+import { coniferGeo, decidGeo, bushGeo } from '../scenery.js';
 import { PAL } from '../kit/palette.js';
 import { GeoBuf, boxInto } from './roadkit.js';
 import { mulberry32 } from '../../util.js';
@@ -143,6 +143,13 @@ export const HOUSES = [
   { w: 7.0, d: 8.5, h: 8.6, floors: 3, cols: 2, door: 0, shop: false },
   { w: 12.5, d: 10.0, h: 6.2, floors: 2, cols: 5, door: 4, shop: true },
 ];
+// Der Körper ist ein schlichter Würfel (Fuß bei y = 0) und nicht das Dorfhaus aus scenery.js: das bringt eigene
+// Fenster, Tür, Giebel und Schornstein mit, die sich mit denen hier doppelten und gestreckt aus dem Dach ragten.
+function wallGeo() {
+  const g = new THREE.BoxGeometry(1, 1, 1);
+  g.translate(0, 0.5, 0);
+  return colorize(g, 0xffffff);
+}
 const C3 = (hex) => new THREE.Color(hex);
 const HC = {
   frame: C3(0xf4f1ea), glass: C3(0x34495c), glass2: C3(0x4d6479), sill: C3(0xbdb5a6), door: C3(0x7c4a2c),
@@ -315,7 +322,7 @@ function sharedGeo() {
   const mat = W.lambert({ vertexColors: true });
   const walls = W.lambert({ vertexColors: true });
   shared = {
-    geo: [coniferGeo(), decidGeo(), bushGeo(), fernGeo(), houseGeo(), townRoofGeo(), deerGeo(), hideGeo(), benchGeo(), ...HOUSES.map(windowsGeo), gableGeo()],
+    geo: [coniferGeo(), decidGeo(), bushGeo(), fernGeo(), wallGeo(), townRoofGeo(), deerGeo(), hideGeo(), benchGeo(), ...HOUSES.map(windowsGeo), gableGeo()],
     mat: TYPES.map((t) => (t === 'house' || t === 'gable' ? walls : t === 'roof' ? W.lambert({ vertexColors: true }) : mat)),
     shadow: TYPES.map((t) => t !== 'fern' && !t.startsWith('win')),
   };
