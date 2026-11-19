@@ -251,7 +251,8 @@ export function sightDistance(plan, f, max = 120) {
  * der Zeile, durch die man es sieht; 'river' und 'open' stehen nur in plan.landmarks (placed = false) und bleiben dem
  * Streckenbau überlassen.
  * items: { name, x, y, z, ry, tint?, fp } in Ortskoordinaten; fountains: { id, kind, title, x, y, z, u, ry, r, h,
- * place, special, goal, cam: { pos, look } } (cam in Ortskoordinaten, für die Nahaufnahme aus 2–4 m).
+ * place, special, goal, island (nur auf der Insel des Straßenbaus), cam: { pos, look } } (cam in Ortskoordinaten, für
+ * die Nahaufnahme aus 2–4 m).
  */
 export function planTown(place, opts = {}) {
   const infoOf = opts.infoOf;
@@ -391,16 +392,15 @@ export function planTown(place, opts = {}) {
       add(h.name, xb, 0, -(u + h.w / 2), toRoad(-1));
       u += h.w;
     }
-    const lampS = size === 'dorf' || size === 'klein' ? 'lampOld' : 'lampModern';
     for (const sg of [-1, 1]) {
       // Licht am Brunnen: zwei Laternen am rechten Bordstein gegenüber der Insel, zwei vor den Häusern links
-      add(lampS, sx(1, 0.45), top, -(isl.u + sg * (isl.r * 0.5 + 2)), -Math.PI / 2);
-      add(lampS, xb + 2.4, top, -(isl.u + sg * (isl.r + 7)), Math.PI / 2);
+      add(lamp, sx(1, 0.45), top, -(isl.u + sg * (isl.r * 0.5 + 2)), -Math.PI / 2);
+      add(lamp, xb + 2.4, top, -(isl.u + sg * (isl.r + 7)), Math.PI / 2);
       add('bench', xb + 0.9, top, -(isl.u + sg * 3.4), toRoad(-1));
       add('flowerTub', xb + 0.8, top, -(isl.u + sg * 6.2), 0);
       add(pick(rnd, ['streetTree', 'streetTree2']), xb + 2.8, top, -(isl.u + sg * (isl.r + 20)), rnd() * 6);
     }
-    if (opts.people ?? true) {
+    if (people) {
       add('oma_sit', xb + 0.9, top + 0.03, -(isl.u + 3.4), toRoad(-1));
       add(pick(rnd, ['fan_wave', 'kind_cheer', 'frau_wave']), xb + 2.2, top, -(isl.u - 1.2), toRoad(-1));
       add(pick(rnd, ['mann_stand', 'frau2_stand', 'opa_walk']), xb + 1.9, top, -(isl.u - isl.r - 9.5), 0);
@@ -555,7 +555,7 @@ export function planTown(place, opts = {}) {
   for (const side of [1, -1]) {
     // 8-m-Platten bis kurz vor das Ortsende, dann 4-m-Platten: der Gehweg endet genau bei len (Ortslängen sind Vielfache
     // von 4); baut der Straßenbau Bordstein und Gehweg selbst (pavement: false), entfallen sie
-    for (let u = opts.pavement === false ? Infinity : 0; u + 4 <= len + 1e-6;) {
+    for (let u = 0; opts.pavement !== false && u + 4 <= len + 1e-6;) {
       const L = u + 8 <= len + 1e-6 ? 8 : 4;
       add(L === 8 ? 'pavement' : 'pavement4', sx(side, 0), 0, -(u + L / 2), toRoad(side));
       u += L;
