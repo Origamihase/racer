@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { clamp, lerp, fbm1, mulberry32, fmtNum } from '../util.js';
 import { roundRect } from '../textures.js';
 import { drawDamageCar, damageBand } from './screen-damage.js';
+import { NaviScreen } from '../map/navview.js';
 
 const CW = 1024;
 const CH = 640;
@@ -44,6 +45,9 @@ export class CenterScreen {
     this.acc += dt;
     this.spin += dt;
     if (this.acc < 1 / 15) return;
+    // XXL: zeichnen und hochladen nur, solange das Cockpit zu sehen ist
+    if (st.nav && st.nav.visible === false) return;
+    this.step = this.acc;
     this.acc = 0;
     this.draw(st);
     this.texture.needsUpdate = true;
@@ -56,7 +60,9 @@ export class CenterScreen {
     ctx.save();
     ctx.fillStyle = T.bg;
     ctx.fillRect(0, 0, CW, CH);
-    this.drawMap(ctx, st, T);
+    // XXL: echte Karte mit Navi (src/map/navview.js), sonst die klassische Karte
+    if (st.nav) (this.navi || (this.navi = new NaviScreen())).draw(ctx, SPLIT, 0, CW - SPLIT, CH - 64, st, this.step);
+    else this.drawMap(ctx, st, T);
     this.drawCarPanel(ctx, st, T);
     this.drawTopBar(ctx, st, T);
     this.drawDock(ctx, st, T);

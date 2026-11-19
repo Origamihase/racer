@@ -3,6 +3,8 @@
 import { fmtNum, fmtCent, fmtKm, fmtDuration, clamp } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
+import { fmtMeters } from '../map/navroute.js';
+import { drawTurnIcon } from '../map/symbols.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -121,6 +123,12 @@ export class UI {
     // NOMI-Untertitel, Banner, Hinweise und die Kamera-Anzeige teilen sich eine Spalte (siehe .center-stack)
     const stack = el('div', 'center-stack', this.hud);
     this.stackEl = stack;
+    // Navi-Ansage für Ansichten ohne Mittelbildschirm (XXL: Drohne, schmale Formate): Pfeil, Entfernung, Ausfahrt
+    this.turnEl = el('div', 'navi-turn', stack);
+    this.turnIcon = el('canvas', 'navi-turn-icon', this.turnEl);
+    this.turnIcon.width = this.turnIcon.height = 56;
+    this.turnDist = el('b', 'navi-turn-dist', this.turnEl, '');
+    this.turnText = el('span', 'navi-turn-text', this.turnEl, '');
     this.nomiEl = el('div', 'nomi-sub hidden', stack);
     const eyes = el('span', 'nomi-eyes', this.nomiEl);
     el('i', '', eyes);
@@ -282,6 +290,26 @@ export class UI {
       if (below(r)) soft = Math.min(soft, r.top - 8);
     }
     return { hard, soft };
+  }
+
+  /** Navi-Ansage der XXL-Fahrt (NavModel.instruction()) oder null; sichtbar nur ohne Mittelbildschirm (style.css). */
+  setTurn(ins) {
+    const on = !!ins && ins.turn !== 'none';
+    this.turnEl.classList.toggle('on', on);
+    if (!on) return;
+    if (this.turnKind !== ins.turn) {
+      this.turnKind = ins.turn;
+      const c = this.turnIcon.getContext('2d');
+      c.clearRect(0, 0, 56, 56);
+      c.fillStyle = '#2f6fe4';
+      c.beginPath();
+      c.arc(28, 28, 28, 0, Math.PI * 2);
+      c.fill();
+      drawTurnIcon(c, ins.turn, 28, 28, 40, '#ffffff');
+    }
+    const dist = ins.dist > 0 && ins.turn !== 'straight' && ins.turn !== 'merge' ? fmtMeters(ins.dist) : '';
+    if (this.turnDist.textContent !== dist) this.turnDist.textContent = dist;
+    if (this.turnText.textContent !== ins.head) this.turnText.textContent = ins.head;
   }
 
   /** Unterkante der sichtbaren Teile der Mittelspalte (ohne Animationen). */

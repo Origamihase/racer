@@ -235,3 +235,23 @@ einen Weg übers Wasser. Jede Entscheidung mit Grund steht in `verlauf.log`.
   EU-DEM: Produced using Copernicus data and information funded by the European Union – EU-DEM layers
 - Küsten und Grenzen der Prüfbilder: Natural Earth (gemeinfrei), als TopoJSON aus dem Paket world-atlas
 - Orte: GeoNames (CC BY 4.0)
+
+## Küsten, Grenzen und Länder (`land.mjs` → `src/map/land.js`)
+
+Die Umrisse der großen Karte und des Navis stammen aus [Natural Earth](https://www.naturalearthdata.com/)
+(gemeinfrei), gelesen aus dem npm-Paket `world-atlas` 2.0.2 (TopoJSON, `countries-10m.json`). Das Paket wird nur
+als Daten gelesen – ein eigener kleiner TopoJSON-Decoder in `land.mjs`, kein Code aus dem Paket, nichts wird nach
+`node_modules` kopiert. Den Ordner mit `countries-10m.json` gibt man als Argument an:
+
+    node tools/map/land.mjs <Ordner mit countries-10m.json> [--stats]
+
+Das Ergebnis ist deterministisch (gleiche Eingabe → bitgleiche Datei) und bleibt unter 70 kB:
+
+- zwei Detailstufen in einem Bitstrom: grob für die Weltansicht, fein (≈ 1 km) nahe am Straßennetz;
+- Landesgrenzen nur dort, wo die Karte spielt; strittige Grenzlinien (Krim, Kosovo, Westsahara, Zypern …) werden
+  nicht gezeichnet, damit die Karte neutral bleibt;
+- die 33 Länder mit Orten des Spiels als eigene Ringe (Pastellfarbe, Nachbarn verschieden) mit Namenspunkt
+  (Kürzel, deutscher Name, Punkt, Abstand zum Rand), dazu Meeresnamen für die große Karte;
+- `REGIONS`: Gebiete mit feinen Küsten (jeder Ort liegt in einem, `npm test` prüft das).
+
+Nachweis im Spiel („Über das Spiel“): „Kartenumrisse: Natural Earth (gemeinfrei)“.
