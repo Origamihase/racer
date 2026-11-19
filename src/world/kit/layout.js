@@ -54,6 +54,11 @@ const MAIN = {
 };
 const EXTRA = { dorf: [], klein: ['fountainDrink'], stadt: ['fountainPond', 'fountainDrink'], gross: ['fountainPond', 'fountainJets', 'fountainDrink'] };
 const SPECIAL = { Augsburg: 'fountainOrigin', 'Nürnberg': 'fountainBoss' };
+// Radius der Brunnen, die Hauptbrunnen eines Orts sein können (info.r aus fountains.js; tools/citykit-test.mjs prüft,
+// dass beide übereinstimmen): damit lässt sich die Insel eines Zielbrunnens ohne Grafik planen
+export const FOUNTAIN_R = { fountainTrough: 2.8, fountainMarket: 4.2, fountainBowls: 4.3, fountainJets: 4.6, fountainGrand: 7.5, fountainOrigin: 4.5, fountainBoss: 7.3 };
+// Insel des Zielbrunnens im Straßenbau: Bordstein und ein schmaler Pflasterring um das Becken, höchstens 8 m Radius
+export const ISLAND = { kerb: 0.45, ring: 0.35, max: 8 };
 
 // Häuser je Größe: Rand (außen) und Mitte; gap = Abstand zwischen zwei Häusern [min, max]
 const ROWS = {
@@ -76,6 +81,21 @@ const FRONT_KINDS = new Set(['village', 'shop', 'town', 'city', 'region', 'groun
 const THIN = new Set(['lamp', 'tree', 'signal']);
 // Was niedriger ist, verdeckt den Brunnen nicht (Bänke, Beete, Tauben, Pflaster)
 const LOW = 0.95;
+
+/**
+ * Art des Hauptbrunnens eines Orts, an dem auch jede Fahrt dorthin endet: die beiden Sonderbrunnen in Augsburg und
+ * Nürnberg, sonst nach der Größe des Orts. Für denselben Ort immer dieselbe, unabhängig vom übrigen Plan.
+ */
+export function goalKind(place, size = sizeOf(place.pop ?? 0)) {
+  const special = SPECIAL[place.key] ?? SPECIAL[place.name];
+  if (special) return special;
+  const list = MAIN[size];
+  return list[hashKey('Brunnen ' + (place.key ?? place.name)) % list.length];
+}
+/** Radius der Insel, auf der der Zielbrunnen eines Orts mitten im Brunnenplatz der Straße steht. */
+export function islandRadius(place) {
+  return Math.min(ISLAND.max, FOUNTAIN_R[goalKind(place)] + ISLAND.kerb + ISLAND.ring);
+}
 
 /** Name auf Ortsschild und Navi: wie shortName in src/game/navi.js (Zusätze in Klammern, nach Komma oder Strich fallen weg). */
 export function signName(name) {

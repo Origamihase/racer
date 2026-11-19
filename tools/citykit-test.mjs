@@ -198,6 +198,21 @@ for (const size of SIZES) {
   }
 }
 
+// Hauptbrunnen jedes Orts (zugleich Zielbrunnen auf der Insel des Straßenbaus): die Tabelle der Radien stimmt mit den
+// Brunnen überein, die Sonderbrunnen stehen nur in ihren Städten, jeder Brunnen passt mit Bordstein auf seine Insel
+for (const [kind, r] of Object.entries(L.FOUNTAIN_R)) ok(city.info(kind).r === r, `FOUNTAIN_R.${kind} ${r} ≠ info.r ${city.info(kind).r}`);
+const islands = {};
+for (const row of PLACES) {
+  const place = { key: row[0], name: row[1], lat: row[2], cc: row[4], n: row[5], pop: row[6] };
+  const kind = L.goalKind(place);
+  const ri = L.islandRadius(place);
+  islands[kind] = (islands[kind] ?? 0) + 1;
+  ok(L.FOUNTAIN_R[kind] > 0, `${place.name}: Hauptbrunnen ${kind} ohne Radius`);
+  ok((city.info(kind).special === 'ursprung') === (place.name === 'Augsburg') && (city.info(kind).special === 'endgegner') === (place.name === 'Nürnberg'), `${place.name}: Sonderbrunnen ${kind}`);
+  ok(ri >= 2.5 && ri <= L.ISLAND.max && L.FOUNTAIN_R[kind] + L.ISLAND.kerb <= ri + 1e-9, `${place.name}: ${kind} passt nicht auf die Insel (${ri} m)`);
+  ok(L.goalKind(place) === kind, `${place.name}: Hauptbrunnen nicht reproduzierbar`);
+}
+
 // Gebaute Meshes gegen den Lageplan, je Größe ein Ort (dazu Frankfurt mit Skyline): die verschmolzenen Ortsstücke reichen
 // genau von 0 bis −len, die vier Ecken jedes Platzes liegen als Eckpunkte des Pflasters in Gehweghöhe im Mesh, die
 // Brunnenliste der Group liegt auf den Brunnen des Lageplans.
@@ -388,5 +403,6 @@ console.log('Lageplan gegen Meshes:', meshChecks.join(' · '));
 console.log('Rastanlagen:', restChecks.join(' · '));
 console.log(`Bausteine: ${blocks} Fassungen, Geometrie im Rahmen von info (Ursprung, w, d, h); ${terrainEdges.length} Gelände ohne offene Ränder`);
 console.log('Zielbrunnen-Arten:', Object.entries(goalKinds).map(([k, v]) => `${k} ${v}`).join(', '));
+console.log('Hauptbrunnen der Orte (auf der Insel am Ziel):', Object.entries(islands).map(([k, v]) => `${k} ${v}`).join(', '));
 console.log(fails ? `${fails} FEHLER` : 'Alles in Ordnung: jeder Ort hat mindestens einen Brunnen, frei sichtbar und beleuchtet.');
 process.exit(fails ? 1 : 0);

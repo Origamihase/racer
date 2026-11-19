@@ -3,14 +3,14 @@
 // Ort in wenige verschmolzene Stücke, goalFountain() einen Zielbrunnen mit kleinem Platz an eine beliebige Stelle,
 // buildRest() eine ganze Rastanlage.
 import * as THREE from 'three';
-import { cityCore, compose, Bau } from './citycore.js';
+import { cityCore, compose, release, Bau } from './citycore.js';
 import { createTownKit } from './town.js';
 import { createStreetKit } from './street.js';
 import { createFountainKit } from './fountains.js';
 import { createPeopleKit } from './people.js';
 import { createLandmarkKit, landmarkFor } from './landmarks.js';
 import { createRestKit, restGround } from './rest.js';
-import { planTown, planGoal, planRest, sizeOf, regionOf, STREET, REST } from './layout.js';
+import { planTown, planGoal, planRest, sizeOf, regionOf, goalKind, islandRadius, STREET, REST } from './layout.js';
 
 // Ein Ort wird in Stücke von 100 m Straße verschmolzen: wenige Draw Calls, und was hinter der Kamera liegt, fällt weg
 const CHUNK = 100;
@@ -117,8 +117,13 @@ export function createCityKit(F, { bend = null } = {}) {
     regionOf,
     STREET,
     REST,
+    /** Hauptbrunnen eines Orts (zugleich Zielbrunnen der Fahrt dorthin) und der Radius seiner Insel, siehe layout.js. */
+    goalKind,
+    islandRadius,
     /** Gesetzte Bausteine verschmelzen: items = [{ g, x, y, z, ry, s, tint }] → Group mit höchstens vier Meshes. */
     compose: (items, opts) => compose(core, items, opts),
+    /** Ein gebautes Stück (Ort, Brunnen, Rastanlage) abräumen: gibt nur frei, was eigens dafür verschmolzen wurde. */
+    release,
     /** Wasser der Brunnen bewegen: t = Zeit in Sekunden, rain = Regen 0 … 1. */
     setWater: (t, rain) => core.setWater(t, rain),
 

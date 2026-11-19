@@ -15,7 +15,7 @@ import { hashString, mulberry32 } from '../../util.js';
 import { FramePool } from './frames.js';
 import { Ground, LAYER } from './ground.js';
 import { RoadMaterials, buildPiece, VIS, VERGE, KERB, AB_EDGE, RAIL_U, ISLAND_H, crossSection, curveShift, linShift, stubOf } from './roadkit.js';
-import { placeholderFountain } from './fountain.js';
+import { Towns } from './towns.js';
 import { PropSet, PROP, addProp, forestSide, openSide, fieldSide, houseSide } from './forest.js';
 import { Junctions, closeLine } from './junction.js';
 import { Signs } from './signs.js';
@@ -80,12 +80,15 @@ export class XxlWorld {
     // Ankunft am Navi-Ziel: Halt vor dem Brunnen, Ereignis 'rest' (siehe on); mit arrival.hold = true bleibt der
     // Wagen danach stehen, bis arrival.release() (die Brunnen-Szene des Spiels)
     this.arrival = new Arrival();
+    // Orte und Brunnen aus dem Stadtbaukasten
+    this.towns = new Towns();
     /**
      * Haken für das Spiel: baut den Brunnen eines Brunnenplatzes, fn({r, place, seed, heading}) → Object3D mit
-     * Ursprung in der Mitte am Boden, Vorderseite +z (zum haltenden Wagen). Standard: Platzhalter (fountain.js).
-     * Geometrien des Ergebnisses gibt die Welt nie frei (der Baukasten teilt sie).
+     * Ursprung in der Mitte am Boden, Vorderseite +z (zum haltenden Wagen). Standard: der Hauptbrunnen des Orts aus
+     * dem Stadtbaukasten (towns.js). Geometrien des Ergebnisses gibt die Welt nie frei (der Baukasten teilt sie);
+     * trägt es userData.dispose, ruft sie das beim Abräumen des Stücks.
      */
-    this.makeFountain = placeholderFountain;
+    this.makeFountain = (opts) => this.towns.fountain(opts);
     this.view = null;
     this.zones = []; // Knotenpunkte der gezeichneten Autobahn: {s, type: +1 Ausfahrt / −1 Einfädeln}
     // Ende bzw. Anfang der gezeichneten Autobahn für den Verkehr (Traffic.end, Traffic.begin)
@@ -149,9 +152,10 @@ export class XxlWorld {
 
   /**
    * Einmal pro Bild nach der Bewegung des Spielers: Strecke fortschreiben, Stücke abgleichen, Rahmen setzen.
-   * Danach gilt trip.profile() für die nächste Bewegung (siehe limitsFor). speed: Tempo des Wagens (m/s).
+   * Danach gilt trip.profile() für die nächste Bewegung (siehe limitsFor). speed: Tempo des Wagens (m/s), time:
+   * Spielzeit in Sekunden (bewegt das Wasser der Brunnen und was sich in den Orten regt).
    */
-  update(s, x, wet, speed = Infinity) {
+  update(s, x, wet, speed = Infinity, time = 0) {
     const T = this.trip;
     this.s = s;
     const ev = T.update(s, x);
@@ -167,6 +171,7 @@ export class XxlWorld {
     this.frames.byId.forEach(this.placeView);
     this.ground.update(s, wet);
     this.mats.setWet(wet);
+    this.towns.update(time, wet);
     this.updateRoad(s);
     this.junctions.update(s, wet);
     if (this.maskAutobahn !== this.maskOn) this.setMask(this.maskAutobahn);
@@ -356,7 +361,11 @@ export class XxlWorld {
   }
 
   dropPiece(p) {
-    if (p.fountain) p.group.remove(p.fountain); // geteilte Geometrien des Brunnens bleiben
+    if (p.fountain) {
+      // geteilte Geometrien des Brunnens bleiben; was eigens für ihn entstand, räumt er selbst ab
+      p.group.remove(p.fountain);
+      if (p.fountain.userData.dispose) p.fountain.userData.dispose();
+    }
     if (p.group.parent) p.group.parent.remove(p.group);
     p.group.traverse((o) => {
       if (o.geometry) o.geometry.dispose();

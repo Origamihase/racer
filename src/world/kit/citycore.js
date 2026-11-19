@@ -1837,6 +1837,8 @@ export function composeGeo(items) {
     }
     g.computeBoundingBox();
     g.computeBoundingSphere();
+    // eigens für diesen Aufruf verschmolzen (anders als die geteilten Bausteine): siehe release()
+    g.userData.merged = true;
     return g;
   };
   const water = geo(Wt);
@@ -1869,6 +1871,16 @@ export function compose(core, items, { shadows = true } = {}) {
   mesh(geo.light, core.glow, false);
   group.userData.tris = geo.tris;
   return group;
+}
+
+/**
+ * Gibt frei, was compose() für ein Objekt eigens verschmolzen hat. Geteilte Geometrien (Bausteine, Texttafeln),
+ * Materialien und Texturen bleiben: sie gehören dem Baukasten.
+ */
+export function release(obj) {
+  obj.traverse((o) => {
+    if (o.geometry && o.geometry.userData.merged) o.geometry.dispose();
+  });
 }
 
 /**
