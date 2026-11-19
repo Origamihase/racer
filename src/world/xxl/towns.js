@@ -50,8 +50,8 @@ export function islandOf(sec) {
 
 /**
  * Plan des Orts einer Ortsdurchfahrt: für denselben Ort immer derselbe (der Zufall hängt am Ort), mit dem Namen der
- * Karte (den auch Navi und Ortstafel zeigen) und seinem Hauptbrunnen (goalKind) auf der Insel des Straßenbaus bzw.,
- * wo die Fahrt beginnt, auf dem Platz rechts kurz vor dem Wagen. Ortstafeln stellt der Schilderplan (signplan.js).
+ * Karte, wie ihn die Ortstafel zeigt (die stellt der Schilderplan, signplan.js), und seinem Hauptbrunnen (goalKind)
+ * auf der Insel des Straßenbaus bzw., wo die Fahrt beginnt, auf dem Platz rechts kurz vor dem Wagen.
  * budget (ms): Zeit je Aufruf für einen Plan in Raten; null, solange er noch nicht steht (K.planTown).
  */
 export function townPlan(K, sec, budget = Infinity) {
@@ -68,7 +68,8 @@ export class Towns {
   constructor(root) {
     this.kit = cityKit();
     this.root = root;
-    // Schlüssel des Abschnitts → { key, sec, path, place, plan, group, hidden }; plan und group erst, wenn der Plan steht
+    // Schlüssel des Abschnitts → { key, sec, path, place, plan, group, hidden }; plan und group erst, wenn sein Plan
+    // steht (update)
     this.items = new Map();
     this.want = new Set();
   }
@@ -197,7 +198,8 @@ export class Towns {
    * Der Ort einer Ortsdurchfahrt für Navi-Karte und Brunnen-Szene: { place (Index in places), sec, plan (layout.js
    * planTown), group (K.buildTown: layout, fountains, fountainsInView, watchFountains) } oder null, solange keines
    * ihrer Stücke im Sichtbereich liegt oder ihr Plan noch nicht steht. plan.layout (= group.layout) ist der Lageplan
-   * in Ortskoordinaten (x seitlich wie die Straße, z = −(s − sec.s0)), plan.fountains[0] der Zielbrunnen auf der Insel.
+   * in Ortskoordinaten (x seitlich wie die Straße, z = −(s − sec.s0)), plan.fountains[0] der Zielbrunnen auf der
+   * Insel.
    */
   of(sec) {
     for (const t of this.items.values()) if (t.sec === sec) return t.group ? t : null;
