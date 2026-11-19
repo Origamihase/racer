@@ -509,27 +509,82 @@ function drawBananaPoster(c, w, h) {
 /**
  * Stecker (Zapfhahn) im Halter an einer Seitenwand x = xw (Außenseite s = ±1), Mitte des Halters in Höhe yp bei zp;
  * Kabel (Schlauch) hängt in einer Schlaufe (Radius R, Mitte in Höhe yc) in der Ebene der Wand und läuft auf der Seite
- * dir (±z) zurück in den Körper. Von vorn sieht man davon nur die Kante.
+ * −dir (±z) hinauf in eine Tülle an der Wand. Von vorn sieht man davon nur die Kante.
  */
-function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable) {
+function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable, bare = false) {
   const { F } = b;
   const xs = xw + s * 0.045;
   F.rbox(xw + s * 0.018, yp - 0.13, zp, 0.036, 0.28, 0.17, 0.016, C.postCap, { seg: 1 });
+  // bare: nur der Halter (Stecker und Kabel bringt die Startszene mit, xxl/chargerig.js)
+  if (bare) return;
   F.rbox(xs, yp - 0.1, zp, 0.085, 0.21, 0.12, 0.035, C.plug, { seg: 1 });
-  const zc = zp - dir * 0.09;
-  const a = 0.45;
-  b.xf([xs, yc, zc], [0, 0, Math.PI / 2], 1, () => F.torus(0, 0, 0, R, 0.032, col, { seg: 10, tube: 4, a0: Math.PI + a, a1: TAU - a }));
-  const ey = yc - R * Math.sin(a);
-  const ez = R * Math.cos(a);
-  F.rod([xs, yp - 0.1, zp], [xs, ey, zc + dir * ez], 0.032, col, { seg: 5 });
-  F.rod([xs, ey, zc - dir * ez], [xw - s * 0.01, yc + 0.22, zc - dir * 0.11], 0.032, col, { seg: 5 });
+  // Tülle an der Wand, aus der das Kabel kommt: ganz auf dem geraden Stück der Wand (bei der Ladesäule endet es 13 cm
+  // hinter der Mitte, dahinter biegt die Kante rund ab – dort stünde die Tülle frei in der Luft)
+  const zc = zp - dir * 0.07;
+  const zg = zc - dir * 0.08;
+  const yg = yc + 0.22;
+  F.rbox(xw + s * 0.04, yg, zg, 0.09, 0.07, 0.09, 0.025, C.plug, { seg: 1 });
+  // Ein Schlauch ohne Naht: vom Stecker auf der Tangente an den Kreis der Schlaufe, unten herum und auf der zweiten
+  // Tangente hinauf in die Tülle; die Enden stecken 3 cm tief im Stecker und in der flachen Tülle so tief, dass der
+  // Rand des Schlauchs 4 mm unter ihrem Deckel bleibt: offen ist nichts. Mittellinie in der Wandebene als (u, y),
+  // u = dir · (z − zc).
+  const r = 0.032;
+  const side = (pu, py, k) => {
+    const d = Math.hypot(pu, py);
+    return Math.atan2(py, pu) - k * Math.acos(Math.min(1, R / d));
+  };
+  const a0 = side(zp * dir - zc * dir, yp - 0.1 - yc, 1);
+  const a1 = side(zg * dir - zc * dir, yg - yc, -1) - TAU;
+  const n = 24;
+  const pts = [];
+  const tan = [];
+  // Ende in Stecker oder Tülle (halbe Höhe hy): die Tangente läuft vom Berührpunkt am Kreis zu deren Mitte und darüber
+  // hinaus, 3 cm oder so weit, dass der schräge Endring 4 mm unter dem Deckel bleibt
+  const arm = (a, pu, py, inward, hy) => {
+    const tu = pu - R * Math.cos(a);
+    const ty = py - R * Math.sin(a);
+    const l = Math.hypot(tu, ty);
+    const ext = Math.min(0.03, (hy - 0.004 - (r * Math.abs(tu)) / l) / Math.max(0.3, Math.abs(ty) / l));
+    pts.push([pu + (tu / l) * ext, py + (ty / l) * ext]);
+    tan.push([(inward * tu) / l, (inward * ty) / l]);
+  };
+  arm(a0, (zp - zc) * dir, yp - 0.1 - yc, -1, 0.105);
+  for (let i = 0; i <= n; i++) {
+    const a = a0 + ((a1 - a0) * i) / n;
+    pts.push([R * Math.cos(a), R * Math.sin(a)]);
+    tan.push([Math.sin(a), -Math.cos(a)]);
+  }
+  arm(a1, (zg - zc) * dir, yg - yc, 1, 0.035);
+  const rad = 10;
+  const P = [];
+  const N = [];
+  const idx = [];
+  pts.forEach(([u, y], i) => {
+    // Rahmen des Rings: x (Wandnormale) und t × x in der Wandebene
+    const tz = tan[i][0] * dir;
+    const ty = tan[i][1];
+    for (let j = 0; j <= rad; j++) {
+      const v = (j / rad) * TAU;
+      const nx = Math.cos(v);
+      const ny = Math.sin(v) * tz;
+      const nz = -Math.sin(v) * ty;
+      P.push(xs + r * nx, yc + y + r * ny, zc + u * dir + r * nz);
+      N.push(nx, ny, nz);
+      if (i < pts.length - 1 && j < rad) {
+        const p = i * (rad + 1) + j;
+        idx.push(p, p + rad + 1, p + 1, p + rad + 1, p + rad + 2, p + 1);
+      }
+    }
+  });
+  F.mesh(P, N, idx, col);
 }
 
 /**
  * Säule im eigenen Rahmen (Mitte der Grundfläche im Ursprung): kind 'dc' (groß, je Seite ein Kabel) oder 'ac' (klein,
- * ein Kabel rechts). body(y, w, h, d, seg) baut den Kasten (eingefärbt oder fest). Ergebnis: Oberkante.
+ * ein Kabel rechts). body(y, w, h, d, seg) baut den Kasten (eingefärbt oder fest); bare: diese Seite (−1 | 1) bekommt
+ * nur den Halter. Ergebnis: Oberkante.
  */
-function chargePost(b, kind, near, body) {
+function chargePost(b, kind, near, body, bare = 0) {
   const { F, G, L } = b;
   const dc = kind === 'dc';
   const hh = dc ? 1.86 : 1.3;
@@ -550,7 +605,7 @@ function chargePost(b, kind, near, body) {
   G.rect(0, sy + 0.035, dd / 2 + 0.004, sw - 0.07, sh - 0.07, C.screen, { g: [1.18, 0.82] });
   G.sign(0, y0 + 0.3, dd / 2 + 0.003, ww * 0.44, 'y:charge');
   // Stecker im Halter an der Seitenwand, Kabel in der Schlaufe längs der Seite
-  for (const s of dc ? [-1, 1] : [1]) hose(b, s, s * ww / 2, y0 + hh * (dc ? 0.56 : 0.6), 0.07, 1, dc ? 0.19 : 0.15, dc ? 0.8 : 0.64);
+  for (const s of dc ? [-1, 1] : [1]) hose(b, s, s * ww / 2, y0 + hh * (dc ? 0.56 : 0.6), 0.07, 1, dc ? 0.19 : 0.15, dc ? 0.8 : 0.64, C.cable, s === bare);
   return y0 + hh + 0.07;
 }
 defs.lade_saeule = {
@@ -616,7 +671,8 @@ const BAYS = Array.from({ length: 8 }, (_, i) => -9.1 + i * BAY);
 const POSTS = [[-5.2, 'dc'], [0, 'dc'], [5.2, 'dc'], [-10.7, 'ac'], [10.7, 'ac']];
 defs.ladepark = {
   kind: 'rest', far: true,
-  make(b) {
+  // heroFree: an der Säule der Heldenbucht hängt auf deren Seite nur der Halter (ladepark_start, siehe unten)
+  make(b, lod, heroFree = false) {
     const { F, G, L } = b;
     const near = !b.lod;
     F.box(0, 0, -4, 24, 0.05, 8, C.yard, { skip: 'b' });
@@ -635,7 +691,8 @@ defs.ladepark = {
     }
     // Säulen (DC zwischen je zwei Buchten, AC an den Enden) mit Poller davor
     for (const [x, kind] of POSTS) {
-      b.at(x, 0.05, -5.3, 0, () => chargePost(b, kind, near, (y, w, hh, d, seg) => F.rbox(0, y, 0, w, hh, d, 0.07, C.body, { seg })));
+      const bare = heroFree && x === POSTS[1][0] ? -1 : 0;
+      b.at(x, 0.05, -5.3, 0, () => chargePost(b, kind, near, (y, w, hh, d, seg) => F.rbox(0, y, 0, w, hh, d, 0.07, C.body, { seg }), bare));
       F.cyl(x, 0.05, -4.6, 0.14, 0.14, 0.85, C.mustard, { seg: near ? 10 : 5 });
       if (near) F.cyl(x, 0.75, -4.6, 0.142, 0.142, 0.06, C.white, { seg: 10, top: false });
     }
@@ -669,6 +726,8 @@ defs.ladepark = {
     return [m];
   },
 };
+// Der Ladepark in Erlensee, an dem jede Fahrt beginnt: Stecker und Kabel der Heldenbucht gehören der Startszene
+defs.ladepark_start = { ...defs.ladepark, make: (b, lod) => defs.ladepark.make(b, lod, true) };
 
 // =================================================================================================================
 // 9. Picknickgruppe: Tisch 1,8 m mit zwei Bänken, alles mindestens 0,1 m dick, Holz in zwei Tönen

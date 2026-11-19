@@ -360,6 +360,13 @@ export class Audio {
     else this.tone(1175, 0.07, 'triangle', 0.035, 0, 1319);
   }
 
+  /** Ladestecker löst sich: die Verriegelung der Buchse klickt, das Relais in der Säule fällt dumpf ab. */
+  unplug() {
+    this.tone(2637, 0.02, 'square', 0.02, 0, 1568);
+    this.tone(196, 0.07, 'triangle', 0.06, 0.03, 98);
+    this.tone(2093, 0.02, 'square', 0.012, 0.12, 1319);
+  }
+
   click() {
     this.tone(1200, 0.04, 'square', 0.02);
   }

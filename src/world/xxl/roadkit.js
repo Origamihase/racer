@@ -18,6 +18,7 @@ import { LAYER, meadowTexture } from './ground.js';
 import { STREET } from '../kit/layout.js';
 import { PAVEMENT } from '../kit/street.js';
 import { squareOf, squareWeight, kitTown } from './plan.js';
+import { chargeOf, kerbAt } from './charge.js';
 
 export const AB_EDGE = 10.5; // Asphaltrand der Autobahn (ROAD.right)
 export const AB_RAIL = 11.05; // Schutzplanke der Autobahn (ROAD.right + 0.55)
@@ -516,6 +517,9 @@ export function buildPiece(mats, sec, prev, next, sa, sb, inCurve) {
   }
   const st = stubOf(sec, prev, next);
   if (st) extra.push(st.a, st.b, st.cut - 0.01, st.cut + 0.01);
+  // Einfahrt des Ladeparks (charge.js): der Bordstein rechts ist dort abgesenkt, mit Übergängen davor und dahinter
+  const dw = chargeOf(sec)?.drive ?? null;
+  if (dw) extra.push(dw.s0 - dw.ramp, dw.s0, dw.s1, dw.s1 + dw.ramp);
   if (extra.length) {
     for (const e of extra) if (e > sa + 0.005 && e < sb - 0.005 && !ss.some((q) => Math.abs(q - e) < 0.005)) ss.push(e);
     ss.sort((a, b) => a - b);
@@ -671,7 +675,7 @@ export function buildPiece(mats, sec, prev, next, sa, sb, inCurve) {
       let prevRow = null;
       for (let i = 0; i < n; i++) {
         const s = ss[i];
-        const hh = rise(s);
+        const hh = dw && side > 0 ? kerbAt(dw, s, rise(s)) : rise(s);
         const edge = side < 0 ? X[i].aL : X[i].aR;
         const bv = Math.min(KERB.bevel, hh); // runde Kante (verschwindet, wo der Bordstein aus dem Boden steigt)
         const x0 = edge; // Bordsteinkante zur Fahrbahn

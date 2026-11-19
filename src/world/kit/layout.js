@@ -239,7 +239,8 @@ export function sightDistance(plan, f, max = 120) {
 /**
  * Plant einen Ort. place = { key, name, cc, pop, n, lat? }, opts = { len, seed, goal (u des Ziels), infoOf(name),
  * landmarks ([{ name, slot }] aus landmarkFor), signName (Name auf dem Ortsschild, Standard signName(place.name)),
- * nextName (nächster Ort, klein unter dem Ortsende-Schild) }. Für den Straßenbau, der Fahrbahn, Bordstein und Gehweg
+ * nextName (nächster Ort, klein unter dem Ortsende-Schild), charge ({ u, kind }: ein Ladepark rechts, Abschnitt 1c;
+ * dann plan.charge = { u, x, kind, park }) }. Für den Straßenbau, der Fahrbahn, Bordstein und Gehweg
  * selbst baut: mainKind (Art des Hauptbrunnens, z. B. goalKind(place)), pavement: false (keine Gehwegkacheln),
  * signs: false (keine Ortsschilder) und island = { u, x, y, r, ry, u0, u1, kerb(u) }: der Hauptbrunnen steht auf einer
  * Insel mitten in der Straße (Mitte (x, −u), Höhe y, Drehung ry), die sich dafür von u0 bis u1 nach links weitet
@@ -407,6 +408,26 @@ export function planTown(place, opts = {}) {
     }
   }
 
+  // --- 1c. Ladepark, wo der Straßenbau ihn bestellt (charge = { u: Mitte längs der Straße, kind }, siehe
+  // xxl/charge.js): rechts an der Häuserflucht, zur Straße gedreht wie die Häuser. Davor senkt der Straßenbau den
+  // Bordstein zur Einfahrt ab; auf Streifen und Gehweg vor dem Park steht nichts (keep). Drei Buchten belegen
+  // Elektroautos, rückwärts eingeparkt; die Heldenbucht und ihre Nachbarn bleiben frei.
+  const keep = [];
+  if (opts.charge) {
+    const c = opts.charge;
+    const info = infoOf(c.kind);
+    const x0 = sx(1, lineD);
+    const park = add(c.kind, x0, 0, -c.u, toRoad(1));
+    const span = { side: 1, u0: c.u - info.w / 2 - 1, u1: c.u + info.w / 2 + 1 };
+    busy.push(span);
+    keep.push(span);
+    for (const [i, car] of [[0, 'carCompact'], [6, 'carSmall'], [7, 'carCompact']]) {
+      const [bx, bz] = info.bays[i];
+      add(car, x0 - bz + 0.2, info.ground, -(c.u - bx), Math.PI / 2);
+    }
+    plan.charge = { u: c.u, x: x0, kind: c.kind, park: aabb(park.fp) };
+  }
+
   // --- 2. Weitere Brunnen in größeren Orten: auf eigenen kleinen Plätzen links ------------------------------------
   const extras = special && size === 'gross' ? EXTRA.gross.slice(1) : EXTRA[size];
   let side2u = len * 0.25;
@@ -560,7 +581,9 @@ export function planTown(place, opts = {}) {
       add(L === 8 ? 'pavement' : 'pavement4', sx(side, 0), 0, -(u + L / 2), toRoad(side));
       u += L;
     }
-    const onSquare = (u) => plan.squares.some((q) => q.side === side && u > q.u0 - 1 && u < q.u1 + 1);
+    // auch vor dem Ladepark (keep) bleiben Streifen und Gehweg leer
+    const hit = (q, u) => q.side === side && u > q.u0 - 1 && u < q.u1 + 1;
+    const onSquare = (u) => plan.squares.some((q) => hit(q, u)) || keep.some((q) => hit(q, u));
     let u = 14 + rnd() * 8;
     let k = 0;
     let lampNo = 0;

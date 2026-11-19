@@ -185,6 +185,8 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .brunnentv-episode { font-size: 12px; font-weight: 800; line-height: 1.3; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
 .brunnentv-place { font-size: 14.5px; font-weight: 700; line-height: 1.3; color: #dff3ff; }
 .bottom-strip:has(> .sub-bar:not(.hidden)) > .brunnentv { display: none; }
+/* Startszene der Reise (ui.show(false, true)): vom HUD nur der Untertitel */
+.hud.subs > :not(.bottom-strip), .hud.subs .bottom-strip > :not(.sub-bar) { display: none !important; }
 @media (min-width: 1240px) and (min-height: 561px) {
   .bottom-strip:has(> .sub-bar.short:not(.hidden)) > .brunnentv { display: flex; }
 }
@@ -276,6 +278,8 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 
 /* --- Rahmen ------------------------------------------------------------------ */
 .rahmen-layer { position: absolute; inset: 0; z-index: 2; }
+/* die fliegende Elsa fliegt vor den Tafeln des HUD (Info, Chat, Navi-Zeile), nicht hinter ihnen hindurch */
+.rahmen-layer:has(> .rahmen-elsa) { z-index: 5; }
 .rahmen { position: absolute; inset: 0; animation: rahmenin 0.5s ease-out; }
 .rahmen.out { animation: rahmenout 0.6s ease-in forwards; }
 @keyframes rahmenin { from { opacity: 0; transform: scale(1.06); } }

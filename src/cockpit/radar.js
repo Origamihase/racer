@@ -11,6 +11,11 @@ import { dashTopY } from './cabin.js';
 // Mini Adams Sicht nur Armaturenbrett liegt – keine Straße, kein Spiegel, nicht NOMI – und so weit hinten, dass die
 // linke Hand es auch beim Lenken nicht verdeckt. Die Wackel-Elsa steht eine Handbreit rechts dahinter.
 const SPOT = { x: -0.67, z: -0.64, yaw: 0.3 };
+// Hochkant (Handy aufrecht) ist das Bild schmal: Dort stünde es am linken Bildrand und verlöre in einer langen
+// Rechtskurve ein Stück. Es rückt dann 13,5 cm nach vorn zur Scheibe (2,4 cm Luft), im Bild zur Mitte hin: bei
+// 390 × 844 rund 26 px Rand in Ruhe, 6 px in der Rechtskurve, frei von Hand, Kranz und Elsas Sockel. Dazwischen
+// gleitet es mit dem Bildformat wie die Griffe der Hände (cockpit.setAspect).
+const SPOT_TALL = { x: -0.675, z: -0.775, yaw: 0.3 };
 // Gehäuse: Breite, Höhe, Tiefe (m) – und so tief steckt es im Polster des Armaturenbretts (kein Spalt darunter)
 const BOX = { w: 0.066, h: 0.031, d: 0.048, sink: 0.0006 };
 // Lämpchen: Ruhe, Warnung dunkel, Warnung hell (ungetönt wie die REC-Lampe der Action-Cam: bei Sonne, Regen und im
@@ -108,6 +113,11 @@ export function buildRadar(mats, shadowMat) {
       normal.set(dashTopY(x - e, z) - dashTopY(x + e, z), 2 * e, dashTopY(x, z - e) - dashTopY(x, z + e)).normalize();
       group.position.set(x, dashTopY(x, z), z);
       group.quaternion.setFromUnitVectors(up, normal).multiply(turn.setFromAxisAngle(up, yaw));
+    },
+    /** Platz nach dem Bildformat (Breite/Höhe) der Cockpitkamera: quer SPOT, hochkant SPOT_TALL. */
+    fit(aspect) {
+      const k = smoothstep(0.6, 1.0, aspect);
+      radar.place(SPOT_TALL.x + (SPOT.x - SPOT_TALL.x) * k, SPOT_TALL.z + (SPOT.z - SPOT_TALL.z) * k, SPOT_TALL.yaw + (SPOT.yaw - SPOT_TALL.yaw) * k);
     },
     update(alarm, t) {
       if (!alarm) since = t;

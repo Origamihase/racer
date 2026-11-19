@@ -33,7 +33,7 @@ import { PerspectiveCamera } from 'three';
 import { places, nodeTitle, deEdge, OFF_KM } from '../src/map/graph.js';
 import { Trip, J, PROFILES } from '../src/game/trip.js';
 import { MapDemo } from '../src/map/mapdemo.js';
-import { Game } from '../src/game/game.js';
+import { Game, TOWN_HOLD } from '../src/game/game.js';
 import { BID_PLACES, OPENING } from '../src/game/navi.js';
 import { INSIDER_ORTE, REISE_JOBS } from '../src/data.js';
 import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
@@ -392,7 +392,9 @@ function stream(driver, hours, seed, firstRound = false) {
     // stehen blieb, calm/drive = Ruhe und Fahrzeit des Navis dabei, changed = Gebote danach, end = 'folge' (der Wagen
     // steht am Brunnen) | 'vorbei' (vorbeigerollt) | '' (noch offen), endT = wann, kept = am ersten stehenden Ziel
     // angekommen, bevor ein Gebot es änderte, dev = größte Abweichung der vorhergesagten Fahrzeit (trip.whatIf)
-    open: { bids: [], standT: -1, standPlace: -1, calm: 0, drive: 0, changed: 0, end: '', endT: -1, kept: false, dev: 0, minChoice: Infinity, late: 0 },
+    // townIn/townLeft = wann der Wagen zum ersten Mal im Zielort fuhr und wie lange das Gebot da noch brauchte,
+    // townBids = nach wie vielen Sekunden im Zielort dort ein Gebot kam (Game.updateNavi hält es höchstens TOWN_HOLD)
+    open: { bids: [], standT: -1, standPlace: -1, calm: 0, drive: 0, changed: 0, end: '', endT: -1, kept: false, dev: 0, minChoice: Infinity, late: 0, townIn: -1, townLeft: 0, townBids: [] },
     num: {
       steps: 0, falls: 0, plans: 0, maxErr: 0, metres: 0, kms: 0, kmReal: 0, units: 0, unitDrop: 0, boards: 0, beacons: 0, tables: 0, tableRows: 0, tableDev: 0, sums: 0, same: 0, calm: 0, near: 0,
       edges: 0, edgeKm: 0, feederKm: 0, realKm: 0, realBy: {},
@@ -454,7 +456,8 @@ function stream(driver, hours, seed, firstRound = false) {
       ok(Math.abs(guess.secs - secs) < 1, `Erste Runde: ${t.name} vorhergesagt ${guess.secs.toFixed(1)} s, nach dem Gebot ${secs.toFixed(1)} s (bei s=${trip.s.toFixed(0)})`);
       ok(secs <= OPENING.secs + 1 || game.bidTargets().length <= OPENING.min, `Erste Runde: ${t.name} liegt ${secs.toFixed(0)} s entfernt (erlaubt ${OPENING.secs} s), obwohl ${game.bidTargets().length} Orte zur Wahl standen`);
       ok(!plan.late, 'Erste Runde: ein spätes Gebot kurz vor dem Ziel');
-      ok(!inTown, `Erste Runde: Ein Gebot nimmt ${before ? before.name : 'das Ziel'} weg, während der Wagen schon im Zielort fährt`);
+      if (inTown) O.townBids.push(game.townT);
+      ok(!inTown || game.townT >= TOWN_HOLD, `Erste Runde: Ein Gebot nimmt ${before ? before.name : 'das Ziel'} weg, während der Wagen erst ${inTown ? fmt(game.townT, 0) : 0} s im Zielort fährt`);
     } else {
       // die nächste Runde findet immer ein Ziel: Von überall stehen genug Orte zur Wahl
       m.minChoice = Math.min(m.minChoice, game.bidTargets().length);
@@ -555,6 +558,10 @@ function stream(driver, hours, seed, firstRound = false) {
     ctl.brake = p.speed > v + 3 ? 0.4 : 0;
     // am Brunnen: Der Ungeduldige lässt das Gas kurz los und gibt neu Gas – das beendet die Folge sofort
     if (game.tv && driver.skip) ctl.throttle = game.t - tvT0 < 0.9 ? 0 : 1;
+    // der Parker hält in der ersten Runde gleich am Ortseingang des Ziels und wartet
+    const parked = driver.park && nv.opening && nv.inTown;
+    if (parked) Object.assign(ctl, { throttle: 0, brake: 1 });
+    if (nv.opening && nv.inTown && m.open.townIn < 0) Object.assign(m.open, { townIn: game.t, townLeft: game.T.bid });
     if (driver.duel) {
       if (nv.inTown && sec !== duelSec && trip.guidance().dist < 150) {
         // mal ein kurzer Schlagabtausch, mal ein langer; mal hastig, mal mit Sekunden zwischen den Geboten
@@ -630,7 +637,7 @@ function stream(driver, hours, seed, firstRound = false) {
       ok(!nv.shown && nv.waitLine.includes('vorbeigerollt') && nv.screen().bidder === '', 'Vorbeigerollt, aber die Anzeigen sagen es nicht');
     }
     // kein Hänger: außerhalb der Folge kommt der Wagen voran
-    if (game.tv) {
+    if (game.tv || parked) {
       progressS = p.s;
       progressT = game.t;
     } else if (game.t - progressT > 60) {
@@ -856,6 +863,20 @@ if (OPENINGS > 0) {
       ` · in ${((Date.now() - tOpen) / 1000).toFixed(0)} s`,
   );
   ok(list.length >= OPENING.min, `Erste Runde: nur ${list.length} verschiedene Orte wurden geboten`);
+  // Wer im Zielort parkt, statt zum Brunnen zu fahren, hält die Bieter höchstens TOWN_HOLD Sekunden auf
+  const parker = { name: 'Parker', cruise: 145, miss: 0, skip: false, park: true };
+  const waits = [];
+  for (let r = 0; r < 10; r++) {
+    const o = stream(parker, OPEN_MIN, 30000 + r, true).open;
+    if (o.townIn < 0) continue;
+    // höchstens TOWN_HOLD gehalten; war die Ruhe nach dem letzten Gebot länger, kommt es erst mit ihrem Ende
+    const allowed = Math.max(TOWN_HOLD + 1, o.townLeft) + 0.5;
+    if (o.townIn + allowed > OPEN_MIN * 3600 - 1) continue;
+    waits.push(o.townBids[0]);
+    ok(o.townBids.length > 0 && o.townBids[0] <= allowed, `Erste Runde, Parker: Im Zielort kam ${o.townBids.length ? 'erst nach ' + fmt(o.townBids[0], 0) + ' s' : 'kein'} Gebot (erlaubt ${fmt(allowed, 0)} s)`);
+  }
+  ok(waits.length >= 5, `Erste Runde, Parker: nur ${waits.length} von 10 Streams standen rechtzeitig im Zielort`);
+  console.log(`Erste Runde, Parker (hält am Ortseingang des Ziels): ${waits.length} von 10 Streams, das nächste Gebot kam dort nach ${waits.map((w) => fmt(w ?? NaN, 0)).join(', ')} s (höchstens ${TOWN_HOLD} s gehalten)`);
 }
 
 // genug geprüft?
