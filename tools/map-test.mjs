@@ -5,7 +5,7 @@ import {
   project, unproject, REGIONS, landData, onLand, PLACES, PLACE_BY_INDEX, View, placeLabels, menuLayout, bucketOf,
   bucketMin, bucketScale, visiblePlaces, dotRadius, useEdgeShapes, countryName, kmPerUnit,
 } from '../src/map/mapview.js';
-import { places, nodes, edges } from '../src/map/graph.js';
+import { places, nodes, edges, deRev, deRoad, deTowards } from '../src/map/graph.js';
 import { Line, fmtMeters } from '../src/map/navroute.js';
 import { MapDemo } from '../src/map/mapdemo.js';
 import { Persp, TiltView, ribbon } from '../src/map/persp.js';
@@ -351,7 +351,7 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
   const nodeTitleOf = (await import('../src/map/graph.js')).nodeTitle;
   const r = rng(77);
   const starts = nodes.map((n, i) => i).filter((i) => nodes[i].places.length && nodes[i].cc === 'DE');
-  const n = { exit: 0, far: 0, farKept: 0, arrive: 0, transit: 0, then: 0, scenes: 0, roads: 0, ramps: 0, forks: 0, pins: 0, trips: 0 };
+  const n = { exit: 0, far: 0, farKept: 0, arrive: 0, transit: 0, then: 0, wende: 0, scenes: 0, roads: 0, ramps: 0, forks: 0, pins: 0, trips: 0 };
   const bad = [];
   const fail = (msg) => {
     if (bad.length < 12) bad.push(msg);
@@ -406,9 +406,15 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
           const th = g.then;
           if (th) {
             n.then++;
+            // „dann wenden:“ genau dann, wenn die Route hinter der Ausfahrt dieselbe Straße in Gegenrichtung nimmt
+            // (die steht auf keinem Schild der Gabelung); sonst steht das „dann …“ auf dem Schild
+            if (th.wende) n.wende++;
             const hit =
               th.type === 'ziel' ? sg.places.includes(places[th.place].name) && ins.sub === 'dann zum Ziel ' + places[th.place].name
-                : th.type === 'ab' || th.type === 'land' ? (ins.sub.startsWith('dann wenden: ') || sg.exits.some((e) => e.road === th.road && e.towards === th.towards)) && ins.sub.endsWith(th.road + ' Richtung ' + th.towards)
+                : th.type === 'ab' || th.type === 'land'
+                  ? th.wende
+                    ? ins.sub === 'dann wenden: ' + th.road + ' Richtung ' + th.towards && th.road === deRoad(f.de).label && th.towards === deTowards(deRev(f.de)).name
+                    : ins.sub === 'dann ' + th.road + ' Richtung ' + th.towards && sg.exits.some((e) => e.road === th.road && e.towards === th.towards)
                   : sg.exits.some((e) => e.kind === th.type && e.towards === nodes[th.to].name) && ins.sub.endsWith(' nach ' + nodes[th.to].name);
             if (!hit) fail(`„${ins.sub}“ steht nicht auf dem Schild ${sg.title}: ${JSON.stringify(sg.exits)}`);
           }

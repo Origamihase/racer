@@ -7,7 +7,7 @@
 // NavModel hält dazu, was Navi, große Karte und HUD-Zeile brauchen: Lage und Kurs des Autos (über eine Sehne
 // geglättet, damit der Kurs an Knicken nicht zuckt), die geplante Route bis zum Ziel, den gefahrenen Weg, die Orte
 // entlang der Route, Überfahrten (Fähre, Autozug, Flug) als Hüpfer und die Ansage für das Navi. Läuft auch unter Node.
-import { nodes, places, edges, deKind, deTo, deRev, deRoad, deTowards, stateOfNode, nodeTitle } from './graph.js';
+import { nodes, places, edges, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle } from './graph.js';
 import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm } from './mapview.js';
 
 const NODE_XY = nodes.map((n) => project(n.lat, n.lon));
@@ -518,37 +518,15 @@ export class Line {
 
 const TRANSIT_NAME = { faehre: 'Fähre', zug: 'Autozug', flug: 'Luftfracht' };
 /**
- * „dann …“ zur Ausfahrt aus guidance().then: dieselben Texte wie auf den Schildern (trip.signs). wende: die Route
+ * „dann …“ zur Ausfahrt aus guidance().then: dieselben Texte wie auf den Schildern (trip.signs). th.wende: die Route
  * fährt hinter der Ausfahrt dieselbe Straße zurück (über die Rampen, nie über die Autobahn).
  */
-function thenText(th, wende = false) {
+function thenText(th) {
   if (!th) return '';
   if (th.type === 'ziel') return 'dann zum Ziel ' + places[th.place].name;
-  if (th.type === 'ab' || th.type === 'land') return (th.wende || wende ? 'dann wenden: ' : 'dann ') + th.road + ' Richtung ' + th.towards;
+  if (th.type === 'ab' || th.type === 'land') return (th.wende ? 'dann wenden: ' : 'dann ') + th.road + ' Richtung ' + th.towards;
   if (TRANSIT_NAME[th.type]) return 'dann ' + TRANSIT_NAME[th.type] + ' nach ' + nodes[th.to].name;
   return '';
-}
-/**
- * Geht es hinter der angesagten Ausfahrt dieselbe Straße zurück? guidance().then weiß das nur, wenn der Zweig schon
- * bis zur nächsten Autobahn angelegt ist; sonst gilt der Routenplan am Knoten (wie in afterExitAt) gegen die Kante,
- * auf der wir ankommen (die Gabelung oder, hinter dem Horizont, die Kette geradeaus wie in guidance()).
- */
-function wendeAt(trip, g) {
-  const pol = trip.policy;
-  if (!pol || !g.then || g.then.wende || (g.then.type !== 'ab' && g.then.type !== 'land')) return false;
-  let into = g.fork ? g.fork.de : -1;
-  const fr = trip.cur.frontier;
-  if (into < 0 && fr && fr.t === 'fork') {
-    into = fr.fork.de;
-    for (let guard = 0; guard < 200 && deTo(into) !== g.node; guard++) {
-      const t = pol.next[into];
-      if (!t || t.type !== 'stay') return false;
-      into = t.to;
-    }
-  }
-  if (into < 0 || deTo(into) !== g.node) return false;
-  const t = pol.next[stateOfNode(g.node)];
-  return !!t && t.de === deRev(into);
 }
 /** Deutsche Entfernungsangabe: „800 m“, „2,4 km“, „38 km“. */
 export function fmtMeters(m) {
@@ -973,7 +951,7 @@ export class NavModel {
       out.fork = g.fork || null;
       // der Name wie auf dem Schild an der Gabelung (hinter dem Horizont, wo es sie noch nicht gibt, der Titel der Ansage)
       out.head = g.fork ? trip.signs(g.fork).title : g.title;
-      out.sub = thenText(g.then, wendeAt(trip, g));
+      out.sub = thenText(g.then);
       if (g.then && (g.then.type === 'ab' || g.then.type === 'land')) out.road = g.then.road;
       // Spurpfeile ab dem 1000-m-Schild: vier Spuren geradeaus, rechts der Verzögerungsstreifen, der abgeht (am
       // Autobahnende führen alle Spuren hinaus)
