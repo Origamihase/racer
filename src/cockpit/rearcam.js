@@ -12,6 +12,9 @@ import { REAR_RECT, SCREEN_PX } from './screen.js';
  * (bei 60 Bildern je Sekunde jedes zweite).
  */
 export const REAR_CAM = { res: [512, 288], fov: 64, eye: [0, 0.98, 2.43], look: [0, 0.05, 6.4], near: 0.1, far: 420, rate: 30 };
+// Qualitätsstufe 'niedrig' (wie Spiegel und Facecam): halb so viele Bilder, Sicht nur bis 200 m (dahinter ist die
+// Straße im Bild schmaler als ein Pixel, Himmel und Hügel zeichnet sky.js ohnehin in jeder Ferne)
+const REAR_LOW = { rate: 15, far: 200 };
 // Hilfslinien: Spurweite (Mitte der Linien, m), so weit nach hinten (m), Krümmung je Lenkradstellung (1/m), Marken (m)
 const GUIDE = { half: 0.82, len: 6.5, k: 0.17, marks: [[1, '#ff5a4c'], [2.5, '#ffc542'], [4.5, '#4fd18b']] };
 
@@ -167,9 +170,14 @@ export class RearCam {
    * Das Bild der Kamera rendern (main.js, vor dem Cockpit; nur wenn on): toWorld(v) setzt einen Punkt in
    * Wagenkoordinaten in die Welt um (wie beim Innenspiegel), t: Spielzeit (s).
    */
-  render(renderer, scene, toWorld, t) {
-    if (!this.on || t - this.shotT < 0.97 / REAR_CAM.rate) return;
+  render(renderer, scene, toWorld, t, quality = 'hoch') {
+    const q = quality === 'niedrig' ? REAR_LOW : REAR_CAM;
+    if (!this.on || t - this.shotT < 0.97 / q.rate) return;
     this.shotT = t;
+    if (this.cam.far !== q.far) {
+      this.cam.far = q.far;
+      this.cam.updateProjectionMatrix();
+    }
     this.cam.position.copy(toWorld(this.eye.fromArray(REAR_CAM.eye)));
     this.cam.lookAt(toWorld(this.at.fromArray(REAR_CAM.look)));
     renderer.setRenderTarget(this.rt);

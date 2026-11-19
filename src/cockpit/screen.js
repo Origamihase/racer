@@ -89,6 +89,12 @@ export class CenterScreen {
     if (st.nav) (this.navi || (this.navi = new NaviScreen())).draw(ctx, SPLIT, 0, CW - SPLIT, CH - 64, st, this.step);
     else this.drawMap(ctx, st, T);
     this.drawCarPanel(ctx, st, T);
+    // in R: über der Karte ein ruhiges Feld bis zur Unterkante des Kamerabilds (auch unter der halb durchsichtigen
+    // oberen Leiste), damit neben dem Bild kein Rest der Route und der Straßen blitzt
+    if (st.gear === 'R') {
+      ctx.fillStyle = T.panel;
+      ctx.fillRect(SPLIT, 0, CW - SPLIT, REAR_RECT.y + REAR_RECT.h + 4);
+    }
     this.drawTopBar(ctx, st, T);
     if (st.gear === 'R') this.drawRearFrame(ctx);
     this.drawDock(ctx, st, T);

@@ -1559,7 +1559,7 @@ function renderFrame(cockpitOn) {
   // Rückfahrkamera für den Mittelbildschirm: nur in R und nur mit Cockpit (cockpit.rear.on), in halber Bildrate
   if (cockpitOn && cockpit.rear.on) {
     tesla.root.visible = false;
-    cockpit.rear.render(renderer, scene, localToWorld, simT);
+    cockpit.rear.render(renderer, scene, localToWorld, simT, settings.quality);
   }
   if (photoRequest) {
     takePhoto(photoRequest);
