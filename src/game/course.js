@@ -43,6 +43,12 @@ const CALM_SWAP = J.hide + CALM - J.ramp;
 const CALM_SHOW = J.back + J.auf - J.show + CALM;
 /** Vor einer Auffahrt: gerade bis CALM vor dem Einfädelpunkt am Ende der Auffahrt. */
 const CALM_MERGE = CALM - J.auf;
+/**
+ * So weit vor einer Gabelung entscheidet die Spur des Spielers über den gezeichneten Zweig. Beide Zweige laufen bis
+ * CALM hinter der Gabelung gerade und eben (siehe plan), ein Wechsel ab hier ändert die Welt also erst weiter als
+ * 600 m voraus: dort, wo auch die Überblendung (BLEND_RATE) nichts mehr bewegen muss. Liegt im Verzögerungsstreifen.
+ */
+const LANE_AT = 600 - CALM;
 /** Knoten zweier Landstraßen ohne Ort (kein Rahmenwechsel). */
 const CALM_NODE = 150;
 /** Am Anfang und Ende jedes Abschnitts läuft die Steigung auf dieser Länge weich gegen 0. */
@@ -814,13 +820,15 @@ export class Course {
   }
 
   // --- Weg für die Tabelle ------------------------------------------------------------------------------------
-  /** Nimmt der Weg an dieser Gabelung den Zweig? Geplant laut Navi, kurz davor nach der Spur des Spielers. */
+  /**
+   * Nimmt der Weg an dieser Gabelung den Zweig? Geplant laut Navi; ab LANE_AT davor nach der Spur des Spielers, genau
+   * wie trip.js an der Gabelung entscheidet. So springt der Weg nicht erst an der Gabelung um, wenn jemand in der
+   * rechten Spur am geplanten Abzweig vorbeifährt (dann bewegte sich die Welt 400 bis 600 m voraus).
+   */
   takesBranch(trip, f, s) {
     if (!f.branch || !f.branch.sections.length) return false;
     if (f.forced) return true;
-    const d = f.s - s;
-    if (d < J.decel && trip.x > J.laneEdge) return true;
-    if (d < J.decel * 0.6 && trip.x < J.laneEdge - 2.5) return false;
+    if (f.s - s < LANE_AT) return trip.x > J.laneEdge;
     return trip.planFor(f) === 'exit';
   }
 
@@ -1533,9 +1541,14 @@ export class MapPlanner {
         for (const [a, b, sa, sb] of this.gaps(items, lo, hi, 170)) if (b - a > GENTLE) funFill(r, a, b, sa, sb, fl, o);
       }
       items.push(...fl);
-      if (m.grade) gradeArr = this.realGrade(m.grade, P.n, spec.gmax);
+      // Höhen-Ruhezone hinter einer Gabelung: Bis LANE_AT davor wählt die Spur des Spielers den gezeichneten Zweig
+      // (takesBranch), und der Weg wechselt dann auf den anderen. Die Rampe ist eben und gerade, die Autobahn dahinter
+      // auf CALM gerade (calmOf) und hier auch eben: Ein später Wechsel bewegt nichts in Autonähe. Entworfene Hügel
+      // liegen in beiden Richtungen gespiegelt (mirrorEls) und halten die Ruhezone deshalb an beiden Enden
+      if (m.grade) gradeArr = this.realGrade(m.grade, P.n, spec.gmax, sec.afterFork ? Math.round(CALM / DS) : 0);
       else {
-        hills(rng(seedOf(9)), FLAT, L - FLAT, kind === 'land' ? Math.min(1, m.relief * 1.25) : m.relief, spec.gmax, gel);
+        const h0 = kind === 'ab' ? CALM : FLAT;
+        hills(rng(seedOf(9)), h0, L - h0, kind === 'land' ? Math.min(1, m.relief * 1.25) : m.relief, spec.gmax, gel);
         if (odd) mirrorEls(gel, L);
       }
     } else if (kind === 'conn') {
@@ -1617,23 +1630,29 @@ export class MapPlanner {
     return out.filter(([a, b]) => b > a);
   }
 
-  /** Echte Steigung: begrenzt, an den Enden eben, Kuppen und Wannen nie zu eng. */
-  realGrade(g0, n, gmax) {
+  /**
+   * Echte Steigung: begrenzt, an den Enden eben, Kuppen und Wannen nie zu eng. Die ersten i0 Abtastschritte bleibt sie
+   * genau 0 (Ruhezone hinter einer Gabelung), erst danach beginnt der weiche Anlauf.
+   */
+  realGrade(g0, n, gmax, i0 = 0) {
     const g = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      const w = sstep(Math.min(i * DS, (n - 1 - i) * DS) / FLAT);
+    for (let i = i0; i < n; i++) {
+      const w = sstep(Math.min((i - i0) * DS, (n - 1 - i) * DS) / FLAT);
       g[i] = gmax * Math.tanh(g0[i] / gmax) * w;
     }
     const dc = DS / R_CREST;
     const dsg = DS / R_SAG;
     // erst in den Bereich, aus dem beide Enden eben erreichbar sind; dann hält jeder Durchgang ihn und die Enden, und
     // schon einer allein lässt keine Kuppe und keine Wanne zu eng (die Enden bleiben genau 0, ohne Sprung)
-    g[0] = 0;
+    g[i0] = 0;
     g[n - 1] = 0;
-    for (let i = 1; i < n - 1; i++) g[i] = clamp(g[i], Math.max(-i * dc, -(n - 1 - i) * dsg), Math.min(i * dsg, (n - 1 - i) * dc));
+    for (let i = i0 + 1; i < n - 1; i++) {
+      const u = i - i0;
+      g[i] = clamp(g[i], Math.max(-u * dc, -(n - 1 - i) * dsg), Math.min(u * dsg, (n - 1 - i) * dc));
+    }
     for (let pass = 0; pass < 4; pass++) {
-      for (let i = 1; i < n - 1; i++) g[i] = clamp(g[i], g[i - 1] - dc, g[i - 1] + dsg);
-      for (let i = n - 2; i > 0; i--) g[i] = clamp(g[i], g[i + 1] - dsg, g[i + 1] + dc);
+      for (let i = i0 + 1; i < n - 1; i++) g[i] = clamp(g[i], g[i - 1] - dc, g[i - 1] + dsg);
+      for (let i = n - 2; i > i0; i--) g[i] = clamp(g[i], g[i + 1] - dsg, g[i + 1] + dc);
     }
     return g;
   }
