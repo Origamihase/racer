@@ -2,7 +2,7 @@
 // Sprachdurchsagen, Rahmen, Funkloch, Zuschauer, Spenden, Jobs) und die Abrechnung am Ende.
 // Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
 import {
-  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, VOICES, JOB_TEMPLATES, REISE_JOBS, INCOME, SPENDEN_ZWECKE, AKTIONEN,
+  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_JOBS, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, NAVI_TARGETS, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
@@ -30,8 +30,6 @@ const STRAIGHT_RUN = 400;
 // Rechts oben deckt der Innenspiegel aus Mini Adams Sicht ab etwa 17,8° rechts der Blickrichtung ab
 // (auf dem Handy hochkant endet dort fast schon das Bild): bis 16° steht Elsa frei in der Scheibe.
 const ELSA_VIEW = (16 * Math.PI) / 180;
-// Elsas Kopf an der Statue (Maßstab 1): Kronenspitze, Kinn und halbe Kopfbreite in Metern
-const ELSA_HEAD = { top: 5.65, chin: 3.1, half: 1.3 };
 const elsaTmp = new Vector3();
 // Wie flott der Chat schreibt, je nach Stufe der heimlichen Chat-Stimmung (0 im Keller … 4 bester Laune)
 const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
@@ -502,7 +500,7 @@ export class Game {
       }
       if (L.timer <= 10 && !L.warned) {
         L.warned = true;
-        this.ui.banner('⏳ Linke Spur: noch 10 Sekunden', 2.5);
+        this.ui.toast('⏳ Linke Spur: noch 10 Sekunden', 'warn', 'spur');
       }
       if (L.timer <= 0) this.closeLeftLane();
     }
@@ -543,7 +541,6 @@ export class Game {
     this.audio.chime();
     this.later(0.2, () => this.donate(L.donor, this.eco.laneDonation(), 'Linke Spur freischalten', { label: 'Aktionen' }));
     this.burst(CHAT.leftLane, 3, 3);
-    this.ui.banner('⬅️ Linke Spur freigeschaltet!', 4, `${L.dur === 60 ? 'Eine Minute' : L.dur + ' Sekunden'} lang darfst du ganz links fahren`);
   }
 
   closeLeftLane() {
@@ -796,19 +793,22 @@ export class Game {
         this.say(BOARD.naviChanged, 'think');
       }
       this.onMood('curious', 1);
+      // Das neue Ziel sagt die Navi-Zeile selbst an (sie zählt Entfernung und Gebot ohnehin laufend mit). Was das Navi
+      // sonst dazu sagt – die Zeile zum Ort, „Bitte wenden“ –, steht als Hinweis mit dem Schlüssel 'navi' darunter:
+      // immer nur einer, und er geht mit dem Ziel, zu dem er gehört
+      this.ui.naviNews();
+      if (t.note) this.ui.toast('📍 ' + t.note, 'info', 'navi');
+      const wenden = (text, kind) => this.later(3.5, () => nv.target === t && this.ui.toast(text, kind, 'navi'));
       if (this.worldNavi) {
-        // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt)
+        // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt) –
+        // das muss der Spieler fahren, deshalb als Warnung
         if (nv.wende) {
           this.later(1.5, () => this.chat(this.chatLine(CHAT.ortWende)));
-          this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'info'));
+          wenden('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'warn');
         }
-        // nur der Name: Wie weit es ist und wann der Wagen ankommt, zählt die Zeile darüber laufend mit – eine Zahl
-        // hier bliebe stehen, während jene schon weiterläuft
-        this.ui.toast(`📍 Neues Navi-Ziel: ${t.name}`, 'info', t.note);
         return;
       }
-      if (nv.wende) this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info'));
-      this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${fmtNum(nv.km, 1)} km)`, 'info', t.note);
+      if (nv.wende) wenden('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info');
     }
   }
 
@@ -858,8 +858,8 @@ export class Game {
       this.ui.damage(p.hits, p.maxHits);
       this.later(2.2, () => this.ui.toast('🩹 ' + damageLine('repair'), 'good'));
     }
-    // (XXL: Dort nennt die BrunnenTV-Titelkarte den Ort und führt die Mittelspalte an – ein Banner darunter wäre doppelt)
-    if (!this.worldNavi) this.ui.banner(`🏁 Ziel erreicht: ${t.name}`, 4);
+    // die Ankunft sagt die Navi-Zeile an („Ziel erreicht: …“)
+    this.ui.naviNews();
     this.burst(this.worldNavi ? CHAT.ortReached : CHAT.naviReached, 4, 3);
     // Fürs Ankommen selbst gibt es nichts – aber der Chat feiert es mit einem Schwung Ortsspenden (Siegen: doppelt;
     // am Drive-In ist die erste natürlich für „Pommes ohne Rückfragen“)
@@ -1061,7 +1061,7 @@ export class Game {
 
     // Rahmen
     if (T.rahmen <= 0 && p.s > 1000) {
-      T.rahmen = rand(75, 130);
+      T.rahmen = rand(RAHMEN_GAP.min, RAHMEN_GAP.max);
       const r = pick(RAHMEN);
       const name = viewerName();
       this.donate(name, r.price, r.name, { label: 'Rahmen' });
@@ -1120,7 +1120,7 @@ export class Game {
         this.later(1, () => {
           this.audio.megafon();
           const dur = this.speech.say(text, 'william');
-          this.ui.toast(`📢 Megafon-Wunsch von ${name}`, 'info', '»' + text + '«');
+          this.ui.megafon(text, dur + 1, name);
           this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
         });
       }
@@ -1229,10 +1229,8 @@ export class Game {
         const t = this.ui.toast(lm.type === 'brunnen' ? `⛲ Ein Brunnen! Hupen für BrunnenTV (${key})` : `👑 Elsa! Hupen zum Grüßen (${key})`, 'info');
         if (elsa) this.elsaToast(lm, t);
       }
-      // Elsas Hinweise stehen nur, solange sie zu sehen ist (mindestens kurz, damit sie nicht nur aufblitzen),
-      // und nie über ihrem Kopf
-      const age = lm.toast ? this.t - lm.toastT : 0;
-      if (lm.toast && ((!view.visible && age > 1.2) || (view.covered && age > 0.4))) this.elsaToast(lm, null);
+      // Elsas Hinweise stehen nur, solange sie zu sehen ist (mindestens kurz, damit sie nicht nur aufblitzen)
+      if (lm.toast && !view.visible && this.t - lm.toastT > 1.2) this.elsaToast(lm, null);
       if (!lm.greeted && (elsa ? lm.seen : d < 220) && d > -40 && this.t - this.lastHorn < 0.3) {
         lm.greeted = true;
         if (lm.type === 'brunnen') {
@@ -1283,22 +1281,7 @@ export class Game {
     const fov = ((camera?.fov || 58) * Math.PI) / 180;
     const clear = (4.3 * scale) / (0.08 * Math.tan(fov / 2));
     const show = Math.min(175, Math.max(clear, side / Math.tan(ELSA_VIEW) + p.speed * 1.5));
-    // Liegt ihr Kopf auf dem Bildschirm schon unter dem Hinweis (hochkant oder wenn die Mittelspalte
-    // weiter unten beginnt), kommt der Hinweis weg, sonst verdeckt er Krone und Augen.
-    let covered = false;
-    const r = lm.toast && camera && d > 0 ? lm.toast.el.getBoundingClientRect() : null;
-    if (r && r.width > 0) {
-      const W = window.innerWidth;
-      const H = window.innerHeight;
-      const at = (dx, y) => {
-        const v = curvePoint(elsaTmp.set(x + dx * scale, y * scale, -d)).project(camera);
-        return [((v.x + 1) / 2) * W, ((1 - v.y) / 2) * H];
-      };
-      const [l, top] = at(-ELSA_HEAD.half, ELSA_HEAD.top);
-      const [rt, chin] = at(ELSA_HEAD.half, ELSA_HEAD.chin);
-      covered = l < r.right + 6 && rt > r.left - 6 && top < r.bottom + 6 && chin > r.top - 6;
-    }
-    return { visible, show, covered };
+    return { visible, show };
   }
 
   /** Wie man hupt – passend zum Gerät, mit dem gerade gespielt wird. */
@@ -1390,7 +1373,7 @@ export class Game {
       this.audio.record();
       this.onMood('proud', 1);
       this.burst(CHAT.record, 4, 2.5);
-      this.ui.banner('🏆 Neuer Zuschauerrekord!', 3.5);
+      this.ui.toast('🏆 Neuer Zuschauerrekord!', 'good');
       if (this.up.konfetti) this.cockpit.addConfetti(30);
     }
   }
@@ -1496,7 +1479,7 @@ export class Game {
   finishSammel(S, sum) {
     this.sammel = null;
     this.bot('claudia', `Sammelaktion »${S.name}« geschafft: ${fmtCent(sum)} gesammelt! 🎉`);
-    this.ui.banner(`🎉 Sammelaktion geschafft: ${S.name}`, 3.5);
+    this.ui.toast(`🎉 Sammelaktion geschafft: ${S.name}`, 'good');
     this.audio.record();
     this.eco.cheer('funny');
     this.burst(CHAT.sammelDone, 3, 2.5);
@@ -1718,7 +1701,7 @@ export class Game {
         j.progress = 1;
         changed = true;
         last = j;
-        this.ui.toast(`✅ Job erledigt: ${j.text}`, 'good');
+        this.ui.jobDone(j.text);
         this.audio.chime();
         this.chat(pick(CHAT.fiveJobs));
         // Geld gibt es, weil jemand genau das versprochen hat – und Wort hält
@@ -1738,7 +1721,7 @@ export class Game {
         this.onMood('proud', 1);
         this.later(2.4, () => this.donate(A.pledger, A.pledge, '', { label: 'Challenges', line: `${A.pledger} hatte ${fmtBetrag(A.pledge)} auf alle fünf Jobs gesetzt – und zahlt mit Freuden!` }));
         this.audio.record();
-        this.ui.banner('🏆 Alle 5 Jobs erledigt!', 4);
+        this.ui.jobDone();
       });
     }
   }

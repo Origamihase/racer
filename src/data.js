@@ -666,6 +666,9 @@ export const BOARD = {
 
 // ---------------------------------------------------------------------------
 // Rahmen-Einblendungen (Preise wie im Live-Bereich)
+// Zwischen zwei Rahmen vergehen mindestens min Sekunden der Ereignis-Uhr – weit mehr, als der längste dauert: Zwei
+// sind nie zugleich im Bild, und was die Sicht absichtlich verdeckt (COVERS in ui/sicht.js), bleibt eine kurze Ausnahme
+export const RAHMEN_GAP = { min: 75, max: 130 };
 export const RAHMEN = [
   { id: 'rosen', name: 'Rosenrahmen', price: 12.0, dur: 9 },
   { id: 'sonnenblumen', name: 'Sonnenblumenrahmen', price: 12.5, dur: 9 },
