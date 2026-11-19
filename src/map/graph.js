@@ -188,9 +188,9 @@ export const OFF_KM = { exit: 0.25, enterAb: 1.9 };
 export function townLen(pop) {
   return pop >= 300000 ? 1200 : pop >= 50000 ? 800 : pop >= 5000 ? 500 : 300;
 }
-/** Länge des Zubringers in Spielmetern. */
-export function zubLen(zubKm) {
-  return Math.min(2500, Math.max(450, Math.round((zubKm * 1000) / K / 10) * 10));
+/** Länge des Zubringers in Spielmetern. min: kürzester Zubringer (Ladeparks an der Ausfahrt haben ihren eigenen, parks.js). */
+export function zubLen(zubKm, min = 450) {
+  return Math.min(2500, Math.max(min, Math.round((zubKm * 1000) / K / 10) * 10));
 }
 /** Stelle des Zielpunkts (Brunnenplatz) in einer Ortsdurchfahrt der Länge len: so viele Meter hinter der Ortstafel. */
 export function spotIn(len) {
@@ -331,14 +331,19 @@ const isTransit = (t) => COST.transit[t.type] !== undefined;
  * road: nur über Straßen, ohne Überfahrten (das Ergebnis trägt road: true; unerreichbar bleibt dann Infinity).
  */
 export function routeTo(placeIdx, road = false) {
+  return { place: placeIdx, ...routeGoal(NE + places[placeIdx].node, excursion(placeIdx), road) };
+}
+/**
+ * Dieselbe Suche zu einem Ziel am Knotenzustand goal mit dem Abstecher ex ({cost, km, secs} ab dem Ende der Rampe):
+ * für Orte (routeTo) und Ladeparks (parks.js routeToPark).
+ */
+export function routeGoal(goal, ex, road = false) {
   if (!TRANS) buildTransitions();
   const n = TRANS.length;
   const cost = new Float64Array(n).fill(Infinity);
   const km = new Float64Array(n).fill(Infinity);
   const secs = new Float64Array(n).fill(Infinity);
   const next = new Array(n).fill(null);
-  const goal = NE + places[placeIdx].node;
-  const ex = excursion(placeIdx);
   cost[goal] = ex.cost;
   km[goal] = ex.km;
   secs[goal] = ex.secs;
@@ -359,7 +364,7 @@ export function routeTo(placeIdx, road = false) {
       }
     }
   }
-  return { place: placeIdx, goal, cost, km, secs, next, road };
+  return { goal, cost, km, secs, next, road };
 }
 
 /**

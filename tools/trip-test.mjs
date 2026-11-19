@@ -1,6 +1,7 @@
 // Prüft Karte, Routen und Streckenlogik ohne Grafik: node tools/trip-test.mjs [Anzahl Zufallsfahrten]
 import * as G from '../src/map/graph.js';
 import { Trip, J, R, dR, BETA, PROFILES } from '../src/game/trip.js';
+import { PARKS, PARK, parkAt, placeParks, parkCandidate, parkZub } from '../src/map/parks.js';
 
 let fails = 0;
 const ok = (cond, msg) => {
@@ -26,6 +27,53 @@ const erl = G.findNode('Erlensee');
 const from = G.routeFrom(G.stateOfNode(erl));
 ok(G.places.every((p) => isFinite(from.toPlace(p.i).cost)), 'alle Orte sind von Erlensee aus erreichbar');
 for (const n of G.nodes) ok(n.edges.length > 0, 'Knoten ohne Straße: ' + n.id);
+
+// --- Ladeparks an Ausfahrten (src/map/parks.js) -----------------------------------------
+{
+  ok(JSON.stringify(placeParks()) === JSON.stringify(PARKS), 'Ladeparks: dieselbe Regel liefert dieselbe Liste');
+  ok(PARKS.length >= 150 && PARKS.length <= 230, 'Ladeparks: Anzahl ' + PARKS.length);
+  ok(G.places.length === 426 && PARKS.every((p) => !G.places.some((q) => q.name === p.name)), 'Ladeparks sind keine Orte');
+  ok(new Set(PARKS.map((p) => p.name)).size === PARKS.length && PARKS.every((p) => p.name.startsWith('Ladepark ')), 'Ladeparks: Namen eindeutig');
+  const hb = PARKS.find((p) => p.name === 'Ladepark Hammersbach');
+  ok(hb && G.nodeTitle(hb.node) === 'Ausfahrt Hammersbach' && G.roads[hb.road].label === 'A45', 'Ladepark Hammersbach an der A45 (Anker der Regel)');
+  ok(parkZub() >= 300 && parkZub() <= 500 && parkZub() === G.zubLen(0, PARK.zub), 'Zubringer zum Park: ' + parkZub() + ' m');
+  ok(J.ramp + parkZub() + PARK.len + PARK.back + J.auf === J.hide + J.show, 'Park-Zweig: Rampe bis Auffahrt = J.hide + J.show');
+  for (const p of PARKS) {
+    ok(parkAt(p.node) === p.i && parkCandidate(G.nodes[p.node]), 'Ladepark an keiner Ausfahrt: ' + p.name);
+    for (const de of G.nodes[p.node].edges) if (G.deKind(de ^ 1) === 'ab') ok(G.straight(de ^ 1) >= 0, `${p.name}: die Autobahn endet hier`);
+  }
+  // Abstände je Autobahn: im Fenster; darunter nur, wo ein Park einer anderen Autobahn mitzählt; darüber nur, wo im
+  // Fenster keine Ausfahrt lag
+  const gaps = [];
+  for (const r of G.roads) {
+    if (r.kind !== 'ab') continue;
+    let km = 0;
+    let last = null;
+    const cand = [];
+    for (let i = 0; i < r.nodes.length; i++) {
+      const n = r.nodes[i];
+      if (i > 0) {
+        const de = G.nodes[r.nodes[i - 1]].edges.find((d) => G.edges[d >> 1].road === r.i && G.deTo(d) === n);
+        if (de === undefined) break;
+        km += G.edges[de >> 1].km;
+      }
+      if (parkCandidate(G.nodes[n])) cand.push(km);
+      const pk = parkAt(n);
+      if (pk < 0) continue;
+      const g = km - (last ? last.km : 0);
+      if (last) gaps.push(g);
+      if (g < PARK.min) ok(PARKS[pk].road !== r.i || (last && PARKS[last.pk].road !== r.i) || !last, `${r.label}: ${PARKS[pk].name} nur ${g.toFixed(0)} km hinter dem vorigen Park`);
+      if (g > PARK.max) {
+        const from = last ? last.km : 0;
+        ok(!cand.some((c) => c - from >= PARK.min && c - from <= PARK.max), `${r.label}: Lücke ${g.toFixed(0)} km vor ${PARKS[pk].name}, obwohl eine Ausfahrt im Fenster lag`);
+      }
+      last = { km, pk };
+    }
+  }
+  gaps.sort((a, b) => a - b);
+  const q = (f) => gaps[Math.floor(f * (gaps.length - 1))].toFixed(0);
+  console.log(`Ladeparks: ${PARKS.length} an Ausfahrten, Abstand je Autobahn Median ${q(0.5)} km (p25 ${q(0.25)}, p75 ${q(0.75)}), ${gaps.filter((g) => g >= PARK.min && g <= PARK.max).length} von ${gaps.length} im Fenster ${PARK.min}–${PARK.max} km, Zubringer ${parkZub()} m`);
+}
 
 // --- Geometrie des Knotenpunkts --------------------------------------------------------
 ok(Math.abs(R(J.cap) - (J.kappa * J.cap * J.cap) / 2) < 1e-9, 'R am Ende des Bogens');
