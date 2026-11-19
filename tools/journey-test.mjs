@@ -41,6 +41,7 @@ import { INSIDER_ORTE, REISE_JOBS } from '../src/data.js';
 import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { signsAlong, BOARD_D } from '../src/world/xxl/signplan.js';
+import { parkBoard } from '../src/map/parks.js';
 
 const HOURS = Number(process.argv[2]) || 3;
 const LOG = process.argv[3] === 'log';
@@ -302,12 +303,13 @@ function numbers(trip, nav, nv, N, game) {
       let ins = null;
       for (const e of signs) {
         if (e.s <= sBefore) continue;
-        if (e.kind === 'vorweg' || e.kind === 'bake') {
+        if (e.kind === 'vorweg' || e.kind === 'bake' || e.kind === 'ladepark') {
           ins = ins || nav.instruction();
           if (ins.turn !== 'exit' || !ins.fork || ins.fork.id !== e.fork) continue;
           const want = e.kind === 'vorweg' ? e.board.dist : e.dist + ' m';
           ok(ins.say === want && !ins.calm, `Tafel „${want}“ vor ${ins.head}, die Ansage sagt „${ins.say}“${ins.calm ? ' (noch als Vorschau)' : ''}`);
           if (e.kind === 'vorweg') N.boards++;
+          else if (e.kind === 'ladepark') N.parkBoards++;
           else N.beacons++;
         } else if (e.kind === 'tafel') {
           N.tables++;
@@ -338,11 +340,11 @@ function numbers(trip, nav, nv, N, game) {
       } else if (ins.turn === 'exit') {
         ok(ins.toTarget === text, `Kärtchen „${ins.toTarget}“, HUD-Zeile „${text}“`);
         if (ins.calm) {
-          ok(ins.say === fmtKm(g.toKm) && (g.far || g.dist > BOARD_M), `Vorschau „${ins.say}“ ${g.dist.toFixed(0)} m vor ${ins.head}`);
+          ok(ins.say === fmtKm(g.toKm) && (g.far || g.dist > (parkBoard(g.fork) || BOARD_M)), `Vorschau „${ins.say}“ ${g.dist.toFixed(0)} m vor ${ins.head}`);
           ok(!ins.fork || !calmDone.has(ins.fork), `Die Ansage vor ${ins.head} fällt von Metern zurück in die Vorschau`);
           N.calm++;
         } else {
-          ok(ins.say === fmtRoad(g.dist) && g.dist <= BOARD_M && !!ins.fork, `Ansage „${ins.say}“ ${g.dist.toFixed(0)} m vor ${ins.head}`);
+          ok(ins.say === fmtRoad(g.dist) && g.dist <= (parkBoard(ins.fork) || BOARD_M) && !!ins.fork, `Ansage „${ins.say}“ ${g.dist.toFixed(0)} m vor ${ins.head}`);
           calmDone.add(ins.fork);
           N.near++;
         }
@@ -400,7 +402,7 @@ function stream(driver, hours, seed, firstRound = false) {
     // townBids = nach wie vielen Sekunden im Zielort dort ein Gebot kam (Game.updateNavi hält es höchstens TOWN_HOLD)
     open: { bids: [], standT: -1, standPlace: -1, calm: 0, drive: 0, changed: 0, end: '', endT: -1, kept: false, dev: 0, minChoice: Infinity, late: 0, townIn: -1, townLeft: 0, townBids: [] },
     num: {
-      steps: 0, falls: 0, plans: 0, maxErr: 0, metres: 0, kms: 0, kmReal: 0, units: 0, unitDrop: 0, boards: 0, beacons: 0, tables: 0, tableRows: 0, tableDev: 0, sums: 0, same: 0, calm: 0, near: 0,
+      steps: 0, falls: 0, plans: 0, maxErr: 0, metres: 0, kms: 0, kmReal: 0, units: 0, unitDrop: 0, boards: 0, parkBoards: 0, beacons: 0, tables: 0, tableRows: 0, tableDev: 0, sums: 0, same: 0, calm: 0, near: 0,
       edges: 0, edgeKm: 0, feederKm: 0, realKm: 0, realBy: {},
       clockErr: 0, clockKm: 0, clockMove: 0, clockStand: 0, etaLegs: [],
     },
@@ -701,7 +703,7 @@ function numbersLine(m) {
   return (
     `Die Zahlen passen zusammen: ${N.steps} Schritte, ${fmt(m.tripKm, 0)} Reisekilometer auf ${fmt(m.roadKm, 0)} km Straße · ${N.falls}× fiel die Entfernung zum Ziel genau wie der Zähler stieg (größter Fehler ${N.maxErr.toExponential(1)} km), ${N.plans} neue Pläne` +
     ` · Anzeige in km ${N.kms}× (davon ${N.kmReal}× auf echter Straße über ${BOARD_M} m: „1,2 km“ statt „1150 m“), in Metern ${N.metres}× (nur auf echter Straße bis ${BOARD_M} m), ${N.units} Wechsel km → m (größter Sprung der Zahl ${fmt(N.unitDrop, 0)} m, erlaubt 100 m)` +
-    ` · ${N.sums}× Ziel = Handlung + Rest, ${N.same}× im Zielort dieselbe Zahl auf Ansage, Kärtchen und HUD-Zeile, Ausfahrt ${N.calm}× als Vorschau in km und ${N.near}× in Metern, ${N.boards} Vorwegweiser und ${N.beacons} Baken mit der Zahl der Ansage` +
+    ` · ${N.sums}× Ziel = Handlung + Rest, ${N.same}× im Zielort dieselbe Zahl auf Ansage, Kärtchen und HUD-Zeile, Ausfahrt ${N.calm}× als Vorschau in km und ${N.near}× in Metern, ${N.boards} Vorwegweiser, ${N.parkBoards} Ladepark-Tafeln und ${N.beacons} Baken mit der Zahl der Ansage` +
     ` · ${N.tables} Entfernungstafeln, ${N.tableRows} nannten das Ziel (größte Abweichung ${fmt(N.tableDev, 2)} km)` +
     ` · ${N.edges} Kanten = ${fmt(N.edgeKm, 0)} km laut Karte, Zubringer ${fmt(N.feederKm, 0)} km, echte Straße ${fmt(N.realKm, 0)} km (${fmt((100 * N.realKm) / Math.max(all, 1e-9), 1)} %: ${by})` +
     `\n    Uhr = Reisezeit: ${fmt(N.clockMove / 3600, 2)} h der Uhr in Fahrt für ${fmt(N.clockKm, 0)} Reisekilometer (Uhr × Tempo = Reisemeter, größter Fehler ${N.clockErr.toExponential(1)} m), ${fmt(N.clockStand / 60, 1)} min im Stand wie die echte Zeit` +

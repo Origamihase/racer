@@ -8,6 +8,8 @@
 // die auf der Tafel stehen, in Leserichtung. key: stabil (gleicher Ort, gleiche Tafel → gleicher Schlüssel).
 // Arten:
 //   vorweg    Vorwegweiser 1000 m und 500 m vor einer Gabelung (fork.s − d): Texte aus trip.signs(fork)
+//   ladepark  Tafel „Ladepark …“ mit Stecker 2000 m vor der Ausfahrt eines Ladeparks, wo der Abschnitt Platz hat
+//             (src/map/parks.js parkBoard; ab ihr zählt das Navi die Meter, wenn es diese Ausfahrt ansagt)
 //   bake      Ankündigungsbaken 300, 200, 100 m vor der Gabelung (drei, zwei, ein Schrägstreifen; ohne Text)
 //   ausfahrt  „Ausfahrt“ mit Pfeil an der Inselspitze hinter der Gabelung
 //   ende      Ende der Autobahn (vor der Verengung) · anfang: Anfang der Autobahn (hinter dem Einfädelpunkt)
@@ -18,6 +20,7 @@
 //   ziel      Navi-Ziel: der Brunnenplatz des Zielorts am Zielpunkt spotS (der Wagen hält 2 m dahinter)
 import { J, R as rampR } from '../../game/trip.js';
 import { nodes, places, deTo, deEdge, deRoad, deTowards, straight, edgeLen, routeFrom, stateOfNode, excursion, COST } from '../../map/graph.js';
+import { parkBoard } from '../../map/parks.js';
 
 /** Vorwegweiser: so viele Meter vor der Gabelung (wie guidance().dist). */
 export const BOARD_D = [1000, 500];
@@ -55,7 +58,8 @@ const FAR_KM = 450;
 /**
  * Inhalt eines Vorwegweisers aus trip.signs(fork): Kopf (Name der Ausfahrt bzw. des Kreuzes, „Autobahnende“), Bild
  * ('ausfahrt' | 'kreuz' | 'ende'), bis zu vier Zeilen (Straße und Richtung der abgehenden Straßen, dann die Orte der
- * Ausfahrt) und die Entfernung. texts: dieselben Angaben als Zeilen (für das Schilder-Log und die Prüfung).
+ * Ausfahrt; liegt dort ein Ladepark, ist die letzte Zeile seine, mit Stecker: kind 'park') und die Entfernung. texts:
+ * dieselben Angaben als Zeilen (für das Schilder-Log und die Prüfung).
  */
 export function boardOf(sg, d) {
   const exit = sg.title.startsWith('Ausfahrt ');
@@ -67,18 +71,20 @@ export function boardOf(sg, d) {
     rows.push({ road: null, kind: null, text: sg.name });
     seen.add(sg.name);
   }
+  const max = sg.park ? 3 : 4;
   const exits = sg.exits.slice().sort((a, b) => (a.kind === 'ab' ? 0 : 1) - (b.kind === 'ab' ? 0 : 1));
   for (const e of exits) {
-    if (rows.length >= 4) break;
+    if (rows.length >= max) break;
     rows.push({ road: e.road, kind: e.kind, text: e.towards });
     seen.add(e.towards);
   }
   for (const p of sg.places) {
-    if (rows.length >= 4) break;
+    if (rows.length >= max) break;
     if (seen.has(p)) continue;
     rows.push({ road: null, kind: null, text: p });
     seen.add(p);
   }
+  if (sg.park) rows.push({ road: null, kind: 'park', text: sg.park });
   const dist = d + ' m';
   const texts = [sg.title, ...rows.map((r) => (r.road ? r.road + ' ' : '') + r.text), dist];
   return { head, pict, rows, dist, title: sg.title, texts };
@@ -217,6 +223,8 @@ function sectionSigns0(trip, secs, sec, out, opts) {
         const b = boardOf(sg, d);
         push('vorweg', f.s - d, AB_SIGN_X, 1, b.texts, { keyPart: fk, fork: f.id, node: f.node, dist: d, title: b.title, board: b });
       }
+      const pb = parkBoard(f);
+      if (pb) push('ladepark', f.s - pb, AB_SIGN_X, 1, [sg.park, pb + ' m'], { keyPart: fk, fork: f.id, node: f.node, dist: pb, name: sg.park });
       BEACON_D.forEach((d, i) => push('bake', f.s - d, BEACON_X, 1, [], { keyPart: fk, fork: f.id, node: f.node, dist: d, stripes: 3 - i }));
       if (!f.forced) {
         const u = EXIT_SIGN_U;

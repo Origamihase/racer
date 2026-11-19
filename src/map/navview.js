@@ -196,7 +196,7 @@ export class NaviScreen {
     if (kind === 'zub' || kind === 'term') return 95;
     if (kind === 'ramp' || kind === 'auf' || kind === 'conn') return 80;
     const base = kind === 'land' ? 26 : 9;
-    if (ins.turn === 'exit' || ins.turn === 'arrive' || ins.turn === 'faehre' || ins.turn === 'zug' || ins.turn === 'flug') {
+    if (ins.turn === 'exit' || ins.turn === 'arrive' || ins.turn === 'stop' || ins.turn === 'faehre' || ins.turn === 'zug' || ins.turn === 'flug') {
       if (isFinite(ins.km) && ins.km > 0) return clamp(150 / Math.max(ins.km, 0.4), base, 110);
     }
     return base;
@@ -234,7 +234,7 @@ export class NaviScreen {
     // Ausfahrt (am Ende der Sperrfläche) oder eines Terminals gut 20 px darunter, die Zielfahne mit ihrem ganzen Mast
     const room = this.cam.depthAtY(ins.turn === 'arrive' ? 268 : 244);
     const fitQ = (d) => room / Math.max(d + 60, 1);
-    const act = ins.dist > 0 && (ins.turn === 'exit' || ins.turn === 'arrive' || TRANSIT_TURN[ins.turn]);
+    const act = ins.dist > 0 && (ins.turn === 'exit' || ins.turn === 'arrive' || ins.turn === 'stop' || TRANSIT_TURN[ins.turn]);
     if (sec.kind === 'ab' || sec.kind === 'land') {
       const q0 = kT * (sec.kmPerM || 0.02);
       return act ? clamp(fitQ(ins.dist), Math.min(q0, 0.2), 1.6) : q0;
@@ -268,7 +268,7 @@ export class NaviScreen {
 
     // Nahansicht (die Straße, wie die Welt sie baut) nah an der nächsten Handlung und abseits von Autobahn und
     // Landstraße, sonst die Karte; beim Wechsel blenden beide über, Kurs und Lage des Autos bleiben dieselben
-    const act = ins.dist > 0 && (ins.turn === 'exit' || ins.turn === 'arrive' || TRANSIT_TURN[ins.turn]);
+    const act = ins.dist > 0 && (ins.turn === 'exit' || ins.turn === 'arrive' || ins.turn === 'stop' || TRANSIT_TURN[ins.turn]);
     const near = !hop && (!onRoad || (act && ins.dist < (this.closeOn ? 2600 : 2200)));
     // Maßstäbe: Karte k (Bildpunkte je Kartenkilometer), Nahansicht q (je Meter der Fahrt); der gerade nicht gezeigte
     // läuft über kmPerM des Abschnitts mit, damit der Wechsel ohne Sprung geht
@@ -622,6 +622,20 @@ export class NaviScreen {
         ctx.fill();
         ctx.stroke();
         drawTransitShape(ctx, mk.transit, 0, 0, 0.85, TRANSIT_COLOR[mk.transit] || '#4d86c6');
+        ctx.restore();
+      } else if (mk.type === 'park') {
+        // Halt des Ladestopps: grüner Kreis mit Stecker
+        ctx.save();
+        ctx.translate(o[0], o[1]);
+        ctx.scale(k, k);
+        ctx.fillStyle = '#2f8f4e';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, 20, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        drawTurnIcon(ctx, 'stop', 0, 0, 26, '#ffffff');
         ctx.restore();
       } else if (mk.type === 'exit') exitButton(ctx, o[0], o[1], T, k);
       else if (mk.type === 'pin') drawFlag(ctx, o[0], o[1], flagPop(m) * k, theme === 'dark' ? '#e6e8eb' : '#1d1f22');

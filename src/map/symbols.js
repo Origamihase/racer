@@ -27,7 +27,7 @@ export function fit(ctx, text, maxW) {
 
 /**
  * Pfeil-Bildzeichen der Ansage (in einem Kasten der Größe s, Mitte bei cx, cy): 'exit', 'straight', 'merge',
- * 'arrive', 'faehre', 'zug', 'flug', 'none'.
+ * 'arrive', 'stop' (Ladestopp), 'faehre', 'zug', 'flug', 'none'.
  */
 export function drawTurnIcon(ctx, turn, cx, cy, s, color = '#ffffff') {
   ctx.save();
@@ -96,6 +96,28 @@ export function drawTurnIcon(ctx, turn, cx, cy, s, color = '#ffffff') {
       }
     }
     ctx.globalAlpha = 1;
+  } else if (turn === 'stop') {
+    // Ladestopp: Stecker mit zwei Stiften, das Kabel geht unten in einem Bogen ab
+    ctx.lineWidth = 9;
+    ctx.beginPath();
+    ctx.moveTo(-14, -42);
+    ctx.lineTo(-14, -22);
+    ctx.moveTo(14, -42);
+    ctx.lineTo(14, -22);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-30, -24);
+    ctx.lineTo(30, -24);
+    ctx.lineTo(30, -2);
+    ctx.quadraticCurveTo(30, 20, 0, 22);
+    ctx.quadraticCurveTo(-30, 20, -30, -2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(0, 20);
+    ctx.quadraticCurveTo(0, 44, 24, 44);
+    ctx.stroke();
   } else if (turn === 'faehre' || turn === 'zug' || turn === 'flug') {
     drawTransitShape(ctx, turn, 0, 0, 1.6, color);
   } else if (turn === 'straight') {

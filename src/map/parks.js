@@ -154,3 +154,18 @@ export function parkExcursion() {
 export function routeToPark(i, road = false) {
   return { ...routeGoal(stateOfNode(PARKS[i].node), parkExcursion(), road), place: -1, park: i };
 }
+
+/**
+ * Blaue Tafel „Ladepark …“ mit Stecker so viele Meter vor der Ausfahrt eines Parks (dazu nennen Vorwegweiser 1000 m
+ * und 500 m den Park in einer eigenen Zeile). Sie steht nur, wo ihr Autobahnabschnitt Platz hat: mindestens so lang wie
+ * PARK_BOARD_ROOM, dann liegt sie hinter der Entfernungstafel nach der Anschlussstelle (signplan.js tableS).
+ */
+export const PARK_BOARD = 2000;
+export const PARK_BOARD_ROOM = 2550;
+/**
+ * Der erste Wegweiser einer Gabelung, ab dem das Navi die Meter herunterzählt: PARK_BOARD vor der Ausfahrt eines Parks,
+ * wo die Tafel steht, sonst 0 (dann der erste Vorwegweiser, navroute.js BOARD_M).
+ */
+export function parkBoard(fork) {
+  return fork && !fork.forced && fork.sec && fork.sec.kind === 'ab' && fork.sec.len >= PARK_BOARD_ROOM && parkAt(fork.node) >= 0 ? PARK_BOARD : 0;
+}

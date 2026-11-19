@@ -235,7 +235,9 @@ export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = 
       let a = Math.max(sec.s0, from);
       let b = Math.min(sec.s1, hi, end);
       const f = sec.fork;
-      const target = sec.kind === 'stadt' && sec.place === trip.target && trip.target >= 0 && sec.spotS !== undefined && !sec.spotDone;
+      // die Route endet am Zielpunkt – ohne Ziel am Halt des Ladestopps
+      const target = (sec.kind === 'stadt' && sec.place === trip.target && trip.target >= 0 && sec.spotS !== undefined && !sec.spotDone) ||
+        (sec.kind === 'park' && sec.park === trip.stop && trip.target < 0 && sec.spotS !== undefined && !sec.spotDone);
       if (target) b = Math.min(b, sec.spotS);
       if (b > a) {
         let x = MID[sec.profile];
@@ -294,6 +296,9 @@ export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = 
         const L = townLayout(trip, sec);
         const sp = L && L.fountain ? L.fountain : { s: sec.spotS, x: MID.stadt };
         scene.marks.push({ type: 'pin', d: sp.s - s, X: lat(sec, sp.s, sp.x), place: sec.place, layout: L });
+      }
+      if (sec.kind === 'park' && sec.park === trip.stop && sec.spotS !== undefined && !sec.spotDone && sec.spotS >= lo && sec.spotS <= hi) {
+        scene.marks.push({ type: 'park', park: sec.park, d: sec.spotS - s, X: lat(sec, sec.spotS, MID.stadt) });
       }
       if (sec.kind === 'term' && !sec.arrival && sec.spotS !== undefined && sec.spotS >= lo && sec.spotS <= hi) {
         scene.marks.push({ type: 'term', transit: sec.transit, d: sec.spotS - s, X: lat(sec, sec.spotS, MID.stadt) });

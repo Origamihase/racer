@@ -906,7 +906,7 @@ export class Trip {
     return J.L0 + Trip.offset(link, s).off - J.shoulderEdge;
   }
 
-  /** Schildtexte einer Gabelung. */
+  /** Schildtexte einer Gabelung (park: Name des Ladeparks an dieser Ausfahrt oder null). */
   signs(fork) {
     const nd = nodes[fork.node];
     const exits = [];
@@ -929,6 +929,7 @@ export class Trip {
       exits,
       stay: fork.stay >= 0 ? { road: deRoad(fork.stay).label, towards: deTowards(fork.stay).name } : null,
       airport: nd.edges.some((de) => deKind(de) === 'flug'),
+      park: parkAt(fork.node) >= 0 && !fork.forced ? PARKS[parkAt(fork.node)].name : null,
     };
   }
 
