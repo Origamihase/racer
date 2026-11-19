@@ -1530,7 +1530,6 @@ function step(dt, { render = true } = {}) {
   fxState.glitch = Math.max(0, fxState.glitch - dt);
   fxState.green = Math.max(0, fxState.green - dt);
   U.uTime.value = simT;
-  U.uRain.value = w;
   U.uFlash.value = fxState.flash;
   U.uGlitch.value = fxState.glitch > 0 ? 0.6 + 0.4 * Math.sin(simT * 40) : 0;
   U.uGreen.value = fxState.green > 0 ? (Math.sin(simT * 26) > 0.2 ? 1 : 0.15) : 0;

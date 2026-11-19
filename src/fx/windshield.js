@@ -1319,8 +1319,7 @@ export function createCompositeMaterial(sceneTex, ws) {
       tSoft: { value: null },
       tGlow: { value: null },
       uDrops: { value: 1 },
-      // Regenstärke (setzt main.js); der Film folgt der Nässe der Scheibe (uWet), die ihr mit Verzögerung nachläuft
-      uRain: { value: 0 },
+      // der Film folgt der Nässe der Scheibe (setzt project()), die der Regenstärke mit Verzögerung nachläuft
       uWet: { value: 0 },
       uFlow: { value: 0 },
       uSoftOn: { value: 0 },
