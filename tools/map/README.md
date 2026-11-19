@@ -254,4 +254,9 @@ Das Ergebnis ist deterministisch (gleiche Eingabe → bitgleiche Datei) und blei
   (Kürzel, deutscher Name, Punkt, Abstand zum Rand), dazu Meeresnamen für die große Karte;
 - `REGIONS`: Gebiete mit feinen Küsten (jeder Ort liegt in einem, `npm test` prüft das).
 
-Nachweis im Spiel („Über das Spiel“): „Kartenumrisse: Natural Earth (gemeinfrei)“.
+Nachweis im Spiel („Über das Spiel“, Block „Kartendaten“; die Texte stehen in `src/map/credits.js`): Straßenverläufe,
+Küsten und Grenzen von Natural Earth (gemeinfrei, mit Link); Orte (Lage und Einwohnerzahlen) von GeoNames mit Link,
+Lizenz CC BY 4.0 mit Link und dem Zusatz „Auswahl und Namen fürs Spiel angepasst“; Höhen aus den Terrain Tiles
+(Mapzen, AWS Open Data), dahinter aufklappbar die Hinweise der Höhenquellen im englischen Wortlaut – für jede Quelle,
+deren Gebiet die Karte berührt (Österreich, Europa, ETOPO1, Norwegen, Vereinigtes Königreich, USGS und ArcticDEM für
+die Straßen nördlich von 60°). `tools/save-test.mjs` prüft diese Liste gegen die Länder der Karte.

@@ -127,6 +127,17 @@ const BIG_BIDS = [10, 15, 20, 25, 33.33, 50];
 const CALM_DRIVE = 18;
 const CALM_GROW = 0.8;
 const CALM_MAX = 2;
+// Die erste Runde eines Streams (WorldNavi.opening: bis zum ersten Halt an einem Brunnen) bietet nur auf nahe Orte,
+// und nach dem Bieter-Chaos bleibt das Ziel so lange stehen, dass die meisten dort ankommen: die Fahrzeit des Navis
+// mal einem Faktor aus diesem Bereich. Fährt der Wagen schon im Zielort, wartet das nächste Gebot ohnehin, bis er am
+// Brunnen steht oder vorbeigerollt ist (Game.updateNavi) – die Ruhe muss also nur bis zum Ortseingang reichen.
+// Gemessen mit tools/journey-test.mjs (je Fahrer 300 erste Runden zu 10 Minuten): Der zügige Fahrer steht bei 93 %
+// am Brunnen des Ziels, bevor ein Gebot es ändert, der mittlere bei 80 %, der gemütliche bei 64 %. Die Regel selbst
+// bleibt: Ein Gebot vor dem Halt nimmt die Folge weg.
+const OPENING_CALM = [0.6, 1.7];
+// Wem ein Gebot das erste stehende Ziel doch genommen hat, der hat die Regel gesehen – das nächste bleibt länger
+// stehen, damit auch die erste Runde eines gemütlichen Fahrers an einem Brunnen endet.
+const OPENING_AGAIN = [1.2, 2.4];
 
 // Sammelaktionen: Zielbeträge und was einzelne dazugeben
 const SAMMEL_GOALS = [20, 25, 30, 30, 35, 40, 50];
@@ -437,7 +448,7 @@ export class Economy {
   // --- Navi-Gebote -----------------------------------------------------------------
   /** Neue Bieterrunde (Stream-Beginn oder Ziel erreicht): Es geht wieder bei 1 Cent los – erst einmal im Chaos. */
   newRound(first = false) {
-    this.bids = { n: 0, chaos: first ? this.int(7, 11) : this.int(5, 9), duel: 0, quiet: false, late: false };
+    this.bids = { n: 0, chaos: first ? this.int(7, 11) : this.int(5, 9), duel: 0, calm: 0, quiet: false, late: false };
   }
 
   /**
@@ -446,14 +457,16 @@ export class Economy {
    * findet sich jemand, der noch einen drauflegt (jeder zahlt sein ganzes Gebot, zurück gibt es nichts). Ab und zu
    * schaukeln sich zwei im Duell hoch, ganz selten setzt jemand mit einem großen Gebot ein Zeichen; danach ist
    * erst einmal Ruhe.
-   * @param {{bid:number, drive?:number}} state aktueller Preis in Euro; drive (nur XXL-Welt): Sekunden Fahrt bis zum
-   *   neuen Ziel, wie das Navi sie kennt. Die Ruhe nach einem Gebot ist für klassische Ziele gemacht; liegt ein
-   *   echter Ort Minuten entfernt, wächst sie mit der Fahrzeit (stretch, siehe CALM_DRIVE) – wer zügig fährt, kommt
-   *   so oft an, bevor wieder jemand überbietet, aber nie sicher.
+   * @param {{bid:number, drive?:number, opening?:boolean}} state aktueller Preis in Euro; drive (nur XXL-Welt):
+   *   Sekunden Fahrt bis zum neuen Ziel, wie das Navi sie kennt. Die Ruhe nach einem Gebot ist für klassische Ziele
+   *   gemacht; liegt ein echter Ort Minuten entfernt, wächst sie mit der Fahrzeit (stretch, siehe CALM_DRIVE) – wer
+   *   zügig fährt, kommt so oft an, bevor wieder jemand überbietet, aber nie sicher. opening: die erste Runde des
+   *   Streams läuft noch – dann richtet sich die Ruhe allein nach der Fahrzeit (OPENING_CALM, OPENING_AGAIN), und
+   *   ein Duell beginnt nicht.
    * @returns {{increment:number, delay:number, kind:'chaos'|'step'|'duel'|'big', first?:boolean, stretch?:number}}
    *   first: erstes Gebot einer Runde bzw. eines Duells · stretch: um diesen Faktor ist die Ruhe gestreckt
    */
-  nextBid({ bid = 0, drive = 0 } = {}) {
+  nextBid({ bid = 0, drive = 0, opening = false } = {}) {
     const B = this.bids;
     const act = clamp(Math.sqrt(this.activity()), 0.75, 1.4);
     const plan = { increment: 0.01, delay: 0, kind: 'step' };
@@ -479,18 +492,24 @@ export class Economy {
         plan.kind = 'big';
         plan.increment = this.pick(BIG_BIDS);
         quiet = true;
-      } else if (r < 0.25 + 0.21 * m) {
+      } else if (!opening && r < 0.25 + 0.21 * m) {
+        // (kein Duell in der ersten Runde: Seine zwei Ziele stehen fest, während der Wagen weiterfährt – eines davon
+        // läge bald hinter ihm, und dort zählen nur nahe Orte)
         plan.kind = 'duel';
         plan.first = true;
         plan.increment = this.pick(DUEL_STEPS);
         B.duel = this.int(3, 6);
       } else if (r < 0.6) plan.increment = this.pick(SMALL_JUMPS);
       plan.delay = (this.rand(0.7, 1.4) * (40 + 26 * Math.pow(bid, 0.6)) * (B.quiet ? 1.5 : 1)) / act;
-      if (drive > CALM_DRIVE) {
+      if (opening && drive > 0) {
+        const range = B.calm ? OPENING_AGAIN : OPENING_CALM;
+        plan.delay = drive * this.rand(range[0], range[1]);
+      } else if (drive > CALM_DRIVE) {
         plan.stretch = Math.pow(drive / CALM_DRIVE, CALM_GROW);
         plan.delay = Math.min(plan.delay * plan.stretch, Math.max(plan.delay, CALM_MAX * drive));
       }
       B.quiet = quiet;
+      B.calm++;
     }
     B.n++;
     return plan;

@@ -1,10 +1,12 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, GAME_TITLE, GAME_SUBTITLE, TAGLINE, INCOME, FINES, fmtBetrag, nameBreak } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, GAME_TITLE, MODE_TEXT, TAGLINE, INCOME, FINES, fmtBetrag, nameBreak } from '../data.js';
 import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
-import { MapScreen } from './mapscreen.js';
+import { MapScreen, visitLine } from './mapscreen.js';
+import { otherMode } from '../mode.js';
+import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -209,6 +211,16 @@ export class Menus {
           b.classList.add('danger');
         }
         break;
+      case 'credits': {
+        // „Über das Spiel“: die Hinweise der Höhendaten auf- und zuklappen (der Knopf bleibt, wo er ist)
+        const box = this.screens.about.querySelector('.credit-notices');
+        const open = !box.classList.toggle('hidden');
+        b.setAttribute('aria-expanded', String(open));
+        b.textContent = (open ? '▾' : '▸') + ' Hinweise der Höhendaten';
+        this.watchScroll(this.screens.about);
+        if (open) box.scrollIntoView({ block: 'nearest' });
+        break;
+      }
       default:
         this.h.action?.(a, b);
     }
@@ -220,7 +232,8 @@ export class Menus {
     // Eingabefelder behalten ihre Tasten – der Lautstärke-Regler nur ← →, mit ↑ ↓ geht es weiter
     if (e.target && /input/i.test(e.target.tagName) && e.target.type !== 'range' && e.code !== 'Escape') return;
     const s = this.screens[this.current];
-    const btns = [...s.querySelectorAll('.btn:not([disabled]), input[type=range]')];
+    // (Links stehen mit in der Reihe: Mit den Pfeiltasten angesteuert, öffnet Enter sie wie einen Knopf)
+    const btns = [...s.querySelectorAll('.btn:not([disabled]), input[type=range], a.link')];
     const idx = btns.indexOf(document.activeElement);
     if (e.code === 'ArrowDown' || e.code === 'ArrowRight' || e.code === 'KeyS' || e.code === 'KeyD') {
       if (e.target.type === 'range' && (e.code === 'ArrowRight' || e.code === 'KeyD')) return;
@@ -259,13 +272,25 @@ export class Menus {
   render_title(s, d) {
     s.textContent = '';
     const card = el('div', 'title-card', s);
+    // Jeder Modus hat seinen Titel (h.mode, src/mode.js): Untertitel und Zahlen sind seine, und ein Eintrag führt in
+    // den anderen – die Seite lädt dann neu, weil die Welt beim Laden gebaut wird
+    const mode = this.h.mode || 'klassik';
+    const M = MODE_TEXT[mode];
+    const other = MODE_TEXT[otherMode(mode)];
     const logo = el('div', 'title-logo', card);
     el('span', 'title-live', logo, '● LIVE');
+    if (M.badge) el('span', 'title-badge', logo, M.badge);
     el('h1', '', card, GAME_TITLE);
-    el('h2', '', card, GAME_SUBTITLE);
+    el('h2', '', card, M.title);
     el('p', 'tagline', card, TAGLINE);
     const menu = el('div', 'menu', card);
     button(menu, '▶  Losfahren', 'start', 'primary');
+    const mb = button(menu, '', 'mode', 'mode-entry');
+    el('span', 'mode-name', mb, `${other.icon}  ${other.name}`);
+    // (die kleine Zeile beginnt unter dem Namen: davor unsichtbar dasselbe Symbol in der Größe des Knopfs)
+    const sub = el('span', 'mode-sub', mb);
+    el('span', 'mode-pad', sub, other.icon + ' ').setAttribute('aria-hidden', 'true');
+    sub.append(other.sub);
     button(menu, '🛒  Tesla-Shop', 'shop');
     button(menu, '🗺️  Karte', 'karte');
     button(menu, '🎮  Steuerung', 'controls');
@@ -277,6 +302,8 @@ export class Menus {
     const travel = !!this.h.travel;
     el('span', '', stats, '🏆 Rekord ' + (travel ? fmtOdo((d.best.reise || 0) / 1000) : fmtKm(d.best.distance || 0)));
     el('span', '', stats, '🛣️ ' + (travel ? fmtOdo(d.stats.reiseKm || 0) : fmtKm((d.stats.totalKm || 0) * 1000, 1)) + ' gesamt');
+    // die Reise zählt dazu ihre Orte, dieselbe Zahl wie auf der großen Karte
+    if (mode === 'xxl') el('span', '', stats, '❤️ ' + visitLine(d.visits));
     el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause');
   }
 
@@ -464,10 +491,15 @@ export class Menus {
     }
     const tips = el('div', 'tips', card);
     el('h3', '', tips, 'Tipps');
+    // in der Reise sind die Ziele echte Orte mit Brunnen, und das Navi führt über Ausfahrten dorthin
+    const reise = this.h.mode === 'xxl';
     for (const t of [
       'Geld gibt es nur vom Publikum: Spenden, Abos, Navi-Gebote. Fürs Fahren selbst zahlt niemand – aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.',
       'Wenn NOMI sagt „Die linke Fahrspur ist freigeschaltet.“, hat jemand dafür gespendet: Eine Minute lang darfst du ganz links fahren. Nutzt du sie, freut sich der Chat. Danach gilt wieder das Rechtsfahrgebot, sonst kommt die Polizei Gifhorn.',
-      'Das Navi-Ziel ändert sich ständig – jeder Bieter legt mindestens einen Cent drauf. Kommst du trotzdem an, feiert der Chat mit Ortsspenden.',
+      reise
+        ? 'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Cent drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV.'
+        : 'Das Navi-Ziel ändert sich ständig – jeder Bieter legt mindestens einen Cent drauf. Kommst du trotzdem an, feiert der Chat mit Ortsspenden.',
+      ...(reise ? ['Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.'] : []),
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
       'Lade-Ringe füllen den Akku. Bananensaft ist super, Koriander leider nicht.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',
@@ -531,11 +563,34 @@ export class Menus {
     p('Fast alle Witze stammen aus dem SkylineTV LIVE Wiki: die freigeschaltete linke Spur, das Navi-Bieten mit einem Cent mehr, BrunnenTV mit Herrn Schönnbrun, Elsa, die Polizei Gifhorn, Meister Pünktlich (kommt gleich), Malte, die Farbe der Bank, Rahmen aus dem Live-Bereich, Sprachdurchsagen von Fräulein Kassandra und Brüll-William, das Sprachstudio in Mini Adams Ohr, Bananensaft statt Koriander, „You had 5 Jobs“ und die erlogenen Berufsbezeichnungen im Abspann.');
     p('Geld gibt es wie im echten Stream nur vom Publikum: Spenden, Ortsspenden, Abos, VIPs und Navi-Gebote. Wie der Chat gerade gelaunt ist, steht nirgends – das Sprachstudio sagt es Mini Adam ins Ohr.');
     p('NOMI ist der Boardcomputer auf dem Armaturenbrett. Alle Grafiken, Geräusche und Stimmen entstehen direkt im Browser – ohne Bilder- oder Tondateien.');
-    p('Kartenumrisse: Natural Earth (gemeinfrei).');
-    const link = el('a', 'link', card, 'SkylineTV LIVE Wiki öffnen');
-    link.href = 'https://skylinetv.live/wiki/index.php?title=Hauptseite';
-    link.target = '_blank';
-    link.rel = 'noopener';
+    const ext = (parent, text, href) => {
+      const a = el('a', 'link', parent, text);
+      a.href = href;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      return a;
+    };
+    ext(card, 'SkylineTV LIVE Wiki öffnen', 'https://skylinetv.live/wiki/index.php?title=Hauptseite');
+    // Kartendaten: Quelle, Lizenz und was angepasst wurde (src/map/credits.js); die Hinweise der Höhenquellen stehen
+    // im Wortlaut dahinter – aufgeklappt mit einem Knopf, damit die Karte kurz bleibt
+    const credits = el('div', 'credits', card);
+    el('h3', '', credits, 'Kartendaten');
+    for (const q of MAP_SOURCES) {
+      const row = el('p', '', credits, q.what + ': ');
+      if (q.url) ext(row, q.name, q.url);
+      else row.append(q.name);
+      if (q.by) row.append(` (${q.by})`);
+      if (q.license) {
+        row.append(q.licenseUrl ? ', Lizenz ' : ` (${q.license})`);
+        if (q.licenseUrl) ext(row, q.license, q.licenseUrl);
+      }
+      if (q.changed) row.append(' · ' + q.changed);
+    }
+    const more = button(credits, '▸ Hinweise der Höhendaten', 'credits', 'credit-more');
+    more.setAttribute('aria-expanded', 'false');
+    const notices = el('ul', 'credit-notices hidden', credits);
+    notices.lang = 'en';
+    for (const n of TERRAIN_NOTICES) el('li', '', notices, n.text);
     const mem = el('div', 'tribute', card);
     el('span', 'heart', mem, '🖤');
     el('span', '', mem, 'In Erinnerung an Adam Wolke – danke für die Live-Eskalationen.');

@@ -680,10 +680,14 @@ export class Game {
     // es noch bis zum Ziel sind: klassisch aus den gezählten Metern, in der XXL-Welt kennt sie die Fahrt.) Dort sind
     // die Pausen zwischen den Geboten mit der Fahrzeit gestreckt (bidPlan.stretch), also auch dieses Zeitfenster.
     const eta = this.worldNavi ? nv.eta(p.speed) : nv.arrived ? Infinity : (nv.targetS - p.s) / Math.max(p.speed, 8);
-    if (eta < 8 && this.T.bid > eta && this.T.bid < 45 * (this.bidPlan.stretch || 1) && this.eco.lateBid()) {
+    // (in der ersten Runde eines Streams bleibt dieses späte Gebot aus: nv.opening, siehe navi.js)
+    if (!nv.opening && eta < 8 && this.T.bid > eta && this.T.bid < 45 * (this.bidPlan.stretch || 1) && this.eco.lateBid()) {
       this.T.bid = rand(0.4, Math.max(0.5, eta - 2.5));
       this.bidPlan.late = true;
     }
+    // (… und ist der Wagen dort schon im Zielort, wartet das nächste Gebot, bis er am Brunnen steht oder vorbeigerollt
+    // ist: Die erste Runde soll an einem Brunnen enden, nicht zweihundert Meter davor)
+    if (nv.opening && this.worldNavi && nv.inTown) this.T.bid = Math.max(this.T.bid, 1);
     if (this.T.bid <= 0) {
       const plan = this.bidPlan;
       const siegen = this.bidTargets().find((x) => x.special === 'siegen');
@@ -752,7 +756,7 @@ export class Game {
     if (siegenOverbid) this.later(0.8, () => this.chat(pick(['Siegen wurde überboten. Wie immer 😂', 'Nicht schon wieder Siegen verpasst', 'Klassiker'])));
     this.eco.cheer(chaos ? 'bidChaos' : plan.kind === 'big' ? 'bidBig' : 'bid');
     // XXL: Echte Orte liegen Minuten auseinander – die Stream-Kasse plant die Ruhe danach mit der Fahrzeit des Navis
-    const next = this.eco.nextBid(this.worldNavi ? { bid: nv.bid, drive: nv.driveSecs() } : { bid: nv.bid });
+    const next = this.eco.nextBid(this.worldNavi ? { bid: nv.bid, drive: nv.driveSecs(), opening: nv.opening } : { bid: nv.bid });
     this.bidPlan = next;
     this.T.bid = next.delay;
 
@@ -793,13 +797,14 @@ export class Game {
       }
       this.onMood('curious', 1);
       if (this.worldNavi) {
-        // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt);
-        // die Entfernung steht da wie auf dem Kärtchen im Auto
+        // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt)
         if (nv.wende) {
           this.later(1.5, () => this.chat(this.chatLine(CHAT.ortWende)));
           this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'info'));
         }
-        this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${nv.distance})`, 'info', t.note);
+        // nur der Name: Wie weit es ist und wann der Wagen ankommt, zählt die Zeile darüber laufend mit – eine Zahl
+        // hier bliebe stehen, während jene schon weiterläuft
+        this.ui.toast(`📍 Neues Navi-Ziel: ${t.name}`, 'info', t.note);
         return;
       }
       if (nv.wende) this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info'));

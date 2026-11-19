@@ -158,6 +158,21 @@ export class Navi {
  */
 export const BID_PLACES = { minKm: 12, nearKm: 30, farKm: 250, pull: 1.3, fade: 30, farFloor: 0.0008, seen: 0.2, passed: 0.6 };
 
+/**
+ * Die erste Runde eines Streams – vom Start bis zum ersten Halt an einem Brunnen (oder dem ersten Vorbeirollen): Wer
+ * neu ist, soll in seinen ersten Minuten erleben, worum es geht. Darum nennen die Gebote dort nur Orte in der Nähe:
+ * höchstens secs Sekunden Fahrt im Tempo des Navis, von dort, wo der Wagen gerade ist (trip.whatIf – vom Start in
+ * Erlensee sind das Hanau 2:22, Bad Vilbel 2:45, Frankfurt am Main 3:54, Eschborn 3:58 und Offenbach am Main 4:21),
+ * mindestens aber die min nächsten. Unter ihnen entscheiden Bekanntheit und Neuheit wie sonst; die Entfernung zählt
+ * nicht weiter, auch minKm nicht (sonst fiele Hanau heraus). Nie zur Wahl stehen der Ort, in dem die Fahrt begonnen
+ * hat (ein Gebot auf Erlensee wäre von Erlensee aus eine Schleife von 16 km), und Orte, zu denen das Navi erst
+ * „Bitte wenden“ sagen müsste: Der Weg aus dem Startort liegt fest, bevor das erste Gebot kommt, und die erste
+ * Ansage eines Streams soll nach vorn zeigen. pool: so viele Orte, die laut Karte am nächsten liegen, werden dafür
+ * durchgerechnet. Wie lange das Ziel danach stehen bleibt, regelt economy.js (OPENING_CALM); im Zielort selbst wartet
+ * das nächste Gebot, bis der Wagen am Brunnen steht oder vorbeigerollt ist (Game.updateNavi).
+ */
+export const OPENING = { secs: 270, min: 4, pool: 16 };
+
 /** Gewicht der Entfernung (Kartenkilometer über Straßen): 0 = steht nicht zur Wahl. */
 export function placeWeight(km) {
   const B = BID_PLACES;
@@ -197,6 +212,8 @@ export class WorldNavi {
     this.wende = false;
     this.visits = new Map(); // Ortsindex → Gewichtsfaktor aus den Besuchen dieses Streams
     this.listKey = '';
+    // die erste Runde des Streams läuft noch (siehe OPENING): bis zum ersten Halt am Brunnen oder Vorbeirollen
+    this.opening = true;
   }
 
   get trip() {
@@ -211,20 +228,50 @@ export class WorldNavi {
    */
   candidates() {
     const trip = this.trip;
-    const key = trip.state() + ':' + trip.version;
+    // (in der ersten Runde hängt die Wahl auch daran, wo der Wagen gerade ist – was er noch ohne Wenden erreicht:
+    // dort je Gebot frisch, das kostet etwa eine Millisekunde)
+    const key = trip.state() + ':' + trip.version + (this.opening ? ':' + trip.s.toFixed(0) : '');
     if (key === this.listKey) return this.list;
     this.listKey = key;
     const D = trip.distances(true);
     const list = (this.list = []);
     const ahead = trip.cur.sections.filter((c) => c.kind === 'stadt' && !c.spotDone && c.s1 > trip.s).map((c) => c.place);
+    const near = this.opening ? this.nearby(trip, D, ahead) : null;
     for (const t of this.targets) {
       const p = places[t.place];
-      const w = ahead.includes(t.place) ? 0 : placeWeight(D.toPlace(t.place).km) * (1 + Math.log2(p.n)) * (this.visits.get(t.place) ?? 1);
+      const far = near ? (near.has(t.place) ? 1 : 0) : placeWeight(D.toPlace(t.place).km);
+      const w = ahead.includes(t.place) ? 0 : far * (1 + Math.log2(p.n)) * (this.visits.get(t.place) ?? 1);
       // Siegen wird oft geboten und setzt sich fast nie durch (ein Viertel des Gewichts, dafür der Siegen-Gag)
       t.weight = t.special === 'siegen' ? w * 0.25 : w;
       if (w > 0) list.push(t);
     }
     return list;
+  }
+
+  /**
+   * Die Orte, die in der ersten Runde zur Wahl stehen (siehe OPENING): Ortsindex → Sekunden Fahrt im Tempo des Navis.
+   * D: Entfernungen laut Karte von hier (für die Vorauswahl), ahead: Orte, durch die der Wagen ohnehin gleich fährt.
+   */
+  nearby(trip, D, ahead) {
+    const O = OPENING;
+    const pool = [];
+    for (const t of this.targets) {
+      const secs = D.toPlace(t.place).secs;
+      if (isFinite(secs) && t.place !== trip.home && !ahead.includes(t.place)) pool.push({ place: t.place, secs });
+    }
+    pool.sort((a, b) => a.secs - b.secs);
+    const rows = [];
+    // (liegen zu viele der nächsten hinter dem Wagen, geht die Suche weiter, bis min Orte gefunden sind)
+    for (let i = 0; i < pool.length && (i < O.pool || rows.length < O.min); i++) {
+      const r = trip.whatIf(pool[i].place, true);
+      if (isFinite(r.secs) && !r.wende) rows.push({ place: pool[i].place, secs: r.secs });
+    }
+    rows.sort((a, b) => a.secs - b.secs);
+    const near = new Map();
+    rows.forEach((r, i) => {
+      if (r.secs <= O.secs || i < O.min) near.set(r.place, r.secs);
+    });
+    return near;
   }
 
   /** Ein Zuschauer überbietet: Gebot + increment, die Fahrt plant zum Ort des Ziels (nur über Straßen). */
@@ -263,6 +310,7 @@ export class WorldNavi {
     this.visit(t.place, BID_PLACES.seen);
     this.arrived = true;
     this.reached = t;
+    this.opening = false;
     return t;
   }
 
@@ -274,6 +322,7 @@ export class WorldNavi {
     this.visit(this.stopping.place);
     this.stopping = null;
     this.missed = true;
+    this.opening = false;
   }
 
   /** Ein Ort wurde besucht (factor: BID_PLACES.seen am Ziel, passed bei der Durchfahrt): Er wird seltener geboten. */

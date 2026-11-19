@@ -1,6 +1,6 @@
 // Das Stream-Overlay über dem Spiel: LIVE-Anzeige, Zuschauer, Strecke, Guthaben, Akku,
 // Karosserie-Punkte, Chat mit Bots, NOMI-Untertitel, Hinweise, Sprachdurchsagen, Rahmen und Blitzerfotos.
-import { fmtNum, fmtCent, fmtKm, fmtDuration, clamp } from '../util.js';
+import { fmtNum, fmtCent, fmtKm, fmtDuration, fmtClock, clamp } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
@@ -87,6 +87,7 @@ export class UI {
     this.liveBadge = el('span', 'live-badge', live, '● LIVE');
     this.viewersEl = el('span', 'viewers', live, '👁 0');
     this.timeEl = el('span', 'streamtime', live, '0:00');
+    this.timeText = ''; // was die Uhr der Reise zuletzt gezeigt hat (nur bei einer neuen Minute wird geschrieben)
     const rows = el('div', 'stat-rows', info);
     const row = (icon, label) => {
       const r = el('div', 'stat', rows);
@@ -827,13 +828,21 @@ export class UI {
     }
     this.rahmenList = this.rahmenList.filter((r) => r.t > 0);
 
+    // Die Uhr der Reise steht, wo klassisch die Stoppuhr des Streams läuft: dieselbe wie auf dem Mittelbildschirm
+    // (Game.clock) – an ihr hängen die Ankunftszeit und „Sendezeit … (bis … Uhr)“ am Ende. Sie springt in jedem Bild
+    // mit um, nicht erst mit den übrigen Zahlen: Auf geraffter Straße läuft sie schnell, und zwei Uhren, die eine
+    // Zehntelsekunde lang verschiedene Minuten zeigen, fallen auf.
+    if (g && g.worldNavi) {
+      const uhr = fmtClock(g.clock) + '\u202fUhr';
+      if (uhr !== this.timeText) this.timeEl.textContent = this.timeText = uhr;
+    }
     // Zahlen nur 10× pro Sekunde
     this.lastHud -= dt;
     if (this.lastHud > 0 || !g) return;
     this.lastHud = 0.1;
     const p = g.player;
     this.viewersEl.textContent = '👁 ' + fmtNum(Math.round(g.viewers));
-    this.timeEl.textContent = fmtDuration(g.t);
+    if (!g.worldNavi) this.timeEl.textContent = fmtDuration(g.t);
     // XXL: der Kilometerzähler der Fahrt in Reisekilometern, mit dem Rekord der XXL-Welt (Game.odometer)
     const odo = g.odometer;
     const strecke = (m) => (g.worldNavi ? fmtOdo(m / 1000) : fmtKm(m));

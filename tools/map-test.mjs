@@ -352,6 +352,9 @@ ok(fmtRoad(250) === '250 m' && fmtRoad(1000) === '1000 m' && fmtRoad(1024) === '
 ok(fmtKm(2.44) === '2,5 km' && fmtKm(2.4) === '2,4 km' && fmtKm(9.96) === '10 km' && fmtKm(9.9) === '9,9 km' && fmtKm(58.4) === '58 km' && fmtKm(1234.2) === '1.234 km', 'Reisekilometer: ' + [2.44, 2.4, 9.96, 9.9, 58.4, 1234.2].map(fmtKm).join(' / '));
 ok(fmtOdo(0.04) === '0,0 km' && fmtOdo(8.59) === '8,5 km' && fmtOdo(99.97) === '99 km' && fmtOdo(100) === '100 km', 'Kilometerzähler: ' + [0.04, 8.59, 99.97, 100].map(fmtOdo).join(' / '));
 ok(fmtDistance({ km: 0.48, m: 480, real: true }) === '500 m' && fmtDistance({ km: 0.52, m: 28, real: false }) === '0,6 km', 'Wechsel der Einheit: ' + fmtDistance({ km: 0.48, m: 480, real: true }) + ' / ' + fmtDistance({ km: 0.52, m: 28, real: false }));
+// auf echter Straße über 1000 m bleiben es Kilometer, aufgerundet – am Wechsel wird aus „1,1 km“ „1000 m“
+const realRoad = [1150, 1020, 1000, 975, 2600].map((m) => fmtDistance({ km: m / 1000, m, real: true }));
+ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte Straße über 1000 m: ' + realRoad.join(' / '));
 {
   const { roadAhead, setRoadAhead, closeScene, curvePoint, STEP } = await import('../src/map/roadahead.js');
   const { J, R } = await import('../src/game/trip.js');

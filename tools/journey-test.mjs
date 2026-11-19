@@ -1,7 +1,8 @@
 // Prüft die Reise der XXL-Welt als Ganzes, ohne Grafik: das echte Spiel (Game: Bieterregeln, WorldNavi, BrunnenTV) mit
 // der echten Stream-Kasse (economy.js), der echten Fahrt über die Karte (Trip), dem Halt am Brunnen (Arrival), dem Navi
 // des Mittelbildschirms (NavModel) und der Fahrphysik (Player) – in simulierten Streams mit drei Fahrertypen:
-// node tools/journey-test.mjs [Stunden je Stream, Standard 3] [log: jedes Gebot und jede Ankunft ausgeben]
+// node tools/journey-test.mjs [Stunden je Stream, Standard 3] [log: jedes Gebot und jede Ankunft ausgeben, sonst -]
+//   [erste Runden je Fahrer, Standard 60]
 // - Kein Hänger: Der Wagen kommt voran, nach jeder Ankunft beginnt eine neue Runde, jede BrunnenTV-Folge endet (von
 //   selbst oder mit einer neuen Eingabe), und danach rollt der Wagen aus dem Ort.
 // - Ziele: Jedes Gebot nennt einen echten Ort, den die Fahrt von hier über Straßen erreicht (keine Fähre, kein
@@ -16,10 +17,16 @@
 // - Die Zahlen passen zusammen (ein Maß für die Reise, siehe trip.js): in jedem Schritt jedes Streams –
 //   Entfernung zum Ziel = Entfernung zur nächsten Handlung + der Rest dahinter; sie fällt um genau das, was der
 //   Kilometerzähler steigt, und steigt nie, solange das Ziel steht und die Fahrt nicht neu plant; Meter nennt eine
-//   Anzeige nur, wo bis zur Stelle echte Straße (1:1) liegt – oder in der Ansage ab dem ersten Vorwegweiser, und dann
-//   sagt sie an jeder Tafel und Bake genau deren Meter; Ansage, Kärtchen und HUD-Zeile nennen im Zielort dieselbe
+//   Anzeige nur, wo bis zur Stelle echte Straße (1:1) liegt und höchstens 1000 m davon (weiter weg auch dort
+//   Kilometer: „1,2 km“, am Wechsel wird daraus „1000 m“ und nichts steigt) – oder in der Ansage ab dem ersten
+//   Vorwegweiser, und dann sagt sie an jeder Tafel und Bake genau deren Meter; Ansage, Kärtchen und HUD-Zeile nennen im Zielort dieselbe
 //   Zahl; eine Entfernungstafel, die das Ziel nennt, zeigt die Kilometer des Navis; jeder Abschnitt zählt, was die
 //   Karte für seine Kante sagt (Rampen, Verbindungen und Orte: ihre Meter).
+// - Die erste Runde eines Streams (navi.js OPENING, economy.js OPENING_CALM): Bis zum ersten Halt an einem Brunnen
+//   nennen die Gebote nur nahe Orte (höchstens OPENING.secs im Tempo des Navis, nie den Startort, nie mit „Bitte
+//   wenden“ als erster Ansage), kein spätes Gebot kurz vor dem Ziel und keins, während der Wagen schon im Zielort
+//   fährt – und in vielen Streams von zehn Minuten je Fahrer steht der Wagen oft genug und früh genug am Brunnen des
+//   Ziels (Grenzen bei OPEN_BOUNDS).
 // Dazu misst es das Tempo der Reise (Fahrzeiten, Ankünfte je Stunde, Gebote und Einnahmen je Minute). Die Zahlen
 // stehen am Ende der Ausgabe; wer an den Bieterregeln dreht, liest sie dort ab.
 import { PerspectiveCamera } from 'three';
@@ -27,7 +34,7 @@ import { places, nodeTitle, deEdge, OFF_KM } from '../src/map/graph.js';
 import { Trip, J, PROFILES } from '../src/game/trip.js';
 import { MapDemo } from '../src/map/mapdemo.js';
 import { Game } from '../src/game/game.js';
-import { BID_PLACES } from '../src/game/navi.js';
+import { BID_PLACES, OPENING } from '../src/game/navi.js';
 import { INSIDER_ORTE, REISE_JOBS } from '../src/data.js';
 import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
@@ -35,6 +42,8 @@ import { signsAlong, BOARD_D } from '../src/world/xxl/signplan.js';
 
 const HOURS = Number(process.argv[2]) || 3;
 const LOG = process.argv[3] === 'log';
+// so viele erste Runden je Fahrer (Streams von höchstens zehn Minuten, siehe „Die erste Runde“ unten)
+const OPENINGS = process.argv[4] === undefined ? 60 : Number(process.argv[4]);
 const DT = 1 / 30;
 let fails = 0;
 const seen = new Map();
@@ -265,16 +274,24 @@ function numbers(trip, nav, nv, N, game) {
         ok(now <= shown, `Die Anzeige steigt von ${shown} m auf „${text}“ (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
         ok(m || !inMetres, `Die Anzeige wechselt von Metern zurück zu „${text}“`);
         if (m && !inMetres) {
+          // am Wechsel der Einheit: dieselbe Strecke, höchstens um die Rundung kleiner (aus „1,1 km“ wird „1000 m“)
           N.units++;
           N.unitDrop = Math.max(N.unitDrop, shown - now);
+          ok(shown - now <= 100 + 1e-6, `Am Wechsel zu Metern springt die Anzeige von ${shown} m auf „${text}“ (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
         }
       }
       shown = now;
       inMetres = m;
       fresh = false;
-      // Meter nur, wo bis zum Ziel echte Straße liegt – und dann auch Meter
+      // Meter nur, wo bis zum Ziel echte Straße liegt und höchstens BOARD_M davon – und dann auch Meter. Ist es auf
+      // echter Straße weiter, stehen dort Kilometer mit einer Nachkommastelle, aufgerundet („1,2 km“, nicht „1150 m“)
       const way = legKm(trip.s, trip.plan().end);
-      ok(m === way.real, `„${text}“ zum Ziel, aber der Weg dorthin ist ${way.real ? 'echte Straße' : 'gerafft'} (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
+      ok(m === (way.real && d.m <= BOARD_M), `„${text}“ zum Ziel, aber der Weg dorthin ist ${way.real ? d.m.toFixed(0) + ' m echte Straße' : 'gerafft'} (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
+      if (way.real && !m) {
+        N.kmReal++;
+        const fits = d.m > 9900 ? Math.abs(now - d.m) <= 500 : /^\d,\d km$/.test(text) && now >= d.m - 1e-3 && now < d.m + 100 + 1e-3;
+        ok(fits, `Auf echter Straße, ${d.m.toFixed(0)} m vor dem Ziel, steht „${text}“ (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
+      }
       ok(Math.abs(way.km - d.km) < 1e-9 && (!way.real || Math.abs(d.km * 1000 - d.m) < 1e-6), `reach ${d.km} km / ${d.m} m, Abschnitte ${way.km} km`);
       if (m) N.metres++;
       else N.kms++;
@@ -298,7 +315,9 @@ function numbers(trip, nav, nv, N, game) {
           // an der Stelle der Tafel (der Wagen ist in diesem Schritt ein paar Meter weiter): dieselbe Zahl, ganzzahlig
           const there = d.km + legKm(e.s, trip.s).km;
           N.tableDev = Math.max(N.tableDev, Math.abs(row.km - there));
-          ok(row.km === Math.round(there), `Entfernungstafel: ${row.name} ${row.km} km, das Navi zählt dort ${there.toFixed(2)} km`);
+          // (genau auf dem halben Kilometer entscheidet die letzte Stelle der Gleitkommazahl: dort gelten beide Rundungen)
+          const half = Math.abs(Math.abs(row.km - there) - 0.5) < 1e-6;
+          ok(row.km === Math.round(there) || half, `Entfernungstafel: ${row.name} ${row.km} km, das Navi zählt dort ${there.toFixed(2)} km`);
         }
       }
       if (quick && !ins) return;
@@ -330,8 +349,11 @@ function numbers(trip, nav, nv, N, game) {
   };
 }
 
-/** Ein Stream: hours Stunden Spielzeit mit einem Fahrer. Liefert die Messwerte. */
-function stream(driver, hours, seed) {
+/**
+ * Ein Stream: hours Stunden Spielzeit mit einem Fahrer. Liefert die Messwerte. firstRound: nur die erste Runde – der
+ * Stream endet, sobald der Wagen an einem Brunnen steht oder an einem vorbeigerollt ist (m.open sagt, wie es ausging).
+ */
+function stream(driver, hours, seed, firstRound = false) {
   Math.random = mulberry32(seed);
   const trip = new Trip({ rng: Math.random });
   const arrival = new Arrival();
@@ -366,8 +388,13 @@ function stream(driver, hours, seed) {
     bids: 0, bidSum: 0, earnN: 0, earnSum: 0, chaos: 0, calm: 0, late: 0, snatched: 0, spots: 0, rolled: 0, arrivals: 0, rests: 0, late2: 0, tvEnds: 0, duels: 0,
     lockFork: 0, lockNode: 0, wrong: 0, wende: 0, first1: 0, firstN: 0, maxGap: 0, maxTv: 0, minTv: Infinity, passed: 0,
     bands: [0, 0, 0, 0], legs: [], navi: { checks: 0, exit: 0, far: 0, farKept: 0, arrive: 0, wende: 0 }, reroutes: 0, standing: 0, ratio: 0, stand: [], flipped: 0, minChoice: Infinity,
+    // die erste Runde: bids = ihre Gebote ({place, secs, kind}), standT/standPlace = wann welches Ziel zum ersten Mal
+    // stehen blieb, calm/drive = Ruhe und Fahrzeit des Navis dabei, changed = Gebote danach, end = 'folge' (der Wagen
+    // steht am Brunnen) | 'vorbei' (vorbeigerollt) | '' (noch offen), endT = wann, kept = am ersten stehenden Ziel
+    // angekommen, bevor ein Gebot es änderte, dev = größte Abweichung der vorhergesagten Fahrzeit (trip.whatIf)
+    open: { bids: [], standT: -1, standPlace: -1, calm: 0, drive: 0, changed: 0, end: '', endT: -1, kept: false, dev: 0, minChoice: Infinity, late: 0 },
     num: {
-      steps: 0, falls: 0, plans: 0, maxErr: 0, metres: 0, kms: 0, units: 0, unitDrop: 0, boards: 0, beacons: 0, tables: 0, tableRows: 0, tableDev: 0, sums: 0, same: 0, calm: 0, near: 0,
+      steps: 0, falls: 0, plans: 0, maxErr: 0, metres: 0, kms: 0, kmReal: 0, units: 0, unitDrop: 0, boards: 0, beacons: 0, tables: 0, tableRows: 0, tableDev: 0, sums: 0, same: 0, calm: 0, near: 0,
       edges: 0, edgeKm: 0, feederKm: 0, realKm: 0, realBy: {},
       clockErr: 0, clockKm: 0, clockMove: 0, clockStand: 0, etaLegs: [],
     },
@@ -400,6 +427,9 @@ function stream(driver, hours, seed) {
     const inTown = nv.inTown;
     const plan = game.bidPlan;
     const zone = lockZone(trip);
+    const opening = nv.opening;
+    // erste Runde: was die Wahl der nahen Orte vor dem Gebot über dieses Ziel wusste
+    const guess = opening ? trip.whatIf(target.place, true) : null;
     const t = overbid(s, bidder, inc, target);
     m.bids++;
     m.bidSum += nv.bid;
@@ -411,9 +441,25 @@ function stream(driver, hours, seed) {
     ok(km > 0 && isFinite(km) && secs > 0 && isFinite(secs), `Ziel ${t.name} ist von hier nicht erreichbar (${km} km, ${secs} s)`);
     // HUD-Zeile, Pause-Karte und roter Balken nennen sofort das neue Ziel, seine Entfernung und den Bieter
     ok(nv.shown === t && nv.label === t.name && /^[\d.,]+ (km|m)$/.test(nv.distance) && nv.screen().bidder === nv.bidder && nv.bidder, `Nach dem Gebot auf ${t.name} zeigt das Navi „${nv.label} · ${nv.distance}“ von „${nv.screen().bidder}“`);
-    // die nächste Runde findet immer ein Ziel: Von überall stehen genug Orte zur Wahl
-    m.minChoice = Math.min(m.minChoice, game.bidTargets().length);
-    m.bands[km < BID_PLACES.nearKm ? 0 : km <= BID_PLACES.farKm ? 1 : km <= 500 ? 2 : 3]++;
+    if (opening) {
+      // erste Runde: ein naher Ort, nie der Startort, die Ansage zeigt nach vorn, und die Vorhersage stimmte
+      const O = m.open;
+      O.bids.push({ place: t.place, secs, kind: plan.kind });
+      if (O.standT >= 0) O.changed++;
+      if (plan.late) O.late++;
+      O.dev = Math.max(O.dev, Math.abs(guess.secs - secs));
+      O.minChoice = Math.min(O.minChoice, game.bidTargets().length);
+      ok(t.place !== trip.home, `Erste Runde: Gebot auf den Startort ${t.name}`);
+      ok(!nv.wende && !guess.wende, `Erste Runde: Zum Gebot auf ${t.name} sagt das Navi „Bitte wenden“ (bei s=${trip.s.toFixed(0)})`);
+      ok(Math.abs(guess.secs - secs) < 1, `Erste Runde: ${t.name} vorhergesagt ${guess.secs.toFixed(1)} s, nach dem Gebot ${secs.toFixed(1)} s (bei s=${trip.s.toFixed(0)})`);
+      ok(secs <= OPENING.secs + 1 || game.bidTargets().length <= OPENING.min, `Erste Runde: ${t.name} liegt ${secs.toFixed(0)} s entfernt (erlaubt ${OPENING.secs} s), obwohl ${game.bidTargets().length} Orte zur Wahl standen`);
+      ok(!plan.late, 'Erste Runde: ein spätes Gebot kurz vor dem Ziel');
+      ok(!inTown, `Erste Runde: Ein Gebot nimmt ${before ? before.name : 'das Ziel'} weg, während der Wagen schon im Zielort fährt`);
+    } else {
+      // die nächste Runde findet immer ein Ziel: Von überall stehen genug Orte zur Wahl
+      m.minChoice = Math.min(m.minChoice, game.bidTargets().length);
+      m.bands[km < BID_PLACES.nearKm ? 0 : km <= BID_PLACES.farKm ? 1 : km <= 500 ? 2 : 3]++;
+    }
     if (zone === 'fork') m.lockFork++;
     else if (zone === 'node') m.lockNode++;
     if (inTown) m.snatched++;
@@ -441,6 +487,7 @@ function stream(driver, hours, seed) {
   game.changeNavi = (siegenOverbid) => {
     changeNavi(siegenOverbid);
     const next = game.bidPlan;
+    if (next.delay > 6 && nv.opening && m.open.standT < 0) Object.assign(m.open, { standT: game.t, standPlace: nv.target.place, calm: next.delay, drive: lastPlan.secs });
     if (next.delay > 6) {
       m.standing++;
       m.ratio += next.delay / lastPlan.secs;
@@ -481,7 +528,7 @@ function stream(driver, hours, seed) {
 
   const steps = Math.round((hours * 3600) / DT);
   const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
-  for (let i = 0; i < steps; i++) {
+  for (let i = 0; i < steps && !(firstRound && m.open.end); i++) {
     limitsFor(trip, lim, arrival.stop(trip));
     p.setLimits(lim);
     // der Fahrer: folgt dem Navi (Ausfahrt nehmen, sonst mittlere Spur) – oder fährt an einer Ausfahrt vorbei
@@ -560,6 +607,7 @@ function stream(driver, hours, seed) {
       m.arrivals++;
       if (!rest) m.late2++;
       ok(p.speed < 0.2 && game.t - spotT < 15, `BrunnenTV bei ${p.kmh.toFixed(0)} km/h, ${(game.t - spotT).toFixed(1)} s nach dem Zielpunkt`);
+      if (!m.open.end) Object.assign(m.open, { end: 'folge', endT: game.t, kept: m.open.changed === 0 && game.tv.place === m.open.standPlace });
       arrivedT = game.t;
       tvEndT = -1;
       roundOpen = false;
@@ -577,6 +625,7 @@ function stream(driver, hours, seed) {
       // am Brunnen vorbeigerollt: keine Ankunft, die Runde läuft weiter
       halting = false;
       m.rolled++;
+      if (!m.open.end) Object.assign(m.open, { end: 'vorbei', endT: game.t });
       ok(nv.missed && !game.roundNew && game.T.bid <= 3.1, 'Vorbeigerollt, aber das Spiel wartet nicht auf das nächste Gebot der Runde');
       ok(!nv.shown && nv.waitLine.includes('vorbeigerollt') && nv.screen().bidder === '', 'Vorbeigerollt, aber die Anzeigen sagen es nicht');
     }
@@ -608,7 +657,9 @@ function stream(driver, hours, seed) {
   ok(m.arrivals === m.rests + m.late2, `${m.arrivals} Ankünfte, aber ${m.rests} Halte der Welt und ${m.late2} knapp dahinter`);
   ok(m.spots - m.arrivals - m.rolled >= 0 && m.spots - m.arrivals - m.rolled <= 1, `${m.spots} Zielpunkte, aber ${m.arrivals} Ankünfte und ${m.rolled}× vorbeigerollt`);
   ok(m.tvEnds >= m.arrivals - 1, `${m.arrivals} Folgen begonnen, ${m.tvEnds} beendet`);
-  ok(m.minChoice >= 100, `Nur ${m.minChoice} Orte standen bei einem Gebot zur Wahl`);
+  ok(firstRound || m.minChoice >= 100, `Nur ${m.minChoice} Orte standen bei einem Gebot zur Wahl`);
+  ok(m.open.minChoice >= OPENING.min, `Erste Runde: nur ${m.open.minChoice} Orte standen zur Wahl`);
+  ok(nv.opening === !m.open.end, `Erste Runde ${m.open.end ? 'vorbei (' + m.open.end + ')' : 'offen'}, das Navi sagt ${nv.opening ? 'offen' : 'vorbei'}`);
   m.hours = game.t / 3600;
   m.km = (p.s - trip.cur.s0) / 1000;
   m.roadKm = p.s / 1000;
@@ -626,7 +677,7 @@ function numbersLine(m) {
   const by = Object.entries(N.realBy).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${fmt(v, 0)}`).join(', ');
   return (
     `Die Zahlen passen zusammen: ${N.steps} Schritte, ${fmt(m.tripKm, 0)} Reisekilometer auf ${fmt(m.roadKm, 0)} km Straße · ${N.falls}× fiel die Entfernung zum Ziel genau wie der Zähler stieg (größter Fehler ${N.maxErr.toExponential(1)} km), ${N.plans} neue Pläne` +
-    ` · Anzeige in km ${N.kms}×, in Metern ${N.metres}× (nur auf echter Straße), ${N.units} Wechsel km → m (größter Sprung der Zahl ${fmt(N.unitDrop, 0)} m)` +
+    ` · Anzeige in km ${N.kms}× (davon ${N.kmReal}× auf echter Straße über ${BOARD_M} m: „1,2 km“ statt „1150 m“), in Metern ${N.metres}× (nur auf echter Straße bis ${BOARD_M} m), ${N.units} Wechsel km → m (größter Sprung der Zahl ${fmt(N.unitDrop, 0)} m, erlaubt 100 m)` +
     ` · ${N.sums}× Ziel = Handlung + Rest, ${N.same}× im Zielort dieselbe Zahl auf Ansage, Kärtchen und HUD-Zeile, Ausfahrt ${N.calm}× als Vorschau in km und ${N.near}× in Metern, ${N.boards} Vorwegweiser und ${N.beacons} Baken mit der Zahl der Ansage` +
     ` · ${N.tables} Entfernungstafeln, ${N.tableRows} nannten das Ziel (größte Abweichung ${fmt(N.tableDev, 2)} km)` +
     ` · ${N.edges} Kanten = ${fmt(N.edgeKm, 0)} km laut Karte, Zubringer ${fmt(N.feederKm, 0)} km, echte Straße ${fmt(N.realKm, 0)} km (${fmt((100 * N.realKm) / Math.max(all, 1e-9), 1)} %: ${by})` +
@@ -681,7 +732,9 @@ for (const { driver, m } of rows) {
 // Härtetest: Bieterduell auf den letzten Metern
 {
   if (LOG) console.log(DUELLIST.name + ':');
-  const m = stream(DUELLIST, HOURS, 815);
+  // (Startwert so gewählt, dass der Stream alles Verlangte enthält: 15 Duelle, 4 Ankünfte, 5× vorbeigerollt, 1× knapp
+  // hinter dem Haltepunkt – wer an den Bieterregeln dreht, verschiebt den Zufall und sucht hier notfalls neu)
+  const m = stream(DUELLIST, HOURS, 823);
   console.log(
     `${DUELLIST.name}: ${fmt(m.hours)} h, ${m.duels} Duelle auf den letzten 150 m, ${m.bids} Gebote · danach ${m.arrivals}× am Brunnen gestanden (BrunnenTV;` +
       ` ${m.late2}× knapp hinter dem Haltepunkt), ${m.rolled}× vorbeigerollt, ${m.duels - m.spots}× war das Ziel am Brunnen gerade ein anderes` +
@@ -733,12 +786,84 @@ function atNaviPace(seed, lo, hi) {
   );
 }
 
+// --- Die erste Runde führt zu einem Brunnen ---------------------------------------------------------------------------
+// Viele Streams von höchstens zehn Minuten je Fahrer, jeder mit eigenem Startwert, jeder bis zum ersten Halt an einem
+// Brunnen. Gemessen wird, wie oft der Wagen am Brunnen des Ziels steht, das nach dem Bieter-Chaos stehen blieb, bevor
+// ein Gebot es änderte („gehalten“), wie oft die erste Runde überhaupt mit einer Folge endet, und nach wie vielen
+// echten Sekunden ab dem Start der Wagen steht. Gewollt sind etwa neun von zehn gehaltenen Zielen beim zügigen Fahrer,
+// drei von vier beim mittleren und mindestens die Hälfte beim gemütlichen (gemessen mit je 300: 93, 80 und 64 %; die
+// 60 Streams von npm test messen 97, 73 und 67 %). Die Grenzen (Anteile in Prozent, Sekunden; p90: höchstens ein
+// Zehntel der Streams braucht länger) lassen dem Zufall von 60 Streams Luft und gelten ab OPENINGS = 60; wer an
+// OPENING, OPENING_CALM oder den Pausen des Chaos dreht, sieht hier, was es mit den ersten Minuten macht.
+const OPEN_BOUNDS = {
+  'zügig': { kept: [80, 100], episode: 95, median: 240, p90: 420 },
+  mittel: { kept: [62, 92], episode: 90, median: 270, p90: 540 },
+  'gemütlich': { kept: [50, 85], episode: 82, median: 320, p90: Infinity },
+};
+const OPEN_MIN = 10 / 60; // Stunden: zehn Minuten je Stream
+if (OPENINGS > 0) {
+  const tOpen = Date.now();
+  const drawn = new Map(); // Ort → {bids, stand, reached} über alle Fahrer
+  const row = (place) => drawn.get(place) || drawn.set(place, { bids: 0, stand: 0, reached: 0 }).get(place);
+  let dev = 0;
+  DRIVERS.forEach((driver, k) => {
+    const runs = [];
+    for (let r = 0; r < OPENINGS; r++) runs.push(stream(driver, OPEN_MIN, 20000 + 1000 * k + r, true).open);
+    const share = (f) => (100 * runs.filter(f).length) / runs.length;
+    const times = runs.filter((o) => o.end === 'folge').map((o) => o.endT).sort((a, b) => a - b);
+    // Median und neuntes Dezil über alle Streams: einer ohne Halt in zehn Minuten zählt als „später“
+    const q = (p) => {
+      const i = Math.ceil(p * runs.length) - 1;
+      return i < times.length ? times[i] : Infinity;
+    };
+    for (const o of runs) {
+      for (const b of o.bids) row(b.place).bids++;
+      if (o.standPlace >= 0) row(o.standPlace).stand++;
+      if (o.kept) row(o.standPlace).reached++;
+      dev = Math.max(dev, o.dev);
+    }
+    const chaos = runs.reduce((n, o) => n + o.bids.filter((b) => b.kind === 'chaos').length, 0) / runs.length;
+    const standT = runs.reduce((n, o) => n + o.standT, 0) / runs.length;
+    const calm = runs.reduce((n, o) => n + o.calm / o.drive, 0) / runs.length;
+    const kept = share((o) => o.kept);
+    const episode = share((o) => o.end === 'folge');
+    const sec = (x) => (isFinite(x) ? fmt(x, 0) + ' s' : 'über 600 s');
+    console.log(
+      `Erste Runde, ${driver.name} (${driver.cruise} km/h), ${runs.length} Streams zu 10 min: am Brunnen des stehenden Ziels, bevor ein Gebot es änderte, ${fmt(kept, 0)} %` +
+        ` · erste Runde endet mit einer Folge ${fmt(episode, 0)} % (vorbeigerollt ${fmt(share((o) => o.end === 'vorbei'), 0)} %, kein Halt in 10 min ${fmt(share((o) => !o.end), 0)} %)` +
+        ` · der Wagen steht nach ${sec(q(0.5))} (Median), ${sec(q(0.9))} (9. Dezil), frühestens ${sec(times[0])}` +
+        ` · Bieter-Chaos ${fmt(chaos)} Gebote, das Ziel steht nach ${fmt(standT, 0)} s, Ruhe im Mittel ${fmt(calm, 2)} × Fahrzeit · Gebote nach dem Chaos ${fmt(runs.reduce((n, o) => n + o.changed, 0) / runs.length, 2)} je Stream`,
+    );
+    const B = OPEN_BOUNDS[driver.name];
+    if (OPENINGS >= 60) {
+      ok(kept >= B.kept[0] && kept <= B.kept[1], `Erste Runde, ${driver.name}: ${fmt(kept, 0)} % stehen am Brunnen des stehenden Ziels (erlaubt ${B.kept[0]} bis ${B.kept[1]} %)`);
+      ok(episode >= B.episode, `Erste Runde, ${driver.name}: nur ${fmt(episode, 0)} % enden mit einer Folge (mindestens ${B.episode} %)`);
+      ok(q(0.5) <= B.median && q(0.9) <= B.p90, `Erste Runde, ${driver.name}: der Wagen steht nach ${sec(q(0.5))} (Median, erlaubt ${B.median} s) und ${sec(q(0.9))} (9. Dezil, erlaubt ${sec(B.p90)})`);
+    }
+    ok(runs.every((o) => o.bids.filter((b) => b.kind === 'chaos').length >= 7 && new Set(o.bids.map((b) => b.place)).size >= 2), `Erste Runde, ${driver.name}: ein Stream ohne Bieter-Chaos oder ohne Zielwechsel`);
+    ok(runs.every((o) => o.late === 0), `Erste Runde, ${driver.name}: späte Gebote kurz vor dem Ziel`);
+  });
+  const list = [...drawn].sort((a, b) => b[1].bids - a[1].bids);
+  const all = list.reduce((n, [, d]) => n + d.bids, 0);
+  // genannt wird, wer mindestens ein Hundertstel der Gebote bekam oder einmal stehen blieb; der Rest in einer Summe
+  const named = list.filter(([, d]) => d.bids >= all / 100 || d.stand > 0);
+  const rest = list.length - named.length;
+  console.log(
+    `Erste Runde, die Orte (${3 * OPENINGS} Streams, ${all} Gebote; Vorhersage der Fahrzeit vor dem Gebot höchstens ${fmt(dev, 2)} s daneben): ` +
+      named.map(([place, d]) => `${places[place].name} ${fmt((100 * d.bids) / all, 1)} % der Gebote, ${d.stand}× stehend, ${d.reached}× so erreicht`).join(' · ') +
+      (rest ? ` · ${rest} weitere Orte mit zusammen ${fmt((100 * list.slice(named.length).reduce((n, [, d]) => n + d.bids, 0)) / all, 1)} % der Gebote, nie stehend` : '') +
+      ` · in ${((Date.now() - tOpen) / 1000).toFixed(0)} s`,
+  );
+  ok(list.length >= OPENING.min, `Erste Runde: nur ${list.length} verschiedene Orte wurden geboten`);
+}
+
 // genug geprüft?
 const sum = (f) => rows.reduce((s, r) => s + f(r.m), 0);
 if (HOURS >= 3) {
   ok(sum((m) => m.arrivals) >= 30, `zu wenige Ankünfte: ${sum((m) => m.arrivals)}`);
   ok(sum((m) => m.lockFork) >= 10 && sum((m) => m.lockNode) >= 20, `zu wenige Gebote in Sperrzonen: ${sum((m) => m.lockFork)} / ${sum((m) => m.lockNode)}`);
   ok(sum((m) => m.navi.exit) > 2000 && sum((m) => m.navi.arrive) > 300, 'Navi und Welt: zu wenig geprüft');
+  ok(sum((m) => m.num.kmReal) >= 500 && sum((m) => m.num.units) >= 20, `Anzeige auf echter Straße über ${BOARD_M} m und ihr Wechsel zu Metern: zu wenig geprüft (${sum((m) => m.num.kmReal)} Schritte, ${sum((m) => m.num.units)} Wechsel)`);
 }
 console.log(`Reise: ${rows.length} Streams zu je ${HOURS} h in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 if (fails) {
