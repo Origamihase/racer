@@ -493,6 +493,50 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
   }
   ok(!bad.length, 'Navi und Welt: ' + bad.join(' | '));
   ok(n.trips >= 50 && n.exit > 200 && n.far > 50 && n.farKept > 20 && n.arrive > 50 && n.scenes > 2000 && n.roads > 6000 && n.ramps > 50 && n.forks > 300 && n.pins > 20, 'Navi und Welt: zu wenig geprüft ' + JSON.stringify(n));
+  // Ohne Ziel nennt das Navi nur eine Stelle, die die Straße erzwingt: das Autobahnende auf dem eigenen Weg – an der
+  // Gabelung der Fahrt, mit dem Text des Schilds dort, ab 1000 m mit den Pfeilen aller Spuren, und die Nahansicht
+  // führt dort die Rampe hinaus. Sonst nennt es keine Stelle (die erste Fahrt beginnt wie die XXL-Welt in Erlensee).
+  {
+    const e = { trips: 0, ends: 0, said: 0, lanes: 0, scenes: 0, quiet: 0 };
+    for (let t = 0; t < 40; t++) {
+      const demo = new MapDemo({ start: t ? starts[Math.floor(r() * starts.length)] : undefined, rng: rng(300 + t) });
+      const trip = demo.trip;
+      e.trips++;
+      let last = null;
+      for (let k = 0; k < 5000; k++) {
+        demo.move(trip.s + 4);
+        demo.model.update(0.1);
+        const ins = demo.model.instruction();
+        if (ins.turn === 'faehre' || ins.turn === 'zug' || ins.turn === 'flug') continue;
+        const f = trip.cur.sections.map((c) => c.fork).find((q) => q && !q.taken && q.forced && q.s > trip.s);
+        if (!f) {
+          if (ins.turn !== 'none' || ins.dist !== 0 || ins.fork || ins.lanes) fail(`ohne Ziel und ohne Autobahnende: Ansage ${ins.turn} „${ins.head}“`);
+          else e.quiet++;
+          continue;
+        }
+        if (f !== last) e.ends++;
+        last = f;
+        e.said++;
+        if (ins.turn !== 'exit' || ins.fork !== f || !near(ins.dist, f.s - trip.s)) fail(`Autobahnende ohne Ziel nicht an der Gabelung angesagt: ${ins.turn} „${ins.head}“ ${ins.dist}`);
+        if (ins.head !== trip.signs(f).title || !ins.sub) fail(`Autobahnende ohne Ziel: „${ins.head}“ / „${ins.sub}“ statt Schild „${trip.signs(f).title}“`);
+        if (trip.section.kind === 'ab' && ins.dist <= 1000) {
+          e.lanes++;
+          if (!ins.lanes || ins.lanes.use.length !== ins.lanes.n) fail('Autobahnende ohne Ziel: nicht alle Spuren führen hinaus');
+        }
+        if (k % 25 || ins.dist > 2000 || !f.branch) continue;
+        const sc = closeScene(trip, 2200, 500, ins);
+        const ramp = sc.roads.find((q) => q.sec === f.branch.sections[0]);
+        const d = ins.dist + 150;
+        const want = ramp ? xAt(ramp.pts, d) : NaN;
+        if (!Number.isFinite(want)) continue;
+        e.scenes++;
+        if (!near(xAt(sc.route, d), want, 0.05)) fail(`Autobahnende ohne Ziel: Route ${xAt(sc.route, d).toFixed(2)} m statt auf der Rampe ${want.toFixed(2)} m`);
+      }
+    }
+    ok(!bad.length, 'Navi ohne Ziel: ' + bad.join(' | '));
+    ok(e.ends >= 5 && e.said > 1000 && e.lanes > 300 && e.scenes > 40 && e.quiet > 20000, 'Navi ohne Ziel: zu wenig geprüft ' + JSON.stringify(e));
+    console.log('  Navi ohne Ziel: ' + JSON.stringify(e));
+  }
   // die Linie des Adapters: ohne K2 gerade; eine gewundene Linie (Format von course.preview) biegt die Nahansicht
   // stetig und ohne Zucken, seitliche Lagen stehen senkrecht auf ihr
   const L0 = roadAhead({}, 0, 400);

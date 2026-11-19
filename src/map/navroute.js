@@ -910,10 +910,11 @@ export class NavModel {
    * der Fahrt bis zur genannten Stelle), km (Kartenkilometer bis dorthin, für den Maßstab), head (Hauptzeile), sub
    * (Nebenzeile), road (Schild), lanes (Spurpfeile), fork (die Gabelung, die die Ansage meint), node, mapKm (bis zum
    * Ziel), mins, target}. Ohne bekannte Stelle (dem Straßenverlauf folgen) ist dist 0 und wird nicht gezeigt.
+   * Ohne Ziel nennt die Ansage nur die Straße – und ein Autobahnende, das auf dem eigenen Weg liegt.
    */
   instruction() {
     const trip = this.trip;
-    const g = trip.guidance();
+    let g = trip.guidance();
     const sec = trip.section;
     const out = { turn: 'none', dist: 0, km: 0, head: '', sub: '', road: '', lanes: null, node: -1, fork: null, mapKm: g.km, mins: g.mins, target: trip.target };
     // gerade unterwegs zu einem Terminal? Dann ist die Überfahrt die nächste Handlung (Stelle: das Terminal der Fahrt)
@@ -931,9 +932,15 @@ export class NavModel {
       if (c.kind === 'stadt' && c.place === trip.target) break;
     }
     if (g.type === 'none') {
-      out.head = sec.kind === 'stadt' && sec.place >= 0 ? places[sec.place].name : this.roadName(sec);
-      out.sub = 'Warte auf das nächste Gebot …';
-      return out;
+      const end = this.endAhead();
+      if (!end) {
+        out.head = sec.kind === 'stadt' && sec.place >= 0 ? places[sec.place].name : this.roadName(sec);
+        out.sub = 'Warte auf das nächste Gebot …';
+        return out;
+      }
+      // Ohne Ziel führt das Navi nirgendwohin. Ein Autobahnende sagt es trotzdem an: dort führen alle Spuren hinaus,
+      // Schilder und Baken der Welt zeigen es – also zeigt es auch das Navi, wie eine geplante Ausfahrt
+      g = { type: 'exit', dist: end.s - trip.s, fork: end, node: end.node, then: trip.afterExit(end) };
     }
     if (g.type === 'arrive') {
       out.turn = 'arrive';
@@ -951,7 +958,8 @@ export class NavModel {
       out.fork = g.fork || null;
       // der Name wie auf dem Schild an der Gabelung (hinter dem Horizont, wo es sie noch nicht gibt, der Titel der Ansage)
       out.head = g.fork ? trip.signs(g.fork).title : g.title;
-      out.sub = thenText(g.then);
+      // am Autobahnende, solange hinter der Rampe noch nichts gebaut ist: der Name der Ausfahrt, an der sie endet
+      out.sub = thenText(g.then) || (g.fork && g.fork.forced ? nodeTitle(g.node) : '');
       if (g.then && (g.then.type === 'ab' || g.then.type === 'land')) out.road = g.then.road;
       // Spurpfeile ab dem 1000-m-Schild: vier Spuren geradeaus, rechts der Verzögerungsstreifen, der abgeht (am
       // Autobahnende führen alle Spuren hinaus)
@@ -986,6 +994,15 @@ export class NavModel {
     // am Ende des bekannten Wegs: Ziel oder Überfahrt als „dann …“
     if (then && (then.type === 'ziel' || TRANSIT_NAME[then.type])) out.sub = thenText(then);
     return out;
+  }
+  /** Das Autobahnende auf dem eigenen Weg: die Gabelung, an der alle Spuren hinausführen, oder null. */
+  endAhead() {
+    const trip = this.trip;
+    for (const c of trip.cur.sections) {
+      const f = c.fork;
+      if (f && !f.taken && f.forced && f.s > trip.s) return f;
+    }
+    return null;
   }
   /** Knoten in Kartenkoordinaten. */
   nodeXY(n) {
