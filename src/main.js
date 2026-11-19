@@ -14,6 +14,7 @@ import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
 import { createNatureKit } from './world/kit/nature.js';
+import { createCityKit } from './world/kit/city.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
@@ -1832,6 +1833,7 @@ if (DEBUG) {
     game, traffic, scenery, cockpit, windshield, tesla, ui, menus, input, renderer, camera, save, facecam, adamMood,
     // für Prüfstände: Szene, three.js und die Weltmaterial-Fabrik (siehe curve.js)
     scene, THREE, W, sky, road,
+    city: createCityKit(W),
     get state() {
       return state;
     },
