@@ -12,8 +12,10 @@
 //   weiche Übergänge wie eine Klothoide. Die Knicke an den Knoten teilen sich die Abschnitte davor und danach.
 //   Passt nicht alles hinein, werden erst Schlenker hin und her kleiner (die Fahrtrichtung bleibt), zuletzt alle
 //   Bögen (der Rest geht in den nächsten Abschnitt).
-// - Kennt die Karte keinen echten Verlauf (matched < 2), kommen entworfene Bögen dazu: lange Bögen, S-Kurven, ab und
-//   zu eine enge Kurve mit Tempo-Schild – immer in Gruppen ohne Richtungswirkung, so dass die Karte stimmt.
+// - Hat ein Verlauf kein Vorbild (matched 0: Ersatzverlauf), füllen entworfene Bögen seine geraden Stücke: lange
+//   Bögen, S-Kurven, ab und zu eine enge Kurve mit Tempo-Schild – immer in Gruppen ohne Richtungswirkung, so dass die
+//   Karte stimmt. Gerade Stücke eines Verlaufs mit Vorbild sind echte Geraden und bekommen, wenn sie lang sind, nur
+//   sanfte Schwünge.
 // - Verbindungsfahrbahnen sind entworfene Rampen nach dem Abbiegewinkel des Kreuzes (nach rechts ein Bogen, nach
 //   links die Schleife des Kleeblatts), Ortsdurchfahrten fast gerade, Rampen und Auffahrten gerade (ihr Bogen ist
 //   der Knotenpunkt selbst).
@@ -1504,12 +1506,15 @@ export class MapPlanner {
       const endPart = hn === null ? 0 : wrap(hn - m.he) / 2;
       const startPart = wrap(m.hs - P.th0);
       net = startPart + m.total + endPart;
-      // ein Bogen, der in maximal lmax Metern an der Ruhezone anliegt (end: am Ende). Ohne echten Verlauf ist der Knick
-      // am Knoten nur die Ecke eines groben Polygons: Dann wird er ein langer, weiter Bogen statt einer engen Kurve
-      const coarse = m.matched < 2;
+      // Echter Verlauf, Stück für Stück: Ein Verlauf mit Vorbild (matched ≥ 1) folgt ihm, wo er gerade ist und wo seine
+      // Bögen liegen. Was ihm bei „teilweise“ am Vorbild fehlt, ist der Bogen in einen Ortsknoten: selbst eine Kurve,
+      // kein gerades Stück, in das entworfene Bögen gehörten. Ohne Vorbild (matched 0: Ersatzverlauf oder grobe Punkte)
+      // ist der Knick am Knoten nicht belegt und wird ein langer, weiter Bogen statt einer engen Kurve
+      const real = m.matched >= 1;
+      const coarse = !real;
       // Spaß: kleine Bögen werden merklich enger, große gedeckelt; der Winkel bleibt. Bögen echter Verläufe bleiben
       // dabei weit (ksoft); enger wird nur, was sonst nicht in den Platz passt (layout)
-      const fun = (q) => clamp(spec.kmax * Math.tanh((spec.gain * q) / spec.kmax), spec.kmin, m.matched >= 1 ? spec.ksoft : spec.kmax);
+      const fun = (q) => clamp(spec.kmax * Math.tanh((spec.gain * q) / spec.kmax), spec.kmin, real ? spec.ksoft : spec.kmax);
       const edgeBend = (A, end, lmax) => {
         if (Math.abs(A) < 2e-4) return;
         const kd = Math.max(fun(Math.abs(A) / (coarse ? 900 : 600)), kind === 'ab' ? 1 / 2400 : 1 / 600, Math.abs(A) / Math.max(lmax - t, 1));
@@ -1523,20 +1528,20 @@ export class MapPlanner {
       const nRuns = items.length;
       edgeBend(startPart, false, lmax);
       edgeBend(endPart, true, lmax);
-      if (m.matched >= 1) {
+      if (real) {
         const knees = items.slice(nRuns).reduce((a, it) => a + bendLen(Math.abs(it.A), it.kd, t), 0);
         tame(items.slice(0, nRuns), spec.share * (hi - lo), spec.floor, knees);
       }
       const odd = sec.de & 1;
       const seedOf = (salt) => hash(this.seed, sec.de >> 1, salt);
       const fl = [];
-      if (m.matched < 2) {
-        // ohne echten Verlauf: Spaß-Gruppen in alle Lücken zwischen den Knicken und den Bögen der Karte
+      if (!real) {
+        // ohne Vorbild: Spaß-Gruppen in alle Lücken zwischen den Knicken und den Bögen der Karte
         const r = rng(seedOf(kind === 'ab' ? 3 : 4));
         const o = kind === 'ab' ? { kind, kmax: spec.kmax, t, gap: [30, 200], st: { since: 1500 + r() * 2000 } } : { kind, kmax: spec.kmax, t, gap: [60, 380], rmin: 110, rmax: 400 };
         for (const [a, b, sa, sb] of this.gaps(items, lo, hi, kind === 'ab' ? 120 : 60)) funFill(r, a, b, sa, sb, fl, o);
       } else if (kind === 'ab') {
-        // echter Verlauf: nur wo die Karte lange gerade ist, sanfte Schwünge (die Fahrtrichtung bleibt)
+        // mit Vorbild: nur wo die Karte lange gerade ist, sanfte Schwünge (die Fahrtrichtung bleibt)
         const r = rng(seedOf(5));
         const o = { kind, kmax: spec.kmax, t, gap: [100, 350], st: { since: 0, gentle: true } };
         for (const [a, b, sa, sb] of this.gaps(items, lo, hi, 170)) if (b - a > GENTLE) funFill(r, a, b, sa, sb, fl, o);
