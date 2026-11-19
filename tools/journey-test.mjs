@@ -27,6 +27,8 @@
 //   wenden“ als erster Ansage), kein spätes Gebot kurz vor dem Ziel und keins, während der Wagen schon im Zielort
 //   fährt – und in vielen Streams von zehn Minuten je Fahrer steht der Wagen oft genug und früh genug am Brunnen des
 //   Ziels (Grenzen bei OPEN_BOUNDS).
+// - Akku: Ein voller Akku reicht im Stream jedes Fahrers und auf der offenen Autobahn so lange, wie AKKU_BOUNDS sagt
+//   (gemessen am Verbrauch je Schritt; geladen wird in diesen Streams nie, der Akku bleibt darum rechnerisch voll).
 // Dazu misst es das Tempo der Reise (Fahrzeiten, Ankünfte je Stunde, Gebote und Einnahmen je Minute). Die Zahlen
 // stehen am Ende der Ausgabe; wer an den Bieterregeln dreht, liest sie dort ab.
 import { PerspectiveCamera } from 'three';
@@ -388,6 +390,8 @@ function stream(driver, hours, seed, firstRound = false) {
     bids: 0, bidSum: 0, earnN: 0, earnSum: 0, chaos: 0, calm: 0, late: 0, snatched: 0, spots: 0, rolled: 0, arrivals: 0, rests: 0, late2: 0, tvEnds: 0, duels: 0,
     lockFork: 0, lockNode: 0, wrong: 0, wende: 0, first1: 0, firstN: 0, maxGap: 0, maxTv: 0, minTv: Infinity, passed: 0,
     bands: [0, 0, 0, 0], legs: [], navi: { checks: 0, exit: 0, far: 0, farKept: 0, arrive: 0, wende: 0 }, reroutes: 0, standing: 0, ratio: 0, stand: [], flipped: 0, minChoice: Infinity,
+    // Akku: Sekunden und verbrauchte Prozent im ganzen Stream, auf der offenen Autobahn und im Stand (siehe AKKU_BOUNDS)
+    akku: { t: 0, used: 0, abT: 0, abUsed: 0, standT: 0, standUsed: 0 },
     // die erste Runde: bids = ihre Gebote ({place, secs, kind}), standT/standPlace = wann welches Ziel zum ersten Mal
     // stehen blieb, calm/drive = Ruhe und Fahrzeit des Navis dabei, changed = Gebote danach, end = 'folge' (der Wagen
     // steht am Brunnen) | 'vorbei' (vorbeigerollt) | '' (noch offen), endT = wann, kept = am ersten stehenden Ziel
@@ -583,6 +587,18 @@ function stream(driver, hours, seed, firstRound = false) {
     game.offAutobahn = sec.kind !== 'ab';
     const tvBefore = game.tv;
     game.update(DT, ctl, camera);
+    // der Stream lädt nie (hier liegen keine Ringe): verbraucht ist, was dem vollen Akku in diesem Schritt fehlt
+    const used = 100 - p.battery;
+    m.akku.t += DT;
+    m.akku.used += used;
+    if (sec.kind === 'ab') {
+      m.akku.abT += DT;
+      m.akku.abUsed += used;
+    }
+    if (p.speed < 0.5) {
+      m.akku.standT += DT;
+      m.akku.standUsed += used;
+    }
     p.battery = 100;
     if (job.road < 0 && p.s - job.s0 >= 8000) job.road = game.t;
     if (job.travel < 0 && game.stats.distance >= REISE_JOBS.dist8.goal) job.travel = game.t;
@@ -700,6 +716,17 @@ function drift(N, a, b) {
   const sgn = (x) => (x > 0 ? '+' : x < 0 ? '−' : '±') + fmt(Math.abs(x), 1);
   return `${sgn(d.reduce((s, x) => s + x, 0) / d.length)} min (${sgn(Math.min(...d))} bis ${sgn(Math.max(...d))}, ${L.length}×)`;
 }
+// Akku (REISE.md A5, Entscheidung der Projektleitung vom 19.11.): Ein voller Akku reicht für etwa 8 bis 12 Minuten
+// zügiger Fahrt, auch im Stand verbraucht der Stream etwas. Das klassische Modell (Player.update) trifft das schon
+// (3 h je Fahrer: im ganzen Stream 9,8 / 11,0 / 12,0 min, auf der offenen Autobahn 7,3 / 9,4 / 11,5 min, im Stand
+// 16,7 min) und bleibt darum für beide Modi dasselbe. Grenzen in Minuten je 100 %:
+const AKKU_BOUNDS = { stream: [8, 13], ab: [6.5, 13] };
+// Minuten, die 100 % Akku reichen (aus dem Verbrauch je Sekunde)
+const akkuMin = (used, t) => (used > 0 ? (100 / (used / t)) / 60 : Infinity);
+function akkuLine(a) {
+  return `Akku: 100 % reichen im ganzen Stream ${fmt(akkuMin(a.used, a.t), 1)} min, auf der offenen Autobahn ${fmt(akkuMin(a.abUsed, a.abT), 1)} min` +
+    ` (${fmt((100 * a.abT) / a.t, 0)} % der Zeit), im Stand ${fmt(akkuMin(a.standUsed, a.standT), 1)} min (${fmt((100 * a.standT) / a.t, 0)} % der Zeit)`;
+}
 const rows = [];
 const t0 = Date.now();
 DRIVERS.forEach((driver, k) => {
@@ -709,6 +736,12 @@ DRIVERS.forEach((driver, k) => {
 });
 for (const { driver, m } of rows) {
   const h = m.hours;
+  const a = m.akku;
+  if (a.t >= 600 && a.abT >= 300) {
+    const [st, ab] = [akkuMin(a.used, a.t), akkuMin(a.abUsed, a.abT)];
+    ok(st >= AKKU_BOUNDS.stream[0] && st <= AKKU_BOUNDS.stream[1], `Akku, ${driver.name}: 100 % reichen im Stream ${fmt(st, 1)} min (erlaubt ${AKKU_BOUNDS.stream.join(' bis ')})`);
+    ok(ab >= AKKU_BOUNDS.ab[0] && ab <= AKKU_BOUNDS.ab[1], `Akku, ${driver.name}: 100 % reichen auf der Autobahn ${fmt(ab, 1)} min (erlaubt ${AKKU_BOUNDS.ab.join(' bis ')})`);
+  }
   const legs = (a, b) => {
     const L = m.legs.filter((l) => l.km >= a && l.km < b);
     if (!L.length) return '–';
@@ -732,6 +765,7 @@ for (const { driver, m } of rows) {
       `\n    Ziele nach Entfernung: <${BID_PLACES.nearKm} km ${fmt((100 * m.bands[0]) / tot, 0)} % · bis ${BID_PLACES.farKm} km ${fmt((100 * m.bands[1]) / tot, 0)} % · bis 500 km ${fmt((100 * m.bands[2]) / tot, 0)} % · weiter ${fmt((100 * m.bands[3]) / tot, 0)} %` +
       ` · zur Wahl standen stets ≥ ${m.minChoice} Orte · in Sperrzonen geboten: ${m.lockFork} vor Gabelungen, ${m.lockNode} vor Knoten · an der Gabelung anders als angesagt ${m.wrong}× (${m.flipped}× kippte ein Gebot den Plan kurz davor) · Einnahmen ${fmt(m.money / h / 60, 2)} €/min` +
       ` · Auftrag „${REISE_JOBS.dist8.text}“ nach ${fmt(m.job.travel, 0)} s (8 km Straße wie klassisch: ${fmt(m.job.road, 0)} s)` +
+      `\n    ${akkuLine(m.akku)}` +
       `\n    Navi und Welt: ${m.navi.checks} Ansagen geprüft (${m.navi.exit} Ausfahrten, ${m.navi.far} hinter dem Horizont, ${m.navi.farKept} davon eingelöst, ${m.navi.arrive} Ziel voraus, ${m.navi.wende}× „dann wenden“), ${m.reroutes} Neuberechnungen` +
       `\n    ${numbersLine(m)}`,
   );
