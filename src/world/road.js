@@ -11,6 +11,14 @@ export const VIEW_BEHIND = 140;
 export const VIEW_AHEAD = 1700;
 // Helligkeit allen Grases (Bankett, Dämme an den Brücken): wird bei Regen dunkler, siehe setWet
 export const GRASS_TINT = new THREE.Color(1, 1, 1);
+// Asphalt trocken und bei Nässe w (0 … 1: dunkler und spiegelnder): für die Autobahn und für die Straßen der XXL-Welt
+// (roadkit.js), damit der Belag an Ausfahrt und Auffahrt ohne Kante weiterläuft
+export const ASPHALT = { roughness: 0.9, metalness: 0, envMapIntensity: 0.3 };
+export function wetAsphalt(m, w) {
+  m.roughness = ASPHALT.roughness - w * 0.64;
+  m.color.setScalar(1 - w * 0.42);
+  m.envMapIntensity = ASPHALT.envMapIntensity + w * 1.2;
+}
 
 /** z-Reihen: vorne dicht, in der Ferne grober (die Krümmung braucht Stützpunkte). */
 function makeRows(behind = VIEW_BEHIND, ahead = VIEW_AHEAD) {
@@ -167,7 +175,7 @@ export class Road {
 
     // --- Fahrbahnen ------------------------------------------------------
     this.roadTex = roadTexture();
-    this.roadMat = W.std({ map: this.roadTex, roughness: 0.9, metalness: 0.0, envMapIntensity: 0.3 });
+    this.roadMat = W.std({ map: this.roadTex, ...ASPHALT });
     const L = ROAD.texLength;
     const roadUV = (x, y, z) => [(x - ROAD.left) / ROAD.width, -z / L];
     const oppUV = (x, y, z) => [(ONCOMING(x) - ROAD.left) / ROAD.width, -z / L];
@@ -368,9 +376,7 @@ export class Road {
   /** Nässe 0…1 (Regen): Asphalt dunkler und spiegelnder. */
   setWet(w) {
     this.wet = w;
-    this.roadMat.roughness = 0.9 - w * 0.64;
-    this.roadMat.color.setScalar(1 - w * 0.42);
-    this.roadMat.envMapIntensity = 0.3 + w * 1.2;
+    wetAsphalt(this.roadMat, w);
     this.railMat.roughness = 0.38 - w * 0.2;
     this.grassMat.color.setScalar(1 - w * 0.25);
     this.fieldMat.color.setScalar(1 - w * 0.28);

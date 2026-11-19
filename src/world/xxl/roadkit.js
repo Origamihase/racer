@@ -11,8 +11,9 @@
 import * as THREE from 'three';
 import { W } from '../../curve.js';
 import { Trip, J, BETA, R as rampR, taperLen } from '../../game/trip.js';
-import { guardrailTexture, roundRect } from '../../textures.js';
+import { ROAD, asphaltBase, guardrailTexture, roundRect } from '../../textures.js';
 import { mulberry32 } from '../../util.js';
+import { ASPHALT, wetAsphalt } from '../road.js';
 import { LAYER, meadowTexture } from './ground.js';
 import { squareOf, squareWeight } from './plan.js';
 
@@ -226,32 +227,12 @@ export function squareCuts(sec, sq) {
 // Texturen und Materialien
 
 function asphaltTexture() {
-  // wie der Grund der Autobahntextur (gleiches Grau, gleiche Körnung je Meter), aber ohne Markierungen
+  // der Grund der Autobahntextur ohne Markierungen (textures.js): gleiches Grau, gleiche Körnung je Meter
   const S = 256;
   const c = document.createElement('canvas');
   c.width = S;
   c.height = S;
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(S, S);
-  const rnd = mulberry32(77);
-  for (let i = 0; i < S * S; i++) {
-    const n = (rnd() - 0.5) * 26;
-    img.data[i * 4] = 88 + n;
-    img.data[i * 4 + 1] = 89 + n;
-    img.data[i * 4 + 2] = 92 + n;
-    img.data[i * 4 + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  // ein paar weiche Flicken (kachelbar: am Rand umgebrochen)
-  for (let i = 0; i < 7; i++) {
-    const g = rnd() < 0.5 ? 70 : 108;
-    ctx.fillStyle = `rgba(${g},${g},${g + 4},${0.08 + rnd() * 0.08})`;
-    const x = rnd() * S;
-    const y = rnd() * S;
-    const w = 20 + rnd() * 60;
-    const h = 30 + rnd() * 90;
-    for (const dx of [0, -S]) for (const dy of [0, -S]) ctx.fillRect(x + dx, y + dy, w, h);
-  }
+  asphaltBase(c.getContext('2d'), S, S, (ASPHALT_TILE * ASPHALT_TILE) / (ROAD.width * ROAD.texLength));
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -391,9 +372,9 @@ function markMaterial(layer) {
 export class RoadMaterials {
   constructor() {
     this.asphaltTex = asphaltTexture();
-    this.asphalt = W.std({ map: this.asphaltTex, roughness: 0.88, metalness: 0, envMapIntensity: 0.6 });
+    this.asphalt = W.std({ map: this.asphaltTex, ...ASPHALT });
     // Asphalt, der unter dem der Autobahn liegen darf (Überlappung am Keil)
-    this.asphaltUnder = W.std({ map: this.asphaltTex, roughness: 0.88, metalness: 0, envMapIntensity: 0.6, ...LAYER.under });
+    this.asphaltUnder = W.std({ map: this.asphaltTex, ...ASPHALT, ...LAYER.under });
     this.mark = markMaterial(LAYER.mark);
     this.mark2 = markMaterial(LAYER.mark2);
     this.grassTex = meadowTexture([96, 140, 56], 9);
@@ -410,13 +391,8 @@ export class RoadMaterials {
   setWet(w) {
     if (Math.abs(w - this.wet) < 1e-4) return;
     this.wet = w;
-    // ohne Zwischen-Array (läuft bei wechselndem Regen in jedem Bild)
-    for (let i = 0; i < 2; i++) {
-      const m = i ? this.asphaltUnder : this.asphalt;
-      m.roughness = 0.88 - w * 0.62;
-      m.color.setScalar(1 - w * 0.42);
-      m.envMapIntensity = 0.6 + w * 0.9;
-    }
+    wetAsphalt(this.asphalt, w);
+    wetAsphalt(this.asphaltUnder, w);
     this.paving.roughness = 0.9 - w * 0.5;
     this.paving.color.setScalar(1 - w * 0.3);
     this.cobble.roughness = 0.82 - w * 0.5;

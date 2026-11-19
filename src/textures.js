@@ -78,17 +78,28 @@ function blotches(ctx, W, H, n, rMin, rMax, colors, seed) {
   }
 }
 
+/**
+ * Grund des Asphalts ohne Markierungen auf W × H Pixel, kachelbar: weiches, neutrales Grau mit feinem Korn, sanften
+ * Flecken und Zuschlagkörnern. roadTexture() malt darauf die Autobahn, die Straßen der XXL-Welt (roadkit.js) nehmen
+ * ihn pur – so tragen Rampe, Landstraße und Ortsstraße denselben Belag wie die Autobahn. k: Anteil der Fläche der
+ * Autobahntextur (ROAD.width × ROAD.texLength), den die Kachel abdeckt: Flecken und Körner je Quadratmeter bleiben gleich.
+ */
+export function asphaltBase(ctx, W, H, k = 1) {
+  noiseFill(ctx, W, H, [116, 113, 106], 9, 7, 1);
+  // Pixel je Meter im Verhältnis zur Autobahntextur (1024 × 1024)
+  const px = Math.sqrt((W * H) / (1024 * 1024) / k);
+  blotches(ctx, W, H, Math.round(46 * k), 50 * px, 150 * px, ['rgba(255,255,255,0.03)', 'rgba(40,42,48,0.035)'], 42);
+  // Zuschlagkörner: einzelne helle und dunkle Pünktchen
+  noiseSpeckle(ctx, W, H, Math.round(2600 * k), 'rgba(176,176,172,0.22)', 13);
+  noiseSpeckle(ctx, W, H, Math.round(2200 * k), 'rgba(70,72,78,0.2)', 14);
+}
+
 export function roadTexture() {
   const W = 1024;
   const H = 1024;
   const c = canvas(W, H);
   const ctx = c.getContext('2d');
-  // weiches, neutrales Grau mit feinem Korn
-  noiseFill(ctx, W, H, [116, 113, 106], 9, 7, 1);
-  blotches(ctx, W, H, 46, 50, 150, ['rgba(255,255,255,0.03)', 'rgba(40,42,48,0.035)'], 42);
-  // Zuschlagkörner: einzelne helle und dunkle Pünktchen
-  noiseSpeckle(ctx, W, H, 2600, 'rgba(176,176,172,0.22)', 13);
-  noiseSpeckle(ctx, W, H, 2200, 'rgba(70,72,78,0.2)', 14);
+  asphaltBase(ctx, W, H);
 
   // ab hier in Metern zeichnen (x quer, y längs)
   ctx.setTransform(W / ROAD.width, 0, 0, H / ROAD.texLength, (-ROAD.left * W) / ROAD.width, 0);
