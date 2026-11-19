@@ -37,6 +37,7 @@ import { UI } from './ui/ui.js';
 import { Menus } from './ui/menus.js';
 import { SHOP, UPGRADE_LIMITS } from './data.js';
 import { MapDemo } from './map/mapdemo.js';
+import { NavModel } from './map/navroute.js';
 import { setRoadAhead } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
 import { clamp, lerp, damp, easeInOut, smoothstep } from './util.js';
@@ -52,7 +53,7 @@ const XXL = /[?&]xxl/.test(location.search);
 // Prüfstand für Navi und Karte: eine echte Fahrt über die XXL-Karte neben dem klassischen Spiel (src/map/mapdemo.js);
 // in der XXL-Welt gibt es ihn nicht, dort führt das Navi die Fahrt der Welt
 const mapDemo = DEBUG && !XXL && /[?&]mapdemo/.test(location.search) ? new MapDemo() : null;
-let mapHudT = 0; // die HUD-Zeile des Prüfstands folgt viermal je Sekunde
+let mapHudT = 0; // die Navi-Zeile des HUD (XXL-Fahrt, Prüfstand) folgt viermal je Sekunde
 
 // ---------------------------------------------------------------------------
 const app = document.getElementById('app');
@@ -366,8 +367,15 @@ const uiFacade = {
 };
 
 const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups });
-// XXL: Ankunft, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Mimik, Chat)
-if (xxl) xxl.on((e) => game.onTrip(e));
+// XXL: Ankunft, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht, Mimik, Chat); jeder Ort,
+// durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
+if (xxl) xxl.on((e) => {
+  game.onTrip(e);
+  if (game.running && (e.type === 'arrive' || e.type === 'pass')) {
+    recordVisit(save, e.place);
+    storeSave(save);
+  }
+});
 // Krümmung (1/m, links positiv) und Steigung unter dem Wagen für die Lenkung: course.fill() misst sie am Ende jedes
 // Bildes, also genau dort, wo das nächste beginnt; beim Fahren gehen sie mit den Eingaben (ctl) an game.update
 const courseEnv = { kappa: 0, grade: 0 };
@@ -511,7 +519,7 @@ const menus = new Menus(app, {
     if (name === 'settings') return { ...settings, speechSupported: speech.supported };
     if (name === 'title') return save;
     if (name === 'pause') return game;
-    if (name === 'karte') return { save, nav: mapDemo ? mapDemo.model : null };
+    if (name === 'karte') return { save, nav: xxl ? xxlNav : mapDemo ? mapDemo.model : null };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
     if (name === 'over') return lastOver ? { ...lastOver, wallet: save.wallet } : data;
     return data;
@@ -1648,7 +1656,7 @@ function step(dt, { render = true } = {}) {
   const frozen = paused;
   if (!frozen) {
     // XXL: zuerst die Fahrt fortschreiben (trip.update) – der Kurs liest gleich danach, welchen Weg sie nimmt
-    if (xxl) xxlStep(p, w);
+    if (xxl) xxlStep(p, w, dt);
     // Verlauf der Straße in die Tabelle des Shaders; Prüfstand (?debug): flache Welt, damit Bausteine unverzerrt
     // begutachtet werden können
     if (DEBUG && window.__MA && window.__MA.flat) {
@@ -1692,10 +1700,18 @@ function step(dt, { render = true } = {}) {
       for (const i of visits) recordVisit(save, i);
       if (visits.length) storeSave(save);
       scr.nav = mapDemo.nav(scr, cockpitOn, scr.navi);
+    } else if (xxl && scr) {
+      // XXL: Karte, Route, Ansage und Ziel des Mittelbildschirms kommen aus der Fahrt der Welt (COMMON.md §9)
+      xxlScreenNav.model = xxlNav;
+      xxlScreenNav.clockMin = game.clock;
+      xxlScreenNav.visible = cockpitOn;
+      scr.nav = xxlScreenNav;
+    }
+    if (scr && scr.nav) {
       scr.nav.visited = save.visits;
       if ((mapHudT -= dt) <= 0) {
         mapHudT = 0.25;
-        ui.setTurn(state === 'drive' ? mapDemo.model.instruction() : null);
+        ui.setTurn(state === 'drive' ? scr.nav.model.instruction() : null);
       }
     }
     cockpit.update({
@@ -1768,11 +1784,17 @@ document.addEventListener('visibilitychange', () => {
 // --- XXL-Welt ------------------------------------------------------------------
 const xxlLimits = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
 let xxlTrafficFrame = null;
+// Navi der XXL-Fahrt (src/map/navroute.js): Lage auf der Karte, Route und Ansage, alles aus xxl.trip; je Fahrt ein Modell
+let xxlNav = null;
+// was der Mittelbildschirm davon bekommt (st.nav, src/map/navview.js). Einen Bieter gibt es erst, wenn auf echte Orte
+// geboten wird; die Uhr ist bis dahin die klassische, mit deren Maßstab navview.js die Ankunftszeit ohnehin rechnet
+const xxlScreenNav = { model: null, bidder: '', bid: '', clockMin: 0, visible: false, visited: null };
 /** Neue Fahrt (Erlensee) bzw. Titel: der Titel fährt gleich auf der ersten Autobahn (die Kamera kreist dort). */
 function xxlStart(title) {
   const p = game.player;
   xxl.reset();
   courseTrip = xxl.trip;
+  xxlNav = new NavModel(xxl.trip);
   traffic.reset();
   pickups.reset();
   xxlTrafficFrame = null;
@@ -1784,6 +1806,7 @@ function xxlStart(title) {
     p.speed = 40 / 3.6;
   }
   xxl.update(p.s, p.x, 0);
+  xxlNav.update(0);
   p.setLimits(xxl.limitsFor(xxlLimits));
   scenery.reset();
 }
@@ -1799,9 +1822,10 @@ function xxlSignShear(sec, path) {
   } else if (!path || !xxl.trip.visible(sec, path)) return null; // ohne Weg: längst zurückgelassen
   return xxl.shear.get(sec.frame) || null;
 }
-/** Einmal pro Bild nach der Bewegung: Strecke fortschreiben, Grenzen setzen, Verkehr und Sammelsachen einordnen. */
-function xxlStep(p, w) {
+/** Einmal pro Bild nach der Bewegung: Strecke und Navi fortschreiben, Grenzen setzen, Verkehr und Sammelsachen einordnen. */
+function xxlStep(p, w, dt) {
   xxl.update(p.s, p.x, w, p.speed);
+  xxlNav.update(dt);
   p.setLimits(xxl.limitsFor(xxlLimits));
   const v = xxl.view;
   const frame = v ? v.frame : null;
