@@ -10,7 +10,7 @@ import { createFountainKit } from './fountains.js';
 import { createPeopleKit } from './people.js';
 import { createLandmarkKit, landmarkFor } from './landmarks.js';
 import { createRestKit, restGround } from './rest.js';
-import { planTown, planGoal, planRest, sizeOf, regionOf, goalKind, islandRadius, STREET, REST } from './layout.js';
+import { planTown, planGoal, planRest, planPark, sizeOf, regionOf, goalKind, islandRadius, STREET, REST } from './layout.js';
 
 // Ein Ort wird in Stücke von 100 m Straße verschmolzen: wenige Draw Calls, und was hinter der Kamera liegt, fällt weg
 const CHUNK = 100;
@@ -212,7 +212,8 @@ export function createCityKit(F, { bend = null } = {}) {
         nearJobs.push(() => {
           level(lod, make(false), 0);
           for (const it of list) {
-            const ex = extrasOf(it);
+            // eigene Angaben für die Zusätze eines Bausteins (z. B. Name und Zeichen auf der blauen Tafel)
+            const ex = extrasOf(it, it.extras);
             if (ex) root.add(ex);
           }
         });
@@ -299,6 +300,11 @@ export function createCityKit(F, { bend = null } = {}) {
 
     /** Rastanlage planen (rein rechnerisch, siehe layout.js planRest): opts = { name (Ort), title, seed, people }. */
     planRest: (opts = {}) => planRest({ ...opts, infoOf: info }),
+    /**
+     * Ladepark hinter einer Autobahn-Ausfahrt planen (layout.js planPark): opts = { title, len, u, seed, people }; das
+     * Ergebnis baut buildTown wie einen Ort.
+     */
+    planPark: (opts = {}) => planPark({ ...opts, infoOf: info }),
 
     /**
      * Geplante Rastanlage aufbauen. Ergebnis: Group im Rahmen ihres Abschnitts (wie ein Ort: x seitlich, z = −u; die

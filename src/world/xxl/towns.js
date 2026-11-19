@@ -1,5 +1,6 @@
 // Orte der XXL-Welt aus dem Stadtbaukasten (src/world/kit): jede Ortsdurchfahrt eines Orts der Karte (plan.js kitTown)
-// bekommt Häuser, Läden, Plätze, Brunnen, Menschen und Wahrzeichen aus K.planTown + K.buildTown. Fahrbahn, Bordstein
+// bekommt Häuser, Läden, Plätze, Brunnen, Menschen und Wahrzeichen aus K.planTown + K.buildTown, jeder Abschnitt
+// 'park' hinter einer Autobahn-Ausfahrt seinen Ladepark aus K.planPark (src/map/parks.js). Fahrbahn, Bordstein
 // und Gehweg bleiben beim Straßenbau (roadkit.js, in den Maßen von kit/layout.js STREET), ebenso die Insel des
 // Zielbrunnens (plan.js squareOf): der Plan des Orts kennt sie und stellt keinen zweiten Hauptbrunnen daneben.
 import { W, curvePoint } from '../../curve.js';
@@ -10,6 +11,7 @@ import { XXL_BEHIND, squareOf, squareWeight, secSeedKey } from './plan.js';
 import { ISLAND_H } from './roadkit.js';
 import { CHARGE, chargeOf } from './charge.js';
 import { buildChargeRig } from './chargerig.js';
+import { PARKS, PARK } from '../../map/parks.js';
 
 let kit = null;
 /**
@@ -66,6 +68,14 @@ export function townPlan(K, sec, budget = Infinity) {
     // Erlensee: der Supercharger, an dem jede Fahrt beginnt (charge.js)
     ...(charge ? { charge: { u: charge.u, kind: charge.start ? CHARGE.kindStart : CHARGE.kind } } : {}),
   });
+}
+
+/**
+ * Plan des Ladeparks eines Abschnitts 'park' (kit/layout.js planPark): derselbe für denselben Park, benannt wie seine
+ * Schilder, der Ladepark mit der Mitte bei PARK.u (dort hält der Wagen neben der freien Heldenbucht, PARK.halt).
+ */
+export function parkPlan(K, sec) {
+  return K.planPark({ title: PARKS[sec.park].name, len: sec.s1 - sec.s0, u: PARK.u });
 }
 
 /**
@@ -150,7 +160,7 @@ export class Towns {
    * Stück, sonst in Raten von PLAN_MS je Aufruf. false, solange der Plan noch nicht steht.
    */
   lay(it, now) {
-    const plan = townPlan(this.kit, it.sec, now ? Infinity : PLAN_MS);
+    const plan = it.sec.kind === 'park' ? parkPlan(this.kit, it.sec) : townPlan(this.kit, it.sec, now ? Infinity : PLAN_MS);
     if (!plan) return false;
     const group = this.kit.buildTown(plan, { lazy: true });
     // der Ort fährt starr im Rahmen seines Abschnitts mit (siehe update)
@@ -246,8 +256,8 @@ export class Towns {
     return null;
   }
 
-  /** Alle geplanten Orte im Sichtbereich in Fahrtrichtung geordnet (wie of). */
+  /** Alle geplanten Orte im Sichtbereich in Fahrtrichtung geordnet (wie of; ohne die Ladeparks). */
   list() {
-    return [...this.items.values()].filter((t) => t.group).sort((a, b) => a.sec.s0 - b.sec.s0);
+    return [...this.items.values()].filter((t) => t.group && t.sec.kind !== 'park').sort((a, b) => a.sec.s0 - b.sec.s0);
   }
 }

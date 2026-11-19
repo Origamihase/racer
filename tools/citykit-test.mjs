@@ -349,6 +349,73 @@ for (const p of places) {
   ok(checked > 500, 'Ladepark: zu wenig geprüft');
 }
 
+// Ladeparks hinter den Autobahn-Ausfahrten (src/map/parks.js; layout.js planPark über towns.js parkPlan): der Park
+// steht an der Flucht mit der Mitte bei PARK.u, der Wagen hält in der Spur genau auf Höhe der freien Heldenbucht
+// (PARK.halt), davor ist der Bordstein abgesenkt (charge.js chargeOf). Nichts steht auf Fahrbahn oder Gehweg außer
+// den Laternen am Streifen, nichts vor dem Park, kein Baum im Park, im Rasthaus, in der Tafel oder in einem Tisch; die
+// Heldenbucht und ihre Nachbarn bleiben frei, der Popcorn-Stand steht hinter der Heldensäule. Der Ort der Welt
+// (towns.js Towns) baut ihn wie einen Ort, zählt ihn aber nicht zu den Orten (list).
+{
+  const { PARKS, PARK } = await import('../src/map/parks.js');
+  const { chargeOf, CHARGE } = await import('../src/world/xxl/charge.js');
+  const { parkPlan } = await import('../src/world/xxl/towns.js');
+  const info = city.info(CHARGE.kind);
+  ok(near(PARK.halt, PARK.u - CHARGE.bay[0] + CHARGE.off, 1e-9), `Ladepark: Halt ${PARK.halt} nicht auf Höhe der Heldenbucht`);
+  const S0 = 4000;
+  let n = 0;
+  for (const pk of PARKS) {
+    const sec = { kind: 'park', park: pk.i, s0: S0, s1: S0 + PARK.len, spotS: S0 + PARK.halt - 2 };
+    const where = pk.name;
+    const plan = parkPlan(city, sec);
+    const c = chargeOf(sec);
+    ok(c && !c.start && c.u === PARK.u && plan.charge.u === PARK.u && plan.charge.x === CHARGE.front && plan.charge.kind === CHARGE.kind, `${where}: Park nicht bei PARK.u`);
+    ok(c && c.drive.s0 < sec.s0 + PARK.halt && c.drive.s1 > sec.s0 + PARK.halt, `${where}: kein abgesenkter Bordstein neben dem Halt`);
+    const pkBox = [CHARGE.front, CHARGE.front + info.d, -(PARK.u + CHARGE.half), -(PARK.u - CHARGE.half)];
+    const front = [L.STREET.curbL, CHARGE.front, -(PARK.u + CHARGE.half + CHARGE.keep), -(PARK.u - CHARGE.half - CHARGE.keep)];
+    const solid = plan.items.filter((it) => !OVER.has(city.info(it.name).kind) && it.name !== CHARGE.kind);
+    for (const it of plan.items) {
+      const k = city.info(it.name).kind;
+      const b = baseBox(it);
+      ok(b[1] <= L.STREET.curbL - L.STREET.pave + 0.01 || b[0] >= CHARGE.front - 0.01 || (k === 'lamp' && (b[1] <= L.STREET.curbL || b[0] >= L.STREET.curbR)), `${where}: ${it.name} auf Fahrbahn oder Gehweg (x ${it.x.toFixed(1)})`);
+      ok(b[2] >= -PARK.len && b[3] <= 0, `${where}: ${it.name} außerhalb des Abschnitts (u ${(-it.z).toFixed(0)})`);
+      ok(!overlap(b, front, 0.01), `${where}: ${it.name} vor dem Park`);
+      if (k === 'tree') {
+        ok(!overlap(box(it.fp), pkBox, 0.05), `${where}: Baum im Park`);
+        for (const o of solid) ok(!overlap(box(it.fp), box(o.fp), 0.05), `${where}: Baum in ${o.name}`);
+      }
+    }
+    // Buchten: belegt 0, 6, 7; die Heldenbucht und ihre Nachbarn frei
+    const cars = plan.items.filter((it) => city.info(it.name).kind === 'car').map((it) => box(it.fp));
+    for (const i of [info.hero - 1, info.hero, info.hero + 1]) {
+      const [bx, bz] = info.bays[i];
+      const bay = [CHARGE.front - bz - 1, CHARGE.front - bz + 1, -(PARK.u - bx) - 1.2, -(PARK.u - bx) + 1.2];
+      ok(!cars.some((b) => overlap(b, bay, 0.05)), `${where}: Bucht ${i} belegt`);
+    }
+    const stand = plan.items.find((it) => it.name === 'popcorn_stand');
+    const post = [CHARGE.front - CHARGE.post[1], -(PARK.u - CHARGE.post[0])];
+    ok(stand && Math.hypot(stand.x - post[0], stand.z - post[1]) < 1.2 && stand.x > post[0], `${where}: Popcorn-Stand nicht hinter der Heldensäule`);
+    const sign = plan.items.find((it) => it.name === 'autobahn_schild');
+    ok(sign && sign.extras && sign.extras.title === pk.name && sign.extras.icons.includes('plug'), `${where}: Tafel ohne Namen`);
+    n++;
+  }
+  ok(n === PARKS.length && n > 100, 'Ladepark: zu wenig geprüft');
+  // in der Welt: geplant und gebaut wie ein Ort, aber kein Ort
+  const THREE = await import('three');
+  const { Towns } = await import('../src/world/xxl/towns.js');
+  const root = new THREE.Group();
+  const towns = new Towns(root);
+  const sec = { kind: 'park', park: 0, s0: S0, s1: S0 + PARK.len, spotS: S0 + PARK.halt - 2, frame: 3 };
+  towns.begin();
+  towns.need(sec, null);
+  towns.sweep();
+  const shear = new Map([[3, { a: 0, b: 0 }]]);
+  for (let i = 0; i < 10 && !towns.of(sec); i++) towns.update(S0 - 100, shear, 0, 0);
+  const t = towns.of(sec);
+  ok(t && t.group && !t.group.pending && t.group.visible && towns.list().length === 0, 'Ladepark in der Welt: nicht gebaut oder als Ort gezählt');
+  console.log(`Ladeparks: ${n} Pläne geprüft (Park bei u ${PARK.u}, Halt bei ${PARK.halt} m, Bordstein abgesenkt, Buchten ${info.hero - 1}–${info.hero + 1} frei), in der Welt ${t ? t.group.children.length : 0} Teile`);
+  towns.reset();
+}
+
 // Lebenslauf eines Orts in der XXL-Welt (towns.js Towns): angelegt, sobald ein Stück seines Abschnitts gebraucht wird;
 // weit voraus entsteht er Teil für Teil (erst alle Fernfassungen, die nahen erst bei der Anfahrt), nah steht er sofort
 // fertig da. Im gescherten Rahmen fährt er starr mit: die eigene Spur liegt genau auf der gescherten Straße, jede Linie

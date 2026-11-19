@@ -943,3 +943,76 @@ export function planRest(opts = {}) {
   return { name: opts.name ?? null, title, len, items, texts: [{ name: 'autobahn_schild', at: 0, title }], ground, park: { bays, posts, hero: hero.id, stop, cam, post, popcorn }, layout };
 }
 const r1c = (v) => Math.round(v * 100) / 100;
+
+// --- Ladepark an einer Autobahn-Ausfahrt („Autohof“, src/map/parks.js) --------------------------------------------
+/**
+ * Plant den Ladepark hinter einer Ausfahrt. Sein Abschnitt ist eine Straße wie im Ort (Rahmen wie bei planTown: x
+ * seitlich wie im Profil „stadt“, z = −u, u = Meter ab Abschnittsbeginn; Fahrbahn, Bordstein und Gehweg baut der
+ * Straßenbau). Rechts an der Häuserflucht steht der Ladepark (Mitte u, zur Straße gedreht wie in Erlensee, planTown
+ * 1c; drei Buchten belegt, die Heldenbucht und ihre Nachbarn frei), an seiner Heldensäule der Popcorn-Stand mit dem
+ * Eimer auf dem Poller, dahinter ein kleines Rasthaus (Kiosk) mit Picknickwiese, an der Einfahrt die blaue Tafel mit
+ * dem Namen; Bäume auf beiden Seiten, Laternen am Gehweg. Vor dem Park bleiben Streifen und Gehweg frei (dort senkt
+ * der Straßenbau den Bordstein zur Einfahrt ab, xxl/charge.js).
+ * opts = { infoOf, title, len, u, seed, people }. Ergebnis wie planTown (für buildTown): { place, size: 'park', region,
+ * len, items, fountains: [], squares: [], texts: [], goal: null, landmarks: [], charge: { u, x, kind, park }, layout }.
+ */
+export function planPark(opts = {}) {
+  const infoOf = opts.infoOf;
+  const title = opts.title ?? 'Ladepark';
+  const len = opts.len ?? 250;
+  const u = opts.u ?? 110;
+  const rnd = rng(opts.seed ?? hashKey(title));
+  const top = STREET.top;
+  const items = [];
+  const add = (name, x, y, z, ry, o = {}) => {
+    const info = infoOf(name);
+    const it = { name, x, y, z, ry, ...o };
+    if (o.tint === undefined && info.tints && info.tints.length > 1) it.tint = pick(rnd, info.tints);
+    it.fp = footprint(it, info);
+    items.push(it);
+    return it;
+  };
+  const x0 = STREET.curbR + STREET.pave; // Häuserflucht
+  const FACE = -Math.PI / 2; // Vorderseite (+z) zur Straße (−x), wie planTown toRoad(1)
+  const pi = infoOf('ladepark');
+  // Punkt (lx, lz) im Rahmen des Parks → Ortskoordinaten
+  const P = (lx, lz) => [x0 - lz, -u + lx];
+  const park = add('ladepark', x0, 0, -u, FACE);
+  for (const [i, car] of [[0, 'carCompact'], [6, 'carSmall'], [7, 'carCompact']]) {
+    const [bx, bz] = pi.bays[i];
+    add(car, x0 - bz + 0.2, pi.ground, -(u - bx), Math.PI / 2);
+  }
+  // an der Heldensäule: Popcorn-Stand auf dem Klapptisch dahinter (Kabel in ihrer Rückwand), Eimer auf dem Poller
+  const [postX, postZ] = pi.posts[pi.heroPost];
+  const sp = infoOf('popcorn_stand').post;
+  const [psx, psz] = P(postX - sp[0], postZ - sp[1]);
+  add('popcorn_stand', psx, pi.ground, psz, FACE);
+  const [pcx, pcz] = P(pi.popcorn[0], pi.popcorn[2]);
+  add('popcorn_eimer', pcx, pi.popcorn[1], pcz, 0.4);
+  // Tafel an der Einfahrt, zum ankommenden Wagen gedreht
+  add('autobahn_schild', x0 + 2.2, 0, -14, 0, { extras: { title, icons: ['plug', 'cup', 'WC'] } });
+  // kleines Rasthaus hinter dem Park, Picknickwiese daneben
+  const kiosk = add('shopKiosk', x0, 0, -(u + pi.w / 2 + 6), FACE);
+  const uk = u + pi.w / 2 + 6;
+  for (const [dx, du] of [[5.5, 19], [9, 25], [5.5, 31]]) add('picknick', x0 + dx, 0, -(uk + du), Math.PI / 2);
+  add('bin', x0 + 2.2, 0, -(uk + 13), FACE);
+  add('bench', x0 + 1.4, 0, -(uk + 37), FACE);
+  if (opts.people !== false) add(pick(rnd, ['mann_stand', 'frau_stand']), x0 + 8.2, 0, -(uk + 22), Math.PI / 2);
+  // Laternen am Streifen rechts (nicht vor dem Park) und links
+  for (const du of [30, 70, 160, 205, 240]) if (du < len - 4) add('lampModern', STREET.curbR + 0.45, top, -du, -Math.PI / 2);
+  for (const du of [50, 130, 215]) if (du < len - 4) add('lampModern', STREET.curbL - 0.45, top, -du, Math.PI / 2);
+  // Bäume: rechts vor dem Park und hinter Kiosk und Wiese an der Flucht, dahinter eine lockere Reihe; links zwei Reihen
+  const trees = ['parkTree', 'parkTree2'];
+  for (let du = 26; du < u - pi.w / 2 - 4; du += 13) add(pick(rnd, trees), x0 + 3.5 + rnd(), 0, -du, rnd() * 6.28);
+  for (let du = uk + 48; du < len - 6; du += 13) add(pick(rnd, trees), x0 + 3.5 + rnd(), 0, -du, rnd() * 6.28);
+  for (let du = 8; du < len - 4; du += 11) add(pick(rnd, [...trees, 'spruce']), x0 + 19 + rnd() * 5, 0, -(du + rnd() * 3), rnd() * 6.28);
+  for (let du = 6; du < len - 4; du += 10) {
+    add(pick(rnd, trees), STREET.curbL - STREET.pave - 3 - rnd(), 0, -(du + rnd() * 2), rnd() * 6.28);
+    add('spruce', STREET.curbL - STREET.pave - 10 - rnd() * 2, 0, -(du + 5), rnd() * 6.28);
+  }
+  return {
+    place: { key: title, name: title, cc: null }, size: 'park', region: 'default', len, items, fountains: [], squares: [], texts: [], goal: null, landmarks: [],
+    charge: { u, x: x0, kind: 'ladepark', park: aabb(park.fp) },
+    layout: { name: title, len, squares: [], goal: null, park: aabb(park.fp).map(r1c), shop: aabb(kiosk.fp).map(r1c) },
+  };
+}
