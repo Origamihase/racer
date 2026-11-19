@@ -1809,8 +1809,8 @@ let xxlTrafficFrame = null;
 // Navi der XXL-Fahrt (src/map/navroute.js): Lage auf der Karte, Route und Ansage, alles aus xxl.trip; je Fahrt ein Modell
 let xxlNav = null;
 // was der Mittelbildschirm davon bekommt (st.nav, src/map/navview.js): Bieter und Gebot im roten Balken kommen vom
-// Spiel (WorldNavi.screen), ohne Gebot dessen Texte für Balken (bar) und Kärtchen (wait); die Uhr ist die klassische,
-// mit deren Maßstab navview.js die Ankunftszeit rechnet
+// Spiel (WorldNavi.screen), ohne Gebot dessen Texte für Balken (bar) und Kärtchen (wait); die Uhr ist die Reisezeit
+// (Game.travelClock), in der navview.js die Ankunft rechnet
 const xxlScreenNav = { model: null, bidder: '', bid: '', bar: '', wait: '', clockMin: 0, visible: false, visited: null };
 // und von der Straße für die Spuransicht (st.road, src/cockpit/screen.js)
 const xxlScreenRoad = { lanes: null, extraLane: null, autobahn: true };

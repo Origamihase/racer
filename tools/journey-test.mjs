@@ -24,7 +24,8 @@
 // stehen am Ende der Ausgabe; wer an den Bieterregeln dreht, liest sie dort ab.
 import { PerspectiveCamera } from 'three';
 import { places, nodeTitle, deEdge, OFF_KM } from '../src/map/graph.js';
-import { Trip, J } from '../src/game/trip.js';
+import { Trip, J, PROFILES } from '../src/game/trip.js';
+import { MapDemo } from '../src/map/mapdemo.js';
 import { Game } from '../src/game/game.js';
 import { BID_PLACES } from '../src/game/navi.js';
 import { INSIDER_ORTE } from '../src/data.js';
@@ -151,8 +152,12 @@ function shownMetres(text) {
  * replan(): die Fahrt plant neu (Gebot, Gabelung anders als angesagt) – nur dann darf eine Entfernung steigen.
  * step(evs, sBefore, quick): nach trip.update; quick = nur die billigen Prüfungen dieses Schritts.
  */
-function numbers(trip, nav, nv, N) {
+function numbers(trip, nav, nv, N, game) {
   let odo = trip.km;
+  let clk = null; // Uhr (Sekunden), Stelle und Zähler beim letzten Schritt
+  let move = null; // die Bewegung des letzten Schritts: Die Uhr zählt sie im nächsten (Game.travelClock)
+  let leg = null; // Ankunftszeit, als das stehende Ziel kam: {target, km, eta} (Sekunden der Uhr)
+  let newLeg = false;
   let D = Infinity; // Entfernung zum Ziel beim letzten Schritt
   let fresh = true; // seit dem letzten Schritt wurde neu geplant
   let shown = Infinity; // die zuletzt angezeigte Entfernung in Metern
@@ -177,10 +182,32 @@ function numbers(trip, nav, nv, N) {
   return {
     replan() {
       fresh = true;
+      newLeg = true;
     },
     step(evs, sBefore, quick) {
       N.steps++;
+      // die Uhr ist Reisezeit: Sekunden der Uhr mal Tempo = Reisemeter des Schritts, im Stand läuft sie wie die echte Zeit
+      const c = game.clock * 60;
+      if (clk && move) {
+        const gain = c - clk.c;
+        if (move.ds > 1e-6) {
+          const err = Math.abs(gain * (move.ds / DT) - move.dkm * 1000);
+          N.clockErr = Math.max(N.clockErr, err);
+          ok(err < 1e-6, `Die Uhr gewinnt ${gain.toFixed(4)} s bei ${(move.ds / DT).toFixed(1)} m/s, gefahren ${(move.dkm * 1000).toFixed(3)} Reisemeter`);
+          N.clockKm += move.dkm;
+          N.clockMove += gain;
+        } else {
+          ok(Math.abs(gain - DT) < 1e-9, `Die Uhr gewinnt im Stand ${gain} s in ${DT} s`);
+          N.clockStand += gain;
+        }
+      }
+      move = clk ? { ds: trip.s - clk.s, dkm: trip.km - clk.km } : null;
+      clk = { c, s: trip.s, km: trip.km };
       for (const e of evs) {
+        if (e.type === 'arrive' && leg && leg.target === e.place) {
+          N.etaLegs.push({ km: leg.km, drift: (c - leg.eta) / 60 });
+          leg = null;
+        }
         if (e.type === 'enter') {
           // jeder Abschnitt zählt seine Meter mal seinen Maßstab – Autobahn und Landstraße genau die Kilometer der Karte
           const c = e.prev;
@@ -225,6 +252,11 @@ function numbers(trip, nav, nv, N) {
         ok(err < 1e-6, `Entfernung zum Ziel fällt um ${(D - d.km).toFixed(6)} km, der Zähler steigt um ${gain.toFixed(6)} km (bei s=${trip.s.toFixed(0)}, ${sec.kind})`);
       } else N.plans++;
       D = d.km;
+      if (newLeg) {
+        // Ankunftszeit, als das Ziel kam: Uhr + Reisezeit des Rests (die Uhr zählt den letzten Schritt erst gleich)
+        leg = { target: trip.target, km: d.km, eta: c + d.clock };
+        newLeg = false;
+      }
       // die angezeigte Zahl: nie höher als eben, und von Kilometern zu Metern wechselt sie höchstens einmal
       const text = nv.distance;
       const now = shownMetres(text);
@@ -263,8 +295,10 @@ function numbers(trip, nav, nv, N) {
           const row = e.rows.find((r) => r.place === trip.target);
           if (!row) continue;
           N.tableRows++;
-          N.tableDev = Math.max(N.tableDev, Math.abs(row.km - d.km));
-          ok(row.km + ' km' === text, `Entfernungstafel: ${row.name} ${row.km} km, das Navi zeigt „${text}“ (${d.km.toFixed(2)} km)`);
+          // an der Stelle der Tafel (der Wagen ist in diesem Schritt ein paar Meter weiter): dieselbe Zahl, ganzzahlig
+          const there = d.km + legKm(e.s, trip.s).km;
+          N.tableDev = Math.max(N.tableDev, Math.abs(row.km - there));
+          ok(row.km === Math.round(there), `Entfernungstafel: ${row.name} ${row.km} km, das Navi zählt dort ${there.toFixed(2)} km`);
         }
       }
       if (quick && !ins) return;
@@ -335,9 +369,10 @@ function stream(driver, hours, seed) {
     num: {
       steps: 0, falls: 0, plans: 0, maxErr: 0, metres: 0, kms: 0, units: 0, unitDrop: 0, boards: 0, beacons: 0, tables: 0, tableRows: 0, tableDev: 0, sums: 0, same: 0, calm: 0, near: 0,
       edges: 0, edgeKm: 0, feederKm: 0, realKm: 0, realBy: {},
+      clockErr: 0, clockKm: 0, clockMove: 0, clockStand: 0, etaLegs: [],
     },
   };
-  const num = numbers(trip, nav, nv, m.num);
+  const num = numbers(trip, nav, nv, m.num, game);
   const promised = new Map();
   const sloppy = new WeakMap(); // Gabelung → fährt dieser Fahrer hier am Navi vorbei?
   const planSince = new WeakMap(); // Gabelung → {plan, s}: was das Navi dort will und seit welchem Meter
@@ -587,8 +622,18 @@ function numbersLine(m) {
     ` · Anzeige in km ${N.kms}×, in Metern ${N.metres}× (nur auf echter Straße), ${N.units} Wechsel km → m (größter Sprung der Zahl ${fmt(N.unitDrop, 0)} m)` +
     ` · ${N.sums}× Ziel = Handlung + Rest, ${N.same}× im Zielort dieselbe Zahl auf Ansage, Kärtchen und HUD-Zeile, Ausfahrt ${N.calm}× als Vorschau in km und ${N.near}× in Metern, ${N.boards} Vorwegweiser und ${N.beacons} Baken mit der Zahl der Ansage` +
     ` · ${N.tables} Entfernungstafeln, ${N.tableRows} nannten das Ziel (größte Abweichung ${fmt(N.tableDev, 2)} km)` +
-    ` · ${N.edges} Kanten = ${fmt(N.edgeKm, 0)} km laut Karte, Zubringer ${fmt(N.feederKm, 0)} km, echte Straße ${fmt(N.realKm, 0)} km (${fmt((100 * N.realKm) / Math.max(all, 1e-9), 1)} %: ${by})`
+    ` · ${N.edges} Kanten = ${fmt(N.edgeKm, 0)} km laut Karte, Zubringer ${fmt(N.feederKm, 0)} km, echte Straße ${fmt(N.realKm, 0)} km (${fmt((100 * N.realKm) / Math.max(all, 1e-9), 1)} %: ${by})` +
+    `\n    Uhr = Reisezeit: ${fmt(N.clockMove / 3600, 2)} h der Uhr in Fahrt für ${fmt(N.clockKm, 0)} Reisekilometer (Uhr × Tempo = Reisemeter, größter Fehler ${N.clockErr.toExponential(1)} m), ${fmt(N.clockStand / 60, 1)} min im Stand wie die echte Zeit` +
+    ` · Ankunftszeit beim Gebot gegen die Uhr am Zielpunkt: ~30 km ${drift(N, 18, 45)} · ~100 km ${drift(N, 75, 130)} · ~250 km ${drift(N, 190, 320)}`
   );
+}
+/** Wie weit die Ankunftszeit vom Gebot bis zum Zielpunkt lief (Minuten der Uhr; − = früher da als angesagt). */
+function drift(N, a, b) {
+  const L = N.etaLegs.filter((l) => l.km >= a && l.km < b);
+  if (!L.length) return '–';
+  const d = L.map((l) => l.drift);
+  const sgn = (x) => (x > 0 ? '+' : x < 0 ? '−' : '±') + fmt(Math.abs(x), 1);
+  return `${sgn(d.reduce((s, x) => s + x, 0) / d.length)} min (${sgn(Math.min(...d))} bis ${sgn(Math.max(...d))}, ${L.length}×)`;
 }
 const rows = [];
 const t0 = Date.now();
@@ -638,6 +683,48 @@ for (const { driver, m } of rows) {
   if (HOURS >= 3) ok(m.duels >= 10 && m.arrivals >= 3 && m.rolled >= 1, `Duell im Zielort: zu wenig geprüft (${m.duels} Duelle, ${m.arrivals} Ankünfte, ${m.rolled} vorbeigerollt, ${m.late2} knapp dahinter)`);
   rows.push({ driver: DUELLIST, m });
 }
+// --- Im Tempo des Navis steht die Ankunftszeit still ------------------------------------------------------------------
+// Ein gedachtes Auto (MapDemo) fährt je Abschnitt genau das Tempo, das die Fahrt dort annimmt, die Uhr läuft wie im
+// Spiel (Game.travelClock): Uhr + Reisezeit des Rests bleibt vom Gebot bis zum Zielpunkt stehen – bis auf die
+// Schritte über eine Abschnittsgrenze, in denen das Auto noch im Tempo des alten Abschnitts fährt.
+const ETA_TOL = 3; // Sekunden der Uhr auf einer ganzen Fahrt
+function atNaviPace(seed, lo, hi) {
+  const R = mulberry32(seed);
+  const demo = new MapDemo({ rng: R }); // Start in Erlensee wie im Spiel
+  const trip = demo.trip;
+  const G = { world: { trip: () => trip }, travel: null };
+  const D = trip.distances();
+  const pool = places.filter((p) => D.toPlace(p.i).km > lo && D.toPlace(p.i).km < hi);
+  let goal = -1;
+  while (pool.length && !isFinite(trip.reach().km)) {
+    goal = pool.splice(Math.floor(R() * pool.length), 1)[0].i;
+    trip.setTarget(goal, true);
+  }
+  const km = trip.reach().km;
+  let clock = 0;
+  let eta0 = NaN;
+  let dev = 0;
+  for (let k = 0; k < 400000 && trip.target === goal; k++) {
+    clock += Game.prototype.travelClock.call(G, DT);
+    const eta = clock + trip.reach().clock;
+    if (k === 0) eta0 = eta;
+    dev = Math.max(dev, Math.abs(eta - eta0));
+    demo.advance(PROFILES[trip.section.profile].pace * DT, DT);
+  }
+  clock += Game.prototype.travelClock.call(G, DT); // der letzte Schritt bis zum Zielpunkt
+  ok(trip.target !== goal, `Im Tempo des Navis nicht nach ${places[goal].name} gekommen`);
+  ok(dev < ETA_TOL && Math.abs(clock - eta0) < ETA_TOL, `Im Tempo des Navis nach ${places[goal].name} (${fmt(km, 0)} km): Ankunftszeit läuft um ${fmt(dev, 1)} s, angekommen ${fmt(clock - eta0, 1)} s nach der Ansage`);
+  return { name: places[goal].name, km, dev, end: clock - eta0, h: clock / 3600 };
+}
+{
+  const runs = [];
+  for (let r = 0; r < 3; r++) for (const [lo, hi] of [[20, 40], [80, 120], [200, 300]]) runs.push(atNaviPace(900 + r, lo, hi));
+  console.log(
+    `Im Tempo des Navis (${runs.length} Fahrten, ${runs.map((x) => fmt(x.km, 0)).join(' / ')} km): die Ankunftszeit lief höchstens ${fmt(Math.max(...runs.map((x) => x.dev)), 2)} s weg,` +
+      ` am Zielpunkt zeigte die Uhr die angesagte Zeit auf ${fmt(Math.max(...runs.map((x) => Math.abs(x.end))), 2)} s genau (erlaubt ${ETA_TOL} s)`,
+  );
+}
+
 // genug geprüft?
 const sum = (f) => rows.reduce((s, r) => s + f(r.m), 0);
 if (HOURS >= 3) {

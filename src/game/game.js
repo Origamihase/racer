@@ -93,6 +93,7 @@ export class Game {
     this._greeted = false;
     this._introChime = false;
     this.clock = 18 * 60;
+    this.travel = null; // XXL: Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelClock)
     this.eco.reset(up);
     this.viewers = this.eco.viewers;
     this.peakViewers = 240;
@@ -401,7 +402,8 @@ export class Game {
     }
     st.cleanDistance += ds;
     if (W.level > 0.3) st.rainDistance += ds;
-    this.clock += dt * 0.5;
+    // die Uhr: klassisch 30 Spielminuten je Minute, in der XXL-Welt die Reisezeit (travelClock)
+    this.clock += this.worldNavi ? this.travelClock(dt) / 60 : dt * 0.5;
     this.megafonCd = Math.max(0, this.megafonCd - dt);
 
     // --- Eingaben ------------------------------------------------------------
@@ -1825,6 +1827,22 @@ export class Game {
     const F = this.fans;
     const gifters = Object.entries(F.gifts).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
     return { top: F.top, gifters, vips: F.vips.slice() };
+  }
+
+  /**
+   * Die Uhr der XXL-Welt ist die Reisezeit, der Zwilling des Kilometerzählers: Je Schritt gewinnt sie dessen Sekunden
+   * mal so viele Reisemeter, wie die Fahrt dort je Meter Straße zählt (auf echter Straße und im Stand 1). Mit 130 km/h
+   * schafft der Wagen so überall 130 Reisekilometer je Stunde der Uhr, und wer im Tempo des Navis fährt, sieht die
+   * Ankunftszeit stillstehen (Uhr + Reisezeit des Rests, trip.reach().clock). Die Fahrt rückt erst nach game.update
+   * vor (src/main.js): gezählt wird darum der Schritt davor, mit dessen Zeit. Liefert Sekunden der Uhr.
+   */
+  travelClock(dt) {
+    const trip = this.world.trip();
+    const was = this.travel && this.travel.trip === trip ? this.travel : null;
+    const ds = was ? trip.s - was.s : 0;
+    const secs = !was ? 0 : ds > 1e-6 ? (was.dt * (trip.km - was.km) * 1000) / ds : was.dt;
+    this.travel = { trip, s: trip.s, km: trip.km, dt };
+    return secs;
   }
 
   /** Daten für den Mittelbildschirm. */

@@ -27,8 +27,6 @@ const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const CARD = { light: 'rgba(32,34,38,0.96)', dark: 'rgba(10,11,13,0.96)' };
 // so viele Sekunden nach einer Neuplanung der Fahrt steht „Route wird neu berechnet“ unter der Ansage
 const REROUTE_NOTE = 2.4;
-/** Spielminuten je echter Minute, wenn st.nav.timeScale fehlt (die klassische Uhr läuft 30-mal so schnell). */
-export const CLOCK_SCALE = 30;
 /** Ansagen, die eine Stelle auf dem Weg meinen (Überfahrten). */
 const TRANSIT_TURN = { faehre: true, zug: true, flug: true };
 /** So weit voraus (m) liefert der Verlauf der Welt die Straße (course.preview: höchstens 401 Punkte alle 10 m). */
@@ -166,7 +164,8 @@ function xAt(pts, d) {
 
 /**
  * Das Navi. draw() zeichnet in den Bereich (x0, y0, w, h) der Leinwand; st wie bei CenterScreen.update, dazu
- * st.nav = {model: NavModel, bidder, bid, clockMin, timeScale?, eta?, visible}; step = Sekunden seit dem letzten Bild.
+ * st.nav = {model: NavModel, bidder, bid, clockMin, eta?, visible}; step = Sekunden seit dem letzten Bild. clockMin ist
+ * die Uhr des Spiels in Minuten – in der XXL-Welt die Reisezeit (Game.travelClock), in der die Ankunft gerechnet wird.
  */
 export class NaviScreen {
   constructor() {
@@ -183,6 +182,7 @@ export class NaviScreen {
     this.closeOn = false;
     this.prev = new Map(); // Lage der Namen vom letzten Bild
     this.progress = { target: -1, km: 0 }; // Kilometer zum Ziel, als es kam (Streifen unten)
+    this.arrival = { target: -1, min: 0 }; // die angezeigte Minute der Ankunft (arrivalMinute)
     this.t = 0;
     this.stats = { ms: 0, n: 0, total: 0, max: 0 };
   }
@@ -878,6 +878,19 @@ export class NaviScreen {
     return n * lw + 12;
   }
 
+  /**
+   * Die Minute der Ankunft, die das Kärtchen zeigt: abgerundet wie die Uhr (wer im Tempo des Navis fährt, kommt in
+   * genau dieser Minute an) und erst neu, wenn die Rechnung eine Viertelminute aus ihr herausläuft – kein Flackern.
+   */
+  arrivalMinute(target, min) {
+    const A = this.arrival;
+    if (A.target !== target || min < A.min - 0.25 || min >= A.min + 1.25) {
+      A.target = target;
+      A.min = Math.floor(min);
+    }
+    return A.min;
+  }
+
   /** Unten: Ziel mit Kilometern und Ankunft, Streifen mit der ganzen Route, darunter der Bieter (wie gewohnt). */
   drawBottom(ctx, m, ins, nav, w, h, theme) {
     const x = 14;
@@ -917,9 +930,8 @@ export class NaviScreen {
     }
     const pl = places[trip.target];
     const km = m.remainingKm(ins);
-    // Ankunft in der Uhr des Spiels: guidance().mins sind Minuten Fahrt im angenommenen Tempo, die Uhr läuft timeScale-mal
-    // so schnell wie die echte Zeit (klassisch 30; die Integration legt den Maßstab der XXL-Uhr fest, REISE A6)
-    const eta = nav.eta || (isFinite(ins.mins) && nav.clockMin !== undefined ? 'Ankunft ' + clock(nav.clockMin + ins.mins * (nav.timeScale ?? CLOCK_SCALE)) : '');
+    // Ankunft = Uhr + Reisezeit des Rests (ins.clock: Sekunden der Uhr im Tempo, das die Fahrt je Abschnitt annimmt)
+    const eta = nav.eta || (isFinite(ins.clock) && nav.clockMin !== undefined ? 'Ankunft ' + clock(this.arrivalMinute(trip.target, nav.clockMin + ins.clock / 60)) : '');
     // die Entfernung zum Ziel in Worten: dieselbe wie in der HUD-Zeile und, im Zielort, in der Ansage (fmtDistance)
     const right = ins.toTarget + (eta ? ' · ' + eta : '');
     ctx.font = `600 21px ${FONT}`;
