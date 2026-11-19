@@ -625,9 +625,10 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
   ok(worstWarp > 0 && worstWarp < 1e-6, 'schräge Karte: Shader legt den Ausschnitt falsch (' + worstWarp + ' px)');
   console.log('  schräge Karte: ' + JSON.stringify({ ...res, uploads: up, shader: +worstWarp.toExponential(1) }));
 
-  // Adapter auf course.preview (Paket K2, kommt mit dem Zweig ausbau), so umgeleitet wie beim Zusammenführen: Format
-  // und Länge der Linie, Kurs psi in derselben Richtung wie die Karte, das Navi zeichnet ohne Fehler – eine Fahrt mit
-  // course.fill vor jedem Bild (wie die Welt), eine ohne (preview rechnet dann aus den Profilen)
+  // Adapter auf course.preview (Paket K2), so umgeleitet wie in src/main.js: Format und Länge der Linie, das Navi
+  // zeichnet ohne Fehler, und die Übergabe zwischen Karte und Nahansicht stimmt am Auto (die gedrehte Karte führt ihre
+  // Straße dort nach vorn, wie die Linie der Welt) – eine Fahrt mit course.fill vor jedem Bild (wie die Welt), eine
+  // ohne (preview rechnet dann aus den Profilen)
   if (existsSync(new URL('../src/game/course.js', import.meta.url))) {
     const { Course, MapPlanner } = await import('../src/game/course.js');
     const G = await import('../src/map/graph.js');
@@ -668,7 +669,10 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
           for (let j = 0; j + 1 < r.pts.length; j += 2) if (!curvePoint(L, r.pts[j], r.pts[j + 1], P).every(Number.isFinite)) k2.nan++;
         }
         if (trip.section.kind === 'ab' && !nav.hop) {
-          const a = Math.atan2(-Math.cos(L.psi), -Math.sin(L.psi)) - Math.atan2(nav.pose.dy, nav.pose.dx);
+          // Richtung der Straße am Auto: auf der Karte (über die Sehne des Navis, gedreht wie gezeichnet) und in der
+          // Nahansicht (Linie der Welt); 0 = nach vorn
+          const d = nav.cur.dirAt(nav.pose.a, Math.max(nav.chordKm, 0.15) / kmPerUnit(nav.pose.y), [0, 0]);
+          const a = Math.atan2(d[1], d[0]) + navi.view.rot + Math.PI / 2 - Math.atan2(L.x[1] - L.x[0], L.z[1] - L.z[0]);
           k2.dpsi.push(Math.abs(Math.atan2(Math.sin(a), Math.cos(a))));
         }
       }
@@ -677,7 +681,7 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
     k2.dpsi.sort((a, b) => a - b);
     const med = k2.dpsi.length ? (k2.dpsi[k2.dpsi.length >> 1] * 180) / Math.PI : NaN;
     ok(k2.lines > 200 && k2.bad === 0 && k2.nan === 0, 'K2-Adapter: Linie von course.preview passt nicht ' + JSON.stringify({ ...k2, dpsi: k2.dpsi.length }));
-    ok(k2.dpsi.length > 50 && med < 2, 'K2-Adapter: Kurs psi weicht von der Karte ab (Median ' + med + '°)');
+    ok(k2.dpsi.length > 50 && med < 2, 'K2-Adapter: Karte und Nahansicht zeigen am Auto in verschiedene Richtungen (Median ' + med + '°)');
     console.log('  K2-Adapter (course.preview): ' + JSON.stringify({ frames: k2.frames, lines: k2.lines, headings: k2.dpsi.length, medianDeg: +med.toFixed(2) }));
   } else console.log('  K2-Adapter: übersprungen (src/game/course.js kommt mit ausbau)');
   globalThis.OffscreenCanvas = keep.O;

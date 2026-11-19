@@ -29,6 +29,8 @@ const CARD = { light: 'rgba(32,34,38,0.96)', dark: 'rgba(10,11,13,0.96)' };
 export const CLOCK_SCALE = 30;
 /** Ansagen, die eine Stelle auf dem Weg meinen (Überfahrten). */
 const TRANSIT_TURN = { faehre: true, zug: true, flug: true };
+/** So weit voraus (m) liefert der Verlauf der Welt die Straße (course.preview: höchstens 401 Punkte alle 10 m). */
+const AHEAD_MAX = 4000;
 /**
  * Kamera: Neigung und Brennweite (Bildpunkte). Lange Brennweite: der Boden liegt deutlich schräg (am Auto auf cos 50°
  * gestaucht), läuft aber nur sanft zusammen; bis unter die Ansage reicht er gut doppelt so weit wie flach.
@@ -294,7 +296,7 @@ export class NaviScreen {
     this.gz1 = flat ? oy + 60 : cam.depthAtY(FOG_Y[0] - 6);
     // die Linie der Straße voraus (Adapter: ohne Kurven gerade, mit K2 course.preview) samt Kurs im Kartenrahmen
     const qNow = Math.exp(this.logQ);
-    const line = roadAhead(trip, trip.s, Math.min(this.gz1 / qNow + 120, 5000));
+    const line = roadAhead(trip, trip.s, Math.min(this.gz1 / qNow + 120, AHEAD_MAX));
 
     ctx.save();
     ctx.translate(x0, y0);
@@ -305,9 +307,10 @@ export class NaviScreen {
     ctx.lineCap = 'round';
     const v = this.view;
     let close = null;
-    // Kartenansicht: Kurs aus der Kurve der Welt (psi, 0 = Norden, links positiv), sonst aus dem Weg auf der Karte
-    const psiOk = !hop && Number.isFinite(line.psi);
-    const rot = psiOk ? -Math.PI / 2 - Math.atan2(-Math.cos(line.psi), -Math.sin(line.psi)) : -Math.PI / 2 - Math.atan2(m.pose.dy, m.pose.dx);
+    // Kartenansicht: Kurs aus dem Weg auf der Karte. So zeigt die Straße der Karte am Auto nach vorn wie die der
+    // Nahansicht, und die Übergabe stimmt am Auto. Den Kurs der Welt (psi) nimmt sie nicht: die Welt staucht die Karte
+    // und legt ihre Bögen zwischen gerade Ruhezonen, ihr Kurs weicht im Mittel gut 15° von dem der Karte ab.
+    const rot = -Math.PI / 2 - Math.atan2(m.pose.dy, m.pose.dx);
     v.set(pose.x, pose.y, kNow * kmPerUnit(pose.y), rot, w, h, ox, oy);
     const reserve = this.reserveK(m, ins, kT, hop) * kmPerUnit(pose.y);
     if (cw < 1) this.drawMapGround(ctx, m, T, theme, hop, reserve);
@@ -444,7 +447,7 @@ export class NaviScreen {
    */
   drawCloseGround(ctx, m, ins, T, theme, w, h, q, line) {
     const trip = m.trip;
-    const ahead = Math.min(this.gz1 / q + 80, 5000);
+    const ahead = Math.min(this.gz1 / q + 80, AHEAD_MAX);
     const sc = closeScene(trip, ahead, Math.min(-this.gz0 / q + 80, 3000), ins);
     const P = [0, 0];
     const cx = sc.carX;

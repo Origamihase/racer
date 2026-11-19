@@ -4,7 +4,8 @@
 // roadAhead(trip, s, dMax) liefert die Linie der eigenen Fahrbahn voraus in Spielmetern relativ zum Auto (x rechts,
 // z voraus, alle step Meter) und psi, den Kurs des Autos im Kartenrahmen (0 = Norden, links positiv): dasselbe Format
 // wie course.preview() aus Paket K2. Ohne K2 baut die Welt jeden Rahmen gerade, dann ist die Linie gerade und psi
-// unbekannt (NaN; das Navi nimmt dann den Kurs seiner Karte). Beim Zusammenführen leitet eine Zeile den Adapter um:
+// unbekannt (NaN). Die Karte des Navis dreht sich mit dem Kurs ihres eigenen Wegs, nicht mit psi (src/map/navview.js).
+// src/main.js leitet den Adapter auf den Verlauf der Welt um:
 //   setRoadAhead((trip, s, dMax) => course.preview(trip, s, dMax));
 //
 // closeScene(trip, ahead, behind) beschreibt alles, was in der Nahansicht liegt, in Weg-Metern d (vor dem Auto) und
