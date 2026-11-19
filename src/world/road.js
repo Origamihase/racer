@@ -317,8 +317,11 @@ export class Road {
       uOpacity: { value: 0 },
       uWarn: { value: 0 },
     };
+    // Anfang und Ende der Fahrbahn in Metern vor dem Spieler (XXL-Welt, siehe setZones): Das Leuchten hört mit dem
+    // Asphalt auf, statt hinter dem Ende einer Autobahn über die Wiese weiterzulaufen. Klassisch: keine Grenzen.
+    const laneClip = this.flat ? this.zoneU.uXxlClip : { value: new THREE.Vector2(-1e6, 1e6) };
     const laneMat = new THREE.ShaderMaterial({
-      uniforms: { ...this.laneUniforms, uCurve: { value: null } },
+      uniforms: { ...this.laneUniforms, uCurve: { value: null }, uXxlClip: laneClip },
       vertexShader: CURVE_GLSL + /* glsl */ `
         varying vec2 vUv;
         varying float vDist;
@@ -334,9 +337,11 @@ export class Road {
         uniform float uS;
         uniform float uOpacity;
         uniform float uWarn;
+        uniform vec2 uXxlClip;
         varying vec2 vUv;
         varying float vDist;
         void main() {
+          if (vDist < uXxlClip.x || vDist > uXxlClip.y) discard;
           float p = uS + vDist;
           float x = vUv.x * 2.0 - 1.0;
           float chev = fract((p + abs(x) * 2.2) / 7.0 - uTime * 0.35);
