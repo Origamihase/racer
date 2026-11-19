@@ -15,6 +15,7 @@ import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
 import { createNatureKit } from './world/kit/nature.js';
 import { cityKit, naviLayout } from './world/xxl/towns.js';
+import { SCENE, ROLL_T, rollPose, groundAt } from './world/xxl/charge.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
@@ -683,6 +684,8 @@ function startRun() {
   ui.show(false);
   fxState.fade = 1;
   cockpit.shake = 0;
+  // XXL: jede Fahrt beginnt am Supercharger in Erlensee (Startszene statt Kameraschwenk)
+  if (xxl && chargeBegin()) state = 'charge';
   // die Taste, die „Losfahren“ ausgelöst hat, soll den Kameraschwenk nicht gleich überspringen
   input.endFrame();
 }
@@ -1296,13 +1299,13 @@ const INTRO = [
 ];
 const INTRO_SWITCH = 4.85;
 const INTRO_END = 6.3;
-function lerpKeys(t) {
-  let a = INTRO[0];
-  let b = INTRO[INTRO.length - 1];
-  for (let i = 0; i < INTRO.length - 1; i++) {
-    if (t >= INTRO[i].t && t <= INTRO[i + 1].t) {
-      a = INTRO[i];
-      b = INTRO[i + 1];
+function lerpKeys(t, keys = INTRO) {
+  let a = keys[0];
+  let b = keys[keys.length - 1];
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (t >= keys[i].t && t <= keys[i + 1].t) {
+      a = keys[i];
+      b = keys[i + 1];
       break;
     }
   }
@@ -1314,10 +1317,10 @@ function lerpKeys(t) {
   };
 }
 
-function placeIntro(dt) {
-  const t = stateT;
-  if (t < INTRO_SWITCH) {
-    const { pos, look } = lerpKeys(t);
+/** Kamera des Starts: Schlüssel im Rahmen des Wagens bis inside, danach im Cockpit (Kopf dreht nach vorne bis end). */
+function placeIntro(dt, keys = INTRO, t = stateT, inside = INTRO_SWITCH, end = INTRO_END) {
+  if (t < inside) {
+    const { pos, look } = lerpKeys(t, keys);
     pos.applyMatrix4(carMatrix);
     look.applyMatrix4(carMatrix);
     camera.position.copy(pos);
@@ -1327,10 +1330,134 @@ function placeIntro(dt) {
   }
   // im Cockpit: Kopf dreht vom Seitenfenster nach vorne
   cockpit.placeCamera(camera, carMatrix, t, game.player.speed, 0, dt);
-  const k = easeInOut(clamp((t - INTRO_SWITCH) / (INTRO_END - INTRO_SWITCH), 0, 1));
+  const k = easeInOut(clamp((t - inside) / (end - inside), 0, 1));
   camera.rotateOnWorldAxis(tmpV2.set(0, 1, 0), (1 - k) * 1.05);
   setFov(58);
   return 'inside';
+}
+
+/** Ende des Starts (Kameraschwenk oder Startszene): Das Spiel übernimmt, HUD und Facecam gehen an. */
+function toDrive() {
+  state = 'drive';
+  stateT = 0;
+  ui.show(true);
+  // die Facecam geht an: Mini Adam schaut hinein und winkt
+  adamMood('wave');
+  // beim ersten Start auf diesem Gerät „So steuerst du“, danach der kurze Tipp
+  if (!showDriveHint(ui, input.lastDevice, driveSettings(settings))) {
+    ui.toast(matchMedia('(pointer: coarse)').matches ? 'Tipp: ◀ ▶ lenken · Strom und Bremse rechts · 🎥 Kamera' : 'Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
+  }
+}
+
+// --- Startszene der Reise: am Supercharger in Erlensee (world/xxl/charge.js SCENE) ---------------------------------
+// Das Spiel steht so lange still: Der Spieler wartet schon in der Spur, wie xxlStart ihn hinstellt (40 km/h,
+// geradeaus), und das Ausparken endet genau dort. Die Szene bewegt nur Wagen, Stecker, Klappe und Kamera; Tempo und
+// Lenkung des Spielers zeigen so lange die des Wagens (Räder, Lenkrad, Tacho, Motor) und stehen danach wieder wie vorher.
+// Kamera: Schlüssel im Rahmen des Wagens wie INTRO – schräg von vorne oben auf Buchse und Säule (von der Seite stünde
+// die Säule davor), beim Ausparken schräg von vorne, zuletzt am Seitenfenster und hinein ins Cockpit.
+const CHARGE_KEYS = [
+  { t: 0, pos: [-2.4, 2.15, -1.3], look: [-0.85, 0.85, 1.9] },
+  { t: 1.3, pos: [-2.1, 1.85, -0.2], look: [-1.1, 0.95, 1.95] },
+  { t: 2.9, pos: [-3.4, 1.9, -5.0], look: [-0.3, 0.9, -0.3] },
+  { t: 4.6, pos: [-2.7, 1.55, -3.4], look: [-0.37, 1.12, 0.22] },
+  { t: SCENE.inside - 0.2, pos: [-1.72, 1.26, 0.2], look: [-0.37, 1.16, 0.28] },
+];
+const CHARGE_LINES = { live: 'Wir sind live.', greet: 'Hallo Mini Adam! Akku voll, gute Fahrt!' };
+// town: der Startort (Towns.of: plan, group, charge), port: Ladeklappe des Wagens, keep: Spieler vor der Szene,
+// skipT: wann übersprungen wurde (dann erst abblenden), greetT: wann NOMI grüßt (Spielzeit simT)
+const chargeRun = { town: null, port: null, pose: {}, keep: null, chimed: false, said: false, skipT: -1, greetT: Infinity };
+const chargeM = new THREE.Matrix4();
+
+/** Startszene vorbereiten: Wagen in die Bucht, Stecker in die Buchse. false, wenn der Startort keinen Ladepark hat. */
+function chargeBegin() {
+  const town = xxl.town(xxl.trip.section);
+  if (!town || !town.charge) return false;
+  const p = game.player;
+  Object.assign(chargeRun, { town, port: tesla.port(), chimed: false, said: false, skipT: -1, greetT: Infinity });
+  chargeRun.keep = { speed: p.speed, wheel: p.wheel, throttle: p.throttle, braking: p.braking };
+  // die Buchse im Rahmen der Säule: Wagen in der Bucht → Welt → Säule
+  chargePose(0);
+  tesla.root.updateWorldMatrix(true, false);
+  town.charge.group.updateWorldMatrix(true, false);
+  chargeM.copy(town.charge.group.matrixWorld).invert();
+  const pos = tmpV.copy(chargeRun.port.pos).applyMatrix4(tesla.root.matrixWorld).applyMatrix4(chargeM);
+  const normal = tmpV2.copy(chargeRun.port.normal).transformDirection(tesla.root.matrixWorld).transformDirection(chargeM);
+  town.charge.plug(pos, normal);
+  town.charge.set(0);
+  chargeRun.port.set(1, 1);
+  ui.show(false, true);
+  return true;
+}
+
+/** Wagen in der Szene bei t: über die Matrix des Orts in die Welt (wie updateCarMatrix). Gibt die Lage (rollPose) zurück. */
+function chargePose(t) {
+  const town = chargeRun.town;
+  const q = rollPose(town.plan.charge.u, clamp(t - SCENE.roll, 0, ROLL_T), chargeRun.pose);
+  carPos.set(q.x, groundAt(q.x), -q.u).applyMatrix4(town.group.matrix);
+  carEuler.set(0, -q.yaw, 0, 'YXZ');
+  carQuat.setFromEuler(carEuler);
+  carMatrix.compose(carPos, carQuat, ONE);
+  tesla.root.position.copy(carPos);
+  tesla.root.quaternion.copy(carQuat);
+  cockpit.root.position.copy(carPos);
+  cockpit.root.quaternion.copy(carQuat);
+  return q;
+}
+
+/** Ein Bild der Startszene: { inside (Kamera im Cockpit), wave, look (Mini Adam) }. */
+function chargeStep(dt) {
+  const S = SCENE;
+  const run = chargeRun;
+  if (run.skipT < 0 && stateT > S.skip && stateT < S.inside - 0.25 && (input.anyKey || input.take('confirm'))) run.skipT = stateT;
+  // übersprungen: erst abblenden, dann gleich ins Cockpit (dort steht alles schon so, wie die Szene es hinterlässt)
+  if (run.skipT >= 0 && stateT - run.skipT >= 0.25) {
+    stateT = S.inside;
+    run.skipT = -2;
+  }
+  const t = stateT;
+  const q = chargePose(t);
+  const p = game.player;
+  p.speed = q.v;
+  p.wheel = q.steer / 0.35; // models/tesla.js: Vorderräder −steer · 0,35 rad
+  p.throttle = t > S.roll && q.v < run.keep.speed - 0.05 ? 0.4 : 0;
+  p.braking = 0;
+  run.town.charge.set((t - S.plug[0]) / (S.plug[1] - S.plug[0]));
+  // der Leuchtring erlischt, sobald der Stecker sich löst; die Klappe schließt, wenn er draußen ist
+  run.port.set(1 - smoothstep(S.flap[0], S.flap[1], t), 1 - smoothstep(S.plug[0], S.plug[0] + 0.15, t));
+  if (t >= S.chime && !run.chimed) {
+    run.chimed = true;
+    audio.nomiChime();
+  }
+  if (t >= S.live && !run.said) {
+    run.said = true;
+    const d = speech.say(CHARGE_LINES.live, 'sprachstudio');
+    ui.studio(CHARGE_LINES.live, d + 0.8);
+    run.greetT = simT + d + 1.1;
+  }
+  const where = placeIntro(dt, CHARGE_KEYS, t, S.inside, S.end);
+  const sw = S.inside;
+  const fade = t < 0.6 ? 1 - t / 0.6 : t > sw - 0.25 && t < sw ? (t - (sw - 0.25)) / 0.25 : t >= sw && t < sw + 0.35 ? 1 - (t - sw) / 0.35 : 0;
+  fxState.fade = Math.max(fade, run.skipT >= 0 ? (stateT - run.skipT) / 0.25 : 0);
+  if (stateT >= S.end) {
+    // Übergabe: Der Wagen steht genau da, wo der Spieler wartet; der hat wieder sein eigenes Tempo
+    Object.assign(p, run.keep);
+    updateCarMatrix();
+    toDrive();
+  }
+  return {
+    inside: where === 'inside',
+    wave: smoothstep(S.wave[0], S.wave[0] + 0.4, t) * (1 - smoothstep(S.wave[1] - 0.5, S.wave[1], t)),
+    look: smoothstep(S.wave[0], S.wave[0] + 0.8, t) * (1 - smoothstep(S.wave[1], S.inside, t)),
+  };
+}
+
+/** NOMI grüßt (wie Game.say, aber ohne die Spielzeit: die steht in der Szene still). */
+function chargeGreet() {
+  chargeRun.greetT = Infinity;
+  audio.nomiChime();
+  cockpit.nomi.setMood('happy', 3.2);
+  const d = speech.say(CHARGE_LINES.greet, 'board', { priority: true, onStart: (x) => cockpit.nomi.speak(x) });
+  ui.nomi(CHARGE_LINES.greet, d + 0.8);
 }
 
 // --- Fenstergröße & Auflösung -----------------------------------------------------
@@ -1542,6 +1669,8 @@ function step(dt, { render = true } = {}) {
   let cockpitOn = false;
   let adamWave = 0;
   let adamLook = 0;
+  // NOMIs Gruß aus der Startszene kommt, wenn das Sprachstudio ausgeredet hat (auch erst nach der Übergabe)
+  if (simT >= chargeRun.greetT) chargeGreet();
 
   if (input.take('mute')) {
     settings.sound = !settings.sound;
@@ -1591,17 +1720,14 @@ function step(dt, { render = true } = {}) {
         game._introChime = true;
         audio.nomiChime();
       }
-      if (stateT >= INTRO_END) {
-        state = 'drive';
-        stateT = 0;
-        ui.show(true);
-        // die Facecam geht an: Mini Adam schaut hinein und winkt
-        adamMood('wave');
-        // beim ersten Start auf diesem Gerät „So steuerst du“, danach der kurze Tipp
-        if (!showDriveHint(ui, input.lastDevice, driveSettings(settings))) {
-          ui.toast(matchMedia('(pointer: coarse)').matches ? 'Tipp: ◀ ▶ lenken · Strom und Bremse rechts · 🎥 Kamera' : 'Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
-        }
-      }
+      if (stateT >= INTRO_END) toDrive();
+      break;
+    }
+    case 'charge': {
+      const c = chargeStep(dt);
+      cockpitOn = c.inside;
+      adamWave = c.wave;
+      adamLook = c.look;
       break;
     }
     case 'drive': {
@@ -1728,12 +1854,13 @@ function step(dt, { render = true } = {}) {
     tesla.update(dt, p.v, p.wheel, simT); // rückwärts drehen die Räder rückwärts
     teslaDamage.update(dt, simT, p.damage, p.speed);
     cabinDamage.update(dt, simT, p.damage, p.speed, cockpitOn);
-    tesla.setBrake(p.braking > 0.1 || p.speed < 1);
+    // (in der Startszene steht der Wagen beim Laden in P: ohne Bremslicht)
+    tesla.setBrake(state !== 'charge' && (p.braking > 0.1 || p.speed < 1));
     const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook });
     tesla.adam.animate(simT, adamOpts);
     facecam.adam.animate(simT, adamOpts);
     facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake });
-    tesla.cabinLight.intensity = cockpitOn ? 0 : state === 'title' || state === 'intro' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
+    tesla.cabinLight.intensity = cockpitOn ? 0 : state === 'title' || state === 'intro' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     const scr = game.screenState ? safeScreen() : null;
@@ -1792,7 +1919,7 @@ function step(dt, { render = true } = {}) {
   U.uFlash.value = fxState.flash;
   U.uGlitch.value = fxState.glitch > 0 ? 0.6 + 0.4 * Math.sin(simT * 40) : 0;
   U.uGreen.value = fxState.green > 0 ? (Math.sin(simT * 26) > 0.2 ? 1 : 0.15) : 0;
-  U.uFade.value = state === 'intro' ? clamp(fxState.fade, 0, 1) : 0;
+  U.uFade.value = state === 'intro' || state === 'charge' ? clamp(fxState.fade, 0, 1) : 0;
   U.uSat.value = 1.08 - cloud * 0.25;
 
   if (DEBUG && window.__MA && window.__MA.camHook) window.__MA.camHook(camera, carMatrix);
@@ -1802,7 +1929,7 @@ function step(dt, { render = true } = {}) {
   facecamBox = ui.placeFacecam(paused ? 0 : dt, state === 'drive' && cockpitOn);
   if (render) renderFrame(cockpitOn);
   // in der Pause bleiben Banner, Geld-Anzeigen und Funkloch stehen
-  ui.update(paused ? 0 : dt, state === 'drive' || state === 'intro' ? game : null);
+  ui.update(paused ? 0 : dt, state === 'drive' || state === 'intro' || state === 'charge' ? game : null);
   input.endFrame();
 }
 
@@ -1959,7 +2086,7 @@ if (DEBUG) {
     },
     start: () => startRun(),
     skipIntro: () => {
-      stateT = INTRO_END;
+      stateT = state === 'charge' ? SCENE.end : INTRO_END;
     },
     step: (seconds, dt = 1 / 30) => {
       const n = Math.round(seconds / dt);

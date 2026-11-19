@@ -9,6 +9,7 @@ import { goalKind, FOUNTAIN_R, STREET } from '../kit/layout.js';
 import { XXL_BEHIND, squareOf, squareWeight, secSeedKey } from './plan.js';
 import { ISLAND_H } from './roadkit.js';
 import { CHARGE, chargeOf } from './charge.js';
+import { buildChargeRig } from './chargerig.js';
 
 let kit = null;
 /**
@@ -63,7 +64,7 @@ export function townPlan(K, sec, budget = Infinity) {
     budget, len: sec.s1 - sec.s0, mainKind: goalKind(p), pavement: false, signs: false, signName: p.name,
     ...(island ? { island } : sec.start ? { goal: START_GOAL - sec.s0 } : {}),
     // Erlensee: der Supercharger, an dem jede Fahrt beginnt (charge.js)
-    ...(charge ? { charge: { u: charge.u, kind: CHARGE.kind } } : {}),
+    ...(charge ? { charge: { u: charge.u, kind: charge.start ? CHARGE.kindStart : CHARGE.kind } } : {}),
   });
 }
 
@@ -158,6 +159,13 @@ export class Towns {
     this.root.add(group);
     it.plan = plan;
     it.group = group;
+    // im Startort: Stecker und Kabel an der Heldensäule des Ladeparks (die Startszene zieht sie aus dem Wagen)
+    if (plan.charge?.kind === CHARGE.kindStart) {
+      it.charge = buildChargeRig();
+      it.charge.group.position.set(plan.charge.x - CHARGE.post[1], this.kit.info(plan.charge.kind).ground, -(plan.charge.u - CHARGE.post[0]));
+      it.charge.group.rotation.y = -Math.PI / 2;
+      group.add(it.charge.group);
+    }
     return true;
   }
 
@@ -174,6 +182,7 @@ export class Towns {
     this.root.remove(t.group);
     // geteilte Geometrien des Baukastens bleiben; frei wird, was eigens für diesen Ort verschmolzen wurde
     this.kit.release(t.group);
+    t.charge?.dispose();
   }
 
   reset() {
@@ -230,7 +239,7 @@ export class Towns {
    * planTown), group (K.buildTown: layout, fountains, fountainsInView, watchFountains) } oder null, solange keines
    * ihrer Stücke im Sichtbereich liegt oder ihr Plan noch nicht steht. plan.layout (= group.layout) ist der Lageplan
    * in Ortskoordinaten (x seitlich wie die Straße, z = −(s − sec.s0)), plan.fountains[0] der Zielbrunnen auf der
-   * Insel.
+   * Insel. Im Startort dazu charge: Stecker und Kabel der Heldensäule (chargerig.js, im Ort an der Säule).
    */
   of(sec) {
     for (const t of this.items.values()) if (t.sec === sec) return t.group ? t : null;

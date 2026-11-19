@@ -511,10 +511,12 @@ function drawBananaPoster(c, w, h) {
  * Kabel (Schlauch) hängt in einer Schlaufe (Radius R, Mitte in Höhe yc) in der Ebene der Wand und läuft auf der Seite
  * dir (±z) zurück in den Körper. Von vorn sieht man davon nur die Kante.
  */
-function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable) {
+function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable, bare = false) {
   const { F } = b;
   const xs = xw + s * 0.045;
   F.rbox(xw + s * 0.018, yp - 0.13, zp, 0.036, 0.28, 0.17, 0.016, C.postCap, { seg: 1 });
+  // bare: nur der Halter (Stecker und Kabel bringt die Startszene mit, xxl/chargerig.js)
+  if (bare) return;
   F.rbox(xs, yp - 0.1, zp, 0.085, 0.21, 0.12, 0.035, C.plug, { seg: 1 });
   const zc = zp - dir * 0.09;
   const a = 0.45;
@@ -527,9 +529,10 @@ function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable) {
 
 /**
  * Säule im eigenen Rahmen (Mitte der Grundfläche im Ursprung): kind 'dc' (groß, je Seite ein Kabel) oder 'ac' (klein,
- * ein Kabel rechts). body(y, w, h, d, seg) baut den Kasten (eingefärbt oder fest). Ergebnis: Oberkante.
+ * ein Kabel rechts). body(y, w, h, d, seg) baut den Kasten (eingefärbt oder fest); bare: diese Seite (−1 | 1) bekommt
+ * nur den Halter. Ergebnis: Oberkante.
  */
-function chargePost(b, kind, near, body) {
+function chargePost(b, kind, near, body, bare = 0) {
   const { F, G, L } = b;
   const dc = kind === 'dc';
   const hh = dc ? 1.86 : 1.3;
@@ -550,7 +553,7 @@ function chargePost(b, kind, near, body) {
   G.rect(0, sy + 0.035, dd / 2 + 0.004, sw - 0.07, sh - 0.07, C.screen, { g: [1.18, 0.82] });
   G.sign(0, y0 + 0.3, dd / 2 + 0.003, ww * 0.44, 'y:charge');
   // Stecker im Halter an der Seitenwand, Kabel in der Schlaufe längs der Seite
-  for (const s of dc ? [-1, 1] : [1]) hose(b, s, s * ww / 2, y0 + hh * (dc ? 0.56 : 0.6), 0.07, 1, dc ? 0.19 : 0.15, dc ? 0.8 : 0.64);
+  for (const s of dc ? [-1, 1] : [1]) hose(b, s, s * ww / 2, y0 + hh * (dc ? 0.56 : 0.6), 0.07, 1, dc ? 0.19 : 0.15, dc ? 0.8 : 0.64, C.cable, s === bare);
   return y0 + hh + 0.07;
 }
 defs.lade_saeule = {
@@ -616,7 +619,8 @@ const BAYS = Array.from({ length: 8 }, (_, i) => -9.1 + i * BAY);
 const POSTS = [[-5.2, 'dc'], [0, 'dc'], [5.2, 'dc'], [-10.7, 'ac'], [10.7, 'ac']];
 defs.ladepark = {
   kind: 'rest', far: true,
-  make(b) {
+  // heroFree: an der Säule der Heldenbucht hängt auf deren Seite nur der Halter (ladepark_start, siehe unten)
+  make(b, lod, heroFree = false) {
     const { F, G, L } = b;
     const near = !b.lod;
     F.box(0, 0, -4, 24, 0.05, 8, C.yard, { skip: 'b' });
@@ -635,7 +639,8 @@ defs.ladepark = {
     }
     // Säulen (DC zwischen je zwei Buchten, AC an den Enden) mit Poller davor
     for (const [x, kind] of POSTS) {
-      b.at(x, 0.05, -5.3, 0, () => chargePost(b, kind, near, (y, w, hh, d, seg) => F.rbox(0, y, 0, w, hh, d, 0.07, C.body, { seg })));
+      const bare = heroFree && x === POSTS[1][0] ? -1 : 0;
+      b.at(x, 0.05, -5.3, 0, () => chargePost(b, kind, near, (y, w, hh, d, seg) => F.rbox(0, y, 0, w, hh, d, 0.07, C.body, { seg }), bare));
       F.cyl(x, 0.05, -4.6, 0.14, 0.14, 0.85, C.mustard, { seg: near ? 10 : 5 });
       if (near) F.cyl(x, 0.75, -4.6, 0.142, 0.142, 0.06, C.white, { seg: 10, top: false });
     }
@@ -669,6 +674,8 @@ defs.ladepark = {
     return [m];
   },
 };
+// Der Ladepark in Erlensee, an dem jede Fahrt beginnt: Stecker und Kabel der Heldenbucht gehören der Startszene
+defs.ladepark_start = { ...defs.ladepark, make: (b, lod) => defs.ladepark.make(b, lod, true) };
 
 // =================================================================================================================
 // 9. Picknickgruppe: Tisch 1,8 m mit zwei Bänken, alles mindestens 0,1 m dick, Holz in zwei Tönen

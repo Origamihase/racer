@@ -13,6 +13,7 @@ import { places } from '../../map/graph.js';
 export const CHARGE = {
   place: 'Erlensee',
   kind: 'ladepark',
+  kindStart: 'ladepark_start', // im Startort: die Heldensäule ohne Stecker und Kabel (die hat die Startszene, chargerig.js)
   front: STREET.curbR + STREET.pave, // Vorderkante des Parks auf der Häuserflucht
   half: 12, // halbe Breite des Parks längs der Straße
   bay: [-1.3, -3.3], // Mitte der Heldenbucht im Rahmen des Parks (rest.js BAYS[3], Tiefe der Buchtmitte)
@@ -48,6 +49,22 @@ const PARK_FROM_START = -(CHARGE.rear + SC + CHARGE.R + CHARGE.off - CHARGE.bay[
 
 /** Dauer des Ausparkens in Sekunden (von Stillstand in der Bucht bis zur Übergabe). */
 export const ROLL_T = TA + TB + TC;
+
+/**
+ * Die Startszene der Reise (main.js, Zustand 'charge') in Sekunden ab ihrem Beginn: Der Stecker verlässt die Buchse und
+ * kehrt in seinen Halter zurück (plug), die Klappe schließt (flap), der Wagen rollt an (roll, ROLL_T später ist er dem
+ * Spiel übergeben: end), NOMI gongt und Mini Adam winkt, sobald der Stecker hängt (chime, wave), das Sprachstudio
+ * meldet sich (live; NOMI grüßt, wenn es ausgeredet hat), und die Kamera geht ins Cockpit (inside, wie beim
+ * Kameraschwenk des klassischen Starts 1,45 s vor dem Ende). Überspringen geht ab skip.
+ */
+export const SCENE = { plug: [0.9, 2], flap: [1.25, 1.6], roll: 1.6, chime: 2, wave: [2, 3.3], live: 2.5, skip: 0.3 };
+SCENE.end = SCENE.roll + ROLL_T;
+SCENE.inside = SCENE.end - 1.45;
+
+/** Boden unter dem Wagen, dessen Mitte bei x (Ortskoordinaten) steht: Hof des Parks (0,05 m) über die Einfahrt zur Fahrbahn. */
+export function groundAt(x) {
+  return 0.05 * smooth((x - STREET.curbR) / (CHARGE.front + 0.5 - STREET.curbR));
+}
 
 /**
  * Ladepark eines Abschnitts oder null: nur Ortsdurchfahrten von Erlensee. u = Mitte des Parks (Ortskoordinaten), am

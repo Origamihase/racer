@@ -251,8 +251,10 @@ export class UI {
     if (this.turnText.textContent !== text) this.turnText.textContent = text;
   }
 
-  show(v) {
-    this.hud.classList.toggle('hidden', !v);
+  /** v: HUD an oder aus; subs (bei v = false): von allem nur der Untertitel-Streifen (Startszene der Reise). */
+  show(v, subs = false) {
+    this.hud.classList.toggle('hidden', !v && !subs);
+    this.hud.classList.toggle('subs', !v && subs);
     // gleich mit den echten Maßen der Felder (der ResizeObserver meldet sich erst nach dem nächsten Bild)
     if (v) this.layout();
   }
@@ -322,7 +324,7 @@ export class UI {
    */
   placeFacecam(dt, want) {
     const f = this.fc;
-    const on = want && this.facecamOn && !this.hud.classList.contains('hidden') && this.hud.style.display !== 'none';
+    const on = want && this.facecamOn && !this.hud.classList.contains('hidden') && !this.hud.classList.contains('subs') && this.hud.style.display !== 'none';
     // neue Fenstergröße (auch in der Pause): sofort neu einpassen, ohne Gleiten
     const resized = f.vw !== window.innerWidth || f.vh !== window.innerHeight;
     f.vw = window.innerWidth;

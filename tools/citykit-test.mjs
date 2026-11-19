@@ -306,13 +306,13 @@ for (const p of places) {
     const where = `Ladepark ${p.name} (${sec.start ? 'Start' : 'Durchfahrt'})`;
     const c = chargeOf(sec);
     const plan = townPlan(city, sec);
-    ok(c && plan.charge && near(plan.charge.u, c.u) && plan.charge.x === CHARGE.front, `${where}: nicht geplant`);
+    ok(c && plan.charge && near(plan.charge.u, c.u) && plan.charge.x === CHARGE.front && plan.charge.kind === (sec.start ? CHARGE.kindStart : CHARGE.kind), `${where}: nicht geplant`);
     if (!c || !plan.charge) continue;
     const pk = [CHARGE.front, CHARGE.front + info.d, -(c.u + CHARGE.half), -(c.u - CHARGE.half)];
     const u0 = c.u - CHARGE.half - CHARGE.keep;
     const u1 = c.u + CHARGE.half + CHARGE.keep;
     for (const it of plan.items) {
-      if (it.name === CHARGE.kind) continue;
+      if (it.name === plan.charge.kind) continue;
       const b = baseBox(it);
       if (isHouse(it.name)) ok(!overlap(b, pk, 0.05), `${where}: ${it.name} steht im Park`);
       ok(!overlap(b, [L.STREET.curbR, CHARGE.front, -u1, -u0], 0.01), `${where}: ${it.name} steht vor dem Park (u ${Math.round(-it.z)})`);

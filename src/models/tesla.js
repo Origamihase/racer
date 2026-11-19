@@ -511,6 +511,66 @@ export function buildTesla() {
   const wipers = buildCarWipers(WINDSHIELD, WIPERS, wiperGlassY, W.std({ vertexColors: true, roughness: 0.42, metalness: 0.25 }));
   root.add(wipers.group);
 
+  // Ladeklappe links hinten (vor der Rückleuchte, wie beim Model 3): erst auf Anfrage gebaut (port()), damit das
+  // klassische Spiel keine einzige Geometrie mehr hat als zuvor. Darunter die Ladebuchse: dunkle Öffnung, runder
+  // Einsatz und ein Leuchtring, der grün leuchtet, solange geladen wird. Die Klappe schwenkt um ihre hintere Kante auf.
+  let port = null;
+  // Mitte (u, Winkel der linken Seite in 0,86 m Höhe), halbe Breite in u (m) und halbe Höhe im Winkel (rad, 0,385 m/rad)
+  const PORT = { u: 4.3, phi: sidePhi(-1, 0.27), hu: 0.064, hp: 0.125, mPerRad: 0.385, seam: 0.0045 };
+  function buildPort() {
+    // Fleck im (u, phi)-Raum: ein Rechteck mit runden Ecken (Superellipse) mit halben Maßen hu (m) × hp (rad)
+    const squircle = (hu, hp, n = 6, cu = PORT.u) => (a, t) => {
+      const ang = t * Math.PI * 2;
+      const c = Math.cos(ang);
+      const sn = Math.sin(ang);
+      return [cu + a * hu * Math.sign(c) * Math.abs(c) ** (2 / n), PORT.phi + a * hp * Math.sign(sn) * Math.abs(sn) ** (2 / n)];
+    };
+    // Ring von Radius r0 bis r1 (m), rund auf der Karosserie
+    const ring = (r0, r1) => (a, t) => {
+      const ang = t * Math.PI * 2;
+      const r = r0 + (r1 - r0) * a;
+      return [PORT.u + Math.cos(ang) * r, PORT.phi + (Math.sin(ang) * r) / PORT.mPerRad];
+    };
+    const both = { side: THREE.DoubleSide };
+    const g = new THREE.Group();
+    const socket = new THREE.Mesh(patchOnBody(squircle(PORT.hu, PORT.hp), { ns: 2, nt: 40, lift: 0.0025 }), W.std({ color: 0x15171a, roughness: 0.7, ...both }));
+    const inlet = new THREE.Mesh(patchOnBody(ring(0, 0.032), { ns: 2, nt: 28, lift: 0.0034 }), W.std({ color: 0x30353c, roughness: 0.45, metalness: 0.3, ...both }));
+    const ringMat = W.std({ color: 0x0d1a12, emissive: 0x39d98a, emissiveIntensity: 0, roughness: 0.3, toneMapped: false, ...both });
+    const led = new THREE.Mesh(patchOnBody(ring(0.034, 0.042), { ns: 1, nt: 32, lift: 0.0038 }), ringMat);
+    g.add(socket, inlet, led);
+    // Klappe im Lack des Wagens, ringsum eine feine Fuge (etwas kleiner als die Öffnung); Drehachse: ihre hintere Kante
+    const flapGeo = patchOnBody(squircle(PORT.hu - PORT.seam, PORT.hp - PORT.seam / PORT.mPerRad), { ns: 3, nt: 40, lift: 0.0052 });
+    const ue = PORT.u + PORT.hu - PORT.seam;
+    const a = bodyPoint(ue, PORT.phi - PORT.hp, new THREE.Vector3());
+    const b = bodyPoint(ue, PORT.phi + PORT.hp, new THREE.Vector3());
+    const hinge = new THREE.Group();
+    hinge.position.copy(a).add(b).multiplyScalar(0.5);
+    flapGeo.translate(-hinge.position.x, -hinge.position.y, -hinge.position.z);
+    const flap = new THREE.Mesh(flapGeo, W.phys({ color: 0x060708, metalness: 0.5, roughness: 0.34, clearcoat: 1, clearcoatRoughness: 0.12, envMapIntensity: 1.25, ...both }));
+    flap.castShadow = true;
+    hinge.add(flap);
+    const axis = b.sub(a).normalize();
+    g.add(hinge);
+    root.add(g);
+    // Mitte der Buchse auf der Karosserie und ihre Normale nach außen (Wagenkoordinaten): dort steckt der Stecker
+    const pos = bodyPoint(PORT.u, PORT.phi, new THREE.Vector3());
+    const du = bodyPoint(PORT.u + 1e-3, PORT.phi, new THREE.Vector3()).sub(pos);
+    const dp = bodyPoint(PORT.u, PORT.phi + 1e-3, new THREE.Vector3()).sub(pos);
+    const normal = new THREE.Vector3().crossVectors(du, dp).normalize();
+    if (normal.x > 0) normal.negate();
+    const q = new THREE.Quaternion();
+    return {
+      group: g, pos, normal,
+      /** open: 0 zu … 1 offen (Klappe um 100° nach hinten aufgeschwenkt), glow: Leuchtring 0 … 1. */
+      set(open, glow) {
+        q.setFromAxisAngle(axis, -open * 1.75);
+        hinge.quaternion.copy(q);
+        socket.visible = inlet.visible = led.visible = open > 0.002;
+        ringMat.emissiveIntensity = 1.6 * glow;
+      },
+    };
+  }
+
   let wheelAngle = 0;
   let brake = false;
 
@@ -525,6 +585,11 @@ export function buildTesla() {
     damageHooks: { root, body, slots, sticker, plateF, plateR, mirrors: [mirrorMesh, mirrorGlassMesh], mirrorZ: mz, bodyPoint, sidePhi, L, n: BODY.n, lampUV },
     setStarlink(v) {
       starlink.visible = !!v;
+    },
+    /** Ladeklappe und -buchse (beim ersten Aufruf gebaut): { group, pos, normal, set(open, glow) }, siehe buildPort. */
+    port() {
+      if (!port) port = buildPort();
+      return port;
     },
     /** Bodenschatten: bei Regen kräftiger (die Sonne wirft dann kaum noch Schatten). */
     setGroundShade(rain) {
