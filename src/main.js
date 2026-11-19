@@ -311,6 +311,7 @@ const uiFacade = {
   toast: (t, k, sub) => ui.toast(t, k, sub),
   banner: (t, d, sub) => ui.banner(t, d, sub),
   nomi: (t, d) => ui.nomi(t, d),
+  studio: (t, d) => ui.studio(t, d),
   money: (a, l) => ui.money(a, l),
   durchsage: (l, t, d, b) => ui.durchsage(l, t, d, b),
   rahmen: (r, b) => ui.rahmen(r, b),
@@ -502,7 +503,6 @@ function finishRun() {
   save.stats.totalKm += km;
   save.stats.naviReached += o.stats.naviReached;
   save.stats.crashes += o.stats.crashes;
-  save.stats.leftLaneEuro += o.breakdown['Linke Spur'] || 0;
   storeSave(save);
   lastOver = { ...o, newRecord, best: save.best.distance, wallet: save.wallet, photos: ui.photos.slice() };
 }

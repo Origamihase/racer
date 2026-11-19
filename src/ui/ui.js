@@ -13,7 +13,7 @@ function el(tag, cls, parent, text) {
 }
 
 const RAHMEN_EMOJI = {
-  rosen: '🌹', pommes: '🍟', burger: '🍔', candy: '🍬', chips: '🥔', kuerbis: '🎃',
+  rosen: '🌹', sonnenblumen: '🌻', pommes: '🍟', burger: '🍔', candy: '🍬', chips: '🥔', kuerbis: '🎃',
 };
 
 const DEG = Math.PI / 180;
@@ -106,7 +106,6 @@ export class UI {
     this.dmgBadge = new DamageBadge(this.damageEl.parentNode, this.damageEl);
     this.cruiseBadge = new CruiseBadge(this.speedEl.parentNode);
     this.jobsEl = el('div', 'jobs-mini', info);
-    this.zulageEl = el('div', 'zulage hidden', info, '🌧️ Regenzulage ×1,5');
 
     // --- Mitte oben ---
     this.leftLaneEl = el('div', 'leftlane hidden', this.hud);
@@ -125,7 +124,11 @@ export class UI {
     const eyes = el('span', 'nomi-eyes', this.nomiEl);
     el('i', '', eyes);
     el('i', '', eyes);
-    this.nomiText = el('span', 'nomi-text', this.nomiEl, '');
+    // am selben Platz spricht auch das Sprachstudio: dann mit Kopfhörer statt NOMIs Augen (siehe studio())
+    el('span', 'studio-icon', this.nomiEl, '🎧');
+    const words = el('span', 'nomi-words', this.nomiEl);
+    el('span', 'studio-label', words, 'Sprachstudio');
+    this.nomiText = el('span', 'nomi-text', words, '');
     this.bannerEl = el('div', 'banner hidden', stack, '');
     this.toastsEl = el('div', 'toasts', stack);
     this.cameraHint = el('div', 'camera-hint hidden', stack, '');
@@ -141,7 +144,7 @@ export class UI {
     this.durchsageEl = el('div', 'durchsage hidden', this.hud);
     this.funklochEl = el('div', 'funkloch hidden', this.hud);
     el('div', 'funkloch-icon', this.funklochEl, '📡');
-    el('div', 'funkloch-text', this.funklochEl, 'Verbindung verloren – Telekom, Vodafone und O₂ werden neu gebündelt …');
+    el('div', 'funkloch-text', this.funklochEl, 'Verbindung verloren – alle Handynetze werden neu gebündelt …');
     this.photoEl = el('div', 'photo hidden', this.hud);
     this.rahmenEl = el('div', 'rahmen-layer', this.hud);
 
@@ -395,6 +398,20 @@ export class UI {
     const list = this.chatList;
     list.scrollTop = list.scrollHeight;
     if (!list.clientHeight) return;
+    // Die neueste verschwindet nie: Ist sie allein schon höher als das Fenster (Handy quer zeigt zwei Zeilen, die
+    // Ansagen von James brauchen oft drei), wird sie auf die Zeilen gekürzt, die hineinpassen – sonst bliebe der
+    // Chat leer. Jedes Mal neu gemessen, weil sich das Fenster beim Drehen des Handys ändert.
+    const last = list.lastElementChild;
+    if (last) {
+      last.classList.remove('cut');
+      const cs = getComputedStyle(list);
+      const room = list.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      if (last.offsetHeight > room + 0.5) {
+        last.classList.add('cut');
+        last.style.webkitLineClamp = Math.max(1, Math.floor(room / parseFloat(getComputedStyle(last).lineHeight)));
+      }
+      list.scrollTop = list.scrollHeight;
+    }
     const top = list.getBoundingClientRect().top - 0.5;
     for (const m of list.children) m.classList.toggle('gone', m.getBoundingClientRect().top < top);
   }
@@ -427,6 +444,16 @@ export class UI {
 
   nomi(text, dur = 3) {
     this.nomiText.textContent = text;
+    this.nomiEl.classList.remove('studio');
+    this.nomiEl.classList.remove('hidden');
+    this.nomiT = Math.max(2.2, dur);
+    this.fitStack();
+  }
+
+  /** Das Sprachstudio spricht: derselbe Untertitel-Platz wie bei NOMI, aber klar als Sprachstudio erkennbar. */
+  studio(text, dur = 3) {
+    this.nomiText.textContent = text;
+    this.nomiEl.classList.add('studio');
     this.nomiEl.classList.remove('hidden');
     this.nomiT = Math.max(2.2, dur);
     this.fitStack();
@@ -529,11 +556,6 @@ export class UI {
         const n = side === 'top' || side === 'bottom' ? 6 : 3;
         for (let i = 0; i < n; i++) el('span', '', strip, '© Keine Rechte');
       }
-    } else if (r.id === 'rettich') {
-      for (const side of ['top', 'bottom', 'left', 'right']) {
-        const strip = el('div', 'strip strip-' + side, layer);
-        for (let i = 0; i < 16; i++) el('span', 'rettich', strip, '');
-      }
     }
     // Lego-Steine dehnen sich selbst auf die Streifenlänge, der Kürbis steht allein in der Ecke
     if (!layer.classList.contains('corner-only')) for (const s of layer.querySelectorAll('.strip:not(.lego)')) fitStrip(s);
@@ -621,7 +643,6 @@ export class UI {
     this.batteryFill.className = 'battery-fill' + (p.battery < 15 ? ' low' : p.battery < 30 ? ' mid' : '');
     this.dmgBadge.update(p.damage);
     this.cruiseBadge.update(p);
-    this.zulageEl.classList.toggle('hidden', !g.weather.regenzulage);
     // linke Spur
     const L = g.left;
     this.leftLaneEl.classList.toggle('hidden', !L.open);
@@ -630,12 +651,12 @@ export class UI {
       const inLane = p.inLeftLane;
       const secs = Math.ceil(L.timer) + ' s';
       const lt = this.leftLaneText;
-      lt.textContent = (inLane ? '⬅️ Linke Spur: Bonus läuft! ' : '⬅️ Linke Spur frei! ') + secs;
+      lt.textContent = (inLane ? '⬅️ Du fährst links · noch ' : '⬅️ Linke Spur frei · noch ') + secs;
       // der Balken bleibt einzeilig: passt der Satz nicht (schmaler Balken auf dem Handy), steht nur das Wichtigste da
-      if (lt.scrollWidth > lt.clientWidth + 1) lt.textContent = (inLane ? '⬅️ Bonus läuft! ' : '⬅️ Spur frei! ') + secs;
+      if (lt.scrollWidth > lt.clientWidth + 1) lt.textContent = (inLane ? '⬅️ Links · ' : '⬅️ Spur frei · ') + secs;
       this.leftLaneEl.classList.toggle('active', inLane);
       this.leftLaneEl.classList.toggle('warn', L.timer < 10);
-      this.leftLaneFill.style.width = clamp(L.timer / 60, 0, 1) * 100 + '%';
+      this.leftLaneFill.style.width = clamp(L.timer / (L.dur || 60), 0, 1) * 100 + '%';
     }
     // Navi-Zeile
     const nv = g.navi;

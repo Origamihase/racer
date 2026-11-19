@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen und „Über das Spiel“. Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, GAME_TITLE, GAME_SUBTITLE, TAGLINE } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, GAME_TITLE, GAME_SUBTITLE, TAGLINE, INCOME, FINES, fmtBetrag, nameBreak } from '../data.js';
 import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration } from '../util.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
 
@@ -25,7 +25,27 @@ const REASONS = {
   quit: { title: 'Stream beendet', sub: 'Mini Adam hat den Stream vorzeitig beendet.' },
 };
 
-const BREAKDOWN_ORDER = ['Linke Spur', 'Navi-Ziele', 'Spenden', 'Jobs', 'Bananensaft', 'Haarscharf', 'BrunnenTV', 'Elsa-Gruß', 'Vorbildlich', 'Bußgeld', 'Verwarngeld', 'Koriander'];
+// Zeilen der Abrechnung: erst alles, was das Publikum gegeben hat (Reihenfolge wie in INCOME), ganz unten die Abzüge
+const BREAKDOWN_ORDER = [...Object.keys(INCOME), ...FINES];
+
+/** Die Posten einer Abrechnung in dieser Reihenfolge, ohne leere: [[Zeile, Betrag], …] */
+function breakdownRows(breakdown) {
+  // was (noch) nicht in der Liste steht, kommt hinter die Einnahmen und vor die Abzüge
+  const rank = (k) => {
+    const i = BREAKDOWN_ORDER.indexOf(k);
+    return i < 0 ? BREAKDOWN_ORDER.length - FINES.length - 0.5 : i;
+  };
+  return Object.entries(breakdown).filter(([, v]) => Math.abs(v) >= 0.005).sort((a, b) => rank(a[0]) - rank(b[0]));
+}
+
+/** Eine Zeile der „You had 5 Jobs“-Liste, mit dem Betrag, den jemand im Chat dafür versprochen hat. */
+function jobRow(parent, j) {
+  const r = el('div', 'job' + (j.done ? ' done' : ''), parent);
+  el('span', 'job-box', r, j.done ? '✔' : '');
+  el('span', 'job-text', r, j.text);
+  if (j.pledge) el('span', 'job-pledge', r, fmtBetrag(j.pledge));
+  return r;
+}
 
 export class Menus {
   constructor(root, handlers) {
@@ -96,12 +116,18 @@ export class Menus {
     if (sel) s.querySelector(sel)?.focus({ preventScroll: true });
   }
 
-  /** Geht eine Karte über den Bildschirm hinaus, zeigt ein längerer Verlauf über der Knopfzeile, dass darunter noch etwas kommt. */
+  /**
+   * Geht eine Karte über den Bildschirm hinaus, zeigt ein längerer Verlauf über der Knopfzeile, dass darunter noch etwas
+   * kommt (.more); ist sie heruntergescrollt, läuft auch der obere Rand weich aus (.less), statt Zeilen anzuschneiden.
+   */
   watchScroll(s) {
     this.scrollObs?.disconnect();
     const card = s.querySelector('.card');
     if (!card) return;
-    const more = () => card.classList.toggle('more', card.scrollHeight - card.scrollTop - card.clientHeight > 4);
+    const more = () => {
+      card.classList.toggle('more', card.scrollHeight - card.scrollTop - card.clientHeight > 4);
+      card.classList.toggle('less', card.scrollTop > 4);
+    };
     card.addEventListener('scroll', more, { passive: true });
     this.scrollObs = new ResizeObserver(more);
     this.scrollObs.observe(card);
@@ -257,18 +283,25 @@ export class Menus {
       el('span', 'v', r, v);
     };
     item('Strecke', fmtKm(g.player.s));
-    item('Guthaben dieser Fahrt', fmtCent(g.money));
+    item('Einnahmen dieser Fahrt', fmtCent(g.money));
     item('Navi-Ziel', g.navi.target.name);
-    item('Navi-Änderungen', fmtNum(g.stats.naviChanges));
+    item('Navi-Gebote', fmtNum(g.stats.naviChanges));
     item('Zuschauer', fmtNum(Math.round(g.viewers)));
     item('Sendezeit', fmtDuration(g.t));
+    // woher das Geld bisher kam – dieselben Posten wie später in der Abrechnung
+    const rows = breakdownRows(g.breakdown);
+    if (rows.length) {
+      const kasse = el('p', 'kasse', card);
+      el('span', 'kasse-k', kasse, 'Stream-Kasse: ');
+      rows.forEach(([k, v], i) => {
+        if (i) kasse.append(' · ');
+        const part = el('span', 'kasse-item' + (v < 0 ? ' minus' : ''), kasse);
+        part.textContent = `${k}\u00a0${v < 0 ? '−' : ''}${fmtCent(Math.abs(v))}`;
+      });
+    }
     const jobs = el('div', 'job-list', card);
     el('h3', '', jobs, 'You had 5 Jobs');
-    for (const j of g.jobs) {
-      const r = el('div', 'job' + (j.done ? ' done' : ''), jobs);
-      el('span', 'job-box', r, j.done ? '✔' : '');
-      el('span', 'job-text', r, j.text);
-    }
+    for (const j of g.jobs) jobRow(jobs, j);
     const menu = el('div', 'menu row', card);
     button(menu, '▶ Weiterfahren', 'resume', 'primary');
     button(menu, '↻ Neustart', 'restart');
@@ -297,24 +330,13 @@ export class Menus {
     const cols = el('div', 'over-cols', card);
     const left = el('div', 'over-col', cols);
     el('h3', '', left, 'Abrechnung');
-    const keys = Object.keys(o.breakdown).sort((a, b) => {
-      const ia = BREAKDOWN_ORDER.indexOf(a);
-      const ib = BREAKDOWN_ORDER.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-    });
-    for (const k of keys) {
-      const v = o.breakdown[k];
-      if (Math.abs(v) < 0.005) continue;
+    for (const [k, v] of breakdownRows(o.breakdown)) {
       const row = el('div', 'bd' + (v < 0 ? ' minus' : ''), left);
       el('span', '', row, k);
       el('span', '', row, (v < 0 ? '−' : '+') + fmtCent(Math.abs(v)));
     }
     el('h3', '', left, 'You had 5 Jobs');
-    for (const j of o.jobs) {
-      const row = el('div', 'job' + (j.done ? ' done' : ''), left);
-      el('span', 'job-box', row, j.done ? '✔' : '');
-      el('span', 'job-text', row, j.text);
-    }
+    for (const j of o.jobs) jobRow(left, j);
     const right = el('div', 'over-col', cols);
     el('h3', '', right, 'Statistik');
     const st = o.stats;
@@ -324,7 +346,8 @@ export class Menus {
       el('span', '', row, v);
     };
     line('Navi-Ziele erreicht', fmtNum(st.naviReached));
-    line('Navi-Änderungen', fmtNum(st.naviChanges));
+    line('Navi-Gebote · höchstes', fmtNum(st.naviChanges) + ' · ' + fmtCent(st.topBid));
+    line('Spenden · Abos · neue VIPs', fmtNum(st.donations) + ' · ' + fmtNum(st.subs) + ' · ' + fmtNum(st.vips));
     line('Haarscharf überholt', fmtNum(st.nearMisses));
     line('Rempler', fmtNum(st.crashes));
     line('Höchstgeschwindigkeit', fmtNum(Math.round(st.maxSpeedKmh)) + ' km/h');
@@ -346,11 +369,23 @@ export class Menus {
         el('figcaption', '', f, p.kmh + ' km/h');
       }
     }
-    const crew = el('div', 'crew', card);
-    for (const [k, v] of ABSPANN_CREW) {
-      const c = el('div', 'crew-row', crew);
+    const credit = (grid, k, lines) => {
+      const c = el('div', 'crew-row', grid);
       el('span', 'k', c, k);
-      el('span', 'v', c, v);
+      for (const v of lines) el('span', 'v', c, v);
+    };
+    const crew = el('div', 'crew', card);
+    for (const [k, v] of ABSPANN_CREW) credit(crew, k, [v]);
+    // Wie im echten Abspann danach die Unterstützenden: größte Spende, Abo-Verschenker (die meisten zuerst), neue VIPs
+    const F = o.fans;
+    if (F && (F.top || F.gifters.length || F.vips.length)) {
+      const thanks = el('div', 'crew thanks', card);
+      el('h3', '', thanks, 'Danke an');
+      if (F.top) credit(thanks, 'Größte Spende', [`${nameBreak(F.top.name)} (${fmtCent(F.top.amount)})`]);
+      // je Abschnitt höchstens drei Zeilen: bei mehr Namen die ersten zwei und „und N weitere“
+      const top3 = (list, fmt) => (list.length > 3 ? [...list.slice(0, 2).map(fmt), `und ${list.length - 2} weitere`] : list.map(fmt));
+      if (F.gifters.length) credit(thanks, 'Abos verschenkt', top3(F.gifters, (x) => `${nameBreak(x.name)} (${x.count})`));
+      if (F.vips.length) credit(thanks, 'Neue VIPs', top3(F.vips, nameBreak));
     }
   }
 
@@ -360,7 +395,7 @@ export class Menus {
     const head = el('div', 'shop-head', card);
     el('h2', '', head, '🛒 Tesla-Shop');
     el('div', 'wallet', head, '💶 ' + fmtCent(d.wallet));
-    el('p', 'sub', card, 'Upgrades für den schwarzen Model 3 Long Range AWD. Bezahlt wird mit Bonusguthaben aus dem Live-Bereich.');
+    el('p', 'sub', card, 'Upgrades für den schwarzen Model 3 Long Range AWD. Bezahlt wird mit den Stream-Einnahmen: Spenden, Abos, Navi-Gebote.');
     const grid = el('div', 'shop-grid', card);
     for (const it of SHOP) {
       const lvl = d.upgrades[it.id] || 0;
@@ -417,11 +452,12 @@ export class Menus {
     const tips = el('div', 'tips', card);
     el('h3', '', tips, 'Tipps');
     for (const t of [
-      'Wenn NOMI sagt „Die linke Fahrspur ist freigeschaltet.“, gibt es auf der ganz linken Spur Bonusguthaben – eine Minute lang.',
-      'Danach gilt wieder das Rechtsfahrgebot. Sonst kommt die Polizei Gifhorn.',
-      'Das Navi-Ziel ändert sich ständig – jeder neue Zuschauer bietet einen Cent mehr. Erreichte Ziele bringen Guthaben.',
+      'Geld gibt es nur vom Publikum: Spenden, Abos, Navi-Gebote. Fürs Fahren selbst zahlt niemand – aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.',
+      'Wenn NOMI sagt „Die linke Fahrspur ist freigeschaltet.“, hat jemand dafür gespendet: Eine Minute lang darfst du ganz links fahren. Nutzt du sie, freut sich der Chat. Danach gilt wieder das Rechtsfahrgebot, sonst kommt die Polizei Gifhorn.',
+      'Das Navi-Ziel ändert sich ständig – jeder Bieter legt mindestens einen Cent drauf. Kommst du trotzdem an, feiert der Chat mit Ortsspenden.',
+      'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
       'Lade-Ringe füllen den Akku. Bananensaft ist super, Koriander leider nicht.',
-      'Wer gut fährt, bekommt Regen – mit Regenzulage. Der automatische Wischer ist allerdings noch in der Beta.',
+      'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',
     ]) el('p', '', tips, '• ' + t);
     const menu = el('div', 'menu row', card);
     button(menu, '← Zurück', 'back', 'primary');
@@ -440,7 +476,7 @@ export class Menus {
       b.dataset.on = on ? '1' : '0';
     };
     toggle('sound', 'Geräusche', d.sound);
-    toggle('speech', 'Sprachausgabe (NOMI und Sprachdurchsagen)', d.speech);
+    toggle('speech', 'Sprachausgabe (NOMI, Sprachstudio, Durchsagen)', d.speech);
     toggle('chat', 'Live-Chat anzeigen', d.chat);
     const vr = el('div', 'set-row', list);
     el('span', '', vr, 'Lautstärke');
@@ -458,7 +494,7 @@ export class Menus {
       const b = button(qs, label, 'quality', d.quality === v ? 'on' : 'off');
       b.dataset.value = v;
     }
-    if (!d.speechSupported) el('p', 'note', card, 'Hinweis: Dieser Browser hat keine deutsche Sprachausgabe – NOMI spricht dann nur per Untertitel.');
+    if (!d.speechSupported) el('p', 'note', card, 'Hinweis: Dieser Browser hat keine deutsche Sprachausgabe – NOMI und das Sprachstudio sprechen dann nur per Untertitel.');
     // Lenkung, Fahrhilfen, Tempomat, Touch und Vibration (src/ui/drive-settings.js)
     renderDriveSettings(list, driveSettings(d), (k, v) => this.h.setting(k, v), button);
     const rr = el('div', 'set-row', list);
@@ -474,7 +510,8 @@ export class Menus {
     el('h2', '', card, 'ℹ️ Über das Spiel');
     const p = (t) => el('p', '', card, t);
     p('„Mini Adam – Tesla-Navi ferngesteuert“ ist ein liebevolles, nicht-kommerzielles Fan-Spiel rund um SkylineTV LIVE. Mini Adam – der Plüsch-Adam mit Kappe, Bart und LIVE-Shirt – fährt den schwarzen Tesla Model 3 Long Range AWD mit 75-kWh-Akku über die Autobahn, während der Chat das Navi fernsteuert.');
-    p('Fast alle Witze stammen aus dem SkylineTV LIVE Wiki: die freigeschaltete linke Spur, das Navi-Bieten mit einem Cent mehr, BrunnenTV mit Herrn Schönnbrun, Elsa, die Polizei Gifhorn, Meister Propper (kommt gleich), Malte, die Sparkassen-Farbe, Rahmen aus dem Live-Bereich, Sprachdurchsagen von Fräulein Kassandra und Brüll-William, Bananensaft statt Koriander, „You had 5 Jobs“ und die erlogenen Berufsbezeichnungen im Abspann.');
+    p('Fast alle Witze stammen aus dem SkylineTV LIVE Wiki: die freigeschaltete linke Spur, das Navi-Bieten mit einem Cent mehr, BrunnenTV mit Herrn Schönnbrun, Elsa, die Polizei Gifhorn, Meister Pünktlich (kommt gleich), Malte, die Farbe der Bank, Rahmen aus dem Live-Bereich, Sprachdurchsagen von Fräulein Kassandra und Brüll-William, das Sprachstudio in Mini Adams Ohr, Bananensaft statt Koriander, „You had 5 Jobs“ und die erlogenen Berufsbezeichnungen im Abspann.');
+    p('Geld gibt es wie im echten Stream nur vom Publikum: Spenden, Ortsspenden, Abos, VIPs und Navi-Gebote. Wie der Chat gerade gelaunt ist, steht nirgends – das Sprachstudio sagt es Mini Adam ins Ohr.');
     p('NOMI ist der Boardcomputer auf dem Armaturenbrett. Alle Grafiken, Geräusche und Stimmen entstehen direkt im Browser – ohne Bilder- oder Tondateien.');
     const link = el('a', 'link', card, 'SkylineTV LIVE Wiki öffnen');
     link.href = 'https://skylinetv.live/wiki/index.php?title=Hauptseite';

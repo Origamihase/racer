@@ -21,24 +21,36 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 ## Worum geht's?
 
 - **Kameraschwenk zum Start:** Die Kamera fährt von außen an Mini Adam vorbei ins Cockpit.
-- **NOMI**, der Boardcomputer (schwarze Kugel mit zwei Augen auf dem Armaturenbrett), sagt ab und zu
-  **„Die linke Fahrspur ist freigeschaltet.“** Wer dann ganz links fährt, bekommt Bonusguthaben.
+- **Geld gibt es nur vom Publikum** – wie im echten Stream: Spenden mit Alter-Skala, Ortsspenden, Abos,
+  VIPs, Navi-Gebote, Sprachdurchsagen, Rahmen, Aktionen und Sammelaktionen. Fürs Fahren selbst zahlt
+  niemand. Aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.
+- **NOMI**, der Boardcomputer (schwarze Kugel mit zwei Augen auf dem Armaturenbrett), sagt
+  **„Die linke Fahrspur ist freigeschaltet.“**, sobald ein Zuschauer dafür gespendet hat. Dann darfst du
+  eine Minute lang ganz links fahren. Geld bringt das keins – aber wer die Spur nutzt, macht den Chat
+  froh, und die nächste Freischaltung kommt etwas schneller. Sonst gilt das Rechtsfahrgebot.
 - **„Das Navi-Ziel wurde geändert.“** Die Zuschauer überbieten sich mit Cent-Beträgen, das Navi rechnet
   automatisch eine neue Route (Erlensee, Burg Hauneck, Megahub Lehrte, Siegen … eher nicht).
-  Wer ein Ziel erreicht, bekommt Guthaben.
+  Jedes Gebot landet in der Stream-Kasse, zurück gibt es nichts. Wer trotzdem einmal ankommt,
+  wird vom Chat mit Ortsspenden gefeiert – danach beginnt die nächste Runde wieder bei 0,01 €.
+- **Das Sprachstudio** (🎧) sagt Mini Adam etwa einmal pro Minute ins Ohr, wie der Chat gerade drauf ist,
+  und bei einer richtig großen Spende ruft es „Alter!“. Eine Anzeige für die Chat-Stimmung gibt es mit
+  Absicht nicht – man muss hinhören und den Chat lesen.
 - **Regen für Könner:** Wer lange sauber fährt, bekommt Regen. Der automatische Scheibenwischer will
   anspringen, zuckt aber nur über die Scheibe (Beta!). Mit <kbd>E</kbd> darf man selbst wischen,
-  was auch nicht immer klappt. Dafür gibt es Regenzulage.
+  was auch nicht immer klappt. Der Chat liebt es trotzdem.
 - **Akku und Blech:** Die Stream-Technik im Kofferraum zieht Strom, Lade-Ringe helfen.
   Rempler kosten Karosserie-Punkte. Leerer Akku oder zu viel Blechschaden beendet die Fahrt.
 - **Live-Chat und Live-Bereich:** Spenden mit Alter-Skala, Sprachdurchsagen, gekaufte Rahmen
-  (Rosen, Rettich für 13,69 €, Pappkartons …), Funklöcher, Polizei Gifhorn, Blitzer mit Polaroid,
-  Brunnen und Elsa am Straßenrand, Bananensaft und Koriander.
-- **You had 5 Jobs:** Pro Fahrt fünf kleine Aufgaben, alle fünf geben einen Bonus.
-- **Tesla-Shop:** Mit dem Guthaben rüstest du den Tesla auf: Beschleunigung, Tempo-Freischaltung,
+  (Rosen, Sonnenblumen, Pappkartons …), Funklöcher, Polizei Gifhorn, Blitzer mit Polaroid,
+  Brunnen und Elsa am Straßenrand, Bananensaft und Koriander – und ab und zu ein lächerliches
+  „5 Cent, wenn du …“-Angebot, auf das Mini Adam natürlich nie eingeht (der Chat legt höchstens 2 Cent drauf).
+- **You had 5 Jobs:** Pro Fahrt fünf kleine Aufgaben. Für jede verspricht ein Zuschauer eine Spende
+  („Wenn du 200 km/h fährst, spende ich 20 €!“), für alle fünf legt noch jemand ordentlich drauf.
+- **Tesla-Shop:** Mit den Stream-Einnahmen rüstest du den Tesla auf: Beschleunigung, Tempo-Freischaltung,
   Akku-Puffer, Stream-Technik, Sportreifen, Plüsch-Polster, Wischer-Firmware (Beta), Megafon,
-  Starlink-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone.
-- **Abspann** mit Abrechnung, Statistik, Blitzerfotos und erlogener Berufsbezeichnung des Tages.
+  Satelliten-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone.
+- **Abspann** mit Abrechnung, Statistik, Blitzerfotos, erlogener Berufsbezeichnung des Tages und einem
+  „Danke an“ – größte Spende, wer Abos verschenkt hat und wer neu VIP geworden ist.
 
 ## Steuerung
 
@@ -77,7 +89,7 @@ Nach Änderungen in `src/` bitte `npm run build` ausführen und die neue `docs/g
 | Ordner | Inhalt |
 | --- | --- |
 | `src/main.js` | Renderer, Kameras, Zustände (Titel, Kameraschwenk, Fahrt, Abspann), Hauptschleife |
-| `src/game/` | Spiellogik: Fahrphysik, Navi-Auktion, Ereignisse, Einsammelbares |
+| `src/game/` | Spiellogik: Fahrphysik, Navi-Auktion, Stream-Kasse und Chat-Stimmung (`economy.js`), Ereignisse, Einsammelbares |
 | `src/world/` | Autobahn, Himmel, Landschaft, Verkehr (mit Spurwechseln) |
 | `src/models/` | Tesla, Mini Adam, Elsa, Fahrzeuge |
 | `src/cockpit/` | Cockpit, NOMI, Mittelbildschirm mit Navi |

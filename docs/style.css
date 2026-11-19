@@ -80,7 +80,6 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .money-pop.plus { color: #a4ffc2; background: rgba(22, 96, 50, 0.92); box-shadow: inset 0 0 0 1px rgba(100, 235, 150, 0.55); }
 .money-pop.minus { color: #ffc9c4; background: rgba(120, 26, 22, 0.92); box-shadow: inset 0 0 0 1px rgba(255, 125, 115, 0.6); }
 @keyframes moneypop { 0% { transform: scale(0.7); opacity: 0; } 9% { transform: scale(1.08); opacity: 1; } 16% { transform: scale(1); } 82% { opacity: 1; } 100% { opacity: 0; } }
-.zulage { margin-top: 6px; font-size: 13px; color: #9fd0ff; font-weight: 700; }
 .jobs-mini { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; max-width: 250px; }
 .jobs-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sub); }
 .job { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #dfe2e8; flex-wrap: wrap; }
@@ -131,6 +130,15 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .nomi-eyes { display: inline-flex; gap: 4px; flex: none; width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #3b3d44, #070708 70%); align-items: center; justify-content: center; }
 .nomi-eyes i { width: 7px; height: 10px; border: 2px solid #fff; border-radius: 3px; animation: blink 2.6s infinite; }
 @keyframes fadein { from { opacity: 0; transform: translateY(-6px); } }
+/* am selben Platz spricht das Sprachstudio (die Stimme in Mini Adams Ohr): Kopfhörer statt NOMIs Augen, der Name
+   über dem Satz und ein warmer statt blauer Rahmen – damit man es auch ohne Ton nie mit NOMI verwechselt */
+.nomi-words { min-width: 0; }
+.studio-icon, .studio-label { display: none; }
+.nomi-sub.studio { border-color: rgba(255, 196, 120, 0.5); box-shadow: 0 0 20px rgba(255, 170, 80, 0.22); }
+.nomi-sub.studio .nomi-eyes { display: none; }
+.nomi-sub.studio .studio-icon { display: inline-flex; flex: none; width: 34px; height: 34px; border-radius: 50%; align-items: center; justify-content: center;
+  font-size: 19px; line-height: 1; background: radial-gradient(circle at 35% 30%, #54401f, #17110a 70%); }
+.nomi-sub.studio .studio-label { display: block; font-size: 11px; font-weight: 700; line-height: 1.25; text-transform: uppercase; letter-spacing: 0.08em; color: #ffcf8a; }
 
 /* die Schrift richtet sich nach der Spaltenbreite, damit lange Zielnamen nicht vier, fünf Zeilen hoch werden */
 .banner { margin-top: clamp(0px, 7vh, 70px); font-size: clamp(20px, min(3.2vw, var(--mid, 600px) / 13), 38px); font-weight: 800; text-align: center; max-width: 100%; text-wrap: balance;
@@ -192,6 +200,9 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .msg .name { font-weight: 700; margin-right: 2px; }
 .msg .text { color: #eceef2; }
 .msg.bot { background: rgba(255, 215, 106, 0.09); border-radius: 6px; padding: 2px 6px; }
+/* eine Nachricht, die allein schon höher ist als der Chat (Handy quer): auf die passenden Zeilen gekürzt, mit …;
+   ohne Rand oben und unten, damit zwei Zeilen von James hineinpassen (flex: none, sonst drückt die Spalte sie auf null) */
+.msg.cut { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; flex: none; padding-block: 0; }
 .bot-icon { margin-right: 4px; font-family: var(--emoji); }
 .bot-tag { font-size: 9px; font-weight: 800; background: rgba(255,215,106,0.25); color: var(--gold); border-radius: 3px; padding: 0 4px; margin-right: 2px; vertical-align: 1px; white-space: nowrap; }
 @keyframes msgin { from { opacity: 0; transform: translateX(10px); } }
@@ -284,8 +295,7 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 @media (pointer: coarse) and (orientation: portrait) {
   .hud:has(.rahmen-kuerbis) .durchsage, body .hud .rahmen-kuerbis .rahmen-caption { right: calc(var(--pk) + 20px); max-width: calc(100vw - var(--pk) - 48px); }
 }
-.rettich { width: 3.2vh; height: 6vh; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 80'%3E%3Cpath d='M20 30 L14 2 M20 30 L22 0 M20 30 L30 4' stroke='%2336a032' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M8 30 Q20 24 32 30 Q34 56 20 78 Q6 56 8 30Z' fill='%23fbfbf4' stroke='%23c9c9b0' stroke-width='2'/%3E%3C/svg%3E") center/contain no-repeat; display: block; }
-.rahmen-rettich .strip { background: rgba(60, 120, 40, 0.35); }
+.rahmen-sonnenblumen .strip { background: rgba(150, 105, 10, 0.35); }
 .boxes { position: absolute; left: 0; right: 0; bottom: 0; height: 26vh; }
 .box { position: absolute; width: 8.2%; height: 11vh; background: linear-gradient(#c49360, #a8774a); border: 2px solid #7a5530; border-radius: 3px; animation: boxdrop 0.5s ease-in backwards; }
 .box::after { content: ''; position: absolute; left: 42%; width: 16%; top: 0; bottom: 0; background: rgba(230, 210, 160, 0.7); }
@@ -451,6 +461,18 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .card.more > .menu.row:last-child::before { height: 48px; }
 /* mit Pfeiltasten oder Gamepad angesteuerte Knöpfe scrollen über die Knopfzeile, nicht dahinter */
 .card:has(> .menu.row:last-child) { scroll-padding-bottom: calc(var(--pad-y) + 80px); }
+/* heruntergescrollt (menus.js setzt .less): Oben läuft der Inhalt unter einem Verlauf aus, statt angeschnitten am Rand zu
+   kleben. Der Verlauf klebt am oberen Kartenrand und nimmt im Fluss keinen Platz weg; angesteuerte Knöpfe bleiben darunter. */
+.card { scroll-padding-top: 44px; }
+.card::before { content: ''; display: block; position: sticky; top: calc(-1 * var(--pad-y)); z-index: 1; height: 44px; pointer-events: none;
+  margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-x)) calc(var(--pad-y) - 44px);
+  background: linear-gradient(rgb(18, 19, 23) 25%, rgba(18, 19, 23, 0)); opacity: 0; transition: opacity 0.2s; }
+.card.less::before { opacity: 1; }
+/* Abspann: Seine Knöpfe stehen oben, eine Knopfzeile am Kartenende gibt es nicht – dort läuft der untere Rand selbst aus,
+   solange darunter noch etwas kommt (.more) */
+.over-card::after { content: ''; display: block; position: sticky; bottom: calc(-1 * var(--pad-y)); z-index: 1; height: 56px; pointer-events: none;
+  margin: -56px calc(-1 * var(--pad-x)) 0; background: linear-gradient(rgba(18, 19, 23, 0), rgb(18, 19, 23) 75%); opacity: 0; transition: opacity 0.2s; }
+.over-card.more::after { opacity: 1; }
 .card h2 { margin: 0 0 6px; font-size: 30px; }
 .card h3 { margin: 18px 0 8px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--sub); }
 .card p { line-height: 1.5; color: #dfe2e8; }
@@ -461,7 +483,15 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .sum { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; }
 .sum .k { font-size: 12px; color: var(--sub); }
 .sum .v { font-weight: 700; font-size: 16px; }
+/* Pause: woher das Geld bisher kam, als eine fortlaufende Zeile (Posten und Betrag bleiben zusammen) */
+.kasse { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: #cfd5e2; }
+.kasse-k { color: var(--sub); }
+.kasse-item { white-space: nowrap; }
+.kasse-item.minus { color: #ff8a80; }
 .job-list .job, .over-col .job { font-size: 14px; margin: 3px 0; }
+/* was im Chat für den Job versprochen wurde: rechtsbündig, und grün, sobald er erledigt ist */
+.job-pledge { margin-left: auto; padding-left: 10px; color: var(--sub); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.job.done .job-pledge { color: inherit; }
 
 .over-card { max-width: 1040px; }
 .abspann-tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.2em; background: rgba(255,255,255,0.1); padding: 3px 8px; border-radius: 4px; margin-bottom: 8px; }
@@ -486,7 +516,10 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .over-photos figcaption { font-size: 12px; font-weight: 700; margin-top: 3px; }
 .crew { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .crew-row .k { color: var(--sub); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; display: block; }
-.crew-row .v { font-weight: 700; }
+.crew-row .v { font-weight: 700; display: block; }
+/* „Danke an“: die Unterstützenden als eigener Abschnitt unter der Crew, die Überschrift über die ganze Breite */
+.crew.thanks { margin-top: 14px; }
+.crew.thanks h3 { grid-column: 1 / -1; margin: 0 0 2px; }
 
 .shop-card { max-width: 1180px; }
 /* schmal: das Guthaben rutscht unter den Titel, statt Titel und Betrag zu zerbrechen */
@@ -588,6 +621,8 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
   .leftlane-bar { margin-top: 4px; height: 4px; }
   .nomi-sub { font-size: 14px; padding: 5px 10px; gap: 8px; border-radius: 12px; }
   .nomi-eyes { width: 26px; height: 26px; }
+  .nomi-sub.studio .studio-icon { width: 26px; height: 26px; font-size: 15px; }
+  .nomi-sub.studio .studio-label { font-size: 10px; }
   .banner { font-size: 18px; }
   .banner-sub { font-size: 12px; }
   .toast { font-size: 13px; padding: 4px 10px; }

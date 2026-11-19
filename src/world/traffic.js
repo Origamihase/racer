@@ -129,7 +129,7 @@ export class Traffic {
     this.reset();
     this.sPlayer = sPlayer;
     for (let i = 0; i < 18; i++) {
-      const lane = pickLane(this.leftOpen);
+      const lane = pickLane();
       const s = sPlayer + 40 + i * 45 + rand(0, 30);
       if (this.laneFree(lane, s, 30)) this.spawn(s, lane);
     }
@@ -160,13 +160,13 @@ export class Traffic {
     const target = Math.round(lerp(15, 32, this.difficulty));
     // Fahrzeuge vorne nachliefern
     if (this.cars.length < target) {
-      const lane = pickLane(this.leftOpen);
+      const lane = pickLane();
       const s = player.s + rand(620, 950);
       if (this.laneFree(lane, s, 60)) this.spawn(s, lane);
     }
     // Schnelle Autos von hinten, wenn der Spieler gemütlich fährt
     if (player.speed < 34 && chance(dt * 0.35) && this.cars.length < target + 4) {
-      const lane = this.leftOpen ? 1 : chance(0.6) ? 0 : 1;
+      const lane = chance(0.6) ? 0 : 1;
       const s = player.s - rand(150, 190);
       // startet hinter dem Spieler: zählt nicht als „überholt“
       if (this.laneFree(lane, s, 40)) this.spawn(s, lane, { speed: rand(170, 215) * KMH }).passed = true;
@@ -345,9 +345,9 @@ export class Traffic {
         if (!(c.truck && to < 2) && this.safe(c, to, objs, P)) return this.startChange(c, to);
       }
     }
-    // Rechtsfahrgebot (bei freigeschalteter linker Spur besonders eifrig)
+    // Rechtsfahrgebot
     if (c.lane < 3 && !(c.truck && c.lane >= 3)) {
-      const eager = c.lane === 0 && this.leftOpen ? 0.65 : c.behavior === 'schleicher' ? 0.02 : 0.25;
+      const eager = c.behavior === 'schleicher' ? 0.02 : 0.25;
       if (chance(eager)) {
         const to = c.lane + 1;
         if (this.laneClearAhead(c, to, objs, P, 90) && this.safe(c, to, objs, P)) return this.startChange(c, to);
@@ -433,6 +433,7 @@ export class Traffic {
   /** Polizei Gifhorn kommt von hinten auf der Überholspur. */
   police(sPlayer, text) {
     this.policeText = text;
+    // einzige Rücksicht auf die freigeschaltete Spur: Dort säße sie Mini Adam sonst im Nacken
     const lane = this.leftOpen ? 1 : 0;
     const car = this.spawn(sPlayer - 170, lane, { kind: 'polizei', speed: 185 * KMH, behavior: 'polizei' });
     car.v0 = 185 * KMH;
@@ -478,9 +479,8 @@ function laneOverlap(o, lane) {
   return hi - lo > 0.35;
 }
 
-function pickLane(leftOpen) {
+function pickLane() {
   const r = Math.random();
-  if (leftOpen) return r < 0.08 ? 0 : r < 0.32 ? 1 : r < 0.62 ? 2 : 3;
   return r < 0.17 ? 0 : r < 0.4 ? 1 : r < 0.66 ? 2 : 3;
 }
 
