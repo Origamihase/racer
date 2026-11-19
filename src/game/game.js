@@ -680,7 +680,8 @@ export class Game {
     // es noch bis zum Ziel sind: klassisch aus den gezählten Metern, in der XXL-Welt kennt sie die Fahrt.) Dort sind
     // die Pausen zwischen den Geboten mit der Fahrzeit gestreckt (bidPlan.stretch), also auch dieses Zeitfenster.
     const eta = this.worldNavi ? nv.eta(p.speed) : nv.arrived ? Infinity : (nv.targetS - p.s) / Math.max(p.speed, 8);
-    if (eta < 8 && this.T.bid > eta && this.T.bid < 45 * (this.bidPlan.stretch || 1) && this.eco.lateBid()) {
+    // (in der ersten Runde eines Streams bleibt dieses späte Gebot aus: nv.opening, siehe navi.js)
+    if (!nv.opening && eta < 8 && this.T.bid > eta && this.T.bid < 45 * (this.bidPlan.stretch || 1) && this.eco.lateBid()) {
       this.T.bid = rand(0.4, Math.max(0.5, eta - 2.5));
       this.bidPlan.late = true;
     }
@@ -752,7 +753,7 @@ export class Game {
     if (siegenOverbid) this.later(0.8, () => this.chat(pick(['Siegen wurde überboten. Wie immer 😂', 'Nicht schon wieder Siegen verpasst', 'Klassiker'])));
     this.eco.cheer(chaos ? 'bidChaos' : plan.kind === 'big' ? 'bidBig' : 'bid');
     // XXL: Echte Orte liegen Minuten auseinander – die Stream-Kasse plant die Ruhe danach mit der Fahrzeit des Navis
-    const next = this.eco.nextBid(this.worldNavi ? { bid: nv.bid, drive: nv.driveSecs() } : { bid: nv.bid });
+    const next = this.eco.nextBid(this.worldNavi ? { bid: nv.bid, drive: nv.driveSecs(), opening: nv.opening } : { bid: nv.bid });
     this.bidPlan = next;
     this.T.bid = next.delay;
 

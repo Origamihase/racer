@@ -109,6 +109,9 @@ class Path {
   }
 }
 
+// Routen zu gedachten Zielen (Trip.whatIf): Ort und Straßen-Schalter → Routenplan
+const AS_IF = new Map();
+
 export class Trip {
   /**
    * @param {{start?: number, rng?: () => number}} opts start: Knoten, in dessen Ort die Fahrt beginnt
@@ -134,6 +137,7 @@ export class Trip {
     this.events = [];
     this.version = 0;
     this.country = 'DE';
+    this.home = -1;
     const path = new Path(-1000, this.newFrame('ab'));
     this.cur = path;
     this.add(path, 'ab', 1e9);
@@ -160,6 +164,7 @@ export class Trip {
     const path = new Path(-300, frame);
     this.cur = path;
     const pl = nd.places.length ? nd.places[0].place : -1;
+    this.home = pl; // der Ort, in dem die Fahrt begonnen hat (−1: keiner)
     const len = pl >= 0 ? townLen(places[pl].pop) : 300;
     this.add(path, 'stadt', Math.max(len, 500), { node: startNode, place: pl, start: true, spotS: 0 });
     this.add(path, 'zub', J.feed, { node: startNode, place: pl, back: true });
@@ -889,9 +894,12 @@ export class Trip {
         const f = c.fork;
         if (f && !f.taken && this.planFor(f) === 'exit') {
           // der Plan fährt hier ab: weiter auf dem Zweig – dem angelegten oder dem, den die Fahrt hier anlegen wird
+          // (whatIf: Einen angelegten Zweig, der nicht zum gedachten Ziel passt, ersetzt setTarget außerhalb der
+          // Sperrzone – also zählt dort der, den die Fahrt dann anlegt)
           legs[legs.length - 1].fork = f;
-          own = !f.branch;
-          path = f.branch || dry.buildBranch({ ...f });
+          const br = f.branch && !(this.asIf && f.s - this.s >= J.lock && f.branch.sig !== this.planExit(f).sig) ? f.branch : null;
+          own = !br;
+          path = br || dry.buildBranch({ ...f });
           i = 0;
         }
         continue;
@@ -959,6 +967,42 @@ export class Trip {
       if (L.k !== J.real) real = false;
     }
     return { km, m: Math.max(to - s, 0), real, secs, clock };
+  }
+  /**
+   * Was wäre, wenn das Navi-Ziel jetzt place hieße? Die Entfernung dorthin wie reach() nach setTarget(place, road),
+   * dazu wende: Der Weg führt erst zurück (an einer Ausfahrt ab und auf derselben Straße in die Gegenrichtung –
+   * „Bitte wenden“). Gerechnet auf einem Schatten: An der Fahrt, ihrem Ziel und ihren Wegen ändert sich nichts.
+   * Für die Wahl naher Ziele (WorldNavi.candidates): Nur so zählt mit, was schon festliegt – etwa der Weg aus dem
+   * Startort, den die Routensuche über die Karte (distances) nicht kennt.
+   */
+  whatIf(place, road = false) {
+    // (die Route zu einem Ort hängt nur an der Karte: gemerkt, weil dieselben nahen Orte immer wieder gefragt werden)
+    const key = place * 2 + (road ? 1 : 0);
+    let pol = AS_IF.get(key);
+    if (!pol) {
+      if (AS_IF.size >= 48) AS_IF.clear();
+      AS_IF.set(key, (pol = routeTo(place, road)));
+    }
+    const t = this.shadow();
+    t.asIf = true;
+    t.target = place;
+    t.policy = pol;
+    t.planned = null;
+    const r = t.reach();
+    r.wende = false;
+    const legs = t.plan().legs;
+    for (let i = 0; i < legs.length && !r.wende; i++) {
+      const f = legs[i].fork;
+      if (!f) continue;
+      // der erste Straßenabschnitt hinter der Ausfahrt: dieselbe Straße zurück?
+      for (let k = i + 1; k < legs.length; k++) {
+        const c = legs[k].sec;
+        if (c.kind !== 'ab' && c.kind !== 'land') continue;
+        r.wende = c.de === deRev(f.de);
+        break;
+      }
+    }
+    return r;
   }
   /** Reisemeter je Meter Straße unter dem Wagen: der Maßstab, in dem Kilometerzähler und Uhr gerade laufen. */
   get scale() {
