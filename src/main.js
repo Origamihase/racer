@@ -14,6 +14,7 @@ import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
 import { createNatureKit } from './world/kit/nature.js';
+import { cityKit } from './world/xxl/towns.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
@@ -1832,7 +1833,7 @@ function xxlSignShear(sec, path) {
 }
 /** Einmal pro Bild nach der Bewegung: Strecke und Navi fortschreiben, Grenzen setzen, Verkehr und Sammelsachen einordnen. */
 function xxlStep(p, w, dt) {
-  xxl.update(p.s, p.x, w, p.speed);
+  xxl.update(p.s, p.x, w, p.speed, simT);
   xxlNav.update(dt);
   p.setLimits(xxl.limitsFor(xxlLimits));
   const v = xxl.view;
@@ -1896,6 +1897,10 @@ if (DEBUG) {
     game, traffic, scenery, cockpit, windshield, tesla, ui, menus, input, renderer, camera, save, facecam, adamMood,
     // für Prüfstände: Szene, three.js und die Weltmaterial-Fabrik (siehe curve.js)
     scene, THREE, W, sky, road, mapdemo: mapDemo,
+    // der eine Stadtbaukasten des Spiels (die XXL-Welt baut ihre Orte daraus), auch für Prüfstände
+    get city() {
+      return cityKit();
+    },
     get state() {
       return state;
     },

@@ -2,6 +2,8 @@
 // und geschnitten werden, wo Wald steht, was für den Spieler gilt (Grenzen, Spuren, Tempo, Halt am Ziel) und wohin der
 // Autopilot der Prüfhilfen lenkt. Alles hängt nur an trip.js und an stabilen Schlüsseln der Abschnitte.
 import { J, PROFILES } from '../../game/trip.js';
+import { places } from '../../map/graph.js';
+import { islandRadius } from '../kit/layout.js';
 
 /** So weit hinter dem Spieler gibt es Welt (Boden, Straßen, Autobahn); dahinter beginnt der Himmel wie bisher. */
 export const XXL_BEHIND = 300;
@@ -116,6 +118,9 @@ export function chunksOf(sec) {
   return out;
 }
 
+/** Ortsdurchfahrt eines Orts der Karte: sie wird vom Stadtbaukasten bebaut (towns.js), nicht mit Platzhaltern. */
+export const kitTown = (sec) => sec.kind === 'stadt' && sec.place >= 0;
+
 // --- Wald an den Wechseln der Autobahn ----------------------------------------------------------------------------
 /** Der Wald beginnt so viel vor dem Vorhang (trip.curtains) und endet so viel dahinter: Waldrand, der dichter wird. */
 export const FOREST_IN = 40;
@@ -160,7 +165,7 @@ export function forestRanges(path, out = []) {
 export const SQUARE = {
   ahead: 15, // Haltepunkt → Mitte des Brunnens (längs); Inseln über 3,5 m Radius rücken weiter weg (r + 11,5)
   edge: J.L0 - 1.3, // rechter Rand der Insel (quer): 1,3 m links neben der Mitte unserer Spur
-  r: 3.4, // Radius der Insel (Bordstein und Pflaster, darauf der Brunnen), siehe FOUNTAIN.radius
+  r: 3.4, // Radius der Insel (Bordstein und Pflaster, darauf der Brunnen), wo kein Ort bekannt ist; siehe FOUNTAIN.radius
   run: 26, // so weit reicht der Platz vor und hinter der Insel
   taper: 20, // auf so vielen Metern weitet sich die Straße (und läuft wieder zusammen)
   loop: 3.4, // Breite der Fahrbahn links um die Insel
@@ -169,10 +174,11 @@ export const SQUARE = {
 /** Halt am Navi-Ziel: so weit hinter dem Zielpunkt (spotS) steht der Wagen still (das Ziel zählt dann schon). */
 export const STOP_AFTER_SPOT = 2;
 /**
- * Haken für das Spiel (Baukasten der Orte): radius(place) gibt den Radius der Insel für den Brunnen dieses Orts
- * (Brunnen-Radius plus Rand), zwischen 2,5 und 8 m. Muss vor der ersten Fahrt gesetzt sein (Plätze werden gemerkt).
+ * radius(place) gibt den Radius der Insel für den Brunnen dieses Orts (Brunnen-Radius plus Rand), zwischen 2,5 und
+ * 8 m: der Stadtbaukasten kennt den Hauptbrunnen jedes Orts (kit/layout.js islandRadius, ohne Grafik). Ein anderer
+ * Haken muss vor der ersten Fahrt gesetzt sein (Plätze werden gemerkt).
  */
-export const FOUNTAIN = { radius: () => SQUARE.r };
+export const FOUNTAIN = { radius: (place) => (places[place] ? islandRadius(places[place]) : SQUARE.r) };
 const squares = new WeakMap();
 
 /**

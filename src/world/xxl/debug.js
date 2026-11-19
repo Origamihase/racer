@@ -210,6 +210,19 @@ export function installDebug(M, world, getPlayer, hooks = {}) {
       if (!q) return null;
       return { ort: places[q.place] ? places[q.place].name : q.place, s: q.s, x: q.x, r: q.r, heading: q.heading, stop: q.stop, world: q.world, brunnen: !!q.object };
     },
+    /**
+     * Orte aus dem Stadtbaukasten im Sichtbereich als einfache Daten (world.towns.list): {ort, groesse, laenge, d
+     * (Ortsbeginn − Wagen), fertig (alle Teile gebaut), brunnen: [{art, titel, u, x, ziel}], ziel, plaetze, wahrzeichen}.
+     * Den ganzen Lageplan (Häuser, Gehwege, Plätze) trägt world.town().plan.layout.
+     */
+    towns() {
+      return world.towns.list().map((t) => ({
+        ort: t.plan.layout.name, groesse: t.plan.size, laenge: t.plan.len, d: Math.round(t.sec.s0 - world.s), fertig: !t.group.pending,
+        brunnen: t.plan.fountains.map((f) => ({ art: f.kind, titel: f.title, u: Math.round(f.u), x: Math.round(f.x * 10) / 10, ziel: f.goal })),
+        ziel: t.plan.layout.goal, plaetze: t.plan.layout.squares.length,
+        wahrzeichen: t.plan.landmarks.filter((l) => l.placed).map((l) => l.name),
+      }));
+    },
     /** Die letzten Ereignisse der Welt (Art:Ort), z. B. arrive:Hanau, rest:Hanau. */
     events: [],
     /**

@@ -5,6 +5,8 @@
 // - alle Abschnitte abseits der Autobahn, die trip.visible() erlaubt, als Straßenstücke (roadkit.js) mit Bewuchs
 //   (forest.js), in Stücken von höchstens CHUNK Metern, die einmal gebaut und behalten werden, solange sie im
 //   Sichtbereich [s − XXL_BEHIND, s + AHEAD] liegen,
+// - die Orte der Karte an ihren Ortsdurchfahrten aus dem Stadtbaukasten (towns.js): Häuser, Plätze, Brunnen, Menschen
+//   und Wahrzeichen, solange ein Stück ihres Abschnitts im Sichtbereich liegt,
 // - die Tafeln (signs.js nach signplan.js: Vorwegweiser, Entfernungstafeln, Ortstafeln …, alle Texte aus der Fahrt),
 // - der eine Boden (ground.js).
 // Jeder Zufall hängt an stabilen Schlüsseln der Abschnitte (Art, Knoten, Kante, Ort …), nie an IDs: ein neu
@@ -15,13 +17,13 @@ import { hashString, mulberry32 } from '../../util.js';
 import { FramePool } from './frames.js';
 import { Ground, LAYER } from './ground.js';
 import { RoadMaterials, buildPiece, VIS, VERGE, KERB, AB_EDGE, RAIL_U, ISLAND_H, crossSection, curveShift, linShift, stubOf } from './roadkit.js';
-import { placeholderFountain } from './fountain.js';
+import { Towns } from './towns.js';
 import { PropSet, PROP, addProp, forestSide, openSide, fieldSide, houseSide } from './forest.js';
 import { Junctions, closeLine } from './junction.js';
 import { Signs } from './signs.js';
 import { tableAt, tableS } from './signplan.js';
 import {
-  XXL_BEHIND, AHEAD, secSeedKey, eachPiece, limitsFor, autoTarget, autoDrive, AUTO, Arrival, squareOf,
+  XXL_BEHIND, AHEAD, secSeedKey, eachPiece, limitsFor, autoTarget, autoDrive, AUTO, Arrival, squareOf, kitTown,
 } from './plan.js';
 
 export { XXL_BEHIND, AHEAD, autoTarget, autoDrive, AUTO };
@@ -80,12 +82,15 @@ export class XxlWorld {
     // Ankunft am Navi-Ziel: Halt vor dem Brunnen, Ereignis 'rest' (siehe on); mit arrival.hold = true bleibt der
     // Wagen danach stehen, bis arrival.release() (die Brunnen-Szene des Spiels)
     this.arrival = new Arrival();
+    // Orte und Brunnen aus dem Stadtbaukasten
+    this.towns = new Towns(this.root);
     /**
      * Haken für das Spiel: baut den Brunnen eines Brunnenplatzes, fn({r, place, seed, heading}) → Object3D mit
-     * Ursprung in der Mitte am Boden, Vorderseite +z (zum haltenden Wagen). Standard: Platzhalter (fountain.js).
-     * Geometrien des Ergebnisses gibt die Welt nie frei (der Baukasten teilt sie).
+     * Ursprung in der Mitte am Boden, Vorderseite +z (zum haltenden Wagen). Standard: der Hauptbrunnen des Orts aus
+     * dem Stadtbaukasten (towns.js). Geometrien des Ergebnisses gibt die Welt nie frei (der Baukasten teilt sie);
+     * trägt es userData.dispose, ruft sie das beim Abräumen des Stücks.
      */
-    this.makeFountain = placeholderFountain;
+    this.makeFountain = (opts) => this.towns.fountain(opts);
     this.view = null;
     this.zones = []; // Knotenpunkte der gezeichneten Autobahn: {s, type: +1 Ausfahrt / −1 Einfädeln}
     // Ende bzw. Anfang der gezeichneten Autobahn für den Verkehr (Traffic.end, Traffic.begin)
@@ -109,6 +114,7 @@ export class XxlWorld {
   reset(start) {
     for (const p of this.pieces.values()) this.dropPiece(p);
     this.pieces.clear();
+    this.towns.reset();
     this.trip = new Trip({ start });
     this.s = this.trip.s;
     this.arrival.reset();
@@ -151,9 +157,10 @@ export class XxlWorld {
 
   /**
    * Einmal pro Bild nach der Bewegung des Spielers: Strecke fortschreiben, Stücke abgleichen, Rahmen setzen.
-   * Danach gilt trip.profile() für die nächste Bewegung (siehe limitsFor). speed: Tempo des Wagens (m/s).
+   * Danach gilt trip.profile() für die nächste Bewegung (siehe limitsFor). speed: Tempo des Wagens (m/s), time:
+   * Spielzeit in Sekunden (bewegt das Wasser der Brunnen und was sich in den Orten regt).
    */
-  update(s, x, wet, speed = Infinity) {
+  update(s, x, wet, speed = Infinity, time = 0) {
     const T = this.trip;
     this.s = s;
     const ev = T.update(s, x);
@@ -169,6 +176,7 @@ export class XxlWorld {
     this.frames.byId.forEach(this.placeView);
     this.ground.update(s, wet);
     this.mats.setWet(wet);
+    this.towns.update(s, this.shear, time, wet);
     this.updateRoad(s);
     this.junctions.update(s, wet);
     if (this.maskAutobahn !== this.maskOn) this.setMask(this.maskAutobahn);
@@ -194,6 +202,7 @@ export class XxlWorld {
     for (const it of this.junctions.items.values()) it.group.visible = !on;
     for (const it of this.signs.items.values()) it.group.visible = !on || ((!this.view || it.frame !== this.view.frame) && this.frameOwn(it.frame, after));
     for (const p of this.pieces.values()) p.group.visible = !on || (p.path === T.cur && p.sec.s0 < after);
+    for (const t of this.towns.items.values()) t.hidden = on && !(t.path === T.cur && t.sec.s0 < after);
     for (const fv of this.frames.byId.values()) if (fv.props) fv.props.group.visible = !on || this.frameOwn(fv.id, after);
   }
 
@@ -244,11 +253,13 @@ export class XxlWorld {
     const want = this.wantKeys;
     want.clear();
     const signGroups = view ? [[view.secs, view.secs]] : [];
+    this.towns.begin();
     eachPiece(
       T,
       view,
       (key, path, sec, prev, next, ch, forest) => {
         want.add(key);
+        if (kitTown(sec)) this.towns.need(sec, path);
         const p = this.pieces.get(key);
         if (!p) this.pieces.set(key, this.buildPiece(key, path, sec, prev, next, ch, forest));
         else {
@@ -265,6 +276,7 @@ export class XxlWorld {
       this.dropPiece(p);
       this.pieces.delete(key);
     }
+    this.towns.sweep();
     // Tafeln (und ihre Stellen am Rand der gezeichneten Autobahn, an denen die Szenerie Platz lässt)
     this.signs.sync(T, signGroups, lo, hi + 400, hi);
     this.boards.length = 0;
@@ -358,7 +370,11 @@ export class XxlWorld {
   }
 
   dropPiece(p) {
-    if (p.fountain) p.group.remove(p.fountain); // geteilte Geometrien des Brunnens bleiben
+    if (p.fountain) {
+      // geteilte Geometrien des Brunnens bleiben; was eigens für ihn entstand, räumt er selbst ab
+      p.group.remove(p.fountain);
+      if (p.fountain.userData.dispose) p.fountain.userData.dispose();
+    }
     if (p.group.parent) p.group.parent.remove(p.group);
     p.group.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
@@ -389,7 +405,7 @@ export class XxlWorld {
       edge: (s, side) => {
         crossSection(sec, prev, next, s, X);
         const o = off(s);
-        const band = X.kerb ? KERB.w + KERB.walk + KERB.garden : X.rails ? Math.max(VERGE, 1.6) : X.verge;
+        const band = X.kerb ? KERB.pave + KERB.garden : X.rails ? Math.max(VERGE, 1.6) : X.verge;
         return side < 0 ? X.aL + o - band : X.aR + o + band;
       },
       limit: (s, side) => {
@@ -418,6 +434,8 @@ export class XxlWorld {
     }
     if (at < ch.b) segs.push([at, ch.b, false]);
     const town = sec.profile === 'stadt';
+    // Orte der Karte bebaut der Stadtbaukasten (towns.js): dort bleibt der Rand der Straße frei
+    const kit = kitTown(sec);
     // Stummel: Bäume an seinen Rändern, an seinem Ende ein dichter Busch- und Baumtupfen, hinter dem er verschwindet
     if (st && st.s >= ch.a && st.s < ch.b) {
       const { x1, s: sc, w } = st;
@@ -436,7 +454,7 @@ export class XxlWorld {
       }
     }
     // Brunnenplatz: Bäume und Bänke am linken Gehweg, mit Blick auf den Brunnen
-    const sq = squareOf(sec);
+    const sq = kit ? null : squareOf(sec);
     if (sq) {
       for (const [ds, kind] of [[-9, 'tree'], [-3.2, 'bench'], [3.2, 'bench'], [9, 'tree']]) {
         const s1 = sq.s + ds;
@@ -447,7 +465,7 @@ export class XxlWorld {
         else addProp(out, PROP.bench, x - 0.3, s1, 1, 1, 1, -Math.PI / 2, 0xffffff);
       }
     }
-    for (const [a, b, wood] of segs) {
+    for (const [a, b, wood] of kit ? [] : segs) {
       for (const side of [-1, 1]) {
         if (wood) forestSide(out, rnd, ctx, a, b, side, 22);
         else if (town) houseSide(out, rnd, ctx, a, b, side);
@@ -557,13 +575,25 @@ export class XxlWorld {
     return { place: sec.place, sec, s: sq.s, x: sq.x, r: sq.r, heading: sq.heading, stop: { s: sq.stop, x: J.L0 }, object, world };
   }
 
+  /**
+   * Der Ort einer Ortsdurchfahrt aus dem Stadtbaukasten (Standard: der Ort, in dem der Wagen fährt, sonst der nächste
+   * voraus auf seinem Weg; Orte hinter einer Ausfahrt zählen erst, wenn er abgebogen ist) für Navi-Karte und
+   * Brunnen-Szene, siehe Towns.of: { place, sec, plan, group } oder null. plan.layout ist der Lageplan in
+   * Ortskoordinaten (x wie die Straße, z = −(s − sec.s0)), plan.fountains die Brunnen ([0]: der Zielbrunnen),
+   * group.fountainsInView / watchFountains melden Brunnen im Blick (Weltkoordinaten nach der Krümmung).
+   */
+  town(sec = null) {
+    if (sec) return this.towns.of(sec);
+    return this.towns.list().find((t) => t.path === this.trip.cur && t.sec.s1 > this.s) ?? null;
+  }
+
   info() {
     const T = this.trip;
     const v = this.view;
     return {
       s: Math.round(T.s), x: +T.x.toFixed(2), sec: T.section.kind, place: T.section.place, version: T.version,
       view: v ? { role: v.role, frame: v.frame, s0: v.s0, s1: v.s1 } : null,
-      pieces: this.pieces.size, frames: this.frames.byId.size,
+      pieces: this.pieces.size, frames: this.frames.byId.size, towns: this.towns.items.size,
     };
   }
 }
