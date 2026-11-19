@@ -10,7 +10,7 @@
 // Jeder Zufall hängt an stabilen Schlüsseln der Abschnitte (Art, Knoten, Kante, Ort …), nie an IDs: ein neu
 // geplanter Zweig sieht genauso aus wie vorher.
 import * as THREE from 'three';
-import { Trip, J, R as rampR } from '../../game/trip.js';
+import { Trip, J, R as rampR, dR as rampSlope } from '../../game/trip.js';
 import { hashString, mulberry32 } from '../../util.js';
 import { FramePool } from './frames.js';
 import { Ground, LAYER } from './ground.js';
@@ -279,7 +279,7 @@ export class XxlWorld {
     let fs = null;
     if (view && isFinite(view.s1)) for (const c of view.secs) if (c.fork && c.fork.forced) fs = c.fork.s;
     if (fs === null) this.abEnd = null;
-    else if (!this.abEnd || this.abEnd.fs !== fs) this.abEnd = { fs, s1: view.s1, openLeft: (s) => closeLine(fs, s), rampX: rampR };
+    else if (!this.abEnd || this.abEnd.fs !== fs) this.abEnd = { fs, s1: view.s1, openLeft: (s) => closeLine(fs, s), rampX: rampR, rampSlope };
     const zsig = (view ? view.frame + ':' + view.s0 + ':' + view.s1 + ':' : '') + this.zones.map((z) => z.type + '@' + Math.round(z.s)).join(',') + '|' + this.boards.map(Math.round).join(',');
     if (zsig !== this.zoneSig) {
       this.zoneSig = zsig;

@@ -23,10 +23,14 @@ let nextId = 1;
 
 const NONE = Object.freeze([]);
 
-/** Gierwinkel eines Fahrzeugs in unserer Richtung: Spurwechsel, dazu die Scherung seines Rahmens (XXL). */
-function carYaw(c, sh) {
+/**
+ * Gierwinkel eines Fahrzeugs in unserer Richtung: Spurwechsel, dazu die Scherung seines Rahmens (XXL) und hinter dem
+ * Ende der Autobahn E der Bogen der Rampe, über die es hinausfährt (siehe towardsEnd).
+ */
+function carYaw(c, sh, E) {
   const lane = c.change && c.change.t > c.change.delay ? (c.change.to > c.change.from ? -0.035 : 0.035) : 0;
-  return lane - (sh ? Math.atan(sh.b) : 0);
+  const ramp = E && c.lane === 4 && !c.change ? E.rampSlope(c.s - E.fs) : 0;
+  return lane - Math.atan((sh ? sh.b : 0) + ramp);
 }
 
 export class Traffic {
@@ -168,11 +172,17 @@ export class Traffic {
     return true;
   }
 
+  /** Offene Fahrbahn auf dieser Spur bei s? XXL: nicht hinter der letzten Ausfahrt, nicht in der Sperrfläche davor. */
+  laneOpen(lane, s) {
+    const E = this.end;
+    return !E || (s < E.fs && ROAD.laneCenter(lane) - LANE_CLEAR >= E.openLeft(s));
+  }
+
   place(c, sPlayer) {
     const d = c.s - sPlayer;
     const sh = this.shear;
     c.v.group.position.set(c.x + (sh ? sh.a + sh.b * d : 0), 0, -d);
-    c.v.group.rotation.y = carYaw(c, sh);
+    c.v.group.rotation.y = carYaw(c, sh, this.end);
   }
 
   placeOncoming(o, sPlayer) {
@@ -526,6 +536,8 @@ const END_ROOM = 650;
 // um Spur für Spur nach rechts zu kommen oder vor der Sperrfläche zu halten (towardsEnd)
 const END_SLOW = 250;
 const END_V = 80 * KMH;
+// so viel Fahrbahn links der Spurmitte braucht, was vor der Sperrfläche auf einer Spur liegen soll (laneOpen)
+const LANE_CLEAR = 1.4;
 
 /**
  * XXL: Höchsttempo vor dem Ende einer Autobahn (E = traffic.end) – wie vor einer Kurve so früh gedeckelt, dass

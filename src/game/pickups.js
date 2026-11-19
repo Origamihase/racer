@@ -274,10 +274,10 @@ export class Pickups {
     return it;
   }
 
-  /** Spur mit wenig Verkehr für ein neues Teil suchen. */
+  /** Spur mit wenig Verkehr für ein neues Teil suchen (XXL: nur, wo die Autobahn dort noch offene Fahrbahn hat). */
   spawnAhead(type, sPlayer, traffic, dist = 650) {
     const s = sPlayer + dist + rand(0, 120);
-    const lanes = [0, 1, 2, 3].filter((l) => traffic.laneFree(l, s, 26));
+    const lanes = [0, 1, 2, 3].filter((l) => traffic.laneOpen(l, s) && traffic.laneFree(l, s, 26));
     if (!lanes.length) return null;
     return this.spawn(type, s, pick(lanes));
   }
