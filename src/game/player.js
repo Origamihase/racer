@@ -26,6 +26,15 @@ const G = 9.81;
 /** Voreinstellungen der Fahrhilfen (main.js setzt die gespeicherten Werte mit configure()). */
 export const DRIVE_DEFAULTS = { tip: false, laneAssist: 'sanft', curveAssist: 'sanft', sens: 1, cruise: false };
 
+/**
+ * Rückwärtsgang wie im Tesla: Wer im Stand die Bremse ganz (ab press) hold Sekunden hält, legt R ein; dann fährt die
+ * Bremse sanft rückwärts (acc m/s², höchstens vmax ≈ 15 km/h), Strom bremst (brake), und im Stand legt Strom wieder D
+ * ein. Ohne Pedal rollt er mit coast aus. still: darunter steht der Wagen (m/s). Zurück geht es höchstens back Meter
+ * hinter den weitesten Punkt der Fahrt und nie über limits.back hinaus (dahinter hat die Welt nichts mehr); davor
+ * bremst er mit soft m/s² weich bis zum Stand.
+ */
+export const REVERSE = { press: 0.9, hold: 0.5, still: 0.1, vmax: 4.2, acc: 1.5, brake: 6, coast: 1.2, back: 200, soft: 1.2 };
+
 export class Player {
   constructor() {
     this.opts = { ...DRIVE_DEFAULTS };
@@ -53,6 +62,13 @@ export class Player {
     this.damage = new Damage(this.maxHits);
 
     this.s = 0;
+    // Gang ('D' | 'R'), wie lange die Bremse im Stand schon gehalten wird, weitester Punkt der Fahrt, Ende des
+    // Rückwegs (Meter der Straße) und ob der Wagen dort schon angekommen ist (siehe REVERSE)
+    this.gear = 'D';
+    this.revHold = 0;
+    this.sFar = 0;
+    this.revFloor = -REVERSE.back;
+    this.revEnd = false;
     this.x = ROAD.laneCenter(3);
     // Querdynamik (siehe steering.js): Lenkbefehl u (mit Vorstufe u1), Anteile Spieler / Kurve / Stoß
     this.u1 = 0;
@@ -97,7 +113,7 @@ export class Player {
     this.kS = null;
     this.ctrl.reset();
     // Grenzen der Welt: klassisch die feste Autobahn; die XXL-Welt setzt sie jedes Bild neu (setLimits)
-    this.limits = { left: LEFT_LIMIT, right: RIGHT_LIMIT, shoulder: SHOULDER_X, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0 };
+    this.limits = { left: LEFT_LIMIT, right: RIGHT_LIMIT, shoulder: SHOULDER_X, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, back: 0 };
     this.lanes = [];
     this.laneKey = null;
     this.setLimits(this.limits);
@@ -118,7 +134,8 @@ export class Player {
    * decel: Verzögerung in m/s², mit der vmax gerade planmäßig fällt (die XXL-Welt bremst so vor einem Tempolimit und
    * vor dem Halt am Ziel; 0 = fester Wert): Drossel und Tempomat bremsen dann mit, statt der Grenze nachzulaufen.
    * slack: Querbewegung nach außen in m/s, bis zu der eine Grenze den Wagen nur mitschiebt (siehe rails; 0 = feste
-   * Leitplanke wie klassisch, die XXL-Welt gibt ihren wandernden Grenzen dieses Spiel).
+   * Leitplanke wie klassisch, die XXL-Welt gibt ihren wandernden Grenzen dieses Spiel). back: bis hierher (Meter der
+   * Straße) darf der Rückwärtsgang zurück (klassisch der Start, die XXL-Welt der Anfang ihres Abschnitts).
    */
   setLimits(l = {}) {
     const L = this.limits;
@@ -130,6 +147,7 @@ export class Player {
     if (l.vmax !== undefined) L.vmax = l.vmax >= 0 ? l.vmax : Infinity;
     if (l.decel !== undefined) L.decel = l.decel > 0 ? l.decel : 0;
     if (l.slack !== undefined) L.slack = l.slack > 0 ? l.slack : 0;
+    if (l.back !== undefined) L.back = l.back;
     // befahrbare Spuren (unsere Richtung, nicht gesperrt, innerhalb der Grenzen) für den Spurhalteassistenten und den
     // Spurwechsel per Tipp: nur neu bestimmen, wenn sich etwas daran geändert hat, und ohne neue Felder
     const lanes = L.lanes || LANES;
@@ -154,6 +172,11 @@ export class Player {
 
   get kmh() {
     return this.speed * 3.6;
+  }
+
+  /** Tempo längs der Straße mit Richtung (m/s): im Rückwärtsgang negativ; speed bleibt immer der Betrag. */
+  get v() {
+    return this.gear === 'R' ? -this.speed : this.speed;
   }
 
   get vmax() {
@@ -208,7 +231,18 @@ export class Player {
     // --- Eingaben dieses Bildes ----------------------------------------------
     const throttle = this.empty ? 0 : clamp(ctl.throttle || 0, 0, 1);
     const brake = clamp(ctl.brake || 0, 0, 1);
-    this.braking = brake;
+    // Gang (REVERSE): R legt nur der Spieler selbst ein (env.reverse), nie Autopilot, Vorführung oder Halt; ohne
+    // diese Erlaubnis bremst R bis zum Stand und legt D ein
+    const mayR = env.reverse === true;
+    this.mayR = mayR;
+    if (this.gear === 'D') {
+      const hold = mayR && brake >= REVERSE.press && this.speed < REVERSE.still && this.limits.vmax > 0;
+      this.revHold = hold ? this.revHold + dt : 0;
+      if (this.revHold >= REVERSE.hold) this.shift('R');
+    } else if (this.speed < REVERSE.still && (clamp(ctl.throttle || 0, 0, 1) > 0.02 || !mayR)) this.shift('D');
+    this.revFloor = Math.max(this.sFar - REVERSE.back, this.limits.back);
+    // im Rückwärtsgang bremst das Strompedal (die Bremslichter folgen ihm)
+    this.braking = this.gear === 'R' ? (mayR ? throttle : 1) : brake;
     const keyed = ctl.steerLog && ctl.steerKey !== undefined && (ctl.steer || 0) === (ctl.steerKey || ctl.analog || 0);
     const log = keyed ? ctl.steerLog : null;
     const C = this.ctrl;
@@ -283,6 +317,12 @@ export class Player {
     for (; log && li < log.length; li++) C.setKey(log[li][1], t1, this, copt);
     if (log && log.length && C.key !== keyNow) C.setKey(keyNow, t1, this, copt);
     this.clock = t1;
+    if (this.s > this.sFar) this.sFar = this.s;
+    // am Ende des Rückwegs angekommen, die Bremse noch gehalten: einmal melden (NOMI sagt es)
+    if (this.gear === 'R' && !this.revEnd && brake > 0.5 && this.s - this.revFloor < 0.3) {
+      this.revEnd = true;
+      this.events.push({ type: 'reverseEnd' });
+    }
 
     // --- Ausgaben für Anzeige, Kamera und Spielregeln ------------------------------
     this.vx = this.vs + this.vc + this.vi;
@@ -291,8 +331,11 @@ export class Player {
     this.steer = this.u;
     // Lenkrad, Hände und Vorderräder: der Lenkbefehl plus das, was die Kurve gerade braucht
     this.wheel = clamp(this.u + this.ac / STEER.wheelAcc, -1.35, 1.35);
-    this.psi = Math.atan2(this.vx, Math.max(this.speed, 1));
-    this.yaw = clamp(Math.atan2(this.vx, Math.max(this.speed, 4)), -0.22, 0.22);
+    // rückwärts führt das Heck: Die Nase dreht zur Gegenseite der Querbewegung (lenkt man links, geht das Heck nach
+    // links und die Nase nach rechts – wie bei jedem echten Auto)
+    const nose = this.gear === 'R' ? -1 : 1;
+    this.psi = nose * Math.atan2(this.vx, Math.max(this.speed, 1));
+    this.yaw = nose * clamp(Math.atan2(this.vx, Math.max(this.speed, 4)), -0.22, 0.22);
     const was = this.understeer;
     this.understeer = clamp(over, 0, 1.5);
     if (this.understeer >= 1 && was < 1) this.events.push({ type: 'understeer' });
@@ -310,6 +353,7 @@ export class Player {
 
   /** Ein Teilschritt der Längsdynamik (Strom, Bremse, Tempomat, Steigung, Tempo-Obergrenzen). */
   longStep(throttleIn, brake, wet, grade, H) {
+    if (this.gear === 'R') return this.reverseStep(throttleIn, brake, wet, grade, H);
     const v = this.speed;
     // steil bergauf etwas weniger Höchsttempo (bei 6 % gut 3 %, bei 8 % 6 %)
     const vmax = this.vmax * (1 - 1.2 * Math.max(0, grade - 0.03));
@@ -344,6 +388,49 @@ export class Player {
     this.speed = Math.max(0, v + acc * H);
     if (v <= top && this.speed > top) this.speed = top;
     this.s += this.speed * H;
+  }
+
+  /**
+   * Ein Teilschritt im Rückwärtsgang (REVERSE): Die Bremse fährt sanft rückwärts, das Strompedal bremst; vor dem Ende
+   * des Rückwegs (revFloor) bremst der Wagen weich bis zum Stand. speed bleibt der Betrag, s fällt. Ohne Erlaubnis
+   * (mayR) zählt das Pedal nicht, und der Wagen bremst bis zum Stand.
+   */
+  reverseStep(gas, pedal, wet, grade, H) {
+    const R = REVERSE;
+    const v = this.speed;
+    const room = Math.max(0, this.s - this.revFloor - 0.05);
+    const top = Math.min(R.vmax, this.limits.vmax, Math.sqrt(2 * R.soft * room));
+    const stop = this.mayR ? gas : 1;
+    const drive = this.mayR && !this.empty && stop <= 0.02 ? pedal : 0;
+    let acc = 0;
+    if (stop > 0.02) acc = -R.brake * stop * (1 - wet * 0.18);
+    else if (drive > 0.02) acc = drive * R.acc;
+    else acc = -R.coast;
+    // Steigung voraus heißt Gefälle hinter dem Wagen: rückwärts rollt er dort etwas leichter (wie vorwärts gedämpft)
+    acc += G * grade * 0.55;
+    if (v > top) acc = Math.min(acc, -R.soft - (v - top) * 4);
+    this.aAuto = 0;
+    this.throttle += (drive * 0.5 - this.throttle) * (1 - Math.exp(-8 * H));
+    this.speed = Math.max(0, v + acc * H);
+    if (v <= top && this.speed > top) this.speed = top;
+    const s1 = this.s - this.speed * H;
+    // nie hinter das Ende des Rückwegs – und wer schon dahinter steht (eben erst in einen neuen Abschnitt gerollt),
+    // bleibt stehen, statt nach vorn zu springen
+    if (s1 < this.revFloor) {
+      this.s = Math.min(this.s, this.revFloor);
+      this.speed = 0;
+    } else this.s = s1;
+  }
+
+  /** Gang wechseln (REVERSE) und den Spielregeln melden. R schaltet den Tempomaten aus; mit D hält er wieder, was man fährt. */
+  shift(gear) {
+    this.gear = gear;
+    this.revHold = 0;
+    this.revEnd = false;
+    this.speed = 0;
+    this.aAuto = 0;
+    this.cruiseSet = gear === 'D' && this.opts.cruise ? 0 : null;
+    this.events.push({ type: 'gear', gear });
   }
 
   /**
@@ -387,6 +474,13 @@ export class Player {
         this.speed = Math.max(0, Math.min(this.speed, c.speed) - 4);
         c.speed += 2.5;
       } else this.speed = Math.min(this.speed, c.speed);
+    } else if (!sideHit && ev.ds < 0 && this.gear === 'R') {
+      // rückwärts angestoßen: unser Rempler, der Wagen steht vor dem anderen
+      ev.zone = 'rear';
+      ev.power = this.speed + Math.max(0, c.speed);
+      this.s = c.s + (c.len + this.len) / 2 + 0.35;
+      this.speed = 0;
+      if (counts) c.speed = Math.max(0, c.speed - 2);
     } else if (!sideHit && ev.ds < 0) {
       // jemand fährt uns hinten drauf (selten, die KI passt eigentlich auf)
       ev.zone = 'rear';

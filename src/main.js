@@ -1624,6 +1624,8 @@ function step(dt, { render = true } = {}) {
         lane: input.lane,
         throttle: input.throttle,
         brake: input.brake,
+        // nur diese Steuerung (die eigenen Eingaben des Spielers) darf den Rückwärtsgang einlegen
+        reverse: true,
         horn: input.take('horn'),
         wiper: input.take('wiper'),
         megafon: input.take('megafon'),

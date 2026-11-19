@@ -387,8 +387,9 @@ export class Game {
 
     // --- Fahren ------------------------------------------------------------
     const sBefore = p.s;
-    // Krümmung und Steigung unter dem Wagen (Kurven-Paket, sonst 0)
-    p.update(dt, ctl, { wet: W.level, kappa: ctl.kappa || 0, grade: ctl.grade || 0 });
+    // Krümmung und Steigung unter dem Wagen (Kurven-Paket, sonst 0); den Rückwärtsgang gibt es nur auf die eigenen
+    // Eingaben des Spielers (ctl.reverse aus main.js) und nie, während die Welt den Wagen am Brunnen anhält
+    p.update(dt, ctl, { wet: W.level, kappa: ctl.kappa || 0, grade: ctl.grade || 0, reverse: ctl.reverse === true && !this.halt && !this.tv });
     const ds = p.s - sBefore;
     for (const e of p.events) {
       if (e.type === 'rail') {
