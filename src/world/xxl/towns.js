@@ -23,8 +23,11 @@ export function cityKit() {
 const BY_SIZE = Object.keys(FOUNTAIN_R).sort((a, b) => FOUNTAIN_R[a] - FOUNTAIN_R[b]);
 // Fahrt beginnt mitten im Ort: so weit vor dem Startpunkt liegt dort der Brunnenplatz (rechts, vom Start aus zu sehen)
 const START_GOAL = 40;
-// Näher als so weit voraus muss ein Ort fertig dastehen; weiter weg entsteht er Teil für Teil, eines je Bild
+// Näher als so weit voraus muss ein Ort fertig dastehen; weiter weg entsteht er Teil für Teil, eines je Bild: die
+// Fernfassungen sofort (er taucht im Dunst auf), die nahen erst, wenn der Wagen auf ihn zufährt (wer auf der
+// Autobahn an seiner Ausfahrt vorbeifährt, braucht sie nie)
 const BUILD_NOW = 450;
+const BUILD_NEAR = 900;
 // Bis in diese Entfernung regt sich ein Ort (Fangruppe, Mühlenflügel, Riesenrad)
 const ALIVE = 400;
 
@@ -153,7 +156,7 @@ export class Towns {
       if (g.pending) {
         // unterwegs wächst ein Ort weit voraus Teil für Teil; wer mitten hinein gesetzt wird, sieht ihn fertig
         if (near) while (g.step());
-        else g.step();
+        else if (g.pendingFar || d0 < BUILD_NEAR) g.step();
       }
       if (d0 < ALIVE && d0 + it.plan.len > -XXL_BEHIND) g.update(t);
     }

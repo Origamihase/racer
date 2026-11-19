@@ -144,7 +144,8 @@ export function createCityKit(F, { bend = null } = {}) {
      * group.layout, der Lageplan für das Navi (layout.js townLayout, im selben Rahmen).
      * lazy: die verschmolzenen Stücke und die Wahrzeichen entstehen erst mit group.step() (eines je Aufruf, zuerst
      * alle Fernfassungen, dann die nahen vom Ortsbeginn an; true, solange noch etwas fehlt; group.pending zählt den
-     * Rest): eine Großstadt braucht am Stück über 100 ms, in Schritten wenige Millisekunden je Bild.
+     * Rest, group.pendingFar die fehlenden Fernfassungen): eine Großstadt braucht am Stück über 100 ms, in Schritten
+     * wenige Millisekunden je Bild. Wer an einem Ort nur vorbeifährt, braucht die nahen Fassungen nie.
      */
     buildTown(plan, { farAt = FAR_AT, fans = plan.goal != null, lazy = false } = {}) {
       const root = new THREE.Group();
@@ -208,10 +209,12 @@ export function createCityKit(F, { bend = null } = {}) {
       }
       const jobs = [...farJobs, ...nearJobs];
       root.pending = jobs.length;
+      root.pendingFar = farJobs.length;
       root.step = () => {
         const job = jobs.shift();
         if (job) job();
         root.pending = jobs.length;
+        root.pendingFar = Math.max(0, jobs.length - nearJobs.length);
         return jobs.length > 0;
       };
       if (!lazy) while (root.step());
