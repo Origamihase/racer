@@ -192,16 +192,15 @@ const { MAP_SOURCES, TERRAIN_NOTICES } = await import('../src/map/credits.js');
     ok(!w || (w.cc ? cc.has(w.cc) : north > w.north), `Der Hinweis „${n.text.slice(0, 40)}…“ gilt für ein Gebiet, das die Karte nicht (mehr) berührt`);
     ok(n.text.length > 20 && /terrain data/.test(n.text), `Hinweis ohne Wortlaut: ${n.text}`);
   }
-  // umgekehrt: Länder mit eigenem Hinweis, die die Karte berührt, stehen in der Liste (bekannt sind die der Quelle)
-  const KNOWN = { AT: 'Austria', NO: 'Norway', GB: 'United Kingdom' };
+  // umgekehrt: Länder mit eigenem Hinweis, die die Karte berührt, stehen in der Liste – bekannt sind alle, für die die
+  // Quelle einen eigenen Hinweis führt (die Karte reicht bis Vancouver und Monterrey)
+  const KNOWN = { AT: 'Austria', AU: 'Australia', CA: 'Canada', GB: 'United Kingdom', MX: 'Mexico', NO: 'Norway', NZ: 'New Zealand' };
   for (const [c, name] of Object.entries(KNOWN)) ok(!cc.has(c) || TERRAIN_NOTICES.some((n) => n.where && n.where.cc === c && n.text.startsWith(name)), `Die Karte hat Straßen in ${name}, der Hinweis fehlt`);
   ok(north <= 60 || TERRAIN_NOTICES.some((n) => n.where && n.where.north === 60 && n.text.startsWith('ArcticDEM')), `Die Karte reicht bis ${north.toFixed(1)}° Nord, der Hinweis ArcticDEM fehlt`);
   for (const lead of ['Europe', 'Global ETOPO1', 'United States 3DEP']) ok(TERRAIN_NOTICES.some((n) => n.text.startsWith(lead)), `Hinweis „${lead} …“ fehlt`);
   ok(MAP_SOURCES.some((q) => q.name === 'GeoNames' && /geonames\.org/.test(q.url) && q.license === 'CC BY 4.0' && /creativecommons\.org\/licenses\/by\/4\.0/.test(q.licenseUrl) && q.changed), 'GeoNames ohne Link, Lizenz oder Hinweis auf die Anpassung');
   ok(MAP_SOURCES.some((q) => q.name === 'Natural Earth' && /naturalearthdata\.com/.test(q.url)) && MAP_SOURCES.some((q) => q.name === 'Terrain Tiles'), 'Natural Earth oder Terrain Tiles fehlen');
-  // Länder der Karte, für die die Quelle einen eigenen Hinweis führt, den das Spiel (noch) nicht zeigt
-  const open = [['CA', 'Kanada'], ['MX', 'Mexiko'], ['AU', 'Australien'], ['NZ', 'Neuseeland']].filter(([c]) => cc.has(c)).map(([c, name]) => `${name} (${nodes.filter((n) => n.cc === c).map((n) => n.name).join(', ')})`);
-  console.log(`Kartendaten: ${TERRAIN_NOTICES.length} Hinweise der Höhenquellen passen zur Karte (${cc.size} Länder, nördlichster Knoten ${north.toFixed(1)}°)` + (open.length ? ` · ohne eigenen Hinweis, obwohl die Karte dort Straßen hat: ${open.join('; ')}` : ''));
+  console.log(`Kartendaten: ${TERRAIN_NOTICES.length} Hinweise der Höhenquellen passen zur Karte (${cc.size} Länder, nördlichster Knoten ${north.toFixed(1)}°)`);
 }
 
 console.log(`Spielstand und Modus: ${checks} Prüfungen, ${trips} Wechsel des Modus, Standard „${DEFAULT_MODE}“`);

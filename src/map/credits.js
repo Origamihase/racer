@@ -26,8 +26,10 @@ export const MAP_SOURCES = [
 export const TERRAIN_NOTICES = [
   { text: 'ArcticDEM terrain data DEM(s) were created from DigitalGlobe, Inc., imagery and funded under National Science Foundation awards 1043681, 1559691, and 1542736;', where: { north: 60 } },
   { text: 'Austria terrain data © offene Daten Österreichs – Digitales Geländemodell (DGM) Österreich;', where: { cc: 'AT' } },
+  { text: 'Canada terrain data contains information licensed under the Open Government Licence – Canada;', where: { cc: 'CA' } },
   { text: 'Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers;' },
   { text: 'Global ETOPO1 terrain data U.S. National Oceanic and Atmospheric Administration' },
+  { text: 'Mexico terrain data source: INEGI, Continental relief, 2016;', where: { cc: 'MX' } },
   { text: 'Norway terrain data © Kartverket;', where: { cc: 'NO' } },
   { text: 'United Kingdom terrain data © Environment Agency copyright and/or database right 2015. All rights reserved;', where: { cc: 'GB' } },
   { text: 'United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.' },
