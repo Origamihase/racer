@@ -578,17 +578,18 @@ export class CenterScreen {
 
   /**
    * Unter dem Bild der Rückfahrkamera (nur in R): eine dunkle Karte mit weichem Schatten über der Karte des Navis, ein
-   * paar Pixel größer als das Bild – so rahmt sie es auch an den runden Ecken, und von der Karte blitzt dort nichts durch.
+   * paar Pixel größer als das Bild und mit kleinerem Eckradius – so deckt sie auch die Spitzen der Ecken, die das Bild
+   * mit seinen runden Ecken frei lässt, und von der Karte blitzt dort nichts durch (Radius ≤ e·√2/(√2−1)).
    */
   drawRearFrame(ctx) {
     const R = REAR_RECT;
-    const e = 3;
+    const e = 4;
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.35)';
     ctx.shadowBlur = 18;
     ctx.shadowOffsetY = 4;
     ctx.fillStyle = '#0b0c0e';
-    roundRect(ctx, R.x - e, R.y - e, R.w + 2 * e, R.h + 2 * e, R.r + e);
+    roundRect(ctx, R.x - e, R.y - e, R.w + 2 * e, R.h + 2 * e, R.r - 3);
     ctx.fill();
     ctx.restore();
   }
