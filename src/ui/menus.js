@@ -5,6 +5,7 @@ import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.j
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
 import { MapScreen } from './mapscreen.js';
+import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -209,6 +210,16 @@ export class Menus {
           b.classList.add('danger');
         }
         break;
+      case 'credits': {
+        // „Über das Spiel“: die Hinweise der Höhendaten auf- und zuklappen (der Knopf bleibt, wo er ist)
+        const box = this.screens.about.querySelector('.credit-notices');
+        const open = !box.classList.toggle('hidden');
+        b.setAttribute('aria-expanded', String(open));
+        b.textContent = (open ? '▾' : '▸') + ' Hinweise der Höhendaten';
+        this.watchScroll(this.screens.about);
+        if (open) box.scrollIntoView({ block: 'nearest' });
+        break;
+      }
       default:
         this.h.action?.(a, b);
     }
@@ -220,7 +231,8 @@ export class Menus {
     // Eingabefelder behalten ihre Tasten – der Lautstärke-Regler nur ← →, mit ↑ ↓ geht es weiter
     if (e.target && /input/i.test(e.target.tagName) && e.target.type !== 'range' && e.code !== 'Escape') return;
     const s = this.screens[this.current];
-    const btns = [...s.querySelectorAll('.btn:not([disabled]), input[type=range]')];
+    // (Links stehen mit in der Reihe: Mit den Pfeiltasten angesteuert, öffnet Enter sie wie einen Knopf)
+    const btns = [...s.querySelectorAll('.btn:not([disabled]), input[type=range], a.link')];
     const idx = btns.indexOf(document.activeElement);
     if (e.code === 'ArrowDown' || e.code === 'ArrowRight' || e.code === 'KeyS' || e.code === 'KeyD') {
       if (e.target.type === 'range' && (e.code === 'ArrowRight' || e.code === 'KeyD')) return;
@@ -531,11 +543,34 @@ export class Menus {
     p('Fast alle Witze stammen aus dem SkylineTV LIVE Wiki: die freigeschaltete linke Spur, das Navi-Bieten mit einem Cent mehr, BrunnenTV mit Herrn Schönnbrun, Elsa, die Polizei Gifhorn, Meister Pünktlich (kommt gleich), Malte, die Farbe der Bank, Rahmen aus dem Live-Bereich, Sprachdurchsagen von Fräulein Kassandra und Brüll-William, das Sprachstudio in Mini Adams Ohr, Bananensaft statt Koriander, „You had 5 Jobs“ und die erlogenen Berufsbezeichnungen im Abspann.');
     p('Geld gibt es wie im echten Stream nur vom Publikum: Spenden, Ortsspenden, Abos, VIPs und Navi-Gebote. Wie der Chat gerade gelaunt ist, steht nirgends – das Sprachstudio sagt es Mini Adam ins Ohr.');
     p('NOMI ist der Boardcomputer auf dem Armaturenbrett. Alle Grafiken, Geräusche und Stimmen entstehen direkt im Browser – ohne Bilder- oder Tondateien.');
-    p('Kartenumrisse: Natural Earth (gemeinfrei).');
-    const link = el('a', 'link', card, 'SkylineTV LIVE Wiki öffnen');
-    link.href = 'https://skylinetv.live/wiki/index.php?title=Hauptseite';
-    link.target = '_blank';
-    link.rel = 'noopener';
+    const ext = (parent, text, href) => {
+      const a = el('a', 'link', parent, text);
+      a.href = href;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      return a;
+    };
+    ext(card, 'SkylineTV LIVE Wiki öffnen', 'https://skylinetv.live/wiki/index.php?title=Hauptseite');
+    // Kartendaten: Quelle, Lizenz und was angepasst wurde (src/map/credits.js); die Hinweise der Höhenquellen stehen
+    // im Wortlaut dahinter – aufgeklappt mit einem Knopf, damit die Karte kurz bleibt
+    const credits = el('div', 'credits', card);
+    el('h3', '', credits, 'Kartendaten');
+    for (const q of MAP_SOURCES) {
+      const row = el('p', '', credits, q.what + ': ');
+      if (q.url) ext(row, q.name, q.url);
+      else row.append(q.name);
+      if (q.by) row.append(` (${q.by})`);
+      if (q.license) {
+        row.append(q.licenseUrl ? ', Lizenz ' : ` (${q.license})`);
+        if (q.licenseUrl) ext(row, q.license, q.licenseUrl);
+      }
+      if (q.changed) row.append(' · ' + q.changed);
+    }
+    const more = button(credits, '▸ Hinweise der Höhendaten', 'credits', 'credit-more');
+    more.setAttribute('aria-expanded', 'false');
+    const notices = el('ul', 'credit-notices hidden', credits);
+    notices.lang = 'en';
+    for (const n of TERRAIN_NOTICES) el('li', '', notices, n.text);
     const mem = el('div', 'tribute', card);
     el('span', 'heart', mem, '🖤');
     el('span', '', mem, 'In Erinnerung an Adam Wolke – danke für die Live-Eskalationen.');
