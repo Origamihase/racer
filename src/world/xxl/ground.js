@@ -5,6 +5,7 @@
 // aufgenähte Flicken der Rahmen (siehe roadkit/forest), nie Teil dieses Bodens.
 import * as THREE from 'three';
 import { W } from '../../curve.js';
+import { GRASS_RGB } from '../../textures.js';
 import { mulberry32 } from '../../util.js';
 import { stripGeometry } from '../road.js';
 
@@ -21,7 +22,7 @@ export const LAYER = {
 };
 
 /** Feine, weiche Wiese ohne Richtung (kachelbar). */
-export function meadowTexture(base = [104, 146, 66], seed = 31) {
+export function meadowTexture(base = GRASS_RGB, seed = 31) {
   const S = 256;
   const c = document.createElement('canvas');
   c.width = S;

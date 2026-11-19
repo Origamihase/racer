@@ -245,6 +245,10 @@ export function fieldTexture() {
   return tex(c, { repeat: true });
 }
 
+// Grundton des Rasens (das Mittel der beiden Mähstreifen). Auch die Wiesen der XXL-Welt nehmen ihn als Grund: sonst
+// läge der gemähte Streifen der Autobahn als heller Balken in einer dunkleren Wiese.
+export const GRASS_RGB = [117, 189, 86];
+
 // Wiese am Fahrbahnrand (kachelbar, 6 m): zwei frische Grüntöne in Mähstreifen längs der Straße, kurze Halme
 // wie Filz und kleine Blümchen (Gänseblümchen, Löwenzahn, Klee).
 export function grassTexture() {
@@ -260,8 +264,9 @@ export function grassTexture() {
     g.addColorStop(i / 4 + 0.03, col);
     g.addColorStop((i + 1) / 4 - 0.03, col);
   }
-  g.addColorStop(0, '#75bd56');
-  g.addColorStop(1, '#75bd56');
+  const mid = `rgb(${GRASS_RGB.join(',')})`;
+  g.addColorStop(0, mid);
+  g.addColorStop(1, mid);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
   blotches(ctx, S, S, 40, 24, 70, ['rgba(160,222,112,0.13)', 'rgba(70,140,64,0.12)'], 3);

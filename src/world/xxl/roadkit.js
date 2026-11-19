@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import { W } from '../../curve.js';
 import { Trip, J, BETA, R as rampR, taperLen } from '../../game/trip.js';
-import { ROAD, asphaltBase, guardrailTexture, roundRect } from '../../textures.js';
+import { GRASS_RGB, ROAD, asphaltBase, guardrailTexture, roundRect } from '../../textures.js';
 import { mulberry32 } from '../../util.js';
 import { ASPHALT, wetAsphalt } from '../road.js';
 import { LAYER, meadowTexture } from './ground.js';
@@ -377,7 +377,8 @@ export class RoadMaterials {
     this.asphaltUnder = W.std({ map: this.asphaltTex, ...ASPHALT, ...LAYER.under });
     this.mark = markMaterial(LAYER.mark);
     this.mark2 = markMaterial(LAYER.mark2);
-    this.grassTex = meadowTexture([96, 140, 56], 9);
+    // Bankette der XXL-Straßen: die Wiese des Bodens, eine Spur dunkler
+    this.grassTex = meadowTexture(GRASS_RGB.map((c) => Math.round(c * 0.93)), 9);
     this.grass = W.lambert({ map: this.grassTex, ...LAYER.verge });
     this.railTex = guardrailTexture();
     this.rail = W.std({ map: this.railTex, metalness: 0.75, roughness: 0.38, envMapIntensity: 0.9, side: THREE.DoubleSide });
