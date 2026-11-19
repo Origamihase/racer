@@ -495,9 +495,10 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
   ok(n.trips >= 50 && n.exit > 200 && n.far > 50 && n.farKept > 20 && n.arrive > 50 && n.scenes > 2000 && n.roads > 6000 && n.ramps > 50 && n.forks > 300 && n.pins > 20, 'Navi und Welt: zu wenig geprüft ' + JSON.stringify(n));
   // Ohne Ziel nennt das Navi nur eine Stelle, die die Straße erzwingt: das Autobahnende auf dem eigenen Weg – an der
   // Gabelung der Fahrt, mit dem Text des Schilds dort, ab 1000 m mit den Pfeilen aller Spuren, und die Nahansicht
-  // führt dort die Rampe hinaus. Sonst nennt es keine Stelle (die erste Fahrt beginnt wie die XXL-Welt in Erlensee).
+  // führt dort die Rampe hinaus. Sonst nennt es keine Stelle, nur wo die Fahrt gerade ist (die erste Fahrt beginnt
+  // wie die XXL-Welt in Erlensee).
   {
-    const e = { trips: 0, ends: 0, said: 0, lanes: 0, scenes: 0, quiet: 0 };
+    const e = { trips: 0, ends: 0, said: 0, lanes: 0, scenes: 0, quiet: 0, onramp: 0 };
     for (let t = 0; t < 40; t++) {
       const demo = new MapDemo({ start: t ? starts[Math.floor(r() * starts.length)] : undefined, rng: rng(300 + t) });
       const trip = demo.trip;
@@ -512,6 +513,13 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
         if (!f) {
           if (ins.turn !== 'none' || ins.dist !== 0 || ins.fork || ins.lanes) fail(`ohne Ziel und ohne Autobahnende: Ansage ${ins.turn} „${ins.head}“`);
           else e.quiet++;
+          // die Auffahrt heißt nach der Autobahn, auf die sie führt (nicht nach der „Ausfahrt“ des Knotens)
+          const sec = trip.section;
+          if (sec.kind === 'auf') {
+            const ab = trip.cur.sections.find((c) => c.s0 >= sec.s1 && c.kind === 'ab');
+            e.onramp++;
+            if (!ab || ins.head !== 'Auffahrt ' + deRoad(ab.de).label) fail(`Auffahrt ohne Ziel heißt „${ins.head}“`);
+          }
           continue;
         }
         if (f !== last) e.ends++;
@@ -534,7 +542,7 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
       }
     }
     ok(!bad.length, 'Navi ohne Ziel: ' + bad.join(' | '));
-    ok(e.ends >= 5 && e.said > 1000 && e.lanes > 300 && e.scenes > 40 && e.quiet > 20000, 'Navi ohne Ziel: zu wenig geprüft ' + JSON.stringify(e));
+    ok(e.ends >= 5 && e.said > 1000 && e.lanes > 300 && e.scenes > 40 && e.quiet > 20000 && e.onramp > 500, 'Navi ohne Ziel: zu wenig geprüft ' + JSON.stringify(e));
     console.log('  Navi ohne Ziel: ' + JSON.stringify(e));
   }
   // die Linie des Adapters: ohne K2 gerade; eine gewundene Linie (Format von course.preview) biegt die Nahansicht

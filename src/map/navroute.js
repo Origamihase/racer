@@ -1020,8 +1020,20 @@ export class NavModel {
     }
     return km;
   }
+  /**
+   * Wo die Fahrt gerade ist (Ansage ohne Ziel): auf Autobahn und Landstraße Straße und Richtung, auf der Ausfahrt ihr
+   * Name. Zubringer, Verbindung und Auffahrt heißen nach dem, worauf sie führen – wer aus dem Ort zur Autobahn
+   * fährt, ist auf keiner „Ausfahrt“.
+   */
   roadName(sec) {
     if (sec.de >= 0 && (sec.kind === 'ab' || sec.kind === 'land')) return deRoad(sec.de).label + ' Richtung ' + deTowards(sec.de).name;
+    if (sec.kind === 'zub' || sec.kind === 'conn' || sec.kind === 'auf') {
+      const next = this.trip.cur.sections.find((c) => c.s0 >= sec.s1 && (c.kind === 'ab' || c.kind === 'land' || c.kind === 'stadt'));
+      if (next && next.kind === 'stadt' && next.place >= 0) return 'Richtung ' + places[next.place].name;
+      if (next && next.kind !== 'stadt' && next.de >= 0) return (next.kind === 'ab' ? 'Auffahrt ' : 'Weiter auf der ') + deRoad(next.de).label;
+      // aus dem Ort hinaus, solange die Fahrt die Straße hinter dem Zubringer noch nicht geplant hat
+      if (sec.kind === 'zub' && sec.back) return 'Der Straße folgen';
+    }
     if (sec.node >= 0) return nodeTitle(sec.node);
     return '';
   }
