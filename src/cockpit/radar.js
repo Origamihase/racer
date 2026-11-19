@@ -17,6 +17,9 @@ const BOX = { w: 0.066, h: 0.031, d: 0.048, sink: 0.0006 };
 // Dunkeln dieselbe Farbe) – und so oft blinkt es je Sekunde
 const LAMP = [0x1c8a4b, 0x4a100c, 0xff2a1e];
 const BLINK_HZ = 3;
+// Schein ums Lämpchen in den hellen Phasen der Warnung: Radius (m), Stärke in der Mitte, Neigung zum Fahrer (rad) und
+// wie weit er vor dem Lämpchen schwebt (m) – so schneidet ihn das Gehäuse nicht an
+const GLOW = { r: 0.026, gain: 0.7, tilt: 0.3, out: 0.03 };
 
 /** Flaches Plättchen mit runden Ecken und weicher Kante, Vorderseite nach +z: w × h, Eckradius r, Dicke t. */
 function plate(w, h, r, t) {
@@ -72,6 +75,17 @@ export function buildRadar(mats, shadowMat) {
     prep(place(glint, lx, ly + 0.0012, 0), 0xffffff, { shade: () => 2.4 }),
   ], lampMat);
 
+  // Schein: Das rote Pünktchen allein ist im Bild kaum größer als ein Buchstabe. Eine Scheibe, die zum Rand hin
+  // ausläuft (aufgemalt; additiv gemischt bleibt vom Rand nichts), dem Fahrer zugewandt.
+  const glow = meshOf([prep(new THREE.RingGeometry(0, GLOW.r, 24, 3), 0xffffff, {
+    shade: (p) => GLOW.gain * (1 - Math.hypot(p.x, p.y) / GLOW.r) ** 2,
+  })], new THREE.MeshBasicMaterial({
+    color: LAMP[2], vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+  }));
+  glow.rotation.x = -GLOW.tilt;
+  glow.position.set(lx, ly + 0.0045 + GLOW.out * Math.sin(GLOW.tilt), GLOW.out * Math.cos(GLOW.tilt));
+  glow.renderOrder = 2;
+
   const group = new THREE.Group();
   for (const [k, list] of Object.entries(L)) group.add(meshOf(list, mats[k]));
   group.add(lamp);
@@ -79,6 +93,7 @@ export function buildRadar(mats, shadowMat) {
   shadow.position.y = 0.0012;
   shadow.renderOrder = 1;
   group.add(shadow);
+  group.add(glow);
 
   const up = new THREE.Vector3(0, 1, 0);
   const normal = new THREE.Vector3();
@@ -101,6 +116,7 @@ export function buildRadar(mats, shadowMat) {
       if (lit !== state) {
         state = lit;
         lampMat.color.setHex(LAMP[lit]);
+        glow.visible = lit === 2;
       }
     },
   };
