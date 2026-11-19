@@ -252,6 +252,14 @@ body.drone .hud:has(> .durchsage:not(.hidden)) .rahmen:not(.corner-only) .strip-
   body.drone .hud:has(> .photo:not(.hidden)) .rahmen-caption { visibility: hidden; }
 }
 
+/* Facecam unten links: nur Rahmen und Namensschild – das Bild zeichnet WebGL genau darunter (ui.js placeFacecam setzt
+   Lage, Größe und Deckkraft; der Eckradius gehört zu FC_RADIUS in ui.js). Unter allen anderen HUD-Elementen. */
+.facecam { position: absolute; display: none; border-radius: 12px; border: 1.5px solid rgba(255, 255, 255, 0.32); z-index: 1;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.38), inset 0 0 0 1px rgba(0, 0, 0, 0.28); }
+.facecam-tag { position: absolute; left: 7px; bottom: 7px; display: flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 999px;
+  background: rgba(10, 10, 14, 0.62); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; line-height: 17px; white-space: nowrap; }
+.facecam-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 6px rgba(232, 33, 46, 0.85); animation: lowbat 1.6s infinite; }
+
 /* --- Rahmen ------------------------------------------------------------------ */
 .rahmen-layer { position: absolute; inset: 0; z-index: 2; }
 .rahmen { position: absolute; inset: 0; animation: rahmenin 0.5s ease-out; }

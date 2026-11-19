@@ -7,7 +7,7 @@ export const DEFAULT_SAVE = {
   best: { distance: 0, earned: 0, viewers: 0 },
   // (ältere Spielstände tragen noch stats.leftLaneEuro mit sich – das wird einfach nicht mehr benutzt)
   stats: { runs: 0, totalKm: 0, naviReached: 0, crashes: 0 },
-  settings: { sound: true, speech: true, chat: true, quality: 'auto', volume: 0.8 },
+  settings: { sound: true, speech: true, chat: true, facecam: true, quality: 'auto', volume: 0.8 },
   seenIntro: false,
 };
 

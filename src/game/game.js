@@ -58,6 +58,8 @@ export class Game {
     };
     this.running = false;
     this.over = null;
+    // Mini Adams Mimik (main.js hängt sich ein): onMood(name, Stärke 0 … 1) bei Spenden, Schreck, Rempler, Ziel …
+    this.onMood = () => {};
   }
 
   // ------------------------------------------------------------------------
@@ -310,6 +312,7 @@ export class Game {
     // genau 4 €: Ab diesem Betrag gibt es im Stream eine Dankeseinblendung – das wissen die Stammgäste
     else if (amount === 4 && chance(0.5)) this.later(0.7, () => this.chat(this.chatLine(CHAT.einblendung)));
     this.eco.donated(amount);
+    this.onMood('donation', clamp(amount / 20, 0.25, 1));
     // eine richtig große Spende gibt das Sprachstudio gern weiter, sobald es Luft hat (die größte zuerst) – und ab
     // 100 € ruft es sofort „Alter!“, so wie das echte Sprachstudio
     const S = this.studio;
@@ -569,6 +572,7 @@ export class Game {
     if (W.active && !W.announced && W.level > 0.12) {
       W.announced = true;
       this.say(BOARD.rain, 'worried');
+      this.onMood('rain', 1);
       // Regen ist Unterhaltung: Der Chat wird wach (Geld gibt es dafür nicht)
       this.eco.cheer('rainStart');
       this.burst(CHAT.rainStart, 5, 5);
@@ -600,6 +604,7 @@ export class Game {
     } else if (type === 'twitch') {
       A.wiperStrain();
       this.stats.twitches++;
+      this.onMood('wiper', 1);
       if (wet && this.T.wiperChat <= 0 && chance(0.3)) {
         this.T.wiperChat = 14;
         // ab dem fünften Zucken zählt der Chat auch mal mit
@@ -616,6 +621,7 @@ export class Game {
       }
     } else if (type === 'stand' || type === 'stuck') {
       A.wiperStutter(3);
+      this.onMood('wiper', 1);
       // stehen die Wischer im Schauer, entschuldigt sich NOMI ab und zu für die Beta-Software (nach der Regenansage;
       // die Uhr läuft mit den anderen in this.T)
       if (type === 'stand' && wet && !(this.T.wiperSorry > 0) && chance(0.6)) {
@@ -634,6 +640,7 @@ export class Game {
     if (r === 'wipe') this.ui.toast('🌧️ Wisch! Klare Sicht.', 'info');
     else if (r === 'twitch') {
       this.ui.toast('🌧️ Der Wischer zuckt nur …', 'info');
+      this.onMood('wiper', 1);
       if (chance(0.4)) this.chat(pick(CHAT.wiper));
     }
   }
@@ -750,6 +757,7 @@ export class Game {
         this.naviSaidT = this.t;
         this.say(BOARD.naviChanged, 'think');
       }
+      this.onMood('curious', 1);
       if (nv.wende) this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info'));
       this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${fmtNum(nv.km, 1)} km)`, 'info', t.note);
     }
@@ -793,6 +801,7 @@ export class Game {
     const t = e.target;
     this.stats.naviReached++;
     this.say(BOARD.arrived, 'love');
+    this.onMood('cheer', 1);
     this.audio.jingle();
     // klassisches Spiel: an jedem erreichten Navi-Ziel wird ein Karosserie-Punkt repariert (mit Pflaster)
     if (p.repair(1)) {
@@ -1015,6 +1024,7 @@ export class Game {
         if (p.kmh > 126) {
           this.fx.flash(1);
           this.audio.flash();
+          this.onMood('startled', 1);
           this.scenery.flashBlitzer(true);
           this.later(0.15, () => this.scenery.flashBlitzer(false));
           this.stats.photos++;
@@ -1225,6 +1235,7 @@ export class Game {
       this.eco.cheer('record');
       this.bot('victoria', `Neuer Zuschauerrekord: ${fmtNum(Math.round(this.viewers))} Zuschauer!`);
       this.audio.record();
+      this.onMood('proud', 1);
       this.burst(CHAT.record, 4, 2.5);
       this.ui.banner('🏆 Neuer Zuschauerrekord!', 3.5);
       if (this.up.konfetti) this.cockpit.addConfetti(30);
@@ -1315,6 +1326,8 @@ export class Game {
         // der letzten Ansage, damit es bei einer Laune an der Kante nicht ständig hin und her meldet)
         this.studio.trend = e.level > e.from ? 'up' : 'down';
         this.T.studio = Math.min(this.T.studio, Math.max(2.5, 30 - (this.t - this.studio.moodT)));
+        // steigt sie, freut sich Mini Adam mit (sein Gesicht hängt an diesem Ereignis, nie am Stimmungswert selbst)
+        if (e.level > e.from) this.onMood('happy', 0.6);
         break;
       default:
         break;
@@ -1561,6 +1574,7 @@ export class Game {
       const wait = last && (last.stat === 'naviReached' || last.stat === 'charges') ? 3.6 : 0;
       this.later(wait, () => {
         this.bot('victoria', 'You had 5 Jobs – und alle erledigt! 🏆');
+        this.onMood('proud', 1);
         this.later(2.4, () => this.donate(A.pledger, A.pledge, '', { label: 'Challenges', line: `${A.pledger} hatte ${fmtBetrag(A.pledge)} auf alle fünf Jobs gesetzt – und zahlt mit Freuden!` }));
         this.audio.record();
         this.ui.banner('🏆 Alle 5 Jobs erledigt!', 4);
@@ -1572,6 +1586,7 @@ export class Game {
   honk() {
     this.audio.horn();
     this.lastHorn = this.t;
+    this.onMood('startled', 0.45);
     if (chance(0.12)) this.chat(pick(['Bimmel hurra! 📯', 'HUP HUP', 'Hupkonzert!']));
   }
 
@@ -1590,6 +1605,7 @@ export class Game {
     this.speech.say('Achtung, Achtung! Bitte machen Sie die Spur frei!', 'william');
     this.voiceUntil = Math.max(this.voiceUntil, this.t + 4);
     this.eco.cheer('megafon');
+    this.onMood('megafon', 2.6);
     this.ui.toast(n ? `📢 ${n} Fahrzeug${n > 1 ? 'e machen' : ' macht'} Platz` : '📢 Durchsage!', 'info');
     this.chat(pick(['Wie in Gifhorn 📢', 'MEGAFON 😂', 'Platz da!']));
   }
@@ -1603,6 +1619,7 @@ export class Game {
     this.eco.cheer('crash');
     this.audio.crash(e.zone, e.power);
     this.fx.shake(1, e.zone);
+    this.onMood('ouch', 1);
     this.cockpit.nomi.setMood('dizzy', 3);
     const left = p.maxHits - p.hits;
     this.ui.damage(p.hits, p.maxHits);
@@ -1620,6 +1637,7 @@ export class Game {
   onNearMiss(e) {
     this.stats.nearMisses++;
     this.thrill('nearMiss', 'dieses Manöver');
+    this.onMood('startled', 0.75);
     if (chance(0.5)) this.chat(pick(CHAT.nearMiss));
   }
 
@@ -1646,6 +1664,7 @@ export class Game {
     this.speech.stopAll();
     if (reason === 'akku') this.say('Akku leer. Die Stream-Technik verabschiedet sich.', 'sleep');
     else if (reason === 'werkstatt') this.say('Bitte einen Werkstatttermin vereinbaren.', 'dizzy');
+    if (reason === 'akku' || reason === 'werkstatt') this.onMood(reason === 'akku' ? 'sleepy' : 'ouch', 1);
   }
 
   /**

@@ -1,66 +1,47 @@
-// Mini Adam – stilisierte Plüschfigur nach dem Fan-Plüsch: schwarze Cap mit LIVE-Logo hoch auf dem Kopf,
-// große Kulleraugen, dicke Nase, Schnurrbart und Bart, dunkle Haare, schwarzes T-Shirt mit kurzen Ärmeln,
-// Plüscharme mit Ellbogen und Fäustlingshänden, dunkelgraue Hose, Handmikrofon. Komplett aus Grundformen.
+// Mini Adam – Plüschfigur nach dem Fan-Plüsch: schwarze Cap mit LIVE-Logo, buschige dunkle Haare, große
+// Kulleraugen mit Lidern, dicke Nase, Schnurrbart, der in den Kinnbart läuft, schwarzes T-Shirt mit LIVE-Logo,
+// Plüscharme mit Fäustlingen, dunkelgraue Hose, weiche Schuhe, Handmikrofon. Die Formen baut adamSculpt.js
+// (einmal, für alle Instanzen), die Mimik rechnet adamMimic.js; hier entstehen Material, Gelenke und Bewegung.
 import * as THREE from 'three';
-import { curve } from '../curve.js';
-import { liveLogoTexture, fabricTexture } from '../textures.js';
+import { W } from '../curve.js';
+import { liveLogoTexture } from '../textures.js';
+import { plush, eyeMaterial } from './plushMaterial.js';
+import { buildAdamGeometry, FABRIC, NECK, HEAD_C, EYE_C, EYE_R, BROW_C, JAW_C, STACHE_SMILE, STACHE_POUT, SHOULDER, UPPER_ARM, FORE_ARM, HIP } from './adamSculpt.js';
+import { Mimic } from './adamMimic.js';
+
+export { plush };
 
 export const COLORS = {
-  skin: 0xd9a477,
-  skinDark: 0xc98b62,
-  black: 0x141416,
-  shirt: 0x161618,
-  hair: 0x3a281c,
-  beard: 0x2b1d14,
-  pants: 0x34353a,
-  shoe: 0x0f0f10,
+  skin: FABRIC.skin,
+  skinDark: FABRIC.skinDeep,
+  black: FABRIC.cap,
+  shirt: FABRIC.shirt,
+  hair: FABRIC.hair,
+  beard: FABRIC.beard,
+  pants: FABRIC.pants,
+  shoe: FABRIC.shoe,
   white: 0xf7f5f0,
-  mouth: 0x6b2a25,
+  mouth: FABRIC.mouth,
 };
 
-/** Hauptmaße (Körperkoordinaten, Figur schaut nach +z) */
+/** Hauptmaße (Körperkoordinaten, Figur schaut nach +z): Schultergelenk, Ober-/Unterarm, Höhe der Kopfmitte */
 export const ADAM_DIM = {
-  shoulder: [0.165, 0.53, 0],
-  upperArm: 0.15,
-  foreArm: 0.14,
-  head: 0.745,
+  shoulder: SHOULDER,
+  upperArm: UPPER_ARM,
+  foreArm: FORE_ARM,
+  head: NECK[1] + HEAD_C[1],
 };
-
-let sharedFabric = null;
-
-export function plush(color, curved, { sheen = 0.9, rough = 0.95, side = THREE.FrontSide } = {}) {
-  if (!sharedFabric) sharedFabric = fabricTexture(11);
-  const m = new THREE.MeshPhysicalMaterial({
-    color,
-    roughness: rough,
-    metalness: 0,
-    sheen,
-    sheenRoughness: 0.55,
-    sheenColor: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.35),
-    bumpMap: sharedFabric,
-    bumpScale: 0.6,
-    side,
-  });
-  return curved ? curve(m) : m;
-}
-
-function plain(color, curved, params = {}) {
-  const m = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0, ...params });
-  return curved ? curve(m) : m;
-}
-
-function capsule(r, len, mat, segs = 10) {
-  return new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 6, segs), mat);
-}
-
-function sphere(r, mat, ws = 18, hs = 14) {
-  return new THREE.Mesh(new THREE.SphereGeometry(r, ws, hs), mat);
-}
 
 const smooth = (a, b, x) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
 };
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const EYE_RADII = new THREE.Vector3(EYE_R[0], EYE_R[1], EYE_R[2]);
+
+// Aufdruck auf Shirt und Cap: einmal für alle Figuren
+let logoTex = null;
+const logo = () => (logoTex ||= liveLogoTexture({ w: 512, h: 512 }));
 
 // --- Arme per Zwei-Knochen-IK -------------------------------------------------------------
 // Die Hände folgen Zielpunkten in Körperkoordinaten (Lenkradkranz bzw. Winkposition neben dem Kopf),
@@ -101,346 +82,250 @@ export function solveArm(arm, target, pole, palm) {
 }
 
 /**
- * Zielpunkte für die Hände (Körperkoordinaten). wheel = { m: Matrix4 Lenkrad → Körper, r }.
- * wave 0 … 1 führt die Fensterhand (rechte Hand der Figur, side = 1) vom Lenkrad vor der Schulter
- * hoch und dann seitlich neben den Kopf – bleibt dabei im Innenraum.
+ * Zielpunkte für die Hände (Körperkoordinaten). wheel = { m: Matrix4 Lenkrad → Körper, r } oder null (stehend:
+ * die Fensterhand hält das Mikrofon vor die Brust, die andere hängt locker).
+ * wave 0 … 1 führt die winkende Hand vom Lenkrad vor der Schulter hoch und dann seitlich neben den Kopf – bleibt dabei
+ * im Innenraum; cheer 0 … 1 hebt sie stattdessen etwas höher und weiter vorn zum Jubeln (die Faust wippt, die andere
+ * Hand bleibt am Lenkrad). Im Auto winkt die Fensterhand (side = 1), stehend die freie Hand (side = −1, gespiegelt):
+ * die Fensterhand hält dann das Mikrofon.
  * Im Auto liegt die Schulter knapp unter der Gürtellinie, und unter dem Seitenfenster ist zwischen
  * Türblech und Glas nach außen hin ein offener Spalt: Hand und Ellbogen gehen deshalb innen (vor der
  * Brust, unter dem Kinn) nach oben und erst über der Gürtellinie zum Fenster hin – und seitlich am
  * Kinn vorbei, nicht quer vors Gesicht, das beim Winken zur Kamera schaut.
  */
-const WAVE_POS = new THREE.Vector3(0.275, 0.775, 0.05);
-const WAVE_C1 = new THREE.Vector3(0.2, 0.56, 0.2);
-const WAVE_C2 = new THREE.Vector3(0.215, 0.7, 0.07);
+const WAVE_POS = new THREE.Vector3(0.27, 0.77, 0.06);
+const CHEER_POS = new THREE.Vector3(0.235, 0.84, 0.15);
+const WAVE_C1 = new THREE.Vector3(0.2, 0.55, 0.22);
+const WAVE_C2 = new THREE.Vector3(0.22, 0.69, 0.1);
 const WAVE_PALM = new THREE.Vector3(0.55, -0.1, 0.83).normalize();
+const CHEER_PALM = new THREE.Vector3(-0.35, 0.1, 0.93).normalize();
 // Ellbogen beim Hochnehmen nach unten vorne, oben dann vorne-außen
 const WAVE_POLE_UP = new THREE.Vector3(0, -1, 0.3).normalize();
 const WAVE_POLE = new THREE.Vector3(0.1, -0.5, 0.9).normalize();
-const gripTmp = { p: V(), n: V(), c: V(), pole: V(), palm: V(), a: V(), b: V() };
+// stehend: Mikrofonhand vor der Brust (Handfläche nach innen), die andere hängt neben dem Bauch
+const STAND = [
+  { pos: new THREE.Vector3(-0.205, 0.245, 0.045), pole: new THREE.Vector3(-0.25, 0, -1).normalize(), palm: new THREE.Vector3(0.9, 0, 0.35).normalize() },
+  { pos: new THREE.Vector3(0.115, 0.41, 0.205), pole: new THREE.Vector3(0.6, -0.8, -0.2).normalize(), palm: new THREE.Vector3(-1, 0, 0.1).normalize() },
+];
+const gripTmp = { a: V(), n: V(), end: V(), c1: V(), c2: V(), m: V() };
+/** v mit gespiegeltem x (für die winkende Hand auf der Seite side) nach out */
+const sideV = (v, side, out) => out.set(v.x * side, v.y, v.z);
 
-export function handTarget(side, wheel, { wave = 0, steer = 0, t = 0 } = {}, out = { pos: V(), pole: V(), palm: V() }) {
-  // Griff am Kranz: rechte Hand der Figur (Fensterseite) bei etwa halb zehn, linke bei halb drei
-  const phi = (side > 0 ? Math.PI - 0.3 : 0.3) + steer * 0.5;
-  const c = Math.cos(phi);
-  const s = Math.sin(phi);
-  const r = wheel.r + 0.012;
-  out.pos.set(c * r, s * r, 0.026).applyMatrix4(wheel.m);
-  // Handfläche zur Lenkradmitte und etwas nach vorne, Ellbogen hängen locker nach unten-außen
-  gripTmp.n.set(-c, -s, -0.45).transformDirection(wheel.m);
-  out.palm.copy(gripTmp.n);
-  out.pole.set(side * 0.55, -1, -0.15).normalize();
-  if (side > 0 && wave > 0) {
-    const w = wave;
-    // kubische Bézierkurve Lenkrad → vor der Brust → seitlich am Kinn hoch → neben dem Kopf
+/** Welche Hand winkt: im Auto die Fensterhand, stehend die freie (die Fensterhand hält das Mikrofon) */
+export const waveSide = (wheel) => (wheel ? 1 : -1);
+
+export function handTarget(side, wheel, { wave = 0, cheer = 0, steer = 0, t = 0 } = {}, out = { pos: V(), pole: V(), palm: V() }) {
+  if (wheel) {
+    // Griff am Kranz: Hand auf der Fensterseite bei etwa halb zehn, die andere bei halb drei; Lenken nach rechts
+    // (steer > 0) dreht das Lenkrad aus Fahrersicht im Uhrzeigersinn (+x des Lenkrads zeigt zur Wagenmitte)
+    const phi = (side > 0 ? Math.PI - 0.3 : 0.3) - steer * 0.5;
+    const c = Math.cos(phi);
+    const s = Math.sin(phi);
+    const r = wheel.r + 0.012;
+    out.pos.set(c * r, s * r, 0.026).applyMatrix4(wheel.m);
+    // Handfläche zur Lenkradmitte und etwas nach vorne, Ellbogen hängen locker nach unten-außen
+    gripTmp.n.set(-c, -s, -0.45).transformDirection(wheel.m);
+    out.palm.copy(gripTmp.n);
+    out.pole.set(side * 0.55, -1, -0.15).normalize();
+  } else {
+    const st = STAND[side > 0 ? 1 : 0];
+    out.pos.copy(st.pos);
+    out.pole.copy(st.pole);
+    out.palm.copy(st.palm);
+  }
+  const w = side === waveSide(wheel) ? Math.max(wave, cheer) : 0;
+  if (w > 0) {
+    // Ziel oben: neben dem Kopf (Winken) oder höher und weiter vorn (Jubeln), je nach Anteil
+    const kc = cheer / (wave + cheer);
+    sideV(gripTmp.m.copy(WAVE_POS).lerp(CHEER_POS, kc), side, gripTmp.end);
+    // kubische Bézierkurve Lenkrad → vor der Brust → seitlich am Kinn hoch → oben
     const k0 = (1 - w) * (1 - w) * (1 - w);
     const k1 = 3 * (1 - w) * (1 - w) * w;
     const k2 = 3 * (1 - w) * w * w;
     const k3 = w * w * w;
-    gripTmp.a.copy(out.pos).multiplyScalar(k0).addScaledVector(WAVE_C1, k1).addScaledVector(WAVE_C2, k2).addScaledVector(WAVE_POS, k3);
-    // Winken: Hand pendelt seitlich, nur wenn sie oben ist
+    gripTmp.a.copy(out.pos).multiplyScalar(k0).addScaledVector(sideV(WAVE_C1, side, gripTmp.c1), k1).addScaledVector(sideV(WAVE_C2, side, gripTmp.c2), k2).addScaledVector(gripTmp.end, k3);
+    // Winken: Hand pendelt seitlich; Jubeln: Faust wippt – beides nur, wenn die Hand oben ist
     const wig = smooth(0.7, 1, w);
-    gripTmp.a.x += Math.sin(t * 9) * 0.026 * wig;
-    gripTmp.a.y += Math.abs(Math.cos(t * 9)) * 0.008 * wig;
+    gripTmp.a.x += Math.sin(t * 9) * 0.026 * wig * (1 - kc);
+    gripTmp.a.y += (Math.abs(Math.cos(t * 9)) * 0.008 * (1 - kc) + Math.abs(Math.sin(t * 7.5)) * 0.03 * kc) * wig;
     out.pos.copy(gripTmp.a);
-    out.pole.lerp(WAVE_POLE_UP, smooth(0, 0.35, w)).lerp(WAVE_POLE, smooth(0.6, 1, w)).normalize();
-    out.palm.lerp(WAVE_PALM, smooth(0.2, 0.9, w)).normalize();
+    out.pole.lerp(sideV(WAVE_POLE_UP, side, gripTmp.m), smooth(0, 0.35, w)).lerp(sideV(WAVE_POLE, side, gripTmp.m), smooth(0.6, 1, w)).normalize();
+    out.palm.lerp(sideV(gripTmp.n.copy(WAVE_PALM).lerp(CHEER_PALM, kc), side, gripTmp.m), smooth(0.2, 0.9, w)).normalize();
   }
   return out;
 }
 
 /**
- * Baut Mini Adam. Höhe stehend ≈ 1 Einheit (wird vom Aufrufer skaliert).
- * @param {{curved?: boolean}} opts
+ * Baut Mini Adam. Höhe stehend ≈ 0,95 Einheiten (wird vom Aufrufer skaliert).
+ * @param {{curved?: boolean, seed?: number}} opts curved: Material für die gebogene Welt (siehe curve.js);
+ *   seed: Startwert der Mimik (gleicher Wert und gleiche Aufrufe → gleiche Mimik, etwa im Auto und in der Facecam)
  */
-export function buildMiniAdam({ curved = true } = {}) {
+export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
+  const G = buildAdamGeometry();
   const root = new THREE.Group();
   root.name = 'MiniAdam';
 
-  const mSkin = plush(COLORS.skin, curved);
-  const mNose = plush(COLORS.skinDark, curved);
-  const mShirt = plush(COLORS.shirt, curved, { sheen: 0.6 });
-  // Ärmel und Cap sind offen: innen dieselbe Farbe statt durchsichtig
-  const mSleeve = plush(COLORS.shirt, curved, { sheen: 0.6, side: THREE.DoubleSide });
-  const mCap = plush(COLORS.black, curved, { sheen: 0.5, side: THREE.DoubleSide });
-  const mHair = plush(COLORS.hair, curved, { sheen: 1, rough: 1 });
-  const mBeard = plush(COLORS.beard, curved, { sheen: 1, rough: 1 });
-  const mPants = plush(COLORS.pants, curved, { sheen: 0.7 });
-  const mShoe = plush(COLORS.shoe, curved, { sheen: 0.4 });
-  const mEye = plain(COLORS.white, curved, { roughness: 0.25 });
-  const mPupil = plain(0x0a0a0a, curved, { roughness: 0.15 });
-  const mMouth = plain(COLORS.mouth, curved, { roughness: 0.6 });
-  const mMic = plain(0x1a1a1a, curved, { roughness: 0.35, metalness: 0.4 });
-  const mMicHead = plain(0x3c3c3c, curved, { roughness: 0.8, metalness: 0.3 });
-
-  const logoTex = liveLogoTexture({ w: 256, h: 256 });
-  const mLogo = new THREE.MeshStandardMaterial({
-    map: logoTex, transparent: true, roughness: 0.9, alphaTest: 0.2,
-    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-  });
-  if (curved) curve(mLogo);
+  const mat = plush(0xffffff, curved, { paint: { logo: logo() } });
+  // Lider sind im gestauchten Augenraum gebaut (Einheitskugel): eigenes Material mit dem Maßstab des Auges, damit ihre
+  // Körnung so fein ist wie im Gesicht (dasselbe Shader-Programm, kein zusätzlicher Draw Call)
+  const matLid = plush(0xffffff, curved, { paint: { logo: logo(), scale: EYE_RADII } });
+  const mEye = eyeMaterial(curved);
+  const eyeU = mEye.userData.eye;
+  const micParams = { color: FABRIC.micBody, roughness: 0.42, metalness: 0.35 };
+  const mMic = curved ? W.std(micParams) : new THREE.MeshStandardMaterial(micParams);
+  const mesh = (geo, parent, name, material = mat) => {
+    const o = new THREE.Mesh(geo, material);
+    o.name = name;
+    parent.add(o);
+    return o;
+  };
 
   // --- Körper -------------------------------------------------------------
   const body = new THREE.Group();
   body.name = 'body';
   root.add(body);
+  const torso = mesh(G.body, body, 'torso');
+  const vest = mesh(G.vest, body, 'vest');
 
-  const torso = capsule(0.15, 0.12, mShirt, 14);
-  torso.scale.set(1.08, 1, 0.86);
-  torso.position.y = 0.43;
-  body.add(torso);
-
-  // LIVE-Logo auf der Brust (leicht gewölbte Fläche)
-  const chestLogo = new THREE.Mesh(new THREE.CylinderGeometry(0.152, 0.152, 0.16, 20, 1, true, -0.62, 1.24), mLogo);
-  chestLogo.scale.set(1.08, 1, 0.86);
-  chestLogo.position.set(0, 0.45, 0);
-  body.add(chestLogo);
-
-  // Arme: runde Schulter im Shirt, kurzer Ärmel, Plüsch-Oberarm, Ellbogen, Unterarm, Fäustlingshand
-  const sleeveGeo = new THREE.CylinderGeometry(0.058, 0.066, 0.085, 16, 1, true);
-  const armL = new THREE.Group();
-  const armR = new THREE.Group();
-  const [sx, sy] = ADAM_DIM.shoulder;
-  armL.position.set(-sx, sy, 0);
-  armR.position.set(sx, sy, 0);
-  body.add(armL, armR);
-  for (const [arm, side] of [[armL, -1], [armR, 1]]) {
-    const shoulder = sphere(0.063, mShirt, 16, 12);
-    arm.add(shoulder);
-    const sleeve = new THREE.Mesh(sleeveGeo, mSleeve);
-    sleeve.position.y = -0.045;
-    arm.add(sleeve);
-    const upper = capsule(0.041, 0.1, mSkin);
-    upper.position.y = -0.085;
-    arm.add(upper);
-    const elbow = new THREE.Group();
-    elbow.position.y = -ADAM_DIM.upperArm;
-    arm.add(elbow);
-    const fore = capsule(0.039, 0.085, mSkin);
-    fore.position.y = -0.062;
-    elbow.add(fore);
-    const hand = new THREE.Group();
-    hand.position.y = -ADAM_DIM.foreArm;
-    elbow.add(hand);
-    // Fäustling: flache, ovale Handfläche mit abstehendem Daumen
-    const palm = sphere(0.05, mSkin);
-    palm.scale.set(1, 1.12, 0.64);
-    hand.add(palm);
-    const thumb = capsule(0.017, 0.026, mSkin, 8);
-    thumb.position.set(side * 0.042, 0.006, 0.012);
-    thumb.rotation.z = -side * 0.75;
-    hand.add(thumb);
-    arm.userData.elbow = elbow;
-    arm.userData.hand = hand;
-  }
-
-  // Mikrofon (in der rechten Hand)
-  const mic = new THREE.Group();
-  const micBody = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.012, 0.13, 12), mMic);
-  micBody.position.y = -0.02;
-  const micHead = sphere(0.03, mMicHead, 14, 10);
-  micHead.position.y = 0.065;
-  mic.add(micBody, micHead);
-  mic.position.set(0, 0.02, 0.035);
-  armR.userData.hand.add(mic);
-
-  // Beine
-  const legs = new THREE.Group();
-  body.add(legs);
+  // Beine (Ursprung im Hüftgelenk)
   const legL = new THREE.Group();
   const legR = new THREE.Group();
-  legL.position.set(-0.075, 0.29, 0);
-  legR.position.set(0.075, 0.29, 0);
-  legs.add(legL, legR);
-  for (const leg of [legL, legR]) {
-    const thigh = capsule(0.072, 0.13, mPants);
-    thigh.position.y = -0.11;
-    leg.add(thigh);
-    const shoe = sphere(0.075, mShoe);
-    shoe.scale.set(1.0, 0.7, 1.35);
-    shoe.position.set(0, -0.245, 0.03);
-    leg.add(shoe);
-    leg.userData.shoe = shoe;
-    leg.userData.thigh = thigh;
+  legL.position.set(-HIP[0], HIP[1], HIP[2]);
+  legR.position.set(HIP[0], HIP[1], HIP[2]);
+  body.add(legL, legR);
+  const legMeshes = [mesh(G.legL, legL, 'legL'), mesh(G.legR, legR, 'legR')];
+
+  // Arme: Knochen Schulter → Ellbogen → Hand (Fäustling-Mitte), das Netz ist weich gehäutet
+  const arms = [];
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Bone();
+    arm.position.set(side * SHOULDER[0], SHOULDER[1], SHOULDER[2]);
+    const elbow = new THREE.Bone();
+    elbow.position.y = -UPPER_ARM;
+    const hand = new THREE.Bone();
+    hand.position.y = -FORE_ARM;
+    arm.add(elbow);
+    elbow.add(hand);
+    body.add(arm);
+    arm.userData.elbow = elbow;
+    arm.userData.hand = hand;
+    const sk = new THREE.SkinnedMesh(side < 0 ? G.armL : G.armR, mat);
+    sk.name = side < 0 ? 'armL' : 'armR';
+    sk.position.copy(arm.position);
+    sk.frustumCulled = false;
+    body.add(sk);
+    arm.userData.skin = sk;
+    arms.push(arm);
   }
+  const [armL, armR] = arms;
+
+  // Mikrofon in der Fensterhand: Stiel quer durch die Faust, der Windschutz ragt auf der Daumenseite heraus
+  const mic = new THREE.Group();
+  mic.name = 'mic';
+  mic.rotation.z = -Math.PI / 2;
+  mic.position.set(0.004, -0.004, 0.01);
+  mesh(G.micFoam, mic, 'micFoam');
+  mesh(G.micBody, mic, 'micBody', mMic);
+  armR.userData.hand.add(mic);
 
   // --- Kopf ---------------------------------------------------------------
   const head = new THREE.Group();
-  head.position.y = ADAM_DIM.head;
+  head.name = 'head';
+  head.rotation.order = 'YXZ';
+  head.position.set(NECK[0], NECK[1], NECK[2]);
   body.add(head);
-
-  const skull = sphere(0.16, mSkin, 28, 22);
-  skull.scale.set(1, 1, 0.95);
-  head.add(skull);
-
-  // Ohren
+  const headMesh = mesh(G.head, head, 'headMesh');
+  const eyesMesh = mesh(G.eyes, head, 'eyes', mEye);
+  const stache = mesh(G.stache, head, 'stache');
+  const jaw = mesh(G.jaw, head, 'jaw');
+  // Lider: je Auge ein gestauchter Augenraum, darin drehen Ober- und Unterlid um die Querachse; dazu je eine Braue
+  const lids = [];
+  const brows = [];
   for (const s of [-1, 1]) {
-    const ear = sphere(0.035, mSkin);
-    ear.scale.set(0.6, 1, 0.8);
-    ear.position.set(s * 0.158, -0.005, -0.01);
-    head.add(ear);
+    const space = new THREE.Group();
+    space.position.set(HEAD_C[0] + s * EYE_C[0], HEAD_C[1] + EYE_C[1], HEAD_C[2] + EYE_C[2]);
+    space.scale.copy(EYE_RADII);
+    head.add(space);
+    const up = new THREE.Group();
+    const lo = new THREE.Group();
+    space.add(up, lo);
+    mesh(G.lidUpper, up, 'lidUpper', matLid);
+    mesh(G.lidLower, lo, 'lidLower', matLid);
+    lids.push({ up, lo, center: space.position });
+    brows.push(mesh(s < 0 ? G.browL : G.browR, head, s < 0 ? 'browL' : 'browR'));
   }
 
-  // Haare: wuschelige Büschel hinten und an den Seiten (schauen unter der Cap hervor)
-  const hairPuffs = [
-    [0, 0.0, -0.13, 0.085], [-0.08, -0.02, -0.12, 0.075], [0.08, -0.02, -0.12, 0.075],
-    [-0.13, 0.01, -0.06, 0.07], [0.13, 0.01, -0.06, 0.07], [-0.145, -0.04, 0.0, 0.055], [0.145, -0.04, 0.0, 0.055],
-    [-0.05, -0.07, -0.13, 0.07], [0.05, -0.07, -0.13, 0.07], [0, 0.03, -0.11, 0.08],
-  ];
-  for (const [x, y, z, r] of hairPuffs) {
-    const p = sphere(r, mHair, 12, 10);
-    p.position.set(x, y, z);
-    p.scale.set(1, 0.9, 0.9);
-    head.add(p);
-  }
+  // Schatten werfen nur die großen Teile (die kleinen kosten im Schattenpass nur Draw Calls)
+  for (const o of [torso, vest, headMesh, armL.userData.skin, armR.userData.skin, ...legMeshes]) o.castShadow = true;
 
-  // Bart (unterer Teil des Gesichts) + Koteletten
-  const beard = new THREE.Mesh(
-    new THREE.SphereGeometry(0.168, 26, 16, Math.PI / 2 - 1.35, 2.7, Math.PI * 0.55, Math.PI * 0.38),
-    mBeard,
-  );
-  head.add(beard);
-  const chin = sphere(0.075, mBeard);
-  chin.scale.set(1.25, 0.8, 0.9);
-  chin.position.set(0, -0.125, 0.08);
-  head.add(chin);
-  for (const s of [-1, 1]) {
-    const side = sphere(0.05, mBeard, 10, 8);
-    side.position.set(s * 0.13, -0.05, 0.05);
-    side.scale.set(0.8, 1.4, 1);
-    head.add(side);
+  // Häuten erst, wenn alle Matrizen stehen (Ruhelage: Arme gestreckt nach unten)
+  root.updateMatrixWorld(true);
+  for (const arm of arms) {
+    const { elbow, hand, skin } = arm.userData;
+    skin.bind(new THREE.Skeleton([arm, elbow, hand]));
   }
-  // Schnurrbart: kommt unter der Nase hervor, die Enden etwas nach unten
-  const stache = new THREE.Group();
-  stache.position.set(0, -0.062, 0.151);
-  head.add(stache);
-  for (const s of [-1, 1]) {
-    const half = capsule(0.02, 0.04, mBeard, 8);
-    half.rotation.z = Math.PI / 2 + s * 0.32;
-    half.position.set(s * 0.03, -0.006, -0.004);
-    stache.add(half);
-  }
-  // Mund (kleines Lächeln im Bart)
-  const mouth = sphere(0.026, mMouth, 12, 8);
-  mouth.scale.set(1.3, 0.55, 0.5);
-  mouth.position.set(0, -0.095, 0.146);
-  head.add(mouth);
-
-  // Nase (prominent, wie beim Plüsch)
-  const nose = sphere(0.043, mNose, 16, 12);
-  nose.scale.set(1.05, 0.95, 0.9);
-  nose.position.set(0, -0.016, 0.162);
-  head.add(nose);
-
-  // Augen: große weiße Kulleraugen direkt über der Nase, Pupillen mit Lichtpunkt
-  const eyes = new THREE.Group();
-  head.add(eyes);
-  for (const s of [-1, 1]) {
-    const ex = s * 0.057;
-    const ey = 0.026;
-    const ez = 0.141;
-    const eye = sphere(0.036, mEye, 18, 14);
-    eye.scale.set(0.86, 1.12, 0.48);
-    eye.position.set(ex, ey, ez);
-    const pupil = sphere(0.0165, mPupil, 14, 10);
-    pupil.scale.set(1, 1.15, 0.42);
-    pupil.position.set(ex - s * 0.002, ey - 0.002, ez + 0.0125);
-    const glint = sphere(0.0048, mEye, 8, 6);
-    glint.position.set(ex - s * 0.002 + 0.006, ey + 0.006, ez + 0.0185);
-    eyes.add(eye, pupil, glint);
-  }
-  // Augenbrauen: zwischen Augen und Cap-Rand
-  for (const s of [-1, 1]) {
-    const brow = capsule(0.009, 0.034, mHair, 6);
-    brow.rotation.z = Math.PI / 2 + s * 0.2;
-    brow.position.set(s * 0.058, 0.077, 0.133);
-    head.add(brow);
-  }
-
-  // Cap: sitzt hoch auf dem Kopf und ist leicht nach hinten gekippt, der Schirm endet über den Augen
-  const CAP_R = 0.166;
-  const cap = new THREE.Group();
-  cap.position.y = 0.093;
-  cap.rotation.x = -0.14;
-  head.add(cap);
-  const crown = new THREE.Mesh(new THREE.SphereGeometry(CAP_R, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), mCap);
-  crown.scale.set(1, 0.74, 1);
-  cap.add(crown);
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(CAP_R + 0.001, CAP_R + 0.003, 0.03, 28, 1, true), mCap);
-  band.position.y = -0.012;
-  cap.add(band);
-  // Schirm: hinten der Rundung des Bands folgend, vorne oval
-  const bw = 0.13;
-  const zb = (x) => Math.sqrt(CAP_R * CAP_R - x * x) - 0.012;
-  const brimShape = new THREE.Shape();
-  brimShape.moveTo(-bw, zb(-bw));
-  brimShape.quadraticCurveTo(-bw - 0.012, CAP_R + 0.07, 0, CAP_R + 0.088);
-  brimShape.quadraticCurveTo(bw + 0.012, CAP_R + 0.07, bw, zb(bw));
-  for (let i = 1; i < 12; i++) {
-    const x = bw - (2 * bw * i) / 12;
-    brimShape.lineTo(x, zb(x));
-  }
-  brimShape.lineTo(-bw, zb(-bw));
-  const brimGeo = new THREE.ExtrudeGeometry(brimShape, { depth: 0.008, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.005, bevelSegments: 2, curveSegments: 10 });
-  brimGeo.deleteAttribute('uv');
-  const brim = new THREE.Mesh(brimGeo, mCap);
-  brim.rotation.x = Math.PI / 2 - 0.1;
-  brim.position.set(0, -0.022, 0);
-  cap.add(brim);
-  const button = sphere(0.016, mCap, 10, 8);
-  button.scale.set(1, 0.55, 1);
-  button.position.y = CAP_R * 0.74;
-  cap.add(button);
-  // LIVE-Logo als Stück der Kuppel: liegt überall dicht auf und kippt mit der Cap
-  const capLogo = new THREE.Mesh(new THREE.SphereGeometry(CAP_R + 0.0016, 24, 8, Math.PI / 2 - 0.45, 0.9, 0.62, 0.86), mLogo);
-  capLogo.scale.set(1, 0.74, 1);
-  cap.add(capLogo);
-
-  // Warnweste (optional, aus dem Shop): Weste um den Oberkörper, Kragen und Schulterstücke
-  // schauen auch über die Türkante (beim Kameraschwenk und im Titelbild zu sehen)
-  const vestMat = plain(0xd7ff1f, curved, { roughness: 0.6, emissive: 0x3a4a00, emissiveIntensity: 0.25 });
-  const stripeMat = plain(0xd8d8d8, curved, { roughness: 0.2, metalness: 0.6 });
-  const vest = new THREE.Group();
-  const vestBody = new THREE.Mesh(new THREE.CylinderGeometry(0.168, 0.165, 0.2, 18, 1, true), vestMat);
-  vestBody.scale.set(1.08, 1, 0.88);
-  vestBody.position.y = 0.43;
-  vest.add(vestBody);
-  const yoke = new THREE.Mesh(new THREE.CylinderGeometry(0.118, 0.168, 0.075, 18, 1, true), vestMat);
-  yoke.scale.set(1.08, 1, 0.88);
-  yoke.position.y = 0.567;
-  vest.add(yoke);
-  for (const s of [-1, 1]) {
-    // deckt die runde Schulter samt Ärmelansatz ganz ab (sonst schaut Schwarz durch)
-    const pad = sphere(0.071, vestMat, 18, 12);
-    pad.position.set(s * sx, sy + 0.002, 0);
-    vest.add(pad);
-  }
-  for (const y of [0.38, 0.47]) {
-    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.022, 18, 1, true), stripeMat);
-    stripe.scale.set(1.08, 1, 0.88);
-    stripe.position.y = y;
-    vest.add(stripe);
-  }
-  vest.visible = false;
-  body.add(vest);
-
-  root.traverse((o) => {
-    if (o.isMesh) {
-      o.castShadow = true;
-      o.receiveShadow = false;
-    }
-  });
 
   // Lenkrad (von außen gesehen): wird vom Auto gesetzt, Standard: vor der Brust
   const wheel = { m: new THREE.Matrix4().makeRotationX(0.35).setPosition(0, 0.44, 0.22), r: 0.17 };
   const targets = [{ pos: V(), pole: V(), palm: V() }, { pos: V(), pole: V(), palm: V() }];
-  const poseArms = (o) => {
+  const gest = { steer: 0, wave: 0, cheer: 0, t: 0 };
+  const poseArms = () => {
+    const drive = api.pose === 'drive';
     for (const [arm, side, tg] of [[armL, -1, targets[0]], [armR, 1, targets[1]]]) {
-      handTarget(side, wheel, o, tg);
+      handTarget(side, drive ? wheel : null, gest, tg);
+      // hüpft er auf dem Sitz, bleiben die Hände trotzdem am Lenkrad
+      if (drive) tg.pos.y -= body.position.y;
       solveArm(arm, tg.pos, tg.pole, tg.palm);
-      arm.userData.hand.rotation.set(0, 0, side > 0 ? Math.sin(t9(o) - 0.6) * 0.3 * smooth(0.7, 1, o.wave || 0) : 0);
+      const waving = side === waveSide(drive ? wheel : null);
+      arm.userData.hand.rotation.set(0, 0, waving ? side * Math.sin(gest.t * 9 - 0.6) * 0.3 * smooth(0.7, 1, gest.wave) * (1 - gest.cheer) : 0);
     }
   };
-  const t9 = (o) => (o.t || 0) * 9;
+
+  // --- Mimik auf Gesicht und Kopf ------------------------------------------
+  const mimic = new Mimic(seed);
+  const gazeHead = V();
+  const eyeFrom = V();
+  const invHead = new THREE.Matrix4();
+  const applyFace = (f, look) => {
+    head.position.set(NECK[0], NECK[1] + 0.0012 * f.breath, NECK[2]);
+    // Kinn nicht zu tief (der Kinnbart liegt auf der Brust) und nicht über die Schulter
+    head.rotation.set(clamp(f.pitch, -0.3, 0.12), clamp(f.yaw, -0.75, 0.75), f.roll);
+    head.updateMatrix();
+    // Atmen: die Brust hebt und weitet sich kaum merklich (die Weste mit)
+    torso.scale.set(1 + 0.004 * f.breath, 1, 1 + 0.008 * f.breath);
+    vest.scale.copy(torso.scale);
+    // Blickziel in Kopf-Koordinaten – schaut er zur Seite (look), wandern die Augen mit
+    const a = look * 0.75;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    gazeHead.set(f.gaze[0] * ca + f.gaze[2] * sa, f.gaze[1], -f.gaze[0] * sa + f.gaze[2] * ca).applyMatrix4(invHead.copy(head.matrix).invert());
+    for (let i = 0; i < 2; i++) {
+      const s = i ? 1 : -1;
+      const l = lids[i];
+      l.up.rotation.x = -f.lidU[i];
+      l.lo.rotation.x = f.lidL[i];
+      eyeU.uEyeLid.value[i].set(f.lidU[i], -f.lidL[i]);
+      // Blick als Richtung auf der Einheitskugel des Auges; die Pupille bleibt im sichtbaren Teil. Gezielt wird von
+      // einem Punkt halb zwischen Auge und Nasenwurzel: so schielt er bei nahen Zielen (Kamera, Navi) nicht
+      eyeFrom.set(l.center.x * 0.5, l.center.y, l.center.z);
+      const g = eyeU.uEyeGaze.value[i].subVectors(gazeHead, eyeFrom).multiply(EYE_RADII).normalize();
+      g.x = clamp(g.x, -0.5, 0.5);
+      g.y = clamp(g.y, -0.4, 0.34);
+      g.z = Math.sqrt(Math.max(0.05, 1 - g.x * g.x - g.y * g.y));
+      g.normalize();
+      // Brauen: heben (an der Stirn entlang etwas nach hinten), innere Enden heben
+      const br = brows[i];
+      br.position.set(HEAD_C[0] + s * BROW_C[0], HEAD_C[1] + BROW_C[1] + f.brow[i], HEAD_C[2] + BROW_C[2] - 0.41 * f.brow[i]);
+      br.rotation.z = -s * f.browTilt[i];
+    }
+    eyeU.uEyePupil.value = f.pupil;
+    const smile = clamp(f.smile / STACHE_SMILE, 0, 1.1);
+    const pout = clamp(-f.smile / STACHE_POUT, 0, 1.1);
+    stache.morphTargetInfluences[0] = jaw.morphTargetInfluences[0] = smile;
+    stache.morphTargetInfluences[1] = jaw.morphTargetInfluences[1] = pout;
+    // Mund auf: der Unterkiefer gleitet nach unten und etwas nach vorn (an der Brust entlang)
+    jaw.position.set(HEAD_C[0] + JAW_C[0], HEAD_C[1] + JAW_C[1] - 0.09 * f.jaw, HEAD_C[2] + JAW_C[2] + 0.045 * f.jaw);
+  };
 
   const api = {
     root,
@@ -452,7 +337,9 @@ export function buildMiniAdam({ curved = true } = {}) {
     legR,
     mic,
     vest,
-    eyes,
+    eyes: eyesMesh,
+    /** Lenkrad, an dem die Hände in der Fahrpose greifen ({ m, r }, siehe setWheel) */
+    wheel,
     pose: 'stand',
     setVest(v) {
       vest.visible = !!v;
@@ -461,53 +348,45 @@ export function buildMiniAdam({ curved = true } = {}) {
     setWheel(m, r = 0.17) {
       wheel.m.copy(m);
       wheel.r = r;
-      if (api.pose === 'drive') poseArms({});
+      poseArms();
     },
     setPose(p) {
       api.pose = p;
       mic.visible = p !== 'drive';
-      if (p === 'drive') {
-        // Sitzend: Oberschenkel nach vorne, Hände am Lenkrad
-        legL.rotation.x = -1.45;
-        legR.rotation.x = -1.45;
-        legL.position.y = legR.position.y = 0.3;
-        armL.userData.hand.rotation.set(0, 0, 0);
-        armR.userData.hand.rotation.set(0, 0, 0);
-        poseArms({});
-      } else {
-        legL.rotation.x = legR.rotation.x = 0;
-        armL.rotation.set(0, 0, 0.18);
-        armL.userData.elbow.rotation.set(-0.2, 0, 0);
-        armL.userData.hand.rotation.set(0, 0, 0);
-        // rechter Arm hält das Mikro vor den Mund
-        armR.rotation.set(-0.9, 0.3, -0.3);
-        armR.userData.elbow.rotation.set(-1.5, 0, 0);
-        armR.userData.hand.rotation.set(0, 0, 0);
-      }
+      legL.rotation.x = legR.rotation.x = p === 'drive' ? -1.2 : 0;
+      poseArms();
+    },
+    /** Stimmung (siehe MOODS in adamMimic.js) für seconds Sekunden (Standard je Stimmung), Stärke 0 … 1 */
+    setMood(name, seconds, strength = 1) {
+      mimic.setMood(name, seconds, strength);
+    },
+    /** Geste der Fensterhand: 'wave' (winken) oder 'cheer' (jubeln) */
+    gesture(name) {
+      mimic.gesture(name);
+    },
+    /** Blick für seconds Sekunden auf ein Ziel ('camera', 'screen', 'mirror', 'nomi', 'wiper' … oder [x, y, z]) */
+    lookAt(target, seconds) {
+      mimic.lookAt(target, seconds);
     },
     /**
      * @param {number} t Zeit in Sekunden
-     * @param {{wave?: number, steer?: number, talk?: number, look?: number}} s
+     * @param {{wave?: number, steer?: number, talk?: number, look?: number, sleepy?: number}} s wave 0 … 1 (Winken
+     *   von außen, zusätzlich zu den Gesten), steer −1 … 1, talk 0 … 1 (spricht gerade), look −1 … 1 (Kopf zur
+     *   Fensterseite +), sleepy 0 … 1
      */
     animate(t, s = {}) {
-      const wave = s.wave || 0;
-      const steer = s.steer || 0;
-      head.rotation.y = (s.look || 0) * 0.6 + Math.sin(t * 0.7) * 0.05;
-      head.rotation.z = Math.sin(t * 1.3) * 0.03 - steer * 0.12;
-      head.position.y = ADAM_DIM.head + Math.sin(t * 2.2) * 0.004;
-      if (api.pose === 'drive') {
-        // Hände am Lenkrad; gewinkt wird mit der Hand auf der Fensterseite (armR sitzt im Auto links)
-        poseArms({ steer, wave, t });
-      } else {
-        armL.rotation.z = 0.18 + Math.sin(t * 1.1) * 0.03;
-        if (wave > 0) {
-          armL.rotation.set(-0.3 * wave, 0, 0.18 + 2.4 * wave + Math.sin(t * 9) * 0.3 * wave);
-        }
-        const talk = s.talk || 0;
-        armR.rotation.x = -0.9 + Math.sin(t * 6) * 0.04 * talk;
-      }
+      const f = mimic.update(t, s);
+      body.position.y = f.lift;
+      applyFace(f, s.look || 0);
+      gest.steer = s.steer || 0;
+      gest.wave = Math.max(s.wave || 0, f.wave);
+      gest.cheer = f.cheer;
+      gest.t = t;
+      poseArms();
     },
   };
+  vest.visible = false;
   api.setPose('stand');
+  api.animate(0);
   return api;
 }

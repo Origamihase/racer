@@ -478,6 +478,7 @@ export class Menus {
     toggle('sound', 'Geräusche', d.sound);
     toggle('speech', 'Sprachausgabe (NOMI, Sprachstudio, Durchsagen)', d.speech);
     toggle('chat', 'Live-Chat anzeigen', d.chat);
+    toggle('facecam', 'Facecam (Mini Adam im Bild)', d.facecam !== false);
     const vr = el('div', 'set-row', list);
     el('span', '', vr, 'Lautstärke');
     const range = el('input', 'range', vr);
