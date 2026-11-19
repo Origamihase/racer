@@ -876,12 +876,29 @@ export class Game {
   }
 
   /**
-   * Am Navi-Ziel vorbeigefahren: Das verstimmt den Chat. Heute liegt jedes Ziel an der Strecke und kann nicht
-   * verfehlt werden – der Aufruf ist für die Karte mit echten Ausfahrten gedacht.
+   * Am Navi-Ziel vorbeigefahren: Das verstimmt den Chat. Klassisch liegt jedes Ziel an der Strecke und kann nicht
+   * verfehlt werden; in der XXL-Welt mit ihren echten Ausfahrten meldet es onTrip.
    */
   missedTarget() {
     this.eco.cheer('missedTarget');
     this.burst(CHAT.missedTarget, 3, 2.5);
+  }
+
+  /**
+   * Ereignisse der XXL-Fahrt (trip.js, main.js reicht sie von der Welt durch): Dort liegen Ankunft, Ausfahrten und
+   * Abzweige in der Strecke. Mini Adams Mimik reagiert darauf wie an den klassischen Stellen (Ziel erreicht: Jubel,
+   * neuer Weg: Blick aufs Navi), und wer an der geplanten Ausfahrt vorbeifährt, verstimmt den Chat.
+   */
+  onTrip(e) {
+    if (!this.running) return;
+    if (e.type === 'arrive') this.onMood('cheer', 1);
+    else if (e.type === 'rest') this.onMood('happy', 0.6);
+    else if (e.type === 'fork') {
+      if (e.wrong && e.planned === 'exit') {
+        this.missedTarget();
+        this.onMood('startled', 0.5);
+      } else if (e.taken === 'exit') this.onMood('curious', 0.7);
+    }
   }
 
   // --- Ereignisse ------------------------------------------------------------------

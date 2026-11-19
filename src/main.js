@@ -348,6 +348,8 @@ const uiFacade = {
 };
 
 const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups });
+// XXL: Ankunft, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Mimik, Chat)
+if (xxl) xxl.on((e) => game.onTrip(e));
 // Krümmung (1/m, links positiv) und Steigung unter dem Wagen für die Lenkung: course.fill() misst sie am Ende jedes
 // Bildes, also genau dort, wo das nächste beginnt; beim Fahren gehen sie mit den Eingaben (ctl) an game.update
 const courseEnv = { kappa: 0, grade: 0 };
