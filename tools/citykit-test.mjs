@@ -285,6 +285,70 @@ for (const p of places) {
   ok(ns && ns.square.x - ns.square.r >= L.STREET.curbR - 0.01 && Math.hypot(ns.fountain.s - ns.square.s, ns.fountain.x - ns.square.x) + sm.r <= ns.square.r + 0.01, `${where}: am Start liegt der Platz des Navis nicht um den Brunnen rechts der Straße`);
 }
 
+// Der Ladepark in Erlensee (xxl/charge.js), am Start und auf der Durchfahrt: er steht, wo der Weg des Wagens ihn
+// erwartet (Heldenbucht und Säule wie im Baustein), kein Haus und kein Platz liegt auf ihm, Streifen und Gehweg vor ihm
+// sind leer, und beim Ausparken kreuzt kein Rad den Bordstein außerhalb der Einfahrt; der Wagen berührt dabei weder
+// die Säule noch ein geparktes Auto und endet am Start genau dort, wo jede Fahrt losrollt.
+{
+  const { chargeOf, rollPose, ROLL_T, CHARGE } = await import('../src/world/xxl/charge.js');
+  // Maße des Wagens (models/tesla.js TESLA; das Modell selbst braucht WebGL): Spur, halbe Breite, halbe Länge
+  const CAR = { track: 0.79, half: 0.93, front: 2.345 };
+  const p = places.find((q) => q.key === CHARGE.place);
+  const len = townLen(p.pop);
+  const info = city.info(CHARGE.kind);
+  ok(near(info.bays[info.hero][0], CHARGE.bay[0], 1e-9) && near(info.bays[info.hero][1], CHARGE.bay[1], 1e-9) && near(info.posts[info.heroPost][0], CHARGE.post[0], 1e-9) && near(info.posts[info.heroPost][1], CHARGE.post[1], 1e-9) && info.w === 2 * CHARGE.half, 'Ladepark: Bucht oder Säule anders als im Baustein');
+  const secs = [
+    { kind: 'stadt', place: p.i, s0: -300, s1: -300 + Math.max(len, 500), start: true, spotS: 0 },
+    { kind: 'stadt', place: p.i, s0: 1000, s1: 1000 + len, spotS: 1000 + Math.round(len * 0.6) },
+  ];
+  let checked = 0;
+  for (const sec of secs) {
+    const where = `Ladepark ${p.name} (${sec.start ? 'Start' : 'Durchfahrt'})`;
+    const c = chargeOf(sec);
+    const plan = townPlan(city, sec);
+    ok(c && plan.charge && near(plan.charge.u, c.u) && plan.charge.x === CHARGE.front, `${where}: nicht geplant`);
+    if (!c || !plan.charge) continue;
+    const pk = [CHARGE.front, CHARGE.front + info.d, -(c.u + CHARGE.half), -(c.u - CHARGE.half)];
+    const u0 = c.u - CHARGE.half - CHARGE.keep;
+    const u1 = c.u + CHARGE.half + CHARGE.keep;
+    for (const it of plan.items) {
+      if (it.name === CHARGE.kind) continue;
+      const b = baseBox(it);
+      if (isHouse(it.name)) ok(!overlap(b, pk, 0.05), `${where}: ${it.name} steht im Park`);
+      ok(!overlap(b, [L.STREET.curbR, CHARGE.front, -u1, -u0], 0.01), `${where}: ${it.name} steht vor dem Park (u ${Math.round(-it.z)})`);
+    }
+    for (const q of plan.squares) ok(q.side < 0 || q.u1 < u0 || q.u0 > u1, `${where}: Platz am Park`);
+    const dw = { u0: c.drive.s0 - sec.s0, u1: c.drive.s1 - sec.s0 };
+    // Säule 1 (Fuß 0,61 × 0,54 m) und die geparkten Autos im Ort
+    const post = [CHARGE.front - CHARGE.post[1] - 0.27, CHARGE.front - CHARGE.post[1] + 0.27, -(c.u - CHARGE.post[0]) - 0.31, -(c.u - CHARGE.post[0]) + 0.31];
+    const cars = plan.items.filter((it) => city.info(it.name).kind === 'car').map((it) => box(it.fp));
+    for (let t = 0; t <= ROLL_T + 1e-9; t += 0.02) {
+      const q = rollPose(c.u, t);
+      const fx = Math.sin(q.yaw);
+      const fu = Math.cos(q.yaw);
+      // Räder: Hinterachse 1,37 m hinter der Mitte, Vorderachse 1,505 m davor; links/rechts ± Spur
+      for (const [a, sd] of [[-1.37, -1], [-1.37, 1], [1.505, -1], [1.505, 1]]) {
+        const x = q.x + fx * a + fu * sd * CAR.track;
+        const u = q.u + fu * a - fx * sd * CAR.track;
+        if (x > L.STREET.curbR - 0.2 && x < CHARGE.front) ok(u > dw.u0 && u < dw.u1, `${where}: Rad auf dem Bordstein (t ${t.toFixed(2)}, u ${u.toFixed(2)})`);
+      }
+      // Wagen als Rechteck (4,69 × 1,86 m): nicht in Säule 1, nicht in einem geparkten Auto
+      const corners = [[-CAR.front, -1], [-CAR.front, 1], [CAR.front, -1], [CAR.front, 1]].map(([a, sd]) => [q.x + fx * a + fu * sd * CAR.half, -(q.u + fu * a - fx * sd * CAR.half)]);
+      const cb = [Math.min(...corners.map((k) => k[0])), Math.max(...corners.map((k) => k[0])), Math.min(...corners.map((k) => k[1])), Math.max(...corners.map((k) => k[1]))];
+      if (Math.abs(fx) > 0.999 || Math.abs(fu) > 0.999) {
+        ok(!overlap(cb, post, 0.05), `${where}: Wagen in der Säule (t ${t.toFixed(2)})`);
+        for (const b of cars) ok(!overlap(cb, b, 0.05), `${where}: Wagen in einem geparkten Auto (t ${t.toFixed(2)})`);
+      }
+      checked++;
+    }
+    if (sec.start) {
+      const end = rollPose(c.u, ROLL_T);
+      ok(near(end.u, -sec.s0, 1e-6) && near(end.x, L.STREET.lane, 1e-9) && end.yaw === 0 && near(end.v, CHARGE.vEnd, 1e-9) && end.steer === 0, `${where}: das Ausparken endet nicht am Startpunkt`);
+    }
+  }
+  ok(checked > 500, 'Ladepark: zu wenig geprüft');
+}
+
 // Lebenslauf eines Orts in der XXL-Welt (towns.js Towns): angelegt, sobald ein Stück seines Abschnitts gebraucht wird;
 // weit voraus entsteht er Teil für Teil (erst alle Fernfassungen, die nahen erst bei der Anfahrt), nah steht er sofort
 // fertig da. Im gescherten Rahmen fährt er starr mit: die eigene Spur liegt genau auf der gescherten Straße, jede Linie

@@ -8,6 +8,7 @@ import { createCityKit } from '../kit/city.js';
 import { goalKind, FOUNTAIN_R, STREET } from '../kit/layout.js';
 import { XXL_BEHIND, squareOf, squareWeight, secSeedKey } from './plan.js';
 import { ISLAND_H } from './roadkit.js';
+import { CHARGE, chargeOf } from './charge.js';
 
 let kit = null;
 /**
@@ -57,9 +58,12 @@ export function islandOf(sec) {
 export function townPlan(K, sec, budget = Infinity) {
   const p = places[sec.place];
   const island = islandOf(sec);
+  const charge = chargeOf(sec);
   return K.planTown(p, {
     budget, len: sec.s1 - sec.s0, mainKind: goalKind(p), pavement: false, signs: false, signName: p.name,
     ...(island ? { island } : sec.start ? { goal: START_GOAL - sec.s0 } : {}),
+    // Erlensee: der Supercharger, an dem jede Fahrt beginnt (charge.js)
+    ...(charge ? { charge: { u: charge.u, kind: CHARGE.kind } } : {}),
   });
 }
 
