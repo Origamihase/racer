@@ -518,14 +518,16 @@ function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable, bare = false) {
   // bare: nur der Halter (Stecker und Kabel bringt die Startszene mit, xxl/chargerig.js)
   if (bare) return;
   F.rbox(xs, yp - 0.1, zp, 0.085, 0.21, 0.12, 0.035, C.plug, { seg: 1 });
-  // Tülle an der Wand, aus der das Kabel kommt
+  // Tülle an der Wand, aus der das Kabel kommt: ganz auf dem geraden Stück der Wand (bei der Ladesäule endet es 13 cm
+  // hinter der Mitte, dahinter biegt die Kante rund ab – dort stünde die Tülle frei in der Luft)
   const zc = zp - dir * 0.07;
-  const zg = zc - dir * 0.11;
+  const zg = zc - dir * 0.08;
   const yg = yc + 0.22;
   F.rbox(xw + s * 0.04, yg, zg, 0.09, 0.07, 0.09, 0.025, C.plug, { seg: 1 });
   // Ein Schlauch ohne Naht: vom Stecker auf der Tangente an den Kreis der Schlaufe, unten herum und auf der zweiten
-  // Tangente hinauf in die Tülle; beide Enden stecken 3 cm tief in Stecker und Tülle, offen ist nichts. Mittellinie in
-  // der Wandebene als (u, y), u = dir · (z − zc).
+  // Tangente hinauf in die Tülle; die Enden stecken 3 cm tief im Stecker und in der flachen Tülle so tief, dass der
+  // Rand des Schlauchs 4 mm unter ihrem Deckel bleibt: offen ist nichts. Mittellinie in der Wandebene als (u, y),
+  // u = dir · (z − zc).
   const r = 0.032;
   const side = (pu, py, k) => {
     const d = Math.hypot(pu, py);
@@ -533,24 +535,26 @@ function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable, bare = false) {
   };
   const a0 = side(zp * dir - zc * dir, yp - 0.1 - yc, 1);
   const a1 = side(zg * dir - zc * dir, yg - yc, -1) - TAU;
-  const n = 16;
+  const n = 24;
   const pts = [];
   const tan = [];
-  // Ende im Stecker und im Kreis: die Tangente läuft vom Berührpunkt zum Stecker, 3 cm darüber hinaus
-  const arm = (a, pu, py, inward) => {
+  // Ende in Stecker oder Tülle (halbe Höhe hy): die Tangente läuft vom Berührpunkt am Kreis zu deren Mitte und darüber
+  // hinaus, 3 cm oder so weit, dass der schräge Endring 4 mm unter dem Deckel bleibt
+  const arm = (a, pu, py, inward, hy) => {
     const tu = pu - R * Math.cos(a);
     const ty = py - R * Math.sin(a);
     const l = Math.hypot(tu, ty);
-    pts.push([pu + (tu / l) * 0.03, py + (ty / l) * 0.03]);
+    const ext = Math.min(0.03, (hy - 0.004 - (r * Math.abs(tu)) / l) / Math.max(0.3, Math.abs(ty) / l));
+    pts.push([pu + (tu / l) * ext, py + (ty / l) * ext]);
     tan.push([(inward * tu) / l, (inward * ty) / l]);
   };
-  arm(a0, (zp - zc) * dir, yp - 0.1 - yc, -1);
+  arm(a0, (zp - zc) * dir, yp - 0.1 - yc, -1, 0.105);
   for (let i = 0; i <= n; i++) {
     const a = a0 + ((a1 - a0) * i) / n;
     pts.push([R * Math.cos(a), R * Math.sin(a)]);
     tan.push([Math.sin(a), -Math.cos(a)]);
   }
-  arm(a1, (zg - zc) * dir, yg - yc, 1);
+  arm(a1, (zg - zc) * dir, yg - yc, 1, 0.035);
   const rad = 10;
   const P = [];
   const N = [];
