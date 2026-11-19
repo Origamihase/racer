@@ -7,9 +7,10 @@ import { REAR_RECT, SCREEN_PX } from './screen.js';
 
 /**
  * Kamera in Wagenkoordinaten (x rechts, y oben, vorn = −z): Auge über dem Kennzeichen, Blick schräg nach hinten unten,
- * weitwinklig wie eine echte Rückfahrkamera. res: Auflösung des Bilds, every: nur jedes so vielte Bild neu.
+ * weitwinklig wie eine echte Rückfahrkamera. res: Auflösung des Bilds, rate: höchstens so viele Bilder je Sekunde
+ * (bei 60 Bildern je Sekunde jedes zweite).
  */
-export const REAR_CAM = { res: [512, 288], fov: 64, eye: [0, 0.98, 2.43], look: [0, 0.05, 6.4], near: 0.1, far: 420, every: 2 };
+export const REAR_CAM = { res: [512, 288], fov: 64, eye: [0, 0.98, 2.43], look: [0, 0.05, 6.4], near: 0.1, far: 420, rate: 30 };
 // Hilfslinien: Spurweite (Mitte der Linien, m), so weit nach hinten (m), Krümmung je Lenkradstellung (1/m), Marken (m)
 const GUIDE = { half: 0.82, len: 6.5, k: 0.17, marks: [[1, '#ff5a4c'], [2.5, '#ffc542'], [4.5, '#4fd18b']] };
 
@@ -27,7 +28,7 @@ export class RearCam {
     this.on = false;
     this.wheel = NaN;
     this.acc = 0;
-    this.frame = 0;
+    this.shotT = -Infinity;
     this.v = new THREE.Vector3();
     this.eye = new THREE.Vector3();
     this.at = new THREE.Vector3();
@@ -77,7 +78,7 @@ export class RearCam {
   /** Pro Bild (Cockpit): on = R eingelegt und Cockpit zu sehen; wheel: Lenkradstellung für die Hilfslinien. */
   update(dt, on, wheel) {
     // eben eingelegt: gleich im nächsten Bild rendern (nie ein altes Bild von der letzten Rückwärtsfahrt)
-    if (on && !this.on) this.frame = 0;
+    if (on && !this.on) this.shotT = -Infinity;
     this.on = on;
     if (this.picture) this.picture.visible = this.overlay.visible = on;
     if (!on) {
@@ -147,10 +148,11 @@ export class RearCam {
 
   /**
    * Das Bild der Kamera rendern (main.js, vor dem Cockpit; nur wenn on): toWorld(v) setzt einen Punkt in
-   * Wagenkoordinaten in die Welt um (wie beim Innenspiegel).
+   * Wagenkoordinaten in die Welt um (wie beim Innenspiegel), t: Spielzeit (s).
    */
-  render(renderer, scene, toWorld) {
-    if (!this.on || this.frame++ % REAR_CAM.every !== 0) return;
+  render(renderer, scene, toWorld, t) {
+    if (!this.on || t - this.shotT < 0.97 / REAR_CAM.rate) return;
+    this.shotT = t;
     this.cam.position.copy(toWorld(this.eye.fromArray(REAR_CAM.eye)));
     this.cam.lookAt(toWorld(this.at.fromArray(REAR_CAM.look)));
     renderer.setRenderTarget(this.rt);

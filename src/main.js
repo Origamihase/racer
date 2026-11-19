@@ -1403,7 +1403,7 @@ function renderFrame(cockpitOn) {
   // Rückfahrkamera für den Mittelbildschirm: nur in R und nur mit Cockpit (cockpit.rear.on), in halber Bildrate
   if (cockpitOn && cockpit.rear.on) {
     tesla.root.visible = false;
-    cockpit.rear.render(renderer, scene, localToWorld);
+    cockpit.rear.render(renderer, scene, localToWorld, simT);
   }
   if (photoRequest) {
     takePhoto(photoRequest);
@@ -1725,7 +1725,7 @@ function step(dt, { render = true } = {}) {
     scenery.update(s, dt);
     sky.setOvercast(cloud * 0.95);
     rain.update(dt, simT, { speed: p.speed, s, camX: camera.position.x, intensity: w });
-    tesla.update(dt, p.speed, p.wheel, simT);
+    tesla.update(dt, p.v, p.wheel, simT); // rückwärts drehen die Räder rückwärts
     teslaDamage.update(dt, simT, p.damage, p.speed);
     cabinDamage.update(dt, simT, p.damage, p.speed, cockpitOn);
     tesla.setBrake(p.braking > 0.1 || p.speed < 1);

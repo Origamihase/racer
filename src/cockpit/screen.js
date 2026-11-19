@@ -576,15 +576,19 @@ export class CenterScreen {
     ctx.textBaseline = 'alphabetic';
   }
 
-  /** Unter dem Bild der Rückfahrkamera (nur in R): eine dunkle Karte mit weichem Schatten über der Karte des Navis. */
+  /**
+   * Unter dem Bild der Rückfahrkamera (nur in R): eine dunkle Karte mit weichem Schatten über der Karte des Navis, ein
+   * paar Pixel größer als das Bild – so rahmt sie es auch an den runden Ecken, und von der Karte blitzt dort nichts durch.
+   */
   drawRearFrame(ctx) {
     const R = REAR_RECT;
+    const e = 3;
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.35)';
     ctx.shadowBlur = 18;
     ctx.shadowOffsetY = 4;
     ctx.fillStyle = '#0b0c0e';
-    roundRect(ctx, R.x, R.y, R.w, R.h, R.r);
+    roundRect(ctx, R.x - e, R.y - e, R.w + 2 * e, R.h + 2 * e, R.r + e);
     ctx.fill();
     ctx.restore();
   }
