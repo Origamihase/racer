@@ -468,6 +468,11 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
   .title-card .menu { gap: 6px; }
   .title-card .menu .btn { padding: 8px 14px; font-size: 15px; }
   .title-card .title-stats { margin-top: 10px; font-size: 13px; }
+  /* mit dem Eintrag für den anderen Modus: die vier kleinen Einträge paarweise, „Über das Spiel“ darunter – die Karte
+     wird so nicht höher als vorher, und die Zahlen bleiben vor dem Himmel */
+  .title-card .menu { display: grid; grid-template-columns: 1fr 1fr; }
+  .title-card .menu .btn.primary, .title-card .menu .btn.mode-entry, .title-card .menu .btn:last-child { grid-column: 1 / -1; }
+  .title-card .menu .btn:not(.primary):not(.mode-entry) { padding-inline: 10px; }
 }
 .menu { display: flex; flex-direction: column; gap: 9px; align-items: stretch; max-width: 330px; }
 .menu.row { flex-direction: row; flex-wrap: wrap; max-width: none; margin-top: 18px; }
