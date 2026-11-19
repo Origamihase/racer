@@ -11,21 +11,30 @@ export const DEFAULT_SAVE = {
   seenIntro: false,
   // besuchte Orte der großen Karte: Wiki-Name → Zahl der Besuche
   visits: {},
+  // der auf dem Titelbildschirm gewählte Modus ('klassik' | 'xxl', siehe src/mode.js); null: noch nie gewählt
+  mode: null,
 };
+
+/** Ein gespeicherter Teil-Spielstand (best, stats, …) – oder nichts, wenn dort etwas anderes steht als ein Objekt. */
+const part = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
 
 export function loadSave() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return structuredClone(DEFAULT_SAVE);
-    const data = JSON.parse(raw);
+    // Ältere Spielstände kennen manche Felder noch nicht (visits, best.reise, mode): Sie bekommen den Standard. Felder,
+    // die dieser Stand nicht kennt (ein neuerer hat sie geschrieben), bleiben erhalten und werden wieder mitgespeichert.
+    const data = part(JSON.parse(raw));
     return {
       ...structuredClone(DEFAULT_SAVE),
       ...data,
-      best: { ...DEFAULT_SAVE.best, ...(data.best || {}) },
-      stats: { ...DEFAULT_SAVE.stats, ...(data.stats || {}) },
-      settings: { ...DEFAULT_SAVE.settings, ...(data.settings || {}) },
-      upgrades: { ...(data.upgrades || {}) },
-      visits: { ...(data.visits || {}) },
+      // (das Guthaben wird addiert: Steht dort keine Zahl, begänne die Kasse lieber bei null als bei „12,5“ + 3)
+      wallet: Number.isFinite(data.wallet) ? data.wallet : DEFAULT_SAVE.wallet,
+      best: { ...DEFAULT_SAVE.best, ...part(data.best) },
+      stats: { ...DEFAULT_SAVE.stats, ...part(data.stats) },
+      settings: { ...DEFAULT_SAVE.settings, ...part(data.settings) },
+      upgrades: { ...part(data.upgrades) },
+      visits: { ...part(data.visits) },
     };
   } catch (e) {
     return structuredClone(DEFAULT_SAVE);

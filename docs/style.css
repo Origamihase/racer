@@ -435,6 +435,8 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .title-live { background: var(--live); padding: 3px 10px; border-radius: 6px; font-weight: 800; letter-spacing: 0.08em; font-size: 14px; animation: livepulse 2s infinite; }
 .title-card h1 { font-size: clamp(54px, 8vw, 104px); line-height: 0.95; margin: 10px 0 6px; font-weight: 850; letter-spacing: -0.03em; text-shadow: 0 6px 30px rgba(0,0,0,0.6); }
 .title-card h2 { font-size: clamp(20px, 2.6vw, 32px); margin: 0; font-weight: 700; color: #ff4d57; text-shadow: 0 2px 16px rgba(0,0,0,0.6); }
+/* die Reise ist noch eine Vorschau: ein Schildchen neben LIVE sagt es */
+.title-badge { background: rgba(255, 196, 61, 0.16); border: 1px solid rgba(255, 196, 61, 0.55); color: #ffd97a; padding: 2px 9px; border-radius: 6px; font-weight: 700; font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
 .tagline { font-style: italic; color: #d6dae2; margin: 8px 0 22px; font-size: 17px; text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 2px 16px rgba(0,0,0,0.6); }
 /* Hochkant steht die Titelkarte oben und das Dunkel kommt von oben (quer endet es schon in der Bildmitte, die Zeilen
    liefen dort in den hellen Himmel); darunter bleibt der Streifen für den Wagen frei */
@@ -453,6 +455,10 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 }
 .menu { display: flex; flex-direction: column; gap: 9px; align-items: stretch; max-width: 330px; }
 .menu.row { flex-direction: row; flex-wrap: wrap; max-width: none; margin-top: 18px; }
+/* Titel: der Eintrag für den anderen Modus trägt unter seinem Namen eine kleine Zeile */
+.btn.mode-entry { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.mode-sub { font-size: 0.74em; font-weight: 500; line-height: 1.25; color: #c5cbd6; }
+.mode-pad { font-size: calc(1em / 0.74); line-height: 0; visibility: hidden; }
 .title-stats { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 22px; color: #e1e4ea; font-size: 15px; font-weight: 600; }
 .title-hint { position: absolute; bottom: 18px; left: clamp(20px, 6vw, 110px); color: var(--sub); font-size: 13px; }
 
@@ -583,12 +589,6 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 
 .about-card { max-width: 760px; }
 .link { color: #8fb4ff; font-weight: 700; }
-.tribute { margin-top: 22px; padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); display: flex; gap: 10px; align-items: center; font-weight: 600; }
-.tribute .heart { font-size: 22px; font-family: var(--emoji); }
-
-/* --- Navi-Ansage ohne Mittelbildschirm (XXL: Drohnenansicht und schmale Formate), oben in der Mittelspalte ----
-   Ein Ortsname bleibt ganz: ist die Spalte schmal (Handy), bricht der Text um, statt hinten gekürzt zu werden – aus
-   „Ausfahrt Frankfurt (Oder)“ würde sonst „Ausfahrt Frank…“. Der Radius ist die halbe Höhe der einzeiligen Ansage. */
 /* Kartendaten: Kleingedrucktes mit Quellen und Lizenzen; die Hinweise der Höhendaten klappen auf */
 .credits { margin-top: 18px; font-size: 13px; color: var(--sub); }
 .credits h3 { margin: 0 0 4px; font-size: 12px; }
@@ -597,6 +597,12 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .credit-notices { margin: 8px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.45; }
 .credit-notices li { margin: 2px 0; }
 .link:focus-visible { outline: 2px solid rgba(140, 180, 255, 0.9); outline-offset: 2px; border-radius: 4px; }
+.tribute { margin-top: 22px; padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); display: flex; gap: 10px; align-items: center; font-weight: 600; }
+.tribute .heart { font-size: 22px; font-family: var(--emoji); }
+
+/* --- Navi-Ansage ohne Mittelbildschirm (XXL: Drohnenansicht und schmale Formate), oben in der Mittelspalte ----
+   Ein Ortsname bleibt ganz: ist die Spalte schmal (Handy), bricht der Text um, statt hinten gekürzt zu werden – aus
+   „Ausfahrt Frankfurt (Oder)“ würde sonst „Ausfahrt Frank…“. Der Radius ist die halbe Höhe der einzeiligen Ansage. */
 .navi-turn { display: none; align-items: center; gap: 9px; max-width: 100%; background: var(--panel-strong); border: 1px solid var(--line);
   border-radius: 20px; padding: 5px 16px 5px 5px; font-size: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
 body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
@@ -702,11 +708,17 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .menu .btn { padding: 8px 14px; font-size: 15px; }
   .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
   .sum { padding: 5px 9px; }
-  /* Titel: Logo, Untertitel und alle Knöpfe passen ohne Scrollen */
+  /* Titel: Logo, Untertitel und alle Knöpfe passen ohne Scrollen – „Losfahren“ und der andere Modus über die ganze
+     Breite (Name und kleine Zeile nebeneinander), die fünf übrigen Einträge in drei Spalten darunter */
   .title-card h1 { font-size: 44px; margin: 4px 0 2px; }
   .title-card h2 { font-size: 18px; }
   .tagline { margin: 4px 0 10px; font-size: 14px; }
   .title-stats { margin-top: 10px; font-size: 13px; }
+  .title-card .menu { display: grid; grid-template-columns: repeat(3, 1fr); max-width: 520px; }
+  .title-card .menu .btn.primary, .title-card .menu .btn.mode-entry { grid-column: 1 / -1; }
+  .title-card .menu .btn:not(.primary):not(.mode-entry) { padding-inline: 10px; }
+  .title-card .menu .btn.mode-entry { flex-direction: row; align-items: baseline; gap: 10px; }
+  .title-card .menu .mode-pad { display: none; }
   /* HUD: kompakte Mittelspalte; die Durchsage steht klein ganz unten – über dem Lenkrad bzw. unter dem Auto */
   .center-stack { gap: 6px; }
   .leftlane { padding: 5px 10px 6px; font-size: 13px; border-radius: 10px; }

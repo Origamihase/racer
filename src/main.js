@@ -32,6 +32,7 @@ import { Jolt } from './fx/jolt.js';
 import { TeslaDamage } from './models/damage-fx.js';
 import { CabinDamage } from './cockpit/damage-cabin.js';
 import { loadSave, storeSave, resetSave } from './save.js';
+import { modeFor, otherMode, modeSearch } from './mode.js';
 import { Game } from './game/game.js';
 import { Pickups } from './game/pickups.js';
 import { UI } from './ui/ui.js';
@@ -49,8 +50,12 @@ const QUALITY = {
   niedrig: { pr: 0.75, msaa: 0, shadows: false, shadowSize: 1024, mirrorEvery: 3 },
 };
 const DEBUG = /[?&]debug/.test(location.search);
-// Die neue Welt mit Ausfahrten, Rampen, Landstraßen und Orten (noch hinter dem Schalter, siehe src/world/xxl)
-const XXL = /[?&]xxl/.test(location.search);
+const save = loadSave();
+// Der Modus dieses Seitenaufrufs (src/mode.js): ein Schalter in der Adresse (?xxl, ?klassik), sonst die Wahl vom
+// Titelbildschirm (save.mode), sonst der Standard. XXL ist die neue Welt mit Ausfahrten, Rampen, Landstraßen und Orten
+// (src/world/xxl); sie wird beim Laden gebaut, darum lädt der Wechsel des Modus die Seite neu (switchMode).
+const MODE = modeFor(location.search, save.mode);
+const XXL = MODE === 'xxl';
 // Prüfstand für Navi und Karte: eine echte Fahrt über die XXL-Karte neben dem klassischen Spiel (src/map/mapdemo.js);
 // in der XXL-Welt gibt es ihn nicht, dort führt das Navi die Fahrt der Welt
 const mapDemo = DEBUG && !XXL && /[?&]mapdemo/.test(location.search) ? new MapDemo() : null;
@@ -59,7 +64,6 @@ let mapHudT = 0; // die Navi-Zeile des HUD (XXL-Fahrt, Prüfstand) folgt viermal
 // ---------------------------------------------------------------------------
 const app = document.getElementById('app');
 const loadingEl = document.getElementById('loading');
-const save = loadSave();
 let settings = save.settings;
 
 function qualityPreset() {
@@ -524,8 +528,10 @@ const menus = new Menus(app, {
       menus.hide();
       game.end('quit');
     } else if (a === 'menu') toTitle();
+    else if (a === 'mode') switchMode();
   },
   back: () => {},
+  mode: MODE, // der Titel nennt seinen Modus und bietet den anderen an
   travel: !!xxl, // XXL-Welt: Rekord und Summe auf dem Titel in Reisekilometern
   dataFor: (name, data) => {
     if (name === 'shop') return { wallet: save.wallet, upgrades: save.upgrades };
@@ -560,7 +566,8 @@ const menus = new Menus(app, {
     applySettings(key);
   },
   resetSave: () => {
-    const fresh = resetSave();
+    // (die Wahl des Modus ist kein Spielstand: Wer die Reise gewählt hat, bleibt auch nach dem Löschen dort)
+    const fresh = { ...resetSave(), mode: save.mode };
     for (const k of Object.keys(save)) delete save[k];
     Object.assign(save, fresh);
     settings = save.settings;
@@ -619,6 +626,28 @@ function applySettings(key) {
     worldRT.dispose();
     onResize();
   }
+}
+
+let leaving = false; // die Seite lädt gerade in den anderen Modus
+/**
+ * Der Eintrag für den anderen Modus auf dem Titelbildschirm: Wahl merken und die Seite in ihm laden (die Welt wird beim
+ * Laden gebaut). Sofort steht wieder der Ladebildschirm des ersten Starts da – derselbe, den die neue Seite gleich
+ * zeigt –, damit bis dahin nichts von der alten Welt zu sehen oder zu hören ist. Die neue Adresse trägt keinen
+ * Schalter für den Modus mehr (modeSearch): Es gilt die gemerkte Wahl.
+ */
+function switchMode() {
+  if (leaving) return;
+  leaving = true;
+  save.mode = otherMode(MODE);
+  storeSave(save);
+  speech.stopAll();
+  audio.suspend();
+  menus.hide();
+  loadingEl.classList.remove('done');
+  app.appendChild(loadingEl);
+  const url = location.href.split(/[?#]/)[0] + modeSearch(location.search, save.mode);
+  // erst zeichnen lassen, dann laden
+  setTimeout(() => location.replace(url), 80);
 }
 
 function toTitle() {

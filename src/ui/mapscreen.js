@@ -93,6 +93,11 @@ export function visitSummary(visits = {}) {
   return { idx, countries: cc.size };
 }
 
+/** „3 von 426 Orten“: die besuchten Orte, wie die große Karte und der Titel der Reise sie zählen. */
+export function visitLine(visits) {
+  return `${fmtNum(visitSummary(visits).idx.length)} von ${fmtNum(places.length)} Orten`;
+}
+
 export class MapScreen {
   constructor() {
     this.painter = new MapPainter({ theme: 'light', look: 'menu' });
@@ -137,7 +142,7 @@ export class MapScreen {
       el('span', 'map-chip-icon', c, icon);
       el('span', '', c, text);
     };
-    chip('❤️', `${fmtNum(sum.idx.length)} von ${fmtNum(places.length)} Orten`);
+    chip('❤️', visitLine(this.save.visits));
     chip('🌍', sum.countries === 1 ? '1 Land' : `${fmtNum(sum.countries)} Länder`);
     // XXL: aus der Pause die Kilometer dieser Fahrt (wie Pause-Karte und Abspann), sonst alle Fahrten der XXL-Welt
     chip('🛣️', (this.travel ? fmtOdo(d.odo != null ? d.odo / 1000 : this.save.stats.reiseKm || 0) : fmtKm((this.save.stats.totalKm || 0) * 1000, 0)) + ' gefahren');

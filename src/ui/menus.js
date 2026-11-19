@@ -1,10 +1,11 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, GAME_TITLE, GAME_SUBTITLE, TAGLINE, INCOME, FINES, fmtBetrag, nameBreak } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, GAME_TITLE, MODE_TEXT, TAGLINE, INCOME, FINES, fmtBetrag, nameBreak } from '../data.js';
 import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
-import { MapScreen } from './mapscreen.js';
+import { MapScreen, visitLine } from './mapscreen.js';
+import { otherMode } from '../mode.js';
 import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
 
 function el(tag, cls, parent, text) {
@@ -271,13 +272,25 @@ export class Menus {
   render_title(s, d) {
     s.textContent = '';
     const card = el('div', 'title-card', s);
+    // Jeder Modus hat seinen Titel (h.mode, src/mode.js): Untertitel und Zahlen sind seine, und ein Eintrag führt in
+    // den anderen – die Seite lädt dann neu, weil die Welt beim Laden gebaut wird
+    const mode = this.h.mode || 'klassik';
+    const M = MODE_TEXT[mode];
+    const other = MODE_TEXT[otherMode(mode)];
     const logo = el('div', 'title-logo', card);
     el('span', 'title-live', logo, '● LIVE');
+    if (M.badge) el('span', 'title-badge', logo, M.badge);
     el('h1', '', card, GAME_TITLE);
-    el('h2', '', card, GAME_SUBTITLE);
+    el('h2', '', card, M.title);
     el('p', 'tagline', card, TAGLINE);
     const menu = el('div', 'menu', card);
     button(menu, '▶  Losfahren', 'start', 'primary');
+    const mb = button(menu, '', 'mode', 'mode-entry');
+    el('span', 'mode-name', mb, `${other.icon}  ${other.name}`);
+    // (die kleine Zeile beginnt unter dem Namen: davor unsichtbar dasselbe Symbol in der Größe des Knopfs)
+    const sub = el('span', 'mode-sub', mb);
+    el('span', 'mode-pad', sub, other.icon + ' ').setAttribute('aria-hidden', 'true');
+    sub.append(other.sub);
     button(menu, '🛒  Tesla-Shop', 'shop');
     button(menu, '🗺️  Karte', 'karte');
     button(menu, '🎮  Steuerung', 'controls');
@@ -289,6 +302,8 @@ export class Menus {
     const travel = !!this.h.travel;
     el('span', '', stats, '🏆 Rekord ' + (travel ? fmtOdo((d.best.reise || 0) / 1000) : fmtKm(d.best.distance || 0)));
     el('span', '', stats, '🛣️ ' + (travel ? fmtOdo(d.stats.reiseKm || 0) : fmtKm((d.stats.totalKm || 0) * 1000, 1)) + ' gesamt');
+    // die Reise zählt dazu ihre Orte, dieselbe Zahl wie auf der großen Karte
+    if (mode === 'xxl') el('span', '', stats, '❤️ ' + visitLine(d.visits));
     el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause');
   }
 
