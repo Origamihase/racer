@@ -461,6 +461,7 @@ export class Cockpit {
   setAspect(aspect) {
     if (!(aspect > 0 && aspect < Infinity)) return; // Fenster (noch) ohne Größe
     this.gripTarget = GRIP_TALL + (GRIP_WIDE - GRIP_TALL) * smoothstep(0.6, 1.0, aspect);
+    this.radar.fit(aspect);
     if (!this.gripSet) {
       // beim Start sofort, danach (Handy gedreht) gleiten die Hände am Kranz entlang
       this.gripSet = true;
