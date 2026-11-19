@@ -613,7 +613,7 @@ export const STUDIO = {
 };
 
 export const DURCHSAGEN = [
-  { voice: 'kassandra', text: 'Treffen sich zwei Scheibenwischer. Fragt der eine: Na, wie läuft’s? Sagt der andere: Hin und her.' },
+  { voice: 'kassandra', text: 'Treffen sich zwei Unterhosen. Fragt die eine: Warst du im Urlaub? Du bist so braun.' },
   { voice: 'karla', text: 'Hallo Mini Adam, liebe Grüße aus {city}. Dachs grüßt Efeu.' },
   { voice: 'william', text: 'Mini Adam, bitte einmal hupen! Bimmel hurra!' },
   { voice: 'weronika', text: 'Hier spricht Meister Pünktlich. Ich bin in fünf Minuten da.' },
@@ -629,12 +629,15 @@ export const DURCHSAGEN = [
   { voice: 'weronika', text: 'Mini Adam, du fährst besser als jedes Navi.' },
   { voice: 'karla', text: 'Hallo Mini Adam! Schreib mal eine Zahl in den Chat. Aber bitte ohne Drei.' },
   { voice: 'william', text: 'Kappandramäßige Zusammenfassung bitte! Ich war beim Schwimmunterricht.' },
+  { voice: 'william', text: 'Mein Sack ist nass!' },
+  { voice: 'kassandra', text: 'Achtung, Achtung. Das Tralala bitte nicht anfassen.' },
 ];
 
 export const DURCHSAGEN_REGEN = [
   { voice: 'karla', text: 'Guten Tag, hier ist der Herr mit den Schirmen. Ich würde meine Schirme gerne heute noch abholen.' },
   { voice: 'weronika', text: 'Mini Adam, dein Scheibenwischer winkt mir gerade zu. Ich winke zurück!' },
   { voice: 'kassandra', text: 'Achtung, Achtung. Der automatische Scheibenwischer befindet sich weiterhin in der Beta-Phase.' },
+  { voice: 'kassandra', text: 'Treffen sich zwei Scheibenwischer. Fragt der eine: Na, wie läuft’s? Sagt der andere: Hin und her.' },
 ];
 
 // ---------------------------------------------------------------------------
