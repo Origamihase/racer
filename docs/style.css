@@ -245,13 +245,14 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .chat.funk { border-color: rgba(255, 90, 79, 0.55); }
 .chat.funk .chat-list { display: none; }
 
-/* Blitzerfoto: unten rechts in der Ecke, unter dem Mittelbildschirm des Cockpits */
+/* Blitzerfoto: unten rechts in der Ecke, unter dem Mittelbildschirm des Cockpits. Die Unterzeile richtet ihre
+   Schriftgröße nach der Breite des Fotos selbst (cqw), damit sie bei jeder Fensterbreite ganz auf dem Rand steht */
 .photo { position: absolute; right: 22px; bottom: 8px; width: clamp(176px, 13vw, 240px); background: #fbfaf5; color: #222; padding: 8px 8px 9px; border-radius: 4px;
-  transform: rotate(-3deg); box-shadow: 0 10px 30px rgba(0,0,0,0.45); animation: photoin 0.5s cubic-bezier(.2,1.4,.4,1); z-index: 4; }
+  transform: rotate(-3deg); box-shadow: 0 10px 30px rgba(0,0,0,0.45); animation: photoin 0.5s cubic-bezier(.2,1.4,.4,1); z-index: 4; container-type: inline-size; }
 /* 4:3 wie die Aufnahme – so steht die Höhe schon fest, bevor das Bild geladen ist */
 .photo img { width: 100%; display: block; border-radius: 2px; background: #111; aspect-ratio: 4 / 3; object-fit: cover; }
 .photo-cap { font-weight: 800; margin-top: 6px; font-size: clamp(12.5px, 0.95vw, 14px); line-height: 1.25; white-space: nowrap; }
-.photo-sub { font-size: clamp(10.5px, 0.82vw, 12px); line-height: 1.25; color: #555; white-space: nowrap; }
+.photo-sub { font-size: clamp(9.5px, 6cqw, 12px); line-height: 1.25; color: #555; white-space: nowrap; }
 @keyframes photoin { from { transform: translateX(120%) rotate(12deg); } }
 /* Touch: oben rechts auf dem Chat-Feld – dort liegt es nie unter den Knöpfen oder auf dem eigenen Auto */
 @media (pointer: coarse) {
