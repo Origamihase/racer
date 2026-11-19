@@ -37,6 +37,8 @@ export class Game {
     };
     this.running = false;
     this.over = null;
+    // XXL-Welt: abseits der Autobahn ruhen Ereignisse, die nur dort Sinn ergeben (setzt main.js jedes Bild)
+    this.offAutobahn = false;
   }
 
   // ------------------------------------------------------------------------
@@ -330,7 +332,7 @@ export class Game {
     const L = this.left;
     const p = this.player;
     if (!L.open) {
-      L.next -= dt;
+      if (!this.offAutobahn) L.next -= dt;
       if (L.next <= 0) this.openLeftLane();
     } else {
       L.timer -= dt;
@@ -643,13 +645,13 @@ export class Game {
     }
 
     // Polizei Gifhorn einfach mal so
-    if (T.police <= 0 && p.s > 2500) {
+    if (T.police <= 0 && p.s > 2500 && !this.offAutobahn) {
       T.police = rand(220, 340);
       this.callPolice(pick(POLICE_TEXTS));
     }
 
     // Blitzer mit Tempo-120-Zone
-    if (!this.blitzer && p.s > this.S.blitzer) {
+    if (!this.blitzer && p.s > this.S.blitzer && !this.offAutobahn) {
       const s = p.s;
       this.blitzer = { limitS: s + 520, camS: s + 1120, endS: s + 1300, announced: false, checked: false };
       this.scenery.request('speed', this.blitzer.limitS, { limit: 120 });
@@ -692,7 +694,7 @@ export class Game {
     }
 
     // Elefantenrennen
-    if (p.s > this.S.elefant) {
+    if (p.s > this.S.elefant && !this.offAutobahn) {
       this.S.elefant = p.s + rand(3200, 5200);
       this.traffic.elefantenrennen(p.s);
       this.say(BOARD.elefant, 'worried', { priority: false });
@@ -700,7 +702,7 @@ export class Game {
     }
 
     // Brunnen und Elsa am Straßenrand (Hupen bringt Bonus)
-    if (!this.landmark && p.s > this.S.landmark) {
+    if (!this.landmark && p.s > this.S.landmark && !this.offAutobahn) {
       const type = chance(0.55) ? 'brunnen' : 'elsa';
       // hinten in einem Abschnitt ohne Lärmschutzwand und ohne Brücke davor
       const s = this.scenery.landmarkSpot(p.s + 1500);
@@ -814,19 +816,20 @@ export class Game {
   updatePickups(dt, camera) {
     const p = this.player;
     const S = this.S;
-    if (p.s > S.charge) {
+    const spawn = !this.offAutobahn;
+    if (p.s > S.charge && spawn) {
       S.charge = p.s + rand(900, 1500);
       this.pickups.spawnAhead('charge', p.s, this.traffic);
     }
-    if (p.s > S.banana) {
+    if (p.s > S.banana && spawn) {
       S.banana = p.s + rand(1200, 1900);
       this.pickups.spawnAhead('banana', p.s, this.traffic);
     }
-    if (p.s > S.koriander) {
+    if (p.s > S.koriander && spawn) {
       S.koriander = p.s + rand(1300, 2300);
       this.pickups.spawnAhead('koriander', p.s, this.traffic);
     }
-    for (const it of this.pickups.update(dt, this.t, p, camera)) {
+    for (const it of this.pickups.update(dt, this.t, p, camera, spawn)) {
       if (it.type === 'charge') {
         p.charge(12);
         this.stats.charges++;

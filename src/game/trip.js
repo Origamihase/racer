@@ -930,6 +930,55 @@ export class Trip {
     return { type: kind, to: deTo(t.de) };
   }
 
+  // --- Ergänzung der Engine (Paket G): shears() ohne neue Objekte je Bild ------------------------------------------
+  /**
+   * Dasselbe wie shears(), aber in die wiederverwendete Map out (Rahmen-ID → {a, b, gen}): vorhandene Einträge werden
+   * überschrieben, nicht mehr gültige gelöscht. Gleiche Formeln wie offset() und offsetLin(), nur ohne Zwischenobjekte.
+   */
+  shearsInto(out) {
+    const gen = (this.shearGen = (this.shearGen || 0) + 1);
+    const sec = this.section;
+    const s = this.s;
+    const l = sec.link;
+    if (l && Trip.inCurve(l, s)) {
+      const u = l.type === 'exit' ? s - l.s : l.s - s;
+      this.putShear(out, l.a.id, -R(u), l.type === 'exit' ? -dR(u) : dR(u), gen);
+    } else this.putShear(out, sec.frame, 0, 0, gen);
+    let grown = true;
+    let guard = 0;
+    while (grown && guard++ < 10) {
+      grown = false;
+      for (const k of this.links) {
+        const A = out.get(k.a.id);
+        const B = out.get(k.b.id);
+        const hasA = !!A && A.gen === gen;
+        const hasB = !!B && B.gen === gen;
+        if (hasA === hasB) continue;
+        const exit = k.type === 'exit';
+        const off = BETA * ((exit ? s - k.s : k.s - s) - J.cap / 2);
+        const slope = exit ? BETA : -BETA;
+        if (hasA) this.putShear(out, k.b.id, A.a + off, A.b + slope, gen);
+        else this.putShear(out, k.a.id, B.a - off, B.b - slope, gen);
+        grown = true;
+      }
+    }
+    out.forEach(this.dropStaleShear, this);
+    return out;
+  }
+  dropStaleShear(e, id, out) {
+    if (e.gen !== this.shearGen) out.delete(id);
+  }
+  putShear(out, id, a, b, gen) {
+    let e = out.get(id);
+    if (!e) {
+      e = { a: 0, b: 0, gen: 0 };
+      out.set(id, e);
+    }
+    e.a = a;
+    e.b = b;
+    e.gen = gen;
+  }
+
   /** Position auf der Landkarte (Breite, Länge, Kurs) für die Kartenansicht. */
   position() {
     const sec = this.section;

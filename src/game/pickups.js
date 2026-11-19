@@ -290,6 +290,11 @@ export class Pickups {
     this.items = [];
   }
 
+  /** XXL-Welt: die Teile liegen auf einer Autobahn mit Scherung {a, b}; nach update() seitlich verschieben. */
+  applyShear(sh, sPlayer) {
+    for (const it of this.items) it.obj.position.x += sh.a + sh.b * (it.s - sPlayer);
+  }
+
   /** Gibt eingesammelte Teile zurück. */
   update(dt, t, player, camera, collect = true) {
     const got = [];

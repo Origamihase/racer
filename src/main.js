@@ -3,9 +3,13 @@
 // (Cockpit, Drohne, Kameraschwenk beim Start, Vorführmodus), Zustände und Menüs.
 import * as THREE from 'three';
 import { W, curveTable, curveAt, curveOffset } from './curve.js';
-import { Course, PROBE_MARKS } from './game/course.js';
+import { Course, MapPlanner, PROBE_MARKS } from './game/course.js';
+import * as mapGraph from './map/graph.js';
+import * as mapShapes from './map/shapes.js';
 import { setMaxAnisotropy, ROAD, roundRect } from './textures.js';
 import { Road } from './world/road.js';
+import { XxlWorld, ROAD_OPTS, autoTarget } from './world/xxl/world.js';
+import { installDebug } from './world/xxl/debug.js';
 import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy } from './world/kit/curvesigns.js';
@@ -38,6 +42,8 @@ const QUALITY = {
   niedrig: { pr: 0.75, msaa: 0, shadows: false, shadowSize: 1024, mirrorEvery: 3 },
 };
 const DEBUG = /[?&]debug/.test(location.search);
+// Die neue Welt mit Ausfahrten, Rampen, Landstraßen und Orten (noch hinter dem Schalter, siehe src/world/xxl)
+const XXL = /[?&]xxl/.test(location.search);
 
 // ---------------------------------------------------------------------------
 const app = document.getElementById('app');
@@ -81,8 +87,9 @@ const rearCam = new THREE.PerspectiveCamera(21, 0.245 / 0.072, 0.6, 700);
 const photoCam = new THREE.PerspectiveCamera(24, 16 / 9, 0.2, 900);
 
 const sky = new Sky(renderer, scene, { shadows: quality.shadows, shadowSize: quality.shadowSize });
-const road = new Road(scene);
+const road = new Road(scene, XXL ? ROAD_OPTS : undefined);
 const scenery = new Scenery(scene);
+const xxl = XXL ? new XxlWorld({ scene, road, scenery }) : null;
 const rain = new Rain(scene);
 const traffic = new Traffic(scene, rain);
 const pickups = new Pickups(scene);
@@ -98,9 +105,11 @@ cockpit.scene.environment = sky.envTarget.texture;
 sky.onEnv = (tex) => {
   cockpit.scene.environment = tex;
 };
-// Verlauf der Straße: im klassischen Spiel ein entworfener Endlos-Kurs (die Karte bringt erst die XXL-Fahrt mit).
+// Verlauf der Straße: im klassischen Spiel ein entworfener Endlos-Kurs. Die XXL-Welt entwirft ihn aus der Karte
+// (MapPlanner) für die Abschnitte ihrer Fahrt (courseTrip = xxl.trip, siehe xxlStart): Autobahn, Landstraße und
+// Ortszufahrt biegen und steigen, wie die Karte sie zeigt; rund um Ausfahrten, Einfädelpunkte und Enden bleibt es gerade.
 // Prüfstand: __MA.course.drive(kurs, fahrt, tick) fährt einen Kurs über eine Fahrt (trip.js), tick(s) vor jedem Bild
-let course = new Course();
+let course = xxl ? new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) }) : new Course();
 let courseTrip = null;
 let courseTick = null;
 // Kurvenschilder rücken von Möbeln am Rand weg: vom Raster der Landschaft und von Blitzern, Tempo-Schildern und
@@ -450,6 +459,7 @@ function toTitle() {
   ui.show(false);
   speech.stopAll();
   game.startDemo();
+  if (xxl) xxlStart(true);
   applyCosmetics();
   menus.hide();
   menus.show('title', save);
@@ -460,6 +470,7 @@ function startRun() {
   menus.hide();
   paused = false;
   game.start(save);
+  if (xxl) xxlStart(false);
   applyCosmetics();
   state = 'intro';
   stateT = 0;
@@ -1410,6 +1421,7 @@ function step(dt, { render = true } = {}) {
         kappa: DEBUG && window.__MA && window.__MA.kappaProbe ? window.__MA.kappaProbe(p.s) : courseEnv.kappa,
         grade: DEBUG && window.__MA && window.__MA.gradeProbe ? window.__MA.gradeProbe(p.s) : courseEnv.grade,
       };
+      if (xxl && DEBUG && window.__MA.xxl && window.__MA.xxl.auto) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
       driveHintTick(dt, ctl);
       // Leitplanke: der Kopf ruckt zur Planke hin, Gamepad und Handy rütteln kurz
@@ -1464,6 +1476,8 @@ function step(dt, { render = true } = {}) {
   const w = game.weather ? game.weather.level : 0;
   const frozen = paused;
   if (!frozen) {
+    // XXL: zuerst die Fahrt fortschreiben (trip.update) – der Kurs liest gleich danach, welchen Weg sie nimmt
+    if (xxl) xxlStep(p, w);
     // Verlauf der Straße in die Tabelle des Shaders; Prüfstand (?debug): flache Welt, damit Bausteine unverzerrt
     // begutachtet werden können
     if (DEBUG && window.__MA && window.__MA.flat) {
@@ -1563,10 +1577,68 @@ document.addEventListener('visibilitychange', () => {
   } else audio.resume();
 });
 
+// --- XXL-Welt ------------------------------------------------------------------
+const xxlLimits = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, closing: 0 };
+let xxlTrafficFrame = null;
+/** Neue Fahrt (Erlensee) bzw. Titel: der Titel fährt gleich auf der ersten Autobahn (die Kamera kreist dort). */
+function xxlStart(title) {
+  const p = game.player;
+  xxl.reset();
+  courseTrip = xxl.trip;
+  traffic.reset();
+  pickups.reset();
+  xxlTrafficFrame = null;
+  if (title) {
+    xxl.advance(p, 1300);
+    p.x = 1.875;
+  } else {
+    p.x = xxl.trip.x;
+    p.speed = 40 / 3.6;
+  }
+  xxl.update(p.s, p.x, 0);
+  p.setLimits(xxl.limitsFor(xxlLimits));
+  scenery.reset();
+}
+/** Einmal pro Bild nach der Bewegung: Strecke fortschreiben, Grenzen setzen, Verkehr und Sammelsachen einordnen. */
+function xxlStep(p, w) {
+  xxl.update(p.s, p.x, w, p.speed);
+  p.setLimits(xxl.limitsFor(xxlLimits));
+  const v = xxl.view;
+  const frame = v ? v.frame : null;
+  traffic.end = xxl.abEnd;
+  traffic.begin = xxl.abBegin;
+  if (frame !== xxlTrafficFrame) {
+    // eine andere Autobahn (im Wald gewechselt): ihr Verkehr beginnt neu, die Szenerie wird neu gebaut
+    xxlTrafficFrame = frame;
+    traffic.reset();
+    pickups.reset();
+    scenery.reset();
+    if (v && v.role === 'ahead') traffic.populate(p.s, p.speed);
+  } else if (xxl.zonesChanged) scenery.invalidate(p.s + 1300);
+  xxl.zonesChanged = false;
+  const sh = v ? xxl.shear.get(v.frame) : null;
+  traffic.shear = sh || null;
+  traffic.passive = !v || v.role !== 'cur';
+  traffic.group.visible = !!sh && !xxl.maskAutobahn;
+  traffic.placeAll(p.s);
+  if (sh) pickups.applyShear(sh, p.s);
+  pickups.group.visible = traffic.group.visible;
+  game.offAutobahn = !v || v.role !== 'cur';
+}
+/** Autopilot zum Prüfen (?debug, __MA.xxl.auto): folgt dem Navi, hält Spur und Tempo. */
+function xxlAuto(p, ctl) {
+  const dx = autoTarget(xxl.trip, xxl.choice) - p.x;
+  ctl.steer = Math.abs(dx) > 0.3 ? clamp(dx * 0.6, -1, 1) : 0;
+  const want = Math.min(xxlLimits.vmax, 130 / 3.6);
+  ctl.throttle = p.speed < want - 0.5 ? 0.7 : 0;
+  ctl.brake = p.speed > want + 3 ? 0.4 : 0;
+}
+
 function boot() {
   applyCosmetics();
   applyDrive();
   game.startDemo();
+  if (xxl) xxlStart(true);
   // Ein paar Bilder vorab rendern (Shader kompilieren), dann Titel zeigen
   updateCarMatrix();
   placeDrone(0.016, 'orbit');
@@ -1651,6 +1723,7 @@ if (DEBUG) {
       },
     },
   };
+  if (xxl) installDebug(window.__MA, xxl, () => game.player, { afterWarp: () => { traffic.reset(); pickups.reset(); scenery.reset(); } });
 }
 
 /** Prüfstand: den Spieler an die Stelle s setzen (Verkehr, Sammelsachen und Landschaft neu). */

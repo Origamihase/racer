@@ -80,7 +80,7 @@ const PLACES = ['Kassel', 'Fulda', 'Frankfurt', 'Gifhorn', 'Hannover', 'Würzbur
 
 // ---------------------------------------------------------------------------
 // Geometrien für Instanzen
-function coniferGeo() {
+export function coniferGeo() {
   const parts = [];
   const trunk = new THREE.CylinderGeometry(0.16, 0.24, 2.4, 6);
   trunk.translate(0, 1.2, 0);
@@ -93,7 +93,7 @@ function coniferGeo() {
   }
   return mergeGeometries(parts);
 }
-function decidGeo() {
+export function decidGeo() {
   const parts = [];
   const trunk = new THREE.CylinderGeometry(0.2, 0.3, 3.2, 6).toNonIndexed();
   trunk.translate(0, 1.6, 0);
@@ -106,7 +106,7 @@ function decidGeo() {
   }
   return mergeGeometries(parts);
 }
-function bushGeo() {
+export function bushGeo() {
   const parts = [];
   for (const [x, y, z, r] of [[0, 0.7, 0, 1.0], [0.8, 0.55, 0.3, 0.75], [-0.7, 0.5, -0.2, 0.7]]) {
     const b = new THREE.IcosahedronGeometry(r, 1);
@@ -115,13 +115,13 @@ function bushGeo() {
   }
   return mergeGeometries(parts);
 }
-function houseGeo() {
+export function houseGeo() {
   const g = new THREE.BoxGeometry(1, 1, 1);
   g.translate(0, 0.5, 0);
   // Fenster als dunkle Vertex-Farbe? Einfach: einfarbig, Variation über Instanzfarben
   return colorize(g, 0xffffff);
 }
-function roofGeo() {
+export function roofGeo() {
   const p = [];
   const h = 0.62;
   const quad = (a, b, c, d) => p.push(...a, ...b, ...c, ...a, ...c, ...d);
@@ -256,8 +256,26 @@ export class Scenery {
       glassBlue: W.std({ color: 0x5f7fa3, metalness: 0.8, roughness: 0.15, envMapIntensity: 1.2 }),
     };
     this.mats.grass.color = GRASS_TINT;
+    // XXL-Welt: Gebiete anderer Straßen (Keil an Knotenpunkten, vor dem Anfang und hinter dem Ende der Autobahn)
+    // bleiben frei. keepOut(x, s) → true: dort steht nichts · noCross(s0, s1) → true: keine Brücken,
+    // Schilderbrücken und Lärmschutzwände in diesem Stück. null = klassisch (alles erlaubt).
+    this.keepOut = null;
+    this.noCross = null;
+    // XXL-Welt (COMMON.md 9: kein Zufallstext auf Schildern): gantryTexts(sSign) → {a, b} (Zeilen {left, right} der
+    // beiden Tafeln) oder null (dann steht dort keine Schilderbrücke); noRandomSigns: keine braunen und blauen Tafeln
+    // mit Fantasietexten. null/false = klassisch.
+    this.gantryTexts = null;
+    this.noRandomSigns = false;
+    // XXL: skipRequest(type) → true: angefragte Dinge dieser Art nicht aufstellen (Ziel-Tafel und Skyline des
+    // klassischen Navis gehören nicht an die XXL-Autobahn: Ziele liegen dort in den Orten)
+    this.skipRequest = null;
 
     this.makeInstanced();
+  }
+
+  /** XXL: Abschnitte ab Strecke sFrom beim nächsten update neu bauen (neue Knotenpunkte in der Ferne). */
+  invalidate(sFrom) {
+    for (const slot of this.slots) if (slot.k * SEG >= sFrom) slot.k = -1;
   }
 
   makeInstanced() {
@@ -426,6 +444,7 @@ export class Scenery {
       const def = this.inst[name];
       const n = counts[name];
       if (n >= def.cap) return false;
+      if (this.keepOut && this.keepOut(x, -z)) return false;
       counts[name]++;
       q.setFromAxisAngle(up, rotY);
       sc.set(sx ?? scale, sy ?? scale, sz ?? scale);
@@ -535,7 +554,8 @@ export class Scenery {
       }
     }
     // Lärmschutzwand am Dorf (mit Lücken vor Navi-Zielen und Wahrzeichen)
-    if (this.hasWall(k)) this.buildWall(slot);
+    const cross = !this.noCross || !this.noCross(s0 - 60, s0 + SEG + 60);
+    if (this.hasWall(k) && cross) this.buildWall(slot);
 
     // Kilometerschild (alle 500 m)
     if (k % 5 === 0 && k > 0) {
@@ -550,13 +570,16 @@ export class Scenery {
       slot.items.push(n);
     }
     // Schilderbrücke mit Navi-Ziel
+    // (XXL: keine Brücken über die Fahrbahn an Knotenpunkten)
     const furn = this.furniture(k);
-    if (furn === 'gantry') {
+    const gTexts = furn === 'gantry' && cross && this.gantryTexts ? this.gantryTexts(s0 + 50) : null;
+    if (furn === 'gantry' && cross && (!this.gantryTexts || gTexts)) {
       const g = this.acquire('gantry', () => this.makeGantry());
-      this.labelGantry(g, rnd, s0 + 50);
+      if (gTexts) this.labelGantryWith(g, gTexts, s0 + 50);
+      else this.labelGantry(g, rnd, s0 + 50);
       g.position.set(0, 0, z0 - 50);
       slot.items.push(g);
-    } else if (furn === 'bridge') {
+    } else if (furn === 'bridge' && cross) {
       const b = this.acquire('bridge', () => this.makeBridge());
       this.labelBridge(b, rnd);
       b.position.set(0, 0, z0 - 50);
@@ -591,6 +614,9 @@ export class Scenery {
       if (near) this.clearHill(r, slotIdx);
     }
 
+    // XXL: was auf fremdem Gebiet stünde (Schilder, Windräder, Wahrzeichen …), bleibt unsichtbar
+    if (this.keepOut) for (const it of slot.items) if (this.keepOut(it.position.x, -it.position.z)) it.visible = false;
+
     for (const name of Object.keys(this.inst)) {
       const def = this.inst[name];
       const zero = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -612,7 +638,7 @@ export class Scenery {
     if (k % 13 === 7) return 'gantry';
     if (k % 23 === 15) return 'bridge';
     // die breiten Tafeln stünden mitten in der Lärmschutzwand, also dort keine
-    if (this.hasWall(k)) return null;
+    if (this.hasWall(k) || this.noRandomSigns) return null;
     if (k % 17 === 3) return 'brown';
     if (k % 29 === 11) return 'blueinfo';
     return null;
@@ -811,6 +837,7 @@ export class Scenery {
 
   placeRequest(slot, r) {
     r.built = true;
+    if (this.skipRequest && this.skipRequest(r.type)) return;
     const z = -r.s;
     let obj = null;
     switch (r.type) {
@@ -990,15 +1017,28 @@ export class Scenery {
   /** Navi-Ziel geändert: die Navi-Tafeln der stehenden Schilderbrücken neu beschriften. */
   relabelGantries() {
     const pool = this.pools.get('gantry');
-    if (!pool || !this.gantryInfo) return;
+    if (!pool || !this.gantryInfo || this.gantryTexts) return;
     for (const g of pool) {
       if (g.userData.active && g.userData.sSign !== undefined) this.labelGantry(g, Math.random, g.userData.sSign, true);
+    }
+  }
+
+  /** XXL: beide Tafeln mit festen Zeilen beschriften ({a, b} aus gantryTexts). */
+  labelGantryWith(g, t, sSign) {
+    g.userData.sSign = sSign;
+    g.userData.texts = t;
+    const [a, b] = g.userData.panels;
+    for (const [m, rows] of [[a, t.a], [b, t.b]]) {
+      if (m.map) m.map.dispose();
+      m.map = signTexture(rows, { w: 768, h: 288, arrows: null });
+      m.needsUpdate = true;
     }
   }
 
   /** sSign: Position der Schilderbrücke (die Entfernung zum Navi-Ziel gilt ab dem Schild). */
   labelGantry(g, rnd, sSign, onlyNavi = false) {
     g.userData.sSign = sSign;
+    g.userData.texts = null;
     const info = this.gantryInfo(sSign);
     const [a, b] = g.userData.panels;
     const kmTxt = (km) => km.toLocaleString('de-DE', { maximumFractionDigits: km < 10 ? 1 : 0 }) + ' km';

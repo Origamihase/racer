@@ -97,7 +97,7 @@ export class Player {
     this.kS = null;
     this.ctrl.reset();
     // Grenzen der Welt: klassisch die feste Autobahn; die XXL-Welt setzt sie jedes Bild neu (setLimits)
-    this.limits = { left: LEFT_LIMIT, right: RIGHT_LIMIT, shoulder: SHOULDER_X, lanes: null, extraLane: null, vmax: Infinity };
+    this.limits = { left: LEFT_LIMIT, right: RIGHT_LIMIT, shoulder: SHOULDER_X, lanes: null, extraLane: null, vmax: Infinity, decel: 0 };
     this.lanes = [];
     this.laneKey = null;
     this.setLimits(this.limits);
@@ -114,7 +114,9 @@ export class Player {
    * Grenzen der Welt an der aktuellen Stelle; nicht angegebene Werte bleiben. left/right: Grenzen für die Wagenmitte
    * (Leitplanken, m), shoulder: ab hier zählt der Standstreifen (Infinity = keiner), lanes: Spuren wie in
    * trip.profile() ([{ x, dir, closed }], auch bloße Zahlen; null = die klassischen vier), extraLane: zusätzliche
-   * Spur bei x (Ein- und Ausfädelstreifen, null = keine), vmax: Tempo-Obergrenze in m/s (Infinity = keine).
+   * Spur bei x (Ein- und Ausfädelstreifen, null = keine), vmax: Tempo-Obergrenze in m/s (Infinity = keine, 0 = Halt),
+   * decel: Verzögerung in m/s², mit der vmax gerade planmäßig fällt (die XXL-Welt bremst so vor einem Tempolimit und
+   * vor dem Halt am Ziel; 0 = fester Wert): Drossel und Tempomat bremsen dann mit, statt der Grenze nachzulaufen.
    */
   setLimits(l = {}) {
     const L = this.limits;
@@ -123,7 +125,8 @@ export class Player {
     if (l.shoulder !== undefined) L.shoulder = l.shoulder;
     if (l.lanes !== undefined) L.lanes = l.lanes;
     if (l.extraLane !== undefined) L.extraLane = l.extraLane;
-    if (l.vmax !== undefined) L.vmax = l.vmax > 0 ? l.vmax : Infinity;
+    if (l.vmax !== undefined) L.vmax = l.vmax >= 0 ? l.vmax : Infinity;
+    if (l.decel !== undefined) L.decel = l.decel > 0 ? l.decel : 0;
     // befahrbare Spuren (unsere Richtung, nicht gesperrt, innerhalb der Grenzen) für den Spurhalteassistenten und den
     // Spurwechsel per Tipp: nur neu bestimmen, wenn sich etwas daran geändert hat, und ohne neue Felder
     const lanes = L.lanes || LANES;
@@ -308,6 +311,8 @@ export class Player {
     // steil bergauf etwas weniger Höchsttempo (bei 6 % gut 3 %, bei 8 % 6 %)
     const vmax = this.vmax * (1 - 1.2 * Math.max(0, grade - 0.03));
     const top = Math.min(vmax, this.limits.vmax);
+    // fällt die Obergrenze der Welt gerade planmäßig, bremst der Wagen mit ihr mit (sonst liefe er ihr hinterher)
+    const fall = this.limits.vmax < vmax ? this.limits.decel : 0;
     const slope = G * grade * 0.55; // Hangabtrieb, bewusst gedämpft
     const drag = 0.12 + 0.00011 * v * v;
     // die Bremse gewinnt immer: wer beide Pedale tritt, bremst
@@ -315,7 +320,7 @@ export class Player {
     let acc = 0;
     if (this.cruiseSet !== null && brake <= 0.02 && throttle <= 0.02) {
       // Tempomat: hält das gesetzte Tempo, auch am Berg; Obergrenzen der Welt übernimmt er ruckfrei
-      const want = clamp((Math.min(this.cruiseSet, top) - v) * 0.9, -2.2, 1.6);
+      const want = clamp((Math.min(this.cruiseSet, top) - v) * 0.9, -2.2, 1.6) - (top < this.cruiseSet ? fall : 0);
       this.aAuto += clamp(want - this.aAuto, -5 * H, 5 * H);
       acc = this.aAuto;
       throttle = clamp((acc + drag + slope) / 5.4, 0, 1);
@@ -327,7 +332,7 @@ export class Player {
       if (throttle <= 0.02 && brake <= 0.02) acc -= drag + (this.empty ? 1.4 : 0);
       acc -= slope;
       // über der Obergrenze sanft herunter (Software-Drossel, Tempolimit der Welt)
-      if (v > top) acc = Math.min(acc, -clamp((v - top) * 0.8, 0.3, v > vmax ? 1.5 : 2.5));
+      if (v > top) acc = Math.min(acc, -fall - clamp((v - top) * 0.8, 0.3, v > vmax ? 1.5 : 2.5));
       this.aAuto = acc;
       // Strom und Bremse verstellen das Tempo des Tempomaten
       if (this.cruiseSet !== null) this.cruiseSet = v;
