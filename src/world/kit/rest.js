@@ -886,7 +886,8 @@ defs.popcorn_stand = {
       [g[0] - 0.008, g[1], g[2]],
     ];
     cord(F, cable, 0.0075, C.cable, near ? 40 : 16, near ? 8 : 5);
-    return { w: w + 0.04, d: d + 0.04, h: 0.85, centre: true, post: [-STAND.at[0], -STAND.at[1]] };
+    // w, d: der Tisch; Steckdose und Kabel reichen bis an die Säule (post). h: Kugel auf dem Dach der Maschine (1,19 m)
+    return { w: w + 0.04, d: d + 0.04, h: 1.2, centre: true, post: [-STAND.at[0], -STAND.at[1]] };
   },
 };
 defs.bananensaft_flasche = {
