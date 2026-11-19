@@ -478,7 +478,9 @@ ok(fmtMeters(250) === '250 m' && fmtMeters(2400) === '2,4 km', 'Entfernungsangab
       const pin = sc.marks.find((mk) => mk.type === 'pin');
       if (pin) {
         n.pins++;
-        const c = trip.cur.sections.concat(...trip.paths().map((p) => p.path.sections)).find((q) => q.kind === 'stadt' && q.place === pin.place && q.spotS !== undefined);
+        // Zielpunkt der Welt: der Ortsabschnitt, dessen Ziel noch aussteht (kommt dasselbe Ziel gleich nach der Ankunft
+        // wieder, liegt der alte Abschnitt mit erledigtem Zielpunkt noch auf dem Weg)
+        const c = trip.cur.sections.concat(...trip.paths().map((p) => p.path.sections)).find((q) => q.kind === 'stadt' && q.place === pin.place && q.spotS !== undefined && !q.spotDone);
         if (!c || !near(pin.d, c.spotS - trip.s)) fail('Zielfahne nicht am Zielpunkt der Fahrt');
       }
     }
