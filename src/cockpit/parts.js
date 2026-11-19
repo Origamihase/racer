@@ -407,37 +407,3 @@ export function meshOf(list, material) {
   for (const g of list) g.dispose();
   return m;
 }
-
-const HIDDEN = new THREE.MeshBasicMaterial({ visible: false });
-
-/**
- * Fertige Figur aus vielen Einzelteilen (z. B. Wackel-Elsa) auf wenige Zeichenaufrufe bringen: alle Meshes unter
- * root – außer denen in den Teilbäumen von keep (bewegliche Teile) – je Material zu einem Mesh verschmelzen, das
- * direkt an root hängt (Lage relativ zu root eingebacken). Die alten Meshes bleiben als unsichtbare Träger stehen,
- * damit Kinder, die an ihnen hängen, ihre Lage behalten.
- */
-export function mergeByMaterial(root, keep = []) {
-  const skip = new Set();
-  for (const k of keep) k.traverse((o) => skip.add(o));
-  root.updateMatrixWorld(true);
-  const inv = root.matrixWorld.clone().invert();
-  const groups = new Map();
-  root.traverse((o) => {
-    if (!o.isMesh || o.isInstancedMesh || skip.has(o) || !o.visible || Array.isArray(o.material)) return;
-    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
-    for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') g.deleteAttribute(k);
-    if (!g.attributes.normal || !g.attributes.uv) return;
-    g.morphAttributes = {};
-    g.clearGroups();
-    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
-    if (!groups.has(o.material)) groups.set(o.material, []);
-    groups.get(o.material).push(g);
-    o.material = HIDDEN;
-    o.castShadow = false;
-  });
-  for (const [material, list] of groups) {
-    const m = new THREE.Mesh(mergeGeometries(list), material);
-    for (const g of list) g.dispose();
-    root.add(m);
-  }
-}

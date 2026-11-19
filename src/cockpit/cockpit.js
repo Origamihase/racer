@@ -11,7 +11,7 @@ import { buildElsa, animateElsa } from '../models/elsa.js';
 import { damp, clamp, smoothstep, lerp } from '../util.js';
 import { mirrorShape, mirrorHousingGeometry } from '../models/loft.js';
 import { plush, COLORS, buildMiniAdam, ADAM_DIM } from '../models/miniAdam.js';
-import { prep, meshOf, mergeByMaterial, rbox, sweep, ring, place, roundedRect, warp, pillow, lathe } from './parts.js';
+import { prep, meshOf, rbox, sweep, ring, place, roundedRect, warp, pillow, lathe } from './parts.js';
 import { buildCabin, buildHood, roofGlassGeometry, blob, dashTopY, pillarPoint, PAL, SEAT } from './cabin.js';
 import { WHEEL, buildWheelParts, buildColumn } from './wheel.js';
 import { mittenGeometry, forearmGeometry, upperArmGeometry, sleeveGeometry, WRIST } from './hands.js';
@@ -629,22 +629,20 @@ export class Cockpit {
     // NOMI steht auf dem Armaturenbrett
     blob(S, -0.27, dashTopY(-0.27, -0.53), -0.53, 0.058, 0.05);
 
-    // Wackel-Elsa (Shop)
+    // Wackel-Elsa (Shop): die Figur kommt fertig verschmolzen (fünf Zeichenaufrufe, die Arme bleiben beweglich)
     this.elsa = buildElsa({ curved: false });
-    // aus 38 Einzelteilen werden 8 (je Material eins, die winkenden Flossen bleiben beweglich)
-    mergeByMaterial(this.elsa, [this.elsa.userData.finL, this.elsa.userData.finR]);
     this.elsa.scale.setScalar(0.11);
     this.elsaSpring = new THREE.Group();
     this.elsaSpring.position.set(-0.6, dashTopY(-0.6, -0.68), -0.68);
     this.elsaSpring.rotation.y = 0.5;
-    const springBase = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.012, 24), new THREE.MeshPhysicalMaterial({ color: PAL.gloss, roughness: 0.3, clearcoat: 1 }));
+    const springBase = new THREE.Mesh(new THREE.CylinderGeometry(0.0225, 0.026, 0.012, 32), new THREE.MeshPhysicalMaterial({ color: PAL.gloss, roughness: 0.3, clearcoat: 1 }));
     springBase.position.y = 0.006;
     const springShadow = new THREE.Mesh(new THREE.PlaneGeometry(0.075, 0.075).rotateX(-Math.PI / 2), this.shadowMat);
     springShadow.position.y = 0.0012;
     springShadow.renderOrder = 1;
     this.elsaSpring.add(springBase, springShadow, this.elsa);
-    // die Schwanzflosse steht auf dem Rand des Sockels (Oberkante bei y = 0.012)
-    this.elsa.position.y = 0.0105;
+    // beide Füße stehen ganz auf dem Sockel (Oberkante bei y = 0.012, die Sohlen einen Hauch darin)
+    this.elsa.position.set(0, 0.0117, -0.005);
     this.elsaSpring.visible = false;
     this.root.add(this.elsaSpring);
 

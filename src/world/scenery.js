@@ -639,7 +639,7 @@ export class Scenery {
     return (r && r.spot) || null;
   }
 
-  /** Elsa winkt zurück (nach dem Hupen): ein paar Sekunden lang kräftig mit beiden Flossen und hüpft dabei. */
+  /** Elsa winkt zurück (nach dem Hupen): ein paar Sekunden lang kräftig mit beiden Armen und hüpft dabei. */
   waveBack(id) {
     for (const slot of this.slots) {
       for (const o of slot.items) if (o.userData.requestId === id && o.userData.type === 'elsaStatue') o.userData.waveT = WAVE_T;
@@ -649,15 +649,15 @@ export class Scenery {
   waveFins(obj, dt) {
     const u = obj.userData;
     const elsa = obj.children.find((c) => c.name === 'Elsa');
-    const { finL, finR } = elsa?.userData || {};
-    if (!finL || !finR) return;
+    const { armL, armR } = elsa?.userData || {};
+    if (!armL || !armR) return;
     if (u.elsaY === undefined) u.elsaY = elsa.position.y;
     u.waveT = Math.max(0, u.waveT - dt);
-    // weich hinein und wieder heraus; animateElsa hat die Flossen in diesem Bild schon gesetzt
+    // weich hinein und wieder heraus; animateElsa hat die Arme in diesem Bild schon gesetzt
     const f = Math.min(1, u.waveT / 0.5, (WAVE_T - u.waveT) / 0.25);
     const w = 0.55 + 0.45 * Math.sin(this.time * 12);
-    finL.rotation.z += f * w * 0.9;
-    finR.rotation.z -= f * w * 0.9;
+    armL.rotation.z += f * w * 0.9;
+    armR.rotation.z -= f * w * 0.9;
     elsa.position.y = u.elsaY + f * Math.abs(Math.sin(this.time * 6)) * 0.1;
   }
 
