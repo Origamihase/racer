@@ -74,7 +74,7 @@ const BANNERS = [
 const BROWN = [
   ['Burg Hauneck', 'Haunetal'], ['Wartburg', 'Eisenach'], ['Weser-Skywalk', 'Beverungen'], ['Burg Ronneburg', 'Ronneburg'],
   ['Elsa', 'Kassel grüßt'], ['Hochofenwerk Phoenix West', 'Dortmund'], ['BrunnenTV-Studio', 'Herr Schönnbrun'],
-  ['Megahub', 'Lehrte'], ['Rhön', 'Starlink-Gebiet'], ['Zissel', 'Kassel'], ['Skyline', 'Frankfurt am Main'],
+  ['Megahub', 'Lehrte'], ['Rhön', 'Satelliten-Gebiet'], ['Zissel', 'Kassel'], ['Skyline', 'Frankfurt am Main'],
 ];
 const PLACES = ['Kassel', 'Fulda', 'Frankfurt', 'Gifhorn', 'Hannover', 'Würzburg', 'Göttingen', 'Hamburg', 'Hanau', 'Siegen', 'Erlensee', 'Eisenach', 'Bad Hersfeld', 'Dortmund'];
 

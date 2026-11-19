@@ -32,7 +32,7 @@ const PLATES = [
 const COMPANIES = [
   ['Plüsch-Logistik', 'Wir liefern Mini Adams in ganz Deutschland', '#ffffff', '#c8102e'],
   ['Brunnenbau Schönnbrun', 'Seit 1887 – Brunnen mit Gefühl', '#e8f1f8', '#1d5fa8'],
-  ['Rettich-Express', 'Frisch vom Feld – 13,69 € das Kilo', '#f6f6ee', '#3c8d2f'],
+  ['Kürbis-Express', 'Frisch vom Feld – 13,37 € das Kilo', '#f6f6ee', '#3c8d2f'],
   ['Pappkarton & Söhne', 'Haufenweise Kartons seit 1972', '#d8b98a', '#5a3b1c'],
   ['Elsa Fischtransporte', 'Kassel · frisch & königlich', '#ffffff', '#1d3f9a'],
   ['Bananensaft-Spedition', 'Gelb ist das neue Schnell', '#fff6c0', '#c79a00'],
@@ -44,7 +44,7 @@ const COMPANIES = [
   ['Schnelle Pommes', 'Ohne Rückfragen', '#fff3d6', '#d81e1e'],
 ];
 const REAR_TEXTS = [
-  'Abstand halten!', 'Wie fahre ich? 0800-BRUNNEN', 'Ladung: 33.333 Rettiche', 'Rechts fahren ist Ehrensache',
+  'Abstand halten!', 'Wie fahre ich? 0800-BRUNNEN', 'Ladung: 33.333 Kürbisse', 'Rechts fahren ist Ehrensache',
   'Mein Wischer zuckt auch', 'Grüße an die Polizei Gifhorn', 'Nicht hupen, Fahrer träumt von Elsa',
 ];
 
