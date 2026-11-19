@@ -1,7 +1,7 @@
 // Prüft Karte, Routen und Streckenlogik ohne Grafik: node tools/trip-test.mjs [Anzahl Zufallsfahrten]
 import * as G from '../src/map/graph.js';
 import { Trip, J, R, dR, BETA, PROFILES } from '../src/game/trip.js';
-import { PARKS, PARK, parkAt, placeParks, parkCandidate, parkZub } from '../src/map/parks.js';
+import { PARKS, PARK, PARK_STOP_AFTER, parkAt, placeParks, parkCandidate, parkZub } from '../src/map/parks.js';
 
 let fails = 0;
 const ok = (cond, msg) => {
@@ -193,6 +193,78 @@ function drive(trip, metres, decide, opts = {}) {
   const arr = log.find((e) => e.type === 'arrive');
   ok(arr && arr.place === hanau, 'Ankunft in Hanau');
   console.log('Erlensee → Hanau:', log.filter((e) => e.type !== 'pass').map((e) => (e.type === 'enter' ? e.sec.kind : e.type === 'fork' ? `Gabelung(${e.taken})` : e.type)).join(' '), `| ${trip.km.toFixed(1)} Karten-km auf ${trip.s.toFixed(0)} m`);
+}
+
+// --- Fahrt 1b: Ladestopp nach Würzburg – geplant, ohne Plan genommen, vorbeigefahren -------
+{
+  const wz = G.findPlace('Würzburg');
+  const start = () => {
+    const trip = new Trip({ rng: rng(4) });
+    trip.setTarget(wz, true);
+    drive(trip, 300, (f, t) => t.planFor(f) === 'exit');
+    return trip;
+  };
+  // fährt dem Navi nach (takePark: an jeder Park-Ausfahrt rechts halten) und schreibt mit, was der Zähler zählt
+  const run = (trip, takePark) => {
+    const km0 = trip.km;
+    const m = { park: null, planned: null, arrive: null, wende: 0, after: null, forkDe: -1, missed: 0 };
+    drive(trip, 16000, (f, t) => (takePark && parkAt(f.node) >= 0 && m.park === null) || t.planFor(f) === 'exit', {
+      step: 2,
+      onEvent: (e, t) => {
+        if (e.type === 'fork' && e.taken === 'exit' && parkAt(e.fork.node) >= 0 && m.park === null) m.forkDe = e.fork.de;
+        if (e.type === 'fork' && e.stop) m.missed++;
+        if (e.type === 'park') {
+          m.park = t.km - km0;
+          m.planned = e.planned;
+        }
+        if (e.type === 'enter' && e.sec.kind === 'ab' && m.park !== null && m.after === null) m.after = e.sec.de;
+        if (e.type === 'arrive' && m.arrive === null) m.arrive = t.km - km0;
+        const g = t.guidance();
+        if (m.arrive === null && g.then && g.then.wende) m.wende++;
+      },
+    });
+    return m;
+  };
+  // geplant: nextRest nennt den Park, setStop plant ihn ein, der Umweg sind genau Rampe bis Auffahrt (echte Straße)
+  let trip = start();
+  const r0 = trip.reach();
+  const nr = trip.nextRest();
+  ok(nr && nr.name === 'Ladepark Aschaffenburg' && !nr.planned, 'nächster Ladepark nach Würzburg: ' + (nr && nr.name));
+  trip.setStop(nr.park);
+  const r1 = trip.reach();
+  const nr1 = trip.nextRest();
+  ok(trip.stop === nr.park && nr1.planned && Math.abs(nr1.km - nr.km) < 1e-9 && Math.abs(nr1.m - nr.m) < 1e-9, 'geplanter Stopp: nextRest nennt ihn mit denselben Zahlen');
+  ok(Math.abs(r1.km - r0.km - (J.hide + J.show) / 1000) < 1e-6, `Umweg des Ladestopps ${(r1.km - r0.km).toFixed(3)} km = Rampe bis Auffahrt`);
+  let m = run(trip, false);
+  ok(m.planned === true && Math.abs(m.park - (nr.km - PARK_STOP_AFTER / 1000)) < 0.003, `Kilometer bis zum Park ${m.park} statt ${nr.km}`);
+  ok(m.arrive !== null && Math.abs(m.arrive - r1.km) < 0.003, `Kilometer bis Würzburg über den Park ${m.arrive} statt ${r1.km}`);
+  ok(m.after === G.straight(m.forkDe) && m.wende === 0 && trip.stop === -1, 'nach dem Park: dieselbe Autobahn, kein „Bitte wenden“');
+  const pm = m.park;
+  // ohne Plan rechts gehalten: derselbe Park, dieselben Kilometer
+  trip = start();
+  m = run(trip, true);
+  ok(m.planned === false && Math.abs(m.park - pm) < 0.003 && Math.abs(m.arrive - r1.km) < 0.003, `Park ohne Plan: ${m.park} / ${m.arrive} km`);
+  ok(m.after === G.straight(m.forkDe) && m.wende === 0, 'Park ohne Plan: zurück auf dieselbe Autobahn, kein „Bitte wenden“');
+  // vorbeigefahren: kein Park, Würzburg nach den Kilometern ohne Stopp
+  trip = start();
+  m = run(trip, false);
+  ok(m.park === null && Math.abs(m.arrive - r0.km) < 0.003, `ohne Stopp: ${m.arrive} statt ${r0.km} km`);
+  // geplant, aber an der Ausfahrt vorbei: der Stopp entfällt, die Route bleibt vorwärts
+  trip = start();
+  trip.setStop(trip.nextRest().park);
+  const km0 = trip.km;
+  m = { missed: 0, wende: 0, arrive: null };
+  drive(trip, 16000, (f, t) => !(t.stop >= 0 && parkAt(f.node) === t.stop) && t.planFor(f) === 'exit', {
+    step: 2,
+    onEvent: (e, t) => {
+      if (e.type === 'fork' && e.stop) m.missed++;
+      if (e.type === 'arrive' && m.arrive === null) m.arrive = t.km - km0;
+      const g = t.guidance();
+      if (m.arrive === null && g.then && g.then.wende) m.wende++;
+    },
+  });
+  ok(m.missed === 1 && trip.stop === -1 && m.wende === 0 && Math.abs(m.arrive - r0.km) < 0.01, `Stopp verpasst: ${JSON.stringify(m)}`);
+  console.log(`Ladestopp Erlensee → Würzburg: ${nr.name} nach ${pm.toFixed(2)} km (${(nr.m / 1000).toFixed(2)} km Straße), Würzburg ${r0.km.toFixed(2)} km ohne, ${r1.km.toFixed(2)} km mit Stopp`);
 }
 
 // --- Fahrt 2: Ansagen und Schilder unterwegs nach Köln ---------------------------------

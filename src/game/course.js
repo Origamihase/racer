@@ -83,6 +83,7 @@ export const KINDS = {
   ramp: { kmax: 0, t: 60, gmax: 0, xref: 7.25 },
   auf: { kmax: 0, t: 60, gmax: 0, xref: 7.25 },
   term: { kmax: 0, t: 60, gmax: 0, xref: 7.25 },
+  park: { kmax: 0, t: 60, gmax: 0, xref: 7.25 }, // Ladepark (trip.js addPark): gerade und eben wie der Baukasten ihn legt
 };
 /** Kurvenschilder auf der Autobahn unter diesem Halbmesser, Tempo-Schild „100“ bzw. „80“ unter diesen. */
 export const SIGN_R = 700;
