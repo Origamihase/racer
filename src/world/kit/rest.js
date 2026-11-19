@@ -642,6 +642,264 @@ defs.popcorn_eimer = {
   },
 };
 
+// Für die Ladepause an der Heldensäule: eine kleine Popcorn-Maschine im Kinostil auf einem Klapptisch hinter der Säule,
+// ihr Kabel steckt in einer Steckdose an der Rückwand der Säule (der Klassiker „Haushaltsgeräte an der E-Säule testen“);
+// dazu eine Flasche Bananensaft und eine Popcorn-Tüte, die es auch einzeln gibt (für Mini Adams Hand). Alles ohne Marke.
+const POP = { kernel: 0xfff3c2, toasted: 0xf7dc8a, red: 0xe5483a, redDark: 0xb83a30, glass: 0xd3e8ee, shine: 0xf4fbfc, paper: 0xf6efe2 };
+
+/**
+ * Kabel als runder Schlauch durch die Punkte pts (Catmull-Rom, n Stücke, rad Kanten im Ring). Der Ring wird längs der
+ * Kurve mitgeführt (ohne Verdrehen); die Enden bleiben offen und gehören darum in Stecker oder Tülle.
+ */
+function cord(part, pts, r, col, n = 28, rad = 8) {
+  const last = pts.length - 1;
+  const C3 = [];
+  for (let i = 0; i <= n; i++) {
+    const t = (i / n) * last;
+    const k = Math.min(Math.floor(t), last - 1);
+    const u = t - k;
+    const a = pts[Math.max(k - 1, 0)];
+    const b = pts[k];
+    const c = pts[k + 1];
+    const d = pts[Math.min(k + 2, last)];
+    C3.push([0, 1, 2].map((j) => 0.5 * (2 * b[j] + (c[j] - a[j]) * u + (2 * a[j] - 5 * b[j] + 4 * c[j] - d[j]) * u * u + (3 * b[j] - a[j] - 3 * c[j] + d[j]) * u * u * u)));
+  }
+  const sub = (p, q) => [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
+  const unit = (v) => {
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
+  };
+  const crs = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+  const P = [];
+  const N = [];
+  const idx = [];
+  let nrm = null;
+  C3.forEach((p, i) => {
+    const t = unit(sub(C3[Math.min(i + 1, n)], C3[Math.max(i - 1, 0)]));
+    // Rahmen: Normale vom letzten Ring auf die neue Tangente gelegt; am Anfang irgendeine Senkrechte
+    const seed = nrm ?? (Math.abs(t[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]);
+    const dot = seed[0] * t[0] + seed[1] * t[1] + seed[2] * t[2];
+    nrm = unit([seed[0] - dot * t[0], seed[1] - dot * t[1], seed[2] - dot * t[2]]);
+    const bin = crs(nrm, t);
+    for (let j = 0; j <= rad; j++) {
+      const v = (j / rad) * TAU;
+      const o = [0, 1, 2].map((q) => Math.cos(v) * nrm[q] + Math.sin(v) * bin[q]);
+      P.push(p[0] + r * o[0], p[1] + r * o[1], p[2] + r * o[2]);
+      N.push(o[0], o[1], o[2]);
+      if (i < n && j < rad) {
+        const a = i * (rad + 1) + j;
+        const q = a + rad + 1;
+        idx.push(a, q, q + 1, a, q + 1, a + 1);
+      }
+    }
+  });
+  part.mesh(P, N, idx, col);
+}
+
+/** Popcorn-Häufchen: count Körner in einer Kuppel (Radius rx × rz, Höhe h) um (x, y, z); fern nur die Kuppel. */
+function popcornHeap(b, x, y, z, rx, rz, h, count, near, seed = 1) {
+  const { F } = b;
+  b.xf([x, y, z], [0, 0, 0], [rx, h, rz], () => F.ball(0, 0, 0, 1, POP.toasted, { ws: near ? 12 : 6, hs: near ? 4 : 2, lat: [0, Math.PI / 2] }));
+  if (!near) return;
+  let s = seed * 9301 + 49297;
+  const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
+  for (let i = 0; i < count; i++) {
+    const a = rnd() * TAU;
+    const q = Math.sqrt(rnd()) * 0.92;
+    const px = Math.cos(a) * q * rx;
+    const pz = Math.sin(a) * q * rz;
+    // auf der Kuppel sitzend: Höhe der Kuppel an dieser Stelle, das Korn halb eingesunken
+    const top = h * Math.sqrt(Math.max(0, 1 - q * q));
+    const r = 0.011 + rnd() * 0.006;
+    F.ball(x + px, y + top - r * 0.3, z + pz, r, rnd() < 0.7 ? POP.kernel : POP.toasted, { ws: 6, hs: 4 });
+  }
+}
+
+/**
+ * Popcorn-Maschine im Kinostil (0,34 × 0,26 m, 0,58 m hoch, Mitte der Grundfläche im Ursprung, vorn +z): roter Sockel
+ * mit cremefarbener Klappe und zwei Knöpfen, darüber die Glaskabine mit vier roten Pfosten, Glas hinten und an den
+ * Seiten, die Tür vorn steht offen (nach links geschwenkt); innen hängt der Kessel voll Popcorn am Dach, unten liegt
+ * ein Haufen davon. Auf dem Dach eine kleine Kuppel. Die Kabeltülle sitzt links am Sockel (Punkt GLAND).
+ */
+const MACHINE = { w: 0.34, d: 0.26, base: 0.16, cab: 0.3, gland: [-0.17, 0.08, -0.06] };
+function popcornMachine(b, near) {
+  const { F, G } = b;
+  const { w, d } = MACHINE;
+  const y1 = MACHINE.base;
+  const y2 = y1 + MACHINE.cab;
+  const seg = near ? 2 : 1;
+  for (const x of [-1, 1]) for (const z of [-1, 1]) F.ball(x * (w / 2 - 0.03), 0.014, z * (d / 2 - 0.03), 0.016, POP.redDark, { ws: 6, hs: 4 });
+  F.rbox(0, 0.02, 0, w, y1 - 0.02, d, 0.03, POP.red, { seg, ks: [0.85, 1], bottom: true });
+  // Klappe vorn (6 mm stark, 2 mm im Sockel) mit zwei Knöpfen, Tülle links
+  F.rbox(0, 0.045, d / 2 + 0.001, w - 0.08, 0.09, 0.006, 0.012, C.cream, { seg: 1 });
+  if (near) for (const x of [-0.07, 0.07]) F.ball(x, 0.09, d / 2 + 0.006, 0.013, C.white, { ws: 8, hs: 4 });
+  F.rbox(MACHINE.gland[0] - 0.006, MACHINE.gland[1] - 0.018, MACHINE.gland[2], 0.024, 0.036, 0.036, 0.008, C.plug, { seg: 1 });
+  // Kabine: Boden, Pfosten, Glas (hinten, links, rechts), Dach mit Kuppel
+  const px = w / 2 - 0.018;
+  const pz = d / 2 - 0.018;
+  for (const x of [-px, px]) for (const z of [-pz, pz]) F.rbox(x, y1, z, 0.03, MACHINE.cab, 0.03, 0.01, POP.red, { seg: 1 });
+  F.rbox(0, y2, 0, w + 0.02, 0.05, d + 0.02, 0.035, POP.red, { seg, ks: [0.92, 1.05], bottom: true });
+  F.ball(0, y2 + 0.05, 0, 0.075, C.cream, { ws: near ? 14 : 8, hs: near ? 5 : 3, sy: 0.6, lat: [0, Math.PI / 2] });
+  F.ball(0, y2 + 0.05 + 0.045 + 0.012, 0, 0.02, POP.red, { ws: 8, hs: 5 });
+  G.rbox(0, y1, -pz, 2 * px, MACHINE.cab, 0.006, 0.002, POP.glass, { seg: 1 });
+  for (const x of [-px, px]) G.rbox(x, y1, 0, 0.006, MACHINE.cab, 2 * pz, 0.002, POP.glass, { seg: 1 });
+  // Glanzstreifen schräg auf den Seitenscheiben (1 mm vor dem Glas)
+  if (near) for (const s of [-1, 1]) {
+    const x = s * (px + 0.0045);
+    const q = [[x, y1 + 0.06, -pz + 0.05], [x, y1 + 0.2, -pz + 0.02], [x, y1 + 0.24, -pz + 0.07], [x, y1 + 0.1, -pz + 0.1]];
+    G.quad(...(s > 0 ? q : q.slice().reverse()), POP.shine);
+  }
+  // niedrige Kante vorn, damit der Haufen nicht herausrollt
+  F.rbox(0, y1, pz, 2 * px - 0.03, 0.035, 0.012, 0.004, POP.red, { seg: 1 });
+  popcornHeap(b, 0, y1, -0.01, px - 0.03, pz - 0.035, 0.07, 46, near, 3);
+  // Kessel am Dach: Stange, Topf aus Stahl, oben quillt Popcorn heraus
+  F.cyl(0, y2 - 0.07, 0, 0.008, 0.008, 0.07, C.steel, { seg: 6, top: false });
+  F.lathe(0, y2 - 0.155, 0, [[0.0, 0], [0.05, 0.004], [0.066, 0.03], [0.07, 0.085]], C.steelLight, { seg: near ? 16 : 8, top: false });
+  // (die Kuppel deckt den Rand des Topfs: von oben ist seine Innenwand nirgends zu sehen)
+  popcornHeap(b, 0, y2 - 0.071, 0, 0.073, 0.073, 0.035, 14, near, 7);
+  // Tür (offen, um den linken vorderen Pfosten nach außen geschwenkt): Rahmen und Scheibe
+  // (Scharnier vor dem Pfosten; geschlossen zeigte die Tür nach +x, offen 110° nach links außen)
+  b.at(-px, y1, pz + 0.021, -1.92, () => {
+    const dw = 2 * px - 0.01;
+    F.rbox(dw / 2, 0, 0, dw, 0.018, 0.012, 0.004, POP.red, { seg: 1, bottom: true });
+    F.rbox(dw / 2, MACHINE.cab - 0.018, 0, dw, 0.018, 0.012, 0.004, POP.red, { seg: 1, bottom: true });
+    for (const x of [0.008, dw - 0.008]) F.rbox(x, 0.016, 0, 0.016, MACHINE.cab - 0.032, 0.012, 0.004, POP.red, { seg: 1 });
+    G.rbox(dw / 2, 0.016, 0, dw - 0.024, MACHINE.cab - 0.032, 0.005, 0.001, POP.glass, { seg: 1 });
+    if (near) F.ball(dw - 0.008, MACHINE.cab / 2, 0.009, 0.009, C.white, { ws: 6, hs: 4 });
+  });
+}
+
+/** Flasche Bananensaft (0,22 m): gelber Saft im Glas, cremefarbenes Etikett mit grünem Rand, roter Deckel. */
+function juiceBottle(b, x, y, z, near) {
+  const { F, G } = b;
+  const seg = near ? 14 : 8;
+  b.at(x, y, z, 0, () => {
+    // voll bis in die Schulter, nur der Hals ist leeres Glas
+    G.lathe(0, 0, 0, [[0, 0], [0.03, 0.002], [0.034, 0.012], [0.034, 0.135], [0.026, 0.17]], C.juice, { seg, top: false });
+    G.lathe(0, 0.17, 0, [[0.026, 0], [0.0135, 0.025], [0.0135, 0.04]], POP.glass, { seg, top: false });
+    F.lathe(0, 0.205, 0, [[0.0155, 0], [0.0155, 0.018], [0, 0.02]], POP.red, { seg });
+    if (!near) return;
+    F.lathe(0, 0.045, 0, [[0.0352, 0], [0.0352, 0.06]], C.cream, { seg, top: false });
+    for (const yy of [0.045, 0.1]) F.lathe(0, yy, 0, [[0.0356, 0], [0.0356, 0.005]], 0x7cb35b, { seg, top: false });
+    // kleine Banane aufs Etikett gemalt: ein flacher Bogen dicht vor dem Etikett
+    // (in der Ebene z = 0,0345: die Mitte steht 2,8 mm vor dem runden Etikett, die Spitzen stecken darin)
+    b.xf([0, 0.096, 0.0345], [Math.PI / 2, 0, 0], 1, () => F.torus(0, 0, 0, 0.016, 0.0035, 0xf6cf3a, { seg: 8, tube: 4, a0: -1.1, a1: 1.1 }));
+  });
+}
+
+/**
+ * Popcorn-Tüte aus Papier (Boden 0,09 × 0,06 m, oben 0,1 × 0,07 m, 0,15 m hoch): rot-weiß gestreift, oben offen und
+ * voll Popcorn; die Wand hat innen eine eigene Fläche (von oben gesehen ist nichts durchsichtig).
+ */
+function popcornBag(b, x, y, z, near) {
+  const { F } = b;
+  b.at(x, y, z, 0, () => {
+    const h = 0.15;
+    const c0 = [[-0.045, -0.03], [0.045, -0.03], [0.045, 0.03], [-0.045, 0.03]];
+    const c1 = [[-0.05, -0.035], [0.05, -0.035], [0.05, 0.035], [-0.05, 0.035]];
+    const k = near ? 3 : 1;
+    for (let s = 0; s < 4; s++) {
+      const a0 = c0[s];
+      const a1 = c0[(s + 1) % 4];
+      const b0 = c1[s];
+      const b1 = c1[(s + 1) % 4];
+      for (let i = 0; i < k; i++) {
+        const t0 = i / k;
+        const t1 = (i + 1) / k;
+        const L = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+        const p00 = L(a0, a1, t0);
+        const p01 = L(a0, a1, t1);
+        const p10 = L(b0, b1, t0);
+        const p11 = L(b0, b1, t1);
+        const col = near ? ((s * k + i) % 2 ? C.white : POP.red) : POP.red;
+        F.quad([p00[0], 0, p00[1]], [p10[0], h, p10[1]], [p11[0], h, p11[1]], [p01[0], 0, p01[1]], col);
+        // Innenseite 1,5 mm weiter innen, in Papierfarbe
+        const ins = (p) => [p[0] * 0.97, p[1] * 0.95];
+        const [q00, q01, q10, q11] = [ins(p00), ins(p01), ins(p10), ins(p11)];
+        F.quad([q01[0], 0.004, q01[1]], [q11[0], h, q11[1]], [q10[0], h, q10[1]], [q00[0], 0.004, q00[1]], POP.paper);
+      }
+    }
+    F.quad([-0.045, 0.001, 0.03], [0.045, 0.001, 0.03], [0.045, 0.001, -0.03], [-0.045, 0.001, -0.03], POP.paper);
+    // Oberkante: ein schmaler Falz rundum, damit die Wand oben eine Dicke hat
+    F.rbox(0, h - 0.004, 0, 0.102, 0.008, 0.072, 0.004, C.white, { seg: 1, top: false });
+    popcornHeap(b, 0, h - 0.015, 0, 0.047, 0.032, 0.04, 16, near, 11);
+  });
+}
+
+// Lage des Tischs im Rahmen der Heldensäule (Mitte der Säule, +z ihre Vorderseite): hinter der Säule, zur Seite der
+// freien Nachbarbucht (dort steht die Kamera der Nahaufnahme), frei von den Säulen des Ladedachs (1,25 / −1,1)
+const STAND = { at: [0.48, -0.78], top: 0.6, w: 0.58, d: 0.44 };
+defs.popcorn_stand = {
+  kind: 'rest', far: true,
+  make(b) {
+    const { F } = b;
+    const near = !b.lod;
+    const { top, w, d } = STAND;
+    // Klapptisch aus Holz: Platte, Zarge, vier leicht gespreizte Beine mit Querstreben
+    F.rbox(0, top - 0.03, 0, w, 0.03, d, 0.04, C.timber, { seg: near ? 2 : 1, bottom: true });
+    F.rbox(0, top - 0.07, 0, w - 0.08, 0.04, d - 0.08, 0.02, C.timberDark, { seg: 1, top: false, bottom: true });
+    const legs = [];
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const t = [sx * (w / 2 - 0.06), top - 0.06, sz * (d / 2 - 0.06)];
+      const f = [sx * (w / 2 - 0.035), 0.012, sz * (d / 2 - 0.035)];
+      F.rod(t, f, 0.016, C.timberDark, { seg: near ? 8 : 5 });
+      F.ball(f[0], f[1], f[2], 0.017, C.timberDark, { ws: 6, hs: 4 });
+      legs.push([t, f]);
+    }
+    if (near) for (const sx of [-1, 1]) {
+      const at = (leg, k) => leg[0].map((v, i) => v + (leg[1][i] - v) * k);
+      const a = legs[sx < 0 ? 0 : 2];
+      const c = legs[sx < 0 ? 1 : 3];
+      F.rod(at(a, 0.62), at(c, 0.62), 0.011, C.timberDark, { seg: 6 });
+    }
+    // Maschine rechts der Mitte, Tüte vorn rechts, Flasche hinten rechts; links bleibt Platz für das Kabel
+    const [mx, mz] = [0.04, -0.04];
+    b.at(mx, top, mz, 0, () => popcornMachine(b, near));
+    popcornBag(b, 0.235, top, 0.155, near);
+    juiceBottle(b, 0.255, top, -0.15, near);
+    // Steckdose an der Rückwand der Säule (Säule: Mitte bei −at, 0,4 m tief, flach bis ±0,155 um ihre Mitte), Stecker
+    // darin, Kabel im Bogen über die vordere Tischkante, auf der Platte entlang und von links in die Tülle der Maschine
+    const sx = -STAND.at[0] + 0.08;
+    const back = -STAND.at[1] - 0.2;
+    F.rbox(sx, 0.86, back - 0.015, 0.11, 0.13, 0.04, 0.015, C.cream, { seg: 1 });
+    if (near) F.rbox(sx, 0.95, back - 0.036, 0.07, 0.012, 0.006, 0.003, C.teal, { seg: 1 });
+    F.rbox(sx, 0.89, back - 0.06, 0.05, 0.06, 0.06, 0.012, C.plug, { seg: 1 });
+    const g = [mx + MACHINE.gland[0], top + MACHINE.gland[1], mz + MACHINE.gland[2]];
+    const lie = top + 0.0085;
+    const cable = [
+      [sx, 0.92, back - 0.08],
+      [sx, 0.917, back - 0.13],
+      [sx + 0.015, 0.86, back - 0.2],
+      [sx + 0.05, 0.75, back - 0.29],
+      [-0.27, 0.66, 0.215],
+      [-0.255, 0.622, 0.165],
+      [-0.245, lie, 0.12],
+      [-0.232, lie, 0.05],
+      [-0.212, lie, -0.03],
+      [-0.192, lie + 0.007, -0.075],
+      [g[0] - 0.045, g[1] - 0.03, g[2]],
+      [g[0] - 0.024, g[1] - 0.004, g[2]],
+      [g[0] - 0.008, g[1], g[2]],
+    ];
+    cord(F, cable, 0.0075, C.cable, near ? 40 : 16, near ? 8 : 5);
+    return { w: w + 0.04, d: d + 0.04, h: 0.85, centre: true, post: [-STAND.at[0], -STAND.at[1]] };
+  },
+};
+defs.bananensaft_flasche = {
+  kind: 'rest', far: true,
+  make(b) {
+    juiceBottle(b, 0, 0, 0, !b.lod);
+    return { w: 0.07, d: 0.07, h: 0.23, centre: true };
+  },
+};
+defs.popcorn_tuete = {
+  kind: 'rest', far: true,
+  make(b) {
+    popcornBag(b, 0, 0, 0, !b.lod);
+    return { w: 0.1, d: 0.07, h: 0.2, centre: true };
+  },
+};
+
 // =================================================================================================================
 // 7. Ladedach für drei Buchten: Platte 8,2 × 6,5 m in 4,15–4,5 m Höhe auf zwei Säulen hinten, türkise Kante vorn,
 // warm leuchtende Unterseite

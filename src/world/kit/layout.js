@@ -860,6 +860,11 @@ export function planRest(opts = {}) {
   const [pcx, pcz] = P(pi.popcorn[0], pi.popcorn[2]);
   const popcorn = [pcx, pi.popcorn[1], pcz];
   if (opts.popcorn !== false) add('popcorn_eimer', pcx, pi.popcorn[1], pcz, 0.4);
+  // Popcorn-Maschine auf dem Klapptisch hinter der Säule, ihr Kabel steckt in deren Rückwand (rest.js popcorn_stand;
+  // info.post = Mitte der Säule im Rahmen des Tischs)
+  const sp = infoOf('popcorn_stand').post;
+  const [psx, psz] = P(postX - sp[0], pi.posts[pi.heroPost][1] - sp[1]);
+  if (opts.popcorn !== false) add('popcorn_stand', psx, pi.ground, psz, FACE_ROAD);
   // Nahaufnahme aus gut 3 m in 1,2 m Höhe: die Kamera steht in der freien Nachbarbucht, Blick schräg auf Säule, Eimer
   // und das Heck des Autos
   const [ccx, ccz] = P(postX + 1.6, -2.5);
