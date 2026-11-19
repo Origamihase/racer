@@ -713,6 +713,15 @@ export const JOB_TEMPLATES = [
   { id: 'rain1', text: '1 km im Regen fahren', goal: 1000, stat: 'rainDistance', wenn: 'du 1 km im Regen durchhältst' },
 ];
 
+// In der XXL-Welt zählen die Strecken-Aufträge Reisekilometer (Game.odometer): je Auftrag etwa so lange gefahren wie
+// klassisch (tools/journey-test.mjs: rund 7,5 Reisekilometer je Kilometer Straße; die Strecke ab dem Start etwas
+// weniger, weil der Startort echte Straße ist).
+export const REISE_JOBS = {
+  clean5: { text: '40 km ohne Blechschaden', goal: 40000, wenn: 'du 40 km ohne Blechschaden schaffst' },
+  dist8: { text: '50 km Strecke schaffen', goal: 50000, wenn: 'du 50 km weit kommst' },
+  rain1: { text: '8 km im Regen fahren', goal: 8000, wenn: 'du 8 km im Regen durchhältst' },
+};
+
 // ---------------------------------------------------------------------------
 // Tesla-Shop (bezahlt wird mit den Stream-Einnahmen)
 export const SHOP = [

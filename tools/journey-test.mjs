@@ -28,7 +28,7 @@ import { Trip, J, PROFILES } from '../src/game/trip.js';
 import { MapDemo } from '../src/map/mapdemo.js';
 import { Game } from '../src/game/game.js';
 import { BID_PLACES } from '../src/game/navi.js';
-import { INSIDER_ORTE } from '../src/data.js';
+import { INSIDER_ORTE, REISE_JOBS } from '../src/data.js';
 import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { signsAlong, BOARD_D } from '../src/world/xxl/signplan.js';
@@ -155,7 +155,7 @@ function shownMetres(text) {
 function numbers(trip, nav, nv, N, game) {
   let odo = trip.km;
   let clk = null; // Uhr (Sekunden), Stelle und Zähler beim letzten Schritt
-  let move = null; // die Bewegung des letzten Schritts: Die Uhr zählt sie im nächsten (Game.travelClock)
+  let move = null; // die Bewegung des letzten Schritts: Die Uhr zählt sie im nächsten (Game.travelStep)
   let leg = null; // Ankunftszeit, als das stehende Ziel kam: {target, km, eta} (Sekunden der Uhr)
   let newLeg = false;
   let D = Infinity; // Entfernung zum Ziel beim letzten Schritt
@@ -391,6 +391,7 @@ function stream(driver, hours, seed) {
   let progressS = p.s;
   let progressT = 0;
   let pendingCheck = false;
+  const job = { s0: p.s, road: -1, travel: -1 }; // wann 8 km Straße (klassischer Auftrag) und der Auftrag der Reise geschafft sind
 
   // jedes Gebot läuft über WorldNavi.overbid, jede Einnahme über Game.earn
   const overbid = nv.overbid.bind(nv);
@@ -529,6 +530,8 @@ function stream(driver, hours, seed) {
     const tvBefore = game.tv;
     game.update(DT, ctl, camera);
     p.battery = 100;
+    if (job.road < 0 && p.s - job.s0 >= 8000) job.road = game.t;
+    if (job.travel < 0 && game.stats.distance >= REISE_JOBS.dist8.goal) job.travel = game.t;
     if (game.over) {
       ok(false, `Der Stream endet von selbst (${game.over.reason || 'ohne Grund'}) bei t=${game.t.toFixed(0)}`);
       break;
@@ -594,6 +597,10 @@ function stream(driver, hours, seed) {
       pendingCheck = false;
     }
   }
+  // jeder Leser nimmt dieselbe Strecke: Kilometerzähler, Statistik der Aufträge, Abspann; Aufträge in Reisekilometern
+  ok(Math.abs(game.odometer - trip.km * 1000) < 1e-6 && game.odometer - game.stats.distance >= 0 && game.odometer - game.stats.distance < 100, `Kilometerzähler ${game.odometer} m, Statistik ${game.stats.distance} m, Fahrt ${trip.km} km`);
+  for (const j of game.jobs) if (REISE_JOBS[j.id]) ok(j.goal === REISE_JOBS[j.id].goal && j.text === REISE_JOBS[j.id].text, `Auftrag ${j.id}: ${j.text} (${j.goal})`);
+  m.job = job;
   // Kasse: jedes Gebot genau einmal
   ok(m.earnN === m.bids && m.bids === game.stats.naviChanges && m.bids === nv.changes, `Gebote ${m.bids}, davon verbucht ${m.earnN} (Statistik ${game.stats.naviChanges})`);
   ok(Math.abs(m.earnSum - m.bidSum) < 0.005 && Math.abs((game.breakdown['Navi-Gebote'] || 0) - m.bidSum) < 0.005, `Summe der Gebote ${m.bidSum.toFixed(2)} €, verbucht ${m.earnSum.toFixed(2)} €`);
@@ -666,6 +673,7 @@ for (const { driver, m } of rows) {
       `\n    Fahrzeit zum Ziel: ~30 km ${legs(18, 45)} · ~100 km ${legs(75, 130)} · ~250 km ${legs(190, 320)}` +
       `\n    Ziele nach Entfernung: <${BID_PLACES.nearKm} km ${fmt((100 * m.bands[0]) / tot, 0)} % · bis ${BID_PLACES.farKm} km ${fmt((100 * m.bands[1]) / tot, 0)} % · bis 500 km ${fmt((100 * m.bands[2]) / tot, 0)} % · weiter ${fmt((100 * m.bands[3]) / tot, 0)} %` +
       ` · zur Wahl standen stets ≥ ${m.minChoice} Orte · in Sperrzonen geboten: ${m.lockFork} vor Gabelungen, ${m.lockNode} vor Knoten · an der Gabelung anders als angesagt ${m.wrong}× (${m.flipped}× kippte ein Gebot den Plan kurz davor) · Einnahmen ${fmt(m.money / h / 60, 2)} €/min` +
+      ` · Auftrag „${REISE_JOBS.dist8.text}“ nach ${fmt(m.job.travel, 0)} s (8 km Straße wie klassisch: ${fmt(m.job.road, 0)} s)` +
       `\n    Navi und Welt: ${m.navi.checks} Ansagen geprüft (${m.navi.exit} Ausfahrten, ${m.navi.far} hinter dem Horizont, ${m.navi.farKept} davon eingelöst, ${m.navi.arrive} Ziel voraus, ${m.navi.wende}× „dann wenden“), ${m.reroutes} Neuberechnungen` +
       `\n    ${numbersLine(m)}`,
   );
@@ -685,7 +693,7 @@ for (const { driver, m } of rows) {
 }
 // --- Im Tempo des Navis steht die Ankunftszeit still ------------------------------------------------------------------
 // Ein gedachtes Auto (MapDemo) fährt je Abschnitt genau das Tempo, das die Fahrt dort annimmt, die Uhr läuft wie im
-// Spiel (Game.travelClock): Uhr + Reisezeit des Rests bleibt vom Gebot bis zum Zielpunkt stehen – bis auf die
+// Spiel (Game.travelStep): Uhr + Reisezeit des Rests bleibt vom Gebot bis zum Zielpunkt stehen – bis auf die
 // Schritte über eine Abschnittsgrenze, in denen das Auto noch im Tempo des alten Abschnitts fährt.
 const ETA_TOL = 3; // Sekunden der Uhr auf einer ganzen Fahrt
 function atNaviPace(seed, lo, hi) {
@@ -705,13 +713,13 @@ function atNaviPace(seed, lo, hi) {
   let eta0 = NaN;
   let dev = 0;
   for (let k = 0; k < 400000 && trip.target === goal; k++) {
-    clock += Game.prototype.travelClock.call(G, DT);
+    clock += Game.prototype.travelStep.call(G, DT).secs;
     const eta = clock + trip.reach().clock;
     if (k === 0) eta0 = eta;
     dev = Math.max(dev, Math.abs(eta - eta0));
     demo.advance(PROFILES[trip.section.profile].pace * DT, DT);
   }
-  clock += Game.prototype.travelClock.call(G, DT); // der letzte Schritt bis zum Zielpunkt
+  clock += Game.prototype.travelStep.call(G, DT).secs; // der letzte Schritt bis zum Zielpunkt
   ok(trip.target !== goal, `Im Tempo des Navis nicht nach ${places[goal].name} gekommen`);
   ok(dev < ETA_TOL && Math.abs(clock - eta0) < ETA_TOL, `Im Tempo des Navis nach ${places[goal].name} (${fmt(km, 0)} km): Ankunftszeit läuft um ${fmt(dev, 1)} s, angekommen ${fmt(clock - eta0, 1)} s nach der Ansage`);
   return { name: places[goal].name, km, dev, end: clock - eta0, h: clock / 3600 };

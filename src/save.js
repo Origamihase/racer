@@ -4,9 +4,9 @@ const KEY = 'mini-adam-tesla-navi-v1';
 export const DEFAULT_SAVE = {
   wallet: 0,
   upgrades: {},
-  best: { distance: 0, earned: 0, viewers: 0 },
+  best: { distance: 0, earned: 0, viewers: 0, reise: 0 }, // reise: Rekord der XXL-Welt in Reisemetern
   // (ältere Spielstände tragen noch stats.leftLaneEuro mit sich – das wird einfach nicht mehr benutzt)
-  stats: { runs: 0, totalKm: 0, naviReached: 0, crashes: 0 },
+  stats: { runs: 0, totalKm: 0, naviReached: 0, crashes: 0, reiseKm: 0 },
   settings: { sound: true, speech: true, chat: true, facecam: true, quality: 'auto', volume: 0.8 },
   seenIntro: false,
   // besuchte Orte der großen Karte: Wiki-Name → Zahl der Besuche

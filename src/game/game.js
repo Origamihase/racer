@@ -2,7 +2,7 @@
 // Sprachdurchsagen, Rahmen, Funkloch, Zuschauer, Spenden, Jobs) und die Abrechnung am Ende.
 // Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
 import {
-  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, VOICES, JOB_TEMPLATES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
+  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, VOICES, JOB_TEMPLATES, REISE_JOBS, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, NAVI_TARGETS, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
@@ -93,7 +93,7 @@ export class Game {
     this._greeted = false;
     this._introChime = false;
     this.clock = 18 * 60;
-    this.travel = null; // XXL: Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelClock)
+    this.travel = null; // XXL: Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
     this.eco.reset(up);
     this.viewers = this.eco.viewers;
     this.peakViewers = 240;
@@ -132,7 +132,8 @@ export class Game {
     this.halt = null;
     // Für jeden der fünf Jobs hat jemand im Chat eine Spende versprochen – und einer für alle zusammen
     const pledges = this.eco.pledges(5);
-    this.jobs = shuffle(JOB_TEMPLATES).slice(0, 5).map((j, i) => ({ ...j, done: false, progress: 0, pledger: viewerName(), pledge: pledges.list[i] }));
+    // (in der XXL-Welt zählen die Strecken-Aufträge Reisekilometer: REISE_JOBS)
+    this.jobs = shuffle(JOB_TEMPLATES).slice(0, 5).map((j, i) => ({ ...j, ...(this.worldNavi ? REISE_JOBS[j.id] : null), done: false, progress: 0, pledger: viewerName(), pledge: pledges.list[i] }));
     this.allJobs = { pledger: viewerName(), pledge: pledges.all };
     this.allJobsPaid = false;
 
@@ -392,7 +393,10 @@ export class Game {
         this.say(damageLine('understeer'), 'worried', { priority: false });
       }
     }
-    st.distance = p.s;
+    // XXL: Uhr und Strecken zählen Reisezeit und Reisemeter (travelStep), klassisch Spielzeit und Meter der Straße
+    const go = this.worldNavi ? this.travelStep(dt) : null;
+    const dm = go ? go.m : ds;
+    st.distance = go ? this.odometer : p.s;
     st.maxSpeedKmh = Math.max(st.maxSpeedKmh, p.kmh);
     // neue Höchstgeschwindigkeit dieser Fahrt: Der Chat schaut auf den Tacho
     const mark = this.eco.speedMark(p.kmh);
@@ -400,10 +404,10 @@ export class Game {
       this.chat(fillTemplate(pick(CHAT.speedMark), { kmh: mark }));
       this.thrill('topSpeed', `${mark} km/h`);
     }
-    st.cleanDistance += ds;
-    if (W.level > 0.3) st.rainDistance += ds;
-    // die Uhr: klassisch 30 Spielminuten je Minute, in der XXL-Welt die Reisezeit (travelClock)
-    this.clock += this.worldNavi ? this.travelClock(dt) / 60 : dt * 0.5;
+    st.cleanDistance += dm;
+    if (W.level > 0.3) st.rainDistance += dm;
+    // die Uhr: klassisch 30 Spielminuten je Minute, in der XXL-Welt die Reisezeit
+    this.clock += go ? go.secs / 60 : dt * 0.5;
     this.megafonCd = Math.max(0, this.megafonCd - dt);
 
     // --- Eingaben ------------------------------------------------------------
@@ -1798,10 +1802,12 @@ export class Game {
     if (this.over) return;
     this.running = false;
     const p = this.player;
-    const km = p.s / 1000;
+    const km = p.s / 1000; // der Beruf des Tages richtet sich nach den Metern der Straße (keine Zahl auf dem Schirm)
     this.over = {
       reason,
-      distance: p.s,
+      distance: this.odometer,
+      travel: this.worldNavi, // Reisekilometer (XXL) statt Meter der Straße
+      air: this.worldNavi ? this.airtime : null,
       money: Math.max(0, Math.round(this.money * 100) / 100),
       breakdown: { ...this.breakdown },
       jobs: this.jobs.map((j) => ({ text: j.text, done: j.done, pledge: j.pledge, pledger: j.pledger })),
@@ -1834,15 +1840,27 @@ export class Game {
    * mal so viele Reisemeter, wie die Fahrt dort je Meter Straße zählt (auf echter Straße und im Stand 1). Mit 130 km/h
    * schafft der Wagen so überall 130 Reisekilometer je Stunde der Uhr, und wer im Tempo des Navis fährt, sieht die
    * Ankunftszeit stillstehen (Uhr + Reisezeit des Rests, trip.reach().clock). Die Fahrt rückt erst nach game.update
-   * vor (src/main.js): gezählt wird darum der Schritt davor, mit dessen Zeit. Liefert Sekunden der Uhr.
+   * vor (src/main.js): gezählt wird darum der Schritt davor, mit dessen Zeit. Liefert { secs: Sekunden der Uhr,
+   * m: Reisemeter } dieses Schritts.
    */
-  travelClock(dt) {
+  travelStep(dt) {
     const trip = this.world.trip();
     const was = this.travel && this.travel.trip === trip ? this.travel : null;
     const ds = was ? trip.s - was.s : 0;
-    const secs = !was ? 0 : ds > 1e-6 ? (was.dt * (trip.km - was.km) * 1000) / ds : was.dt;
+    const m = was ? (trip.km - was.km) * 1000 : 0;
+    const secs = !was ? 0 : ds > 1e-6 ? (was.dt * m) / ds : was.dt;
     this.travel = { trip, s: trip.s, km: trip.km, dt };
-    return secs;
+    return { secs, m };
+  }
+
+  /** Die gefahrene Strecke auf jedem Schirm (Meter): in der XXL-Welt der Kilometerzähler der Fahrt, sonst die Straße. */
+  get odometer() {
+    return this.worldNavi ? this.world.trip().km * 1000 : this.player.s;
+  }
+
+  /** Sendezeit in Sekunden: klassisch die gespielte Zeit, in der XXL-Welt die Reisezeit seit 18 Uhr (start). */
+  get airtime() {
+    return this.worldNavi ? (this.clock - 18 * 60) * 60 : this.t;
   }
 
   /** Daten für den Mittelbildschirm. */

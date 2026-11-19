@@ -18,7 +18,7 @@ import {
 import { roadAhead, closeScene, curvePoint } from './roadahead.js';
 import { Persp, TiltView, ribbon } from './persp.js';
 import { places } from './graph.js';
-import { fmtKm } from './navroute.js';
+import { fmtOdo } from './navroute.js';
 import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawCar, drawShield, drawFlag, drawHeart } from './symbols.js';
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
@@ -165,7 +165,7 @@ function xAt(pts, d) {
 /**
  * Das Navi. draw() zeichnet in den Bereich (x0, y0, w, h) der Leinwand; st wie bei CenterScreen.update, dazu
  * st.nav = {model: NavModel, bidder, bid, clockMin, eta?, visible}; step = Sekunden seit dem letzten Bild. clockMin ist
- * die Uhr des Spiels in Minuten – in der XXL-Welt die Reisezeit (Game.travelClock), in der die Ankunft gerechnet wird.
+ * die Uhr des Spiels in Minuten – in der XXL-Welt die Reisezeit (Game.travelStep), in der die Ankunft gerechnet wird.
  */
 export class NaviScreen {
   constructor() {
@@ -925,7 +925,7 @@ export class NaviScreen {
       ctx.fillText(fit(ctx, nav.wait || '⏳ Warte auf das nächste Gebot …', bw - 36), x + 18, cy + 36);
       ctx.font = `500 19px ${FONT}`;
       ctx.fillStyle = 'rgba(255,255,255,0.75)';
-      ctx.fillText('Gefahren: ' + fmtKm(trip.km), x + 18, cy + 68);
+      ctx.fillText('Gefahren: ' + fmtOdo(trip.km), x + 18, cy + 68); // derselbe Kilometerzähler wie HUD und Pause-Karte
       return;
     }
     const pl = places[trip.target];

@@ -4,6 +4,7 @@ import { fmtNum, fmtCent, fmtKm, fmtDuration, clamp } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
+import { fmtOdo } from '../map/navroute.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -833,10 +834,13 @@ export class UI {
     const p = g.player;
     this.viewersEl.textContent = '👁 ' + fmtNum(Math.round(g.viewers));
     this.timeEl.textContent = fmtDuration(g.t);
-    this.distEl.textContent = fmtKm(p.s);
-    const best = g.save.best.distance || 0;
-    this.recordEl.textContent = p.s > best && best > 0 ? '🏆 neuer Rekord!' : best > 0 ? 'Rekord ' + fmtKm(best) : '';
-    this.recordEl.classList.toggle('record', p.s > best && best > 0);
+    // XXL: der Kilometerzähler der Fahrt in Reisekilometern, mit dem Rekord der XXL-Welt (Game.odometer)
+    const odo = g.odometer;
+    const strecke = (m) => (g.worldNavi ? fmtOdo(m / 1000) : fmtKm(m));
+    this.distEl.textContent = strecke(odo);
+    const best = (g.worldNavi ? g.save.best.reise : g.save.best.distance) || 0;
+    this.recordEl.textContent = odo > best && best > 0 ? '🏆 neuer Rekord!' : best > 0 ? 'Rekord ' + strecke(best) : '';
+    this.recordEl.classList.toggle('record', odo > best && best > 0);
     this.speedEl.textContent = Math.round(p.kmh) + ' km/h';
     this.moneyRow.textContent = fmtCent(g.money);
     this.batteryEl.textContent = Math.round(p.battery) + ' %';

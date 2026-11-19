@@ -526,12 +526,13 @@ const menus = new Menus(app, {
     } else if (a === 'menu') toTitle();
   },
   back: () => {},
+  travel: !!xxl, // XXL-Welt: Rekord und Summe auf dem Titel in Reisekilometern
   dataFor: (name, data) => {
     if (name === 'shop') return { wallet: save.wallet, upgrades: save.upgrades };
     if (name === 'settings') return { ...settings, speechSupported: speech.supported };
     if (name === 'title') return save;
     if (name === 'pause') return game;
-    if (name === 'karte') return { save, nav: xxl ? xxlNav : mapDemo ? mapDemo.model : null };
+    if (name === 'karte') return { save, nav: xxl ? xxlNav : mapDemo ? mapDemo.model : null, travel: !!xxl, odo: xxl && paused ? game.odometer : null };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
     if (name === 'over') return lastOver ? { ...lastOver, wallet: save.wallet } : data;
     return data;
@@ -673,19 +674,22 @@ function pause() {
 function finishRun() {
   const o = game.over;
   const km = o.distance / 1000;
-  const best = save.best.distance || 0;
+  // XXL: Reisemeter mit eigenem Rekord und eigener Summe; die klassischen Zahlen bleiben Meter der Straße
+  const rec = o.travel ? 'reise' : 'distance';
+  const best = save.best[rec] || 0;
   const newRecord = o.distance > best && o.distance > 50;
   save.wallet = Math.round((save.wallet + o.money) * 100) / 100;
-  save.best.distance = Math.max(best, o.distance);
+  save.best[rec] = Math.max(best, o.distance);
   save.best.earned = Math.max(save.best.earned || 0, o.money);
   save.best.viewers = Math.max(save.best.viewers || 0, o.peakViewers);
   save.stats.runs++;
-  save.stats.totalKm += km;
+  if (o.travel) save.stats.reiseKm = (save.stats.reiseKm || 0) + km;
+  else save.stats.totalKm += km;
   save.stats.naviReached += o.stats.naviReached;
   save.stats.crashes += o.stats.crashes;
   storeSave(save);
   if (newRecord) adamMood('proud');
-  lastOver = { ...o, newRecord, best: save.best.distance, wallet: save.wallet, photos: ui.photos.slice() };
+  lastOver = { ...o, newRecord, best: save.best[rec], wallet: save.wallet, photos: ui.photos.slice() };
 }
 
 // --- Autopilot (Titel, Kameraschwenk, Abspann) -------------------------------------
@@ -1810,7 +1814,7 @@ let xxlTrafficFrame = null;
 let xxlNav = null;
 // was der Mittelbildschirm davon bekommt (st.nav, src/map/navview.js): Bieter und Gebot im roten Balken kommen vom
 // Spiel (WorldNavi.screen), ohne Gebot dessen Texte für Balken (bar) und Kärtchen (wait); die Uhr ist die Reisezeit
-// (Game.travelClock), in der navview.js die Ankunft rechnet
+// (Game.travelStep), in der navview.js die Ankunft rechnet
 const xxlScreenNav = { model: null, bidder: '', bid: '', bar: '', wait: '', clockMin: 0, visible: false, visited: null };
 // und von der Straße für die Spuransicht (st.road, src/cockpit/screen.js)
 const xxlScreenRoad = { lanes: null, extraLane: null, autobahn: true };

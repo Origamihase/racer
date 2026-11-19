@@ -1,7 +1,8 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
 import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, GAME_TITLE, GAME_SUBTITLE, TAGLINE, INCOME, FINES, fmtBetrag, nameBreak } from '../data.js';
-import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration } from '../util.js';
+import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.js';
+import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
 import { MapScreen } from './mapscreen.js';
 
@@ -272,8 +273,10 @@ export class Menus {
     button(menu, 'ℹ️  Über das Spiel', 'about');
     const stats = el('div', 'title-stats', card);
     el('span', '', stats, '💶 ' + fmtCent(d.wallet) + ' Guthaben');
-    el('span', '', stats, '🏆 Rekord ' + fmtKm(d.best.distance || 0));
-    el('span', '', stats, '🛣️ ' + fmtKm((d.stats.totalKm || 0) * 1000, 1) + ' gesamt');
+    // XXL-Welt (h.travel): Rekord und Summe in Reisekilometern, eigene Felder neben den klassischen
+    const travel = !!this.h.travel;
+    el('span', '', stats, '🏆 Rekord ' + (travel ? fmtOdo((d.best.reise || 0) / 1000) : fmtKm(d.best.distance || 0)));
+    el('span', '', stats, '🛣️ ' + (travel ? fmtOdo(d.stats.reiseKm || 0) : fmtKm((d.stats.totalKm || 0) * 1000, 1)) + ' gesamt');
     el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause');
   }
 
@@ -288,13 +291,13 @@ export class Menus {
       el('span', 'k', r, k);
       el('span', 'v', r, v);
     };
-    item('Strecke', fmtKm(g.player.s));
+    item('Strecke', g.worldNavi ? fmtOdo(g.odometer / 1000) : fmtKm(g.player.s));
     item('Einnahmen dieser Fahrt', fmtCent(g.money));
     // XXL-Welt: ein echter Ort – oder, zwischen Ankunft und erstem Gebot der Runde, was gerade gilt (WorldNavi.label)
     item('Navi-Ziel', g.worldNavi ? g.navi.label : g.navi.target.name);
     item('Navi-Gebote', fmtNum(g.stats.naviChanges));
     item('Zuschauer', fmtNum(Math.round(g.viewers)));
-    item('Sendezeit', fmtDuration(g.t));
+    item('Sendezeit', g.worldNavi ? fmtSpan(g.airtime) : fmtDuration(g.t));
     // woher das Geld bisher kam – dieselben Posten wie später in der Abrechnung
     const rows = breakdownRows(g.breakdown);
     if (rows.length) {
@@ -326,8 +329,9 @@ export class Menus {
     el('p', 'sub', card, r.sub);
     const big = el('div', 'over-big', card);
     const dist = el('div', 'over-dist', big);
-    el('span', 'num', dist, fmtKm(o.distance));
-    el('span', 'lbl', dist, o.newRecord ? '🏆 Neuer Rekord!' : 'Rekord: ' + fmtKm(o.best));
+    const strecke = (m) => (o.travel ? fmtOdo(m / 1000) : fmtKm(m));
+    el('span', 'num', dist, strecke(o.distance));
+    el('span', 'lbl', dist, o.newRecord ? '🏆 Neuer Rekord!' : 'Rekord: ' + strecke(o.best));
     const mon = el('div', 'over-money', big);
     el('span', 'num', mon, '+' + fmtCent(o.money));
     el('span', 'lbl', mon, 'Guthaben · jetzt ' + fmtCent(o.wallet));
@@ -362,7 +366,7 @@ export class Menus {
     line('Höchstgeschwindigkeit', fmtNum(Math.round(st.maxSpeedKmh)) + ' km/h');
     line('Zuschauer-Spitze', fmtNum(o.peakViewers));
     line('Wischer: gezuckt / gewischt', fmtNum(st.twitches) + ' / ' + fmtNum(st.wipes));
-    line('Sendezeit', fmtDuration(o.time) + ' (bis ' + o.clock + ' Uhr)');
+    line('Sendezeit', (o.travel ? fmtSpan(o.air) : fmtDuration(o.time)) + ' (bis ' + o.clock + ' Uhr)');
     const beruf = el('div', 'beruf', right);
     el('div', 'beruf-k', beruf, 'Erlogene Berufsbezeichnung des Tages');
     el('div', 'beruf-v', beruf, 'Mini Adam, ' + o.beruf.job);
