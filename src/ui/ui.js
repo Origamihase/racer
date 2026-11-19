@@ -1,10 +1,13 @@
-// Das Stream-Overlay über dem Spiel: LIVE-Anzeige, Zuschauer, Strecke, Guthaben, Akku,
-// Karosserie-Punkte, Chat mit Bots, NOMI-Untertitel, Hinweise, Sprachdurchsagen, Rahmen und Blitzerfotos.
+// Das Stream-Overlay über dem Spiel: LIVE-Anzeige, Zuschauer, Strecke, Guthaben, Akku, Karosserie-Punkte, Chat mit
+// Bots, die Streifen oben (Navi, Hinweise) und unten (Untertitel, BrunnenTV), Rahmen und Blitzerfotos. Wo was wohnt
+// und welches Rechteck dabei frei bleibt, steht in sicht.js: Über der Bildmitte liegt nichts, solange gefahren wird.
 import { fmtNum, fmtCent, fmtKm, fmtDuration, fmtClock, clamp } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
 import { fmtOdo } from '../map/navroute.js';
+import { shortName } from '../game/navi.js';
+import { NARROW_MID, infoWidth, overlap } from './sicht.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -18,49 +21,31 @@ const RAHMEN_EMOJI = {
   rosen: '🌹', sonnenblumen: '🌻', pommes: '🍟', burger: '🍔', candy: '🍬', chips: '🥔', kuerbis: '🎃',
 };
 
-const DEG = Math.PI / 180;
-/**
- * Bildpunkte je Tangens-Einheit der Hauptkamera bei gewünschtem senkrechtem Bildwinkel – wie setFov() in main.js:
- * waagerecht mindestens 86°, senkrecht zwischen 50° und 78°. Damit lässt sich ausrechnen, wo feste Teile des Bildes
- * (Innenspiegel, Mittelbildschirm, das eigene Auto) auf dem Schirm liegen, ohne die 3D-Szene zu kennen.
- */
-function camScale(W, H, vfov) {
-  const v = clamp(Math.max(vfov * DEG, 2 * Math.atan(Math.tan(43 * DEG) / (W / H))), 50 * DEG, 78 * DEG);
-  return H / 2 / Math.tan(v / 2);
-}
-// Cockpit (setFov(58), Modell aus src/cockpit/cockpit.js): linke Kante von Innenspiegel und Mittelbildschirm samt
-// Rahmen als Tangens-Abstand von der Bildmitte (nachgemessen; das Kopfwackeln verschiebt sie um wenige Bildpunkte)
-const MIRROR = { left: 0.318 };
-const SCREEN = { left: 0.253 };
-// Drohne (setFov(50)): Dachkante des eigenen Autos unter der Bildmitte
-const CAR_TOP = 0.095;
-/** Oberkante des eigenen Autos in der Drohnenansicht (Bildpunkte von oben). */
-function droneCarTop(W, H) {
-  return H / 2 + CAR_TOP * camScale(W, H, 50);
-}
-/** Linke Kante von Mittelbildschirm und Innenspiegel des Cockpits (Bildpunkte). */
-function cockpitParts(W, H) {
-  const S = camScale(W, H, 58);
-  return { screen: W / 2 + SCREEN.left * S, mirror: W / 2 + MIRROR.left * S };
-}
 const COARSE = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : { matches: false };
 // Facecam: Eckradius wie in style.css (.facecam), kleinste sinnvolle Breite, Seitenverhältnis 16 : 9
 const FC_RADIUS = 12;
 const FC_MIN_W = 168;
-const overlap = (a, b, pad = 0) => a.left < b.right + pad && a.right > b.left - pad && a.top < b.bottom + pad && a.bottom > b.top - pad;
+
+// Hinweise im oberen Streifen: einer nach dem anderen. Was der Spieler beachten muss (Art 'bad' und 'warn'), kommt
+// vor Tipps und Grüßen und löst einen Tipp ab, sobald der kurz zu lesen war. Wartet etwas, bleibt der gezeigte nur
+// noch so lange stehen, wie man zum Lesen braucht. Ein wartender Tipp, der zu alt geworden ist, entfällt (er
+// beschriebe etwas, das längst vorbei ist), ebenso der älteste, wenn mehr als vier warten; Dringendes entfällt nie.
+const NOTICE = { read: 3.6, hurry: 2.4, yield: 1.2, stale: 8, waiting: 4 };
+const urgent = (n) => n.kind === 'bad' || n.kind === 'warn';
+const FUNKLOCH = 'Verbindung verloren – alle Handynetze werden neu gebündelt …';
+// So lange steht die Navi-Zeile nach einem neuen Ziel oder einer Ankunft hervorgehoben da
+const NEWS = 3.6;
+// Bis zu dieser Länge ist ein Satz ohne Kopfzeile „kurz“: Neben ihm bleibt die Bauchbinde von BrunnenTV stehen
+const SHORT_LINE = 32;
 
 /**
- * Lage eines Elements ohne Animationen und Drehungen (getBoundingClientRect enthielte etwa das Aufploppen des
- * Banners oder das Hereinfliegen des Fotos). Nur für Elemente ohne verschobene Vorfahren (nicht in .center-stack).
+ * Die Navi-Zeile ohne Ziel („Ziel erreicht: … – warte auf das nächste Gebot …“) in ihren zwei Hälften samt dem, was
+ * in einer Reihe zwischen ihnen steht: Wo sie nicht in eine Reihe passt, steht die zweite Hälfte darunter, statt
+ * abgeschnitten zu werden.
  */
-function layoutRect(e) {
-  let x = 0;
-  let y = 0;
-  for (let p = e; p; p = p.offsetParent) {
-    x += p.offsetLeft;
-    y += p.offsetTop;
-  }
-  return { left: x, top: y, right: x + e.offsetWidth, bottom: y + e.offsetHeight, height: e.offsetHeight };
+function splitWait(line) {
+  const m = /^(.+?)( – |(?<=\?) )(.+)$/.exec(line);
+  return m ? [m[1], m[3], m[2] === ' ' ? '\u00a0' : '\u00a0– '] : [line, '', ''];
 }
 
 // Ein Rahmen-Streifen zeigt nur so viele Teile, wie ganz hineinpassen – sonst sind sie an den Enden angeschnitten
@@ -114,44 +99,27 @@ export class UI {
     this.cruiseBadge = new CruiseBadge(this.speedEl.parentNode);
     this.jobsEl = el('div', 'jobs-mini', info);
 
-    // --- Mitte oben ---
-    this.leftLaneEl = el('div', 'leftlane hidden', this.hud);
-    this.leftLaneText = el('div', 'leftlane-text', this.leftLaneEl, '');
-    const bar = el('div', 'leftlane-bar', this.leftLaneEl);
-    this.leftLaneFill = el('div', 'leftlane-fill', bar);
-    // Ziel, Entfernung und Gebot getrennt: wird es eng, kürzt sich der Name, die Entfernung bleibt stehen
-    this.naviEl = el('div', 'navi-line', this.hud);
-    this.naviTarget = el('span', 'navi-target', this.naviEl, '');
-    this.naviKm = el('span', 'navi-km', this.naviEl, '');
+    // --- Streifen oben, zwischen Info-Feld und Chat: was das Navi sagt, darunter ein Hinweis nach dem anderen ---
+    const strip = el('div', 'top-strip', this.hud);
+    // Ziel und Entfernung in einer Reihe, das Gebot dahinter: wird es eng, rückt das Gebot in eine zweite Reihe, dann
+    // kürzt sich der Zielname
+    this.naviEl = el('div', 'navi-line', strip);
+    const first = el('span', 'navi-first', this.naviEl);
+    this.naviTarget = el('span', 'navi-target', first, '');
+    this.naviKm = el('span', 'navi-km', first, '');
     this.naviBid = el('span', 'navi-bid', this.naviEl, '');
-    // NOMI-Untertitel, Banner, Hinweise und die Kamera-Anzeige teilen sich eine Spalte (siehe .center-stack)
-    const stack = el('div', 'center-stack', this.hud);
-    this.stackEl = stack;
-    // BrunnenTV am Navi-Ziel der XXL-Welt: die Titelkarte der Folge führt die Spalte an, alles andere rückt darunter
-    this.tvEl = el('div', 'brunnentv hidden', stack);
-    this.tvLogo = el('div', 'brunnentv-logo', this.tvEl);
-    el('span', 'brunnentv-drop', this.tvLogo, '⛲');
-    el('span', '', this.tvLogo, 'BrunnenTV');
-    this.tvEpisode = el('div', 'brunnentv-episode', this.tvEl, '');
-    this.tvPlace = el('div', 'brunnentv-place', this.tvEl, '');
+    const second = el('div', 'top-row', strip);
     // Navi-Ansage für Ansichten ohne Mittelbildschirm (XXL: Drohne, schmale Formate): Pfeil, Entfernung, Ausfahrt
-    this.turnEl = el('div', 'navi-turn', stack);
+    this.turnEl = el('div', 'navi-turn', second);
     this.turnIcon = el('canvas', 'navi-turn-icon', this.turnEl);
     this.turnIcon.width = this.turnIcon.height = 56;
     this.turnDist = el('b', 'navi-turn-dist', this.turnEl, '');
     this.turnText = el('span', 'navi-turn-text', this.turnEl, '');
-    this.nomiEl = el('div', 'nomi-sub hidden', stack);
-    const eyes = el('span', 'nomi-eyes', this.nomiEl);
-    el('i', '', eyes);
-    el('i', '', eyes);
-    // am selben Platz spricht auch das Sprachstudio: dann mit Kopfhörer statt NOMIs Augen (siehe studio())
-    el('span', 'studio-icon', this.nomiEl, '🎧');
-    const words = el('span', 'nomi-words', this.nomiEl);
-    el('span', 'studio-label', words, 'Sprachstudio');
-    this.nomiText = el('span', 'nomi-text', words, '');
-    this.bannerEl = el('div', 'banner hidden', stack, '');
-    this.toastsEl = el('div', 'toasts', stack);
-    this.cameraHint = el('div', 'camera-hint hidden', stack, '');
+    this.leftLaneEl = el('div', 'leftlane hidden', second);
+    this.leftLaneText = el('div', 'leftlane-text', this.leftLaneEl, '');
+    const bar = el('div', 'leftlane-bar', this.leftLaneEl);
+    this.leftLaneFill = el('div', 'leftlane-fill', bar);
+    this.noticeEl = el('div', 'notice', strip);
 
     // --- rechts: Chat ---
     this.chatEl = el('div', 'chat', this.hud);
@@ -160,11 +128,35 @@ export class UI {
     this.chatCount = el('span', 'chat-count', head, '');
     this.chatList = el('div', 'chat-list', this.chatEl);
 
-    // --- unten: Sprachdurchsage, Funkloch ---
-    this.durchsageEl = el('div', 'durchsage hidden', this.hud);
-    this.funklochEl = el('div', 'funkloch hidden', this.hud);
-    el('div', 'funkloch-icon', this.funklochEl, '📡');
-    el('div', 'funkloch-text', this.funklochEl, 'Verbindung verloren – alle Handynetze werden neu gebündelt …');
+    // Funkloch: Der Stream ist weg – das steht dort, wo er fehlt, im Chat-Feld an Stelle der Nachrichten
+    this.funklochEl = el('div', 'funkloch hidden', this.chatEl);
+    el('span', 'funkloch-icon', this.funklochEl, '📡');
+    el('span', 'funkloch-text', this.funklochEl, FUNKLOCH);
+
+    // --- Streifen unten: BrunnenTV als Bauchbinde, daneben der Untertitel – NOMI, das Sprachstudio, die
+    // Sprachdurchsage und der Megafon-Wunsch sprechen alle hier, einer nach dem anderen, jeder mit seinem Zeichen
+    // (NOMIs Augen, Kopfhörer, Mikrofon mit Stimme und Spender, Megafon) ---
+    const bottom = el('div', 'bottom-strip', this.hud);
+    this.tvEl = el('div', 'brunnentv hidden', bottom);
+    const logo = el('div', 'brunnentv-logo', this.tvEl);
+    el('span', 'brunnentv-drop', logo, '⛲');
+    el('span', '', logo, 'BrunnenTV');
+    const tv = el('div', 'brunnentv-words', this.tvEl);
+    this.tvEpisode = el('div', 'brunnentv-episode', tv, '');
+    this.tvPlace = el('div', 'brunnentv-place', tv, '');
+    this.subEl = el('div', 'sub-bar hidden', bottom);
+    const eyes = el('span', 'sub-sign nomi-eyes', this.subEl);
+    el('i', '', eyes);
+    el('i', '', eyes);
+    el('span', 'sub-sign studio-icon', this.subEl, '🎧');
+    el('span', 'sub-sign durchsage-icon', this.subEl, '🎙️');
+    el('span', 'sub-sign megafon-icon', this.subEl, '📢');
+    const words = el('span', 'sub-words', this.subEl);
+    this.subLabel = el('span', 'sub-label', words, '');
+    this.subText = el('span', 'sub-text', words, '');
+    this.cameraHint = el('div', 'camera-hint hidden', bottom, '');
+    // „So steuerst du“ beim ersten Start (drive-hint.js füllt und leert die Karte)
+    this.hintEl = el('div', 'hint-card hidden', this.hud);
     this.photoEl = el('div', 'photo hidden', this.hud);
     this.rahmenEl = el('div', 'rahmen-layer', this.hud);
     // --- unten links: Facecam. Hier nur Rahmen und Namensschild; das Bild zeichnet WebGL genau in dieses Rechteck
@@ -182,17 +174,18 @@ export class UI {
     this.chatOn = true;
     this.chatRect = null;
     this.lastHud = 0;
-    this.toasts = [];
-    this.bannerT = 0;
-    this.nomiT = 0;
-    this.durchsageT = 0;
+    // Hinweise: der gezeigte und die wartenden; Untertitel: wer gerade spricht und wen er unterbrochen hat
+    this.notice = null;
+    this.notices = [];
+    this.lines = [];
+    this.newsT = 0;
     this.photoT = 0;
     this.rahmenList = [];
     this.photos = [];
     this.moneyShown = 0;
 
-    // Die Mittelspalte (Navi-Zeile, linke Spur, NOMI, Banner, Hinweise) liegt zwischen den Feldern links und rechts.
-    // Ist dort kein Platz (Handy hochkant), rückt sie unter die Felder, statt sie zu überdecken.
+    // Der obere Streifen liegt zwischen den Feldern links und rechts. Ist dort kein Platz (Handy hochkant), steht er
+    // unter den Feldern, statt sie zu überdecken.
     if (typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(() => {
         this.layout();
@@ -200,20 +193,16 @@ export class UI {
       });
       ro.observe(info);
       ro.observe(this.chatEl);
-      // die Spalte unter dem Spur-Balken beginnt nach seiner echten Höhe (--lane-h), nicht nach einer angenommenen
-      const lane = new ResizeObserver(() => {
-        const h = this.leftLaneEl.offsetHeight;
-        if (h) this.hud.style.setProperty('--lane-h', h + 'px');
-      });
-      lane.observe(this.leftLaneEl);
     }
     window.addEventListener('resize', () => this.layout());
   }
 
+  /**
+   * Der Streifen oben nach der echten Größe von Info-Feld und Chat (--left, --mid, --top): zwischen den beiden
+   * Feldern, und wo dort kein Platz ist, unter ihnen. Links zählt die Höchstbreite des Info-Felds, damit der Streifen
+   * nicht wandert, wenn dort eine Zahl länger wird.
+   */
   layout() {
-    const drone = document.body.classList.contains('drone');
-    this.layoutDrone = drone;
-    this.layoutPhoto = !this.photoEl.classList.contains('hidden');
     const a = this.infoEl.getBoundingClientRect();
     const chat = this.chatOn && this.chatEl.getBoundingClientRect();
     const hasChat = !!(chat && chat.width);
@@ -221,115 +210,22 @@ export class UI {
     this.chatRect = hasChat ? chat : null;
     if (!a.width) return; // HUD gerade unsichtbar
     const W = window.innerWidth;
-    const H = window.innerHeight;
-    const side = Math.max(a.right, hasChat ? W - chat.left : 0) + 14;
-    let mid = W - 2 * side;
+    let left = Math.max(a.right, 14 + infoWidth(W, window.innerHeight)) + 14;
+    let mid = (hasChat ? chat.left - 14 : W - left) - left;
     let top = 14;
-    const narrow = mid < 240;
-    if (narrow) mid = W - 28;
-    const hud = this.hud;
-    const st = hud.style;
-    st.setProperty('--mid', Math.round(mid) + 'px');
-    hud.classList.toggle('hud-narrow', narrow);
-    hud.classList.remove('col-fit');
-    // so breit und so weit links steht die Spalte nach style.css (mittig)
-    const w0 = this.stackEl.offsetWidth;
-    const L = (W - w0) / 2;
-    const R = (W + w0) / 2;
-    const across = (r) => r.left < R + 10 && r.right > L - 10;
+    const narrow = mid < NARROW_MID;
     if (narrow) {
-      // nur unter den Feldern, über denen sie sonst läge – auf dem Handy quer endet das Info-Feld links neben ihr,
-      // dann beginnt sie schon unter dem Chat und hat bis zum Auto der Drohnenansicht mehr Platz
-      if (across(a)) top = Math.max(top, a.bottom + 10);
-      // feste Unterkante des Chats (seine Höchsthöhe), damit die Spalte nicht mit jeder Nachricht springt
-      if (hasChat && across(chat)) top = Math.max(top, chat.top + (parseFloat(getComputedStyle(this.chatEl).maxHeight) || chat.height) + 10);
-      // Touch hochkant liegt das Blitzerfoto oben rechts über dem Chat und reicht etwas tiefer: so lange darunter
-      if (this.layoutPhoto) {
-        const p = layoutRect(this.photoEl);
-        if (p.height && across(p)) top = Math.max(top, p.bottom + 14);
-      }
+      left = 14;
+      mid = W - 28;
+      // unter beiden Feldern; beim Chat zählt seine Höchsthöhe, damit der Streifen nicht mit jeder Nachricht springt
+      top = Math.max(a.bottom, hasChat ? chat.top + (parseFloat(getComputedStyle(this.chatEl).maxHeight) || chat.height) : 0) + 10;
     }
+    const st = this.hud.style;
+    st.setProperty('--left', Math.round(left) + 'px');
+    st.setProperty('--mid', Math.round(mid) + 'px');
     st.setProperty('--top', Math.round(top) + 'px');
-    // Cockpit auf Touch-Geräten quer: Innenspiegel und Mittelbildschirm liegen rechts der Mitte, wo sonst Spur-Balken,
-    // Untertitel und Hinweise stünden – die Spalte endet dann links davor und rückt dafür neben das Info-Feld
-    if (!drone && W > H && COARSE.matches) {
-      const { screen, mirror } = cockpitParts(W, H);
-      const right = Math.min(R, screen - 10, mirror - 10);
-      const left = narrow ? L : Math.min(L, a.right + 14);
-      const w = Math.max(120, Math.min(w0, right - left));
-      if (right < R) {
-        const c = clamp(W / 2, left + w / 2, Math.max(left + w / 2, right - w / 2));
-        st.setProperty('--col-w', Math.round(w) + 'px');
-        st.setProperty('--lane-w', Math.round(Math.min(460, w)) + 'px');
-        st.setProperty('--col-dx', Math.round(c - W / 2) + 'px');
-        hud.classList.add('col-fit');
-        // die Navi-Zeile darüber rückt mit, damit alles eine Spalte bleibt
-        mid = Math.min(mid, w);
-      }
-    }
+    this.hud.classList.toggle('hud-narrow', narrow);
     this.naviMax = Math.min(760, mid);
-    this.fitTvLogo();
-  }
-
-  /**
-   * Der Schriftzug der BrunnenTV-Titelkarte bleibt eine Zeile. Ist die Mittelspalte schmaler als er (Handy quer: sie
-   * steht dort zwischen Chat und Knopfgruppen), schrumpft seine Schrift so weit, dass er wieder in die Karte passt.
-   */
-  fitTvLogo() {
-    if (this.tvEl.classList.contains('hidden')) return;
-    const logo = this.tvLogo;
-    logo.style.fontSize = '';
-    const room = logo.clientWidth;
-    const need = logo.scrollWidth;
-    if (room > 0 && need > room) logo.style.fontSize = Math.floor((parseFloat(getComputedStyle(logo).fontSize) * room) / need) + 'px';
-  }
-
-  /** Hat sich seit dem letzten layout() etwas geändert, wonach sich die Spalte richtet? */
-  layoutStale() {
-    return document.body.classList.contains('drone') !== this.layoutDrone || this.photoEl.classList.contains('hidden') === this.layoutPhoto;
-  }
-
-  /**
-   * Der Stream ist weg: Untertitel, Banner und Hinweise sind so lange ausgeblendet – aber nur, wenn sie unter dem
-   * Funkloch-Kasten lägen (sonst schienen sie durch). Daneben bleiben sie stehen, auch NOMIs Funkloch-Ansage.
-   * Ebenso der Spur-Balken, der auf dem Handy quer unter dem Chat genau dort steht.
-   */
-  funkCover() {
-    let hit = false;
-    let lane = false;
-    if (!this.funklochEl.classList.contains('hidden')) {
-      const f = this.funklochEl.getBoundingClientRect();
-      const under = (r) => r.height > 0 && f.left < r.right && f.right > r.left && f.top < r.bottom + 6 && f.bottom > r.top - 6;
-      hit = under(this.stackEl.getBoundingClientRect());
-      lane = !this.leftLaneEl.classList.contains('hidden') && under(this.leftLaneEl.getBoundingClientRect());
-    }
-    this.hud.classList.toggle('funk', hit);
-    this.hud.classList.toggle('funk-lane', lane);
-  }
-
-  /**
-   * Untere Grenzen der Mittelspalte. hard: was nie verdeckt werden darf (unterer Rand, Touch-Knöpfe, das eigene Auto
-   * der Drohnenansicht); soft: zusätzlich Sprachdurchsage und Rahmen-Hinweis – die warten, wenn Untertitel oder Banner
-   * hinunterreichen, nur Hinweise weichen ihnen.
-   */
-  stackLimits(s) {
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-    let hard = H - 8;
-    if (document.body.classList.contains('drone')) hard = Math.min(hard, droneCarTop(W, H) - 10);
-    // was unterhalb des Spaltenanfangs liegt (daneben Liegendes zählt nicht)
-    const below = (r) => r.height && r.top > s.top + 4 && r.left < s.right && r.right > s.left;
-    for (const b of document.querySelectorAll('.touch button')) {
-      const r = b.getBoundingClientRect();
-      if (below(r)) hard = Math.min(hard, r.top - 8);
-    }
-    let soft = hard;
-    for (const e of [this.durchsageEl, ...this.rahmenEl.querySelectorAll('.rahmen-caption')]) {
-      if (e.classList.contains('hidden')) continue;
-      const r = layoutRect(e);
-      if (below(r)) soft = Math.min(soft, r.top - 8);
-    }
-    return { hard, soft };
   }
 
   /** Navi-Ansage der XXL-Fahrt (NavModel.instruction()) oder null; sichtbar nur ohne Mittelbildschirm (style.css). */
@@ -355,64 +251,10 @@ export class UI {
     if (this.turnText.textContent !== text) this.turnText.textContent = text;
   }
 
-  /** Unterkante der sichtbaren Teile der Mittelspalte (ohne Animationen). */
-  stackBottom(s, parts = this.stackEl.children) {
-    let b = -Infinity;
-    for (const e of parts) {
-      if (e.classList.contains('squeezed') || !e.offsetHeight) continue;
-      b = Math.max(b, s.top + e.offsetTop + e.offsetHeight);
-    }
-    return b;
-  }
-
-  /**
-   * Läuft die Mittelspalte bis an die Sprachdurchsage, den Rahmen-Hinweis, die Touch-Knöpfe, das eigene Auto
-   * (Drohnenansicht) oder den unteren Rand, gehen die ältesten Hinweise vorzeitig – der neueste bleibt immer stehen.
-   * Reicht es dann noch immer nicht (Drohnenansicht auf dem Handy quer), wird die Spalte Schritt für Schritt knapper:
-   * Kamera-Anzeige weg, der neueste Hinweis wartet, Banner kleiner (ohne Unterzeile), NOMI-Untertitel weg (NOMI ist zu
-   * hören), Banner einzeilig.
-   */
-  fitStack() {
-    if (this.layoutStale()) this.layout();
-    this.funkCover();
-    const sc = this.stackEl.classList;
-    sc.remove('tight', 'tight2');
-    for (const e of [this.nomiEl, this.toastsEl, this.cameraHint]) e.classList.remove('squeezed');
-    const s = this.stackEl.getBoundingClientRect();
-    if (s.height) {
-      const { hard, soft } = this.stackLimits(s);
-      const over = (limit) => this.stackBottom(s) > limit;
-      while (this.toasts.length > 1 && over(soft)) this.toasts.shift().el.remove();
-      // passt selbst der neueste nicht (hohes Banner), wartet er unsichtbar, bis darüber Platz frei wird
-      if (over(soft)) this.toastsEl.classList.add('squeezed');
-      if (over(soft)) this.cameraHint.classList.add('squeezed');
-      if (over(hard)) sc.add('tight');
-      if (over(hard)) this.nomiEl.classList.add('squeezed');
-      if (over(hard)) sc.add('tight2');
-    }
-    this.fitDurchsage();
-  }
-
-  /**
-   * Reicht der Platz auch ohne Hinweise nicht (Untertitel und langes Banner auf einem niedrigen Handy quer), wartet
-   * die Sprachdurchsage unsichtbar, bis darüber wieder Platz ist – zu hören ist sie ja trotzdem, und das Banner
-   * („Ziel erreicht“) ist wichtiger. Ebenso ein Rahmen-Hinweis, auf den die Spalte reicht.
-   * Gemessen wird ohne Animationen: das Banner ploppt aus 60 % Größe auf und wäre sonst anfangs zu klein.
-   */
-  fitDurchsage() {
-    const s = this.stackEl.getBoundingClientRect();
-    const bottom = this.stackBottom(s, [this.nomiEl, this.bannerEl, this.toastsEl]);
-    const hit = (e) => {
-      if (e.classList.contains('hidden') || !s.height) return false;
-      const r = layoutRect(e);
-      return r.height > 0 && r.top > s.top + 4 && r.left < s.right && r.right > s.left && bottom > r.top - 4;
-    };
-    this.durchsageEl.classList.toggle('squeezed', hit(this.durchsageEl));
-    for (const c of this.rahmenEl.querySelectorAll('.rahmen-caption')) c.classList.toggle('squeezed', hit(c));
-  }
-
   show(v) {
     this.hud.classList.toggle('hidden', !v);
+    // gleich mit den echten Maßen der Felder (der ResizeObserver meldet sich erst nach dem nächsten Bild)
+    if (v) this.layout();
   }
 
   /** Einstellung „Facecam“ (an/aus) */
@@ -461,11 +303,12 @@ export class UI {
     }
     if (w < FC_MIN_W) return null;
     const box = { left, top: H - bottom - h, right: left + w, bottom: H - bottom };
-    // was darauf liegen könnte: Sprachdurchsage, Blitzerfoto, Mittelspalte, Funkloch, Spur-Balken, Rahmen-Hinweis
+    // was darauf liegen könnte: der Hinweis des ersten Starts (er steht an ihrem Platz), der Streifen unten, das
+    // Blitzerfoto, ein Rahmen-Hinweis
     let blocked = false;
-    const parts = [this.durchsageEl, this.photoEl, this.funklochEl, this.leftLaneEl, ...this.stackEl.children, ...this.rahmenEl.querySelectorAll('.rahmen-caption')];
+    const parts = [this.hintEl, this.photoEl, ...this.subEl.parentNode.children, ...this.rahmenEl.querySelectorAll('.rahmen-caption')];
     for (const e of parts) {
-      if (e.classList.contains('hidden') || e.classList.contains('squeezed')) continue;
+      if (e.classList.contains('hidden')) continue;
       const r = e.getBoundingClientRect();
       if (r.width && r.height && overlap(r, box, 6)) blocked = true;
     }
@@ -540,20 +383,22 @@ export class UI {
 
   reset() {
     this.chatList.textContent = '';
-    this.toastsEl.textContent = '';
+    this.noticeEl.textContent = '';
     this.rahmenEl.textContent = '';
     this.clearMoneyPop();
-    this.toasts = [];
+    this.notice = null;
+    this.notices = [];
+    this.lines = [];
     this.rahmenList = [];
     this.photos = [];
-    this.bannerEl.classList.add('hidden');
-    this.nomiEl.classList.add('hidden');
-    this.durchsageEl.classList.add('hidden');
+    this.jobsDone = null;
+    this.subEl.classList.add('hidden');
     this.tvEl.classList.add('hidden');
     this.photoEl.classList.add('hidden');
+    this.hintEl.classList.add('hidden');
     // Funkloch-Anzeige samt „● LIVE“-Schild zurück (eine Fahrt kann mitten im Funkloch enden)
     this.funkloch(false);
-    this.bannerT = this.nomiT = this.durchsageT = this.photoT = 0;
+    this.newsT = this.photoT = 0;
   }
 
   // --- Chat -------------------------------------------------------------------
@@ -602,47 +447,102 @@ export class UI {
     for (const m of list.children) m.classList.toggle('gone', m.getBoundingClientRect().top < top);
   }
 
-  // --- Meldungen -------------------------------------------------------------------
-  toast(text, kind = 'info', sub = '') {
-    const t = el('div', 'toast toast-' + kind, this.toastsEl, text);
-    if (sub) el('div', 'toast-sub', t, sub);
-    // drop(): Hinweis vorzeitig wegnehmen (z. B. wenn das, worauf er zeigt, nicht mehr zu sehen ist)
-    const rec = { el: t, t: sub ? 5 : 3.6, drop: () => (rec.t = Math.min(rec.t, 0)) };
-    this.toasts.push(rec);
-    while (this.toasts.length > 4) {
-      const old = this.toasts.shift();
-      old.el.remove();
-    }
-    this.fitStack();
-    return rec;
+  // --- Hinweise (Streifen oben) --------------------------------------------------------
+  /**
+   * Ein Hinweis: eine kleine Reihe unter der Navi-Zeile, einer nach dem anderen (Reihenfolge und Dauer: NOTICE).
+   * kind: info | good | warn | bad · key: Ein neuer Hinweis mit demselben Schlüssel ersetzt den alten sofort, auch den
+   * gerade gezeigten – für Meldungen, die ein Zustand sind und keine Schlange (etwa was das Navi zum Ziel sagt).
+   * Rückgabe: { drop() } nimmt ihn vorzeitig weg, ob er wartet oder steht.
+   */
+  toast(text, kind = 'info', key = '') {
+    const n = { text, kind, key, t: NOTICE.read, age: 0, wait: 0, gone: false, drop: () => this.dropNotice(n) };
+    if (key) this.dropKey(key);
+    // Dringendes vor allem, was nicht dringend ist; sonst der Reihe nach
+    let i = this.notices.length;
+    if (urgent(n)) while (i > 0 && !urgent(this.notices[i - 1])) i--;
+    this.notices.splice(i, 0, n);
+    // zu viele wartende Tipps: der älteste entfällt
+    const tips = this.notices.filter((x) => !urgent(x));
+    if (tips.length > NOTICE.waiting) this.dropNotice(tips[0]);
+    if (!this.notice) this.nextNotice();
+    return n;
   }
 
-  banner(text, dur = 3, sub = '') {
-    this.bannerEl.textContent = text;
-    if (sub) el('div', 'banner-sub', this.bannerEl, sub);
-    this.bannerEl.classList.remove('hidden');
-    this.bannerEl.classList.remove('pop');
-    void this.bannerEl.offsetWidth;
-    this.bannerEl.classList.add('pop');
-    this.bannerT = dur;
-    this.fitStack();
+  /** Nimmt einen Hinweis weg, ob er noch wartet oder schon steht. */
+  dropNotice(n) {
+    n.gone = true;
+    const i = this.notices.indexOf(n);
+    if (i >= 0) this.notices.splice(i, 1);
+    if (this.notice === n) this.nextNotice();
+  }
+
+  /** Nimmt alle Hinweise mit diesem Schlüssel weg. */
+  dropKey(key) {
+    for (const n of this.notices.filter((x) => x.key === key)) this.dropNotice(n);
+    if (this.notice && this.notice.key === key) this.dropNotice(this.notice);
+  }
+
+  nextNotice() {
+    const n = (this.notice = this.notices.shift() || null);
+    this.noticeEl.textContent = '';
+    if (!n) return;
+    el('div', 'toast toast-' + n.kind, this.noticeEl, n.text);
+  }
+
+  tickNotices(dt) {
+    for (const n of this.notices) n.wait += dt;
+    // ein wartender Tipp, der zu alt geworden ist, entfällt
+    this.notices = this.notices.filter((n) => urgent(n) || n.wait < NOTICE.stale || ((n.gone = true), false));
+    const n = this.notice;
+    if (!n) return;
+    n.age += dt;
+    const next = this.notices[0];
+    const limit = next ? (urgent(next) && !urgent(n) ? NOTICE.yield : Math.min(n.t, NOTICE.hurry)) : n.t;
+    if (n.age >= limit) {
+      n.gone = true;
+      this.nextNotice();
+    }
+  }
+
+  /**
+   * Das Navi hat ein neues Ziel, oder der Wagen ist angekommen: Die Navi-Zeile sagt es selbst und steht dafür kurz
+   * hervorgehoben da. Sie zeigt immer das Ziel, das gerade gilt – ein neueres ersetzt das alte also sofort, und was
+   * das Navi zum alten Ziel noch zu sagen hatte (Schlüssel 'navi'), verschwindet mit ihm.
+   */
+  naviNews() {
+    this.newsT = NEWS;
+    this.dropKey('navi');
+    this.lastHud = 0;
+  }
+
+  // --- Untertitel (Streifen unten) ----------------------------------------------------
+  /**
+   * Jemand spricht: who = nomi | studio | durchsage | megafon, label = Zeile über dem Satz. Der Neueste hat das
+   * Wort; wen er unterbrochen hat, der steht danach wieder da, solange seine Zeit noch läuft – so geht kein Satz
+   * verloren.
+   */
+  speak(who, text, dur, label = '') {
+    this.lines.push({ who, text, label, t: dur });
+    this.showLine();
+  }
+
+  showLine() {
+    const l = this.lines[this.lines.length - 1];
+    this.subEl.classList.toggle('hidden', !l);
+    if (!l || l === this.line) return;
+    this.line = l;
+    this.subEl.className = 'sub-bar sub-' + l.who + (!l.label && l.text.length <= SHORT_LINE ? ' short' : '');
+    this.subLabel.textContent = l.label;
+    this.subText.textContent = l.text;
   }
 
   nomi(text, dur = 3) {
-    this.nomiText.textContent = text;
-    this.nomiEl.classList.remove('studio');
-    this.nomiEl.classList.remove('hidden');
-    this.nomiT = Math.max(2.2, dur);
-    this.fitStack();
+    this.speak('nomi', text, Math.max(2.2, dur));
   }
 
   /** Das Sprachstudio spricht: derselbe Untertitel-Platz wie bei NOMI, aber klar als Sprachstudio erkennbar. */
   studio(text, dur = 3) {
-    this.nomiText.textContent = text;
-    this.nomiEl.classList.add('studio');
-    this.nomiEl.classList.remove('hidden');
-    this.nomiT = Math.max(2.2, dur);
-    this.fitStack();
+    this.speak('studio', text, Math.max(2.2, dur), 'Sprachstudio');
   }
 
   money(amount, label) {
@@ -665,38 +565,38 @@ export class UI {
     this.moneySlot.classList.remove('popping');
   }
 
+  /** Eine gekaufte Sprachdurchsage: Mikrofon, Stimme und Spender über dem vorgelesenen Satz. */
   durchsage(voiceLabel, text, dur, buyer) {
-    this.durchsageEl.textContent = '';
-    const h = el('div', 'durchsage-head', this.durchsageEl, `🎙️ Sprachdurchsage von ${buyer} · Stimme: ${voiceLabel}`);
-    h.title = voiceLabel;
-    el('div', 'durchsage-text', this.durchsageEl, '»' + text + '«');
-    this.durchsageEl.classList.remove('hidden');
-    this.durchsageT = clamp(dur, 3, 14);
-    this.fitStack();
+    this.speak('durchsage', '»' + text + '«', clamp(dur, 3, 14), `${voiceLabel} · Sprachdurchsage von ${buyer}`);
+  }
+
+  /** Ein Wunsch fürs Megafon, den der Wagen gerade ausruft: auch das ist gesprochen und steht deshalb hier. */
+  megafon(text, dur, buyer) {
+    this.speak('megafon', '»' + text + '«', clamp(dur, 3, 14), 'Megafon-Wunsch von ' + buyer);
   }
 
   /**
-   * BrunnenTV am Navi-Ziel (XXL-Welt): die Titelkarte der Folge n aus dem Ort name. n = 0 blendet sie aus. (Bis die
-   * Szene am Brunnen gebaut ist, ist diese Karte die ganze Sendung.)
+   * BrunnenTV am Navi-Ziel (XXL-Welt): die Bauchbinde der Folge n aus dem Ort name, unten im Bild wie im Fernsehen –
+   * der Brunnen in der Bildmitte bleibt zu sehen. n = 0 blendet sie aus.
    */
   brunnenTV(n, name = '') {
     this.tvEl.classList.toggle('hidden', !n);
-    if (n) {
-      this.tvEpisode.textContent = 'Folge ' + fmtNum(n);
-      this.tvPlace.textContent = 'Heute aus ' + name;
-      this.fitTvLogo();
-      this.tvEl.classList.remove('pop');
-      void this.tvEl.offsetWidth;
-      this.tvEl.classList.add('pop');
-    }
-    this.fitStack();
+    if (!n) return;
+    this.tvEpisode.textContent = 'Folge ' + fmtNum(n);
+    this.tvPlace.textContent = 'Heute aus ' + name;
+    this.tvEl.classList.remove('pop');
+    void this.tvEl.offsetWidth;
+    this.tvEl.classList.add('pop');
   }
 
+  /** Funkloch: Der Stream ist weg. Das steht im Chat-Feld, wo er fehlt – ist der Chat abgeschaltet, als Hinweis. */
   funkloch(on) {
     this.funklochEl.classList.toggle('hidden', !on);
-    this.funkCover();
+    this.chatEl.classList.toggle('funk', on);
     this.liveBadge.classList.toggle('offline', on);
     this.liveBadge.textContent = on ? '● OFFLINE' : '● LIVE';
+    if (on && !this.chatOn) this.toast('📡 ' + FUNKLOCH, 'info', 'funk');
+    else this.dropKey('funk');
   }
 
   damage(hits, max) {
@@ -707,9 +607,11 @@ export class UI {
 
   jobs(list) {
     this.jobsEl.textContent = '';
-    el('span', 'jobs-title', this.jobsEl, 'You had 5 Jobs');
+    const all = list.length > 0 && list.every((j) => j.done);
+    el('span', 'jobs-title' + (all ? ' all' : ''), this.jobsEl, all ? '🏆 Alle 5 Jobs erledigt!' : 'You had 5 Jobs');
     for (const j of list) {
-      const r = el('div', 'job' + (j.done ? ' done' : ''), this.jobsEl);
+      const fresh = j.done && this.jobFresh && this.jobFresh.text === j.text;
+      const r = el('div', 'job' + (j.done ? ' done' : '') + (fresh ? ' fresh' : ''), this.jobsEl);
       el('span', 'job-box', r, j.done ? '✔' : '');
       el('span', 'job-text', r, j.text);
       if (!j.done && j.progress > 0) {
@@ -719,8 +621,20 @@ export class UI {
     }
   }
 
+  /**
+   * Ein Job ist erledigt (ohne text: alle fünf). Das steht in der Jobliste: Die Zeile leuchtet kurz, sind alle
+   * erledigt, sagt es ihre Überschrift. Wo die Liste nicht zu sehen ist (Handy), kommt stattdessen ein Hinweis.
+   */
+  jobDone(text) {
+    if (text) this.jobFresh = { text, t: 4 };
+    if (!this.jobsEl.offsetParent) this.toast(text ? `✅ Job erledigt: ${text}` : '🏆 Alle 5 Jobs erledigt!', 'good');
+  }
+
   /** Rahmen-Einblendung (wie im Live-Bereich gekauft). */
   rahmen(r, buyer) {
+    // einer zur Zeit: Ein neuer Rahmen löst einen ab, der noch im Bild ist (zwei Abdeckungen gibt es nie zugleich)
+    for (const old of this.rahmenList) old.el.remove();
+    this.rahmenList.length = 0;
     const layer = el('div', 'rahmen rahmen-' + r.id, this.rahmenEl);
     const caption = el('div', 'rahmen-caption', layer, `${r.name} · ${fmtCent(r.price)} von ${buyer}`);
     caption.title = r.name;
@@ -763,7 +677,6 @@ export class UI {
     // Lego-Steine dehnen sich selbst auf die Streifenlänge, der Kürbis steht allein in der Ecke
     if (!layer.classList.contains('corner-only')) for (const s of layer.querySelectorAll('.strip:not(.lego)')) fitStrip(s);
     this.rahmenList.push({ el: layer, t: r.dur });
-    this.fitStack();
   }
 
   /** Blitzerfoto als Polaroid einblenden. */
@@ -779,8 +692,6 @@ export class UI {
     el('div', 'photo-sub', this.photoEl, 'Das Foto kommt in einen Rahmen.');
     this.photoEl.classList.remove('hidden');
     this.photoT = 6;
-    this.layout();
-    this.fitStack();
   }
 
   cameraLabel(text) {
@@ -788,34 +699,21 @@ export class UI {
     this.cameraHint.classList.remove('hidden');
     clearTimeout(this.camTimer);
     this.camTimer = setTimeout(() => this.cameraHint.classList.add('hidden'), 1600);
-    this.fitStack();
   }
 
   // --- pro Bild ------------------------------------------------------------------------
   update(dt, g) {
-    // Kamera gewechselt (Cockpit und Drohne halten verschiedene Stellen frei: Spiegel und Bildschirm bzw. das Auto)
-    // oder Blitzerfoto gekommen bzw. gegangen: Spalte gleich neu einpassen
-    if (this.layoutStale()) {
-      this.layout();
-      this.fitStack();
-    }
     // Zeitgesteuerte Elemente
-    for (const t of this.toasts) {
-      t.t -= dt;
-      if (t.t <= 0) t.el.remove();
+    this.tickNotices(dt);
+    if (this.lines.length) {
+      for (const l of this.lines) l.t -= dt;
+      this.lines = this.lines.filter((l) => l.t > 0);
+      this.showLine();
     }
-    this.toasts = this.toasts.filter((t) => t.t > 0);
-    if (this.bannerT > 0) {
-      this.bannerT -= dt;
-      if (this.bannerT <= 0) this.bannerEl.classList.add('hidden');
-    }
-    if (this.nomiT > 0) {
-      this.nomiT -= dt;
-      if (this.nomiT <= 0) this.nomiEl.classList.add('hidden');
-    }
-    if (this.durchsageT > 0) {
-      this.durchsageT -= dt;
-      if (this.durchsageT <= 0) this.durchsageEl.classList.add('hidden');
+    if (this.newsT > 0) this.newsT -= dt;
+    if (this.jobFresh && (this.jobFresh.t -= dt) <= 0) {
+      this.jobFresh = null;
+      this.jobsEl.querySelector('.job.fresh')?.classList.remove('fresh');
     }
     if (this.photoT > 0) {
       this.photoT -= dt;
@@ -857,39 +755,71 @@ export class UI {
     this.batteryFill.className = 'battery-fill' + (p.battery < 15 ? ' low' : p.battery < 30 ? ' mid' : '');
     this.dmgBadge.update(p.damage);
     this.cruiseBadge.update(p);
-    // linke Spur
+    // linke Spur: Der Balken erscheint mit der Freischaltung und zählt herunter; in den letzten zehn Sekunden warnt er
     const L = g.left;
     this.leftLaneEl.classList.toggle('hidden', !L.open);
-    this.hud.classList.toggle('lane-on', L.open);
     if (L.open) {
       const inLane = p.inLeftLane;
+      const warn = L.timer < 10;
       const secs = Math.ceil(L.timer) + ' s';
       const lt = this.leftLaneText;
-      lt.textContent = (inLane ? '⬅️ Du fährst links · noch ' : '⬅️ Linke Spur frei · noch ') + secs;
-      // der Balken bleibt einzeilig: passt der Satz nicht (schmaler Balken auf dem Handy), steht nur das Wichtigste da
-      if (lt.scrollWidth > lt.clientWidth + 1) lt.textContent = (inLane ? '⬅️ Links · ' : '⬅️ Spur frei · ') + secs;
+      const sign = warn ? '⏳ ' : '⬅️ ';
+      const brief = sign + (inLane ? 'Links · ' : 'Spur frei · ') + secs;
+      // der Balken bleibt einzeilig: Teilt er die Reihe mit der Navi-Ansage oder passt der Satz nicht hinein (schmaler
+      // Balken auf dem Handy), steht nur das Wichtigste da
+      const shared = this.turnEl.offsetWidth > 0;
+      this.leftLaneEl.classList.toggle('chip', shared);
+      lt.textContent = shared ? brief : sign + (inLane ? 'Du fährst links · noch ' : 'Linke Spur frei · noch ') + secs;
+      if (!shared && lt.scrollWidth > lt.clientWidth + 1) lt.textContent = brief;
       this.leftLaneEl.classList.toggle('active', inLane);
-      this.leftLaneEl.classList.toggle('warn', L.timer < 10);
+      this.leftLaneEl.classList.toggle('warn', warn);
       this.leftLaneFill.style.width = clamp(L.timer / (L.dur || 60), 0, 1) * 100 + '%';
     }
     // Navi-Zeile: Ziel, Entfernung, Gebot und Bieter. In der XXL-Welt ist das Ziel ein echter Ort, die Entfernung
-    // steht da wie auf dem Kärtchen im Auto (nv.distance), und zwischen Ankunft und erstem Gebot sagt die Zeile das
+    // steht da wie auf dem Kärtchen im Auto (nv.distance), und zwischen Ankunft und erstem Gebot sagt die Zeile das.
+    // Ein neues Ziel und die Ankunft sagt sie selbst an (naviNews) – so hängt die Nachricht nie hinter dem Navi her.
     const nv = g.navi;
-    if (g.worldNavi) {
-      const t = nv.shown;
-      this.naviTarget.textContent = t ? '📍 ' + t.name : nv.waitLine;
-      this.naviKm.textContent = t ? '\u00a0· ' + nv.distance : '';
-      this.naviBid.textContent = t ? `\u00a0· Gebot ${fmtCent(nv.bid)} von ${nv.bidder}` : '';
+    const news = this.newsT > 0;
+    const pin = news ? '📍 Neues Ziel: ' : '📍 ';
+    let target;
+    let short = '';
+    let km = '';
+    let bid = '';
+    let join = '\u00a0· ';
+    const t = g.worldNavi ? nv.shown : !nv.arrived && nv.target;
+    if (t) {
+      target = pin + t.name;
+      bid = `Gebot ${fmtCent(nv.bid)} von ${nv.bidder}`;
+      if (g.worldNavi) km = nv.distance;
+      else {
+        // (ein Ort der Reise behält immer seinen ganzen Namen: „Frankfurt“ ist nicht „Frankfurt (Oder)“)
+        short = pin + shortName(t);
+        const rem = Math.max(0, nv.targetS - p.s);
+        km = fmtKm(rem, rem < 10000 ? 1 : 0);
+      }
     } else {
-      const rem = Math.max(0, nv.targetS - p.s);
-      this.naviTarget.textContent = nv.arrived ? '📍 Ziel erreicht – warte auf das nächste Gebot …' : '📍 ' + nv.target.name;
-      this.naviKm.textContent = nv.arrived ? '' : '\u00a0· ' + fmtKm(rem, rem < 10000 ? 1 : 0);
-      this.naviBid.textContent = nv.arrived ? '' : `\u00a0· Gebot ${fmtCent(nv.bid)} von ${nv.bidder}`;
+      [target, bid, join] = splitWait(g.worldNavi ? nv.waitLine : `🏁 Ziel erreicht: ${nv.target.name} – warte auf das nächste Gebot …`);
+      if (!g.worldNavi) short = '🏁 Ziel erreicht: ' + shortName(nv.target);
     }
-    // passt die ganze Zeile nicht zwischen Info-Feld und Chat, fällt das Gebot weg (es steht auch im Chat und im Auto)
-    const need = this.naviTarget.scrollWidth + this.naviKm.scrollWidth + this.naviBid.scrollWidth + 30;
-    this.naviEl.classList.toggle('short', need > (this.naviMax || 760));
+    this.naviEl.classList.toggle('news', news);
+    const line = target + '|' + km + '|' + bid + '|' + this.naviMax;
+    if (line !== this.naviShown) {
+      this.naviShown = line;
+      this.naviEl.classList.remove('wrap');
+      this.naviTarget.textContent = target;
+      this.naviKm.textContent = km && '\u00a0· ' + km;
+      this.naviBid.textContent = bid && join + bid;
+      // passt die ganze Zeile nicht zwischen Info-Feld und Chat, rückt ihre zweite Hälfte (das Gebot) in eine zweite
+      // Reihe; reicht die erste dann immer noch nicht für den Zielnamen, steht sein kurzer da (wie auf den
+      // Schilderbrücken) – erst danach wird gekürzt (…), und die Entfernung bleibt immer stehen
+      const max = (this.naviMax || 760) - 30;
+      const first = () => this.naviTarget.scrollWidth + this.naviKm.scrollWidth;
+      if (bid && first() + this.naviBid.scrollWidth > max) {
+        this.naviEl.classList.add('wrap');
+        this.naviBid.textContent = bid;
+        if (short && first() > max) this.naviTarget.textContent = short;
+      }
+    }
     this.chatCount.textContent = fmtNum(Math.round(g.viewers)) + ' Zuschauer';
-    this.fitStack();
   }
 }

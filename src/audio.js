@@ -349,6 +349,17 @@ export class Audio {
     this.tone(900, 0.4, 'square', 0.04, 0, 1300);
   }
 
+  /** Radarwarner: drei kurze, helle Piepser eines kleinen Kästchens – leiser als NOMIs Gong, der gleich darauf folgt. */
+  radar() {
+    for (let i = 0; i < 3; i++) this.tone(1865, 0.09, 'triangle', 0.05, i * 0.13, 2093);
+  }
+
+  /** Gang gewechselt: R zwei kurze steigende Zirper (wie der Radarwarner, nur leiser), D einer. */
+  gear(g) {
+    if (g === 'R') for (let i = 0; i < 2; i++) this.tone(1397, 0.07, 'triangle', 0.04, i * 0.11, 1568);
+    else this.tone(1175, 0.07, 'triangle', 0.035, 0, 1319);
+  }
+
   click() {
     this.tone(1200, 0.04, 'square', 0.02);
   }

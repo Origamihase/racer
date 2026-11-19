@@ -36,6 +36,7 @@ import { modeFor, otherMode, modeSearch } from './mode.js';
 import { Game } from './game/game.js';
 import { Pickups } from './game/pickups.js';
 import { UI } from './ui/ui.js';
+import * as sicht from './ui/sicht.js';
 import { Menus } from './ui/menus.js';
 import { SHOP, UPGRADE_LIMITS } from './data.js';
 import { MapDemo } from './map/mapdemo.js';
@@ -358,16 +359,18 @@ const fx = {
 const uiFacade = {
   reset: () => ui.reset(),
   chat: (m) => ui.chat(m),
-  toast: (t, k, sub) => ui.toast(t, k, sub),
-  banner: (t, d, sub) => ui.banner(t, d, sub),
+  toast: (t, k, key) => ui.toast(t, k, key),
+  naviNews: () => ui.naviNews(),
   nomi: (t, d) => ui.nomi(t, d),
   studio: (t, d) => ui.studio(t, d),
   money: (a, l) => ui.money(a, l),
   durchsage: (l, t, d, b) => ui.durchsage(l, t, d, b),
+  megafon: (t, d, b) => ui.megafon(t, d, b),
   rahmen: (r, b) => ui.rahmen(r, b),
   funkloch: (on) => ui.funkloch(on),
   damage: (h, m) => ui.damage(h, m),
   jobs: (j) => ui.jobs(j),
+  jobDone: (text) => ui.jobDone(text),
   photo: (kmh, clock) => {
     photoRequest = { kmh, clock };
   },
@@ -583,6 +586,7 @@ function applyCosmetics() {
   tesla.setVest(!!up.weste);
   facecam.adam.setVest(!!up.weste);
   cockpit.setElsa(!!up.elsa);
+  cockpit.setRadar(!!up.radar);
 }
 
 /** Fahr-Einstellungen auf Fahrphysik, Eingabe und Touch übertragen. */
@@ -849,35 +853,21 @@ function titleCardRect() {
   const top = pr.top + card.offsetTop - (par ? par.scrollTop : 0);
   return { left, top, right: left + card.offsetWidth, bottom: top + card.offsetHeight };
 }
-/**
- * Abspann-Fahrt („Akku leer …“): die sichtbare HUD-Mitte (NOMI-Untertitel, Banner, Hinweise). Auf dem Handy quer
- * steht sie mitten im Bild – der Wagen gehört darunter, sonst verdeckt der Untertitel ihn die ganze Zeit.
- */
-function endStackRect() {
-  if (state !== 'ending' || !ui.stackEl) return null;
-  const s = ui.stackEl.getBoundingClientRect();
-  const bottom = ui.stackBottom(s);
-  if (!s.height || !(bottom > s.top)) return null;
-  return { left: s.left, top: s.top, right: s.right, bottom };
-}
 function titleViewOffset(dt) {
   const Wd = window.innerWidth;
   const Hd = window.innerHeight;
   let tx = 0;
   let ty = 0;
   let zoom = 1;
-  const card = titleCardRect();
-  const r = card || endStackRect();
+  const r = titleCardRect();
   if (r) {
     const G = TITLE_CAR;
     const ppm = Hd / (2 * ORBIT.r * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
-    const regions = card
-      ? [
-          [r.right + G.gap, G.edge, Wd - G.edge, Hd - G.edge],
-          [G.edge, r.bottom + G.gap, Wd - G.edge, Hd - G.edge],
-          [G.edge, G.edge, Wd - G.edge, r.top - G.gap],
-        ]
-      : [[G.edge, r.bottom + G.gap, Wd - G.edge, Hd - G.edge]];
+    const regions = [
+      [r.right + G.gap, G.edge, Wd - G.edge, Hd - G.edge],
+      [G.edge, r.bottom + G.gap, Wd - G.edge, Hd - G.edge],
+      [G.edge, G.edge, Wd - G.edge, r.top - G.gap],
+    ];
     let best = null;
     let bestS = Infinity;
     for (const g of regions) {
@@ -1410,6 +1400,11 @@ function renderFrame(cockpitOn) {
     renderer.setRenderTarget(mirrorRT);
     renderer.render(scene, rearCam);
   }
+  // Rückfahrkamera für den Mittelbildschirm: nur in R und nur mit Cockpit (cockpit.rear.on), in halber Bildrate
+  if (cockpitOn && cockpit.rear.on) {
+    tesla.root.visible = false;
+    cockpit.rear.render(renderer, scene, localToWorld, simT);
+  }
   if (photoRequest) {
     takePhoto(photoRequest);
     photoRequest = null;
@@ -1634,6 +1629,8 @@ function step(dt, { render = true } = {}) {
         lane: input.lane,
         throttle: input.throttle,
         brake: input.brake,
+        // nur diese Steuerung (die eigenen Eingaben des Spielers) darf den Rückwärtsgang einlegen
+        reverse: true,
         horn: input.take('horn'),
         wiper: input.take('wiper'),
         megafon: input.take('megafon'),
@@ -1728,7 +1725,7 @@ function step(dt, { render = true } = {}) {
     scenery.update(s, dt);
     sky.setOvercast(cloud * 0.95);
     rain.update(dt, simT, { speed: p.speed, s, camX: camera.position.x, intensity: w });
-    tesla.update(dt, p.speed, p.wheel, simT);
+    tesla.update(dt, p.v, p.wheel, simT); // rückwärts drehen die Räder rückwärts
     teslaDamage.update(dt, simT, p.damage, p.speed);
     cabinDamage.update(dt, simT, p.damage, p.speed, cockpitOn);
     tesla.setBrake(p.braking > 0.1 || p.speed < 1);
@@ -1772,7 +1769,7 @@ function step(dt, { render = true } = {}) {
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
       sunDir: sky.sunDir, overcast: cloud, adam: adamOpts,
-      screen: scr,
+      screen: scr, radar: game.radarAlarm, rear: cockpitOn && p.gear === 'R',
     });
     if (fxState.trunk > 0) {
       fxState.trunk -= dt;
@@ -1946,6 +1943,8 @@ function boot() {
 if (DEBUG) {
   window.__MA = {
     game, traffic, scenery, cockpit, windshield, tesla, ui, menus, input, renderer, camera, save, facecam, adamMood,
+    // die freie Sicht und die Plätze der Einblendungen (tools/sicht-check.js misst das HUD dagegen)
+    sicht,
     // für Prüfstände: Szene, three.js und die Weltmaterial-Fabrik (siehe curve.js)
     scene, THREE, W, sky, road, mapdemo: mapDemo,
     // der eine Stadtbaukasten des Spiels (die XXL-Welt baut ihre Orte daraus), auch für Prüfstände

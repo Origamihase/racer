@@ -84,76 +84,122 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .jobs-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sub); }
 .job { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #dfe2e8; flex-wrap: wrap; }
 .job.done { color: #8be3a5; }
+/* gerade erledigt: Die Zeile leuchtet ein paar Sekunden, sind alle fünf geschafft, sagt es die Überschrift (ui.js jobDone) */
+.job.fresh { color: #d6ffe2; background: rgba(53, 200, 106, 0.3); border-radius: 5px; box-shadow: 0 0 0 3px rgba(53, 200, 106, 0.3), 0 0 14px rgba(53, 200, 106, 0.55); }
+.jobs-title.all { color: var(--gold); font-weight: 800; }
 .job-box { width: 14px; height: 14px; border: 1.5px solid rgba(255,255,255,0.5); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; flex: none; }
 .job.done .job-box { background: var(--green); border-color: var(--green); color: #082; color: #fff; }
 .job-text { flex: 1; min-width: 0; }
 .job-bar { flex-basis: 100%; height: 3px; margin-left: 20px; background: rgba(255,255,255,0.12); border-radius: 2px; overflow: hidden; }
 .job-fill { display: block; height: 100%; background: var(--blue); }
 
-/* Mittelspalte zwischen Info-Feld und Chat: --top und --mid setzt ui.js (layout) nach der echten Größe beider Felder */
-.navi-line { position: absolute; top: var(--top, 14px); left: 0; right: 0; margin-inline: auto; width: fit-content; max-width: min(760px, var(--mid, 40vw)); display: flex; white-space: nowrap; overflow: hidden;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 14px; backdrop-filter: blur(6px); z-index: 3; }
-/* zu lang: erst wird der Zielname gekürzt (…), die Entfernung bleibt immer lesbar */
-.navi-line > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.navi-line > .navi-km { flex: none; }
+/* --- Freie Sicht (src/ui/sicht.js): Über der Bildmitte liegt nichts, solange gefahren wird. Was das Navi sagt und
+   ein Hinweis nach dem anderen stehen im Streifen oben zwischen Info-Feld und Chat, wer spricht und BrunnenTV im
+   Streifen unten. --left, --mid und --top setzt ui.js (layout) nach der echten Größe beider Felder. --------------- */
+.top-strip { position: absolute; top: var(--top, 14px); left: var(--left, 30vw); width: var(--mid, 40vw); display: flex; flex-direction: column; align-items: center; z-index: 4; }
+.top-strip > * { max-width: min(100%, 760px); }
+.top-strip > .navi-line, .top-row > *, .notice > * { margin-bottom: 4px; }
+.navi-line { display: flex; white-space: nowrap; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px 14px; font-size: 14px; line-height: 20px;
+  backdrop-filter: blur(6px); transition: border-color 0.4s, box-shadow 0.4s; }
+/* zu lang: erst rückt das Gebot in eine zweite Reihe (ui.js misst nach), dann wird der Zielname gekürzt (…) – die
+   Entfernung bleibt immer lesbar */
+.navi-first { display: flex; flex: 0 1 auto; }
+.navi-line span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.navi-line .navi-km { flex: none; }
 .navi-line > .navi-bid { flex: 0 1000 auto; }
-/* passt die ganze Zeile nicht, fällt das Gebot weg (ui.js misst nach) */
-.navi-line.short > .navi-bid { flex: 0 0 0; }
-.leftlane { position: absolute; top: calc(var(--top, 14px) + 38px); left: 50%; transform: translateX(-50%); width: min(460px, var(--mid, 40vw)); background: rgba(20, 50, 120, 0.82); border: 1px solid rgba(120,170,255,0.6);
-  border-radius: 12px; padding: 7px 12px 9px; text-align: center; font-weight: 700; box-shadow: 0 0 24px rgba(60,120,255,0.45); z-index: 3; }
-.leftlane.active { background: rgba(30, 90, 220, 0.9); animation: lanepulse 1s infinite; }
+.navi-line.wrap { flex-direction: column; align-items: center; border-radius: 15px; }
+.navi-line.wrap > * { max-width: 100%; }
+.navi-line.wrap > .navi-bid { flex: none; font-size: 12.5px; line-height: 16px; color: #cfd5df; }
+/* solange ein Hinweis steht, weicht ihm die zweite Reihe der Navi-Zeile (das Gebot steht auch im Chat und im Auto) */
+.top-strip:has(> .notice > .toast) .navi-line.wrap > .navi-bid { display: none; }
+/* neues Ziel oder Ankunft: Die Zeile sagt es selbst und leuchtet dafür kurz golden (ui.js naviNews) */
+.navi-line.news { border-color: rgba(255, 215, 106, 0.9); box-shadow: 0 0 18px rgba(255, 200, 80, 0.45); animation: newsin 0.5s cubic-bezier(.2,1.5,.4,1); }
+.navi-line.news > .navi-target { color: #ffe9ad; font-weight: 700; }
+@keyframes newsin { from { transform: scale(0.92); } }
+/* zweite Reihe: Navi-Ansage der Ansichten ohne Mittelbildschirm und der Balken der linken Spur, nebeneinander */
+.top-row { display: flex; justify-content: center; align-items: flex-start; gap: 6px; }
+.leftlane { position: relative; flex: 0 1 auto; width: 300px; min-width: 0; overflow: hidden; background: rgba(20, 50, 120, 0.86); border: 1px solid rgba(120,170,255,0.6);
+  border-radius: 10px; padding: 3px 12px 7px; text-align: center; font-weight: 700; font-size: 14px; line-height: 19px; box-shadow: 0 0 18px rgba(60,120,255,0.4); animation: toastin 0.3s; }
+.leftlane.active { background: rgba(30, 90, 220, 0.92); animation: lanepulse 1s infinite; }
+/* die letzten zehn Sekunden: Der Balken warnt selbst, bernsteinfarben und pulsierend */
+.leftlane.warn { border-color: rgba(255, 190, 70, 0.95); animation: lanewarn 0.8s infinite; }
 .leftlane.warn .leftlane-fill { background: #ffb020; }
-@keyframes lanepulse { 50% { box-shadow: 0 0 36px rgba(80,150,255,0.85); } }
-.leftlane-bar { height: 5px; background: rgba(255,255,255,0.2); border-radius: 3px; margin-top: 5px; overflow: hidden; }
+@keyframes lanepulse { 50% { box-shadow: 0 0 30px rgba(80,150,255,0.85); } }
+@keyframes lanewarn { 50% { box-shadow: 0 0 26px rgba(255,176,32,0.9); } }
+.leftlane-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,0.2); }
 .leftlane-fill { height: 100%; background: #9cc4ff; transition: width 0.3s linear; }
-/* immer einzeilig: ist der Balken zu schmal für den ganzen Satz, setzt ui.js einen kürzeren */
+/* immer einzeilig: ist der Balken zu schmal für den ganzen Satz, setzt ui.js einen kürzeren – und neben der
+   Navi-Ansage ist er nur so breit wie dieser kurze Satz (.chip) */
 .leftlane-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.leftlane.chip { flex: none; width: auto; }
 
-/* kein Platz zwischen den Feldern (Handy hochkant): Spalte unter den Feldern */
-.hud-narrow .navi-line { display: none; }
-.hud-narrow .leftlane { top: var(--top); }
-.hud-narrow .center-stack { top: var(--top); }
-/* --lane-h: echte Höhe des Spur-Balkens (ui.js misst nach) */
-.hud-narrow.lane-on .center-stack { top: calc(var(--top) + var(--lane-h, 47px) + 8px); }
-
-/* NOMI-Untertitel, Banner und Hinweise stapeln sich in einer Spalte, damit sich nichts überdeckt */
-.center-stack { position: absolute; top: calc(var(--top, 14px) + 94px); left: 50%; transform: translateX(-50%); width: min(900px, var(--mid, 40vw)); display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 4; }
-/* Cockpit auf Touch-Geräten quer: Spalte und Spur-Balken enden links vor Innenspiegel und Mittelbildschirm und rücken
-   dafür nach links neben das Info-Feld (ui.js layout setzt .col-fit, --col-w, --lane-w und --col-dx) */
-.hud.col-fit .center-stack, .hud.col-fit .leftlane { margin-left: var(--col-dx, 0px); }
-.hud.col-fit .center-stack { width: var(--col-w); }
-.hud.col-fit .leftlane { width: var(--lane-w); }
-.hud.col-fit .navi-line { left: calc(2 * var(--col-dx, 0px)); max-width: min(760px, var(--col-w)); }
-.nomi-sub { display: flex; align-items: center; gap: 10px; max-width: min(100%, 820px);
-  background: rgba(6, 7, 10, 0.82); border: 1px solid rgba(140, 180, 255, 0.35); border-radius: 14px; padding: 8px 14px; font-size: 17px; font-weight: 600;
-  box-shadow: 0 0 20px rgba(80,130,255,0.25); animation: fadein 0.25s; }
-.nomi-eyes { display: inline-flex; gap: 4px; flex: none; width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #3b3d44, #070708 70%); align-items: center; justify-content: center; }
-.nomi-eyes i { width: 7px; height: 10px; border: 2px solid #fff; border-radius: 3px; animation: blink 2.6s infinite; }
-@keyframes fadein { from { opacity: 0; transform: translateY(-6px); } }
-/* am selben Platz spricht das Sprachstudio (die Stimme in Mini Adams Ohr): Kopfhörer statt NOMIs Augen, der Name
-   über dem Satz und ein warmer statt blauer Rahmen – damit man es auch ohne Ton nie mit NOMI verwechselt */
-.nomi-words { min-width: 0; }
-.studio-icon, .studio-label { display: none; }
-.nomi-sub.studio { border-color: rgba(255, 196, 120, 0.5); box-shadow: 0 0 20px rgba(255, 170, 80, 0.22); }
-.nomi-sub.studio .nomi-eyes { display: none; }
-.nomi-sub.studio .studio-icon { display: inline-flex; flex: none; width: 34px; height: 34px; border-radius: 50%; align-items: center; justify-content: center;
-  font-size: 19px; line-height: 1; background: radial-gradient(circle at 35% 30%, #54401f, #17110a 70%); }
-.nomi-sub.studio .studio-label { display: block; font-size: 11px; font-weight: 700; line-height: 1.25; text-transform: uppercase; letter-spacing: 0.08em; color: #ffcf8a; }
-
-/* die Schrift richtet sich nach der Spaltenbreite, damit lange Zielnamen nicht vier, fünf Zeilen hoch werden */
-.banner { margin-top: clamp(0px, 7vh, 70px); font-size: clamp(20px, min(3.2vw, var(--mid, 600px) / 13), 38px); font-weight: 800; text-align: center; max-width: 100%; text-wrap: balance;
-  color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.7), 0 0 30px rgba(80,140,255,0.6); }
-.nomi-sub:not(.hidden) + .banner { margin-top: 0; }
-.banner.pop { animation: pop 0.5s cubic-bezier(.2,1.6,.4,1); }
-@keyframes pop { from { transform: scale(0.6); opacity: 0; } }
-.toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.toast { background: var(--panel-strong); border: 1px solid var(--line); border-radius: 10px; padding: 7px 14px; font-size: 15px; font-weight: 600; animation: toastin 0.3s; max-width: 100%; text-align: center; text-wrap: balance; }
-.toast-sub { font-size: 13px; font-weight: 500; color: #c9d2e3; margin-top: 2px; text-align: center; }
+/* ein Hinweis nach dem anderen (ui.js toast): eine kleine Reihe */
+.notice { display: flex; justify-content: center; }
+.toast { background: var(--panel-strong); border: 1px solid var(--line); border-radius: 10px; padding: 4px 12px; font-size: 15px; line-height: 20px; font-weight: 600; animation: toastin 0.3s; max-width: 100%; text-align: center; text-wrap: balance; }
 .toast-good { border-color: rgba(53, 200, 106, 0.7); }
+.toast-warn { border-color: rgba(255, 190, 70, 0.85); }
 .toast-bad { border-color: rgba(255, 90, 79, 0.8); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
-/* „So steuerst du“ (src/ui/drive-hint.js): einmal pro Gerät, die Tasten als weiche Tastenkappen */
-.toast-hint { padding: 9px 16px 11px; text-align: left; border-color: rgba(255, 215, 106, 0.6); }
+
+/* --- Streifen unten: wer spricht, steht hier – NOMI (ihre Augen), das Sprachstudio (Kopfhörer, warmer Rahmen), die
+   Sprachdurchsage (Mikrofon, Stimme und Spender, violett) und der Megafon-Wunsch (Megafon, orange), einer nach dem
+   anderen. Links daneben die Bauchbinde von BrunnenTV. Zwischen Facecam (links) und Rahmen-Hinweis bzw. Blitzerfoto
+   (rechts); schiebt ein Rahmen die Facecam nach innen, ist der Streifen so lange schmaler (in schmalen Fenstern
+   wäre er dann zu schmal für einen langen Satz: dort macht ihm die Facecam so lange Platz, ui.js facecamTarget). */
+.bottom-strip { position: absolute; left: 0; right: 0; bottom: 10px; margin-inline: auto; width: fit-content; max-width: min(820px, calc(100vw - 2 * (min(22vw, 50vh, 440px) + 28px)));
+  display: flex; align-items: flex-end; justify-content: center; gap: 8px; z-index: 4; }
+@media (min-width: 1240px) and (min-height: 561px) {
+  .hud:has(.rahmen:not(.corner-only) .strip-left, .stamp-frame) .bottom-strip { max-width: min(820px, calc(100vw - 2 * (min(22vw, 50vh, 440px) + 7.5vh + 38px))); }
+}
+.sub-bar { display: flex; align-items: center; gap: 10px; min-width: 0; background: rgba(6, 7, 10, 0.86); border: 1px solid rgba(140, 180, 255, 0.35); border-radius: 14px; padding: 6px 14px;
+  font-size: 16px; line-height: 1.3; font-weight: 600; box-shadow: 0 0 20px rgba(80,130,255,0.25); animation: subin 0.25s; }
+@keyframes subin { from { opacity: 0; transform: translateY(8px); } }
+.sub-sign { display: none; flex: none; width: 34px; height: 34px; border-radius: 50%; align-items: center; justify-content: center; font-size: 19px; line-height: 1; }
+.sub-nomi > .nomi-eyes, .sub-studio > .studio-icon, .sub-durchsage > .durchsage-icon, .sub-megafon > .megafon-icon { display: inline-flex; }
+.nomi-eyes { gap: 4px; background: radial-gradient(circle at 35% 30%, #3b3d44, #070708 70%); }
+.nomi-eyes i { width: 7px; height: 10px; border: 2px solid #fff; border-radius: 3px; animation: blink 2.6s infinite; }
+.studio-icon { background: radial-gradient(circle at 35% 30%, #54401f, #17110a 70%); }
+.durchsage-icon { background: radial-gradient(circle at 35% 30%, #6a3a9c, #1d0c2e 70%); }
+.megafon-icon { background: radial-gradient(circle at 35% 30%, #a35a14, #2b1503 70%); }
+.sub-words { min-width: 0; }
+.sub-label { display: block; font-size: 11px; font-weight: 700; line-height: 1.3; text-transform: uppercase; letter-spacing: 0.08em; }
+.sub-label:empty { display: none; }
+/* das Sprachstudio (die Stimme in Mini Adams Ohr): damit man es auch ohne Ton nie mit NOMI verwechselt */
+.sub-studio { border-color: rgba(255, 196, 120, 0.5); box-shadow: 0 0 20px rgba(255, 170, 80, 0.22); }
+.sub-studio .sub-label { color: #ffcf8a; }
+.sub-durchsage { background: rgba(40, 14, 60, 0.94); border-color: rgba(200, 140, 255, 0.5); box-shadow: 0 0 20px rgba(170, 100, 255, 0.25); }
+.sub-durchsage .sub-label { color: #d9b8ff; font-size: 12px; text-transform: none; letter-spacing: 0.01em; }
+.sub-durchsage .sub-text, .sub-megafon .sub-text { font-style: italic; }
+.sub-megafon { background: rgba(52, 26, 4, 0.94); border-color: rgba(255, 170, 80, 0.55); box-shadow: 0 0 20px rgba(255, 150, 60, 0.25); }
+.sub-megafon .sub-label { color: #ffc78a; font-size: 12px; text-transform: none; letter-spacing: 0.01em; }
+/* BrunnenTV am Navi-Ziel (XXL): die Bauchbinde der Folge, wie eine Sendung ihren Titel einblendet – der Brunnen in
+   der Bildmitte bleibt zu sehen. Wer spricht, hat den Streifen: Die Bauchbinde wartet so lange. Nur in breiten
+   Fenstern bleibt sie neben einem kurzen Satz stehen („Sie haben Ihr Ziel erreicht.“; ui.js setzt .short). */
+.brunnentv { flex: none; max-width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 10px; border-radius: 14px; border: 2px solid rgba(190, 236, 255, 0.85);
+  background: linear-gradient(160deg, rgba(18, 96, 150, 0.96), rgba(10, 44, 92, 0.96)); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
+.brunnentv.pop { animation: tvin 0.5s cubic-bezier(.2,1.3,.4,1); }
+@keyframes tvin { from { transform: translateY(120%); opacity: 0; } }
+.brunnentv-logo { font-size: 22px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.05; color: #fff; text-shadow: 0 2px 0 rgba(0, 40, 80, 0.6); white-space: nowrap; }
+.brunnentv-drop { margin-right: 0.22em; }
+.brunnentv-words { min-width: 0; padding-left: 10px; border-left: 2px solid rgba(190, 236, 255, 0.5); }
+.brunnentv-episode { font-size: 12px; font-weight: 800; line-height: 1.3; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
+.brunnentv-place { font-size: 14.5px; font-weight: 700; line-height: 1.3; color: #dff3ff; }
+.bottom-strip:has(> .sub-bar:not(.hidden)) > .brunnentv { display: none; }
+@media (min-width: 1240px) and (min-height: 561px) {
+  .bottom-strip:has(> .sub-bar.short:not(.hidden)) > .brunnentv { display: flex; }
+}
+/* Kamera-Wechsel („🎥 Drohne“): nur im leeren Streifen – sonst zeigt der Bildwechsel selbst, was passiert ist */
+.camera-hint { background: var(--panel-strong); padding: 6px 14px; border-radius: 12px; font-weight: 700; font-size: 17px; line-height: 22px; animation: subin 0.2s; }
+.bottom-strip:has(> .sub-bar:not(.hidden), > .brunnentv:not(.hidden)) > .camera-hint { display: none; }
+/* liegt der Streifen auf dem unteren Rahmen-Streifen, blendet der so lange aus (sonst schauten links und rechts
+   Stiele und halbe Steine hervor) */
+.strip-bottom { transition: opacity 0.3s; }
+.hud:has(.bottom-strip > :not(.hidden)) .rahmen:not(.corner-only) .strip-bottom { opacity: 0; }
+
+/* „So steuerst du“ (src/ui/drive-hint.js): einmal pro Gerät, die Tasten als weiche Tastenkappen. Die Karte steht
+   unten links, wo sonst die Facecam ist (die wartet so lange); auf Touch-Geräten liegt sie auf dem Chat-Feld. */
+.hint-card { position: absolute; left: 14px; bottom: 14px; width: max-content; max-width: calc(min(22vw, 50vh, 440px) + 8px); background: var(--panel-strong); border: 1px solid rgba(255, 215, 106, 0.6);
+  border-radius: 12px; padding: 9px 14px 11px; font-weight: 600; animation: toastin 0.3s; z-index: 4; }
 .hint-title { font-size: 16px; font-weight: 800; text-align: center; margin-bottom: 2px; }
 .hint-row { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 6px; margin-top: 7px; font-size: 14.5px; }
 .hint-more { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }
@@ -162,30 +208,16 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .hint-key { display: inline-flex; align-items: center; justify-content: center; min-width: 25px; height: 25px; padding: 0 6px; border-radius: 7px;
   font: 700 14px/1 var(--font); color: #20242c; background: linear-gradient(#fbfcfd, #dfe3ea); box-shadow: 0 2px 0 #9ca3b0, 0 3px 6px rgba(0,0,0,0.35); }
 .hint-key.wide { padding: 0 9px; font-size: 13px; }
+@media (pointer: coarse) {
+  .hint-card { left: auto; bottom: auto; top: 14px; right: 14px; width: min(310px, 30vw); max-width: none; z-index: 6; background: rgb(18, 19, 23); }
+}
 @media (max-width: 480px), (max-height: 500px) {
-  .toast-hint { padding: 6px 11px 8px; }
+  .hint-card { padding: 6px 11px 8px; }
   .hint-title { font-size: 14px; }
   .hint-row { margin-top: 5px; font-size: 13px; }
   .hint-sub { font-size: 11.5px; }
   .hint-key { min-width: 21px; height: 21px; font-size: 12px; border-radius: 6px; }
 }
-.toasts.squeezed, .durchsage.squeezed, .rahmen-caption.squeezed { visibility: hidden; }
-/* knapper Platz über dem eigenen Auto (Drohnenansicht auf dem Handy quer, ui.js fitStack): das Banner wird kleiner,
-   höchstens zwei Zeilen (.tight2: eine) und ohne Unterzeile; NOMI-Untertitel und Kamera-Anzeige warten (NOMI ist zu hören) */
-.center-stack.tight .banner { margin-top: 0; font-size: 15px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6); }
-.center-stack.tight2 .banner { -webkit-line-clamp: 1; line-clamp: 1; }
-.center-stack.tight .banner-sub, .center-stack.tight .toast-sub { display: none; }
-.nomi-sub.squeezed, .camera-hint.squeezed { display: none; }
-/* Kamera-Wechsel („🎥 Drohne“): nur in der leeren Spalte – sonst zeigt der Bildwechsel selbst, was passiert ist */
-.camera-hint { background: var(--panel-strong); padding: 8px 16px; border-radius: 12px; font-weight: 700; font-size: 17px; animation: toastin 0.2s; }
-.nomi-sub:not(.hidden) ~ .camera-hint, .banner:not(.hidden) ~ .camera-hint, .toasts:not(:empty) ~ .camera-hint { display: none; }
-/* während eines Funklochs ist der Stream weg: was unter dem Funkloch-Kasten läge, ist so lange ausgeblendet
-   (ui.js setzt .funk nur, wenn sich beide wirklich überschneiden) */
-.hud.funk .center-stack, .hud.funk-lane .leftlane { visibility: hidden; }
-/* in der schmalen Spalte (Handy hochkant) liegen Untertitel und Hinweise über den seitlichen Rahmen-Streifen:
-   dann deckend, sonst scheint die Beschriftung der Streifen durch */
-.hud-narrow:has(.rahmen .strip) .nomi-sub, .hud-narrow:has(.rahmen .strip) .toast { background: rgb(12, 13, 17); }
 
 /* Chat */
 /* endet über dem Innenspiegel (dessen Oberkante liegt bei etwa einem Viertel der Bildhöhe) */
@@ -207,59 +239,31 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .bot-tag { font-size: 9px; font-weight: 800; background: rgba(255,215,106,0.25); color: var(--gold); border-radius: 3px; padding: 0 4px; margin-right: 2px; vertical-align: 1px; white-space: nowrap; }
 @keyframes msgin { from { opacity: 0; transform: translateX(10px); } }
 
-/* Sprachdurchsage: mittig über dem Lenkrad. Zentriert über left/right statt left:50% + translate,
-   sonst kann der Kasten nie breiter als die halbe Bildbreite werden */
-.durchsage { position: absolute; left: 0; right: 0; margin-inline: auto; width: fit-content; bottom: 30vh; max-width: min(680px, calc(100vw - 28px)); background: rgba(40, 14, 60, 0.92);
-  border: 1px solid rgba(200, 140, 255, 0.5); border-radius: 14px; padding: 10px 16px; animation: fadein2 0.3s; z-index: 4; transition: bottom 0.3s ease; }
-.durchsage-head { font-size: 12px; color: #d9b8ff; font-weight: 700; margin-bottom: 3px; }
-.durchsage-text { font-size: 17px; font-style: italic; }
-@keyframes fadein2 { from { opacity: 0; transform: translateY(10px); } }
-/* BrunnenTV am Navi-Ziel (XXL): Titelkarte der Folge, wie eine Sendungs-Einblendung des Streams – sie führt die
-   Mittelspalte an (.center-stack), Untertitel, Banner und Hinweise rücken darunter statt dahinter */
-.brunnentv { flex: none; max-width: 100%; text-align: center;
-  padding: clamp(10px, 2vh, 18px) clamp(18px, 3.4vw, 40px) clamp(9px, 1.8vh, 16px); border-radius: 18px; border: 2px solid rgba(190, 236, 255, 0.85);
-  background: linear-gradient(160deg, rgba(18, 96, 150, 0.94), rgba(10, 44, 92, 0.94)); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
-.brunnentv.pop { animation: pop 0.5s cubic-bezier(.2,1.6,.4,1); }
-.brunnentv-logo { font-size: clamp(26px, 4.6vw, 58px); font-weight: 900; letter-spacing: 0.01em; line-height: 1.05; color: #fff; text-shadow: 0 2px 0 rgba(0, 40, 80, 0.6); white-space: nowrap; }
-.brunnentv-drop { margin-right: 0.22em; }
-.brunnentv-episode { margin-top: 4px; font-size: clamp(14px, 1.9vw, 24px); font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
-.brunnentv-place { margin-top: 2px; font-size: clamp(14px, 1.9vw, 24px); font-weight: 700; color: #dff3ff; text-wrap: balance; }
-/* Drohne: wo im Cockpit das Lenkrad ist, fährt hier das eigene Auto – die Durchsage rückt unter das Auto */
-body.drone .durchsage { bottom: max(10px, 2.5vh); }
-/* liegt sie dabei auf dem unteren Rahmen-Streifen, deckt sie ihn ab, statt ihn durchscheinen zu lassen; was
-   links und rechts unter ihr hervorschauen würde (Stiele, halbe Steine), blendet so lange aus */
-.hud:has(.strip-bottom) .durchsage { background: rgb(40, 14, 60); }
-.strip-bottom { transition: opacity 0.3s; }
-body.drone .hud:has(> .durchsage:not(.hidden)) .rahmen:not(.corner-only) .strip-bottom { opacity: 0; }
+/* Funkloch: Der Stream ist weg – das steht im Chat-Feld an Stelle der Nachrichten (ui.js funkloch) */
+.funkloch { display: flex; align-items: center; gap: 10px; padding: 9px 12px 11px; font-size: 13.5px; font-weight: 700; line-height: 1.3; }
+.funkloch-icon { flex: none; font-size: 26px; font-family: var(--emoji); animation: lowbat 0.6s infinite; }
+.chat.funk { border-color: rgba(255, 90, 79, 0.55); }
+.chat.funk .chat-list { display: none; }
 
-/* Funkloch */
-.funkloch { position: absolute; top: 40%; left: 0; right: 0; margin-inline: auto; width: fit-content; transform: translateY(-50%); background: rgba(30, 30, 30, 0.85); border: 1px solid var(--line); border-radius: 16px;
-  padding: 16px 22px; text-align: center; z-index: 5; max-width: min(640px, var(--mid, 80vw)); }
-.funkloch-icon { font-size: 36px; font-family: var(--emoji); animation: lowbat 0.6s infinite; }
-.funkloch-text { font-weight: 700; margin-top: 4px; }
-
-/* Blitzerfoto */
-.photo { position: absolute; right: 22px; top: calc(48vh + 34px); width: 220px; background: #fbfaf5; color: #222; padding: 8px 8px 12px; border-radius: 4px;
-  transform: rotate(-3deg); box-shadow: 0 10px 30px rgba(0,0,0,0.45); animation: photoin 0.5s cubic-bezier(.2,1.4,.4,1); z-index: 4; }
-/* 4:3 wie die Aufnahme – so steht die Höhe schon fest, bevor das Bild geladen ist (ui.js layout misst das Foto) */
+/* Blitzerfoto: unten rechts in der Ecke, unter dem Mittelbildschirm des Cockpits. Die Unterzeile richtet ihre
+   Schriftgröße nach der Breite des Fotos selbst (cqw), damit sie bei jeder Fensterbreite ganz auf dem Rand steht */
+.photo { position: absolute; right: 22px; bottom: 8px; width: clamp(176px, 13vw, 240px); background: #fbfaf5; color: #222; padding: 8px 8px 9px; border-radius: 4px;
+  transform: rotate(-3deg); box-shadow: 0 10px 30px rgba(0,0,0,0.45); animation: photoin 0.5s cubic-bezier(.2,1.4,.4,1); z-index: 4; container-type: inline-size; }
+/* 4:3 wie die Aufnahme – so steht die Höhe schon fest, bevor das Bild geladen ist */
 .photo img { width: 100%; display: block; border-radius: 2px; background: #111; aspect-ratio: 4 / 3; object-fit: cover; }
-.photo-cap { font-weight: 800; margin-top: 6px; font-size: 14px; }
-.photo-sub { font-size: 12px; color: #555; }
+.photo-cap { font-weight: 800; margin-top: 6px; font-size: clamp(12.5px, 0.95vw, 14px); line-height: 1.25; white-space: nowrap; }
+.photo-sub { font-size: clamp(9.5px, 6cqw, 12px); line-height: 1.25; color: #555; white-space: nowrap; }
 @keyframes photoin { from { transform: translateX(120%) rotate(12deg); } }
-/* Touch: oben rechts über dem Chat – dort liegt es nie unter den Knöpfen, auf dem eigenen Auto oder der Durchsage
-   (hochkant rückt die Mittelspalte so lange darunter, siehe ui.js layout) */
+/* Touch: oben rechts auf dem Chat-Feld – dort liegt es nie unter den Knöpfen oder auf dem eigenen Auto */
 @media (pointer: coarse) {
-  .photo { top: 14px; right: 14px; width: min(220px, 42vw); z-index: 6; }
+  .photo { top: 14px; right: 14px; bottom: auto; width: min(220px, 42vw); z-index: 6; }
+  .photo-cap, .photo-sub { white-space: normal; }
 }
-/* hochkant kompakt (ohne Unterzeile), damit es kaum unter den Chat reicht und die Spalte nur wenig weichen muss */
+/* hochkant kompakt (ohne Unterzeile), damit es nicht unter das Chat-Feld hinausreicht */
 @media (pointer: coarse) and (orientation: portrait) {
   .photo { width: min(220px, 40vw); padding: 6px 6px 8px; }
   .photo-cap { font-size: 13px; margin-top: 4px; }
   .photo-sub { display: none; }
-}
-/* quer stünde dort in der Drohnenansicht auch der Rahmen-Hinweis: er wartet, bis das Foto wieder weg ist */
-@media (pointer: coarse) and (orientation: landscape) {
-  body.drone .hud:has(> .photo:not(.hidden)) .rahmen-caption { visibility: hidden; }
 }
 
 /* Facecam unten links: nur Rahmen und Namensschild – das Bild zeichnet WebGL genau darunter (ui.js placeFacecam setzt
@@ -276,15 +280,20 @@ body.drone .hud:has(> .durchsage:not(.hidden)) .rahmen:not(.corner-only) .strip-
 .rahmen.out { animation: rahmenout 0.6s ease-in forwards; }
 @keyframes rahmenin { from { opacity: 0; transform: scale(1.06); } }
 @keyframes rahmenout { to { opacity: 0; transform: scale(1.04); } }
-/* Spender-Hinweis innen neben dem rechten Streifen, nicht darauf */
-.rahmen-caption { position: absolute; bottom: 12vh; right: calc(7.5vh + 10px); max-width: calc(100vw - 15vh - 20px); background: rgba(0,0,0,0.7); border-radius: 8px; padding: 4px 10px; font-size: 13px; font-weight: 700; z-index: 2; }
-/* in der Drohnenansicht gehört der Platz unten der Durchsage: der Hinweis steht dann rechts unter dem Chat */
-body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14px)); max-width: max(180px, calc(min(310px, 30vw) - 7.5vh)); overflow-wrap: anywhere; }
-/* schmale Fenster mit Maus: unter dem Chat beginnt dort die Mittelspalte – der Hinweis steht dann unten in der Mitte
-   über dem Streifen und wartet, solange eine Durchsage dort steht */
-@media (pointer: fine) {
-  body.drone .hud-narrow .rahmen-caption { left: 0; right: 0; margin-inline: auto; width: fit-content; top: auto; bottom: calc(7.5vh + 6px); max-width: calc(100vw - 15vh - 20px); text-align: center; }
-  body.drone .hud-narrow:has(> .durchsage:not(.hidden)) .rahmen-caption { visibility: hidden; }
+/* Spender-Hinweis unten rechts, innen neben dem rechten und über dem unteren Rahmen-Streifen, so breit, dass er in
+   der Spalte des Chats und rechts neben dem Streifen der Untertitel bleibt; ein Blitzerfoto steht an derselben
+   Stelle – er wartet, bis es wieder weg ist */
+.rahmen-caption { position: absolute; bottom: calc(7.5vh + 6px); right: calc(7.5vh + 10px); max-width: calc(min(310px, 22vw, 50vh) + 4px - 7.5vh); background: rgba(0,0,0,0.7); border-radius: 8px; padding: 4px 10px; font-size: 13px; font-weight: 700;
+  overflow-wrap: anywhere; z-index: 2; }
+.hud:has(> .photo:not(.hidden)) .rahmen-caption { visibility: hidden; }
+/* Touch: rechts unten liegen die Knöpfe – der Hinweis steht unten in der Mitte zwischen den Knopfgruppen (hochkant
+   über ihnen) und wartet, solange dort jemand spricht */
+@media (pointer: coarse) {
+  .rahmen-caption { left: 0; right: 0; bottom: 6px; margin-inline: auto; width: fit-content; max-width: calc(100vw - 432px); text-align: center; background: rgba(0,0,0,0.82); }
+  .hud:has(.bottom-strip > :not(.hidden)) .rahmen-caption { visibility: hidden; }
+}
+@media (pointer: coarse) and (orientation: portrait) {
+  .rahmen-caption { bottom: var(--touch-top); max-width: calc(100vw - 15vh - 20px); }
 }
 .strip { position: absolute; display: flex; justify-content: space-around; align-items: center; font-family: var(--emoji); font-size: 5.4vh; line-height: 1; overflow: hidden; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
 /* die Ecken gehören dem oberen und unteren Streifen – die seitlichen enden davor, sonst liegt dort alles doppelt */
@@ -309,9 +318,9 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) and (max-aspect-ratio: 2.08/1) {
   .rahmen.corner-only .strip-bottom { right: auto; left: 14px; }
 }
-/* hochkant stehen Durchsage und Rahmen-Hinweis unten in der Mitte: so lange der Kürbis da ist, links daneben */
+/* hochkant stehen Untertitel und Rahmen-Hinweis unten in der Mitte: so lange der Kürbis da ist, links daneben */
 @media (pointer: coarse) and (orientation: portrait) {
-  .hud:has(.rahmen-kuerbis) .durchsage, body .hud .rahmen-kuerbis .rahmen-caption { right: calc(var(--pk) + 20px); max-width: calc(100vw - var(--pk) - 48px); }
+  .hud:has(.rahmen-kuerbis) .bottom-strip, .rahmen-kuerbis .rahmen-caption { right: calc(var(--pk) + 20px); max-width: calc(100vw - var(--pk) - 48px); }
 }
 .rahmen-sonnenblumen .strip { background: rgba(150, 105, 10, 0.35); }
 .boxes { position: absolute; left: 0; right: 0; bottom: 0; height: 26vh; }
@@ -323,7 +332,7 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .half-left { left: 0; }
 .half-right { right: 0; }
 .elsa-fly { position: absolute; width: 26vh; height: 26vh; top: 18vh; animation: elsafly 6s linear forwards;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cellipse cx='100' cy='120' rx='62' ry='56' fill='%231f4fa8'/%3E%3Cellipse cx='100' cy='136' rx='40' ry='34' fill='%23cfe0ff'/%3E%3Cpath d='M44 140 Q14 150 18 176 Q40 164 58 158Z' fill='%23183f88'/%3E%3Cpath d='M156 140 Q186 150 182 176 Q160 164 142 158Z' fill='%23183f88'/%3E%3Ccircle cx='80' cy='104' r='15' fill='white'/%3E%3Ccircle cx='120' cy='104' r='15' fill='white'/%3E%3Ccircle cx='82' cy='106' r='7' fill='%23111'/%3E%3Ccircle cx='118' cy='106' r='7' fill='%23111'/%3E%3Cpath d='M84 134 Q100 148 116 134' stroke='%23111' stroke-width='5' fill='none' stroke-linecap='round'/%3E%3Cpath d='M66 70 L74 40 L86 62 L100 30 L114 62 L126 40 L134 70Z' fill='%23f2c230' stroke='%23b88a10' stroke-width='3'/%3E%3C/svg%3E") center/contain no-repeat; }
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cdefs%3E%3CradialGradient id='f' cx='0.36' cy='0.26' r='0.85'%3E%3Cstop offset='0' stop-color='%233f76ea'/%3E%3Cstop offset='0.5' stop-color='%231d50c8'/%3E%3Cstop offset='1' stop-color='%23143b9d'/%3E%3C/radialGradient%3E%3CradialGradient id='h' gradientUnits='userSpaceOnUse' cx='86' cy='42' r='66'%3E%3Cstop offset='0' stop-color='%233f76ea'/%3E%3Cstop offset='0.5' stop-color='%231d50c8'/%3E%3Cstop offset='1' stop-color='%23143b9d'/%3E%3C/radialGradient%3E%3Cg id='p'%3E%3Ccircle cx='72' cy='40' r='15'/%3E%3Ccircle cx='128' cy='40' r='15'/%3E%3Crect x='62' y='31' width='76' height='68' rx='30'/%3E%3C/g%3E%3CclipPath id='c'%3E%3Cellipse cx='100' cy='128' rx='33' ry='35'/%3E%3C/clipPath%3E%3Cg id='k'%3E%3Ccircle cy='-2.7' r='2.6'/%3E%3Ccircle cx='-2.4' cy='1.4' r='2.6'/%3E%3Ccircle cx='2.4' cy='1.4' r='2.6'/%3E%3Cpath d='M0 1 Q0.6 4 2 6.2' fill='none' stroke='%23fff' stroke-width='1.3' stroke-linecap='round'/%3E%3C/g%3E%3C/defs%3E%3Cg fill='%23ffd84a'%3E%3Cpath d='M30 50 l1.8 -5.4 l1.8 5.4 l5.4 1.8 l-5.4 1.8 l-1.8 5.4 l-1.8 -5.4 l-5.4 -1.8Z'/%3E%3Cpath d='M171 54 l1.3 -4 l1.3 4 l4 1.3 l-4 1.3 l-1.3 4 l-1.3 -4 l-4 -1.3Z'/%3E%3Cpath d='M152 20 l1 -3 l1 3 l3 1 l-3 1 l-1 3 l-1 -3 l-3 -1Z'/%3E%3C/g%3E%3Cpath d='M83 36 L80 12 L90 22 L100 7 L110 22 L120 12 L117 36Z' fill='%23f2c230' stroke='%23b88a10' stroke-width='2.4' stroke-linejoin='round'/%3E%3Cpath d='M86 31 L84.5 19 L90.5 26 L100 13.5' fill='none' stroke='%23ffe58a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cg fill='%230b0b10'%3E%3Cpath d='M61.6 35.1 L46.7 36.5 L60.6 41.8 Z'/%3E%3Cpath d='M65.1 30.8 L51.4 25.0 L61.1 36.3 Z'/%3E%3Cpath d='M70.2 28.6 L60.8 17.1 L64.1 31.6 Z'/%3E%3Cpath d='M75.8 29.1 L72.9 14.5 L69.0 28.9 Z'/%3E%3Cpath d='M139.4 41.8 L153.3 36.5 L138.4 35.1 Z'/%3E%3Cpath d='M138.9 36.3 L148.6 25.0 L134.9 30.8 Z'/%3E%3Cpath d='M135.9 31.6 L139.2 17.1 L129.8 28.6 Z'/%3E%3Cpath d='M131.0 28.9 L127.1 14.5 L124.2 29.1 Z'/%3E%3C/g%3E%3Cg fill='url(%23f)' stroke='%230e2f86' stroke-width='2.4' stroke-linejoin='round'%3E%3Crect x='74' y='148' width='21' height='38' rx='9'/%3E%3Crect x='105' y='148' width='21' height='38' rx='9'/%3E%3Cellipse cx='82' cy='187' rx='15.5' ry='8.5'/%3E%3Cellipse cx='118' cy='187' rx='15.5' ry='8.5'/%3E%3Cellipse cx='48' cy='101' rx='33' ry='11' transform='rotate(20 48 101)'/%3E%3Cellipse cx='152' cy='101' rx='33' ry='11' transform='rotate(-20 152 101)'/%3E%3Cellipse cx='19' cy='90' rx='15.5' ry='12' transform='rotate(20 19 90)'/%3E%3Cellipse cx='181' cy='90' rx='15.5' ry='12' transform='rotate(-20 181 90)'/%3E%3Cellipse cx='100' cy='128' rx='34' ry='36'/%3E%3C/g%3E%3Cg clip-path='url(%23c)' fill='%23fff'%3E%3Cpath d='M56 106 L144 152 M56 120.5 L144 166.5' stroke='%23fff' stroke-width='3.3'/%3E%3Cuse href='%23k' transform='translate(101 108) rotate(12)'/%3E%3Cuse href='%23k' transform='translate(113 118) rotate(-28)'/%3E%3Cuse href='%23k' transform='translate(123 131) rotate(30)'/%3E%3Cuse href='%23k' transform='translate(86 109) rotate(-18)'/%3E%3Cuse href='%23k' transform='translate(77 142) rotate(24)'/%3E%3Cuse href='%23k' transform='translate(91 152) rotate(-14)'/%3E%3Cuse href='%23k' transform='translate(105 158) rotate(34)'/%3E%3C/g%3E%3Cuse href='%23p' fill='%230e2f86' stroke='%230e2f86' stroke-width='4.8' stroke-linejoin='round'/%3E%3Cuse href='%23p' fill='url(%23h)'/%3E%3Cg%3E%3Ccircle cx='72' cy='40' r='11.5' fill='%23fff'/%3E%3Ccircle cx='128' cy='40' r='11.5' fill='%23fff'/%3E%3Ccircle cx='72.5' cy='40' r='8.2' fill='%236a3716'/%3E%3Ccircle cx='127.5' cy='40' r='8.2' fill='%236a3716'/%3E%3Ccircle cx='72.5' cy='40' r='5.2' fill='%230b0b10'/%3E%3Ccircle cx='127.5' cy='40' r='5.2' fill='%230b0b10'/%3E%3Ccircle cx='69.6' cy='37' r='2.3' fill='%23fff'/%3E%3Ccircle cx='124.6' cy='37' r='2.3' fill='%23fff'/%3E%3C/g%3E%3Cellipse cx='100' cy='73' rx='31' ry='13.5' fill='%2393c3f3' stroke='%234f86d6' stroke-width='1.8'/%3E%3Cpath d='M77 72 Q100 64 123 72 Q100 86 77 72Z' fill='%234a7fd2'/%3E%3Cellipse cx='100' cy='78' rx='9' ry='3.6' fill='%23e32a3e'/%3E%3Cpath d='M75.5 186 v6.5 M82 187.5 v6.5 M88.5 186 v6.5 M111.5 186 v6.5 M118 187.5 v6.5 M124.5 186 v6.5' fill='none' stroke='%230e2f86' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E") center/contain no-repeat; }
 @keyframes elsafly { 0% { left: -30vh; transform: rotate(-10deg); } 25% { transform: translateY(-4vh) rotate(8deg); } 50% { transform: translateY(2vh) rotate(-6deg); } 75% { transform: translateY(-3vh) rotate(6deg); } 100% { left: 110vw; transform: rotate(-4deg); } }
 .strip.lego { gap: 0; }
 .brick { flex: 1; height: 100%; margin: 0 1px; border-radius: 3px; position: relative; box-shadow: inset 0 -5px rgba(0,0,0,0.2);
@@ -338,7 +347,7 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .strip-left.norights span { transform: rotate(180deg); }
 
 /* --- Touch ------------------------------------------------------------------- */
-/* Höhe der Touch-Knöpfe über dem unteren Rand (+ Abstand): hochkant gehören Durchsage und Rahmen-Hinweis darüber */
+/* Höhe der Touch-Knöpfe über dem unteren Rand (+ Abstand): hochkant gehören Untertitel und Rahmen-Hinweis darüber */
 :root { --touch-top: 8px; }
 @media (pointer: coarse) { :root { --touch-top: 202px; } }
 @media (pointer: coarse) and (max-width: 480px) { :root { --touch-top: calc(min(84px, 19vw) * 1.14 + 96px); } }
@@ -622,14 +631,19 @@ body.drone .rahmen-caption { bottom: auto; top: calc(22px + max(84px, 23vh - 14p
 .tribute { margin-top: 22px; padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); display: flex; gap: 10px; align-items: center; font-weight: 600; }
 .tribute .heart { font-size: 22px; font-family: var(--emoji); }
 
-/* --- Navi-Ansage ohne Mittelbildschirm (XXL: Drohnenansicht und schmale Formate), oben in der Mittelspalte ----
-   Ein Ortsname bleibt ganz: ist die Spalte schmal (Handy), bricht der Text um, statt hinten gekürzt zu werden – aus
+/* --- Navi-Ansage ohne Mittelbildschirm (XXL: Drohnenansicht und schmale Formate), im Streifen oben unter der Navi-Zeile
+   Ein Ortsname bleibt ganz: ist der Streifen schmal (Handy), bricht der Text um, statt hinten gekürzt zu werden – aus
    „Ausfahrt Frankfurt (Oder)“ würde sonst „Ausfahrt Frank…“. Der Radius ist die halbe Höhe der einzeiligen Ansage. */
-.navi-turn { display: none; align-items: center; gap: 9px; max-width: 100%; background: var(--panel-strong); border: 1px solid var(--line);
-  border-radius: 20px; padding: 5px 16px 5px 5px; font-size: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+.navi-turn { display: none; flex: 0 1 auto; align-items: center; gap: 8px; min-width: 0; background: var(--panel-strong); border: 1px solid var(--line);
+  border-radius: 15px; padding: 2px 14px 2px 3px; font-size: 14.5px; line-height: 19px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
 body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
-.navi-turn-icon { width: 28px; height: 28px; flex: none; }
-.navi-turn-dist { flex: none; font-size: 17px; white-space: nowrap; }
+/* in breiten Fenstern passt sie groß in eine Zeile neben den Spur-Balken */
+@media (min-width: 1240px) and (min-height: 561px) {
+  .navi-turn { font-size: 16px; line-height: 21px; }
+  .navi-turn-dist { font-size: 17px; }
+}
+.navi-turn-icon { width: 24px; height: 24px; flex: none; }
+.navi-turn-dist { flex: none; font-size: 15.5px; white-space: nowrap; }
 .navi-turn-text { min-width: 0; overflow-wrap: anywhere; color: #e3e6ec; }
 
 /* --- Große Karte (src/ui/mapscreen.js) ------------------------------------------------- */
@@ -691,10 +705,9 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 @media (max-width: 760px) {
   .over-cols { grid-template-columns: 1fr; }
   .hud-info { transform: scale(0.85); transform-origin: top left; }
-  .chat { width: 42vw; font-size: 12px; }
+  .chat { font-size: 12px; }
   .chat-list { font-size: 12px; }
   .chat-count { display: none; }
-  .navi-line { display: none; }
   .crow { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
   .crow span:nth-child(4) { display: none; }
 }
@@ -703,22 +716,27 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .crow span:nth-child(3) { display: none; }
   .crow span:nth-child(4) { display: block; }
 }
-/* hochkant ist der Blick auf die Straße klein: die Jobs stehen dann im Pausenmenü */
+/* hochkant ist der Blick auf die Straße klein: die Jobs stehen dann im Pausenmenü, und der Chat ist breiter (quer
+   bliebe mit einem so breiten Chat kein Platz für den Streifen zwischen den Feldern) */
 @media (max-width: 760px) and (orientation: portrait) {
   .jobs-mini { display: none; }
+  .chat { width: 42vw; }
+  .hint-card { width: 42vw; }
+  /* das Info-Feld endet vor dem Chat: Wird eine seiner Zeilen dafür zu lang (vierstellige Zuschauerzahl, Tempomat
+     bei dreistelligem Tempo), bricht sie um, statt unter den Chat zu wachsen */
+  .hud-info { max-width: calc((58vw - 42px) / 0.85); }
+  .live-row, .stat { flex-wrap: wrap; row-gap: 2px; }
 }
 @media (max-height: 560px) {
   .jobs-mini { display: none; }
-  /* Blitzerfoto oben rechts über dem Chat, damit es weder unten abgeschnitten noch von Touch-Knöpfen verdeckt wird */
-  .photo { top: 14px; width: min(220px, 34vh); z-index: 6; }
+  /* Blitzerfoto oben rechts auf dem Chat-Feld, damit es unten nicht abgeschnitten wird */
+  .photo { top: 14px; bottom: auto; width: min(220px, 34vh); z-index: 6; }
+  .photo-cap, .photo-sub { white-space: normal; }
   .title-hint { display: none; }
-  /* dort stünde in der Drohnenansicht auch der Rahmen-Hinweis: er wartet, bis das Foto wieder weg ist */
-  body.drone .hud:has(> .photo:not(.hidden)) .rahmen-caption { visibility: hidden; }
 }
 @media (pointer: coarse) {
   .title-hint { display: none; }
 }
-.banner-sub { font-size: clamp(14px, 1.5vw, 18px); font-weight: 600; margin-top: 4px; color: #e6ebf5; text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
 .over-menu { margin: 6px 0 4px; }
 
 /* --- niedrige Fenster (Handy quer) --------------------------------------------------- */
@@ -741,71 +759,50 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .title-card .menu .btn:not(.primary):not(.mode-entry) { padding-inline: 10px; }
   .title-card .menu .btn.mode-entry { flex-direction: row; align-items: baseline; gap: 10px; }
   .title-card .menu .mode-pad { display: none; }
-  /* HUD: kompakte Mittelspalte; die Durchsage steht klein ganz unten – über dem Lenkrad bzw. unter dem Auto */
-  .center-stack { gap: 6px; }
-  .leftlane { padding: 5px 10px 6px; font-size: 13px; border-radius: 10px; }
-  .leftlane-bar { margin-top: 4px; height: 4px; }
-  .nomi-sub { font-size: 14px; padding: 5px 10px; gap: 8px; border-radius: 12px; }
-  .nomi-eyes { width: 26px; height: 26px; }
-  .nomi-sub.studio .studio-icon { width: 26px; height: 26px; font-size: 15px; }
-  .nomi-sub.studio .studio-label { font-size: 10px; }
-  .banner { font-size: 18px; }
-  .banner-sub { font-size: 12px; }
-  .toast { font-size: 13px; padding: 4px 10px; }
-  .toast-sub { font-size: 11px; }
-  .durchsage, body.drone .durchsage { bottom: 8px; }
-  .funkloch { top: 44%; padding: 10px 16px; }
-  .funkloch-icon { font-size: 26px; }
-  .funkloch-text { font-size: 13px; }
 }
+/* --- HUD auf kleinen Formaten (Handy quer und hochkant): beide Streifen kompakt ------------------------------- */
 @media (max-height: 560px), (max-width: 480px) {
-  .durchsage { padding: 6px 12px; border-radius: 12px; }
-  .durchsage-head { font-size: 11px; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .durchsage-text { font-size: 14px; line-height: 1.3; }
-  /* unter dem Auto ist auf dem Handy wenig Platz: ohne Kopfzeile (der Spender steht im Chat), nur das Mikro vor dem Text */
-  body.drone .durchsage-head { display: none; }
-  body.drone .durchsage-text { font-size: 12.5px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
-  body.drone .durchsage-text::before { content: '🎙️ '; font-style: normal; }
+  .top-strip > .navi-line, .top-row > *, .notice > * { margin-bottom: 3px; }
+  .navi-line { padding: 3px 11px; font-size: 12.5px; line-height: 17px; }
+  .navi-line.wrap > .navi-bid { font-size: 11.5px; line-height: 15px; }
+  /* die zweite Reihe steht hier untereinander: die Navi-Ansage, darunter der Balken der linken Spur. Solange ein
+     Hinweis steht, weicht ihm der Balken (seine Warnung vor dem Ende kommt selbst als dringender Hinweis) */
+  .top-row { flex-direction: column; align-items: center; gap: 0; }
+  .top-strip:has(> .notice > .toast) .leftlane { display: none; }
+  .leftlane { width: 230px; padding: 1px 10px 5px; font-size: 13px; line-height: 17px; }
+  .navi-turn { padding: 1px 11px 1px 3px; font-size: 13px; line-height: 17px; }
+  .navi-turn-icon { width: 20px; height: 20px; }
+  .navi-turn-dist { font-size: 13.5px; }
+  .toast { padding: 2px 10px; font-size: 13px; line-height: 17px; }
+  .bottom-strip { bottom: 8px; gap: 6px; }
+  .sub-bar { padding: 4px 10px; gap: 8px; border-radius: 12px; font-size: 14px; }
+  .sub-sign { width: 26px; height: 26px; font-size: 15px; }
+  /* die Kopfzeile fällt weg (wer spricht, zeigt das Zeichen; der Spender steht im Chat) – so bleiben drei Zeilen Platz */
+  .sub-label { display: none; }
+  /* die Bauchbinde bricht um, wo sie nicht in eine Reihe passt: das Logo, darunter „Folge N · Heute aus …“ */
+  .brunnentv { flex-wrap: wrap; justify-content: center; padding: 3px 10px; gap: 0 8px; border-radius: 12px; }
+  .brunnentv-logo { font-size: 17px; }
+  .brunnentv-words { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 0 6px; padding-left: 0; border-left: none; }
+  .brunnentv-episode { font-size: 10px; }
+  .brunnentv-place { font-size: 12px; text-align: center; }
+  .camera-hint { padding: 4px 10px; font-size: 13px; line-height: 17px; }
+  .funkloch { padding: 6px 10px 8px; font-size: 12px; gap: 8px; }
+  .funkloch-icon { font-size: 20px; }
 }
-/* niedrige Fenster (Handy quer): auch im Cockpit nur zwei Zeilen ohne Kopfzeile – sonst wächst die Durchsage
-   über Banner und Untertitel der Mittelspalte (zu hören ist sie ganz, der Spender steht im Chat) */
-@media (max-height: 560px) {
-  .durchsage-head { display: none; }
-  .durchsage-text { font-size: 12.5px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
-  .durchsage-text::before { content: '🎙️ '; font-style: normal; }
+/* kleine Handys quer: zwischen den Knopfgruppen ist so wenig Platz, dass der Untertitel kleiner gesetzt ist */
+@media (max-height: 560px) and (max-width: 780px) {
+  .sub-bar { font-size: 12.5px; }
 }
-/* quer liegen unten rechts die Touch-Knöpfe (bzw. ist das Fenster niedrig) und oben rechts der Innenspiegel:
-   im Cockpit steht der Rahmen-Hinweis dann unten in der Mitte über dem Streifen, eine Durchsage rückt so lange darüber */
-@media (max-height: 560px), (pointer: coarse) and (orientation: landscape) {
-  body:not(.drone) .rahmen-caption { left: 0; right: 0; margin-inline: auto; width: fit-content; bottom: calc(7.5vh + 6px); max-width: min(560px, calc(100vw - 15vh - 20px)); text-align: center; }
-  body:not(.drone) .hud:has(.rahmen-caption) .durchsage { bottom: calc(7.5vh + 52px); }
-}
-/* Touch quer: Durchsage und Rahmen-Hinweis bleiben unten zwischen den beiden Knopfgruppen */
+/* Touch quer: Der Streifen unten bleibt zwischen den beiden Knopfgruppen (kleine Handys haben kleinere Knöpfe) */
 @media (pointer: coarse) and (orientation: landscape) {
-  body.drone .durchsage, body:not(.drone) .hud:has(.rahmen-caption) .durchsage { max-width: min(680px, calc(100vw - 432px)); }
-  body:not(.drone) .rahmen-caption { max-width: min(560px, calc(100vw - 432px)); }
-  /* schmale Handys quer: Spalte, Spur-Balken und Funkloch-Kasten bleiben zwischen den Knopfgruppen */
-  .hud-narrow .center-stack, .hud-narrow .leftlane { width: min(460px, var(--mid), calc(100vw - 424px)); }
-  .hud-narrow .funkloch { max-width: min(460px, calc(100vw - 424px)); }
-  /* dort beginnen Spalte und Spur-Balken schon unter dem Chat: der Rahmen-Hinweis der Drohnenansicht darunter bleibt
-     rechts neben ihnen (sie enden 212 px vor dem rechten Rand) */
-  body.drone .hud-narrow .rahmen-caption { max-width: calc(194px - 7.5vh); }
+  .bottom-strip { max-width: min(680px, calc(100vw - 432px)); }
 }
-@media (pointer: coarse) and (orientation: landscape) and (max-height: 560px) {
-  .durchsage, body.drone .durchsage { max-width: min(560px, calc(100vw - 432px)); }
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) and (max-aspect-ratio: 2.08/1) {
+  .bottom-strip, .rahmen-caption { max-width: calc(100vw - 396px); }
 }
-/* Touch hochkant: Durchsage und Rahmen-Hinweis stehen über den Knöpfen (unter dem Auto der Drohnenansicht) */
+/* Touch hochkant: Der Streifen steht über den Knöpfen, in der Drohnenansicht unter dem eigenen Auto */
 @media (pointer: coarse) and (orientation: portrait) {
-  .durchsage, body.drone .durchsage { bottom: var(--touch-top); }
-  body:not(.drone) .hud:has(.rahmen-caption) .durchsage { bottom: calc(var(--touch-top) + 52px); }
-  body:not(.drone) .rahmen-caption, body.drone .rahmen-caption { left: 0; right: 0; margin-inline: auto; width: fit-content; top: auto; bottom: var(--touch-top); max-width: calc(100vw - 15vh - 20px); text-align: center; }
-  /* in der Drohnenansicht stünde die Durchsage darüber schon auf dem Auto: der Rahmen-Hinweis wartet so lange */
-  body.drone .hud:has(.durchsage:not(.hidden)) .rahmen-caption { visibility: hidden; }
-}
-/* kleine Handys hochkant: zwischen Auto (endet bei ≈ 73 % der Höhe) und Knöpfen ist kein Platz – Durchsage und
-   Rahmen-Hinweis stehen dann im Himmel knapp über dem Dach (es beginnt bei ≈ 55 %) */
-@media (pointer: coarse) and (orientation: portrait) and (max-height: 820px) {
-  body.drone .durchsage, body.drone .rahmen-caption { bottom: calc(45vh + 8px); }
+  .bottom-strip { bottom: calc(var(--touch-top) - 4px); max-width: calc(100vw - 28px); }
 }
 /* --- schmale Handys hochkant ---------------------------------------------------------- */
 @media (max-width: 480px) {

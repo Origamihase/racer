@@ -325,7 +325,16 @@ export const CHAT = {
   funklochBack: ['✔️', '✔️', '✔️ Bild ist wieder da', 'Da ist es wieder ✔️'],
   frog: ['🐸', '🐸🐸', 'Frosch!', '🐸 HDMI-Kabel?'],
   blitzer: ['📸', 'Lächeln! 📸', 'Das Foto kommt in einen Rahmen', 'Tschüss, du Betrüger!', 'Teures Selfie'],
+  // nach einem Blitz stichelt ab und zu jemand: ohne Radarwarner mit einem Wink zum Shop, mit ihm erst recht
+  radarFehlt: ['Ein Radarwarner hätte jetzt gepiept', 'Im Tesla-Shop gibt es Radarwarner 😏', 'Radarwarner wann? 📟',
+    'Mit Radarwarner wäre das nicht passiert'],
+  radarTrotz: ['Trotz Radarwarner 😂', 'Der hat doch gepiept?!', 'Gepiept, geblinkt, geblitzt 📟📸',
+    'Der Radarwarner hat alles gegeben'],
   elefant: ['Elefantenrennen 🐘🐘', 'Das dauert…', 'Überholverbot wann?', 'Die stehen ja fast'],
+  // Mini Adam legt auf der Autobahn den Rückwärtsgang ein
+  rueckwaerts: ['Retourgang! Endlich 🎉', 'Rückwärts?! 😂', 'Moonwalk im Tesla 🕺', 'Einmal zurückspulen bitte ⏪',
+    'Hast du was vergessen? 😅', 'Rückfahrkamera an, Chat schaut mit 📹', 'Adam parkt auf der Autobahn ein 🅿️',
+    'Rückwärts ist auch eine Richtung 😄'],
   trunk: ['Kofferraum auf! 😂', 'Was ist da drin?', 'Bitspende-Eskalation', 'Konfetti im Kofferraum?'],
   brunnen: ['BRUNNENTV!!!', 'Herr Schönnbrun!', 'Brunnen gesichtet! ⛲', 'Neue Folge BrunnenTV!'],
   elsa: ['ELSA!!! ❤🐟', 'Elsa ❤', 'Spirit-Animal gesichtet!', '👑🐟'],
@@ -613,7 +622,7 @@ export const STUDIO = {
 };
 
 export const DURCHSAGEN = [
-  { voice: 'kassandra', text: 'Treffen sich zwei Scheibenwischer. Fragt der eine: Na, wie läuft’s? Sagt der andere: Hin und her.' },
+  { voice: 'kassandra', text: 'Treffen sich zwei Unterhosen. Fragt die eine: Warst du im Urlaub? Du bist so braun.' },
   { voice: 'karla', text: 'Hallo Mini Adam, liebe Grüße aus {city}. Dachs grüßt Efeu.' },
   { voice: 'william', text: 'Mini Adam, bitte einmal hupen! Bimmel hurra!' },
   { voice: 'weronika', text: 'Hier spricht Meister Pünktlich. Ich bin in fünf Minuten da.' },
@@ -629,12 +638,15 @@ export const DURCHSAGEN = [
   { voice: 'weronika', text: 'Mini Adam, du fährst besser als jedes Navi.' },
   { voice: 'karla', text: 'Hallo Mini Adam! Schreib mal eine Zahl in den Chat. Aber bitte ohne Drei.' },
   { voice: 'william', text: 'Kappandramäßige Zusammenfassung bitte! Ich war beim Schwimmunterricht.' },
+  { voice: 'william', text: 'Mein Sack ist nass!' },
+  { voice: 'kassandra', text: 'Achtung, Achtung. Das Tralala bitte nicht anfassen.' },
 ];
 
 export const DURCHSAGEN_REGEN = [
   { voice: 'karla', text: 'Guten Tag, hier ist der Herr mit den Schirmen. Ich würde meine Schirme gerne heute noch abholen.' },
   { voice: 'weronika', text: 'Mini Adam, dein Scheibenwischer winkt mir gerade zu. Ich winke zurück!' },
   { voice: 'kassandra', text: 'Achtung, Achtung. Der automatische Scheibenwischer befindet sich weiterhin in der Beta-Phase.' },
+  { voice: 'kassandra', text: 'Treffen sich zwei Scheibenwischer. Fragt der eine: Na, wie läuft’s? Sagt der andere: Hin und her.' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -659,10 +671,15 @@ export const BOARD = {
   blitzer: 'Hinweis: Tempolimit. Stationärer Blitzer voraus.',
   shoulder: 'Hinweis: Der Standstreifen ist keine Fahrspur.',
   funkloch: 'Verbindung schwach. Mobilfunk wird neu gebündelt.',
+  reverse: 'Rückwärtsgang eingelegt.',
+  reverseEnd: 'Weiter zurück geht es hier nicht. Bitte wieder vorwärts fahren.',
 };
 
 // ---------------------------------------------------------------------------
 // Rahmen-Einblendungen (Preise wie im Live-Bereich)
+// Zwischen zwei Rahmen vergehen mindestens min Sekunden der Ereignis-Uhr – weit mehr, als der längste dauert: Zwei
+// sind nie zugleich im Bild, und was die Sicht absichtlich verdeckt (COVERS in ui/sicht.js), bleibt eine kurze Ausnahme
+export const RAHMEN_GAP = { min: 75, max: 130 };
 export const RAHMEN = [
   { id: 'rosen', name: 'Rosenrahmen', price: 12.0, dur: 9 },
   { id: 'sonnenblumen', name: 'Sonnenblumenrahmen', price: 12.5, dur: 9 },
@@ -773,6 +790,11 @@ export const SHOP = [
     effect: () => 'Autos vor dir wechseln die Spur',
   },
   {
+    id: 'radar', icon: '📟', name: 'Radarwarner', cat: 'Spaß', prices: [250],
+    desc: 'Ein Kästchen fürs Armaturenbrett. Es piept, und NOMI sagt jeden Blitzer an, bevor es blitzt. Ohne ihn bleibt es beim Überraschungsfoto.',
+    effect: () => 'NOMI warnt vor jedem Blitzer',
+  },
+  {
     id: 'starlink', icon: '🛰️', name: 'Satelliten-Schüssel', cat: 'Spaß', prices: [1100],
     desc: 'Wie beim ersten IRL-Stream über Satellit: keine Funklöcher, mehr Zuschauer, mehr Spenden.',
     effect: () => 'Keine Funklöcher, +25\u00a0% Zuschauer, +20\u00a0% Spenden',
@@ -784,7 +806,7 @@ export const SHOP = [
   },
   {
     id: 'elsa', icon: '👑', name: 'Wackel-Elsa', cat: 'Deko', prices: [120],
-    desc: 'Das Spirit-Animal von SkylineTV LIVE als Wackelfigur fürs Armaturenbrett.',
+    desc: 'Das Spirit-Animal von SkylineTV LIVE als Wackelfigur fürs Armaturenbrett: die blaue Plüsch-Elsa mit Krönchen und Schärpe.',
     effect: () => 'Wackelt bei jeder Kurve mit',
   },
   {

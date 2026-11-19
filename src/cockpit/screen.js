@@ -9,6 +9,9 @@ import { NaviScreen } from '../map/navview.js';
 const CW = 1024;
 const CH = 640;
 const SPLIT = 372;
+/** Größe der Zeichenfläche (px) und das Fenster der Rückfahrkamera darin (rearcam.js; nur in R): oben rechts, groß. */
+export const SCREEN_PX = [CW, CH];
+export const REAR_RECT = { x: SPLIT + 12, y: 58, w: CW - SPLIT - 24, h: Math.round(((CW - SPLIT - 24) * 9) / 16), r: 14 };
 // Linien der Spuransicht (Meter quer zur Fahrbahn): die vier Spuren der Autobahn
 const AB_EDGES = [-7.5, -3.75, 0, 3.75, 7.5];
 // Breite von Verzögerungs- und Beschleunigungsstreifen der XXL-Welt (rechts neben der rechten Spur)
@@ -87,6 +90,7 @@ export class CenterScreen {
     else this.drawMap(ctx, st, T);
     this.drawCarPanel(ctx, st, T);
     this.drawTopBar(ctx, st, T);
+    if (st.gear === 'R') this.drawRearFrame(ctx);
     this.drawDock(ctx, st, T);
     if (st.funkloch > 0) {
       ctx.fillStyle = `rgba(120,120,120,${0.35 * st.funkloch})`;
@@ -110,9 +114,10 @@ export class CenterScreen {
     ctx.font = '600 26px "Helvetica Neue", Arial, sans-serif';
     ctx.textAlign = 'left';
     const gears = ['P', 'R', 'N', 'D'];
+    const gear = st.gear || 'D';
     gears.forEach((g, i) => {
-      ctx.fillStyle = g === 'D' ? T.text : T.sub;
-      ctx.font = (g === 'D' ? '700 28px' : '500 24px') + ' "Helvetica Neue", Arial, sans-serif';
+      ctx.fillStyle = g === gear ? T.text : T.sub;
+      ctx.font = (g === gear ? '700 28px' : '500 24px') + ' "Helvetica Neue", Arial, sans-serif';
       ctx.fillText(g, 26 + i * 30, 78);
     });
     // Akku-Symbol
@@ -569,6 +574,24 @@ export class CenterScreen {
     ctx.textAlign = 'right';
     ctx.fillText(st.clock + '   ' + st.temp + ' °C   ' + (st.funkloch > 0 ? 'Kein Netz' : 'LTE ▂▄▆█'), CW - 18, 26);
     ctx.textBaseline = 'alphabetic';
+  }
+
+  /**
+   * Unter dem Bild der Rückfahrkamera (nur in R): eine dunkle Karte mit weichem Schatten über der Karte des Navis, ein
+   * paar Pixel größer als das Bild und mit kleinerem Eckradius – so deckt sie auch die Spitzen der Ecken, die das Bild
+   * mit seinen runden Ecken frei lässt, und von der Karte blitzt dort nichts durch (Radius ≤ e·√2/(√2−1)).
+   */
+  drawRearFrame(ctx) {
+    const R = REAR_RECT;
+    const e = 4;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 4;
+    ctx.fillStyle = '#0b0c0e';
+    roundRect(ctx, R.x - e, R.y - e, R.w + 2 * e, R.h + 2 * e, R.r - 3);
+    ctx.fill();
+    ctx.restore();
   }
 
   drawDock(ctx, st, T) {

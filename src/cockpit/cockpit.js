@@ -6,17 +6,19 @@ import * as THREE from 'three';
 import { liveLogoTexture, softDotTexture } from '../textures.js';
 import { Nomi } from './nomi.js';
 import { CenterScreen } from './screen.js';
+import { RearCam } from './rearcam.js';
 import { buildWipers } from './wipers.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
 import { damp, clamp, smoothstep, lerp } from '../util.js';
 import { mirrorShape, mirrorHousingGeometry } from '../models/loft.js';
 import { plush, COLORS, buildMiniAdam, ADAM_DIM } from '../models/miniAdam.js';
-import { prep, meshOf, mergeByMaterial, rbox, sweep, ring, place, roundedRect, warp, pillow, lathe } from './parts.js';
+import { prep, meshOf, rbox, sweep, ring, place, roundedRect, warp, pillow, lathe } from './parts.js';
 import { buildCabin, buildHood, roofGlassGeometry, blob, dashTopY, pillarPoint, PAL, SEAT } from './cabin.js';
 import { WHEEL, buildWheelParts, buildColumn } from './wheel.js';
 import { mittenGeometry, forearmGeometry, upperArmGeometry, sleeveGeometry, WRIST } from './hands.js';
 import { buildRig, setLiveCrop } from './rig.js';
 import { buildProps } from './props.js';
+import { buildRadar } from './radar.js';
 import { grainTexture, weaveTexture, leatherTexture, perfTexture, walnutTexture, labelAtlas, decalAtlas, decalUV } from './cabinTextures.js';
 
 // Augenposition (Fahrzeug-Koordinaten; vorne = -z). Mini Adam sitzt auf zwei Kissen.
@@ -489,6 +491,9 @@ export class Cockpit {
     );
     display.position.z = 0.0005;
     g.add(display);
+    // Rückfahrkamera: liegt in R knapp vor der Anzeige über deren Fenster oben rechts
+    this.rear = new RearCam();
+    this.rear.attach(g, 0.336, 0.21, 0.0011);
     this.root.add(g);
     this.displayMat = display.material;
   }
@@ -628,24 +633,27 @@ export class Cockpit {
     // NOMI steht auf dem Armaturenbrett
     blob(S, -0.27, dashTopY(-0.27, -0.53), -0.53, 0.058, 0.05);
 
-    // Wackel-Elsa (Shop)
+    // Wackel-Elsa (Shop): die Figur kommt fertig verschmolzen (fünf Zeichenaufrufe, die Arme bleiben beweglich)
     this.elsa = buildElsa({ curved: false });
-    // aus 38 Einzelteilen werden 8 (je Material eins, die winkenden Flossen bleiben beweglich)
-    mergeByMaterial(this.elsa, [this.elsa.userData.finL, this.elsa.userData.finR]);
     this.elsa.scale.setScalar(0.11);
     this.elsaSpring = new THREE.Group();
     this.elsaSpring.position.set(-0.6, dashTopY(-0.6, -0.68), -0.68);
     this.elsaSpring.rotation.y = 0.5;
-    const springBase = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.012, 24), new THREE.MeshPhysicalMaterial({ color: PAL.gloss, roughness: 0.3, clearcoat: 1 }));
+    const springBase = new THREE.Mesh(new THREE.CylinderGeometry(0.0225, 0.026, 0.012, 32), new THREE.MeshPhysicalMaterial({ color: PAL.gloss, roughness: 0.3, clearcoat: 1 }));
     springBase.position.y = 0.006;
     const springShadow = new THREE.Mesh(new THREE.PlaneGeometry(0.075, 0.075).rotateX(-Math.PI / 2), this.shadowMat);
     springShadow.position.y = 0.0012;
     springShadow.renderOrder = 1;
     this.elsaSpring.add(springBase, springShadow, this.elsa);
-    // die Schwanzflosse steht auf dem Rand des Sockels (Oberkante bei y = 0.012)
-    this.elsa.position.y = 0.0105;
+    // beide Füße stehen ganz auf dem Sockel (Oberkante bei y = 0.012, die Sohlen einen Hauch darin)
+    this.elsa.position.set(0, 0.0117, -0.005);
     this.elsaSpring.visible = false;
     this.root.add(this.elsaSpring);
+
+    // Radarwarner (Shop): das Kästchen mit dem Lämpchen, links vom Lenkrad schräg vor Elsas Platz
+    this.radar = buildRadar(this.MS, this.shadowMat);
+    this.radar.group.visible = false;
+    this.root.add(this.radar.group);
 
     // Konfetti an der Innenseite der Scheibe (Konfetti-Kanone)
     const cGeo = new THREE.PlaneGeometry(0.012, 0.008);
@@ -700,6 +708,11 @@ export class Cockpit {
     this.elsaSpring.visible = !!v;
   }
 
+  /** Radarwarner aus dem Shop aufs Armaturenbrett stellen (oder wegnehmen). */
+  setRadar(v) {
+    this.radar.group.visible = !!v;
+  }
+
   /** Kamera-Pose (Weltkoordinaten) aus Fahrzeug-Transformation + Kopfbewegung. */
   placeCamera(camera, carMatrix, t, speed, latAcc, dt) {
     // das Abklingen von shake passiert einmal pro Bild im Hauptprogramm (auch in Drohne, Pause, Abspann)
@@ -717,7 +730,9 @@ export class Cockpit {
 
   /**
    * @param {object} st steer (-1..1), speed (m/s), latAcc, t, dt, wiperAngles [a, b], sunDir, overcast,
-   *   adam (Animationswerte der Figur, wie sie main.js für Mini Adam im Auto und in der Facecam rechnet)
+   *   adam (Animationswerte der Figur, wie sie main.js für Mini Adam im Auto und in der Facecam rechnet),
+   *   radar (warnt der Radarwarner gerade? Dann blinkt sein Lämpchen), rear (R eingelegt und das Cockpit zu sehen? Dann
+   *   zeigt der Mittelbildschirm die Rückfahrkamera)
    */
   update(st) {
     const { dt, t } = st;
@@ -743,6 +758,7 @@ export class Cockpit {
       this.elsa.rotation.z = this.elsaWobble;
       animateElsa(this.elsa, t, this.elsaWobble);
     }
+    if (this.radar.group.visible) this.radar.update(!!st.radar, t);
     this.recLed.visible = Math.sin(t * 3.5) > -0.3;
     // Licht an Wetter/Sonne angleichen
     const o = st.overcast || 0;
@@ -767,5 +783,6 @@ export class Cockpit {
     if (this.driver && this.driver.root.visible) this.driver.animate(t, st.adam || { steer: st.steer });
     this.nomi.update(dt, t, -0.16);
     this.screen.update(dt, st.screen);
+    this.rear.update(dt, !!st.rear, st.steer);
   }
 }

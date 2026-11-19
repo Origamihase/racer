@@ -43,20 +43,23 @@ function keys(parent, list) {
   }
 }
 
-// Der Hinweis liegt über der Fahrbahn: Wer schon gelenkt und Strom gegeben (oder gebremst) hat, braucht ihn nicht mehr
-// so lange – er blendet dann nach frühestens 4 s aus.
+// Der Hinweis steht am Rand (ui.hintEl: unten links an Stelle der Facecam, auf Touch-Geräten auf dem Chat-Feld) und
+// lässt sich lesen, während der Wagen schon rollt. Wer schon gelenkt und Strom gegeben (oder gebremst) hat, braucht ihn
+// nicht mehr so lange – er blendet dann nach frühestens 4 s aus, sonst nach 11 s.
 let hint = null;
 
 /** Jedes Bild während der Fahrt (ctl: die Eingaben dieses Bildes). */
 export function driveHintTick(dt, ctl) {
   if (!hint) return;
   hint.age += dt;
+  hint.t -= dt;
   if (ctl.steerKey || Math.abs(ctl.analog || 0) > 0.3 || ctl.lane) hint.steered = true;
   if (ctl.throttle > 0.3 || ctl.brake > 0.3) hint.pedal = true;
-  if (hint.steered && hint.pedal && hint.age >= 4) {
-    hint.rec.t = Math.min(hint.rec.t, 1.2);
+  if (hint.steered && hint.pedal && hint.age >= 4) hint.t = Math.min(hint.t, 1.2);
+  if (hint.t <= 0) {
+    hint.card.classList.add('hidden');
     hint = null;
-  } else if (hint.rec.t <= 0) hint = null;
+  }
 }
 
 /**
@@ -72,12 +75,13 @@ export function showDriveHint(ui, device, ds) {
     if (showDriveHint.done) return false;
   }
   showDriveHint.done = true;
-  const rec = ui.toast('', 'hint');
-  rec.t = 11;
-  hint = { rec, age: 0, steered: false, pedal: false };
-  el('div', 'hint-title', rec.el, '🎮 So steuerst du');
+  const card = ui.hintEl;
+  card.textContent = '';
+  card.classList.remove('hidden');
+  hint = { card, t: 11, age: 0, steered: false, pedal: false };
+  el('div', 'hint-title', card, '🎮 So steuerst du');
   for (const [k, text, sub, ...more] of hintRows(device, ds)) {
-    const r = el('div', 'hint-row', rec.el);
+    const r = el('div', 'hint-row', card);
     if (k.length) keys(r, k);
     el('span', 'hint-text', r, text);
     for (const [k2, t2] of more) {
@@ -85,8 +89,7 @@ export function showDriveHint(ui, device, ds) {
       keys(g, k2);
       el('span', 'hint-text', g, t2);
     }
-    if (sub) el('div', 'hint-sub', rec.el, sub);
+    if (sub) el('div', 'hint-sub', card, sub);
   }
-  ui.fitStack();
   return true;
 }

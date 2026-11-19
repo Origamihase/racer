@@ -318,7 +318,7 @@ export class Menus {
       el('span', 'k', r, k);
       el('span', 'v', r, v);
     };
-    item('Strecke', g.worldNavi ? fmtOdo(g.odometer / 1000) : fmtKm(g.player.s));
+    item('Strecke', g.worldNavi ? fmtOdo(g.odometer / 1000) : fmtKm(g.odometer));
     item('Einnahmen dieser Fahrt', fmtCent(g.money));
     // XXL-Welt: ein echter Ort – oder, zwischen Ankunft und erstem Gebot der Runde, was gerade gilt (WorldNavi.label)
     item('Navi-Ziel', g.worldNavi ? g.navi.label : g.navi.target.name);
@@ -475,6 +475,7 @@ export class Menus {
       ['Lenken', '←\u00a0→ oder A\u00a0D', 'Linker Stick', '◀\u00a0▶'],
       ['Strom geben', '↑ oder W', 'RT oder Steuerkreuz ↑', 'Strom'],
       ['Bremsen', '↓ oder S', 'LT oder Steuerkreuz ↓', 'Bremse'],
+      ['Rückwärtsgang (im Stand halten, zurück mit Strom)', '↓ oder S', 'LT oder Steuerkreuz ↓', 'Bremse'],
       ['Hupen (Brunnen & Elsa grüßen)', 'Leertaste', 'A', '📯'],
       ['Scheibenwischer von Hand', 'E', 'X', '🌧️'],
       ['Megafon (aus dem Shop)', 'H', 'Y', '📢'],
@@ -500,6 +501,7 @@ export class Menus {
         ? 'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Cent drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV.'
         : 'Das Navi-Ziel ändert sich ständig – jeder Bieter legt mindestens einen Cent drauf. Kommst du trotzdem an, feiert der Chat mit Ortsspenden.',
       ...(reise ? ['Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.'] : []),
+      'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Tesla-Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
       'Lade-Ringe füllen den Akku. Bananensaft ist super, Koriander leider nicht.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',

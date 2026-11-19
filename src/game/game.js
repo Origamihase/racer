@@ -2,7 +2,7 @@
 // Sprachdurchsagen, Rahmen, Funkloch, Zuschauer, Spenden, Jobs) und die Abrechnung am Ende.
 // Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
 import {
-  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, VOICES, JOB_TEMPLATES, REISE_JOBS, INCOME, SPENDEN_ZWECKE, AKTIONEN,
+  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_JOBS, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, NAVI_TARGETS, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
@@ -30,8 +30,6 @@ const STRAIGHT_RUN = 400;
 // Rechts oben deckt der Innenspiegel aus Mini Adams Sicht ab etwa 17,8° rechts der Blickrichtung ab
 // (auf dem Handy hochkant endet dort fast schon das Bild): bis 16° steht Elsa frei in der Scheibe.
 const ELSA_VIEW = (16 * Math.PI) / 180;
-// Elsas Kopf an der Statue (Maßstab 1): Kronenspitze, Kinn und halbe Kopfbreite in Metern
-const ELSA_HEAD = { top: 5.65, chin: 3.1, half: 1.3 };
 const elsaTmp = new Vector3();
 // Wie flott der Chat schreibt, je nach Stufe der heimlichen Chat-Stimmung (0 im Keller … 4 bester Laune)
 const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
@@ -39,6 +37,9 @@ const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
 // Brunnen (hold); wer neu Gas gibt, bremst, lenkt oder hupt, fährt sofort weiter, sobald die Karte kurz zu sehen
 // war (guard); das erste Gebot der nächsten Runde kommt frühestens pause Sekunden, nachdem der Wagen fahren darf.
 const BRUNNEN_TV = { hold: 6, guard: 0.6, pause: 1.5 };
+// Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
+// Kästchen, lead Sekunden später folgen NOMIs Gong und ihre Ansage
+const RADAR = { ahead: 180, lead: 0.45 };
 
 export class Game {
   /**
@@ -94,6 +95,7 @@ export class Game {
     this._introChime = false;
     this.clock = 18 * 60;
     this.travel = null; // XXL: Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
+    this.revDebt = 0; // rückwärts gefahrene Meter, die noch nicht wieder vorwärts gefahren sind (siehe update)
     this.eco.reset(up);
     this.viewers = this.eco.viewers;
     this.peakViewers = 240;
@@ -182,6 +184,7 @@ export class Game {
     this.windshield.onEvent = (type) => this.onWiper(type);
     this.cockpit.clearConfetti();
     this.cockpit.setElsa(!!up.elsa);
+    this.cockpit.setRadar(this.hasRadar);
     this.ui.reset?.();
     this.ui.jobs(this.jobs);
     this.bot('hugo', 'Der Stream läuft! Viel Spaß beim Zuschauen.');
@@ -293,6 +296,34 @@ export class Game {
     else go();
   }
 
+  /**
+   * Gang gewechselt (Player.shift): ein kurzer Ton; R sagt NOMI an (höchstens alle 20 s, sonst nur der Ton), und auf
+   * der Autobahn freut sich der Chat (höchstens alle 30 s).
+   */
+  onGear(gear) {
+    this.audio.gear(gear);
+    if (gear !== 'R') return;
+    if (this.t > (this.reverseSaid ?? -99) + 20) {
+      this.reverseSaid = this.t;
+      this.later(0.3, () => this.say(BOARD.reverse, 'talk', { priority: false }));
+    }
+    if (!this.offAutobahn && this.t > (this.reverseChat ?? -99) + 30) {
+      this.reverseChat = this.t;
+      this.burst(CHAT.rueckwaerts, 2, 3);
+    }
+  }
+
+  /** Ist der Radarwarner aus dem Shop an Bord? Nur dann wird vor einem Blitzer gewarnt (siehe „Blitzer“ in update). */
+  get hasRadar() {
+    return !!this.up?.radar;
+  }
+
+  /** Warnt der Radarwarner gerade? Von seiner Ansage bis zum Blitzer – und nie, wenn die Fahrt vorbei ist. */
+  get radarAlarm() {
+    const b = this.blitzer;
+    return this.running && !!b && b.announced && !b.checked;
+  }
+
   /** Einnahme verbuchen. label: Zeile der Abrechnung (siehe INCOME) · silent: ohne Einblendung am Guthaben */
   earn(amount, label, { silent = false } = {}) {
     if (amount <= 0) return 0;
@@ -374,9 +405,17 @@ export class Game {
 
     // --- Fahren ------------------------------------------------------------
     const sBefore = p.s;
-    // Krümmung und Steigung unter dem Wagen (Kurven-Paket, sonst 0)
-    p.update(dt, ctl, { wet: W.level, kappa: ctl.kappa || 0, grade: ctl.grade || 0 });
+    // Krümmung und Steigung unter dem Wagen (Kurven-Paket, sonst 0); den Rückwärtsgang gibt es nur auf die eigenen
+    // Eingaben des Spielers (ctl.reverse aus main.js) und nie, während die Welt den Wagen am Brunnen anhält
+    p.update(dt, ctl, { wet: W.level, kappa: ctl.kappa || 0, grade: ctl.grade || 0, reverse: ctl.reverse === true && !this.halt && !this.tv });
     const ds = p.s - sBefore;
+    // Die Strecken zählen neue Straße: Rückwärts gefahrene Meter sind eine Schuld, die der Wagen vorwärts erst wieder
+    // abfährt, bevor etwas weiterzählt (Strecke, saubere Strecke, Regenstrecke). Ohne Rückwärtsgang bleibt sie 0.
+    let dsNew = ds;
+    if (p.gear === 'R' || this.revDebt > 0) {
+      dsNew = Math.max(0, ds - this.revDebt);
+      this.revDebt = Math.max(0, this.revDebt - ds);
+    }
     for (const e of p.events) {
       if (e.type === 'rail') {
         this.audio.scrape();
@@ -391,12 +430,13 @@ export class Game {
         // zu schnell für die Kurve: NOMI sagt es freundlich (höchstens alle 25 s)
         this.understeerSaid = this.t;
         this.say(damageLine('understeer'), 'worried', { priority: false });
-      }
+      } else if (e.type === 'gear') this.onGear(e.gear);
+      else if (e.type === 'reverseEnd') this.say(BOARD.reverseEnd, 'think', { priority: false });
     }
     // XXL: Uhr und Strecken zählen Reisezeit und Reisemeter (travelStep), klassisch Spielzeit und Meter der Straße
     const go = this.worldNavi ? this.travelStep(dt) : null;
-    const dm = go ? go.m : ds;
-    st.distance = go ? this.odometer : p.s;
+    const dm = go ? go.m : dsNew;
+    st.distance = go ? this.odometer : p.s + this.revDebt;
     st.maxSpeedKmh = Math.max(st.maxSpeedKmh, p.kmh);
     // neue Höchstgeschwindigkeit dieser Fahrt: Der Chat schaut auf den Tacho
     const mark = this.eco.speedMark(p.kmh);
@@ -424,6 +464,11 @@ export class Game {
       else if (e.type === 'passPolice') {
         this.chat(pick(['Polizei überholt?! Mutig! 😅', 'Tschüss Polizei Gifhorn 👋', 'Das gibt einen Eintrag ins Fahrtenbuch']));
       }
+    }
+    // ein Rempler rückwärts schiebt den Wagen ein Stück nach vorn, über schon gefahrene Straße: das ist keine Strecke
+    if (p.bumpFwd > 0) {
+      this.revDebt = Math.max(0, this.revDebt - p.bumpFwd);
+      p.bumpFwd = 0;
     }
     if (this.over) return;
 
@@ -486,9 +531,10 @@ export class Game {
       if (L.next <= 0) this.openLeftLane();
     } else {
       L.timer -= dt;
-      // Geld gibt es fürs Linksfahren nicht – aber jemand hat dafür gespendet und will es jetzt auch sehen
+      // Geld gibt es fürs Linksfahren nicht – aber jemand hat dafür gespendet und will es jetzt auch sehen (rückwärts
+      // zählt es nicht)
       if (p.inLeftLane) {
-        this.stats.leftLaneTime += dt;
+        if (p.gear === 'D') this.stats.leftLaneTime += dt;
         L.idle = 0;
       } else {
         L.idle += dt;
@@ -502,7 +548,7 @@ export class Game {
       }
       if (L.timer <= 10 && !L.warned) {
         L.warned = true;
-        this.ui.banner('⏳ Linke Spur: noch 10 Sekunden', 2.5);
+        this.ui.toast('⏳ Linke Spur: noch 10 Sekunden', 'warn', 'spur');
       }
       if (L.timer <= 0) this.closeLeftLane();
     }
@@ -543,7 +589,6 @@ export class Game {
     this.audio.chime();
     this.later(0.2, () => this.donate(L.donor, this.eco.laneDonation(), 'Linke Spur freischalten', { label: 'Aktionen' }));
     this.burst(CHAT.leftLane, 3, 3);
-    this.ui.banner('⬅️ Linke Spur freigeschaltet!', 4, `${L.dur === 60 ? 'Eine Minute' : L.dur + ' Sekunden'} lang darfst du ganz links fahren`);
   }
 
   closeLeftLane() {
@@ -796,19 +841,22 @@ export class Game {
         this.say(BOARD.naviChanged, 'think');
       }
       this.onMood('curious', 1);
+      // Das neue Ziel sagt die Navi-Zeile selbst an (sie zählt Entfernung und Gebot ohnehin laufend mit). Was das Navi
+      // sonst dazu sagt – die Zeile zum Ort, „Bitte wenden“ –, steht als Hinweis mit dem Schlüssel 'navi' darunter:
+      // immer nur einer, und er geht mit dem Ziel, zu dem er gehört
+      this.ui.naviNews();
+      if (t.note) this.ui.toast('📍 ' + t.note, 'info', 'navi');
+      const wenden = (text, kind) => this.later(3.5, () => nv.target === t && this.ui.toast(text, kind, 'navi'));
       if (this.worldNavi) {
-        // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt)
+        // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt) –
+        // das muss der Spieler fahren, deshalb als Warnung
         if (nv.wende) {
           this.later(1.5, () => this.chat(this.chatLine(CHAT.ortWende)));
-          this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'info'));
+          wenden('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'warn');
         }
-        // nur der Name: Wie weit es ist und wann der Wagen ankommt, zählt die Zeile darüber laufend mit – eine Zahl
-        // hier bliebe stehen, während jene schon weiterläuft
-        this.ui.toast(`📍 Neues Navi-Ziel: ${t.name}`, 'info', t.note);
         return;
       }
-      if (nv.wende) this.later(3.5, () => this.ui.toast('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info'));
-      this.ui.toast(`📍 Neues Navi-Ziel: ${t.name} (${fmtNum(nv.km, 1)} km)`, 'info', t.note);
+      if (nv.wende) wenden('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info');
     }
   }
 
@@ -858,8 +906,8 @@ export class Game {
       this.ui.damage(p.hits, p.maxHits);
       this.later(2.2, () => this.ui.toast('🩹 ' + damageLine('repair'), 'good'));
     }
-    // (XXL: Dort nennt die BrunnenTV-Titelkarte den Ort und führt die Mittelspalte an – ein Banner darunter wäre doppelt)
-    if (!this.worldNavi) this.ui.banner(`🏁 Ziel erreicht: ${t.name}`, 4);
+    // die Ankunft sagt die Navi-Zeile an („Ziel erreicht: …“)
+    this.ui.naviNews();
     this.burst(this.worldNavi ? CHAT.ortReached : CHAT.naviReached, 4, 3);
     // Fürs Ankommen selbst gibt es nichts – aber der Chat feiert es mit einem Schwung Ortsspenden (Siegen: doppelt;
     // am Drive-In ist die erste natürlich für „Pommes ohne Rückfragen“)
@@ -1061,7 +1109,7 @@ export class Game {
 
     // Rahmen
     if (T.rahmen <= 0 && p.s > 1000) {
-      T.rahmen = rand(75, 130);
+      T.rahmen = rand(RAHMEN_GAP.min, RAHMEN_GAP.max);
       const r = pick(RAHMEN);
       const name = viewerName();
       this.donate(name, r.price, r.name, { label: 'Rahmen' });
@@ -1120,7 +1168,7 @@ export class Game {
         this.later(1, () => {
           this.audio.megafon();
           const dur = this.speech.say(text, 'william');
-          this.ui.toast(`📢 Megafon-Wunsch von ${name}`, 'info', '»' + text + '«');
+          this.ui.megafon(text, dur + 1, name);
           this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
         });
       }
@@ -1165,9 +1213,12 @@ export class Game {
     }
     if (this.blitzer) {
       const b = this.blitzer;
-      if (!b.announced && p.s > b.limitS - 180) {
+      // Einen Blitzer kündigt niemand an: Die Warnung vorher ist ein Artikel des Shops (hasRadar) – Blitz, Bußgeld
+      // und Foto gibt es mit ihm und ohne ihn.
+      if (this.hasRadar && !b.announced && p.s > b.limitS - RADAR.ahead) {
         b.announced = true;
-        this.say(BOARD.blitzer, 'wink');
+        this.audio.radar();
+        this.later(RADAR.lead, () => this.say(BOARD.blitzer, 'wink'));
       }
       if (!b.checked && p.s > b.camS) {
         b.checked = true;
@@ -1186,6 +1237,9 @@ export class Game {
             this.ui.photo(kmh, clock);
           });
           this.burst(CHAT.blitzer, 3, 2);
+          // ab und zu stichelt danach jemand: ohne Radarwarner mit einem Wink zum Shop, mit ihm erst recht (pick statt
+          // chatLine: mit und ohne Kästchen gleich viele Zufallszahlen – der Stream verläuft sonst genau gleich)
+          if (chance(0.5)) this.later(rand(2.4, 3.6), () => this.chat(pick(this.hasRadar ? CHAT.radarTrotz : CHAT.radarFehlt)));
           this.cockpit.nomi.setMood('surprised', 2);
           // teuer für Mini Adam, aber der Chat liebt das Foto
           this.eco.cheer('blitzerFlash');
@@ -1229,10 +1283,8 @@ export class Game {
         const t = this.ui.toast(lm.type === 'brunnen' ? `⛲ Ein Brunnen! Hupen für BrunnenTV (${key})` : `👑 Elsa! Hupen zum Grüßen (${key})`, 'info');
         if (elsa) this.elsaToast(lm, t);
       }
-      // Elsas Hinweise stehen nur, solange sie zu sehen ist (mindestens kurz, damit sie nicht nur aufblitzen),
-      // und nie über ihrem Kopf
-      const age = lm.toast ? this.t - lm.toastT : 0;
-      if (lm.toast && ((!view.visible && age > 1.2) || (view.covered && age > 0.4))) this.elsaToast(lm, null);
+      // Elsas Hinweise stehen nur, solange sie zu sehen ist (mindestens kurz, damit sie nicht nur aufblitzen)
+      if (lm.toast && !view.visible && this.t - lm.toastT > 1.2) this.elsaToast(lm, null);
       if (!lm.greeted && (elsa ? lm.seen : d < 220) && d > -40 && this.t - this.lastHorn < 0.3) {
         lm.greeted = true;
         if (lm.type === 'brunnen') {
@@ -1283,22 +1335,7 @@ export class Game {
     const fov = ((camera?.fov || 58) * Math.PI) / 180;
     const clear = (4.3 * scale) / (0.08 * Math.tan(fov / 2));
     const show = Math.min(175, Math.max(clear, side / Math.tan(ELSA_VIEW) + p.speed * 1.5));
-    // Liegt ihr Kopf auf dem Bildschirm schon unter dem Hinweis (hochkant oder wenn die Mittelspalte
-    // weiter unten beginnt), kommt der Hinweis weg, sonst verdeckt er Krone und Augen.
-    let covered = false;
-    const r = lm.toast && camera && d > 0 ? lm.toast.el.getBoundingClientRect() : null;
-    if (r && r.width > 0) {
-      const W = window.innerWidth;
-      const H = window.innerHeight;
-      const at = (dx, y) => {
-        const v = curvePoint(elsaTmp.set(x + dx * scale, y * scale, -d)).project(camera);
-        return [((v.x + 1) / 2) * W, ((1 - v.y) / 2) * H];
-      };
-      const [l, top] = at(-ELSA_HEAD.half, ELSA_HEAD.top);
-      const [rt, chin] = at(ELSA_HEAD.half, ELSA_HEAD.chin);
-      covered = l < r.right + 6 && rt > r.left - 6 && top < r.bottom + 6 && chin > r.top - 6;
-    }
-    return { visible, show, covered };
+    return { visible, show };
   }
 
   /** Wie man hupt – passend zum Gerät, mit dem gerade gespielt wird. */
@@ -1390,7 +1427,7 @@ export class Game {
       this.audio.record();
       this.onMood('proud', 1);
       this.burst(CHAT.record, 4, 2.5);
-      this.ui.banner('🏆 Neuer Zuschauerrekord!', 3.5);
+      this.ui.toast('🏆 Neuer Zuschauerrekord!', 'good');
       if (this.up.konfetti) this.cockpit.addConfetti(30);
     }
   }
@@ -1496,7 +1533,7 @@ export class Game {
   finishSammel(S, sum) {
     this.sammel = null;
     this.bot('claudia', `Sammelaktion »${S.name}« geschafft: ${fmtCent(sum)} gesammelt! 🎉`);
-    this.ui.banner(`🎉 Sammelaktion geschafft: ${S.name}`, 3.5);
+    this.ui.toast(`🎉 Sammelaktion geschafft: ${S.name}`, 'good');
     this.audio.record();
     this.eco.cheer('funny');
     this.burst(CHAT.sammelDone, 3, 2.5);
@@ -1718,7 +1755,7 @@ export class Game {
         j.progress = 1;
         changed = true;
         last = j;
-        this.ui.toast(`✅ Job erledigt: ${j.text}`, 'good');
+        this.ui.jobDone(j.text);
         this.audio.chime();
         this.chat(pick(CHAT.fiveJobs));
         // Geld gibt es, weil jemand genau das versprochen hat – und Wort hält
@@ -1738,7 +1775,7 @@ export class Game {
         this.onMood('proud', 1);
         this.later(2.4, () => this.donate(A.pledger, A.pledge, '', { label: 'Challenges', line: `${A.pledger} hatte ${fmtBetrag(A.pledge)} auf alle fünf Jobs gesetzt – und zahlt mit Freuden!` }));
         this.audio.record();
-        this.ui.banner('🏆 Alle 5 Jobs erledigt!', 4);
+        this.ui.jobDone();
       });
     }
   }
@@ -1853,14 +1890,18 @@ export class Game {
     const was = this.travel && this.travel.trip === trip ? this.travel : null;
     const ds = was ? trip.s - was.s : 0;
     const m = was ? (trip.km - was.km) * 1000 : 0;
-    const secs = !was ? 0 : ds > 1e-6 ? (was.dt * m) / ds : was.dt;
+    // rückwärts und auf schon gefahrener Straße (keine neuen Reisemeter) läuft die Uhr wie im Stand
+    const secs = !was ? 0 : ds > 1e-6 && m > 0 ? (was.dt * m) / ds : was.dt;
     this.travel = { trip, s: trip.s, km: trip.km, dt };
     return { secs, m };
   }
 
-  /** Die gefahrene Strecke auf jedem Schirm (Meter): in der XXL-Welt der Kilometerzähler der Fahrt, sonst die Straße. */
+  /**
+   * Die gefahrene Strecke auf jedem Schirm (Meter): in der XXL-Welt der Kilometerzähler der Fahrt, sonst die Straße bis
+   * zum weitesten Punkt (rückwärts und wieder vorwärts bis dorthin zählt nichts, siehe revDebt).
+   */
   get odometer() {
-    return this.worldNavi ? this.world.trip().km * 1000 : this.player.s;
+    return this.worldNavi ? this.world.trip().km * 1000 : this.player.s + (this.revDebt || 0);
   }
 
   /** Sendezeit in Sekunden: klassisch die gespielte Zeit, in der XXL-Welt die Reisezeit seit 18 Uhr (start). */
@@ -1876,6 +1917,7 @@ export class Game {
     return {
       dark: W.level > 0.45,
       battery: p.battery,
+      gear: p.gear,
       speedKmh: p.kmh,
       limit,
       playerX: p.x,

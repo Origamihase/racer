@@ -732,9 +732,10 @@ for (const { driver, m } of rows) {
 // Härtetest: Bieterduell auf den letzten Metern
 {
   if (LOG) console.log(DUELLIST.name + ':');
-  // (Startwert so gewählt, dass der Stream alles Verlangte enthält: 15 Duelle, 4 Ankünfte, 5× vorbeigerollt, 1× knapp
-  // hinter dem Haltepunkt – wer an den Bieterregeln dreht, verschiebt den Zufall und sucht hier notfalls neu)
-  const m = stream(DUELLIST, HOURS, 823);
+  // (Startwert so gewählt, dass der Stream alles Verlangte enthält: 21 Duelle, 6 Ankünfte, 4× vorbeigerollt, 1× knapp
+  // hinter dem Haltepunkt – wer an den Bieterregeln dreht oder an den Listen, aus denen das Spiel würfelt (zuletzt drei
+  // neue Sprachdurchsagen), verschiebt den Zufall und sucht hier notfalls neu)
+  const m = stream(DUELLIST, HOURS, 827);
   console.log(
     `${DUELLIST.name}: ${fmt(m.hours)} h, ${m.duels} Duelle auf den letzten 150 m, ${m.bids} Gebote · danach ${m.arrivals}× am Brunnen gestanden (BrunnenTV;` +
       ` ${m.late2}× knapp hinter dem Haltepunkt), ${m.rolled}× vorbeigerollt, ${m.duels - m.spots}× war das Ziel am Brunnen gerade ein anderes` +

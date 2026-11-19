@@ -42,13 +42,14 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
   Rempler kosten Karosserie-Punkte. Leerer Akku oder zu viel Blechschaden beendet die Fahrt.
 - **Live-Chat und Live-Bereich:** Spenden mit Alter-Skala, Sprachdurchsagen, gekaufte Rahmen
   (Rosen, Sonnenblumen, Pappkartons …), Funklöcher, Polizei Gifhorn, Blitzer mit Polaroid,
-  Brunnen und Elsa am Straßenrand, Bananensaft und Koriander – und ab und zu ein lächerliches
+  Brunnen und die blaue Plüsch-Elsa mit Krönchen und Schärpe am Straßenrand, Bananensaft und Koriander – und ab und zu ein lächerliches
   „5 Cent, wenn du …“-Angebot, auf das Mini Adam natürlich nie eingeht (der Chat legt höchstens 2 Cent drauf).
 - **You had 5 Jobs:** Pro Fahrt fünf kleine Aufgaben. Für jede verspricht ein Zuschauer eine Spende
   („Wenn du 200 km/h fährst, spende ich 20 €!“), für alle fünf legt noch jemand ordentlich drauf.
 - **Tesla-Shop:** Mit den Stream-Einnahmen rüstest du den Tesla auf: Beschleunigung, Tempo-Freischaltung,
-  Akku-Puffer, Stream-Technik, Sportreifen, Plüsch-Polster, Wischer-Firmware (Beta), Megafon,
-  Satelliten-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone.
+  Akku-Puffer, Stream-Technik, Sportreifen, Plüsch-Polster, Wischer-Firmware (Beta), Megafon, Radarwarner,
+  Satelliten-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone. Blitzer kommen
+  unangekündigt – nur wer den Radarwarner an Bord hat, hört es vorher piepen und NOMI warnen.
 - **Abspann** mit Abrechnung, Statistik, Blitzerfotos, erlogener Berufsbezeichnung des Tages und einem
   „Danke an“ – größte Spende, wer Abos verschenkt hat und wer neu VIP geworden ist.
 
@@ -59,6 +60,7 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 | Lenken | ← → oder A D | Linker Stick | ◀ ▶ |
 | Strom geben | ↑ oder W | RT oder Steuerkreuz ↑ | Strom |
 | Bremsen | ↓ oder S | LT oder Steuerkreuz ↓ | Bremse |
+| Rückwärtsgang: im Stand die Bremse halten (½ s), zurück in D mit Strom | ↓ oder S | LT oder Steuerkreuz ↓ | Bremse |
 | Hupen (Brunnen und Elsa grüßen) | Leertaste | A | 📯 |
 | Scheibenwischer von Hand | E | X | 🌧️ |
 | Megafon (aus dem Shop) | H | Y | 📢 |

@@ -332,6 +332,9 @@ export function limitsFor(trip, out, stop = null) {
   out.vmax = P.limit > 0 ? P.limit / 3.6 : Infinity;
   out.decel = 0;
   out.slack = LIMIT_SLACK;
+  // rückwärts höchstens bis an den Anfang des eigenen Abschnitts: Gabelung, Einfädeln, Ortsmitte und Überfahrt dahinter
+  // sind entschieden und gezählt (trip.update meldet sie nur vorwärts, und nur einmal)
+  out.back = P.sec.s0 + 1;
   capOver(trip.cur.sections, s, out);
   const f = P.sec.fork;
   if (f && !f.taken && f.branch && (f.forced || (P.decel && trip.x > J.laneEdge))) capOver(f.branch.sections, s, out);
@@ -358,6 +361,8 @@ export function autoDrive(ctl, p, want, vmax, kappa) {
   const v = Math.min(vmax, AUTO.cruise, Math.max(AUTO.slow, Math.sqrt(AUTO.lat / Math.max(Math.abs(kappa), 1e-5))));
   ctl.throttle = p.speed < v - 0.5 ? 0.7 : 0;
   ctl.brake = p.speed > v + 3 ? 0.4 : 0;
+  // der Autopilot legt nie den Rückwärtsgang ein
+  ctl.reverse = false;
 }
 
 /**
