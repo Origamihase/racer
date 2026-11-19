@@ -574,15 +574,15 @@ export class XxlWorld {
   }
 
   /**
-   * Der Ort einer Ortsdurchfahrt aus dem Stadtbaukasten (Standard: der Abschnitt des Wagens, sonst der nächste Ort
-   * voraus) für Navi-Karte und Brunnen-Szene, siehe Towns.of: { place, sec, plan, group } oder null. plan.layout ist
-   * der Lageplan in Ortskoordinaten (x wie die Straße, z = −(s − sec.s0)), plan.fountains die Brunnen ([0]: der
-   * Zielbrunnen), group.fountainsInView / watchFountains melden Brunnen im Blick (Weltkoordinaten nach der Krümmung).
+   * Der Ort einer Ortsdurchfahrt aus dem Stadtbaukasten (Standard: der Ort, in dem der Wagen fährt, sonst der nächste
+   * voraus auf seinem Weg; Orte hinter einer Ausfahrt zählen erst, wenn er abgebogen ist) für Navi-Karte und
+   * Brunnen-Szene, siehe Towns.of: { place, sec, plan, group } oder null. plan.layout ist der Lageplan in
+   * Ortskoordinaten (x wie die Straße, z = −(s − sec.s0)), plan.fountains die Brunnen ([0]: der Zielbrunnen),
+   * group.fountainsInView / watchFountains melden Brunnen im Blick (Weltkoordinaten nach der Krümmung).
    */
   town(sec = null) {
     if (sec) return this.towns.of(sec);
-    const all = this.towns.list();
-    return all.find((t) => t.sec.s1 > this.s) ?? null;
+    return this.towns.list().find((t) => t.path === this.trip.cur && t.sec.s1 > this.s) ?? null;
   }
 
   info() {

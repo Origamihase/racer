@@ -152,13 +152,14 @@ export class Towns {
       const q = 1 / (1 + sh.b * sh.b);
       g.matrix.set(q, 0, -sh.b, xr + sh.a + sh.b * d0 - q * xr, 0, 1, 0, 0, sh.b * q, 0, 1, -d0 - sh.b * q * xr, 0, 0, 0, 1);
       g.matrixWorldNeedsUpdate = true;
-      const near = d0 < BUILD_NOW && d0 + it.plan.len > -XXL_BEHIND;
+      // hinter dem Wagen zählt ein Ort, solange sein Ende im Sichtbereich liegt
+      const here = d0 + it.plan.len > -XXL_BEHIND;
       if (g.pending) {
         // unterwegs wächst ein Ort weit voraus Teil für Teil; wer mitten hinein gesetzt wird, sieht ihn fertig
-        if (near) while (g.step());
+        if (here && d0 < BUILD_NOW) while (g.step());
         else if (g.pendingFar || d0 < BUILD_NEAR) g.step();
       }
-      if (d0 < ALIVE && d0 + it.plan.len > -XXL_BEHIND) g.update(t);
+      if (here && d0 < ALIVE) g.update(t);
     }
   }
 

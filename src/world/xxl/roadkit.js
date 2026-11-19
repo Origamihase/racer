@@ -32,7 +32,8 @@ export const VIS = {
   rampe: { aL: 6.5, aR: 11.5, eL: 6.9, eR: 11.1, ewL: 0.25, ewR: 0.25, mid: null, rails: true, verge: VERGE, kerb: 0 },
   verbindung: { aL: 3.25, aR: 11.25, eL: 3.65, eR: 10.85, ewL: 0.25, ewR: 0.25, mid: { x: 7.25, w: 0.15, dash: 6, period: 18 }, rails: true, verge: VERGE, kerb: 0 },
   land: { aL: 3.25, aR: 11.25, eL: 3.5, eR: 11.0, ewL: 0.13, ewR: 0.13, mid: { x: 7.25, w: 0.13, dash: 4, period: 12 }, rails: false, verge: VERGE + 0.5, kerb: 0 },
-  stadt: { aL: 3.9, aR: 11.0, eL: 3.9, eR: 11.0, ewL: 0, ewR: 0, mid: { x: 7.375, w: 0.12, dash: 3, period: 9 }, rails: false, verge: 0, kerb: 1 },
+  // Ortsdurchfahrt: die Bordsteinkanten des Stadtbaukastens (kit/layout.js STREET), dessen Orte an ihr stehen
+  stadt: { aL: STREET.curbL, aR: STREET.curbR, eL: STREET.curbL, eR: STREET.curbR, ewL: 0, ewR: 0, mid: { x: 7.375, w: 0.12, dash: 3, period: 9 }, rails: false, verge: 0, kerb: 1 },
 };
 // der Standstreifen der Autobahn (Verzögerungs- bzw. Beschleunigungsstreifen) als Querschnitt: Linien wie in der
 // Autobahntextur (rechte Fahrbahnbegrenzung 7,5–7,8, äußerer Rand 10,15–10,35), Planke bei AB_RAIL

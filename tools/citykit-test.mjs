@@ -284,6 +284,13 @@ for (const p of places) {
 const THREE = await import('three');
 const { Towns } = await import('../src/world/xxl/towns.js');
 {
+  // ein Querschnitt für Straßenbau, Spiel und Baukasten: Bordsteinkanten und die Spur des Wagens
+  const { VIS } = await import('../src/world/xxl/roadkit.js');
+  const { PROFILES } = await import('../src/game/trip.js');
+  ok(VIS.stadt.aL === L.STREET.curbL && VIS.stadt.aR === L.STREET.curbR, 'XXL-Ort: Bordsteinkanten des Straßenbaus sind nicht die des Baukastens');
+  ok(PROFILES.stadt.lanes[0].x === L.STREET.lane, 'XXL-Ort: die Spur des Wagens im Ort ist nicht die des Baukastens');
+}
+{
   const root = new THREE.Group();
   const towns = new Towns(root);
   const p = places.find((q) => q.name === 'Frankfurt am Main') ?? places[0];
