@@ -1204,6 +1204,9 @@ export class Game {
             this.ui.photo(kmh, clock);
           });
           this.burst(CHAT.blitzer, 3, 2);
+          // ab und zu stichelt danach jemand: ohne Radarwarner mit einem Wink zum Shop, mit ihm erst recht (pick statt
+          // chatLine: mit und ohne Kästchen gleich viele Zufallszahlen – der Stream verläuft sonst genau gleich)
+          if (chance(0.5)) this.later(rand(2.4, 3.6), () => this.chat(pick(this.hasRadar ? CHAT.radarTrotz : CHAT.radarFehlt)));
           this.cockpit.nomi.setMood('surprised', 2);
           // teuer für Mini Adam, aber der Chat liebt das Foto
           this.eco.cheer('blitzerFlash');

@@ -325,6 +325,11 @@ export const CHAT = {
   funklochBack: ['✔️', '✔️', '✔️ Bild ist wieder da', 'Da ist es wieder ✔️'],
   frog: ['🐸', '🐸🐸', 'Frosch!', '🐸 HDMI-Kabel?'],
   blitzer: ['📸', 'Lächeln! 📸', 'Das Foto kommt in einen Rahmen', 'Tschüss, du Betrüger!', 'Teures Selfie'],
+  // nach einem Blitz stichelt ab und zu jemand: ohne Radarwarner mit einem Wink zum Shop, mit ihm erst recht
+  radarFehlt: ['Ein Radarwarner hätte jetzt gepiept', 'Im Tesla-Shop gibt es Radarwarner 😏', 'Radarwarner wann? 📟',
+    'Mit Radarwarner wäre das nicht passiert'],
+  radarTrotz: ['Trotz Radarwarner 😂', 'Der hat doch gepiept?!', 'Gepiept, geblinkt, geblitzt 📟📸',
+    'Der Radarwarner hat alles gegeben'],
   elefant: ['Elefantenrennen 🐘🐘', 'Das dauert…', 'Überholverbot wann?', 'Die stehen ja fast'],
   trunk: ['Kofferraum auf! 😂', 'Was ist da drin?', 'Bitspende-Eskalation', 'Konfetti im Kofferraum?'],
   brunnen: ['BRUNNENTV!!!', 'Herr Schönnbrun!', 'Brunnen gesichtet! ⛲', 'Neue Folge BrunnenTV!'],

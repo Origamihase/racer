@@ -500,6 +500,7 @@ export class Menus {
         ? 'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Cent drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV.'
         : 'Das Navi-Ziel ändert sich ständig – jeder Bieter legt mindestens einen Cent drauf. Kommst du trotzdem an, feiert der Chat mit Ortsspenden.',
       ...(reise ? ['Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.'] : []),
+      'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Tesla-Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
       'Lade-Ringe füllen den Akku. Bananensaft ist super, Koriander leider nicht.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',

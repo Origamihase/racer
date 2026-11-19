@@ -8,6 +8,8 @@
 // - Mit Radarwarner: genau eine Ansage je Blitzer, vor dem Tempo-120-Schild – erst piept das Kästchen, dann kommen
 //   NOMIs Gong und ihr Satz; das Lämpchen blinkt vom Piepen bis zum Blitzer; wer zu schnell ist, wird trotzdem
 //   geblitzt. Zwei Blitzer: zwei Ansagen.
+// - Nach einem Blitz stichelt der Chat in etwa jedem zweiten Stream: ohne Radarwarner mit einem Wink zum Shop, mit
+//   ihm erst recht – höchstens eine Zeile je Blitz, nie vor dem Foto, nie nach einer braven Vorbeifahrt.
 // - Derselbe Stream mit und ohne Radarwarner: Kasse, Abrechnung und Statistik stimmen auf den Cent überein.
 // - Der Artikel: steht im Shop, hat eine Stufe, übersteht Speichern und Laden; alte Spielstände laden unverändert.
 import { Game } from '../src/game/game.js';
@@ -263,6 +265,32 @@ const twoPlain = stream({ kmh: 150, cameras: 2 });
 unannounced(twoPlain, 'ohne, zwei Blitzer');
 flashed(twoPlain, 'ohne, zwei Blitzer', 150);
 
+// --- 5. Nach einem Blitz stichelt der Chat ab und zu ------------------------------------------------------------------------
+{
+  const teases = (r) => calls(r, 'ui', 'chat').filter((e) => CHAT.radarFehlt.includes(e.args[0].text) || CHAT.radarTrotz.includes(e.args[0].text));
+  const SEEDS = 40;
+  let teased = 0;
+  for (let seed = 1; seed <= SEEDS; seed++) {
+    const plain = stream({ kmh: 150, seed });
+    const boxed = stream({ radar: 1, kmh: 150, seed });
+    const a = teases(plain);
+    const b = teases(boxed);
+    ok(a.length <= 1 && b.length === a.length, `Stichelei, Stream ${seed}: ohne Radarwarner ${a.length} Zeilen, mit ihm ${b.length} (höchstens eine, beide Male gleich viele)`);
+    ok(a.every((e) => CHAT.radarFehlt.includes(e.args[0].text)), `Stichelei, Stream ${seed}: ohne Radarwarner steht „${a[0]?.args[0].text}“ im Chat`);
+    ok(b.every((e) => CHAT.radarTrotz.includes(e.args[0].text)), `Stichelei, Stream ${seed}: mit Radarwarner steht „${b[0]?.args[0].text}“ im Chat`);
+    // erst wenn das Foto da ist – vor dem Blitzer wäre sie eine Vorwarnung
+    for (const [r, list] of [[plain, a], [boxed, b]]) {
+      const photo = calls(r, 'ui', 'photo')[0];
+      ok(list.every((e) => photo && e.t > photo.t + 1 && e.s > r.zones[0].camS), `Stichelei, Stream ${seed}: Sie kommt nicht nach dem Foto`);
+    }
+    ok(plain.game.money === boxed.game.money && same(plain.game.stats, boxed.game.stats), `Stichelei, Stream ${seed}: Kasse oder Statistik weichen mit Radarwarner ab`);
+    teased += a.length;
+  }
+  ok(teased >= SEEDS * 0.3 && teased <= SEEDS * 0.7, `Der Chat stichelt in ${teased} von ${SEEDS} Streams – gedacht ist etwa jeder zweite`);
+  // brav vorbei: niemand stichelt
+  ok(teases(slowPlain).length === 0 && teases(slowRadar).length === 0, 'Der Chat stichelt, obwohl es nicht geblitzt hat');
+}
+
 // --- Derselbe Stream mit und ohne Radarwarner: Kasse, Abrechnung, Statistik, Jobs ------------------------------------------
 for (const [a, b, what] of [[fastPlain, fastRadar, '150'], [slowPlain, slowRadar, '110'], [twoPlain, twoRadar, 'zwei Blitzer']]) {
   ok(a.game.money === b.game.money && same(a.game.breakdown, b.game.breakdown), `${what}: Kasse ohne ${a.game.money.toFixed(2)} €, mit ${b.game.money.toFixed(2)} €`);
@@ -274,7 +302,7 @@ for (const [a, b, what] of [[fastPlain, fastRadar, '150'], [slowPlain, slowRadar
 // Der Job „An einem Blitzer vorbei, ohne geblitzt zu werden“ zählt wie immer (stat blitzerClean)
 ok(slowPlain.game.stats.blitzerClean === 1 && slowRadar.game.stats.blitzerClean === 1 && fastRadar.game.stats.blitzerClean === 0, 'Der Blitzer-Job zählt anders');
 
-// --- 5. Der Artikel und der Spielstand ---------------------------------------------------------------------------------------
+// --- 6. Der Artikel und der Spielstand ---------------------------------------------------------------------------------------
 {
   const i = SHOP.findIndex((x) => x.id === 'radar');
   const it = SHOP[i];

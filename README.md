@@ -47,8 +47,9 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 - **You had 5 Jobs:** Pro Fahrt fünf kleine Aufgaben. Für jede verspricht ein Zuschauer eine Spende
   („Wenn du 200 km/h fährst, spende ich 20 €!“), für alle fünf legt noch jemand ordentlich drauf.
 - **Tesla-Shop:** Mit den Stream-Einnahmen rüstest du den Tesla auf: Beschleunigung, Tempo-Freischaltung,
-  Akku-Puffer, Stream-Technik, Sportreifen, Plüsch-Polster, Wischer-Firmware (Beta), Megafon,
-  Satelliten-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone.
+  Akku-Puffer, Stream-Technik, Sportreifen, Plüsch-Polster, Wischer-Firmware (Beta), Megafon, Radarwarner,
+  Satelliten-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone. Blitzer kommen
+  unangekündigt – nur wer den Radarwarner an Bord hat, hört es vorher piepen und NOMI warnen.
 - **Abspann** mit Abrechnung, Statistik, Blitzerfotos, erlogener Berufsbezeichnung des Tages und einem
   „Danke an“ – größte Spende, wer Abos verschenkt hat und wer neu VIP geworden ist.
 
