@@ -9,6 +9,27 @@ import { NaviScreen } from '../map/navview.js';
 const CW = 1024;
 const CH = 640;
 const SPLIT = 372;
+// Linien der Spuransicht (Meter quer zur Fahrbahn): die vier Spuren der Autobahn
+const AB_EDGES = [-7.5, -3.75, 0, 3.75, 7.5];
+// Breite von Verzögerungs- und Beschleunigungsstreifen der XXL-Welt (rechts neben der rechten Spur)
+const EXTRA_LANE = 3;
+const ascending = (a, b) => a - b;
+
+/**
+ * Linien der Spuransicht für einen Querschnitt der XXL-Welt: road = {lanes: [{x, w}] wie PROFILES in
+ * src/game/trip.js, extraLane: Mitte des Zusatzstreifens oder null}. Schreibt die Ränder aller Spuren von links nach
+ * rechts in out (gemeinsame Ränder benachbarter Spuren einmal) und liefert out.
+ */
+function roadEdges(road, out) {
+  out.length = 0;
+  for (const l of road.lanes) out.push(l.x - l.w / 2, l.x + l.w / 2);
+  if (road.extraLane !== null) out.push(road.extraLane + EXTRA_LANE / 2);
+  out.sort(ascending);
+  let n = 0;
+  for (let i = 0; i < out.length; i++) if (!n || out[i] - out[n - 1] > 0.01) out[n++] = out[i];
+  out.length = n;
+  return out;
+}
 
 const LIGHT = {
   bg: '#eceef0', panel: '#f4f5f6', text: '#1d1f22', sub: '#6b7078', lane: '#c3c7cc', car: '#9aa0a8',
@@ -39,6 +60,7 @@ export class CenterScreen {
     this.acc = 0;
     this.spin = 0;
     this.featureCache = new Map();
+    this.edges = []; // Linien der Spuransicht in der XXL-Welt (roadEdges), wiederverwendet
   }
 
   update(dt, st) {
@@ -156,9 +178,14 @@ export class CenterScreen {
     ctx.beginPath();
     ctx.rect(0, top, SPLIT, CH - top);
     ctx.clip();
-    // Fahrbahnränder und Leitlinien
-    const laneEdges = [-7.5, -3.75, 0, 3.75, 7.5];
-    if (st.leftLane > 0) {
+    // Fahrbahnränder und Leitlinien: klassisch die vier Spuren der Autobahn. Die XXL-Welt meldet den Querschnitt, auf
+    // dem der Wagen gerade fährt (st.road): Rampe, Landstraße und Ortsstraße haben andere Spuren, und die gesperrte
+    // linke Spur, das Rechtsfahrgebot und der Verkehr der Autobahn gehören nur auf die Autobahn
+    const road = st.road && st.road.lanes ? st.road : null;
+    const onAb = !road || road.autobahn;
+    const laneEdges = road ? roadEdges(road, this.edges) : AB_EDGES;
+    const last = laneEdges.length - 1;
+    if (onAb && st.leftLane > 0) {
       ctx.fillStyle = `rgba(62,120,255,${0.25 + 0.15 * Math.sin(this.spin * 6)})`;
       ctx.beginPath();
       let p = proj(-7.5 - px, -18);
@@ -175,8 +202,8 @@ export class CenterScreen {
     }
     laneEdges.forEach((lx, i) => {
       ctx.strokeStyle = T.lane;
-      ctx.lineWidth = i === 0 || i === 4 ? 4 : 3;
-      ctx.setLineDash(i === 0 || i === 4 ? [] : [14, 14]);
+      ctx.lineWidth = i === 0 || i === last ? 4 : 3;
+      ctx.setLineDash(i === 0 || i === last ? [] : [14, 14]);
       ctx.beginPath();
       for (let d = -18; d <= 120; d += 4) {
         const p = proj(lx - px, d);
@@ -186,14 +213,14 @@ export class CenterScreen {
       ctx.stroke();
     });
     ctx.setLineDash([]);
-    if (st.leftLane <= 0) {
+    if (onAb && st.leftLane <= 0) {
       const p = proj(-5.625 - px, 40);
       ctx.font = `${Math.round(30 * p[2] + 12)}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText('🔒', p[0], p[1]);
     }
     // andere Fahrzeuge (hinten zuerst … vorne zuletzt, damit nahe oben liegen)
-    const cars = (st.cars || []).filter((c) => c.ds > -18 && c.ds < 120).sort((a, b) => b.ds - a.ds);
+    const cars = ((onAb && st.cars) || []).filter((c) => c.ds > -18 && c.ds < 120).sort((a, b) => b.ds - a.ds);
     for (const c of cars) {
       const p0 = proj(c.dx - px, c.ds - c.len / 2);
       const p1 = proj(c.dx - px, c.ds + c.len / 2);
@@ -232,10 +259,10 @@ export class CenterScreen {
     if (dmg) {
       ctx.fillStyle = dmg.color;
       fitText(ctx, dmg.text, SPLIT / 2, CH - 86, SPLIT - 28);
-    } else if (st.leftLane > 0) {
+    } else if (onAb && st.leftLane > 0) {
       ctx.fillStyle = '#2f6fe4';
       ctx.fillText('Linke Spur frei · ' + Math.ceil(st.leftLane) + ' s', SPLIT / 2, CH - 86);
-    } else {
+    } else if (onAb) {
       ctx.fillStyle = T.sub;
       ctx.fillText('Rechtsfahrgebot aktiv', SPLIT / 2, CH - 86);
     }

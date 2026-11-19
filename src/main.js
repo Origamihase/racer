@@ -1706,6 +1706,12 @@ function step(dt, { render = true } = {}) {
       xxlScreenNav.clockMin = game.clock;
       xxlScreenNav.visible = cockpitOn;
       scr.nav = xxlScreenNav;
+      // die Spuransicht daneben zeigt den Querschnitt, auf dem der Wagen fährt (Rampe, Landstraße, Ort), und die
+      // gesperrte linke Spur samt Verkehr nur auf der Autobahn
+      xxlScreenRoad.lanes = xxlLimits.lanes;
+      xxlScreenRoad.extraLane = xxlLimits.extraLane;
+      xxlScreenRoad.autobahn = !game.offAutobahn;
+      scr.road = xxlScreenRoad;
     }
     if (scr && scr.nav) {
       scr.nav.visited = save.visits;
@@ -1789,6 +1795,8 @@ let xxlNav = null;
 // was der Mittelbildschirm davon bekommt (st.nav, src/map/navview.js). Einen Bieter gibt es erst, wenn auf echte Orte
 // geboten wird; die Uhr ist bis dahin die klassische, mit deren Maßstab navview.js die Ankunftszeit ohnehin rechnet
 const xxlScreenNav = { model: null, bidder: '', bid: '', clockMin: 0, visible: false, visited: null };
+// und von der Straße für die Spuransicht (st.road, src/cockpit/screen.js)
+const xxlScreenRoad = { lanes: null, extraLane: null, autobahn: true };
 /** Neue Fahrt (Erlensee) bzw. Titel: der Titel fährt gleich auf der ersten Autobahn (die Kamera kreist dort). */
 function xxlStart(title) {
   const p = game.player;
