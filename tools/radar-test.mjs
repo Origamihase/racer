@@ -5,8 +5,9 @@
 // - Ohne Radarwarner, zu schnell: Bis zum Blitzer fällt nirgends ein Wort über ihn (Sprache, Untertitel, Hinweise,
 //   Chat, Navi), kein Piepen, kein Lämpchen – und dann blitzt es wie immer: Foto, 15 € Bußgeld, Statistik, Chat.
 // - Ohne Radarwarner, brav: keine Ansage; „Nicht geblitzt“ zählt und wird gelobt.
-// - Mit Radarwarner: genau eine Ansage je Blitzer, vor dem Tempo-120-Schild; das Lämpchen blinkt von der Ansage bis
-//   zum Blitzer; wer zu schnell ist, wird trotzdem geblitzt. Zwei Blitzer: zwei Ansagen.
+// - Mit Radarwarner: genau eine Ansage je Blitzer, vor dem Tempo-120-Schild – erst piept das Kästchen, dann kommen
+//   NOMIs Gong und ihr Satz; das Lämpchen blinkt vom Piepen bis zum Blitzer; wer zu schnell ist, wird trotzdem
+//   geblitzt. Zwei Blitzer: zwei Ansagen.
 // - Derselbe Stream mit und ohne Radarwarner: Kasse, Abrechnung und Statistik stimmen auf den Cent überein.
 // - Der Artikel: steht im Shop, hat eine Stufe, übersteht Speichern und Laden; alte Spielstände laden unverändert.
 import { Game } from '../src/game/game.js';
@@ -14,6 +15,8 @@ import { BOARD, CHAT, SHOP, UPGRADE_LIMITS } from '../src/data.js';
 import { loadSave, storeSave } from '../src/save.js';
 
 const DT = 1 / 30;
+// so viele Meter vor dem Tempo-120-Schild schlägt der Radarwarner an (wie NOMIs Hinweis bisher)
+const AHEAD = 180;
 let fails = 0;
 let checks = 0;
 function ok(cond, msg) {
@@ -197,19 +200,30 @@ function clean(r, what) {
   r.zones.forEach((z, i) => ok(praise[i] && praise[i].s > z.camS && praise[i].s <= z.camS + r.step + 1e-6, `${what}: Das Lob kommt nicht am Blitzer`));
 }
 
-/** Der Radarwarner sagt jeden Blitzer genau einmal an, vor dem Schild; sein Lämpchen blinkt bis zum Blitzer. */
+/**
+ * Der Radarwarner sagt jeden Blitzer genau einmal an, vor dem Schild: Das Kästchen piept, dann kommen NOMIs Gong und
+ * ihr Satz; sein Lämpchen blinkt vom Piepen bis zum Blitzer.
+ */
 function announced(r, what) {
   const n = r.zones.length;
   const said = spoken(r);
   const subs = subtitled(r);
+  const beeps = calls(r, 'audio', 'radar');
+  const gongs = calls(r, 'audio', 'nomiChime');
   ok(said.length === n && subs.length === n, `${what}: ${said.length} Ansagen, ${subs.length} Untertitel statt je ${n}`);
+  ok(beeps.length === n, `${what}: Es piept ${beeps.length}-mal statt ${n}-mal`);
   ok(r.lamp.length === n, `${what}: Das Lämpchen war ${r.lamp.length}-mal an statt ${n}-mal`);
   r.zones.forEach((z, i) => {
-    const from = z.limitS - 180;
+    const from = z.limitS - AHEAD;
     const e = said[i];
     ok(e && e.args[1] === 'board' && e.s > from && e.s < z.limitS, `${what}: Ansage ${i + 1} nicht zwischen ${from} und dem Schild bei ${z.limitS} (${e ? e.s.toFixed(1) : 'fehlt'})`);
+    const beep = beeps[i];
+    ok(beep && beep.s > from && beep.s <= from + r.step + 1e-6, `${what}: Das Piepen kommt nicht ${AHEAD} m vor dem Schild (${beep ? beep.s.toFixed(1) : 'fehlt'} statt ${from})`);
+    // die Reihenfolge fürs Ohr: Piepen, dann NOMIs Gong, dann ihr Satz – alles binnen gut einer Sekunde
+    const gong = beep && e && gongs.find((x) => x.t > beep.t && x.t < e.t);
+    ok(!!gong && gong.t - beep.t >= 0.4 && e.t - beep.t < 1.2, `${what}: Piepen, Gong und Satz kommen nicht in dieser Reihenfolge`);
     const l = r.lamp[i];
-    ok(l && l.on > from && l.on <= from + r.step + 1e-6, `${what}: Das Lämpchen geht nicht mit der Warnung an (${l ? l.on.toFixed(1) : 'nie'} statt ${from})`);
+    ok(l && beep && l.on === beep.s, `${what}: Das Lämpchen geht nicht mit dem Piepen an (${l ? l.on.toFixed(1) : 'nie'} statt ${from})`);
     ok(l && l.off !== null && l.off > z.camS && l.off <= z.camS + r.step + 1e-6, `${what}: Das Lämpchen geht nicht am Blitzer aus (${l ? l.off : 'nie'})`);
   });
 }

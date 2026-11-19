@@ -37,8 +37,9 @@ const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
 // Brunnen (hold); wer neu Gas gibt, bremst, lenkt oder hupt, fährt sofort weiter, sobald die Karte kurz zu sehen
 // war (guard); das erste Gebot der nächsten Runde kommt frühestens pause Sekunden, nachdem der Wagen fahren darf.
 const BRUNNEN_TV = { hold: 6, guard: 0.6, pause: 1.5 };
-// Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an
-const RADAR = { ahead: 180 };
+// Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
+// Kästchen, lead Sekunden später folgen NOMIs Gong und ihre Ansage
+const RADAR = { ahead: 180, lead: 0.45 };
 
 export class Game {
   /**
@@ -1182,7 +1183,8 @@ export class Game {
       // und Foto gibt es mit ihm und ohne ihn.
       if (this.hasRadar && !b.announced && p.s > b.limitS - RADAR.ahead) {
         b.announced = true;
-        this.say(BOARD.blitzer, 'wink');
+        this.audio.radar();
+        this.later(RADAR.lead, () => this.say(BOARD.blitzer, 'wink'));
       }
       if (!b.checked && p.s > b.camS) {
         b.checked = true;
