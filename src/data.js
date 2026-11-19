@@ -779,6 +779,11 @@ export const SHOP = [
     effect: () => 'Autos vor dir wechseln die Spur',
   },
   {
+    id: 'radar', icon: '📟', name: 'Radarwarner', cat: 'Spaß', prices: [250],
+    desc: 'Ein Kästchen fürs Armaturenbrett. Es piept, und NOMI sagt jeden Blitzer an, bevor es blitzt. Ohne ihn bleibt es beim Überraschungsfoto.',
+    effect: () => 'NOMI warnt vor jedem Blitzer',
+  },
+  {
     id: 'starlink', icon: '🛰️', name: 'Satelliten-Schüssel', cat: 'Spaß', prices: [1100],
     desc: 'Wie beim ersten IRL-Stream über Satellit: keine Funklöcher, mehr Zuschauer, mehr Spenden.',
     effect: () => 'Keine Funklöcher, +25\u00a0% Zuschauer, +20\u00a0% Spenden',
