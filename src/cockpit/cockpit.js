@@ -17,6 +17,7 @@ import { WHEEL, buildWheelParts, buildColumn } from './wheel.js';
 import { mittenGeometry, forearmGeometry, upperArmGeometry, sleeveGeometry, WRIST } from './hands.js';
 import { buildRig, setLiveCrop } from './rig.js';
 import { buildProps } from './props.js';
+import { buildRadar } from './radar.js';
 import { grainTexture, weaveTexture, leatherTexture, perfTexture, walnutTexture, labelAtlas, decalAtlas, decalUV } from './cabinTextures.js';
 
 // Augenposition (Fahrzeug-Koordinaten; vorne = -z). Mini Adam sitzt auf zwei Kissen.
@@ -647,6 +648,11 @@ export class Cockpit {
     this.elsaSpring.visible = false;
     this.root.add(this.elsaSpring);
 
+    // Radarwarner (Shop): das Kästchen mit dem Lämpchen, links vom Lenkrad schräg vor Elsas Platz
+    this.radar = buildRadar(this.MS, this.shadowMat);
+    this.radar.group.visible = false;
+    this.root.add(this.radar.group);
+
     // Konfetti an der Innenseite der Scheibe (Konfetti-Kanone)
     const cGeo = new THREE.PlaneGeometry(0.012, 0.008);
     this.confetti = new THREE.InstancedMesh(cGeo, new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.6 }), 400);
@@ -700,6 +706,11 @@ export class Cockpit {
     this.elsaSpring.visible = !!v;
   }
 
+  /** Radarwarner aus dem Shop aufs Armaturenbrett stellen (oder wegnehmen). */
+  setRadar(v) {
+    this.radar.group.visible = !!v;
+  }
+
   /** Kamera-Pose (Weltkoordinaten) aus Fahrzeug-Transformation + Kopfbewegung. */
   placeCamera(camera, carMatrix, t, speed, latAcc, dt) {
     // das Abklingen von shake passiert einmal pro Bild im Hauptprogramm (auch in Drohne, Pause, Abspann)
@@ -717,7 +728,8 @@ export class Cockpit {
 
   /**
    * @param {object} st steer (-1..1), speed (m/s), latAcc, t, dt, wiperAngles [a, b], sunDir, overcast,
-   *   adam (Animationswerte der Figur, wie sie main.js für Mini Adam im Auto und in der Facecam rechnet)
+   *   adam (Animationswerte der Figur, wie sie main.js für Mini Adam im Auto und in der Facecam rechnet),
+   *   radar (warnt der Radarwarner gerade? Dann blinkt sein Lämpchen)
    */
   update(st) {
     const { dt, t } = st;
@@ -743,6 +755,7 @@ export class Cockpit {
       this.elsa.rotation.z = this.elsaWobble;
       animateElsa(this.elsa, t, this.elsaWobble);
     }
+    if (this.radar.group.visible) this.radar.update(!!st.radar, t);
     this.recLed.visible = Math.sin(t * 3.5) > -0.3;
     // Licht an Wetter/Sonne angleichen
     const o = st.overcast || 0;

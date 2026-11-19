@@ -183,6 +183,7 @@ export class Game {
     this.windshield.onEvent = (type) => this.onWiper(type);
     this.cockpit.clearConfetti();
     this.cockpit.setElsa(!!up.elsa);
+    this.cockpit.setRadar(this.hasRadar);
     this.ui.reset?.();
     this.ui.jobs(this.jobs);
     this.bot('hugo', 'Der Stream läuft! Viel Spaß beim Zuschauen.');

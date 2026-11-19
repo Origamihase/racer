@@ -586,6 +586,7 @@ function applyCosmetics() {
   tesla.setVest(!!up.weste);
   facecam.adam.setVest(!!up.weste);
   cockpit.setElsa(!!up.elsa);
+  cockpit.setRadar(!!up.radar);
 }
 
 /** Fahr-Einstellungen auf Fahrphysik, Eingabe und Touch übertragen. */
@@ -1761,7 +1762,7 @@ function step(dt, { render = true } = {}) {
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
       sunDir: sky.sunDir, overcast: cloud, adam: adamOpts,
-      screen: scr,
+      screen: scr, radar: game.radarAlarm,
     });
     if (fxState.trunk > 0) {
       fxState.trunk -= dt;
