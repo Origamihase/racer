@@ -296,6 +296,23 @@ export class Game {
     else go();
   }
 
+  /**
+   * Gang gewechselt (Player.shift): ein kurzer Ton; R sagt NOMI an (höchstens alle 20 s, sonst nur der Ton), und auf
+   * der Autobahn freut sich der Chat (höchstens alle 30 s).
+   */
+  onGear(gear) {
+    this.audio.gear(gear);
+    if (gear !== 'R') return;
+    if (this.t > (this.reverseSaid ?? -99) + 20) {
+      this.reverseSaid = this.t;
+      this.later(0.3, () => this.say(BOARD.reverse, 'talk', { priority: false }));
+    }
+    if (!this.offAutobahn && this.t > (this.reverseChat ?? -99) + 30) {
+      this.reverseChat = this.t;
+      this.burst(CHAT.rueckwaerts, 2, 3);
+    }
+  }
+
   /** Ist der Radarwarner aus dem Shop an Bord? Nur dann wird vor einem Blitzer gewarnt (siehe „Blitzer“ in update). */
   get hasRadar() {
     return !!this.up?.radar;
@@ -413,7 +430,8 @@ export class Game {
         // zu schnell für die Kurve: NOMI sagt es freundlich (höchstens alle 25 s)
         this.understeerSaid = this.t;
         this.say(damageLine('understeer'), 'worried', { priority: false });
-      }
+      } else if (e.type === 'gear') this.onGear(e.gear);
+      else if (e.type === 'reverseEnd') this.say(BOARD.reverseEnd, 'think', { priority: false });
     }
     // XXL: Uhr und Strecken zählen Reisezeit und Reisemeter (travelStep), klassisch Spielzeit und Meter der Straße
     const go = this.worldNavi ? this.travelStep(dt) : null;

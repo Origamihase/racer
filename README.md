@@ -60,6 +60,7 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 | Lenken | ← → oder A D | Linker Stick | ◀ ▶ |
 | Strom geben | ↑ oder W | RT oder Steuerkreuz ↑ | Strom |
 | Bremsen | ↓ oder S | LT oder Steuerkreuz ↓ | Bremse |
+| Rückwärtsgang: im Stand die Bremse halten (½ s), zurück in D mit Strom | ↓ oder S | LT oder Steuerkreuz ↓ | Bremse |
 | Hupen (Brunnen und Elsa grüßen) | Leertaste | A | 📯 |
 | Scheibenwischer von Hand | E | X | 🌧️ |
 | Megafon (aus dem Shop) | H | Y | 📢 |

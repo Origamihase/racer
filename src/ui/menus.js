@@ -475,6 +475,7 @@ export class Menus {
       ['Lenken', '←\u00a0→ oder A\u00a0D', 'Linker Stick', '◀\u00a0▶'],
       ['Strom geben', '↑ oder W', 'RT oder Steuerkreuz ↑', 'Strom'],
       ['Bremsen', '↓ oder S', 'LT oder Steuerkreuz ↓', 'Bremse'],
+      ['Rückwärtsgang (im Stand halten, zurück mit Strom)', '↓ oder S', 'LT oder Steuerkreuz ↓', 'Bremse'],
       ['Hupen (Brunnen & Elsa grüßen)', 'Leertaste', 'A', '📯'],
       ['Scheibenwischer von Hand', 'E', 'X', '🌧️'],
       ['Megafon (aus dem Shop)', 'H', 'Y', '📢'],
