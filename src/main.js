@@ -9,6 +9,7 @@ import { Road } from './world/road.js';
 import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy } from './world/kit/curvesigns.js';
+import { createNatureKit } from './world/kit/nature.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
@@ -1651,6 +1652,7 @@ if (DEBUG) {
       },
     },
   };
+  window.__MA.kit = { ...window.__MA.kit, nature: createNatureKit(W) };
 }
 
 /** Prüfstand: den Spieler an die Stelle s setzen (Verkehr, Sammelsachen und Landschaft neu). */

@@ -57,59 +57,81 @@ export const ROAD = {
   laneCenter: (i) => -5.625 + i * 3.75,
 };
 
+/** Weiche, kachelbare Flecken (hell oder dunkel) gegen sterile Flächen: jeder Fleck wird am Rand umgebrochen. */
+function blotches(ctx, W, H, n, rMin, rMax, colors, seed) {
+  const rnd = mulberry32(seed);
+  for (let i = 0; i < n; i++) {
+    const x = rnd() * W;
+    const y = rnd() * H;
+    const r = rMin + rnd() * (rMax - rMin);
+    const col = colors[i % colors.length];
+    for (const ox of [-W, 0, W]) {
+      for (const oy of [-H, 0, H]) {
+        if (x + ox + r < 0 || x + ox - r > W || y + oy + r < 0 || y + oy - r > H) continue;
+        const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+        g.addColorStop(0, col);
+        g.addColorStop(1, col.replace(/[\d.]+\)$/, '0)'));
+        ctx.fillStyle = g;
+        ctx.fillRect(x + ox - r, y + oy - r, 2 * r, 2 * r);
+      }
+    }
+  }
+}
+
 export function roadTexture() {
-  const W = 512;
+  const W = 1024;
   const H = 1024;
   const c = canvas(W, H);
   const ctx = c.getContext('2d');
-  noiseFill(ctx, W, H, [88, 89, 92], 26, 7, 1);
-  const px = (x) => ((x - ROAD.left) / ROAD.width) * W;
-  const py = (m) => (m / ROAD.texLength) * H;
+  // weiches, neutrales Grau mit feinem Korn
+  noiseFill(ctx, W, H, [116, 113, 106], 9, 7, 1);
+  blotches(ctx, W, H, 46, 50, 150, ['rgba(255,255,255,0.03)', 'rgba(40,42,48,0.035)'], 42);
+  // Zuschlagkörner: einzelne helle und dunkle Pünktchen
+  noiseSpeckle(ctx, W, H, 2600, 'rgba(176,176,172,0.22)', 13);
+  noiseSpeckle(ctx, W, H, 2200, 'rgba(70,72,78,0.2)', 14);
 
-  // Leichte Flicken & Längsrisse
-  const rnd = mulberry32(42);
-  for (let i = 0; i < 18; i++) {
-    const g = rnd() < 0.5 ? 64 : 112;
-    ctx.fillStyle = `rgba(${g},${g},${g + 4},${0.1 + rnd() * 0.1})`;
-    const x = rnd() * W;
-    const y = rnd() * H;
-    ctx.fillRect(x, y, 20 + rnd() * 90, 30 + rnd() * 160);
-  }
-  // Spurrillen (dunkler, wo die Reifen rollen)
+  // ab hier in Metern zeichnen (x quer, y längs)
+  ctx.setTransform(W / ROAD.width, 0, 0, H / ROAD.texLength, (-ROAD.left * W) / ROAD.width, 0);
+  const L = ROAD.texLength;
+  // Standstreifen eine Spur heller
+  ctx.fillStyle = 'rgba(255,255,255,0.045)';
+  ctx.fillRect(7.8, 0, ROAD.right - 7.8, L);
+  // sanfte Spurrillen, wo die Reifen rollen
   for (let l = 0; l < 4; l++) {
     const cx = ROAD.laneCenter(l);
-    for (const off of [-0.85, 0.85]) {
-      const g = ctx.createLinearGradient(px(cx + off - 0.4), 0, px(cx + off + 0.4), 0);
-      g.addColorStop(0, 'rgba(40,40,44,0)');
-      g.addColorStop(0.5, 'rgba(40,40,44,0.32)');
-      g.addColorStop(1, 'rgba(40,40,44,0)');
+    for (const off of [-0.88, 0.88]) {
+      const g = ctx.createLinearGradient(cx + off - 0.5, 0, cx + off + 0.5, 0);
+      g.addColorStop(0, 'rgba(52,54,60,0)');
+      g.addColorStop(0.5, 'rgba(52,54,60,0.11)');
+      g.addColorStop(1, 'rgba(52,54,60,0)');
       ctx.fillStyle = g;
-      ctx.fillRect(px(cx + off - 0.4), 0, px(cx + off + 0.4) - px(cx + off - 0.4), H);
+      ctx.fillRect(cx + off - 0.5, 0, 1, L);
     }
   }
-  // Standstreifen etwas heller/grober
-  ctx.fillStyle = 'rgba(140,140,140,0.08)';
-  ctx.fillRect(px(7.5), 0, px(ROAD.right) - px(7.5), H);
-
-  const white = '#eceae2';
-  ctx.fillStyle = white;
+  // Markierungen: klares, leicht warmes Weiß mit runden Enden und hauchdünnem dunklem Saum
+  const mark = (x, y, w, h) => {
+    const r = Math.min(w / 2, 0.075);
+    ctx.beginPath();
+    if (h >= L) ctx.rect(x, -1, w, L + 2);
+    else ctx.roundRect(x, y, w, h, r);
+    ctx.fillStyle = 'rgba(58,60,66,0.4)';
+    ctx.save();
+    ctx.translate(0.012, 0.03);
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#f6f4ec';
+    ctx.fill();
+  };
   // Leitlinien zwischen den Fahrstreifen: 6 m Strich, 12 m Lücke, 15 cm breit
   for (let l = 1; l < 4; l++) {
     const x = -7.5 + l * 3.75;
-    for (let m = 0; m < ROAD.texLength; m += 18) {
-      ctx.fillRect(px(x - 0.075), py(m), px(x + 0.075) - px(x - 0.075), py(6));
-    }
+    for (let m = 0; m < L; m += 18) mark(x - 0.075, m + 0.1, 0.15, 6);
   }
-  // Fahrbahnbegrenzung links (30 cm) und rechts zum Standstreifen (Breitstrich 30 cm)
-  ctx.fillRect(px(-7.5 - 0.3), 0, px(-7.5) - px(-7.8), H);
-  ctx.fillRect(px(7.5), 0, px(7.8) - px(7.5), H);
-  // äußerer Rand
-  ctx.fillRect(px(ROAD.right - 0.35), 0, px(ROAD.right - 0.15) - px(ROAD.right - 0.35), H);
-
-  // Abnutzung auf den Markierungen
-  ctx.globalAlpha = 0.25;
-  noiseSpeckle(ctx, W, H, 3000, 'rgba(70,70,74,1)', 13);
-  ctx.globalAlpha = 1;
+  // Fahrbahnbegrenzung links und rechts zum Standstreifen (Breitstrich 30 cm), dazu der äußere Rand
+  mark(-7.8, 0, 0.3, L);
+  mark(7.5, 0, 0.3, L);
+  mark(ROAD.right - 0.35, 0, 0.2, L);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   const t = tex(c, { repeat: true });
   t.repeat.set(1, 1);
@@ -122,30 +144,72 @@ function noiseSpeckle(ctx, W, H, n, color, seed) {
   for (let i = 0; i < n; i++) ctx.fillRect(rnd() * W, rnd() * H, 1 + rnd() * 2, 1 + rnd() * 2);
 }
 
-// Gras / Felder (Patchwork) – kachelbar
+// Felder als Flickenteppich (kachelbar, 160 m): Raps, Weizen, junges Grün, Stroh, Acker und Wiesen, jedes Feld
+// mit runden Ecken, feinen Saatreihen und einem grünen Rain zum Nachbarn.
 export function fieldTexture() {
   const S = 1024;
   const c = canvas(S, S);
   const ctx = c.getContext('2d');
   const rnd = mulberry32(99);
-  ctx.fillStyle = '#5f8a3a';
+  ctx.fillStyle = '#74b85a';
   ctx.fillRect(0, 0, S, S);
-  const palette = ['#6a9a3c', '#7fae45', '#5a8434', '#c9b24a', '#e1cf3a', '#8a9a4a', '#6f8f3c', '#a08a52', '#b6a35a', '#4f7a30'];
-  // Feldstreifen
-  let y = 0;
-  while (y < S) {
-    const h = 60 + rnd() * 180;
-    let x = 0;
-    while (x < S) {
-      const w = 80 + rnd() * 260;
-      ctx.fillStyle = palette[Math.floor(rnd() * palette.length)];
+  blotches(ctx, S, S, 30, 60, 160, ['rgba(150,214,110,0.16)', 'rgba(80,150,70,0.14)'], 5);
+  // [Grundton, Reihen-Ton, Gewicht]
+  const crops = [
+    ['#7fc35c', '#6fb650', 30], // Wiese
+    ['#9ad75f', '#86c552', 20], // junges Grün
+    ['#f1d667', '#e3c552', 16], // Raps
+    ['#e2bf66', '#d3ae57', 14], // Weizen
+    ['#f0e39a', '#e2d386', 8], // Stroh
+    ['#a58a68', '#94795a', 8], // Acker
+    ['#5fa651', '#539846', 4], // Klee
+  ];
+  const total = crops.reduce((n, k) => n + k[2], 0);
+  const pickCrop = () => {
+    let r = rnd() * total;
+    for (const k of crops) {
+      r -= k[2];
+      if (r <= 0) return k;
+    }
+    return crops[0];
+  };
+  // Reihen und Felder teilen die Kachel restlos auf (so passt auch der Rand zum Nachbarn)
+  const split = (len, min, max) => {
+    const cuts = [];
+    let p = 0;
+    while (len - p > max) {
+      p += min + rnd() * (max - min);
+      if (len - p < min) break;
+      cuts.push(p);
+    }
+    return [0, ...cuts, len];
+  };
+  const rows = split(S, 130, 250);
+  const gap = 5;
+  let last = null;
+  for (let j = 0; j < rows.length - 1; j++) {
+    const y = rows[j];
+    const h = rows[j + 1] - y;
+    const cols = split(S, 150, 380);
+    for (let i = 0; i < cols.length - 1; i++) {
+      const x = cols[i];
+      const w = cols[i + 1] - x;
+      let crop = pickCrop();
+      while (crop === last) crop = pickCrop();
+      last = crop;
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x + gap, y + gap, w - 2 * gap, h - 2 * gap, 14);
+      ctx.clip();
+      ctx.fillStyle = crop[0];
       ctx.fillRect(x, y, w, h);
-      // Furchen
-      ctx.strokeStyle = 'rgba(0,0,0,0.06)';
-      ctx.lineWidth = 2;
+      // Saatreihen, längs oder quer
+      ctx.strokeStyle = crop[1];
+      ctx.lineWidth = 2.5;
       const vertical = rnd() < 0.5;
-      for (let k = 0; k < (vertical ? w : h); k += 7) {
-        ctx.beginPath();
+      const step = 7 + Math.floor(rnd() * 4);
+      ctx.beginPath();
+      for (let k = step / 2; k < (vertical ? w : h); k += step) {
         if (vertical) {
           ctx.moveTo(x + k, y);
           ctx.lineTo(x + k, y + h);
@@ -153,52 +217,151 @@ export function fieldTexture() {
           ctx.moveTo(x, y + k);
           ctx.lineTo(x + w, y + k);
         }
-        ctx.stroke();
       }
-      x += w;
+      ctx.stroke();
+      ctx.restore();
     }
-    y += h;
   }
-  // Feldwege
-  ctx.strokeStyle = 'rgba(190,175,140,0.6)';
-  ctx.lineWidth = 5;
-  for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
-    ctx.moveTo(rnd() * S, 0);
-    ctx.lineTo(rnd() * S, S);
-    ctx.stroke();
-  }
-  // Körnung
-  ctx.globalAlpha = 0.18;
-  noiseSpeckle(ctx, S, S, 20000, 'rgba(30,50,20,1)', 5);
-  ctx.globalAlpha = 1;
+  // helle Feldwege in zwei Rainen
+  ctx.strokeStyle = 'rgba(226,212,170,0.85)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, rows[1]);
+  ctx.lineTo(S, rows[1]);
+  ctx.moveTo(0, rows[Math.min(3, rows.length - 2)]);
+  ctx.lineTo(S, rows[Math.min(3, rows.length - 2)]);
+  ctx.stroke();
   return tex(c, { repeat: true });
 }
 
+// Wiese am Fahrbahnrand (kachelbar, 6 m): zwei frische Grüntöne in Mähstreifen längs der Straße, kurze Halme
+// wie Filz und kleine Blümchen (Gänseblümchen, Löwenzahn, Klee).
 export function grassTexture() {
-  const S = 256;
+  const S = 512;
   const c = canvas(S, S);
   const ctx = c.getContext('2d');
-  noiseFill(ctx, S, S, [92, 128, 58], 34, 3, 2);
+  const g = ctx.createLinearGradient(0, 0, S, 0);
+  const A = '#7cc45c';
+  const B = '#6db650';
+  // vier Streifen je 1,5 m, weich ineinander
+  for (let i = 0; i < 4; i++) {
+    const col = i % 2 ? B : A;
+    g.addColorStop(i / 4 + 0.03, col);
+    g.addColorStop((i + 1) / 4 - 0.03, col);
+  }
+  g.addColorStop(0, '#75bd56');
+  g.addColorStop(1, '#75bd56');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+  blotches(ctx, S, S, 40, 24, 70, ['rgba(160,222,112,0.13)', 'rgba(70,140,64,0.12)'], 3);
+  // Halme: kurze, leicht schräge Striche in helleren und dunkleren Tönen
+  const rnd = mulberry32(8);
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 2600; i++) {
+    const x = rnd() * S;
+    const y = rnd() * S;
+    const l = 4 + rnd() * 6;
+    const a = (rnd() - 0.5) * 0.9;
+    ctx.strokeStyle = rnd() < 0.5 ? 'rgba(170,228,120,0.3)' : 'rgba(64,132,58,0.26)';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.sin(a) * l, y - Math.cos(a) * l);
+    ctx.stroke();
+  }
+  // Blümchen auf einem verwackelten Raster (gleichmäßig verteilt, damit die Kachel nicht auffällt)
+  const N = 9;
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      if (rnd() < 0.3) continue;
+      const x = ((i + 0.15 + rnd() * 0.7) / N) * S;
+      const y = ((j + 0.15 + rnd() * 0.7) / N) * S;
+      const kind = rnd();
+      const r = 2.1 + rnd() * 0.9;
+      ctx.fillStyle = kind < 0.55 ? '#ffffff' : kind < 0.88 ? '#ffe04a' : '#f6a9c4';
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      if (kind < 0.55) {
+        ctx.fillStyle = '#ffd23f';
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
   return tex(c, { repeat: true });
 }
 
-// Schutzplanke (Stahl, W-Profil)
+// Schutzplanke (verzinkter Stahl, W-Profil): helle, weiche Glanzbänder
 export function guardrailTexture() {
   const c = canvas(64, 64);
   const ctx = c.getContext('2d');
   const g = ctx.createLinearGradient(0, 0, 0, 64);
-  g.addColorStop(0, '#c9ccd0');
-  g.addColorStop(0.18, '#8d9296');
-  g.addColorStop(0.35, '#dfe2e5');
-  g.addColorStop(0.5, '#9aa0a5');
-  g.addColorStop(0.65, '#e2e4e6');
-  g.addColorStop(0.82, '#8b9094');
-  g.addColorStop(1, '#bfc3c7');
+  g.addColorStop(0, '#d3d8dd');
+  g.addColorStop(0.18, '#a3aab1');
+  g.addColorStop(0.35, '#e9edf0');
+  g.addColorStop(0.5, '#aeb5bc');
+  g.addColorStop(0.65, '#eceff2');
+  g.addColorStop(0.82, '#9fa6ad');
+  g.addColorStop(1, '#c9ced4');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 64, 64);
-  ctx.fillStyle = 'rgba(60,60,60,0.5)';
-  ctx.fillRect(30, 26, 4, 12);
+  ctx.fillStyle = 'rgba(84,90,98,0.5)';
+  ctx.beginPath();
+  ctx.roundRect(30, 26, 4, 12, 2);
+  ctx.fill();
+  return tex(c, { repeat: true });
+}
+
+/**
+ * Mauerwerk aus weichen, kissenrunden Sandsteinquadern (Widerlager der Brücken). Eine Kachel misst 3,6 m: acht
+ * Lagen zu 45 cm, jeder Stein 0,8 … 1,2 m lang, Lage für Lage versetzt; die Kachel schließt nach allen Seiten
+ * nahtlos an. Die oberste Lage beginnt an der Oberkante der Kachel.
+ */
+export function masonryTexture() {
+  const S = 512;
+  const H = 64;
+  const c = canvas(S, S);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#9d8f76';
+  ctx.fillRect(0, 0, S, S);
+  const rnd = mulberry32(31);
+  const tones = ['#c9b998', '#bfac8a', '#d0c1a2', '#b9a682', '#c4b08f', '#cbb998', '#b5a385'];
+  const stone = (x, y, w, col) => {
+    // Kissenform: Grundton, oben ein heller Hauch, unten ein warmer Schatten
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.roundRect(x + 3, y + 3, w - 6, H - 6, 13);
+    ctx.fill();
+    const g = ctx.createLinearGradient(0, y + 3, 0, y + H - 3);
+    g.addColorStop(0, 'rgba(255,250,236,0.34)');
+    g.addColorStop(0.3, 'rgba(255,250,236,0)');
+    g.addColorStop(0.7, 'rgba(110,84,52,0)');
+    g.addColorStop(1, 'rgba(110,84,52,0.26)');
+    ctx.fillStyle = g;
+    ctx.fill();
+  };
+  for (let row = 0; row < S / H; row++) {
+    // Steinlängen einer Lage auf genau eine Kachelbreite strecken, dann um einen Zufallsversatz verschoben legen
+    const widths = [];
+    let sum = 0;
+    while (sum < S - 90) {
+      const w = 112 + rnd() * 64;
+      widths.push(w);
+      sum += w;
+    }
+    let x = rnd() * S;
+    for (const w0 of widths) {
+      const w = (w0 * S) / sum;
+      const col = tones[Math.floor(rnd() * tones.length)];
+      for (const ox of [0, -S]) stone(x + ox, row * H, w, col);
+      x = (x + w) % S;
+    }
+  }
+  // feines Korn im Stein
+  noiseSpeckle(ctx, S, S, 1400, 'rgba(255,248,230,0.16)', 32);
+  noiseSpeckle(ctx, S, S, 1200, 'rgba(120,96,66,0.12)', 33);
   return tex(c, { repeat: true });
 }
 

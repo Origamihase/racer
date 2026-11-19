@@ -19,9 +19,12 @@ export const CAR_TYPES = {
   wohnmobil: { L: 7.0, half: 1.15, H: 3.0, belt: 1.3, hood: 0.8, ws: 1.45, re: 6.95, ce: 7.0, rear: 'box', cargo: 1.9, alkoven: true, axles: [1.0, 4.9], wr: 0.38, cl: 0.22, nose: 0.8, weight: 2 },
 };
 
+// Lackfarben [Farbe, Gewicht]: gut die Hälfte bleibt Silber, Weiß, Grau und Graphit wie auf einer echten Autobahn,
+// dazwischen fröhliche Bonbon- und Pastelltöne (kein reines Schwarz: das säuft im Bild zu einem Klecks ab).
 export const COLORS = [
-  [0xb8bcc2, 20], [0x111214, 20], [0xeef0f2, 18], [0x5a5f66, 18], [0x23407a, 10], [0x9e1b1b, 6],
-  [0x2d4a3a, 3], [0xb8a07a, 2], [0xe8c31a, 1], [0xd2691e, 1], [0x1d6fa8, 2],
+  [0xc3c8ce, 16], [0x2b2e34, 11], [0xf2f3f0, 15], [0x6d747d, 12], [0x2f5fa8, 8], [0xc9372c, 7],
+  [0x3f7f5f, 3], [0xd9c39a, 3], [0xf2c230, 3], [0xf08a2c, 2], [0x4aa3d8, 4],
+  [0x8fd3c2, 3], [0xf6b7c9, 2], [0xb9a7e0, 2], [0xffe08a, 2], [0x7fc8e8, 2], [0xa8d672, 2], [0xe86a8a, 1], [0x35b3a8, 2],
 ];
 
 const PLATES = [
@@ -55,7 +58,8 @@ function mats() {
   if (M) return M;
   M = {
     body: new Map(),
-    glass: W.std({ color: 0x141a22, metalness: 0.6, roughness: 0.08, envMapIntensity: 1.4 }),
+    // Scheiben: freundliches Blaugrau statt fast Schwarz, der Himmel spiegelt sich weich darin
+    glass: W.std({ color: 0x2c3d52, metalness: 0.5, roughness: 0.12, envMapIntensity: 1.15 }),
     detail: W.std({ vertexColors: true, roughness: 0.6, metalness: 0.15 }),
     // reines Rot: das Rücklicht bleibt dunkelrot, das Bremslicht leuchtet hell. Noch heller kippt
     // es im ACES-Tonemapping nach Orange und sähe aus wie ein Blinker.
@@ -91,7 +95,8 @@ export function bodyMaterial(color, map = null) {
   const m = mats();
   const key = color + (map ? ':' + map.uuid : '');
   if (!m.body.has(key)) {
-    m.body.set(key, W.std({ color, map, metalness: 0.45, roughness: 0.3, envMapIntensity: 1.1 }));
+    // weicher Lack wie bei Spielzeugautos: wenig Metall, sanfter Glanz
+    m.body.set(key, W.std({ color, map, metalness: 0.28, roughness: 0.36, envMapIntensity: 0.95 }));
   }
   return m.body.get(key);
 }
@@ -543,7 +548,7 @@ export class Vehicle {
       this.length = TRUCK_L;
       this.width = 2.55;
       this.height = 4.0;
-      const cabColor = color ?? pick([0xf2f2f2, 0xb01818, 0x1d4f9a, 0xe8b400, 0x222222, 0x2d6b3a, 0xdadde0]);
+      const cabColor = color ?? pick([0xf4f4f1, 0xd24a3a, 0x3f7fc4, 0xf2c230, 0x3a3f47, 0x4f9a6a, 0xdfe3e6, 0xf08a2c, 0x35b3a8]);
       this.cab = new THREE.Mesh(g.bodyGeo, bodyMaterial(cabColor));
       this.details = new THREE.Mesh(g.detailGeo, m.detail);
       const ci = company ?? Math.floor(Math.random() * COMPANIES.length);
