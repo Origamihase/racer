@@ -12,6 +12,11 @@
 //   Foto), Navi-Ankunft; auf der Reise Reisekilometer, Uhr, Abschnitte, Orte und Gabelungen.
 // - Wer nie rückwärts fährt, fährt genau wie vorher: derselbe Stream mit und ohne die Erlaubnis stimmt auf den Cent.
 import { Player, REVERSE } from '../src/game/player.js';
+import { Game } from '../src/game/game.js';
+import { Trip } from '../src/game/trip.js';
+import { NavModel } from '../src/map/navroute.js';
+import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
+import { J } from '../src/game/trip.js';
 
 const DT = 1 / 30;
 let fails = 0;
@@ -172,8 +177,275 @@ const gears = (r) => r.ev.filter((e) => e.type === 'gear').map((e) => e.gear);
   ok(z.s >= 0, 'Der Wagen fährt hinter den Start der Strecke');
 }
 
+// --- 2. Das klassische Spiel ------------------------------------------------------------------------------------------
+const NONE = [];
+const loose = (base = {}) => new Proxy(base, { get: (t, k) => (k in t ? t[k] : () => undefined) });
+/** Ein klassischer Stream mit Mitspielern, die mitschreiben (Aufrufe an ui und fx landen in log). */
+function classic(seed = 11) {
+  Math.random = mulberry32(seed);
+  const log = [];
+  let game = null;
+  const rec = (who) => new Proxy({}, { get: (t, k) => (typeof k === 'string' ? (...args) => log.push({ who, call: k, args, s: game ? game.player.s : 0 }) : undefined) });
+  let ids = 0;
+  game = new Game({
+    traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
+    scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
+    road: loose(),
+    sky: loose(),
+    rain: loose(),
+    windshield: loose({ firmware: 0, manual: () => 'wipe' }),
+    cockpit: loose({ nomi: loose() }),
+    audio: rec('audio'),
+    speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    ui: rec('ui'),
+    fx: rec('fx'),
+    pickups: loose({ update: () => NONE }),
+  });
+  game.start({ upgrades: {}, best: {} });
+  game.money = 100;
+  return { game, log, p: game.player };
+}
+/** sec Sekunden Spiel mit diesen Eingaben (reverse: die Erlaubnis aus main.js). */
+function play(g, sec, input, each) {
+  const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false, reverse: true, ...input };
+  const n = Math.round(sec / DT);
+  for (let i = 0; i < n && !g.game.over; i++) {
+    g.p.battery = 100;
+    g.game.update(DT, ctl, null);
+    if (each) each(g);
+  }
+}
+/** Bremsen bis zum Stand, R einlegen und rückwärts fahren, bis sec vorbei sind. */
+function back(g, sec, each) {
+  play(g, sec, { brake: 1 }, each);
+}
+
+{
+  // Strecke, saubere Strecke, Regenstrecke und linke Spur zählen nur neue Straße – nie rückwärts, nie doppelt
+  const g = classic(11);
+  const { game, p } = g;
+  play(g, 40, { throttle: 1 });
+  // bis zum Stand bremsen und loslassen, bevor R kommt
+  for (let i = 0; i < 600 && p.speed > 0.3; i++) play(g, DT, { brake: 1 });
+  play(g, 0.3, {});
+  ok(p.gear === 'D', 'Bremsen bis zum Stand und loslassen legt R ein');
+  game.weather.level = 0.8;
+  game.left.open = true;
+  game.left.timer = 999;
+  p.x = -5.625;
+  let before = null; // Stand der Strecken, als R kam
+  let far = p.s;
+  let down = 0;
+  let lastD = game.stats.distance;
+  const watch = () => {
+    if (game.stats.distance < lastD - 1e-9) down++;
+    lastD = game.stats.distance;
+    if (p.gear === 'R' && !before) {
+      before = { d: game.stats.distance, c: game.stats.cleanDistance, r: game.stats.rainDistance, l: game.stats.leftLaneTime };
+      far = p.s;
+    }
+  };
+  back(g, 70, watch);
+  ok(p.gear === 'R' && p.s < far - 150, `Rückwärts kam der Wagen nicht weit genug (${(far - p.s).toFixed(0)} m)`);
+  ok(down === 0, 'Die Strecke zählt rückwärts');
+  ok(game.stats.distance === before.d && game.stats.cleanDistance === before.c && game.stats.rainDistance === before.r, 'Rückwärts zählt eine Strecke');
+  ok(game.stats.leftLaneTime === before.l, 'Rückwärts auf der linken Spur zählt für den Auftrag');
+  // wieder vorwärts bis zum weitesten Punkt: nichts zählt doppelt; danach zählt es weiter
+  play(g, 60, { throttle: 0.6 }, (q) => {
+    watch();
+    if (q.p.s > far) q.game.weather.level = 0;
+  });
+  ok(down === 0, 'Die Strecke zählt rückwärts (wieder vorwärts)');
+  ok(p.s > far + 100, 'Der Wagen kommt nicht wieder nach vorn');
+  ok(Math.abs(game.stats.distance - p.sFar) < 1e-6, `Die Strecke (${game.stats.distance.toFixed(1)}) ist nicht der weiteste Punkt (${p.sFar.toFixed(1)})`);
+  ok(game.stats.rainDistance - before.r < 1 && game.stats.cleanDistance - before.c <= p.s - far + 1e-6, 'Wieder vorwärts zählt eine Strecke doppelt');
+}
+
+{
+  // Blitzer: rückwärts vorbei und wieder vor – kein zweiter Blitz, kein zweites Lob, kein zweites Foto
+  for (const fast of [false, true]) {
+    const g = classic(23);
+    const { game, p } = g;
+    play(g, 5, { throttle: 0.5 });
+    game.S.blitzer = p.s + 10;
+    const kmh = fast ? 150 : 100;
+    let i = 0;
+    while (!(game.blitzer && game.blitzer.checked) && i++ < 4000) {
+      p.speed = kmh / 3.6;
+      play(g, DT, {});
+    }
+    const b = game.blitzer;
+    ok(b && b.checked, 'Kein Blitzer erreicht');
+    const praise = () => g.log.filter((e) => e.call === 'toast' && /geblitzt/.test(e.args[0])).length;
+    const n0 = { flash: g.log.filter((e) => e.who === 'fx' && e.call === 'flash').length, photo: game.stats.photos, clean: game.stats.blitzerClean, toast: praise() };
+    // anhalten, rückwärts hinter den Blitzer, wieder vor bis hinter seine Zone
+    back(g, 60);
+    ok(p.s < b.camS - 50, `Rückwärts nicht hinter den Blitzer gekommen (${(p.s - b.camS).toFixed(0)} m)`);
+    play(g, 3, { throttle: 1 });
+    i = 0;
+    while (p.s < b.endS + 60 && i++ < 4000) {
+      p.speed = kmh / 3.6;
+      play(g, DT, {});
+    }
+    const n1 = { flash: g.log.filter((e) => e.who === 'fx' && e.call === 'flash').length, photo: game.stats.photos, clean: game.stats.blitzerClean, toast: praise() };
+    ok(same(n0, n1) && n1.photo === (fast ? 1 : 0) && n1.clean === (fast ? 0 : 1), `Blitzer ${kmh} km/h: zurück und wieder vor ändert ${JSON.stringify(n0)} → ${JSON.stringify(n1)}`);
+  }
+}
+
+{
+  // Navi-Ziel (klassisch): angekommen ist angekommen – rückwärts davor und wieder vorbei zählt nicht noch einmal
+  const g = classic(31);
+  const { game, p } = g;
+  play(g, 3, { throttle: 1 });
+  game.navi.targetS = p.s + 60;
+  game.navi.arrived = false;
+  play(g, 4, { throttle: 1 });
+  const reached = game.stats.naviReached;
+  ok(reached >= 1, 'Das Navi-Ziel wird nicht erreicht');
+  back(g, 40);
+  play(g, 20, { throttle: 1 });
+  ok(game.stats.naviReached === reached, 'Rückwärts und wieder vor zählt das Navi-Ziel noch einmal');
+}
+
+{
+  // während der Halt am Brunnen läuft (halt) oder BrunnenTV (tv): kein R, auch wenn der Spieler die Bremse hält
+  for (const key of ['halt', 'tv']) {
+    const g = classic(41);
+    const { game, p } = g;
+    play(g, 2, { throttle: 1 });
+    play(g, 8, { brake: 1 });
+    game.money = 100;
+    const g2 = classic(41);
+    play(g2, 2, { throttle: 1 });
+    g2.game[key] = key === 'halt' ? { sec: null, still: 0 } : { n: 1, place: 0, t0: g2.game.t, until: g2.game.t + 999, busy: true };
+    if (key === 'halt') g2.game.navi.stopping = false;
+    let r = false;
+    const n = Math.round(6 / DT);
+    for (let i = 0; i < n; i++) {
+      g2.p.battery = 100;
+      g2.p.update(DT, { steer: 0, throttle: 0, brake: 1 }, { reverse: true && !g2.game.halt && !g2.game.tv });
+      if (g2.p.gear === 'R') r = true;
+    }
+    ok(!r, `R während ${key}`);
+    ok(p.gear === 'R', 'Im normalen Spiel legt die gehaltene Bremse kein R ein');
+  }
+}
+
+{
+  // wer nie rückwärts fährt, fährt genau wie vorher: derselbe Stream mit und ohne Erlaubnis, mit Bremsen bis zum Stand
+  // (nie länger als 0,4 s), stimmt in Kasse, Abrechnung, Statistik, Zuschauern, Zeit, Strecke und Aufträgen überein
+  const run = (reverse) => {
+    const g = classic(57);
+    // bremsen bis zum Stand und dann loslassen: die Bremse steht nie eine halbe Sekunde im Stand
+    const script = (t, p) => (t % 30 < 22 ? { throttle: 1 } : t % 30 < 29.6 ? { brake: p.speed > 0.3 ? 1 : 0 } : {});
+    let t = 0;
+    for (let i = 0; i < Math.round(240 / DT) && !g.game.over; i++) {
+      g.p.battery = 100;
+      g.game.update(DT, { steer: Math.sin(t / 3) > 0.9 ? 1 : 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false, ...script(t, g.p), reverse }, null);
+      t += DT;
+    }
+    const G = g.game;
+    return JSON.stringify([G.money, G.breakdown, G.stats, G.viewers, G.t, g.p.s, g.p.x, G.jobs.map((j) => [j.id, j.done])]);
+  };
+  const a = run(false);
+  const b = run(true);
+  ok(a === b, 'Ein Stream ohne Rückwärtsfahrt ändert sich mit der Erlaubnis');
+}
+
+// --- 3. Die Reise über die echte Karte -------------------------------------------------------------------------------
+{
+  Math.random = mulberry32(5);
+  const trip = new Trip({ rng: Math.random });
+  const arrival = new Arrival();
+  arrival.hold = true;
+  const nav = new NavModel(trip);
+  let ids = 0;
+  const game = new Game({
+    traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
+    scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
+    road: loose(),
+    sky: loose(),
+    rain: loose(),
+    windshield: loose({ firmware: 0, manual: () => 'wipe' }),
+    cockpit: loose({ nomi: loose() }),
+    audio: loose(),
+    speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    ui: loose(),
+    fx: loose(),
+    pickups: loose({ update: () => NONE }),
+    world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
+  });
+  game.start({ upgrades: {}, best: {} });
+  const p = game.player;
+  p.s = trip.s;
+  p.x = trip.x;
+  p.speed = 40 / 3.6;
+  const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+  const seen = new Map(); // Ereignis + Abschnitt → wie oft
+  let dup = [];
+  let kmDown = 0;
+  let clockDown = 0;
+  let floorHit = 0;
+  let secR = null; // Abschnitt, in dem R eingelegt wurde
+  const step = (input) => {
+    limitsFor(trip, lim, arrival.stop(trip));
+    p.setLimits(lim);
+    const want = trip.section.kind === 'ab' ? 5.625 : 9;
+    const dx = want - (p.x + p.vx * AUTO.look);
+    const ctl = { steer: Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false, reverse: true, ...input };
+    if (ctl.throttle === 'auto') ctl.throttle = p.gear === 'D' && p.speed < Math.min(lim.vmax, 100 / 3.6) - 0.5 ? 1 : 0;
+    const km0 = trip.km;
+    const c0 = game.clock;
+    game.update(DT, ctl, null);
+    p.battery = 100;
+    const evs = trip.update(p.s, p.x);
+    for (const e of evs) {
+      const key = e.type + ':' + (e.sec ? e.sec.s0 : e.fork ? e.fork.s : '') + ':' + (e.place ?? '');
+      seen.set(key, (seen.get(key) || 0) + 1);
+      if (seen.get(key) > 1) dup.push(key);
+      game.onTrip(e);
+    }
+    const rest = arrival.update(trip, evs, p.speed);
+    if (rest) game.onTrip(rest);
+    if (game.tv) game.endBrunnenTV();
+    nav.update(DT);
+    if (trip.km < km0 - 1e-12) kmDown++;
+    if (game.clock < c0 - 1e-12) clockDown++;
+    // in R bleibt der Wagen in dem Abschnitt, in dem er R eingelegt hat
+    if (p.gear !== 'R') secR = null;
+    else if (!secR) secR = trip.section;
+    else if (trip.section !== secR) floorHit++;
+  };
+  // vorwärts, dann an vielen Stellen anhalten, zurück bis an die Grenze, wieder vor: nichts darf doppelt kommen
+  let rounds = 0;
+  let farthestBack = 0;
+  let sectionStops = 0;
+  for (let leg = 0; leg < 14; leg++) {
+    const go = 20 + ((leg * 37) % 50);
+    for (let i = 0; i < Math.round(go / DT); i++) step({ throttle: 'auto' });
+    for (let i = 0; i < Math.round(6 / DT) && p.speed > 0.05; i++) step({ brake: 1 });
+    const s0 = p.s;
+    let kmBefore = null;
+    for (let i = 0; i < Math.round(90 / DT); i++) {
+      step({ brake: 1 });
+      if (p.gear === 'R' && kmBefore === null) kmBefore = trip.km;
+    }
+    if (p.gear === 'R') rounds++;
+    farthestBack = Math.max(farthestBack, s0 - p.s);
+    if (Math.abs(p.s - lim.back) < 0.5) sectionStops++;
+    ok(trip.km === kmBefore, `Rückwärts ändern sich die Reisekilometer (${kmBefore} → ${trip.km})`);
+    for (let i = 0; i < Math.round(4 / DT); i++) step({ throttle: 1 });
+  }
+  ok(rounds === 14, `Auf der Reise legte die gehaltene Bremse nur ${rounds} von 14 Mal R ein`);
+  ok(farthestBack > 150 && farthestBack <= REVERSE.back + 1e-6, `Reise: zurück höchstens ${farthestBack.toFixed(0)} m`);
+  ok(kmDown === 0 && clockDown === 0, `Reise: Kilometer (${kmDown}) oder Uhr (${clockDown}) laufen rückwärts`);
+  ok(floorHit === 0, 'Reise: Der Wagen fährt über den Anfang seines Abschnitts zurück');
+  ok(dup.length === 0, `Reise: Ereignisse kommen doppelt: ${[...new Set(dup)].slice(0, 6).join(', ')}`);
+  console.log(`  Reise: 14 Mal zurück (weitester Weg ${farthestBack.toFixed(0)} m, ${sectionStops}× am Anfang des Abschnitts), ${seen.size} Ereignisse je einmal, ${trip.km.toFixed(1)} Reisekilometer`);
+}
+
 if (fails) {
   console.error(`rueckwaerts-test: ${fails} von ${checks} Prüfungen fehlgeschlagen`);
   process.exit(1);
 }
-console.log(`rueckwaerts-test: ok (${checks} Prüfungen: R nur vom Spieler im Stand, höchstens ${(REVERSE.vmax * 3.6).toFixed(0)} km/h, D mit Strom, Grenze hält)`);
+console.log(`rueckwaerts-test: ok (${checks} Prüfungen: R nur vom Spieler im Stand, höchstens ${(REVERSE.vmax * 3.6).toFixed(0)} km/h, D mit Strom, Grenze hält, nichts zählt doppelt)`);

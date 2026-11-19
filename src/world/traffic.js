@@ -226,8 +226,8 @@ export class Traffic {
     }
 
     const objs = this.cars;
-    // Spieler als Hindernis für die KI
-    const P = { s: player.s, x: player.x, speed: player.speed, len: player.len, w: player.w, isPlayer: true };
+    // Spieler als Hindernis für die KI (rückwärts mit negativem Tempo: wer dahinter fährt, bremst entsprechend früher)
+    const P = { s: player.s, x: player.x, speed: player.v ?? player.speed, len: player.len, w: player.w, isPlayer: true };
 
     for (const c of objs) {
       // Spurwechsel-Entscheidungen
@@ -308,8 +308,8 @@ export class Traffic {
       const latOverlap = (c.w + player.w) / 2 - dx;
       const lonOverlap = (c.len + player.len) / 2 - Math.abs(ds);
       if (latOverlap > 0.08 && lonOverlap > 0.05) {
-        if (ds < 0 && latOverlap > 0.6 && c.speed > player.speed) {
-          // KI würde auffahren: zurücksetzen statt Unfall (fair bleiben)
+        if (ds < 0 && latOverlap > 0.6 && c.speed > player.speed && !(player.v < 0)) {
+          // KI würde auffahren: zurücksetzen statt Unfall (fair bleiben); wer rückwärts anstößt, rempelt selbst
           c.s = player.s - (c.len + player.len) / 2 - 0.4;
           c.speed = Math.min(c.speed, player.speed * 0.95);
         } else {

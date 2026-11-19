@@ -127,6 +127,7 @@ export class Trip {
     this.frames = new Map();
     this.links = [];
     this.s = 0;
+    this.far = 0;
     this.x = J.L0;
     this.km = 0;
     this.target = -1;
@@ -149,6 +150,7 @@ export class Trip {
     this.frames = new Map(); // id → {id, kind, links}
     this.links = []; // {id, type: 'exit'|'merge', a: Autobahnrahmen, b: Rahmen abseits, s}
     this.s = 0;
+    this.far = 0; // weitester Punkt der Fahrt (update zählt Reisekilometer nur dahinter)
     this.x = J.L0;
     this.km = 0; // gefahrene Reisekilometer
     this.target = -1;
@@ -535,8 +537,12 @@ export class Trip {
    * transit {kind, from, to, sec} · merge {sec} · country {from, to}
    */
   update(s, x) {
+    // Reisekilometer gibt es nur für neue Straße: jenseits des weitesten Punkts (far), nicht rückwärts und nicht für
+    // Meter, die der Wagen nach dem Rückwärtsfahren noch einmal fährt
+    const far = Math.max(this.s, this.far);
+    this.far = Math.max(far, s);
     if (this.endless) {
-      this.km += Math.max(0, s - this.s) * J.real;
+      this.km += Math.max(0, s - far) * J.real;
       this.s = s;
       this.x = x;
       return (this.events = []);
@@ -550,7 +556,7 @@ export class Trip {
     while (guard++ < 8) {
       const sec = this.cur.at(this.s);
       const end = Math.min(s, sec.s1);
-      this.km += Math.max(0, end - this.s) * sec.kmPerM;
+      this.km += Math.max(0, end - Math.max(this.s, far)) * sec.kmPerM;
       this.s = end;
       // Ziel- oder Ortsmitte passiert?
       if (sec.spotS !== undefined && !sec.spotDone && s0 < sec.spotS && this.s >= sec.spotS) {

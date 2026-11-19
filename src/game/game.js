@@ -95,6 +95,7 @@ export class Game {
     this._introChime = false;
     this.clock = 18 * 60;
     this.travel = null; // XXL: Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
+    this.revDebt = 0; // rückwärts gefahrene Meter, die noch nicht wieder vorwärts gefahren sind (siehe update)
     this.eco.reset(up);
     this.viewers = this.eco.viewers;
     this.peakViewers = 240;
@@ -391,6 +392,13 @@ export class Game {
     // Eingaben des Spielers (ctl.reverse aus main.js) und nie, während die Welt den Wagen am Brunnen anhält
     p.update(dt, ctl, { wet: W.level, kappa: ctl.kappa || 0, grade: ctl.grade || 0, reverse: ctl.reverse === true && !this.halt && !this.tv });
     const ds = p.s - sBefore;
+    // Die Strecken zählen neue Straße: Rückwärts gefahrene Meter sind eine Schuld, die der Wagen vorwärts erst wieder
+    // abfährt, bevor etwas weiterzählt (Strecke, saubere Strecke, Regenstrecke). Ohne Rückwärtsgang bleibt sie 0.
+    let dsNew = ds;
+    if (p.gear === 'R' || this.revDebt > 0) {
+      dsNew = Math.max(0, ds - this.revDebt);
+      this.revDebt = Math.max(0, this.revDebt - ds);
+    }
     for (const e of p.events) {
       if (e.type === 'rail') {
         this.audio.scrape();
@@ -409,8 +417,8 @@ export class Game {
     }
     // XXL: Uhr und Strecken zählen Reisezeit und Reisemeter (travelStep), klassisch Spielzeit und Meter der Straße
     const go = this.worldNavi ? this.travelStep(dt) : null;
-    const dm = go ? go.m : ds;
-    st.distance = go ? this.odometer : p.s;
+    const dm = go ? go.m : dsNew;
+    st.distance = go ? this.odometer : p.s + this.revDebt;
     st.maxSpeedKmh = Math.max(st.maxSpeedKmh, p.kmh);
     // neue Höchstgeschwindigkeit dieser Fahrt: Der Chat schaut auf den Tacho
     const mark = this.eco.speedMark(p.kmh);
@@ -500,9 +508,10 @@ export class Game {
       if (L.next <= 0) this.openLeftLane();
     } else {
       L.timer -= dt;
-      // Geld gibt es fürs Linksfahren nicht – aber jemand hat dafür gespendet und will es jetzt auch sehen
+      // Geld gibt es fürs Linksfahren nicht – aber jemand hat dafür gespendet und will es jetzt auch sehen (rückwärts
+      // zählt es nicht)
       if (p.inLeftLane) {
-        this.stats.leftLaneTime += dt;
+        if (p.gear === 'D') this.stats.leftLaneTime += dt;
         L.idle = 0;
       } else {
         L.idle += dt;
@@ -1858,7 +1867,8 @@ export class Game {
     const was = this.travel && this.travel.trip === trip ? this.travel : null;
     const ds = was ? trip.s - was.s : 0;
     const m = was ? (trip.km - was.km) * 1000 : 0;
-    const secs = !was ? 0 : ds > 1e-6 ? (was.dt * m) / ds : was.dt;
+    // rückwärts und auf schon gefahrener Straße (keine neuen Reisemeter) läuft die Uhr wie im Stand
+    const secs = !was ? 0 : ds > 1e-6 && m > 0 ? (was.dt * m) / ds : was.dt;
     this.travel = { trip, s: trip.s, km: trip.km, dt };
     return { secs, m };
   }
