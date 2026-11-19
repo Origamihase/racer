@@ -15,7 +15,7 @@ import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
 import { createNatureKit } from './world/kit/nature.js';
 import { cityKit, naviLayout } from './world/xxl/towns.js';
-import { SCENE, ROLL_T, rollPose, groundAt } from './world/xxl/charge.js';
+import { SCENE, ROLL_T, rollPose, groundAt, chargeOf } from './world/xxl/charge.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
@@ -1365,16 +1365,15 @@ const CHARGE_KEYS = [
 const CHARGE_LINES = { live: 'Wir sind live.', greet: 'Hallo Mini Adam! Akku voll, gute Fahrt!' };
 // town: der Startort (Towns.of: plan, group, charge), port: Ladeklappe des Wagens, keep: Spieler vor der Szene,
 // skipT: wann übersprungen wurde (dann erst abblenden), greetT: wann NOMI grüßt (Spielzeit simT)
-const chargeRun = { town: null, port: null, pose: {}, keep: null, chimed: false, said: false, skipT: -1, greetT: Infinity };
+// parked: der Titel der Reise zeigt den Wagen am Supercharger (xxlStart)
+const chargeRun = { town: null, port: null, pose: {}, keep: null, parked: false, chimed: false, said: false, skipT: -1, greetT: Infinity };
 const chargeM = new THREE.Matrix4();
 
-/** Startszene vorbereiten: Wagen in die Bucht, Stecker in die Buchse. false, wenn der Startort keinen Ladepark hat. */
-function chargeBegin() {
+/** Wagen in die Bucht des Startorts, Stecker in die Buchse, Ring grün. false, wenn der Startort keinen Ladepark hat. */
+function chargePlug() {
   const town = xxl.town(xxl.trip.section);
   if (!town || !town.charge) return false;
-  const p = game.player;
-  Object.assign(chargeRun, { town, port: tesla.port(), chimed: false, said: false, skipT: -1, greetT: Infinity });
-  chargeRun.keep = { speed: p.speed, wheel: p.wheel, throttle: p.throttle, braking: p.braking };
+  Object.assign(chargeRun, { town, port: tesla.port() });
   // die Buchse im Rahmen der Säule: Wagen in der Bucht → Welt → Säule
   chargePose(0);
   tesla.root.updateWorldMatrix(true, false);
@@ -1385,8 +1384,27 @@ function chargeBegin() {
   town.charge.plug(pos, normal);
   town.charge.set(0);
   chargeRun.port.set(1, 1);
+  return true;
+}
+
+/** Startszene vorbereiten (nach xxlStart): eingesteckt wie im Titel, nur der Untertitel. false ohne Ladepark. */
+function chargeBegin() {
+  if (!chargePlug()) return false;
+  const p = game.player;
+  Object.assign(chargeRun, { chimed: false, said: false, skipT: -1, greetT: Infinity });
+  chargeRun.keep = { speed: p.speed, wheel: p.wheel, throttle: p.throttle, braking: p.braking };
   ui.show(false, true);
   return true;
+}
+
+/** Titel der Reise am Supercharger: Der Wagen lädt, die Kamera schwebt langsam vor Buchse und Säule. */
+function chargeTitle() {
+  chargePose(0);
+  const k = CHARGE_KEYS[0];
+  const pos = tmpV.set(k.pos[0] + 0.5 * Math.sin(simT * 0.21), k.pos[1] + 0.12 * Math.sin(simT * 0.17), k.pos[2] - 0.6 + 0.6 * Math.sin(simT * 0.13));
+  camera.position.copy(pos.applyMatrix4(carMatrix));
+  camera.lookAt(tmpV2.fromArray(k.look).applyMatrix4(carMatrix));
+  setFov(44);
 }
 
 /** Wagen in der Szene bei t: über die Matrix des Orts in die Welt (wie updateCarMatrix). Gibt die Lage (rollPose) zurück. */
@@ -1688,10 +1706,13 @@ function step(dt, { render = true } = {}) {
 
   switch (state) {
     case 'title': {
-      ctl = autopilot(dt, 118);
-      game.demo(dt, ctl);
-      updateCarMatrix();
-      placeDrone(dt, 'orbit');
+      if (chargeRun.parked) chargeTitle();
+      else {
+        ctl = autopilot(dt, 118);
+        game.demo(dt, ctl);
+        updateCarMatrix();
+        placeDrone(dt, 'orbit');
+      }
       adamWave = smoothstep(0.72, 0.9, Math.sin(simT * 0.5));
       adamLook = Math.sin(simT * 0.4) * 0.6;
       break;
@@ -1854,8 +1875,8 @@ function step(dt, { render = true } = {}) {
     tesla.update(dt, p.v, p.wheel, simT); // rückwärts drehen die Räder rückwärts
     teslaDamage.update(dt, simT, p.damage, p.speed);
     cabinDamage.update(dt, simT, p.damage, p.speed, cockpitOn);
-    // (in der Startszene steht der Wagen beim Laden in P: ohne Bremslicht)
-    tesla.setBrake(state !== 'charge' && (p.braking > 0.1 || p.speed < 1));
+    // (am Supercharger, im Titel und in der Startszene, steht der Wagen beim Laden in P: ohne Bremslicht)
+    tesla.setBrake(state !== 'charge' && !(state === 'title' && chargeRun.parked) && (p.braking > 0.1 || p.speed < 1));
     const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook });
     tesla.adam.animate(simT, adamOpts);
     facecam.adam.animate(simT, adamOpts);
@@ -1982,17 +2003,21 @@ function xxlStart(title) {
   traffic.reset();
   pickups.reset();
   xxlTrafficFrame = null;
-  if (title) {
+  // beginnt die Fahrt am Supercharger in Erlensee, wartet der Wagen schon im Titel dort (sonst fährt er dort vor)
+  const atCharger = title && !!chargeOf(xxl.trip.section);
+  chargeRun.parked = false;
+  if (title && !atCharger) {
     xxl.advance(p, 1300);
     p.x = 1.875;
   } else {
     p.x = xxl.trip.x;
-    p.speed = 40 / 3.6;
+    p.speed = title ? 0 : 40 / 3.6;
   }
   xxl.update(p.s, p.x, 0);
   xxlNav.update(0);
   p.setLimits(xxl.limitsFor(xxlLimits));
   scenery.reset();
+  if (atCharger) chargeRun.parked = chargePlug();
 }
 /**
  * Kurvenschilder der XXL-Fahrt stehen im Rahmen ihres Abschnitts: dessen Scherung für dieses Bild, oder null, solange
