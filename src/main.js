@@ -31,7 +31,8 @@ import { Speech } from './speech.js';
 import { Input } from './input.js';
 import { TouchControls } from './ui/touch.js';
 import { driveSettings, playerOptions, IS_TOUCH } from './ui/drive-settings.js';
-import { showDriveHint, driveHintTick } from './ui/drive-hint.js';
+import { showDriveHint, driveHintTick, driveHintBusy, showTip } from './ui/drive-hint.js';
+import { FirstTips, loadTips, storeTips } from './ui/first-tips.js';
 import { Jolt } from './fx/jolt.js';
 import { TeslaDamage } from './models/damage-fx.js';
 import { CabinDamage } from './cockpit/damage-cabin.js';
@@ -62,6 +63,7 @@ const megafonBack = refundMegafon(save);
 if (megafonBack) storeSave(save);
 let shopRefund = 0;
 let mapHudT = 0; // die Navi-Zeile des HUD folgt der Fahrt viermal je Sekunde
+let turnIns = null; // ihre letzte Ansage (NavModel.instruction), auch für die Tipps der ersten Minuten
 
 // ---------------------------------------------------------------------------
 const app = document.getElementById('app');
@@ -1183,6 +1185,47 @@ function placeScene(dt, keys, t, inside, end) {
   return 'inside';
 }
 
+// Tipps der ersten Minuten (src/ui/first-tips.js): einmal je Spieler, am Rand auf der Karte von „So steuerst du“
+const firstTips = new FirstTips(loadTips());
+let tipT = 0; // Sekunden freier Fahrt in diesem Stream
+const tipsOff = () => {
+  firstTips.stop();
+  storeTips(firstTips);
+};
+
+/** Fährt vor dem Wagen auf seiner Spur jemand langsamer (20 bis 120 m voraus)? Dann hilft das Megafon. */
+function slowCarAhead(p) {
+  return traffic.cars.some((c) => {
+    const ds = c.s - p.s;
+    return ds > 20 && ds < 120 && Math.abs(c.x - p.x) < 1.8 && c.speed < p.speed - 3;
+  });
+}
+
+/** Jedes Bild der Fahrt: Tipps der ersten Minuten (camera: V in diesem Bild; ctl: die übrigen Eingaben). */
+function tipsTick(dt, ctl, camera) {
+  if (firstTips.done && !firstTips.cur) return;
+  const p = game.player;
+  // frei: kein Halt am Brunnen oder an der Säule, und „So steuerst du“ hat den Platz geräumt
+  const free = !game.charging && !game.navi.stopping && !driveHintBusy();
+  if (free) tipT += dt;
+  if (camera) firstTips.did('camera');
+  if (ctl.megafon) firstTips.did('megafon');
+  if (ctl.ladestopp) firstTips.did('ladestopp');
+  if (firstTips.cur && input.take('confirm')) tipsOff();
+  const ins = turnIns;
+  const ev = firstTips.update(dt, {
+    free,
+    t: tipT,
+    // die Ansage nennt ab dem 1000-m-Schild eine Ausfahrt, die noch nicht zu nah ist
+    exit: !!ins && ins.turn === 'exit' && !ins.calm && ins.dist > 250,
+    carAhead: !firstTips.seen.has('megafon') && slowCarAhead(p),
+    stop: game.stopOffer(),
+  });
+  if (!ev) return;
+  showTip(ui, ev.show || null, input.lastDevice, tipsOff);
+  if (ev.show) storeTips(firstTips);
+}
+
 /** Ende der Startszene: Das Spiel übernimmt, HUD und Facecam gehen an. */
 function toDrive() {
   state = 'drive';
@@ -1190,6 +1233,9 @@ function toDrive() {
   ui.show(true);
   // die Facecam geht an: Mini Adam schaut hinein und winkt
   adamMood('wave');
+  // die Tipps der ersten Minuten zählen ab hier (first-tips.js); keiner steht noch vom letzten Stream
+  firstTips.restart();
+  tipT = 0;
   // beim ersten Start auf diesem Gerät „So steuerst du“, danach der kurze Tipp
   if (!showDriveHint(ui, input.lastDevice, driveSettings(settings))) {
     ui.toast(matchMedia('(pointer: coarse)').matches ? 'Tipp: ◀ ▶ lenken · Strom und Bremse rechts · 🎥 Kamera' : 'Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
@@ -2058,7 +2104,8 @@ function step(dt, { render = true } = {}) {
         } else placeDrone(dt, 'follow');
         break;
       }
-      if (input.take('camera')) {
+      const camKey = input.take('camera');
+      if (camKey) {
         view = view === 'cockpit' ? 'drone' : 'cockpit';
         drone.init = false;
         ui.cameraLabel(view === 'cockpit' ? '🎥 Cockpit' : '🎥 Drohne');
@@ -2088,6 +2135,7 @@ function step(dt, { render = true } = {}) {
       game.update(dt, ctl, camera);
       if (stopBtn) stopBtn.classList.toggle('show', game.stopOffer());
       driveHintTick(dt, ctl);
+      tipsTick(dt, ctl, camKey);
       // Leitplanke: der Kopf ruckt zur Planke hin, Gamepad und Handy rütteln kurz
       for (const e of p.events) {
         if (e.type !== 'rail') continue;
@@ -2221,7 +2269,8 @@ function step(dt, { render = true } = {}) {
       scr.nav.visited = save.visits;
       if ((mapHudT -= dt) <= 0) {
         mapHudT = 0.25;
-        ui.setTurn(state === 'drive' ? scr.nav.model.instruction() : null);
+        turnIns = state === 'drive' ? scr.nav.model.instruction() : null;
+        ui.setTurn(turnIns);
       }
     }
     cockpit.update({

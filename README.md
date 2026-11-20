@@ -25,8 +25,9 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
   macht mit dem Megafon BrunnenTV aus dem Auto – der Chat jubelt, NOMI lobt den Brunnen, und die Folge kommt ins
   Album. Jede Taste überspringt sie, dann geht die nächste Navi-Runde los.
 - **Losfahren am Supercharger:** Der Stecker springt aus der Buchse, die Klappe schließt, der Tesla rollt aus dem
-  Ladepark in Erlensee, und die Kamera geht ins Cockpit. Die ersten Minuten erklären kurze Hinweise am Bildrand
-  (Ausfahrt, Spuranzeige, Ladestopp, Kamera, Megafon) – einmal je Spieler, jede Taste blendet sie aus.
+  Ladepark in Erlensee, und die Kamera geht ins Cockpit. In den ersten Minuten erklären kurze Tipps am Bildrand,
+  was gerade dran ist (Ausfahrt nehmen, Spurpfeile im Navi, Kamera, Megafon, Ladestopp) – jeder einmal je Spieler,
+  <kbd>Enter</kbd> oder ✕ schaltet sie ab.
 - **Geld gibt es nur vom Publikum** – wie im echten Stream: Spenden mit Alter-Skala, Ortsspenden, Abos,
   VIPs, Navi-Gebote, Sprachdurchsagen, Rahmen, Aktionen und Sammelaktionen. Fürs Fahren selbst zahlt
   niemand. Aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.
