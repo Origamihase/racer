@@ -2,6 +2,19 @@
 // Sprachdurchsagen der Zuschauer und vor dem Sprachstudio. Ohne Sprachausgabe läuft alles mit geschätzter Dauer weiter.
 import { VOICES } from './data.js';
 
+/** Geschätzte Sprechdauer in Sekunden (rate: Tempo der Stimme, VOICES) – auch ohne Sprachausgabe und in Node. */
+export function estimateSpeech(text, rate = 1) {
+  return Math.max(1.2, text.length / 14 / rate);
+}
+/**
+ * Mini Adam (BrunnenTV): die tiefste deutsche Männerstimme, die das Gerät hat – zuerst die bekannten tiefen
+ * (Edge/Windows, macOS), dann jede, die sich männlich nennt; sonst die erste deutsche (tief gestimmt, VOICES).
+ */
+const DEEP_MALE = [
+  /Conrad/i, /Stefan/i, /Markus/i, /Christoph/i, /Bernd/i, /Ralf/i, /Klaus/i, /Killian/i, /Florian/i, /Yannick/i, /Viktor/i,
+  /Kasper/i, /Jonas/i, /\bmale\b/i, /männlich/i,
+];
+
 export class Speech {
   constructor() {
     this.supported = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
@@ -30,6 +43,8 @@ export class Speech {
       william: [/Stefan/i, /Markus/i, /Yannick/i, /Conrad/i, /Google Deutsch/i],
       schoennbrun: [/Stefan/i, /Markus/i, /Yannick/i, /Conrad/i],
       sprachstudio: [/Katja/i, /Petra/i, /Hedda/i, /Anna/i, /Google Deutsch/i],
+      adam: DEEP_MALE,
+      brunnen: DEEP_MALE,
     }[key] || [];
     for (const re of pref) {
       const v = this.voices.find((x) => re.test(x.name));
@@ -38,18 +53,13 @@ export class Speech {
     return this.voices[0];
   }
 
-  /** Geschätzte Sprechdauer in Sekunden. */
-  estimate(text, rate = 1) {
-    return Math.max(1.2, (text.length / 14) / rate);
-  }
-
   /**
    * Text sprechen. opts: { priority, onStart, onEnd }
    * Gibt die geschätzte Dauer zurück.
    */
   say(text, voiceKey = 'board', opts = {}) {
     const v = VOICES[voiceKey] || VOICES.board;
-    const dur = this.estimate(text, v.rate);
+    const dur = estimateSpeech(text, v.rate);
     const item = { text, voiceKey, opts, dur };
     if (opts.priority) {
       // NOMI drängelt sich vor (laufende Zuschauer-Durchsage wird abgebrochen)

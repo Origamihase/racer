@@ -39,7 +39,7 @@ import { Trip, J, PROFILES } from '../src/game/trip.js';
 import { MapDemo } from './mapdemo.mjs';
 import { Game, TOWN_HOLD, EXIT_CALL, exitLine } from '../src/game/game.js';
 import { BID_PLACES, OPENING } from '../src/game/navi.js';
-import { INSIDER_ORTE, JOB_TEMPLATES } from '../src/data.js';
+import { INSIDER_ORTE, JOB_TEMPLATES, SCHOENER_BRUNNEN } from '../src/data.js';
 import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { goalName } from '../src/world/kit/layout.js';
@@ -403,6 +403,8 @@ function stream(driver, hours, seed, firstRound = false) {
   const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 3000);
   let ids = 0;
   const tvCards = [];
+  // Mini Adams Ruf „Schöner Brunnen!“ (Game.brunnenCall): wann ihn die Sprachausgabe sprach
+  const calls = [];
   const game = new Game({
     traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
     scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
@@ -412,7 +414,7 @@ function stream(driver, hours, seed, firstRound = false) {
     windshield: loose({ firmware: 0, manual: () => 'wipe' }),
     cockpit: loose({ nomi: loose() }),
     audio: loose(),
-    speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    speech: loose({ say: (text, voice) => (voice === 'brunnen' && calls.push({ t: game.t, text }), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose({ brunnenTV: (n, name) => tvCards.push({ n, name }) }),
     fx: loose(),
     pickups: loose({ update: () => NONE }),
@@ -426,7 +428,7 @@ function stream(driver, hours, seed, firstRound = false) {
   const nv = game.navi;
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
   const m = {
-    bids: 0, bidSum: 0, earnN: 0, earnSum: 0, chaos: 0, calm: 0, late: 0, snatched: 0, spots: 0, rolled: 0, arrivals: 0, rests: 0, late2: 0, tvEnds: 0, duels: 0,
+    bids: 0, bidSum: 0, earnN: 0, earnSum: 0, chaos: 0, calm: 0, late: 0, snatched: 0, spots: 0, rolled: 0, arrivals: 0, rests: 0, late2: 0, tvEnds: 0, calls: 0, duels: 0,
     lockFork: 0, lockNode: 0, wrong: 0, wende: 0, first1: 0, firstN: 0, maxGap: 0, maxTv: 0, minTv: Infinity, passed: 0,
     bands: [0, 0, 0, 0], legs: [], navi: { checks: 0, exit: 0, far: 0, farKept: 0, arrive: 0, stop: 0, wende: 0 }, reroutes: 0, standing: 0, ratio: 0, stand: [], flipped: 0, minChoice: Infinity,
     // Ladeparks: Halte und Ladestopps; beim Lader dazu Warnungen, eingeplante Stopps, kleinster Akku und Ladestand danach
@@ -678,6 +680,10 @@ function stream(driver, hours, seed, firstRound = false) {
       m.minTv = Math.min(m.minTv, dur);
       tvEndT = game.t;
       ok(!arrival.held, 'Die Folge ist vorbei, aber der Wagen wird noch gehalten');
+      // jede Folge, die bis zu seinem Ruf läuft, hat ihn genau einmal (übersprungen wird höchstens vorher)
+      const said = calls.filter((c) => c.t >= tvT0 && c.t <= game.t);
+      ok(said.length === (dur >= TV.call ? 1 : 0) && said.every((c) => c.text === SCHOENER_BRUNNEN.say), `Folge von ${dur.toFixed(1)} s: ${said.length}× „Schöner Brunnen!“`);
+      if (said.length) m.calls++;
     }
     const sBefore = trip.s;
     const evs = trip.update(p.s, p.x);
@@ -1027,10 +1033,11 @@ if (HOURS >= 3) {
   ok(sum((m) => m.arrivals) >= 30, `zu wenige Ankünfte: ${sum((m) => m.arrivals)}`);
   ok(sum((m) => m.lockFork) >= 10 && sum((m) => m.lockNode) >= 20, `zu wenige Gebote in Sperrzonen: ${sum((m) => m.lockFork)} / ${sum((m) => m.lockNode)}`);
   ok(sum((m) => m.navi.exit) > 2000 && sum((m) => m.navi.arrive) > 300, 'Navi und Welt: zu wenig geprüft');
+  ok(sum((m) => m.calls) >= 15, `„Schöner Brunnen!“ nur in ${sum((m) => m.calls)} Folgen geprüft`);
   ok(sum((m) => m.num.nextBoards) >= 200, `Vorwegweiser und nächste Ausfahrt im Navi: zu wenig geprüft (${sum((m) => m.num.nextBoards)})`);
   ok(sum((m) => m.num.kmReal) >= 500 && sum((m) => m.num.units) >= 20, `Anzeige auf echter Straße über ${BOARD_M} m und ihr Wechsel zu Metern: zu wenig geprüft (${sum((m) => m.num.kmReal)} Schritte, ${sum((m) => m.num.units)} Wechsel)`);
 }
-console.log(`Reise: ${rows.length} Streams zu je ${HOURS} h in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+console.log(`Reise: ${rows.length} Streams zu je ${HOURS} h in ${((Date.now() - t0) / 1000).toFixed(0)} s · „Schöner Brunnen!“ in jeder der ${sum((m) => m.calls)} Folgen, die bis zum Ruf liefen`);
 if (fails) {
   console.error(`${fails} Fehler`);
   process.exit(1);

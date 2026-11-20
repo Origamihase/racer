@@ -136,6 +136,16 @@ export const BRUNNEN_MEGAFON = [
   'Fünf von fünf Tropfen für {ort}!',
   'Bitte weiterplätschern! Hier ist BrunnenTV!',
 ];
+/**
+ * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des
+ * Besitzers); say spricht die Sprachausgabe – richtig geschrieben, damit jede Stimme es richtig ausspricht, das Lange
+ * macht die Stimme 'brunnen' (tief und langsam); chat: so ruft der Chat es nach (das erste immer).
+ */
+export const SCHOENER_BRUNNEN = {
+  text: 'SCHÖÖÖÖÖÖÖNER BRUNNEN!!!!!',
+  say: 'Schöner Brunnen!',
+  chat: ['SCHÖÖÖNER BRUNNEN!', 'SCHÖÖÖÖNER BRUNNEN!!! ⛲', 'Schöner Brunnen! 😍', 'SCHÖÖÖNER BRUNNEN 💦', 'schöööööner brunnen', 'SCHÖNER BRUNNEN! 🔊', 'SCHÖÖÖNER BRUNNEN! 👏'],
+};
 export const BRUNNEN_NOMI = [
   'Folge {n} ist im Kasten. Ich finde, das Becken hat heute besonders geglänzt.',
   'Ich habe den Brunnen geprüft: Das Wasser läuft, die Tauben sind zufrieden.',
@@ -505,6 +515,10 @@ export const VOICES = {
   william: { label: 'Brüll-William', pitch: 0.55, rate: 1.12 },
   board: { label: 'NOMI', pitch: 1.18, rate: 1.04 },
   schoennbrun: { label: 'Herr Schönnbrun', pitch: 0.45, rate: 0.82 },
+  // Mini Adam bei BrunnenTV: tief und männlich (speech.js DEEP_MALE); sein Ruf „Schöner Brunnen!“ noch tiefer und
+  // langgezogen
+  adam: { label: 'Mini Adam', pitch: 0.4, rate: 1.1 },
+  brunnen: { label: 'Mini Adam: Schöner Brunnen!', pitch: 0.2, rate: 0.6 },
   sprachstudio: { label: 'Sprachstudio', pitch: 0.94, rate: 0.95 },
 };
 
@@ -837,6 +851,12 @@ export const SHOP = [
     effect: (l) => `Wanken −${[0, 18, 32][l]}\u00a0%, schneller ruhig, Kurvendrift −${Math.round((1 - 1 / (1 + 0.2 * l)) * 100)}\u00a0%`,
   },
   {
+    // wirkt in src/game/player.js (BRAKES, brakeDecel): mehr Verzögerung, bei Nässe weniger Verlust; Bremsweg ∝ 1 / a
+    id: 'bremse', icon: '🛑', name: 'Sportbremsen', cat: 'Fahrwerk', prices: [400, 950],
+    desc: 'Größere Scheiben und griffigere Beläge: Der Wagen steht früher, auch wenn die Straße nass ist.',
+    effect: (l) => `Bremsweg −${Math.round((1 - 1 / (1 + 0.08 * l)) * 100)}\u00a0%, bei Nässe −${Math.round((1 - 0.82 / ((1 + 0.08 * l) * (1 - 0.18 * (1 - 0.25 * l)))) * 100)}\u00a0%`,
+  },
+  {
     id: 'polster', icon: '🧸', name: 'Plüsch-Polster', cat: 'Fahrwerk', prices: [500, 1300],
     desc: 'Rundum-Polsterung aus original Mini-Adam-Plüsch. Steckt einen Rempler mehr weg.',
     effect: (l) => `${3 + l} Karosserie-Punkte`,
@@ -850,12 +870,6 @@ export const SHOP = [
     id: 'radar', icon: '📟', name: 'Radarwarner', cat: 'Spaß', prices: [250],
     desc: 'Ein Kästchen fürs Armaturenbrett. Es piept, und NOMI sagt jeden Blitzer an, bevor es blitzt. Ohne ihn bleibt es beim Überraschungsfoto.',
     effect: () => 'NOMI warnt vor jedem Blitzer',
-  },
-  {
-    // wirkt in src/game/player.js (BRAKES, brakeDecel): mehr Verzögerung, bei Nässe weniger Verlust; Bremsweg ∝ 1 / a
-    id: 'bremse', icon: '🛑', name: 'Sportbremsen', cat: 'Fahrwerk', prices: [400, 950],
-    desc: 'Größere Scheiben und griffigere Beläge: Der Wagen steht früher, auch wenn die Straße nass ist.',
-    effect: (l) => `Bremsweg −${Math.round((1 - 1 / (1 + 0.08 * l)) * 100)}\u00a0%, bei Nässe −${Math.round((1 - 0.82 / ((1 + 0.08 * l) * (1 - 0.18 * (1 - 0.25 * l)))) * 100)}\u00a0%`,
   },
   {
     id: 'starlink', icon: '🛰️', name: 'Satelliten-Schüssel', cat: 'Spaß', prices: [1100],

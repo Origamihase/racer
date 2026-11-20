@@ -4,7 +4,7 @@
 import {
   CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
-  BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE,
+  BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
 import { Player } from './player.js';
@@ -24,6 +24,7 @@ import { stopPlan, STOP } from '../world/xxl/charge.js';
 import { TV } from '../world/xxl/brunnentv.js';
 import { addEpisode } from './album.js';
 import { RouteLog } from './routelog.js';
+import { estimateSpeech } from '../speech.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
 // „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
@@ -1414,6 +1415,7 @@ export class Game {
         // passt eine Streitfrage des Wikis (Trinkbrunnen, Kanal, Alsterfontäne), kommt sie nach dem Jubel
         if (tv.debate) this.later(3.2, () => this.chat(this.chatLine(BRUNNEN_DEBATTE[tv.debate])));
       }],
+      [TV.call, () => this.brunnenCall()],
       [TV.nomi, () => this.say(fillTemplate(pick(BRUNNEN_NOMI), { n: fmtNum(tv.n) }), 'love', { priority: false, scene: true })],
     ];
     while (tv.said < moments.length && t >= moments[tv.said][0]) moments[tv.said++][1]();
@@ -1421,16 +1423,36 @@ export class Game {
   }
 
   /**
-   * Mini Adam spricht durchs Megafon zum Brunnen: mit der Stimme der Taste H (Brüll-William), der Satz steht unten im
-   * Bild wie ein Megafon-Wunsch, nur mit Mini Adam statt eines Käufers (die Folge steht in der Bauchbinde darüber).
+   * Mini Adam grüßt durchs Megafon den Brunnen, mit seiner tiefen Stimme (VOICES.adam); der Satz steht unten im Bild
+   * wie ein Megafon-Wunsch, nur mit Mini Adam statt eines Käufers (die Folge steht in der Bauchbinde darüber). Nur ein
+   * Gruß, der vor seinem Ruf (TV.call) zu Ende ist: Mit langem Ortsnamen bleiben die kürzeren.
    */
   brunnenMegafon(tv) {
-    const text = fillTemplate(pick(BRUNNEN_MEGAFON), { ort: tv.name });
+    const room = TV.call - TV.line - 0.3;
+    const fits = BRUNNEN_MEGAFON.map((l) => fillTemplate(l, { ort: tv.name })).filter((l) => estimateSpeech(l, VOICES.adam.rate) <= room);
+    const text = pick(fits);
     this.audio.megafon();
-    const dur = this.speech.say(text, 'william');
+    const dur = this.speech.say(text, 'adam');
     this.ui.megafon(text, dur + 1, '', 'Mini Adam durchs Megafon');
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.line));
+  }
+
+  /**
+   * Der Ruf jeder Folge (SCHOENER_BRUNNEN): Mini Adam ruft „Schöner Brunnen!“ durchs Megafon, tief und langgezogen
+   * (VOICES.brunnen); der Untertitel schreibt es, wie es klingt, und der Chat ruft es nach.
+   */
+  brunnenCall() {
+    const S = SCHOENER_BRUNNEN;
+    this.audio.megafon();
+    const dur = this.speech.say(S.say, 'brunnen');
+    this.ui.megafon(S.text, dur + 1.2, '', 'Mini Adam durchs Megafon');
+    this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
+    this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.call));
+    this.later(0.6, () => {
+      this.chat(S.chat[0]);
+      this.burst(S.chat.slice(1), 3, 2.5);
+    });
   }
 
   /** Folge überspringen (main.js: jede Taste ab TV.skip, wie beim Ladestopp): Sie endet im nächsten Bild. */

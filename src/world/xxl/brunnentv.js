@@ -7,16 +7,17 @@
 // so, wie sie sonst endet: Fenster zu, Megafon zurück auf dem Beifahrersitz, der Wagen darf weiter.
 
 /**
- * card: Bauchbinde „BrunnenTV · Folge N“ und Jingle · line: Mini Adam durchs Megafon · chat: der Chat jubelt ·
- * nomi: NOMI sagt etwas zum Brunnen · end: die Folge ist vorbei (der Wagen darf weiter; das erste Gebot der nächsten
- * Runde kommt frühestens pause Sekunden später) · skip: ab hier lässt sie sich überspringen.
+ * card: Bauchbinde „BrunnenTV · Folge N“ und Jingle · line: Mini Adam grüßt durchs Megafon · chat: der Chat jubelt ·
+ * call: Mini Adams Ruf „Schöner Brunnen!“ – in jeder Folge, in der Einstellung „Brunnen“, solange das Megafon oben
+ * ist · nomi: NOMI sagt etwas zum Brunnen · end: die Folge ist vorbei (der Wagen darf weiter; das erste Gebot der
+ * nächsten Runde kommt frühestens pause Sekunden später) · skip: ab hier lässt sie sich überspringen.
  * window: Fenster herunter [von, bis] und wieder hoch · lift: Megafon an den Mund und wieder hinunter (ab show ist es
  * in der Hand zu sehen, darunter liegt die Hand unter der Gürtellinie) · look: Kopf zum Fenster · cams: Schnitte auf
  * die Kameras „Fenster“ und „Brunnen“ · back: zurück zur Kamera des Spielers · fade: Abblenden, wo die Kamera ins
  * Cockpit springt.
  */
 export const TV = {
-  card: 1.0, line: 2.3, chat: 2.6, nomi: 5.9, end: 10.2, skip: 0.3, pause: 1.5,
+  card: 1.0, line: 2.3, chat: 2.6, call: 6.0, nomi: 8.2, end: 10.2, skip: 0.3, pause: 1.5,
   window: { down: [0.4, 1.4], up: [8.8, 9.8] },
   lift: { up: [1.2, 2.0], down: [8.4, 9.0], show: 0.4 },
   look: { on: [1.0, 1.6], off: [8.4, 9.2] },
