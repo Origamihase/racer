@@ -324,7 +324,8 @@ export class Menus {
 
   render_pause(s, g) {
     s.textContent = '';
-    const card = el('div', 'card pause-card', s);
+    // die Reise hat einen Knopf mehr („⛲ Folgen“): ihre Karte ist breiter, damit alle sechs in einer Zeile stehen
+    const card = el('div', g.worldNavi ? 'card pause-card pause-album' : 'card pause-card', s);
     el('h2', '', card, '⏸ Pause');
     el('p', 'sub', card, 'Kappandramäßige Zusammenfassung für alle, die gerade erst reingekommen sind:');
     const grid = el('div', 'summary-grid', card);
