@@ -2472,6 +2472,10 @@ if (DEBUG) {
     get stop() {
       return stopRun;
     },
+    // die Tipps der ersten Minuten (first-tips.js): Prüfbilder ohne Tipps rufen vor dem Losfahren __MA.tips.stop()
+    get tips() {
+      return firstTips;
+    },
     /** BrunnenTV-Folge: Szene (tvRun) und Zustand für Prüfbilder: Zeit, Kamera, Fenster, Megafon. */
     get tv() {
       const t = game.brunnenT();

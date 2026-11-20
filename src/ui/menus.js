@@ -577,6 +577,7 @@ export class Menus {
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
       'Geladen wird in den Ladeparks an den Ausfahrten: Warnt NOMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) den nächsten Park ein, das Navi führt hinein und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',
+      'In den ersten Minuten erklären kurze Tipps am Bildrand, was gerade dran ist – jeder kommt nur einmal. Enter oder ✕ schaltet sie ab.',
     ]) el('p', '', tips, '• ' + t);
     const menu = el('div', 'menu row', card);
     button(menu, '← Zurück', 'back', 'primary');

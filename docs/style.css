@@ -232,6 +232,8 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 @media (pointer: coarse) {
   .hint-card, .hint-card.tip { left: auto; bottom: auto; top: 14px; right: 14px; width: min(310px, 30vw); max-width: none; z-index: 6; background: rgb(18, 19, 23); }
   .hint-close { width: 30px; height: 30px; line-height: 30px; }
+  /* die Karte liegt auf dem Chat: Ein kurzer Tipp deckt ihn nicht ganz, darum tritt er so lange zurück */
+  .hud:has(> .hint-card:not(.hidden)) > .chat { visibility: hidden; }
 }
 @media (max-width: 480px), (max-height: 500px) {
   .hint-card { padding: 6px 11px 8px; }
