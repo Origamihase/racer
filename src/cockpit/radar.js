@@ -1,4 +1,4 @@
-// Der Radarwarner aus dem Tesla-Shop: ein kleines, rundes Kästchen auf dem Armaturenbrett, links vom Lenkrad schräg
+// Der Radarwarner aus dem Shop: ein kleines, rundes Kästchen auf dem Armaturenbrett, links vom Lenkrad schräg
 // vor dem Platz der Wackel-Elsa. Vorn ein dunkles Fensterchen mit drei Empfangsbalken, oben ein Lämpchen im Zierring
 // und die Schlitze des Piepsers. Das Lämpchen glimmt ruhig grün; solange das Kästchen vor einem Blitzer warnt, blinkt
 // es rot.

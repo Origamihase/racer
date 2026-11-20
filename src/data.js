@@ -360,7 +360,7 @@ export const CHAT = {
   frog: ['🐸', '🐸🐸', 'Frosch!', '🐸 HDMI-Kabel?'],
   blitzer: ['📸', 'Lächeln! 📸', 'Das Foto kommt in einen Rahmen', 'Tschüss, du Betrüger!', 'Teures Selfie'],
   // nach einem Blitz stichelt ab und zu jemand: ohne Radarwarner mit einem Wink zum Shop, mit ihm erst recht
-  radarFehlt: ['Ein Radarwarner hätte jetzt gepiept', 'Im Tesla-Shop gibt es Radarwarner 😏', 'Radarwarner wann? 📟',
+  radarFehlt: ['Ein Radarwarner hätte jetzt gepiept', 'Im Shop gibt es Radarwarner 😏', 'Radarwarner wann? 📟',
     'Mit Radarwarner wäre das nicht passiert'],
   radarTrotz: ['Trotz Radarwarner 😂', 'Der hat doch gepiept?!', 'Gepiept, geblinkt, geblitzt 📟📸',
     'Der Radarwarner hat alles gegeben'],
@@ -803,7 +803,7 @@ export const REISE_AKKU = {
 };
 
 // ---------------------------------------------------------------------------
-// Tesla-Shop (bezahlt wird mit den Stream-Einnahmen)
+// Shop (bezahlt wird mit den Stream-Einnahmen)
 export const SHOP = [
   {
     id: 'boost', icon: '⚡', name: 'Beschleunigungs-Boost', cat: 'Leistung', prices: [300, 700, 1500],

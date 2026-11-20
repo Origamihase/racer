@@ -1,4 +1,4 @@
-// Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
+// Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
 import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate } from '../data.js';
 import { fmtNum, fmtCent, fmtEuro, fmtSpan } from '../util.js';
@@ -297,7 +297,7 @@ export class Menus {
     el('p', 'tagline', card, TAGLINE);
     const menu = el('div', 'menu', card);
     button(menu, '▶  Losfahren', 'start', 'primary');
-    button(menu, '🛒  Tesla-Shop', 'shop');
+    button(menu, '🛒  Shop', 'shop');
     button(menu, '🗺️  Karte', 'karte');
     // die Reise sammelt ihre BrunnenTV-Folgen in einem Album (src/ui/album.js)
     button(menu, '⛲  BrunnenTV-Folgen', 'album');
@@ -379,7 +379,7 @@ export class Menus {
     el('span', 'lbl', mon, 'Guthaben · jetzt ' + fmtCent(o.wallet));
     const menu = el('div', 'menu row over-menu', card);
     button(menu, '↻ Nochmal fahren', 'restart', 'primary');
-    button(menu, '🛒 Tesla-Shop', 'shop');
+    button(menu, '🛒 Shop', 'shop');
     button(menu, '🏠 Hauptmenü', 'menu');
     // die Route des Tages auf der Karte, daneben die Summen
     this.routeObs?.disconnect();
@@ -506,7 +506,7 @@ export class Menus {
     s.textContent = '';
     const card = el('div', 'card shop-card', s);
     const head = el('div', 'shop-head', card);
-    el('h2', '', head, '🛒 Tesla-Shop');
+    el('h2', '', head, '🛒 Shop');
     el('div', 'wallet', head, '💶 ' + fmtCent(d.wallet));
     el('p', 'sub', card, 'Upgrades für den schwarzen Model 3 Long Range AWD. Bezahlt wird mit den Stream-Einnahmen: Spenden, Abos, Navi-Gebote.');
     if (d.refund) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.refund)));
@@ -573,7 +573,7 @@ export class Menus {
       'Wenn NOMI sagt „Die linke Fahrspur ist freigeschaltet.“, hat jemand dafür gespendet: Eine Minute lang darfst du ganz links fahren. Nutzt du sie, freut sich der Chat. Danach gilt wieder das Rechtsfahrgebot, sonst kommt die Polizei Gifhorn.',
       'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Zehner drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV. Dort rechnet auch die Werkstatt die Rempler der Runde ab, und je zügiger du von Ziel zu Ziel kommst, desto zufriedener ist der Chat (das Gesicht oben im Chat) – und desto lieber gibt er.',
       'Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.',
-      'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Tesla-Shop den Radarwarner.',
+      'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
       'Geladen wird in den Ladeparks an den Ausfahrten: Warnt NOMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) den nächsten Park ein, das Navi führt hinein und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',

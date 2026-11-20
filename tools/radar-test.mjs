@@ -1,6 +1,6 @@
 // Prüft den Radarwarner ohne Grafik: das echte Spiel (Game) mit Mitspielern, die mitschreiben; die Fahrt steht dabei
 // am Start (die Blitzer stellt das Spiel an die Stelle p.s der Straße).
-// Die Regel: Einen Blitzer kündigt niemand an – außer dem Radarwarner aus dem Tesla-Shop. Blitz, Bußgeld, Foto,
+// Die Regel: Einen Blitzer kündigt niemand an – außer dem Radarwarner aus dem Shop. Blitz, Bußgeld, Foto,
 // Statistik und Stream-Kasse sind mit ihm und ohne ihn dieselben.
 // node tools/radar-test.mjs
 // - Ohne Radarwarner, zu schnell: Bis zum Blitzer fällt nirgends ein Wort über ihn (Sprache, Untertitel, Hinweise,
