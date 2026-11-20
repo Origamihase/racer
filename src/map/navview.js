@@ -466,9 +466,11 @@ export class NaviScreen {
     const o = [0, 0, 0];
     const tags = this.tags;
     tags.length = 0;
+    // ein Knopf nur ganz unter Ansage und Schild der nächsten Ausfahrt (this.top), nie halb von ihnen verdeckt
+    const top = Math.max(FOG_Y[1] - 20, this.top + 19);
     const seen = (p) => {
       tv.toScreen(p.x, p.y, o);
-      return o[2] > 0 && o[0] > -20 && o[0] < w + 20 && o[1] > FOG_Y[1] - 20 && o[1] < h + 20;
+      return o[2] > 0 && o[0] > -20 && o[0] < w + 20 && o[1] > top && o[1] < h + 20;
     };
     if (ins.turn === 'exit' && ins.node >= 0 && !hop && seen(m.nodeXY(ins.node))) tags.push(exitButton(ctx, o[0], o[1], T, upright(o[2]), tagOf(ins.head)));
     // die nächste Ausfahrt, an der die Route vorbeiführt: blauer Knopf mit ihrem Namen
