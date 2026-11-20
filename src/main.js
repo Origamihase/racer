@@ -2094,9 +2094,13 @@ function takeAlbumShot(r) {
   } catch (e) {
     url = null;
   }
-  const n = r.tv.n;
-  const stored = !!url && storePicture(n, url);
-  albumLast = { n, chars: url ? url.length : 0, type: url ? url.slice(5, url.indexOf(';')) : null, stored, ms: Math.round(performance.now() - t0) };
+  // gespeichert wird, sobald der Browser Luft hat (alle Bilder lesen und schreiben kostet ein paar ms); bis dahin null
+  const shot = { n: r.tv.n, chars: url ? url.length : 0, type: url ? url.slice(5, url.indexOf(';')) : null, stored: url ? null : false, ms: Math.round(performance.now() - t0) };
+  albumLast = shot;
+  if (!url) return;
+  const keep = () => (shot.stored = storePicture(shot.n, url));
+  if (window.requestIdleCallback) requestIdleCallback(keep, { timeout: 1500 });
+  else setTimeout(keep, 0);
 }
 
 // --- Hauptschleife ----------------------------------------------------------------------
