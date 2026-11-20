@@ -19,6 +19,8 @@
 //   Funklöcher kommen nie mitten in einer Szene, die linke Spur endet an der Ausfahrt.
 // - Running Gags: mindestens 40 neue Chat-Zeilen aus den stärksten Memes des Streams, jede mit ihrem Anlass (Stichwort
 //   oder Ereignis), nichts aus der Sperrliste der Recherche.
+// - Handy hochkant: Wo der Mittelbildschirm rechts aus dem Bild ragt, steht seine Akku-Karte als kleine Kopie oben in
+//   der zweiten Reihe (statt des Spur-Balkens), sonst nirgends.
 import { readFileSync } from 'node:fs';
 import * as DATA from '../src/data.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
@@ -26,6 +28,8 @@ import { MOOD_START, Economy } from '../src/game/economy.js';
 import { AUKTION, QUOTE_DT, TROEDEL, FACTS, untag, fountainIn } from '../src/game/game.js';
 import { drawQuote } from '../src/ui/quotechart.js';
 import { Speech } from '../src/speech.js';
+import { UI } from '../src/ui/ui.js';
+import { cockpitParts, HOMES } from '../src/ui/sicht.js';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
 
 let fails = 0;
@@ -460,6 +464,34 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   const shown = new Set(memes.map(untag));
   console.log(`  Running Gags: ${memes.length} Zeilen mit Anlass (${[...new Set(memes.flatMap(tags))].length} Stichworte) und ${events.length} bei Ereignissen · im Spiel ${sum.meme} gezeigt, jede zur rechten Zeit`);
   console.log(`  Ansagen: ${audited} Sätze der allgemeinen Vorräte und Durchsagen durchgesehen · im Spiel ${sum.lines} Sätze, ${sum.tagged} mit Stichwort (${Object.entries(sum.keys).map(([k, n]) => k + ' ' + n).join(', ')}; ${sum.durch} Durchsagen), alle zur rechten Zeit · ${sum.funk} Funklöcher, keins in einer Szene · ${sum.studio} Studio-Anlässe „nah“/„Stau“ geprüft`);
+}
+
+// --- Handy hochkant: die Akku-Karte als kleine Kopie am Rand ---------------------------------------------------------
+{
+  const cut = (W, H) => cockpitParts(W, H).screen.right > W;
+  ok(cut(390, 844) && cut(360, 780) && cut(412, 915) && !cut(1280, 720) && !cut(844, 390) && !cut(1920, 1080), 'Mittelbildschirm: Er ragt nicht genau hochkant aus dem Bild');
+  const ui = read('src/ui/ui.js');
+  const css = read('docs/style.css');
+  ok(/toggle\('screen-cut', cockpitParts\(W, window\.innerHeight\)\.screen\.right > W\)/.test(ui) && /this\.showAkkuCard\(g\.lowBatteryCard\(\)\)/.test(ui), 'ui.js: Akku-Kopie nicht an Mittelbildschirm und Akku-Karte gebunden');
+  ok(/\.akku-mini \{ display: none;/.test(css) && /\.screen-cut \.akku-mini\.on \{ display: flex; \}/.test(css) && /\.top-row:has\(\.akku-mini\.on\) \.navi-turn \{ display: none; \}/.test(css) && HOMES.akku, 'style.css/sicht.js: Akku-Kopie nicht nur bei abgeschnittenem Mittelbildschirm oder ohne Platz');
+  // derselbe Inhalt wie die Karte des Mittelbildschirms (Game.lowBatteryCard): Stufe, Prozent, Ladepark
+  const sim = makeStream({ driver: DRIVERS.mittel, seed: 6 });
+  sim.step(20);
+  const g = sim.game;
+  const box = () => ({ on: new Set(), style: {}, textContent: '', classList: { toggle(c, v) { if (v) this.self.on.add(c); else this.self.on.delete(c); } } });
+  const f = { akkuEl: box(), akkuFill: box(), akkuTitle: box(), akkuPark: box() };
+  f.akkuEl.classList.self = f.akkuEl;
+  const seen = [];
+  for (const pct of [50, 9.4, 4.2, 0]) {
+    g.player.battery = pct;
+    g.t += 0.5;
+    g.lowBattery();
+    const b = g.lowBatteryCard();
+    UI.prototype.showAkkuCard.call(f, b);
+    seen.push(f.akkuEl.on.has('on') ? f.akkuTitle.textContent + ' | ' + f.akkuPark.textContent : '–');
+  }
+  ok(seen[0] === '–' && /^Akku fast leer · 9 % \| /.test(seen[1]) && /^Akku kritisch · 4 % \| /.test(seen[2]) && seen[3] === 'Akku leer · 0 % | Der Wagen rollt aus', `Akku-Kopie: ${seen.join(' / ')}`);
+  console.log(`  Handy hochkant: Akku-Kopie oben, sobald der Mittelbildschirm aus dem Bild ragt (390 × 844: rechts bei ${cockpitParts(390, 844).screen.right.toFixed(0)} px) · ${seen.slice(1).join(' / ')}`);
 }
 
 console.log(`ansagen-test: ${checks} Prüfungen, ${fails} Fehler`);

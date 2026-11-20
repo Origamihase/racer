@@ -827,6 +827,8 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
      Hinweis steht, weicht ihm der Balken (seine Warnung vor dem Ende kommt selbst als dringender Hinweis) */
   .top-row { flex-direction: column; align-items: center; gap: 0; }
   .top-strip:has(> .notice > .toast) .leftlane { display: none; }
+  /* die Akku-Kopie (nur hochkant, 8 s lang) nimmt hier den Platz der Navi-Ansage: Der Hinweis dazu bleibt stehen */
+  .top-row:has(.akku-mini.on) .navi-turn { display: none; }
   .leftlane { width: 230px; padding: 1px 10px 5px; font-size: 13px; line-height: 17px; }
   .navi-turn { padding: 1px 11px 1px 3px; font-size: 14px; line-height: 18px; }
   .navi-turn-icon { width: 22px; height: 22px; }
@@ -932,6 +934,19 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 .lg-start { background: radial-gradient(circle, #e8212e 0 3px, #ffffff 3.5px); border: 2.5px solid #1d1f22; }
 .lg-tv { background: #1f8fd8; border: 2px solid #fff; }
 .lg-park { background: #2f8f4e; border: 2px solid #fff; }
+/* Akku-Karte als kleine Kopie (ui.js showAkkuCard): nur, wo der Mittelbildschirm rechts aus dem Bild ragt (Handy
+   hochkant, .screen-cut); rot wie die Karte dort, ab „kritisch“ mit hellem Rand. Sie nimmt den Platz des Spur-Balkens,
+   auf kleinen Formaten auch den der Navi-Ansage (unten). */
+.akku-mini { display: none; align-items: center; gap: 7px; min-width: 0; max-width: 100%; padding: 3px 10px; border-radius: 9px; color: #fff; font-size: 13px; line-height: 17px;
+  background: linear-gradient(#e4502f, #b8291c); box-shadow: 0 3px 10px rgba(0,0,0,0.35); }
+.akku-mini.crit { background: linear-gradient(#e0281e, #a3101a); box-shadow: 0 0 0 2px rgba(255,255,255,0.75), 0 3px 10px rgba(0,0,0,0.35); }
+.screen-cut .akku-mini.on { display: flex; }
+.screen-cut .top-row:has(.akku-mini.on) .leftlane { display: none; }
+.akku-mini-icon { position: relative; flex: none; width: 24px; height: 12px; border: 2px solid #fff; border-radius: 3px; margin-right: 3px; }
+.akku-mini-icon::after { content: ''; position: absolute; right: -5px; top: 2px; width: 3px; height: 4px; background: #fff; border-radius: 0 1px 1px 0; }
+.akku-mini-icon i { position: absolute; left: 1px; top: 1px; bottom: 1px; max-width: calc(100% - 2px); background: #fff; border-radius: 1px; }
+.akku-mini-title { flex: none; white-space: nowrap; }
+.akku-mini-park { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.92; }
 /* Einschaltquote (src/ui/quotechart.js): niedriger als die Karte, die Linie wie die Route */
 .quote-wrap { height: 170px; background: #ebe8e1; }
 .lg-quote { width: 18px !important; height: 5px !important; border-radius: 3px !important; background: #2f6fe4; box-shadow: 0 0 0 1.5px #1e4fb0; }

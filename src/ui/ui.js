@@ -5,8 +5,8 @@ import { fmtNum, fmtCent, fmtEuro, fmtClock, clamp, tachoKmh } from '../util.js'
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
-import { fmtOdo } from '../map/navroute.js';
-import { NARROW_MID, infoWidth, overlap } from './sicht.js';
+import { fmtOdo, fmtKm } from '../map/navroute.js';
+import { NARROW_MID, infoWidth, overlap, cockpitParts } from './sicht.js';
 
 /** Zufriedenheit des Chats sichtbar im Chat-Kopf? Nein: Die Chat-Stimmung gehört nicht ins HUD (Besitzer, 17.11.). */
 
@@ -124,6 +124,12 @@ export class UI {
     this.leftLaneText = el('div', 'leftlane-text', this.leftLaneEl, '');
     const bar = el('div', 'leftlane-bar', this.leftLaneEl);
     this.leftLaneFill = el('div', 'leftlane-fill', bar);
+    // Handy hochkant ragt der Mittelbildschirm rechts aus dem Bild und mit ihm die Akku-Karte: Dann steht hier eine
+    // kleine Kopie (showAkkuCard, style.css .screen-cut .akku-mini) – Batterie, Stufe, Prozent und der Ladepark
+    this.akkuEl = el('div', 'akku-mini', second);
+    this.akkuFill = el('i', '', el('span', 'akku-mini-icon', this.akkuEl));
+    this.akkuTitle = el('b', 'akku-mini-title', this.akkuEl, '');
+    this.akkuPark = el('span', 'akku-mini-park', this.akkuEl, '');
     this.noticeEl = el('div', 'notice', strip);
 
     // --- rechts: Chat ---
@@ -232,7 +238,26 @@ export class UI {
     st.setProperty('--mid', Math.round(mid) + 'px');
     st.setProperty('--top', Math.round(top) + 'px');
     this.hud.classList.toggle('hud-narrow', narrow);
+    // ragt der Mittelbildschirm rechts aus dem Bild? (sicht.js cockpitParts; Handy hochkant) – dann die Akku-Kopie
+    this.hud.classList.toggle('screen-cut', cockpitParts(W, window.innerHeight).screen.right > W);
     this.naviMax = Math.min(760, mid);
+  }
+
+  /**
+   * Die Akku-Karte des Mittelbildschirms (Game.lowBatteryCard, screen.js drawLowBattery) als kleine Kopie in der
+   * zweiten Reihe oben – zu sehen nur, wo der Mittelbildschirm aus dem Bild ragt (style.css .screen-cut). b: null = keine.
+   */
+  showAkkuCard(b) {
+    this.akkuEl.classList.toggle('on', !!b);
+    if (!b) return;
+    this.akkuEl.classList.toggle('crit', b.lvl > 1);
+    this.akkuEl.style.opacity = b.alpha.toFixed(2);
+    const pct = clamp(b.pct, 0, 100);
+    this.akkuFill.style.width = (b.lvl < 3 ? Math.max(8, pct) : 0) + '%';
+    const title = ['', 'Akku fast leer', 'Akku kritisch', 'Akku leer'][b.lvl] + ' · ' + Math.round(pct) + ' %';
+    const park = b.lvl === 3 ? 'Der Wagen rollt aus' : b.park ? b.park + ' · ' + fmtKm(b.km) : 'Nächsten Ladepark ansteuern';
+    if (this.akkuTitle.textContent !== title) this.akkuTitle.textContent = title;
+    if (this.akkuPark.textContent !== park) this.akkuPark.textContent = park;
   }
 
   /** Navi-Ansage der Fahrt (NavModel.instruction()) oder null; sichtbar nur ohne Mittelbildschirm (style.css). */
@@ -827,6 +852,7 @@ export class UI {
     this.batteryEl.textContent = Math.round(p.battery) + ' %';
     this.batteryFill.style.width = clamp(p.battery, 0, 100) + '%';
     this.batteryFill.className = 'battery-fill' + (p.battery < 15 ? ' low' : p.battery < 30 ? ' mid' : '');
+    if (g.lowBatteryCard) this.showAkkuCard(g.lowBatteryCard());
     this.dmgBadge.update(p.damage);
     this.cruiseBadge.update(p);
     // linke Spur: Der Balken erscheint mit der Freischaltung und zählt herunter; in den letzten zehn Sekunden warnt er
