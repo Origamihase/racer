@@ -6,6 +6,7 @@ import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
 import { MapScreen, visitLine } from './mapscreen.js';
 import { renderAlbum } from './album.js';
+import { drawRouteMap } from './routemap.js';
 import { otherMode } from '../mode.js';
 import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
 
@@ -381,6 +382,9 @@ export class Menus {
     button(menu, '↻ Nochmal fahren', 'restart', 'primary');
     button(menu, '🛒 Tesla-Shop', 'shop');
     button(menu, '🏠 Hauptmenü', 'menu');
+    // Reise: die Route des Tages auf der Karte, daneben die Summen
+    this.routeObs?.disconnect();
+    if (o.travel && o.route) this.routeBlock(card, o);
     const cols = el('div', 'over-cols', card);
     const left = el('div', 'over-col', cols);
     el('h3', '', left, 'Abrechnung');
@@ -447,6 +451,56 @@ export class Menus {
     }
     // Reise: ganz am Ende, allein und leise
     if (o.travel) el('p', 'gedenken', card, GEDENKEN);
+  }
+
+  /**
+   * Abspann der Reise: die Karte mit dem gefahrenen Weg, Start, Folgen und Ladestopps (src/ui/routemap.js), daneben
+   * Kilometer, Brunnen, Folgen, Ladestopps und Einnahmen. Gezeichnet wird, sobald die Karte ihre Größe hat, und neu,
+   * wenn sie sich ändert (Handy gedreht).
+   */
+  routeBlock(card, o) {
+    const R = o.route;
+    const box = el('section', 'over-route', card);
+    el('h3', '', box, 'Route des Tages');
+    const row = el('div', 'route-row', box);
+    const left = el('div', 'route-left', row);
+    const wrap = el('div', 'route-map-wrap', left);
+    const canvas = el('canvas', 'route-map', wrap);
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', 'Karte der gefahrenen Route');
+    const legend = el('div', 'route-legend', left);
+    const lg = (cls, mark, text) => {
+      const e = el('span', 'lg', legend);
+      el('i', 'lg-' + cls, e, mark);
+      e.append(text);
+    };
+    lg('start', '', 'Start Erlensee');
+    lg('tv', '1', 'BrunnenTV-Folge');
+    lg('park', '', 'Ladestopp');
+    const tv = R.marks.filter((m) => m.type === 'brunnen');
+    const stops = R.marks.filter((m) => m.type === 'laden').length;
+    const towns = new Set(tv.map((m) => m.place)).size;
+    const tot = el('div', 'route-totals', row);
+    const item = (icon, v, k) => {
+      const r = el('div', 'rt', tot);
+      el('span', 'rt-i', r, icon);
+      el('span', 'rt-v', r, v);
+      el('span', 'rt-k', r, k);
+    };
+    item('🛣️', fmtOdo(R.km), 'gefahren');
+    item('⛲', fmtNum(towns), 'Brunnen besucht');
+    item('📺', fmtNum(tv.length), tv.length === 1 ? 'BrunnenTV-Folge' : 'BrunnenTV-Folgen');
+    item('🔌', fmtNum(stops), stops === 1 ? 'Ladestopp' : 'Ladestopps');
+    item('💶', '+' + fmtCent(o.money), 'eingenommen');
+    const draw = () => {
+      const w = Math.round(wrap.clientWidth);
+      const h = Math.round(wrap.clientHeight);
+      if (w < 20 || h < 20 || (canvas.dataset.size === w + 'x' + h)) return;
+      canvas.dataset.size = w + 'x' + h;
+      this.routeMarks = drawRouteMap(canvas, R, w, h, Math.min(2, window.devicePixelRatio || 1));
+    };
+    this.routeObs = new ResizeObserver(draw);
+    this.routeObs.observe(wrap);
   }
 
   render_shop(s, d) {

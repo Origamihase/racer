@@ -48,6 +48,7 @@ import { NavModel } from './map/navroute.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
 import { albumBadges } from './ui/album.js';
+import { thinLine } from './ui/routemap.js';
 import { clamp, lerp, damp, easeInOut, smoothstep } from './util.js';
 
 const QUALITY = {
@@ -764,7 +765,9 @@ function finishRun() {
   save.stats.crashes += o.stats.crashes;
   storeSave(save);
   if (newRecord) adamMood('proud');
-  lastOver = { ...o, newRecord, best: save.best[rec], wallet: save.wallet, photos: ui.photos.slice() };
+  // Reise: zur Route des Streams der gefahrene Weg des Navis (Kartenpunkte, ausgedünnt), für die Karte im Abspann
+  const route = o.route && xxlNav ? { ...o.route, line: thinLine(xxlNav.trail, 3000) } : o.route;
+  lastOver = { ...o, route, newRecord, best: save.best[rec], wallet: save.wallet, photos: ui.photos.slice() };
 }
 
 // --- Autopilot (Titel, Kameraschwenk, Abspann) -------------------------------------
@@ -1754,6 +1757,12 @@ const tvRun = {
   from: new THREE.Vector3(), fromLook: new THREE.Vector3(), pose: { pos: [0, 0, 0], look: [0, 0, 0] },
 };
 const tvM = new THREE.Matrix4();
+// Route des Abspanns: jede Marke (Folge, Ladestopp) liegt dort, wo das Navi den Wagen gerade zeigt
+game.onRouteMark = (m) => {
+  if (!xxlNav) return;
+  m.x = xxlNav.pose.x;
+  m.y = xxlNav.pose.y;
+};
 // (die Folge steht schon im Album, game.startBrunnenTV: sofort speichern, auch wenn der Stream gleich abbricht)
 game.onBrunnenTV = (e) => {
   storeSave(save);
