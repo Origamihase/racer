@@ -372,6 +372,7 @@ const uiFacade = {
   reset: () => ui.reset(),
   chat: (m) => ui.chat(m),
   toast: (t, k, key) => ui.toast(t, k, key),
+  dropKey: (key) => ui.dropKey(key),
   naviNews: () => ui.naviNews(),
   nomi: (t, d) => ui.nomi(t, d),
   studio: (t, d) => ui.studio(t, d),
