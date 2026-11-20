@@ -596,10 +596,12 @@ function pluggedCable(b, s, xg, yg, zg, port, col) {
   // Punkt k Meter längs des Steckers (zur Spitze, in die Flanke hinein: +k)
   const at = (k) => [px + s * Math.cos(a) * k, py + Math.sin(a) * k, pz];
   b.xf(port, [0, 0, -s * (Math.PI / 2 - a)], 1, () => F.rbox(0, -0.175, 0, 0.085, 0.21, 0.12, 0.035, C.plug, { seg: 1 }));
-  const p1 = at(-0.26);
-  const low = [p1[0] * 0.55 + xg * 0.45, 0.24, (pz + zg) / 2];
-  // die Enden stecken in Stecker und Tülle; zur Wand hin bleibt der Schlauch außen (Bogen nicht in die Säule)
-  cord(F, [at(-0.14), p1, low, [xg + s * 0.05, 0.45, zg + 0.1], [xg + s * 0.005, yg - 0.15, zg], [xg, yg + 0.03, zg]], 0.032, col, 40, 10);
+  // Das Kabel fällt hinter dem Vorderrad zu Boden, liegt neben dem Rad auf der Bucht (13 cm vor der Flanke, außen am
+  // Reifen vorbei, nie über ihm) und steigt vor dem Rad an der Säule in die Tülle; die Enden stecken in Stecker und Tülle
+  const xr = px - s * 0.13;
+  const gy = 0.04;
+  const axle = pz - PORT_BEHIND;
+  cord(F, [at(-0.14), at(-0.26), [xr, 0.22, pz - 0.04], [xr, gy, pz - 0.22], [xr, gy, axle], [xr, gy, 0.42], [xg + s * 0.09, 0.2, 0.22], [xg + s * 0.02, yg - 0.2, zg + 0.03], [xg, yg + 0.03, zg]], 0.032, col, 64, 10);
 }
 
 /**
@@ -963,6 +965,7 @@ const POSTS = [[-5.2, 'dc'], [0, 'dc'], [5.2, 'dc'], [-10.7, 'ac'], [10.7, 'ac']
 // geraden Stück der Flanke (y, unter der Rundung zur Gürtellinie), 0,55 m hinter der Achse.
 const PARKED = [[0, 'carCompact'], [6, 'carSmall'], [7, 'carCompact']];
 const PARKED_CAR = { carCompact: { L: 3.9, W: 1.72, wz: 1.21, y: 0.6 }, carSmall: { L: 3.2, W: 1.62, wz: 1.0, y: 0.56 } };
+const PORT_BEHIND = 0.55;
 /** Buchsen der geparkten Autos an der Säule bei x (Rahmen der Säule): Seite → [x, y, z]. */
 export function parkedPorts(x) {
   const ports = {};
@@ -972,7 +975,7 @@ export function parkedPorts(x) {
     const c = PARKED_CAR[name];
     const s = Math.sign(d);
     // Wagenmitte bei z −3,3 − 0,2, Bug zur Säule (−z); Säule bei z −5,3
-    ports[s] = [d - (s * c.W) / 2, c.y, -3.5 - (c.wz - 0.55) + 5.3];
+    ports[s] = [d - (s * c.W) / 2, c.y, -3.5 - (c.wz - PORT_BEHIND) + 5.3];
   }
   return ports;
 }

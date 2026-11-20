@@ -1520,12 +1520,12 @@ function chargeGreet() {
 // ist ohne Sprung. Kamera: beim Einparken die des Spielers (im Cockpit bleibt sie dort, die Drohne steigt über die
 // Gegenspur und schaut zu), in der Bucht nah an Buchse, Säule und Popcorn-Stand (Schlüssel im Rahmen des Wagens wie in
 // Erlensee), beim Ausparken die Startszene (CHARGE_KEYS) zurück ins Cockpit bzw. hinter den Wagen wie die Drohne.
-// (an der Flanke entlang auf Buchse und Stecker – Poller und Eimer bleiben links daneben –, dann zum Tisch hinter der
+// (über den Eimer hinweg auf Buchse, Stecker und Säule – der Eimer bleibt unter dem Bild –, dann zum Tisch hinter der
 // Säule, wo das Popcorn springt und der Bananensaft steht, zum Bananensaft schräg von vorn aufs Fahrerfenster mit dem
 // Tisch am Rand, zuletzt Erlensees erster Schlüssel fürs Ausstecken)
 const STOP_KEYS = [
   { t: 0, pos: [-1.7, 1.95, -1.3], look: [-0.95, 0.85, 1.95] },
-  { t: STOP.plug[1] + 0.15, pos: [-1.55, 1.55, 0.1], look: [-0.95, 0.85, 1.95] },
+  { t: STOP.plug[1] + 0.15, pos: [-1.5, 1.8, 1.0], look: [-1.25, 1.2, 1.88] },
   { t: STOP.pop[0] + 1.0, pos: [-3.0, 1.75, 0.9], look: [-1.9, 0.95, 2.7] },
   { t: STOP.juice - 1.0, pos: [-2.85, 1.6, 1.2], look: [-1.85, 0.95, 2.75] },
   { t: STOP.juice - 0.2, pos: [-2.6, 1.45, -1.6], look: [-0.92, 0.95, 0.89] },
