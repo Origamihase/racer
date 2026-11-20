@@ -820,8 +820,14 @@ export const SHOP = [
   },
   {
     id: 'reifen', icon: '🛞', name: 'Sportreifen', cat: 'Fahrwerk', prices: [350, 900],
-    desc: 'Mehr Grip für schnelle Spurwechsel, auch bei Regen.',
-    effect: (l) => `Spurwechsel +${l * 12}\u00a0%, besserer Nassgrip`,
+    desc: 'Mehr Grip für schnelle Spurwechsel und flotte Kurven, auch bei Regen.',
+    effect: (l) => `Haftung +${l * 12}\u00a0%, Spurwechsel +${l * 12}\u00a0%, besserer Nassgrip`,
+  },
+  {
+    // wirkt in src/game/chassis.js (Wanken, Kopf, Kameras: straffer und schneller ruhig) und steering.js (Kurvendrift)
+    id: 'fahrwerk', icon: '🛠️', name: 'Sportfahrwerk', cat: 'Fahrwerk', prices: [450, 1100],
+    desc: 'Straffere Dämpfer und dickere Stabis: Nach dem Spurwechsel steht der Wagen sofort ruhig, in Kurven hält er die Linie.',
+    effect: (l) => `Wanken −${[0, 18, 32][l]}\u00a0%, schneller ruhig, Kurvendrift −${Math.round((1 - 1 / (1 + 0.2 * l)) * 100)}\u00a0%`,
   },
   {
     id: 'polster', icon: '🧸', name: 'Plüsch-Polster', cat: 'Fahrwerk', prices: [500, 1300],

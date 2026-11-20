@@ -5,10 +5,11 @@
 //
 //   node tools/steer-test.mjs [--verbose]
 import { Player, KMH } from '../src/game/player.js';
-import { STEER, TIP, CURVE_ASSIST, LANE_ASSIST, softclip } from '../src/game/steering.js';
+import { STEER, TIP, CURVE_ASSIST, LANE_ASSIST, softclip, steerParams } from '../src/game/steering.js';
 import { SteerKeys, stickCurve } from '../src/input.js';
 import { dragToAnalog, swipeDir, TOUCH_DEAD } from '../src/ui/touch-model.js';
 import { Damage, ZONES, damageLine } from '../src/game/damage.js';
+import { Chassis, CHASSIS } from '../src/game/chassis.js';
 import { ROAD } from '../src/textures.js';
 
 const VERBOSE = process.argv.includes('--verbose');
@@ -598,6 +599,93 @@ section('Feinmotorik (tools/fine-test.mjs, 10 Fahrer)');
     check(`${TASKS[key].name}: neu ≥ 95 % der Zeit im Band, jeder Fahrer ≥ 90 %`, b.inBand >= 0.95 && b.worstBand >= 0.9, `${(b.inBand * 100).toFixed(0)} % (schlechtester ${(b.worstBand * 100).toFixed(0)} %), ${b.taps.toFixed(1)} Tipps`);
     check(`${TASKS[key].name}: neu genauer als alt, mit höchstens so vielen Tipps`, b.rms < a.rms && b.taps <= a.taps, `Fehler ${f3(b.rms)} gegen ${f3(a.rms)} m, Tipps ${b.taps.toFixed(1)} gegen ${a.taps.toFixed(1)}`);
   }
+}
+
+// --- Fahrwerk (Testlauf 20.11.: „Der Wagen schwimmt!“) ------------------------------------------------------------------
+section('Fahrwerk: straff, ohne Schaukeln (src/game/chassis.js)');
+{
+  // Spurwechsel bei 100 km/h mit den Standard-Fahrhilfen: Taste halten, bis der Wagen 3 m weiter ist, loslassen; das
+  // Fahrwerk sieht die rohe Querbeschleunigung (Spitzen über 40 m/s²) wie im Spiel
+  const lane = (level, fps = 60) => {
+    const p = new Player();
+    p.configure({ cruise: true, laneAssist: 'sanft', curveAssist: 'sanft', tip: false, sens: 1 });
+    p.reset(level ? { fahrwerk: level } : {});
+    p.setLimits({ left: -7.8, right: 10, lanes: [LANE(0), LANE(1), LANE(2), LANE(3)] });
+    p.x = LANE(1);
+    p.speed = 100 * KMH;
+    p.cruiseSet = p.speed;
+    const ch = new Chassis();
+    const dt = 1 / fps;
+    let key = 1;
+    let first = true;
+    let tRel = null;
+    const out = [];
+    for (let t = 0; t < 3; t += dt) {
+      const log = first ? [[0, 1]] : [];
+      first = false;
+      if (key && p.x - LANE(1) >= 3) {
+        log.push([0, 0]);
+        key = 0;
+        tRel = t;
+      }
+      p.update(dt, { steer: key, steerKey: key, steerLog: log, analog: 0, throttle: 0, brake: 0 }, {});
+      ch.update(dt, p.latAcc, p.firm);
+      out.push({ t: t + dt, a: ch.a, roll: ch.roll, head: ch.head, tilt: ch.tilt });
+    }
+    let quiet = 0;
+    for (let i = out.length - 1; i >= 0; i--) {
+      if (Math.abs(out[i].roll) > 0.0017 || Math.abs(out[i].head) > 0.002) {
+        quiet = out[i].t - tRel;
+        break;
+      }
+    }
+    const peak = (k) => Math.max(...out.map((q) => Math.abs(q[k])));
+    return { quiet, roll: peak('roll'), head: peak('head'), tilt: peak('tilt'), a: peak('a'), out, tRel };
+  };
+  const L0 = lane(0);
+  const L1 = lane(1);
+  const L2 = lane(2);
+  check('Serie: gefühlte Querbeschleunigung bleibt unter der Haftgrenze (≤ 7 m/s²), obwohl die Lenkung 40 m/s² meldet', L0.a <= CHASSIS.feel + 1e-9, `${f3(L0.a)} m/s²`);
+  check('Serie: Wanken ≤ 1°, Kopf ≤ 2,5 cm, Kameraneigung ≤ 0,5°', L0.roll <= 0.0175 && L0.head <= 0.025 && L0.tilt <= 0.0088, `${f3((L0.roll * 180) / Math.PI)}°, ${f3(L0.head * 100)} cm, ${f3((L0.tilt * 180) / Math.PI)}°`);
+  check('Serie: 0,55 s nach dem Loslassen ist das Bild ruhig (Wanken < 0,1°, Kopf < 2 mm; vorher 1,27 s)', L0.quiet <= 0.55, `${f3(L0.quiet)} s`);
+  check('Sportfahrwerk: jede Stufe ruhiger und schneller ruhig', L1.quiet < L0.quiet && L2.quiet < L1.quiet && L1.roll < L0.roll && L2.roll < L1.roll, `${f3(L0.quiet)} / ${f3(L1.quiet)} / ${f3(L2.quiet)} s, Wanken ${f3(L0.roll)} / ${f3(L1.roll)} / ${f3(L2.roll)} rad`);
+  // kritisch gedämpft: Auf einen Sprung der Querbeschleunigung antwortet die Feder ohne Überschwingen
+  const ch = new Chassis();
+  let over = 0;
+  for (let i = 0; i < 120; i++) over = Math.max(over, ch.update(1 / 60, 5, 0).a - 5);
+  let back = 0;
+  for (let i = 0; i < 120; i++) back = Math.min(back, ch.update(1 / 60, 0, 0).a);
+  check('Feder ohne Überschwingen (Sprung hin und zurück)', over <= 1e-9 && back >= -1e-9, `${f3(over)} / ${f3(back)} m/s²`);
+  // dieselbe Antwort bei 30, 60 und 144 Bildern pro Sekunde (genau gelöst für ein im Bild festes Ziel)
+  const at = (fps) => {
+    const c = new Chassis();
+    for (let i = 0; i < Math.round(0.5 * fps); i++) c.update(1 / fps, 6, 0);
+    return c.a;
+  };
+  check('Fahrwerk bildratenfest (30/60/144 fps nach 0,5 s gleich)', Math.abs(at(30) - at(144)) < 1e-6 && Math.abs(at(60) - at(144)) < 1e-6, `${f3(at(30))} / ${f3(at(60))} / ${f3(at(144))}`);
+  // Sportreifen: Haftgrenze +12 % je Stufe; Sportfahrwerk: weniger Kurvendrift
+  const P = {};
+  const grip = (lvl) => {
+    const p = new Player();
+    p.reset({ reifen: lvl });
+    return steerParams(P, { v: 36, wet: 0, latMul: p.latMul, sens: 1, wetGrip: p.wetGrip, grip: p.gripMul, firm: p.firm }).grip;
+  };
+  check('Sportreifen: Haftgrenze 8 → 8,96 → 9,92 m/s²', Math.abs(grip(0) - 8) < 1e-9 && Math.abs(grip(1) - 8.96) < 1e-9 && Math.abs(grip(2) - 9.92) < 1e-9, `${f3(grip(0))} / ${f3(grip(1))} / ${f3(grip(2))}`);
+  // Kurve R 800 m bei 130 km/h freihändig (Kurvenhilfe sanft): Drift nach außen nach 6 s, Serie gegen Sportfahrwerk 2
+  const drift = (lvl) => {
+    const p = new Player();
+    p.configure({ cruise: true, laneAssist: 'aus', curveAssist: 'sanft' });
+    p.reset({ fahrwerk: lvl });
+    p.setLimits(WIDE);
+    p.speed = 130 * KMH;
+    p.cruiseSet = p.speed;
+    for (let i = 0; i < 360; i++) p.update(1 / 60, { steer: 0, steerKey: 0, steerLog: [], analog: 0, throttle: 0, brake: 0 }, { kappa: 1 / 800 });
+    return p.vx;
+  };
+  const d0 = drift(0);
+  const vk = (130 * KMH) ** 2 / 800;
+  check('Kurvendrift freihändig = (1 − Hilfe)·v²κ/μ (Serie μ 2,6/s: 0,31 m/s statt 0,43 m/s)', Math.abs(d0 - (0.5 * vk) / STEER.mu) < 0.01, `${f3(d0)} m/s`);
+  check('Sportfahrwerk 2: Kurvendrift −29 %', Math.abs(drift(2) / d0 - 1 / 1.4) < 0.01, `${f3(drift(2))} gegen ${f3(d0)} m/s`);
 }
 
 // --- 10. Rechenzeit -----------------------------------------------------------------------------------------------------

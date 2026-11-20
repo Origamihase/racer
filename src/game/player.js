@@ -42,7 +42,7 @@ export class Player {
     // wiederverwendete Objekte für die Teilschritte (keine Speicheranforderung pro Bild)
     this.P = {};
     this.env = { v: 0, kappa: 0, assist: 0 };
-    this.pq = { v: 0, wet: 0, latMul: 1, sens: 1, wetGrip: 0.66 };
+    this.pq = { v: 0, wet: 0, latMul: 1, sens: 1, wetGrip: 0.66, grip: 1, firm: 0 };
     this.copt = { tip: false, lanes: LANES, assist: null, vk: 0, h: H };
     this.reset({});
   }
@@ -57,6 +57,8 @@ export class Player {
     this.streamDrain = 0.1 * (1 - 0.15 * l('encoder'));
     this.latMul = 1 + 0.12 * l('reifen');
     this.wetGrip = 0.66 + 0.13 * l('reifen');
+    this.gripMul = 1 + 0.12 * l('reifen');
+    this.firm = l('fahrwerk');
     this.maxHits = 3 + l('polster');
     // Zustand des Wagens (Zonen, Schrammen, Pflaster); hits zählt mit
     this.damage = new Damage(this.maxHits);
@@ -84,7 +86,7 @@ export class Player {
     this.yaw = 0;
     this.psi = 0;
     this.latAcc = 0;
-    this.latAccSm = 0; // geglättet, nur für Kamera und Wankbewegung
+    this.latAccSm = 0; // geglättet, für die Wackel-Elsa (Wanken und Kameras: src/game/chassis.js)
     this.steer = 0;
     this.wheel = 0;
     this.understeer = 0;
@@ -260,6 +262,8 @@ export class Player {
     pq.latMul = this.latMul;
     pq.sens = o.sens;
     pq.wetGrip = this.wetGrip;
+    pq.grip = this.gripMul;
+    pq.firm = this.firm;
 
     // --- Teilschritte -------------------------------------------------------------------------
     // Das Bild wird an den Tastenkanten geteilt und jedes Stück in gleiche Schritte von höchstens STEER.h zerlegt:

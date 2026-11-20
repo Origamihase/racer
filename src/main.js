@@ -38,6 +38,7 @@ import { TeslaDamage } from './models/damage-fx.js';
 import { CabinDamage } from './cockpit/damage-cabin.js';
 import { loadSave, storeSave, resetSave, refundMegafon, megafonNoteSeen, storePicture, loadPictures, PIC_MAX } from './save.js';
 import { Game } from './game/game.js';
+import { Chassis, CHASSIS } from './game/chassis.js';
 import { Pickups } from './game/pickups.js';
 import { UI } from './ui/ui.js';
 import * as sicht from './ui/sicht.js';
@@ -677,6 +678,7 @@ function startRun() {
   ui.show(false);
   fxState.fade = 1;
   cockpit.shake = 0;
+  chassis.reset();
   // jede Fahrt beginnt mit der Startszene am Supercharger in Erlensee (ohne Ladepark gleich am Steuer)
   state = 'charge';
   if (!chargeBegin()) toDrive();
@@ -733,10 +735,15 @@ const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const drone = { pos: new THREE.Vector3(0, 4, 10), look: new THREE.Vector3(0, 1, -10), init: false };
 
+// Fahrwerk (src/game/chassis.js): Wanken, Kopf, Neigung der Cockpitkamera, Verfolgerkamera – straff, ohne Schaukeln
+const chassis = new Chassis();
+const droneQuat = new THREE.Quaternion();
+const droneMatrix = new THREE.Matrix4();
+
 function updateCarMatrix() {
   const p = game.player;
   carPos.set(p.x, 0, 0);
-  carEuler.set(0, -p.yaw, clamp(p.latAccSm * 0.0025, -0.03, 0.03), 'YXZ');
+  carEuler.set(0, -p.yaw, chassis.roll, 'YXZ');
   carQuat.setFromEuler(carEuler);
   carMatrix.compose(carPos, carQuat, ONE);
   tesla.root.position.copy(carPos);
@@ -1098,14 +1105,18 @@ function placeDrone(dt, mode) {
     pos = orbitTarget(p, dt);
     look = new THREE.Vector3(0, 0.9, 0).applyMatrix4(carMatrix);
   } else {
-    pos = new THREE.Vector3(-p.vx * 0.25, 3.3, 9.2).applyMatrix4(carMatrix);
-    look = new THREE.Vector3(0, 1.0, -14).applyMatrix4(carMatrix);
+    // hinter dem Wagen, mit dem halben Gierwinkel geschwenkt und kaum versetzt: Sie bleibt eng am Wagen, statt ihn bei
+    // jedem Spurwechsel quer durchs Bild gleiten zu lassen (Fahrwerk)
+    droneQuat.setFromAxisAngle(UP_AXIS, -p.yaw * CHASSIS.droneYaw);
+    droneMatrix.compose(carPos, droneQuat, ONE);
+    pos = new THREE.Vector3(-p.vx * CHASSIS.lag, 3.3, 9.2).applyMatrix4(droneMatrix);
+    look = new THREE.Vector3(0, 1.0, -14).applyMatrix4(droneMatrix);
     // in die Kurve schauen (um die Kamera gedreht) und mit der Straße etwas hoch oder runter
     look.sub(pos).applyAxisAngle(UP_AXIS, lookAhead.yaw * 0.6);
     look.y += Math.tan(lookAhead.pitch * 0.6) * 23;
     look.add(pos);
   }
-  const k = 1 - Math.exp(-dt * (mode === 'orbit' ? 3 : 6));
+  const k = 1 - Math.exp(-dt * (mode === 'orbit' ? 3 : chassis.follow));
   if (mode === 'orbit') {
     // geglättet um das Auto herum (Winkel, Abstand, Höhe): wechselt es die Spur, fährt die Kamera mit, statt
     // hinterherzuschwenken, und ihr Blick dreht sich nie schneller als ORBIT.wMax. Muss sie an der Seite stehen
@@ -2145,11 +2156,12 @@ function step(dt, { render = true } = {}) {
         jolt.hit(e.side < 0 ? 'left' : 'right', e.hard ? 0.5 : 0.3);
         input.rumble(e.hard ? 0.6 : 0.3, e.hard ? 140 : 80);
       }
+      chassis.update(dt, p.latAcc, p.firm);
       updateCarMatrix();
       updateLookAhead(dt, p);
       jolt.update(dt);
       if (view === 'cockpit') {
-        cockpit.placeCamera(camera, carMatrix, simT, p.speed, p.latAccSm, dt);
+        cockpit.placeCamera(camera, carMatrix, simT, p.speed, chassis, dt, p.yaw * CHASSIS.gaze);
         camera.rotateOnWorldAxis(UP_AXIS, lookAhead.yaw * 0.5);
         camera.rotateOnAxis(RIGHT_AXIS, lookAhead.pitch * 0.45);
         jolt.apply(camera, carMatrix);
@@ -2171,6 +2183,7 @@ function step(dt, { render = true } = {}) {
       traffic.update(dt, simT, p, { difficulty: 0.2, leftOpen: false, rain: game.weather.level });
       // Sammelsachen bleiben an ihrem Platz auf der Straße (eingesammelt wird nichts mehr)
       pickups.update(dt, simT, p, camera, false);
+      chassis.update(dt, p.latAcc, p.firm);
       updateCarMatrix();
       placeDrone(dt, 'orbit');
       adamWave = smoothstep(0.9, 1.5, stateT);

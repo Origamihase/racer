@@ -714,18 +714,25 @@ export class Cockpit {
     this.radar.group.visible = !!v;
   }
 
-  /** Kamera-Pose (Weltkoordinaten) aus Fahrzeug-Transformation + Kopfbewegung. */
-  placeCamera(camera, carMatrix, t, speed, latAcc, dt) {
+  /**
+   * Kamera-Pose (Weltkoordinaten) aus Fahrzeug-Transformation + Kopfbewegung. sway: das Fahrwerk (src/game/chassis.js:
+   * head, tilt) oder 0 in den Szenen (dann kehrt der Kopf in die Mitte zurück); gaze: so weit nehmen die Augen die
+   * Gier des Wagens zurück (rad), der Blick bleibt auf der Straße.
+   */
+  placeCamera(camera, carMatrix, t, speed, sway, dt, gaze = 0) {
     // das Abklingen von shake passiert einmal pro Bild im Hauptprogramm (auch in Drohne, Pause, Abspann)
     const vib = Math.min(1, speed / 60) * 0.0025 + this.shake * 0.03;
-    this.headOffset.x = damp(this.headOffset.x, clamp(-latAcc * 0.006, -0.05, 0.05), 4, dt);
+    // der Kopf hängt straff am Fahrwerk (dessen Feder ist schon kritisch gedämpft): hier nur gegen Sprünge beim Wechsel
+    // zwischen Fahrt und Szene
+    this.headOffset.x = damp(this.headOffset.x, sway ? sway.head : 0, 20, dt);
+    const tilt = sway ? sway.tilt : 0;
     const ox = this.headOffset.x + (Math.sin(t * 37) * 0.5 + Math.sin(t * 23) * 0.5) * vib;
     const oy = (Math.sin(t * 29) + Math.sin(t * 13.3)) * 0.5 * vib + Math.sin(t * 1.4) * 0.003;
     const eye = EYE.clone().add(new THREE.Vector3(ox, oy, 0));
     eye.applyMatrix4(carMatrix);
     camera.position.copy(eye);
     const q = new THREE.Quaternion().setFromRotationMatrix(carMatrix);
-    const e = new THREE.Euler(PITCH + oy * 2, this.headOffset.x * 0.6 + Math.sin(t * 0.31) * 0.004, -latAcc * 0.0025 + ox * 2, 'YXZ');
+    const e = new THREE.Euler(PITCH + oy * 2, this.headOffset.x * 0.6 + gaze + Math.sin(t * 0.31) * 0.004, tilt + ox * 0.8, 'YXZ');
     camera.quaternion.copy(q).multiply(new THREE.Quaternion().setFromEuler(e));
   }
 
