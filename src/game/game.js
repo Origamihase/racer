@@ -520,7 +520,7 @@ export class Game {
     if (ctl.ladestopp) this.planStop();
 
     // --- Verkehr ---------------------------------------------------------------
-    const tev = this.traffic.update(dt, this.t, p, { difficulty: clamp(p.s / 16000, 0, 1), leftOpen: this.left.open, rain: W.level });
+    const tev = this.traffic.update(dt, this.t, p, { difficulty: clamp(p.s / 16000, 0, 1), leftOpen: this.left.open, rain: W.level, dim: W.sky || 0 });
     for (const e of tev) {
       if (e.type === 'crash') this.onCrash(e);
       else if (e.type === 'nearMiss') this.onNearMiss(e);

@@ -1,7 +1,7 @@
 // Verkehr: Autos und Lkw mit Abstandsregelung (IDM), Spurwechseln mit Blinker,
 // Rechtsfahrgebot, Lkw nur rechts, Elefantenrennen, Polizei Gifhorn und Gegenverkehr.
 import * as THREE from 'three';
-import { Vehicle, randomKind, setVehicleEnvIntensity } from '../models/vehicles.js';
+import { Vehicle, randomKind, setVehicleLights } from '../models/vehicles.js';
 import { ROAD } from '../textures.js';
 import { ONCOMING } from './road.js';
 import { curveAt } from '../curve.js';
@@ -17,6 +17,18 @@ const KMH = 1 / 3.6;
 // Vor Kurven nimmt der Verkehr Gas weg, wo die Querbeschleunigung sonst über diesen Komfortwert stiege (m/s²),
 // und bremst dafür sanft (m/s²). Lkw kriechen an langen Steigungen etwas (km/h weniger je Prozent über 2 %).
 const CURVE = { car: { lat: 2.5, dec: 1.2 }, truck: { lat: 1.8, dec: 0.8 }, look: 250, climb: 4.5 };
+/**
+ * Bremslicht wie bei echten Fahrern: an, sobald der Wagen spürbar verzögert (on, m/s²), vor einer Kurve bremst oder
+ * fast steht; aus erst, wenn er wieder rollt oder Gas gibt (über off) und das Licht mindestens hold Sekunden an war –
+ * so flackert es nicht bei jedem kleinen Lupfen im Kolonnenverkehr.
+ */
+export const BRAKE = { on: -0.9, off: -0.3, hold: 0.6, stand: 3 };
+/** Ein Schritt des Bremslichts (BRAKE): c.brakeT zählt die Haltezeit herunter. Liefert, ob es leuchtet. */
+export function brakeLight(c, acc, dt, hard = false) {
+  if (hard || acc < BRAKE.on || c.speed < BRAKE.stand) c.brakeT = BRAKE.hold;
+  else if (acc > BRAKE.off) c.brakeT = Math.max(0, c.brakeT - dt);
+  return c.brakeT > 0;
+}
 const _cf = { x: 0, z: 0, th: 0, y: 0, k: 0, dk: 0, xr: 0, g: 0 };
 
 let nextId = 1;
@@ -118,6 +130,7 @@ export class Traffic {
       change: null,
       decideIn: rand(0.5, 2.5),
       brake: false,
+      brakeT: 0,
       passed: false,
       behavior,
       sirens: behavior === 'polizei',
@@ -206,7 +219,7 @@ export class Traffic {
     this.difficulty = env.difficulty;
     this.leftOpen = env.leftOpen;
     const rainy = env.rain > 0.3;
-    setVehicleEnvIntensity(rainy);
+    setVehicleLights(Math.max(env.rain, env.dim || 0), rainy);
 
     const target = Math.round(lerp(15, 32, this.difficulty));
     // Fahrzeuge vorne nachliefern
@@ -279,8 +292,8 @@ export class Traffic {
       if (c.closed) acc = Math.min(acc, -4);
       acc = clamp(acc, -10, aMax);
       c.speed = Math.max(0, c.speed + acc * dt);
-      c.brake = acc < -1.2 || curveBrake;
-      c.v.setBrake(c.brake || (c.speed < 3));
+      c.brake = brakeLight(c, acc, dt, curveBrake);
+      c.v.setBrake(c.brake);
       c.s += c.speed * dt;
     }
 
