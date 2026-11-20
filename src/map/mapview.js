@@ -534,7 +534,7 @@ const SPOTS = [
   [-1, 1],
 ];
 /** Linke obere Ecke des Kastens (w × h) in der Lage spot neben einem Punkt mit Halbmesser r bei (sx, sy). */
-function spotBox(sx, sy, r, gap, w, h, spot) {
+export function spotBox(sx, sy, r, gap, w, h, spot) {
   const [dx, dy] = SPOTS[spot];
   const off = r + gap;
   const x0 = dx > 0 ? sx + off * (dy ? 0.7 : 1) : dx < 0 ? sx - off * (dy ? 0.7 : 1) - w : sx - w / 2;
@@ -1036,12 +1036,14 @@ function smoothRing(path, P) {
 
 /**
  * Zeichnet Karten. Ein Zeichner hält seine Zwischenspeicher (Kacheln, Ausschnitt).
- * theme: 'light' | 'dark'; look: 'menu' (große Karte) | 'navi' (Mittelbildschirm: kräftigere Linien und Punkte).
+ * theme: 'light' | 'dark'; look: 'menu' (große Karte) | 'navi' (Mittelbildschirm: kräftigere Linien und Punkte);
+ * labels: false – renderStatic lässt die Namen weg (wer selbst darüber zeichnet, setzt sie danach mit renderLabels).
  */
 export class MapPainter {
-  constructor({ theme = 'light', look = 'menu' } = {}) {
+  constructor({ theme = 'light', look = 'menu', labels = true } = {}) {
     this.theme = theme;
     this.navi = look === 'navi';
+    this.labels = labels;
     this.tiles = new Map();
     this.frame = 0;
     this.cache = null; // Ausschnitt für gedrehte Ansichten
@@ -1191,21 +1193,29 @@ export class MapPainter {
       ctx.stroke();
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    if (!this.navi) this.renderLabels(ctx, wx, wy, s, cw, ch, ps, b, dx, dy);
+    if (!this.navi && this.labels) this.renderLabels(ctx, wx, wy, s, cw, ch, ps, b, dx, dy);
     ctx.restore();
     this.stats.ms = performance.now() - t0;
   }
 
-  /** Eingebrannte Beschriftung der großen Karte (menuLabels), soweit sie in das Rechteck ragt. */
-  renderLabels(ctx, wx, wy, s, cw, ch, ps, b, dx = 0, dy = 0) {
+  /**
+   * Eingebrannte Beschriftung der großen Karte (menuLabels), soweit sie in das Rechteck ragt. at(l, x0, y0) → [x0, y0]
+   * oder null darf einen Kasten verschieben oder weglassen (linke obere Ecke in Bildpunkten der Leinwand).
+   */
+  renderLabels(ctx, wx, wy, s, cw, ch, ps, b, dx = 0, dy = 0, at = null) {
     const T = this.T;
     ctx.lineJoin = 'round';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     for (const l of menuLayout(b, measureText).labels) {
-      const x0 = (l.x - wx) * s + l.dx * ps;
-      const y0 = (l.y - wy) * s + l.dy * ps;
+      let x0 = (l.x - wx) * s + l.dx * ps;
+      let y0 = (l.y - wy) * s + l.dy * ps;
       if (x0 > cw || y0 > ch || x0 + l.w * ps < 0 || y0 + l.h * ps < 0) continue;
+      if (at) {
+        const q = at(l, x0, y0);
+        if (!q) continue;
+        [x0, y0] = q;
+      }
       ctx.setTransform(ps, 0, 0, ps, dx + x0, dy + y0);
       if (l.kind === 'shield') drawShield(ctx, l.text, l.w / 2, l.h / 2, l.h, 'ab');
       else if (l.kind === 'faehre' || l.kind === 'zug' || l.kind === 'flug') drawTransitBadge(ctx, l.kind, l.w / 2, l.h / 2, BADGE_R, T.badge);

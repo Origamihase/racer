@@ -35,7 +35,7 @@ import { showDriveHint, driveHintTick } from './ui/drive-hint.js';
 import { Jolt } from './fx/jolt.js';
 import { TeslaDamage } from './models/damage-fx.js';
 import { CabinDamage } from './cockpit/damage-cabin.js';
-import { loadSave, storeSave, resetSave, refundMegafon, megafonNoteSeen } from './save.js';
+import { loadSave, storeSave, resetSave, refundMegafon, megafonNoteSeen, storePicture, loadPictures, PIC_MAX } from './save.js';
 import { modeFor, otherMode, modeSearch } from './mode.js';
 import { Game } from './game/game.js';
 import { Pickups } from './game/pickups.js';
@@ -47,6 +47,8 @@ import { MapDemo } from './map/mapdemo.js';
 import { NavModel } from './map/navroute.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
+import { albumBadges } from './ui/album.js';
+import { thinLine } from './ui/routemap.js';
 import { clamp, lerp, damp, easeInOut, smoothstep } from './util.js';
 
 const QUALITY = {
@@ -115,6 +117,8 @@ const sky = new Sky(renderer, scene, { shadows: quality.shadows, shadowSize: qua
 const road = new Road(scene, XXL ? ROAD_OPTS : undefined);
 const scenery = new Scenery(scene);
 const xxl = XXL ? new XxlWorld({ scene, road, scenery }) : null;
+// die große Karte der Reise zeigt die BrunnenTV-Folgen des Albums als Abzeichen (goldene Ringe, Zähler)
+if (xxl) albumBadges(save);
 const rain = new Rain(scene);
 const traffic = new Traffic(scene, rain);
 const pickups = new Pickups(scene);
@@ -308,6 +312,12 @@ const photoCanvas = document.createElement('canvas');
 photoCanvas.width = 360;
 photoCanvas.height = 270;
 const photoCtx = photoCanvas.getContext('2d');
+// BrunnenTV-Album: ein Standbild jeder Folge aus der Brunnen-Kamera (takeAlbumShot, 16:9, angezeigt halb so groß);
+// Kamera und Leinwand entstehen erst bei der ersten Folge der Reise. t: Sekunde der Folge, q: Güte der Kodierung
+const ALBUM_PIC = { w: 288, h: 162, t: TV.cams.brunnen + 1, q: [0.72, 0.5] };
+let albumCam = null;
+let albumCanvas = null;
+let albumLast = null; // zuletzt aufgenommen (Prüfbilder, __MA.album): { n, chars, type, stored, ms }
 
 // --- Ton, Sprache, Eingabe, Oberfläche ---------------------------------------------
 const audio = new Audio();
@@ -568,6 +578,8 @@ const menus = new Menus(app, {
     if (name === 'title') return save;
     if (name === 'pause') return game;
     if (name === 'karte') return { save, nav: xxl ? xxlNav : mapDemo ? mapDemo.model : null, travel: !!xxl, odo: xxl && paused ? game.odometer : null };
+    // BrunnenTV-Album: Folgen aus dem Spielstand, Bilder unter ihrem eigenen Schlüssel (frisch gelesen)
+    if (name === 'album') return { save, pics: loadPictures(), tab: 'folgen' };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
     if (name === 'over') return lastOver ? { ...lastOver, wallet: save.wallet } : data;
     return data;
@@ -753,7 +765,9 @@ function finishRun() {
   save.stats.crashes += o.stats.crashes;
   storeSave(save);
   if (newRecord) adamMood('proud');
-  lastOver = { ...o, newRecord, best: save.best[rec], wallet: save.wallet, photos: ui.photos.slice() };
+  // Reise: zur Route des Streams der gefahrene Weg des Navis (Kartenpunkte, ausgedünnt), für die Karte im Abspann
+  const route = o.route && xxlNav ? { ...o.route, line: thinLine(xxlNav.trail, 3000) } : o.route;
+  lastOver = { ...o, route, newRecord, best: save.best[rec], wallet: save.wallet, photos: ui.photos.slice() };
 }
 
 // --- Autopilot (Titel, Kameraschwenk, Abspann) -------------------------------------
@@ -1743,7 +1757,17 @@ const tvRun = {
   from: new THREE.Vector3(), fromLook: new THREE.Vector3(), pose: { pos: [0, 0, 0], look: [0, 0, 0] },
 };
 const tvM = new THREE.Matrix4();
-game.onBrunnenTV = (e) => tvBegin(e);
+// Route des Abspanns: jede Marke (Folge, Ladestopp) liegt dort, wo das Navi den Wagen gerade zeigt
+game.onRouteMark = (m) => {
+  if (!xxlNav) return;
+  m.x = xxlNav.pose.x;
+  m.y = xxlNav.pose.y;
+};
+// (die Folge steht schon im Album, game.startBrunnenTV: sofort speichern, auch wenn der Stream gleich abbricht)
+game.onBrunnenTV = (e) => {
+  storeSave(save);
+  tvBegin(e);
+};
 
 /** Überspringen einer Szene (Ladestopp, BrunnenTV): jede Taste oder Bestätigung, sobald skip Sekunden vorbei sind. */
 function sceneSkip(r, t, skip) {
@@ -1765,7 +1789,7 @@ function tvBegin(e) {
   // Mitte des Brunnens im Rahmen des haltenden Wagens (er steht still, also bleibt sie dort)
   r.f.set(q.world.x, 0, q.world.z).applyMatrix4(tvM.copy(carMatrix).invert());
   r.shots = tvShots({ x: r.f.x, z: r.f.z }, q.r);
-  Object.assign(r, { on: true, tv: e, inside: view === 'cockpit', skipT: -1, fadeT: 0 });
+  Object.assign(r, { on: true, tv: e, inside: view === 'cockpit', skipT: -1, fadeT: 0, picDone: false });
   r.from.copy(camera.position);
   camera.getWorldDirection(r.fromLook).multiplyScalar(20).add(camera.position);
   if (!r.prop) {
@@ -1782,6 +1806,11 @@ function tvTick() {
   if (game.tv && game.running && !game.over) {
     if (r.skipT >= 0 && game.brunnenT() - r.skipT >= TV.fade) game.skipBrunnenTV();
     return;
+  }
+  // endet der Stream mitten in der Folge, bekommt das Album ihr Standbild jetzt (der Wagen steht noch am Brunnen)
+  if (r.on && !r.picDone && game.over) {
+    r.picDone = true;
+    takeAlbumShot(r);
   }
   tvStop();
   if (r.skipT >= 0) {
@@ -1858,6 +1887,11 @@ function tvPlace(dt) {
   r.inside = inside;
   // das Megafon vom Beifahrersitz ist in seiner Hand
   tesla.seatMegaphone(!tesla.adam.megaphoneShown);
+  // das Standbild fürs Album: in der Brunnen-Kamera mit dem Megafon am Fenster – oder sofort, wenn übersprungen wird
+  if (!r.picDone && (t >= ALBUM_PIC.t || r.skipT >= 0)) {
+    r.picDone = true;
+    takeAlbumShot(r);
+  }
   return { inside, look: tvLookAt(t), megafon: mk };
 }
 
@@ -2020,6 +2054,53 @@ function takePhoto({ kmh, clock }) {
     url = null;
   }
   ui.photo(url, kmh, clock);
+}
+
+/**
+ * Standbild einer BrunnenTV-Folge fürs Album: die Brunnen-Kamera der Folge (Brunnen, Wagen, Mini Adam am Fenster) zur
+ * Sekunde ALBUM_PIC.t, immer 16:9 (wie beim Blitzerfoto verzerrt gerendert und beim Verkleinern entzerrt), ohne
+ * Abblenden; als WebP (sonst JPEG) unter eigenem Schlüssel gespeichert (save.js storePicture). Passt es nicht, zeigt
+ * das Album für diese Folge eine gezeichnete Karte.
+ */
+function takeAlbumShot(r) {
+  const t0 = performance.now();
+  const P = ALBUM_PIC;
+  if (!albumCam) {
+    albumCam = new THREE.PerspectiveCamera(46, P.w / P.h, camera.near, camera.far);
+    albumCanvas = document.createElement('canvas');
+    albumCanvas.width = P.w;
+    albumCanvas.height = P.h;
+  }
+  const s = r.shots.brunnen;
+  const pose = shotPose(s, P.t, { pos: [0, 0, 0], look: [0, 0, 0] }, 1);
+  albumCam.fov = s.fov;
+  albumCam.updateProjectionMatrix();
+  albumCam.position.fromArray(pose.pos).applyMatrix4(carMatrix);
+  albumCam.lookAt(tmpV2.fromArray(pose.look).applyMatrix4(carMatrix));
+  const fade = U.uFade.value;
+  U.uFade.value = 0;
+  renderWorld(albumCam, { cockpitOn: false, drops: false });
+  U.uFade.value = fade;
+  const ctx = albumCanvas.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(renderer.domElement, 0, 0, renderer.domElement.width, renderer.domElement.height, 0, 0, P.w, P.h);
+  let url = null;
+  try {
+    for (const q of P.q) {
+      url = albumCanvas.toDataURL('image/webp', q);
+      if (!url.startsWith('data:image/webp')) url = albumCanvas.toDataURL('image/jpeg', q);
+      if (url.length <= PIC_MAX) break;
+    }
+  } catch (e) {
+    url = null;
+  }
+  // gespeichert wird, sobald der Browser Luft hat (alle Bilder lesen und schreiben kostet ein paar ms); bis dahin null
+  const shot = { n: r.tv.n, chars: url ? url.length : 0, type: url ? url.slice(5, url.indexOf(';')) : null, stored: url ? null : false, ms: Math.round(performance.now() - t0) };
+  albumLast = shot;
+  if (!url) return;
+  const keep = () => (shot.stored = storePicture(shot.n, url));
+  if (window.requestIdleCallback) requestIdleCallback(keep, { timeout: 1500 });
+  else setTimeout(keep, 0);
 }
 
 // --- Hauptschleife ----------------------------------------------------------------------
@@ -2577,6 +2658,11 @@ if (DEBUG) {
     get tv() {
       const t = game.brunnenT();
       return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t) : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, skipT: tvRun.skipT, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl || !xxl.arrival.held };
+    },
+    /** BrunnenTV-Album: Folgen im Spielstand, gespeicherte Bilder, zuletzt aufgenommenes Standbild. */
+    get album() {
+      const a = save.album || { n: 0, list: [] };
+      return { n: a.n, list: a.list.length, last: a.list.length ? a.list[a.list.length - 1] : null, pics: loadPictures().size, shot: albumLast };
     },
     set view(v) {
       view = v;

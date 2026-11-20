@@ -742,6 +742,19 @@ function stream(driver, hours, seed, firstRound = false) {
   ok(firstRound || m.minChoice >= 100, `Nur ${m.minChoice} Orte standen bei einem Gebot zur Wahl`);
   ok(m.open.minChoice >= OPENING.min, `Erste Runde: nur ${m.open.minChoice} Orte standen zur Wahl`);
   ok(nv.opening === !m.open.end, `Erste Runde ${m.open.end ? 'vorbei (' + m.open.end + ')' : 'offen'}, das Navi sagt ${nv.opening ? 'offen' : 'vorbei'}`);
+  // Route des Abspanns (routelog.js): Die genommenen Abschnitte zählen zusammen den Kilometerzähler, jede Folge und
+  // jeder Ladestopp hat seine Marke in der Reihenfolge der Fahrt; das BrunnenTV-Album (album.js) hat jede Folge
+  const odo = game.odometer;
+  if (!game.over) game.end('quit');
+  const R = game.over.route;
+  const sumKm = R.secs.reduce((a, c) => a + c.km, 0);
+  ok(Math.abs(sumKm * 1000 - odo) < 1e-3 && Math.abs(R.km * 1000 - odo) < 1e-3 && R.secs.every((c) => c.km >= 0), `Route ${sumKm.toFixed(3)} km in ${R.secs.length} Abschnitten, Zähler ${(odo / 1000).toFixed(3)} km`);
+  const tvMarks = R.marks.filter((k) => k.type === 'brunnen');
+  ok(tvMarks.length === game.stats.brunnenTV && tvMarks.every((k, i) => k.n === i + 1 && R.secs.some((c) => c.kind === 'stadt' && c.place === k.place)), `Route: ${tvMarks.length} Folgen-Marken für ${game.stats.brunnenTV} Folgen`);
+  ok(R.marks.filter((k) => k.type === 'laden').length === m.charges && R.marks.every((k, i) => k.km <= R.km + 1e-9 && (!i || k.km >= R.marks[i - 1].km)), `Route: ${R.marks.filter((k) => k.type === 'laden').length} Lade-Marken für ${m.charges} Ladestopps, Zählerstände ${R.marks.map((k) => k.km.toFixed(1))}`);
+  const A = game.save.album || { n: 0, list: [] };
+  ok(A.n === game.stats.brunnenTV && A.list.length === A.n && A.list.every((e, i) => e.n === i + 1 && e.p === places[tvMarks[i].place].key && e.t === game.streamT && e.u >= 18 * 60), `Album: ${A.n} Folgen, ${A.list.length} Einträge für ${game.stats.brunnenTV} Folgen`);
+  m.routeSecs = R.secs.length;
   m.hours = game.t / 3600;
   m.km = (p.s - trip.cur.s0) / 1000;
   m.roadKm = p.s / 1000;

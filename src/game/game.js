@@ -4,7 +4,7 @@
 import {
   CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_JOBS, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, NAVI_TARGETS, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
-  BRUNNEN_MEGAFON, BRUNNEN_NOMI,
+  BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
 import { Player, KMH } from './player.js';
@@ -21,6 +21,8 @@ import { ELSA_STATUE } from '../world/scenery.js';
 import { curvePoint } from '../curve.js';
 import { stopPlan, STOP } from '../world/xxl/charge.js';
 import { TV } from '../world/xxl/brunnentv.js';
+import { addEpisode } from './album.js';
+import { RouteLog } from './routelog.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
 // „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
@@ -105,6 +107,8 @@ export class Game {
     this.onBrunnenTV = () => {};
     // Ladestopp im Park: Hier hängt sich die Szene ein (siehe startCharge)
     this.onCharge = () => {};
+    // Reise: eine Marke der Route des Streams (Folge, Ladestopp); main.js trägt ihre Lage auf der Karte nach
+    this.onRouteMark = () => {};
   }
 
   // ------------------------------------------------------------------------
@@ -126,6 +130,9 @@ export class Game {
     this._greeted = false;
     this._introChime = false;
     this.clock = 18 * 60;
+    // Reise: Beginn des Streams (Datum im BrunnenTV-Album) und seine Route für den Abspann (routelog.js)
+    this.streamT = Date.now();
+    this.route = this.worldNavi ? new RouteLog() : null;
     this.travel = null; // XXL: Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
     this.revDebt = 0; // rückwärts gefahrene Meter, die noch nicht wieder vorwärts gefahren sind (siehe update)
     this.eco.reset(up);
@@ -521,6 +528,7 @@ export class Game {
     }
     // XXL: Uhr und Strecken zählen Reisezeit und Reisemeter (travelStep), klassisch Spielzeit und Meter der Straße
     const go = this.worldNavi ? this.travelStep(dt) : null;
+    if (go && this.route) this.route.add(this.world.trip().section, go.m);
     const dm = go ? go.m : dsNew;
     st.distance = go ? this.odometer : p.s + this.revDebt;
     st.maxSpeedKmh = Math.max(st.maxSpeedKmh, p.kmh);
@@ -730,6 +738,7 @@ export class Game {
     const p = this.player;
     const plan = stopPlan(e.sec, p.s, p.x);
     this.charging = { t0: this.t, from: p.battery, park: e.park, name: e.name, sec: e.sec, plan, said: 0 };
+    this.routeMark('laden', { park: e.park });
     this.onCharge(this.charging);
   }
 
@@ -1404,9 +1413,21 @@ export class Game {
    * Szene (Node-Tests) läuft derselbe Fahrplan, der Wagen wartet an seinem Halt.
    */
   startBrunnenTV(t, sec) {
-    const n = ++this.stats.brunnenTV;
-    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, skip: false };
-    this.onBrunnenTV({ n, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town: this.world.town(sec) });
+    this.stats.brunnenTV++;
+    // ins Album (album.js): Die Folge zählt über alle Streams, und so heißt sie auch in Bauchbinde und Abspann-Route
+    const town = this.world.town(sec);
+    const kinds = town && town.plan && Array.isArray(town.plan.fountains) ? town.plan.fountains.map((f) => f.kind) : [];
+    const entry = addEpisode(this.save, { place: t.place, t: this.streamT, clock: this.clock, kinds });
+    const n = entry.n;
+    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, skip: false, debate: entry.d || null };
+    this.routeMark('brunnen', { n, place: t.place });
+    this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town });
+  }
+
+  /** Reise: eine Marke auf der Route des Streams (main.js trägt über onRouteMark ihre Lage auf der Karte nach). */
+  routeMark(type, data) {
+    if (!this.route) return;
+    this.onRouteMark(this.route.mark(type, data));
   }
 
   /** Sekunden seit dem Halt am Brunnen (Fahrplan der Folge). */
@@ -1435,6 +1456,8 @@ export class Game {
       [TV.chat, () => {
         this.chat('BRUNNENTV! 💦');
         this.burst(CHAT.brunnenTV, 4, 3);
+        // passt eine Streitfrage des Wikis (Trinkbrunnen, Kanal, Alsterfontäne), kommt sie nach dem Jubel
+        if (tv.debate) this.later(3.2, () => this.chat(this.chatLine(BRUNNEN_DEBATTE[tv.debate])));
       }],
       [TV.nomi, () => this.say(fillTemplate(pick(BRUNNEN_NOMI), { n: fmtNum(tv.n) }), 'love', { priority: false, scene: true })],
     ];
@@ -2329,6 +2352,8 @@ export class Game {
     this.over = {
       reason,
       distance: this.odometer,
+      // Reise: die Route des Streams (genommene Abschnitte, Folgen, Ladestopps; die Summe ist der Kilometerzähler)
+      route: this.route ? this.route.finish(this.odometer) : null,
       travel: this.worldNavi, // Reisekilometer (XXL) statt Meter der Straße
       air: this.worldNavi ? this.airtime : null,
       money: Math.max(0, Math.round(this.money * 100) / 100),

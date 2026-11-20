@@ -91,7 +91,7 @@ const AUSBAU = {
 // Felder, die niemand kennt: oben, in den Teilen und geschachtelt – ihr Inhalt übersteht Laden und Speichern
 {
   const future = {
-    ...AUSBAU, mode: 'klassik', album: [{ n: 1, ort: 'Hanau', bild: 'data:…' }], akku: { kwh: 75, laden: [1, 2, 3] }, flag: false, zahl: 0, text: '',
+    ...AUSBAU, mode: 'klassik', sammlung: [{ n: 1, ort: 'Hanau', bild: 'data:…' }], akku: { kwh: 75, laden: [1, 2, 3] }, flag: false, zahl: 0, text: '',
     best: { ...AUSBAU.best, etappe: 303.2 }, stats: { ...AUSBAU.stats, tanken: 4 }, settings: { ...AUSBAU.settings, hud: 'klein' },
   };
   put(future);
@@ -99,7 +99,7 @@ const AUSBAU = {
   whole(s, 'Stand mit unbekannten Feldern');
   ok(storeSave(s), 'Speichern schlägt fehl');
   const again = JSON.parse(box.get(KEY));
-  for (const k of ['album', 'akku', 'flag', 'zahl', 'text']) ok(same(again[k], future[k]), `Unbekanntes Feld „${k}“ übersteht Laden und Speichern nicht`);
+  for (const k of ['sammlung', 'akku', 'flag', 'zahl', 'text']) ok(same(again[k], future[k]), `Unbekanntes Feld „${k}“ übersteht Laden und Speichern nicht`);
   ok(again.best.etappe === 303.2 && again.stats.tanken === 4 && again.settings.hud === 'klein', 'Unbekannte Felder in best, stats oder settings gehen verloren');
   ok(same(loadSave(), s) && s.mode === 'klassik', 'Zweites Laden ergibt einen anderen Stand');
 }

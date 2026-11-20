@@ -187,6 +187,23 @@ export const BRUNNEN_NOMI = [
   'Laut meinen Daten ist das ein ausgezeichneter Brunnen. Meine Daten irren sich nie.',
   'Das Plätschern liegt bei hervorragenden Werten. Ich bin beeindruckt.',
 ];
+// Die liebevollen Streitfragen des Wikis, in eigenen Worten: als Chatzeile in der Folge und auf ihrer Karte im Album,
+// wo sie passen (src/game/album.js debateFor) – ein Trinkbrunnen im Ort, der Kanal in Ravensburg, die Alsterfontäne
+export const BRUNNEN_DEBATTE = {
+  trink: [
+    'Da drüben steht noch ein Trinkbrunnen – zählt der? 💧 #Trinkbrunnenproblematik',
+    'Trinkbrunnenproblematik! Hahn nach oben macht noch keinen Brunnen 🤔',
+    'Zählt der Trinkbrunnen mit? Der Chat stimmt ab: Becken ja, Hahn nein 😄',
+  ],
+  kanal: [
+    'Und der Kanal? Ein subtiler, horizontal geteilter Brunnen! 🤓',
+    'Der Kanal zählt mit: subtiler, horizontal geteilter Brunnen 💦',
+  ],
+  alster: [
+    'Und die Alsterfontäne? Die zählt doch auch! ⛲',
+    'Schön – aber die Alsterfontäne ist und bleibt die Königin ⛲👑',
+  ],
+};
 
 // Sammelaktionen: Der Chat legt zusammen, bis das Ziel erreicht ist – dann passiert es
 export const SAMMELAKTIONEN = [
