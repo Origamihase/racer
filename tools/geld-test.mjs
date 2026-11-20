@@ -458,6 +458,8 @@ console.log('Die Leute des Streams (Reise):');
     const backs = by(r, (m) => m.name === 'Nora' && m.text.startsWith('Verbindung zum Streaming-Server steht wieder'));
     n.funkloch += backs.length;
     for (const x of backs) {
+      // (wer sich meldet, tut es CREW.backAfter s danach: Kam das Bild erst kurz vor dem Ende zurück, ist der Stream vorher aus)
+      if (x.t + CREW.backAfter > r.game.t) continue;
       const who = by(r, (m) => CREW.back.includes(m.name) && CREW_LINES.back.includes(m.text) && Math.abs(m.t - x.t - CREW.backAfter) < 0.1);
       n.back += who.length;
       ok(who.length === 1 && (who[0].badge === 'MOD') === CREW.mods.includes(who[0].name), `${where}: nach dem Funkloch bei ${fmt(x.t)} s meldet sich ${who.length}× jemand`);

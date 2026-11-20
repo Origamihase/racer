@@ -45,11 +45,11 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
   const arrival = new Arrival();
   arrival.hold = true;
   const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 3000);
-  const log = { chat: [], say: [], toast: [], speak: [], tv: [] };
+  const log = { chat: [], say: [], toast: [], speak: [], tv: [], funk: [] };
   let game = null;
   const state = () => {
     const sec = trip.section;
-    return { t: game ? game.t : 0, kind: sec.kind, kmh: game ? game.player.kmh : 0, rain: game ? game.weather.level : 0, funkloch: game ? game.funkloch > 0 : false, tv: !!(game && game.tv), stopping: !!(game && game.navi.stopping), target: game && game.navi.target ? game.navi.target.name : null };
+    return { t: game ? game.t : 0, kind: sec.kind, kmh: game ? game.player.kmh : 0, rain: game ? game.weather.level : 0, funkloch: game ? game.funkloch > 0 : false, tv: !!(game && game.tv), stopping: !!(game && game.navi.stopping), target: game && game.navi.target ? game.navi.target.name : null, phase: game ? game.auction.phase : 'offen', stuck: !!(game && game.stuck), charging: !!(game && game.charging) };
   };
   let ids = 0;
   const ui = loose({
@@ -60,6 +60,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
     megafon: (text, dur, buyer, label) => log.speak.push({ t: game.t, who: 'megafon', text, label: label || 'Megafon-Wunsch von ' + buyer, at: state() }),
     durchsage: (voice, text) => log.speak.push({ t: game.t, who: 'durchsage', text, voice, at: state() }),
     brunnenTV: (n, name) => log.tv.push({ t: game.t, n, name }),
+    funkloch: (on) => log.funk.push({ t: game.t, on, at: state() }),
   });
   game = new Game({
     traffic: traffic || loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),

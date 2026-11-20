@@ -444,11 +444,12 @@ export class Economy {
    * nach unten: blech, langsam, stau, spur, funkloch, verpasst, strafe.
    * @param {'up'|'down'} dir
    * @param {string} [avoid] zuletzt genanntes Stichwort (kommt nur dran, wenn es das einzige ist)
+   * @param {(k:string)=>boolean} [ok] stimmt der Anlass noch? (Game.causeTrue: „gleich sind wir da“ nur kurz davor)
    * @returns {string|null}
    */
-  why(dir, avoid) {
+  why(dir, avoid, ok = null) {
     const c = this.causes[dir];
-    let keys = Object.keys(c).filter((k) => c[k] >= CAUSE_MIN);
+    let keys = Object.keys(c).filter((k) => c[k] >= CAUSE_MIN && (!ok || ok(k)));
     if (keys.length > 1) keys = keys.filter((k) => k !== avoid);
     if (!keys.length) return null;
     let r = this.rnd() * keys.reduce((s, k) => s + c[k], 0);

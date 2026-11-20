@@ -119,6 +119,25 @@ export const QUOTE_DT = 5;
  * Mal etwas mehr, höchstens das Dreifache), und es kostet die Stimmung ein wenig (mood).
  */
 export const TROEDEL = { stand: 14, slowPace: 0.7, slowFor: 45, round: 0.8, cool: 75, mood: 0.03 };
+/**
+ * Was ein Satz über den Moment behauptet, muss stimmen (der Eigentümer: „Wir sind auf der Autobahn und streamen in
+ * Full HD“ kam mitten im Ort). Ein Satz in data.js kann mit Stichworten beginnen, „[ab] Wir sind …“, eine Durchsage
+ * hat when: Er kommt nur, wenn jedes gerade gilt (Game.fits). ab auf der Autobahn · ort in einem Ort · regen es
+ * regnet · langsam in Fahrt, aber unter 90 km/h · offen ein Gebot ändert das Ziel noch (vor dem Zuschlag) · ziel ein
+ * Ziel steht im Navi · stau hinter jemandem festgehangen · netz seit einer Minute kein Funkloch.
+ */
+export const FACTS = {
+  ab: (g) => !g.offAutobahn && g.roadKind() === 'ab',
+  ort: (g) => g.roadKind() === 'stadt',
+  regen: (g) => g.weather.level > 0.3,
+  langsam: (g) => g.player.kmh >= 3 && g.player.kmh < 90,
+  offen: (g) => g.auction.phase === 'offen' && !!g.navi.target,
+  ziel: (g) => !!g.navi.target,
+  stau: (g) => !!g.stuck,
+  netz: (g) => g.funkloch <= 0 && g.t - g.funklochT > 60,
+};
+/** Der Satz ohne seine Stichworte: „[ab] Wir sind …“ → „Wir sind …“. */
+export const untag = (line) => (line.charCodeAt(0) === 91 ? line.slice(line.indexOf(']') + 2) : line);
 // Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
 // Kästchen, lead Sekunden später folgen NOMIs Gong und ihre Ansage
 const RADAR = { ahead: 180, lead: 0.45 };
@@ -259,6 +278,7 @@ export class Game {
     this.blitzer = null;
     this.landmark = null;
     this.funkloch = 0;
+    this.funklochT = -99; // wann das letzte Funkloch begann (FACTS.netz)
     this.policeCar = null;
     this.shoulderWarned = false;
     this.batteryWarned = 0;
@@ -331,6 +351,7 @@ export class Game {
   }
 
   chat(text, name = viewerName(), opts = {}) {
+    if (!text) return; // (kein Satz des Vorrats passte gerade: chatLine)
     if (this.ui.chat) this.ui.chat({ name, text: fillTemplate(text), ...opts });
   }
 
@@ -347,13 +368,40 @@ export class Game {
    */
   chatLine(pool) {
     const seen = this.chatSeen;
-    let line = pick(pool);
-    for (let i = 0; i < 4 && seen.includes(line); i++) line = pick(pool);
+    // (nur Sätze, die gerade stimmen: FACTS)
+    const fits = pool.some((l) => l.charCodeAt(0) === 91) ? pool.filter((l) => this.fits(l)) : pool;
+    if (!fits.length) return '';
+    let line = pick(fits);
+    for (let i = 0; i < 4 && seen.includes(line); i++) line = pick(fits);
     if (line.length > 3) {
       seen.push(line);
       if (seen.length > 14) seen.shift();
     }
-    return line;
+    return untag(line);
+  }
+
+  /** Gilt jedes Stichwort, mit dem der Satz beginnt? (FACTS; ohne Stichwort immer) */
+  fits(line) {
+    if (line.charCodeAt(0) !== 91) return true;
+    for (const k of line.slice(1, line.indexOf(']')).split(' ')) if (!FACTS[k](this)) return false;
+    return true;
+  }
+
+  /** Die Straße unter dem Wagen (trip.js: ab, stadt, zub, conn, auf, ramp, park); ohne Fahrt über die Karte: ab. */
+  roadKind() {
+    const tr = this.world.trip ? this.world.trip() : null;
+    return tr && tr.section ? tr.section.kind : 'ab';
+  }
+
+  /**
+   * Stimmt der Anlass noch, den das Sprachstudio nennen will (economy.js why)? „Gleich sind wir da“ nur kurz vor dem
+   * Ziel, „der Vordermann“ nur, solange einer vor uns herzuckelt, „das Funkloch“ nur kurz nach einem.
+   */
+  causeTrue(k) {
+    if (k === 'nah') return !!this.navi.target && this.navi.driveSecs() < 120;
+    if (k === 'stau') return !!this.stuck;
+    if (k === 'funkloch') return this.t - this.funklochT < 90;
+    return true;
   }
 
   /**
@@ -859,6 +907,10 @@ export class Game {
     if (!L.open) {
       if (!this.offAutobahn) L.next -= dt;
       if (L.next <= 0) this.openLeftLane();
+    } else if (this.offAutobahn) {
+      // abseits der Autobahn gibt es keine linke Spur: Die Freischaltung endet an der Ausfahrt (sonst bettelt der Chat
+      // im Ort darum, sie zu nutzen)
+      this.closeLeftLane();
     } else {
       L.timer -= dt;
       // Geld gibt es fürs Linksfahren nicht – aber jemand hat dafür gespendet und will es jetzt auch sehen (rückwärts
@@ -1613,7 +1665,7 @@ export class Game {
     if (T.durchsage <= 0 && this.t >= this.studioUntil && !this.tv && !this.charging) {
       T.durchsage = rand(48, 85);
       const pool = this.weather.level > 0.3 && chance(0.5) ? DURCHSAGEN_REGEN : DURCHSAGEN;
-      const d = pick(pool);
+      const d = pick(pool.filter((x) => !x.when || x.when.split(' ').every((k) => FACTS[k](this))));
       const text = fillTemplate(d.text);
       const name = viewerName();
       this.donate(name, this.eco.durchsagePrice(), 'Sprachdurchsage', { label: 'Sprachdurchsagen' });
@@ -1648,10 +1700,12 @@ export class Game {
         this.later(1.2 + CREW.backAfter, () => this.chat(pick(CREW_LINES.back), who, this.crewBadge(who)));
       }
     }
-    if (T.funkloch <= 0 && p.s > 1500) {
+    // (nie mitten in einer Szene – Folge, Ladestopp, Halt am Brunnen: Das Funkloch wartet, bis sie vorbei ist)
+    if (T.funkloch <= 0 && p.s > 1500 && !this.tv && !this.charging && !this.halt && !this.navi.stopping) {
       T.funkloch = rand(120, 220);
       if (!this.up.starlink) {
         this.funkloch = rand(2.2, 3.2);
+        this.funklochT = this.t;
         this.eco.cheer('funkloch');
         this.fx.glitch(this.funkloch);
         this.ui.funkloch(true);
@@ -2328,7 +2382,7 @@ export class Game {
       // das, was die Stimmung gerade dorthin gebracht hat.
       const lv = this.eco.level;
       const dir = lv > 2 ? 'up' : lv < 2 ? 'down' : S.trend;
-      const why = dir && chance(0.75) ? this.eco.why(dir, S.why) : null;
+      const why = dir && chance(0.75) ? this.eco.why(dir, S.why, (k) => this.causeTrue(k)) : null;
       if (lv === 2 && S.trend) text = this.fresh(STUDIO.turn[S.trend], 'turn' + S.trend);
       else text = why ? this.fresh(STUDIO.short[lv], 'short' + lv) : this.fresh(STUDIO.levels[lv], 'level' + lv);
       if (why) {
@@ -2362,10 +2416,12 @@ export class Game {
   /** Ein Satz aus der Liste, aber keiner der beiden zuletzt gesagten (key: je Liste ein Gedächtnis). */
   fresh(list, key) {
     const used = this.studio.used[key] || (this.studio.used[key] = []);
-    const i = pick(list.map((_, n) => n).filter((n) => !used.includes(n)));
+    // (nur Sätze, die gerade stimmen: FACTS – und davon einer, der nicht eben erst dran war)
+    const fit = list.map((_, n) => n).filter((n) => this.fits(list[n]));
+    const i = pick(fit.filter((n) => !used.includes(n))) ?? pick(fit);
     used.push(i);
     if (used.length > Math.min(2, list.length - 1)) used.shift();
-    return list[i];
+    return untag(list[i]);
   }
 
   // --- Jobs ---------------------------------------------------------------------------

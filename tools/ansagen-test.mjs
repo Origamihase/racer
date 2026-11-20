@@ -14,11 +14,14 @@
 //   danach; was Mini Adam durchs Megafon sagt, sagt er mit seiner Stimme, nie mit OMIs.
 // - Trödeladam: Wer lange steht, lange langsam fährt oder eine Runde vertrödelt, den nennt der Chat so – mit Abstand,
 //   nur wenn es stimmt, und es kostet ein wenig Stimmung; wer zügig fährt, hört es nie.
+// - Ansagen stimmen: Wer im Chat, in einer Durchsage oder im Sprachstudio etwas über den Moment behauptet (Autobahn,
+//   Funkloch, Tempo, Regen, Ziel, Gebote), trägt dafür ein Stichwort (game.js FACTS) und kommt nur, wenn es gilt;
+//   Funklöcher kommen nie mitten in einer Szene, die linke Spur endet an der Ausfahrt.
 import { readFileSync } from 'node:fs';
 import * as DATA from '../src/data.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
 import { MOOD_START, Economy } from '../src/game/economy.js';
-import { AUKTION, QUOTE_DT, TROEDEL, fountainIn } from '../src/game/game.js';
+import { AUKTION, QUOTE_DT, TROEDEL, FACTS, untag, fountainIn } from '../src/game/game.js';
 import { drawQuote } from '../src/ui/quotechart.js';
 import { Speech } from '../src/speech.js';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
@@ -339,6 +342,100 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
     sum.runde += r.length;
   }
   console.log(`  Trödeladam: der Trödler ${sum.troedler}× in ${sum.mins.toFixed(0)} min (steht ${sum.steht}, langsam ${sum.langsam}, Runde ${sum.runde}; ${sum.echo} Echos aus dem Chat), der zügige Fahrer ${sum.zuegig}×`);
+}
+
+// --- Ansagen stimmen: Stichworte für Behauptungen über den Moment --------------------------------------------------
+{
+  const { CHAT, STUDIO, DURCHSAGEN } = DATA;
+  // die Durchsicht (der Eigentümer: „Wir sind auf der Autobahn und streamen in Full HD“ im Ort, „Chatstimmung mau durch
+  // Funkloch“ ohne Funkloch): Wer in den allgemeinen Vorräten so etwas sagt, braucht das Stichwort dazu
+  const RULES = [
+    [/Autobahn|Rechts fahren|Raststätte|Überhol/, 'ab'],
+    [/Full HD|Bild (ist|und)|so scharf|kein Funkloch/, 'netz'],
+    [/Regen|regnet/, 'regen'],
+    [/langsam|Schnecke|Traktor|Pommes werden kalt|mehr Strom|Laster haben/, 'langsam'],
+    [/10 € mehr|Navi-Ziel ändert|stabilisiert/, 'offen'],
+    [/Wann sind wir da|bald da|noch an\?|kommt bestimmt ein Brunnen/, 'ziel'],
+  ];
+  // geprüft und für wahr befunden, obwohl ein Wort passt: Fragen und Witze, die nichts über den Moment behaupten
+  const FREE = new Set(['Ist das Bild wirklich Full HD?', 'Die Stimmung im Chat steigt. Es regnet Herzen.']);
+  const general = { ambient: CHAT.ambient, cheerful: CHAT.cheerful, restless: CHAT.restless, flott: CHAT.flott, schneller: CHAT.schneller, levels: STUDIO.levels.flat(), short: STUDIO.short.flat() };
+  const tags = (l) => (l.startsWith('[') ? l.slice(1, l.indexOf(']')).split(' ') : []);
+  let audited = 0;
+  for (const [name, pool] of Object.entries(general)) {
+    for (const line of pool) {
+      audited++;
+      const t = tags(line);
+      ok(t.every((k) => k in FACTS), `${name}: unbekanntes Stichwort in „${line}“`);
+      for (const [re, key] of RULES) if (re.test(untag(line)) && !FREE.has(line)) ok(t.includes(key), `${name}: „${line}“ behauptet etwas (${key}) ohne Stichwort`);
+    }
+  }
+  for (const d of DURCHSAGEN) {
+    audited++;
+    const when = d.when ? d.when.split(' ') : [];
+    ok(when.every((k) => k in FACTS), `Durchsage mit unbekanntem when: ${d.text}`);
+    for (const [re, key] of RULES) if (re.test(d.text)) ok(when.includes(key), `Durchsage „${d.text}“ behauptet etwas (${key}) ohne when`);
+    ok(!/Ich biete|Neues Ziel/.test(d.text), `Durchsage gibt ein Gebot vor, das es nicht gibt: ${d.text}`);
+  }
+  ok(!CHAT.crash.some((l) => /ist unterwegs/.test(l)), 'Nach dem Rempler kündigt der Chat die Polizei an, die nie kommt');
+  // Stichworte nur in Vorräten, die über chatLine/fresh laufen (sonst stünde „[ab]“ im Chat)
+  const src = read('src/game/game.js') + read('src/main.js');
+  for (const [name, pool] of Object.entries(CHAT)) {
+    if (!Array.isArray(pool) || !pool.some((l) => l.startsWith('['))) continue;
+    ok(!new RegExp(`pick\\(CHAT\\.${name}\\)`).test(src), `CHAT.${name} hat Stichworte, wird aber mit pick() gezogen`);
+  }
+  // im Spiel: Jeder Satz mit Stichwort kam, als es galt; keiner zeigt seine Klammern; Funklöcher nie in einer Szene
+  const tagOf = new Map();
+  const add = (l) => tags(l).length && tagOf.set(untag(l), tags(l));
+  Object.values(general).flat().forEach(add);
+  for (const d of DURCHSAGEN) if (d.when) tagOf.set(d.text, d.when.split(' '));
+  const holds = {
+    ab: (at) => at.kind === 'ab',
+    ort: (at) => at.kind === 'stadt',
+    regen: (at) => at.rain > 0.3,
+    langsam: (at) => at.kmh >= 3 && at.kmh < 90,
+    offen: (at) => at.phase === 'offen' && !!at.target,
+    ziel: (at) => !!at.target,
+    stau: (at) => at.stuck,
+    netz: (at, t, funk) => !at.funkloch && !funk.some((f) => f.on && f.t <= t && t - f.t <= 60),
+  };
+  const nah = new Set(STUDIO.why.up.nah);
+  const stau = new Set(STUDIO.why.down.stau);
+  const lane = new Set([...CHAT.leftLaneTease, ...CHAT.leftLaneDonor]);
+  const sum = { lines: 0, tagged: 0, keys: {}, funk: 0, durch: 0, studio: 0 };
+  for (const [drv, seed] of [['mittel', 11], ['gemuetlich', 12], ['troedler', 13], ['zuegig', 14]]) {
+    const sim = makeStream({ driver: DRIVERS[drv], seed, endless: true });
+    const { log } = sim;
+    sim.step(900);
+    const all = [...log.chat, ...log.speak];
+    sum.lines += all.length;
+    ok(!all.some((x) => x.text.startsWith('[')), `${drv}: ein Satz zeigt seine Stichworte: ${(all.find((x) => x.text.startsWith('[')) || {}).text}`);
+    for (const x of all) {
+      const text = x.text;
+      const t = tagOf.get(text);
+      if (!t) continue;
+      sum.tagged++;
+      if (x.who === 'durchsage') sum.durch++;
+      for (const k of t) {
+        sum.keys[k] = (sum.keys[k] || 0) + 1;
+        ok(holds[k](x.at, x.t, log.funk), `${drv} ${seed}: „${text}“ um ${x.t.toFixed(0)} s, aber ${k} gilt nicht (${x.at.kind}, ${x.at.kmh.toFixed(0)} km/h, ${x.at.phase})`);
+      }
+    }
+    for (const f of log.funk.filter((f) => f.on)) {
+      sum.funk++;
+      ok(!f.at.tv && !f.at.charging && !f.at.stopping, `${drv} ${seed}: Funkloch um ${f.t.toFixed(0)} s mitten in einer Szene`);
+    }
+    for (const x of log.speak.filter((s) => s.who === 'studio')) {
+      const parts = [...nah].filter((l) => x.text.endsWith(l));
+      const jam = [...stau].filter((l) => x.text.endsWith(l));
+      if (parts.length || jam.length) sum.studio++;
+      ok(!parts.length || x.at.target, `${drv} ${seed}: Sprachstudio „${x.text}“ ohne Ziel im Navi`);
+      ok(!jam.length || x.at.stuck, `${drv} ${seed}: Sprachstudio „${x.text}“, aber niemand vor uns`);
+    }
+    ok(!log.chat.some((c) => lane.has(c.text) && c.at.kind !== 'ab'), `${drv} ${seed}: Der Chat will die linke Spur abseits der Autobahn`);
+  }
+  ok(sum.tagged >= 20 && Object.keys(sum.keys).length >= 4, `Ansagen: zu wenige Sätze mit Stichwort geprüft (${sum.tagged}: ${JSON.stringify(sum.keys)})`);
+  console.log(`  Ansagen: ${audited} Sätze der allgemeinen Vorräte und Durchsagen durchgesehen · im Spiel ${sum.lines} Sätze, ${sum.tagged} mit Stichwort (${Object.entries(sum.keys).map(([k, n]) => k + ' ' + n).join(', ')}; ${sum.durch} Durchsagen), alle zur rechten Zeit · ${sum.funk} Funklöcher, keins in einer Szene · ${sum.studio} Studio-Anlässe „nah“/„Stau“ geprüft`);
 }
 
 console.log(`ansagen-test: ${checks} Prüfungen, ${fails} Fehler`);
