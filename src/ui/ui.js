@@ -10,6 +10,9 @@ import { shortName } from '../game/navi.js';
 import { moodEmoji } from '../game/satisfaction.js';
 import { NARROW_MID, infoWidth, overlap } from './sicht.js';
 
+/** Zufriedenheit des Chats sichtbar im Chat-Kopf? Nein: Die Chat-Stimmung gehört nicht ins HUD (Besitzer, 17.11.). */
+const CHAT_MOOD_SICHTBAR = false;
+
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -890,8 +893,10 @@ export class UI {
     const key = String(v);
     if (key === this.chatMoodShown) return;
     this.chatMoodShown = key;
-    this.chatMood.classList.toggle('on', v >= 0);
-    if (v < 0) return;
+    // Der Besitzer (17.11.): „Die Chat-Stimmung soll nicht ins HUD.“ Die Zufriedenheit wirkt auf Geld, Zuschauer und
+    // Ton, angezeigt wird sie nicht; das Element bleibt aus, bis er es anders will (CHAT_MOOD_SICHTBAR).
+    this.chatMood.classList.toggle('on', CHAT_MOOD_SICHTBAR && v >= 0);
+    if (v < 0 || !CHAT_MOOD_SICHTBAR) return;
     this.chatMoodFace.textContent = moodEmoji(v);
     this.chatMoodFill.style.width = v + '%';
     this.chatMood.classList.toggle('low', v < 35);
