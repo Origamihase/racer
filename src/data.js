@@ -728,7 +728,6 @@ export const BOARD = {
     take: 'Dort fahren wir ab.',
     stay: 'Wir bleiben auf der {road}.',
   },
-  arrived: 'Sie haben Ihr Ziel erreicht.',
   rain: 'Regen erkannt. Automatische Scheibenwischer aktiviert.',
   // NOMI entschuldigt sich ab und zu für den hängenden Wischer
   wiperSorry: [

@@ -1289,7 +1289,7 @@ export class Game {
     const p = this.player;
     const t = e.target;
     this.stats.naviReached++;
-    this.say(BOARD.arrived, 'love');
+    // (OMI sagt hier nichts: Gleich beginnt die Folge, und die hat genau einen Satz von ihr, TV.nomi)
     this.onMood('cheer', 1);
     this.audio.jingle();
     // an jedem erreichten Navi-Ziel wird ein Karosserie-Punkt repariert (mit Pflaster)
@@ -1548,7 +1548,8 @@ export class Game {
     const fits = BRUNNEN_MEGAFON.map((l) => fillTemplate(l, { ort: tv.name })).filter((l) => estimateSpeech(l, VOICES.adam.rate) <= room);
     const text = pick(fits);
     this.audio.megafon();
-    const dur = this.speech.say(text, 'adam');
+    // (mit Vorrang: Eine Durchsage, die noch läuft, endet hier – die Folge gehört Mini Adam)
+    const dur = this.speech.say(text, 'adam', { priority: true });
     this.ui.megafon(text, dur + 1, '', 'Mini Adam durchs Megafon');
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.line));
@@ -1562,7 +1563,7 @@ export class Game {
     const S = SCHOENER_BRUNNEN;
     if (this.tv) this.tv.called = true;
     this.audio.megafon();
-    const dur = this.speech.say(S.say, 'brunnen');
+    const dur = this.speech.say(S.say, 'brunnen', { priority: true });
     this.ui.megafon(S.text, dur + 1.2, '', 'Mini Adam durchs Megafon');
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.call));
@@ -1597,8 +1598,8 @@ export class Game {
     T.rahmen -= eager;
     T.trunk -= eager;
 
-    // Sprachdurchsage (wartet, bis das Sprachstudio ausgeredet hat)
-    if (T.durchsage <= 0 && this.t >= this.studioUntil) {
+    // Sprachdurchsage (wartet, bis das Sprachstudio ausgeredet hat und keine Szene läuft: Folge, Ladestopp)
+    if (T.durchsage <= 0 && this.t >= this.studioUntil && !this.tv && !this.charging) {
       T.durchsage = rand(48, 85);
       const pool = this.weather.level > 0.3 && chance(0.5) ? DURCHSAGEN_REGEN : DURCHSAGEN;
       const d = pick(pool);
@@ -1659,7 +1660,8 @@ export class Game {
     }
 
     // Aktion aus dem Live-Bereich: Kofferraum öffnen, hupen lassen oder ein Wunsch fürs Megafon
-    if (T.trunk <= 0 && p.s > 2000) {
+    // (Aktionen warten, bis die Szene vorbei ist: Der Megafon-Wunsch soll nicht in die Folge platzen)
+    if (T.trunk <= 0 && p.s > 2000 && !this.tv && !this.charging) {
       T.trunk = rand(140, 220);
       const a = pick(AKTIONEN.filter((x) => !x.needs || this.up[x.needs]));
       const name = viewerName();
@@ -1676,7 +1678,8 @@ export class Game {
         this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
         this.later(1, () => {
           this.audio.megafon();
-          const dur = this.speech.say(text, 'william');
+          // Mini Adam ruft den Wunsch durchs Megafon – mit seiner Stimme
+          const dur = this.speech.say(text, 'adam');
           this.ui.megafon(text, dur + 1, name);
           this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
         });
@@ -2278,7 +2281,8 @@ export class Game {
     const mood = !alter && T.studio <= 0 && this.t - S.last > 8;
     const greet = !alter && !mood && S.greet && this.t - S.last > 10 && T.studio > 6;
     if (!alter && !mood && !greet && !(x && this.t - S.extraT > 75 && this.t - S.last > 15 && T.studio > 10)) return;
-    if (this.funkloch > 0 || this.t < this.voiceUntil + 0.6 || this.t < this.studioUntil || this.speech.busy || this.speech.queue.length) return;
+    // (in einer Szene – Folge, Ladestopp – schweigt das Studio und spricht danach)
+    if (this.funkloch > 0 || this.tv || this.charging || this.t < this.voiceUntil + 0.6 || this.t < this.studioUntil || this.speech.busy || this.speech.queue.length) return;
     let text;
     if (mood) {
       // Woran es liegt, sagt es gern dazu: bei guter Laune das Schöne, bei schlechter den Kummer – und in der Mitte
@@ -2386,7 +2390,7 @@ export class Game {
     this.megafonCd = 15;
     this.audio.megafon();
     const n = this.traffic.megafon(this.player);
-    this.speech.say('Achtung, Achtung! Bitte machen Sie die Spur frei!', 'william');
+    this.speech.say('Achtung, Achtung! Bitte machen Sie die Spur frei!', 'adam');
     this.voiceUntil = Math.max(this.voiceUntil, this.t + 4);
     this.eco.cheer('megafon');
     this.onMood('megafon', 2.6);

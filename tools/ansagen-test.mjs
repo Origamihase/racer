@@ -10,12 +10,15 @@
 //   ist der Stream vorbei (Abspann 'stream').
 // - Zuschauer: Während der Fahrt zeigt das HUD nur die Zahl am 👁 (kein Gesicht, kein Balken, keine Kurve, keine
 //   zweite Zahl im Chat-Kopf); der Abspann zeigt die Einschaltquote als Kurve (ui/quotechart.js).
+// - Reihenfolge und Stimme: In einer BrunnenTV-Folge spricht OMI genau einmal, Sprachstudio und Durchsagen warten bis
+//   danach; was Mini Adam durchs Megafon sagt, sagt er mit seiner Stimme, nie mit OMIs.
 import { readFileSync } from 'node:fs';
 import * as DATA from '../src/data.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
 import { MOOD_START, Economy } from '../src/game/economy.js';
 import { AUKTION, QUOTE_DT, fountainIn } from '../src/game/game.js';
 import { drawQuote } from '../src/ui/quotechart.js';
+import { Speech } from '../src/speech.js';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
 
 let fails = 0;
@@ -229,6 +232,48 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   ok(calls.some((c) => c[0] === 'fillText' && /^Spitze /.test(c[1])) && calls.filter((c) => c[0] === 'arc').length >= o.tv.length + 1, 'Einschaltquote: Spitze oder Folgen nicht gezeichnet');
   ok(/quoteBlock\(card, o\.quote\)/.test(read('src/ui/menus.js')), 'menus.js: Abspann zeigt die Einschaltquote nicht');
   console.log(`  Zuschauer: eine Zahl am 👁 · Einschaltquote ${o.v.length} Werte, Spitze ${peak.v}, ${o.tv.length} Folgen markiert`);
+}
+
+// --- Reihenfolge und Stimme rund um BrunnenTV ---------------------------------------------------------------------
+{
+  const episodes = [];
+  for (const seed of [1, 3, 5]) {
+    const sim = makeStream({ driver: DRIVERS.mittel, seed, endless: true });
+    const { game, log } = sim;
+    let tv = null;
+    for (let t = 0; t < 1500 && episodes.filter((e) => e.seed === seed).length < 2; t += 0.5) {
+      sim.step(0.5);
+      if (game.tv && !tv) tv = { seed, t0: game.t, t1: Infinity };
+      if (!game.tv && tv) {
+        tv.t1 = game.t;
+        episodes.push(tv);
+        tv = null;
+      }
+    }
+    for (const e of episodes.filter((x) => x.seed === seed)) {
+      const inside = (x) => x.t >= e.t0 - 0.05 && x.t <= e.t1;
+      const spoken = log.speak.filter(inside);
+      const omi = spoken.filter((x) => x.who === 'nomi');
+      ok(omi.length === 1, `Seed ${seed}, Folge um ${e.t0.toFixed(0)} s: OMI ${omi.length}× (${omi.map((x) => x.text).join(' | ')})`);
+      ok(!spoken.some((x) => x.who === 'studio' || x.who === 'durchsage'), `Seed ${seed}, Folge um ${e.t0.toFixed(0)} s: ${spoken.filter((x) => x.who === 'studio' || x.who === 'durchsage').map((x) => x.who + ': ' + x.text).join(' | ')}`);
+      ok(spoken.filter((x) => x.who === 'megafon').every((x) => x.label === 'Mini Adam durchs Megafon'), `Seed ${seed}: ein fremder Megafon-Satz in der Folge`);
+      ok(log.say.filter(inside).every((x) => ['adam', 'brunnen', 'board'].includes(x.voice)), `Seed ${seed}: in der Folge spricht ${log.say.filter(inside).map((x) => x.voice).join(', ')}`);
+    }
+    // was Mini Adam durchs Megafon sagt (Folge, Wunsch, Taste H), spricht er selbst
+    const mega = new Set(log.speak.filter((x) => x.who === 'megafon').map((x) => x.text.replace(/^»|«$/g, '')));
+    const voices = log.say.filter((x) => mega.has(x.text) || /^Achtung, Achtung! Bitte machen Sie die Spur frei!$/.test(x.text)).map((x) => x.voice);
+    ok(voices.every((v) => v === 'adam' || v === 'brunnen'), `Seed ${seed}: Megafon mit den Stimmen ${[...new Set(voices)].join(', ')}`);
+    ok(!log.speak.some((x) => x.text === 'Sie haben Ihr Ziel erreicht.'), `Seed ${seed}: OMI sagt beim Halt noch „Sie haben Ihr Ziel erreicht.“`);
+  }
+  ok(episodes.length >= 4, `Reihenfolge: nur ${episodes.length} Folgen geprüft`);
+  // Stimmen: OMI hat ihre, alle anderen eine andere (auch ohne tiefe Männerstimme auf dem Gerät)
+  const sp = new Speech();
+  sp.voices = [{ name: 'Google Deutsch', lang: 'de-DE' }, { name: 'Anna', lang: 'de-DE' }];
+  const omi = sp.pickVoice('board');
+  ok(['adam', 'brunnen', 'william', 'sprachstudio', 'kassandra'].every((k) => sp.pickVoice(k) !== omi), 'Mit zwei Stimmen klingt jemand wie OMI');
+  sp.voices = [{ name: 'Anna', lang: 'de-DE' }];
+  ok(sp.pickVoice('adam') === sp.voices[0], 'Mit einer Stimme bleibt Mini Adam stumm');
+  console.log(`  Reihenfolge: ${episodes.length} Folgen, je genau ein Satz von OMI, Studio und Durchsagen danach; Megafon immer mit Mini Adams Stimme`);
 }
 
 console.log(`ansagen-test: ${checks} Prüfungen, ${fails} Fehler`);

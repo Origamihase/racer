@@ -315,8 +315,8 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
   };
   const r = episode(null, 4711, { t: 3, fn: chatter });
   const said = r.log.filter((e) => e.k === 'nomi');
-  // („Sie haben Ihr Ziel erreicht“ sagt sie beim Halt, bevor die Folge beginnt)
-  const inTv = said.filter((e) => e.tv && e.text !== BOARD.arrived);
+  // (beim Halt sagt sie nichts: Die Folge hat genau ihren einen Satz)
+  const inTv = said.filter((e) => e.tv);
   ok(inTv.length === 1 && BRUNNEN_NOMI.some((l) => fillTemplate(l, { n: '1' }) === inTv[0].text), `Folge: NOMI ${inTv.length}× (${inTv.map((e) => e.text).join(' | ')})`);
   ok(!said.some((e) => e.text === BOARD.wiperPhantom) && said.filter((e) => !e.tv && e.text === 'Prüfsatz nach der Folge.').length === 1, `Folge: zurückgehalten ${said.map((e) => e.text).join(' | ')}`);
 }
@@ -327,7 +327,7 @@ const mega = { says: [], toasts: [] };
   ok(!SHOP.some((x) => x.id === 'megafon') && !('megafon' in UPGRADE_LIMITS), 'Das Megafon steht noch im Shop');
   const wish = AKTIONEN.find((x) => x.id === 'megafon');
   ok(wish && !wish.needs, 'Der Megafon-Wunsch braucht noch ein Upgrade');
-  // Taste H ohne gekauftes Megafon: Durchsage mit Brüll-Williams Stimme, kein Hinweis auf den Shop; während es
+  // Taste H ohne gekauftes Megafon: Mini Adam durchs Megafon, mit seiner Stimme, kein Hinweis auf den Shop; während es
   // nachlädt, sagt es das
   {
     Math.random = mulberry32(7);
@@ -353,7 +353,7 @@ const mega = { says: [], toasts: [] };
     game.useMegafon();
     game.useMegafon();
     const where = 'Reise';
-    ok(says.length === 1 && says[0].voice === 'william' && game.megafonCd > 14, `${where}: Taste H ohne Upgrade (${says.length} Durchsagen)`);
+    ok(says.length === 1 && says[0].voice === 'adam' && game.megafonCd > 14, `${where}: Taste H ohne Upgrade (${says.length} Durchsagen)`);
     ok(toasts.length === 2 && /Platz/.test(toasts[0]) && /lädt noch/.test(toasts[1]) && !toasts.some((t) => /Shop/.test(t)), `${where}: Hinweise ${toasts.join(' | ')}`);
     mega.says.push(says.length);
     mega.toasts.push(...toasts);

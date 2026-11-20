@@ -33,8 +33,15 @@ export class Speech {
     }
   }
 
+  /**
+   * Die Stimme zu einem Sprecher (VOICES). Wer nicht OMI ist, klingt nie wie sie (der Eigentümer: „Man sieht das
+   * Megafon, hört aber OMI.“): Hat das Gerät mehr als eine deutsche Stimme, bekommt OMI ihre, und alle anderen nehmen
+   * eine andere – auch Mini Adam, wenn keine tiefe Männerstimme da ist.
+   */
   pickVoice(key) {
     if (!this.voices.length) return null;
+    const omi = key === 'board' ? null : this.pickVoice('board');
+    const free = (v) => v !== omi || this.voices.length === 1;
     const pref = {
       board: [/Google Deutsch/i, /Anna/i, /Hedda/i, /Katja/i, /Petra/i, /Helena/i],
       kassandra: [/Anna/i, /Google Deutsch/i, /Katja/i, /Hedda/i],
@@ -47,10 +54,10 @@ export class Speech {
       brunnen: DEEP_MALE,
     }[key] || [];
     for (const re of pref) {
-      const v = this.voices.find((x) => re.test(x.name));
+      const v = this.voices.find((x) => re.test(x.name) && free(x));
       if (v) return v;
     }
-    return this.voices[0];
+    return this.voices.find(free) || this.voices[0];
   }
 
   /**
