@@ -504,9 +504,13 @@ export class UI {
       el('div', 'toast toast-' + n.kind, this.noticeEl, n.text);
       return;
     }
-    // in Teilen: [Text, Klasse] – etwa Einnahmen grün und Reparatur rot (Zeile der Runde, game.js payBill)
+    // in Teilen: [Text, Klasse] – etwa Einnahmen grün und Reparatur rot (Zeile der Runde, game.js payBill). Teile mit
+    // Klasse bleiben beisammen (nowrap), die ohne sind Text zwischen ihnen: Nur dort darf die Zeile umbrechen.
     const box = el('div', 'toast toast-' + n.kind, this.noticeEl);
-    for (const [text, cls] of n.parts) el('span', cls || '', box, text);
+    for (const [text, cls] of n.parts) {
+      if (cls) el('span', cls, box, text);
+      else box.append(text);
+    }
   }
 
   tickNotices(dt) {

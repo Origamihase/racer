@@ -322,7 +322,7 @@ console.log('Werkstatt-Rechnung (Reise):');
   ok(run.bills.length >= 3, `nur ${run.bills.length} Rechnungen in 60 Minuten`);
   if (b3) {
     ok(b1.n === 1 && b1.hits === 2 && b1.marks === 1 && b1.amount === 2 * R.bump + R.mark && b1.paid === b1.amount, `Runde 1: ${JSON.stringify(b1)}`);
-    ok(/^🧾 Runde 1 · Einnahmen \+[\d.]+\s€ · Reparatur −325\s€$/.test(b1.toast.text) && b1.toast.key === 'rechnung', `Runde 1 am Rand: ${b1.toast.text}`);
+    ok(/^🧾 Runde 1\s· Einnahmen \+[\d.]+\s€\s· Reparatur −325\s€$/.test(b1.toast.text) && b1.toast.key === 'rechnung', `Runde 1 am Rand: ${b1.toast.text}`);
     ok(b1.james && /Werkstatt-Rechnung für Runde 1: 325\s€ für 2 Rempler und 1 Kratzer – bezahlt aus der Stream-Kasse\./.test(b1.james.text), `Runde 1, James: ${b1.james && b1.james.text}`);
     ok(b2.n === 2 && b2.amount === 0 && b2.paid === 0 && /keine Schäden ✨$/.test(b2.toast.text) && b2.toast.kind === 'good', `Runde 2 ohne Schäden: ${b2.toast.text}`);
     ok(b3.n === 3 && b3.amount === R.bump && b3.paid === 40 && Math.abs(b3.left - 0.5) < 1e-9 && /Reparatur −40\s€ \(Rest 110\s€ erlassen\)$/.test(b3.toast.text) && /Bezahlt sind 40\s€, den Rest erlässt die Werkstatt/.test(b3.james.text), `Runde 3, Kasse fast leer: ${b3.toast.text} / ${b3.james && b3.james.text}`);
@@ -333,6 +333,9 @@ console.log('Werkstatt-Rechnung (Reise):');
   const income = run.bills.reduce((a, b) => a + b.income, 0) + g.tally.income;
   ok(Math.abs(income - run.earned) < 1e-6, `Einnahmen der Runden ${income} € statt ${run.earned} €`);
   for (const b of run.bills) ok(b.toast.parts.map((x) => x[0]).join('') === b.toast.text, `Zeile in Teilen ≠ Text: ${b.toast.text}`);
+  // umbrochen wird nur an Trennern ohne Klasse (ein Leerzeichen oder „ · “ mit geschütztem Leerzeichen davor), so steht
+  // nie ein „·“ oder eine halbe Angabe am Anfang der zweiten Reihe (Handy hochkant)
+  for (const b of run.bills) ok(b.toast.parts.every(([t, c]) => (c ? !/^\s|\s$/.test(t) : /^(\u00a0· | )$/.test(t))), `Trenner der Zeile: ${JSON.stringify(b.toast.parts)}`);
   // Im Browser geht der Hinweis über die UI-Fassade in main.js: Sie muss die Teile weiterreichen, sonst steht die Zeile
   // einfarbig am Rand (so war es bis 694f1ff – die Bilder zeigten es, dieser Test nicht)
   const facade = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8').match(/^\s*toast: \(([^)]*)\) => ui\.toast\(([^)]*)\)/m);

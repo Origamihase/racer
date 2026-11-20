@@ -1319,12 +1319,15 @@ export class Game {
       this.breakdown.Reparaturen = (this.breakdown.Reparaturen || 0) - paid;
       this.ui.money(-paid, 'Reparatur');
     }
-    const parts = [[`🧾 Runde ${b.n} · `], [`Einnahmen +${fmtEuro(b.income)}`, 'plus'], [' · ']];
+    // Teile mit Klasse bleiben beisammen, umbrochen wird nur an den Trennern ohne Klasse (auf dem Handy hochkant) – und
+    // nie vor einem „·“ (geschütztes Leerzeichen davor)
+    const dot = '\u00a0· ';
+    const parts = [[`🧾 Runde ${b.n}`, 'runde'], [dot], [`Einnahmen +${fmtEuro(b.income)}`, 'plus'], [dot]];
     if (!b.amount) parts.push(['keine Schäden ✨', 'plus']);
     else if (paid <= 0) parts.push([`Reparatur ${fmtEuro(b.amount)} erlassen`, 'minus']);
     else {
       parts.push([`Reparatur −${fmtEuro(paid)}`, 'minus']);
-      if (paid < b.amount) parts.push([` (Rest ${fmtEuro(b.amount - paid)} erlassen)`]);
+      if (paid < b.amount) parts.push([' '], [`(Rest ${fmtEuro(b.amount - paid)} erlassen)`, 'rest']);
     }
     this.ui.toast(parts.map((x) => x[0]).join(''), b.amount ? 'info' : 'good', 'rechnung', parts);
     if (!b.amount) {
