@@ -1,6 +1,6 @@
 // Das Megafon in Mini Adams Hand (BrunnenTV): dasselbe Modell wie auf dem Beifahrersitz im Cockpit (cockpit/props.js
 // megaphone: weißer Trichter mit rotem Rand, Gitter, Pistolengriff mit rotem Auslöser), hier als ein Mesh mit
-// Vertexfarben für die gebogene Welt. main.js baut es erst bei der ersten Folge; das klassische Spiel sieht es nie.
+// Vertexfarben für die gebogene Welt. main.js baut es erst bei der ersten Folge.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../curve.js';

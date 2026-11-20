@@ -2,12 +2,12 @@
 
 *Live-Eskalationen immer woanders!*
 
-Ein liebevoller, leicht verrückter 3D-Autobahn-Racer für den Browser und ein Fan-Spiel rund um
+Ein liebevolles, leicht verrücktes 3D-Fahrspiel für den Browser und ein Fan-Spiel rund um
 [SkylineTV LIVE](https://skylinetv.live/wiki/index.php?title=Hauptseite).
 Mini Adam (Plüsch, schwarze Cap, LIVE-Shirt, Mikrofon) sitzt am Steuer eines schwarzen
-**Tesla Model 3 Long Range AWD mit 75-kWh-Akku**. Du fährst aus der Cockpit-Ansicht über eine
-vierspurige Autobahn bei Tag, weichst dem Verkehr aus und schaffst so viel Strecke wie möglich.
-Der Chat steuert dabei das Navi fern.
+**Tesla Model 3 Long Range AWD mit 75-kWh-Akku**. Vom Supercharger in Erlensee aus fährst du über die
+echte Karte – Autobahnen, Ausfahrten, Landstraßen und Ortsdurchfahrten –, und der Chat steuert das Navi fern:
+Jedes Ziel ist der Hauptbrunnen eines echten Orts.
 
 ## Spielen
 
@@ -20,11 +20,13 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 
 ## Worum geht's?
 
-- **BrunnenTV XXL (Vorschau):** Auf der Reise über die echte Karte ist jedes Navi-Ziel der Hauptbrunnen eines Orts,
-  und das Navi nennt ihn („Marktbrunnen, Würzburg“). Am Ziel hält Mini Adam neben dem Brunnen, kurbelt das
-  Fahrerfenster herunter und macht mit dem Megafon BrunnenTV aus dem Auto – der Chat jubelt, NOMI lobt den Brunnen.
-  Jede Taste überspringt die Folge, dann geht die nächste Navi-Runde los. Klassisch bleibt die endlose Autobahn.
-- **Kameraschwenk zum Start:** Die Kamera fährt von außen an Mini Adam vorbei ins Cockpit.
+- **BrunnenTV XXL:** Jedes Navi-Ziel ist der Hauptbrunnen eines Orts, und das Navi nennt ihn
+  („Marktbrunnen, Würzburg“). Am Ziel hält Mini Adam neben dem Brunnen, kurbelt das Fahrerfenster herunter und
+  macht mit dem Megafon BrunnenTV aus dem Auto – der Chat jubelt, NOMI lobt den Brunnen, und die Folge kommt ins
+  Album. Jede Taste überspringt sie, dann geht die nächste Navi-Runde los.
+- **Losfahren am Supercharger:** Der Stecker springt aus der Buchse, die Klappe schließt, der Tesla rollt aus dem
+  Ladepark in Erlensee, und die Kamera geht ins Cockpit. Die ersten Minuten erklären kurze Hinweise am Bildrand
+  (Ausfahrt, Spuranzeige, Ladestopp, Kamera, Megafon) – einmal je Spieler, jede Taste blendet sie aus.
 - **Geld gibt es nur vom Publikum** – wie im echten Stream: Spenden mit Alter-Skala, Ortsspenden, Abos,
   VIPs, Navi-Gebote, Sprachdurchsagen, Rahmen, Aktionen und Sammelaktionen. Fürs Fahren selbst zahlt
   niemand. Aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.
@@ -32,18 +34,21 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
   **„Die linke Fahrspur ist freigeschaltet.“**, sobald ein Zuschauer dafür gespendet hat. Dann darfst du
   eine Minute lang ganz links fahren. Geld bringt das keins – aber wer die Spur nutzt, macht den Chat
   froh, und die nächste Freischaltung kommt etwas schneller. Sonst gilt das Rechtsfahrgebot.
-- **„Das Navi-Ziel wurde geändert.“** Die Zuschauer überbieten sich mit Cent-Beträgen, das Navi rechnet
-  automatisch eine neue Route (Erlensee, Burg Hauneck, Megahub Lehrte, Siegen … eher nicht).
-  Jedes Gebot landet in der Stream-Kasse, zurück gibt es nichts. Wer trotzdem einmal ankommt,
-  wird vom Chat mit Ortsspenden gefeiert – danach beginnt die nächste Runde wieder bei 0,01 €.
+- **„Das Navi-Ziel wurde geändert.“** Die Zuschauer überbieten sich in Zehnern, bis in die Hunderte (und selten
+  treibt BontanaBack eine Runde in die Tausender), das Navi plant die Route über echte Straßen neu – Ausfahrt,
+  Landstraße, Ortsdurchfahrt. Jedes Gebot landet in der Stream-Kasse, zurück gibt es nichts. Wer am Brunnen steht,
+  bevor wieder jemand überbietet, wird mit Ortsspenden gefeiert – danach beginnt die nächste Runde wieder bei 10 €.
+  Je zügiger es von Ziel zu Ziel geht, desto zufriedener ist der Chat (das Gesicht oben im Chat).
 - **Das Sprachstudio** (🎧) sagt Mini Adam etwa einmal pro Minute ins Ohr, wie der Chat gerade drauf ist,
   und bei einer richtig großen Spende ruft es „Alter!“. Eine Anzeige für die Chat-Stimmung gibt es mit
   Absicht nicht – man muss hinhören und den Chat lesen.
 - **Regen für Könner:** Wer lange sauber fährt, bekommt Regen. Der automatische Scheibenwischer will
   anspringen, zuckt aber nur über die Scheibe (Beta!). Mit <kbd>E</kbd> darf man selbst wischen,
   was auch nicht immer klappt. Der Chat liebt es trotzdem.
-- **Akku und Blech:** Die Stream-Technik im Kofferraum zieht Strom, Lade-Ringe helfen.
-  Rempler kosten Karosserie-Punkte. Leerer Akku oder zu viel Blechschaden beendet die Fahrt.
+- **Akku und Blech:** Die Stream-Technik im Kofferraum zieht Strom. Geladen wird in den Ladeparks an den
+  Ausfahrten: <kbd>L</kbd> (oder der Knopf „Ladestopp einplanen“) plant den nächsten ein, das Navi führt hinein und
+  danach weiter zum Ziel. Rempler kosten Karosserie-Punkte, die Werkstatt rechnet sie am Brunnen ab. Leerer Akku
+  oder zu viel Blechschaden beendet die Fahrt.
 - **Live-Chat und Live-Bereich:** Spenden mit Alter-Skala, Sprachdurchsagen, gekaufte Rahmen
   (Rosen, Sonnenblumen, Pappkartons …), Funklöcher, Polizei Gifhorn, Blitzer mit Polaroid,
   Brunnen und die blaue Plüsch-Elsa mit Krönchen und Schärpe am Straßenrand, Bananensaft und Koriander – und ab und zu ein lächerliches
@@ -69,13 +74,15 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 | Hupen (Brunnen und Elsa grüßen) | Leertaste | A | 📯 |
 | Scheibenwischer von Hand | E | X | 🌧️ |
 | Megafon | H | Y | 📢 |
+| Ladestopp einplanen (nächster Ladepark) | L | – | 🔌 Ladestopp |
 | Kamera (Cockpit / Drohne) | V | B | 🎥 |
 | Chat ein/aus | C | – | – |
 | Ton aus | M | – | – |
 | Pause | Esc oder P | Start | ⏸ |
 
-Spielstand, Guthaben, Upgrades und Bestwerte werden im Browser gespeichert (`localStorage`).
-In den Einstellungen lassen sich Ton, Sprachausgabe, Chat und Grafikqualität umstellen.
+Guthaben, Upgrades, Rekorde, besuchte Orte, Einstellungen und das Album der BrunnenTV-Folgen werden im Browser
+gespeichert (`localStorage`). In den Einstellungen lassen sich Ton, Sprachausgabe, Chat, Facecam, Lenkung und
+Grafikqualität umstellen.
 
 ## Entwicklung
 
@@ -95,14 +102,15 @@ Nach Änderungen in `src/` bitte `npm run build` ausführen und die neue `docs/g
 
 | Ordner | Inhalt |
 | --- | --- |
-| `src/main.js` | Renderer, Kameras, Zustände (Titel, Kameraschwenk, Fahrt, Abspann), Hauptschleife |
-| `src/game/` | Spiellogik: Fahrphysik, Navi-Auktion, Stream-Kasse und Chat-Stimmung (`economy.js`), Ereignisse, Einsammelbares |
-| `src/world/` | Autobahn, Himmel, Landschaft, Verkehr (mit Spurwechseln) |
+| `src/main.js` | Renderer, Kameras, Zustände (Titel, Startszene, Fahrt, Halt am Brunnen, Abspann), Hauptschleife |
+| `src/game/` | Spiellogik: Fahrt über die Karte (`trip.js`), Fahrphysik, Navi-Auktion, Stream-Kasse und Chat-Stimmung (`economy.js`), Ereignisse, Album |
+| `src/map/` | Karte (Knoten, Straßen, Orte), Routen, Navi-Bildschirm, große Karte, Kartendaten |
+| `src/world/` | Autobahn, Himmel, Verkehr (mit Spurwechseln); `xxl/`: die Welt der Reise (Ausfahrten, Landstraßen, Orte, Tafeln, Ladeparks); `kit/`: Stadtbaukasten und Brunnen |
 | `src/models/` | Tesla, Mini Adam, Elsa, Fahrzeuge |
 | `src/cockpit/` | Cockpit, NOMI, Mittelbildschirm mit Navi |
 | `src/fx/` | Regen, Tropfen auf der Scheibe, zuckender Wischer, Bild-Effekte |
 | `src/ui/` | HUD, Chat, Menüs, Shop, Abspann |
-| `src/data.js` | Alle Texte, Navi-Ziele, Rahmen, Durchsagen und Shop-Artikel |
+| `src/data.js` | Alle Texte, Insider-Orte, Rahmen, Durchsagen und Shop-Artikel |
 
 Mit `?debug` in der Adresse gibt es `window.__MA` für automatisierte Tests.
 

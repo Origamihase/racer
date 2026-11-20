@@ -49,7 +49,7 @@ export class Traffic {
     this.t = 0;
     this.events = [];
     this.policeText = null;
-    // XXL-Welt: Scherung {a, b} des Rahmens der Autobahn, auf der der Verkehr fährt (null = klassisch), und ob der
+    // XXL-Welt: Scherung {a, b} des Rahmens der Autobahn, auf der der Verkehr fährt (null = ungeschert), und ob der
     // Spieler gerade woanders fährt (passive: kein Nachschub, keine Begegnungen mit dem Spieler)
     this.shear = null;
     this.passive = false;

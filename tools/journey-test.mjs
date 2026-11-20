@@ -789,9 +789,9 @@ function drift(N, a, b) {
   return `${sgn(d.reduce((s, x) => s + x, 0) / d.length)} min (${sgn(Math.min(...d))} bis ${sgn(Math.max(...d))}, ${L.length}×)`;
 }
 // Akku (REISE.md A5, Entscheidung der Projektleitung vom 19.11.): Ein voller Akku reicht für etwa 8 bis 12 Minuten
-// zügiger Fahrt, auch im Stand verbraucht der Stream etwas. Das klassische Modell (Player.update) trifft das schon
-// (3 h je Fahrer: im ganzen Stream 9,8 / 11,0 / 12,0 min, auf der offenen Autobahn 7,3 / 9,4 / 11,5 min, im Stand
-// 16,7 min) und bleibt darum für beide Modi dasselbe. Grenzen in Minuten je 100 %:
+// zügiger Fahrt, auch im Stand verbraucht der Stream etwas. Das Modell des Wagens (Player.update) trifft das (3 h je
+// Fahrer: im ganzen Stream 9,8 / 11,0 / 12,0 min, auf der offenen Autobahn 7,3 / 9,4 / 11,5 min, im Stand 16,7 min).
+// Grenzen in Minuten je 100 %:
 const AKKU_BOUNDS = { stream: [8, 13], ab: [6.5, 13] };
 // Minuten, die 100 % Akku reichen (aus dem Verbrauch je Sekunde)
 const akkuMin = (used, t) => (used > 0 ? (100 / (used / t)) / 60 : Infinity);

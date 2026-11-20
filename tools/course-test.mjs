@@ -200,7 +200,7 @@ function checkTable(label) {
   ok(bad === 0, `${label}: ${bad} Gitterzellen klappen um`);
 }
 
-// --- 3. Kurvenprobe und klassischer Kurs -----------------------------------------------------------------------
+// --- 3. Kurvenprobe und Endlos-Kurs ----------------------------------------------------------------------------
 {
   const c = new Course();
   c.mode = 'probe';
@@ -220,7 +220,7 @@ function checkTable(label) {
     at(s);
     checkTable('Kurvenprobe bei ' + s);
   }
-  // klassischer Kurs: gleich bei gleichem Saatwert, auch nach einem Sprung
+  // Endlos-Kurs: gleich bei gleichem Saatwert, auch nach einem Sprung
   const a = new Course();
   const b = new Course();
   const ta = new Float32Array(curveTable.data.length);
@@ -237,14 +237,14 @@ function checkTable(label) {
       ta.set(curveTable.data);
       b.fill(null, s, curveTable);
       for (let i = 0; i < ta.length; i++) if (ta[i] !== curveTable.data[i]) same = false;
-      checkTable('klassischer Kurs bei ' + s);
+      checkTable('Endlos-Kurs bei ' + s);
     }
   }
-  ok(same, 'klassischer Kurs: nach einem Sprung nicht derselbe Verlauf');
-  ok(maxK <= KINDS.ab.kmax + 1e-9, 'klassischer Kurs: zu eng ' + 1 / maxK);
-  ok(maxG <= KINDS.ab.gmax + 1e-9, 'klassischer Kurs: zu steil ' + maxG);
-  ok(maxPsi < 75 * RAD, 'klassischer Kurs: entfernt sich zu weit von der Ausgangsrichtung ' + fix(deg(maxPsi)));
-  console.log(`Klassischer Kurs (40 km): engster Halbmesser ${fix(1 / maxK, 0)} m, größte Steigung ${fix(maxG * 100)} %, Kurs höchstens ${fix(deg(maxPsi), 0)}° von der Ausgangsrichtung`);
+  ok(same, 'Endlos-Kurs: nach einem Sprung nicht derselbe Verlauf');
+  ok(maxK <= KINDS.ab.kmax + 1e-9, 'Endlos-Kurs: zu eng ' + 1 / maxK);
+  ok(maxG <= KINDS.ab.gmax + 1e-9, 'Endlos-Kurs: zu steil ' + maxG);
+  ok(maxPsi < 75 * RAD, 'Endlos-Kurs: entfernt sich zu weit von der Ausgangsrichtung ' + fix(deg(maxPsi)));
+  console.log(`Endlos-Kurs (40 km): engster Halbmesser ${fix(1 / maxK, 0)} m, größte Steigung ${fix(maxG * 100)} %, Kurs höchstens ${fix(deg(maxPsi), 0)}° von der Ausgangsrichtung`);
 }
 
 // --- 4. Künstliche Verläufe mit derselben Schnittstelle wie shapes.js ------------------------------------------

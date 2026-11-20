@@ -563,10 +563,9 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .card p { line-height: 1.5; color: #dfe2e8; }
 .sub { color: var(--sub) !important; margin-top: 0; }
 
-.pause-card { max-width: 880px; } /* breit genug für fünf Knöpfe in einer Zeile (mit „Karte“) */
-.pause-card.pause-album { max-width: 1000px; } /* Reise: sechs Knöpfe (mit „Folgen“) in einer Zeile, ab 1024 px Breite */
+.pause-card { max-width: 1000px; } /* sechs Knöpfe (mit „Karte“ und „Folgen“) in einer Zeile, ab 1024 px Breite */
 @media (min-width: 1000px) and (min-height: 561px) {
-  .pause-album > .menu.row .btn { padding-inline: 15px; }
+  .pause-card > .menu.row .btn { padding-inline: 15px; }
 }
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin: 14px 0; }
 .sum { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; }

@@ -1183,7 +1183,7 @@ export class Game {
   /**
    * Zwischen Zielpunkt und Halt am Brunnen warten die Bieter. Kommt der Wagen nicht zum Stehen – das Ziel wechselte
    * erst im letzten Moment wieder hierher, etwa mitten im Bieterduell –, gibt die Welt den Halt auf: Dann war es keine
-   * Ankunft, der Chat neckt, und die Runde läuft mit dem nächsten Gebot weiter (ohne neuen Start bei 1 Cent).
+   * Ankunft, der Chat neckt, und die Runde läuft mit dem nächsten Gebot weiter (ohne neuen Start bei 10 €).
    */
   tickHalt(dt) {
     this.T.bid = Math.max(this.T.bid, TV.pause);
@@ -1925,7 +1925,7 @@ export class Game {
     const straight = Math.abs(kappa) < STRAIGHT_KAPPA && this.player.kmh > 90;
     C.straightS = straight ? C.straightS + this.player.speed * dt : 0;
     const T = this.T;
-    // nicht ins Funkloch (da schreiben alle F) und nicht ins Bieter-Chaos oder Duell (da fliegen ohnehin Cent-Beträge;
+    // nicht ins Funkloch (da schreiben alle F) und nicht ins Bieter-Chaos oder Duell (da fliegen ohnehin die Gebote;
     // nach einer Ankunft geht es erst mit dem ersten Gebot der neuen Runde los)
     if (T.cent5 > 100 || this.funkloch > 0) return;
     const lage = C.lage ? this.offerSituation() : null;

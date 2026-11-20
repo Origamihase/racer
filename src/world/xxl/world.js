@@ -1,7 +1,7 @@
-// Die XXL-Welt (?xxl): macht die Strecke aus trip.js sichtbar. Jede Autobahn und jedes Straßenstück abseits ist ein
-// Rahmen (frames.js) mit Scherung aus trip.shears(). Gezeichnet werden:
-// - die eine Autobahn aus trip.autobahnView() mit der klassischen Road (flach, mit Zonen für Lücken und Ende) und
-//   der klassischen Szenerie, beide in ihren Rahmen gehängt, dazu ihre Knotenpunkte (junction.js),
+// Die Welt der Reise (BrunnenTV XXL): macht die Strecke aus trip.js sichtbar. Jede Autobahn und jedes Straßenstück
+// abseits ist ein Rahmen (frames.js) mit Scherung aus trip.shears(). Gezeichnet werden:
+// - die eine Autobahn aus trip.autobahnView() mit der Road (road.js: flache Bankette, Zonen für Lücken und Ende) und
+//   der Szenerie am Rand (scenery.js), beide in ihren Rahmen gehängt, dazu ihre Knotenpunkte (junction.js),
 // - alle Abschnitte abseits der Autobahn, die trip.visible() erlaubt, als Straßenstücke (roadkit.js) mit Bewuchs
 //   (forest.js), in Stücken von höchstens CHUNK Metern, die einmal gebaut und behalten werden, solange sie im
 //   Sichtbereich [s − XXL_BEHIND, s + AHEAD] liegen,
@@ -38,7 +38,6 @@ const TERRITORY = 2400;
 
 /** Optionen für die flache Road (siehe Road, opts.zone). */
 export const ROAD_OPTS = {
-  flat: true,
   behind: XXL_BEHIND,
   verge: VERGE,
   vergeLayer: LAYER.verge,

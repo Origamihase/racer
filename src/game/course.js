@@ -719,7 +719,7 @@ export class Course {
     while (v.sections.length > 12 && v.sections[2].s1 < upTo - 12000) v.sections.shift();
   }
 
-  /** Klassischen Kurs oder Kurvenprobe von vorn (für einen Teleport oder einen neuen Lauf). */
+  /** Endlos-Kurs oder Kurvenprobe von vorn (für einen Teleport oder einen neuen Lauf). */
   resetVirtual(mode = this.mode) {
     this.virt[mode] = this.stream(mode);
     this.lastS = NaN;

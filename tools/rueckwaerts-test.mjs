@@ -40,7 +40,7 @@ function mulberry32(a) {
 }
 
 // --- 1. Der Wagen allein ---------------------------------------------------------------------------------------------
-/** Ein stehender Wagen bei s (klassische Grenzen, Weltgrenze back). */
+/** Ein stehender Wagen bei s (Grenzen ohne Welt, Weltgrenze back). */
 function car({ s = 1000, speed = 0, back = 0, cruise = false } = {}) {
   const p = new Player();
   p.configure({ cruise });
@@ -169,7 +169,7 @@ const gears = (r) => r.ev.filter((e) => e.type === 'gear').map((e) => e.gear);
   drive(p, 3, { throttle: 0.4 });
   drive(p, 60, { brake: 1 });
   ok(p.s >= floor - 1e-6, 'Zweimal R hintereinander fährt weiter zurück als die Grenze');
-  // die Welt setzt die Grenze (Anfang des Abschnitts der Reise, Start der klassischen Strecke)
+  // die Welt setzt die Grenze (Anfang des Abschnitts der Reise bzw. der Strecke)
   const w = car({ s: 800, back: 760 });
   drive(w, 60, { brake: 1 });
   ok(Math.abs(w.s - 760) < 0.5 && w.s >= 760, `limits.back hält nicht (${w.s.toFixed(2)})`);

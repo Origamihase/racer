@@ -178,7 +178,7 @@ export class CenterScreen {
     ctx.beginPath();
     ctx.rect(0, top, SPLIT, CH - top);
     ctx.clip();
-    // Fahrbahnränder und Leitlinien: klassisch die vier Spuren der Autobahn. Die XXL-Welt meldet den Querschnitt, auf
+    // Fahrbahnränder und Leitlinien: ohne Angabe die vier Spuren der Autobahn. Die Welt meldet den Querschnitt, auf
     // dem der Wagen gerade fährt (st.road): Rampe, Landstraße und Ortsstraße haben andere Spuren, und die gesperrte
     // linke Spur, das Rechtsfahrgebot und der Verkehr der Autobahn gehören nur auf die Autobahn
     const road = st.road && st.road.lanes ? st.road : null;

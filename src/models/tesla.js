@@ -504,8 +504,8 @@ export function buildTesla() {
   const wipers = buildCarWipers(WINDSHIELD, WIPERS, wiperGlassY, W.std({ vertexColors: true, roughness: 0.42, metalness: 0.25 }));
   root.add(wipers.group);
 
-  // Ladeklappe links hinten (vor der Rückleuchte, wie beim Model 3): erst auf Anfrage gebaut (port()), damit das
-  // klassische Spiel keine einzige Geometrie mehr hat als zuvor. Darunter die Ladebuchse: dunkle Öffnung, runder
+  // Ladeklappe links hinten (vor der Rückleuchte, wie beim Model 3): erst auf Anfrage gebaut (port(), Startszene und
+  // Ladestopp). Darunter die Ladebuchse: dunkle Öffnung, runder
   // Einsatz und ein Leuchtring, der grün leuchtet, solange geladen wird. Die Klappe schwenkt um ihre hintere Kante auf.
   let port = null;
   // Mitte (u, Winkel der linken Seite in 0,86 m Höhe), halbe Breite in u (m) und halbe Höhe im Winkel (rad, 0,385 m/rad)
@@ -574,7 +574,7 @@ export function buildTesla() {
   }
 
   // Rückfahrlicht: ein weißes Feld am inneren Ende jeder Rückleuchte (rundum bleibt Rot), 2,5 mm über ihr. Erst
-  // beim ersten Rückwärtsgang gebaut und nur im R sichtbar: Im D (und im klassischen Spiel) bleibt alles wie zuvor.
+  // beim ersten Rückwärtsgang gebaut und nur im R sichtbar: Im D bleibt alles wie zuvor.
   let reverseMesh = null;
   function buildReverse() {
     const parts = [-1, 1].map((s) => patchOnBody((a, t) => lampUV.tail(s)(lerp(0.55, 0.9, a), lerp(0.8, 0.97, t)), { ns: 3, nt: 6, lift: 0.0085 }));
