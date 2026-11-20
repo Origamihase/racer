@@ -428,7 +428,7 @@ function stream(driver, hours, seed, firstRound = false) {
   const nv = game.navi;
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
   const m = {
-    bids: 0, bidSum: 0, earnN: 0, earnSum: 0, chaos: 0, calm: 0, late: 0, snatched: 0, spots: 0, rolled: 0, arrivals: 0, rests: 0, late2: 0, tvEnds: 0, calls: 0, duels: 0,
+    bids: 0, bidSum: 0, earnN: 0, earnSum: 0, chaos: 0, calm: 0, late: 0, snatched: 0, spots: 0, rolled: 0, arrivals: 0, rests: 0, late2: 0, tvEnds: 0, calls: 0, skipCalls: 0, duels: 0,
     lockFork: 0, lockNode: 0, wrong: 0, wende: 0, first1: 0, firstN: 0, maxGap: 0, maxTv: 0, minTv: Infinity, passed: 0,
     bands: [0, 0, 0, 0], legs: [], navi: { checks: 0, exit: 0, far: 0, farKept: 0, arrive: 0, stop: 0, wende: 0 }, reroutes: 0, standing: 0, ratio: 0, stand: [], flipped: 0, minChoice: Infinity,
     // Ladeparks: Halte und Ladestopps; beim Lader dazu Warnungen, eingeplante Stopps, kleinster Akku und Ladestand danach
@@ -680,10 +680,11 @@ function stream(driver, hours, seed, firstRound = false) {
       m.minTv = Math.min(m.minTv, dur);
       tvEndT = game.t;
       ok(!arrival.held, 'Die Folge ist vorbei, aber der Wagen wird noch gehalten');
-      // jede Folge, die bis zu seinem Ruf läuft, hat ihn genau einmal (übersprungen wird höchstens vorher)
+      // jede Folge hat seinen Ruf genau einmal: zu seiner Zeit oder, übersprungen vorher, beim Losfahren
       const said = calls.filter((c) => c.t >= tvT0 && c.t <= game.t);
-      ok(said.length === (dur >= TV.call ? 1 : 0) && said.every((c) => c.text === SCHOENER_BRUNNEN.say), `Folge von ${dur.toFixed(1)} s: ${said.length}× „Schöner Brunnen!“`);
+      ok(said.length === 1 && said.every((c) => c.text === SCHOENER_BRUNNEN.say), `Folge von ${dur.toFixed(1)} s: ${said.length}× „Schöner Brunnen!“`);
       if (said.length) m.calls++;
+      if (said.length && dur < TV.call) m.skipCalls++;
     }
     const sBefore = trip.s;
     const evs = trip.update(p.s, p.x);
@@ -864,10 +865,10 @@ for (const { driver, m } of rows) {
 // Härtetest: Bieterduell auf den letzten Metern
 {
   if (LOG) console.log(DUELLIST.name + ':');
-  // (Startwert so gewählt, dass der Stream alles Verlangte enthält: 21 Duelle, 6 Ankünfte, 4× vorbeigerollt, 1× knapp
-  // hinter dem Haltepunkt – wer an den Bieterregeln dreht oder an den Listen, aus denen das Spiel würfelt (zuletzt drei
-  // neue Sprachdurchsagen), verschiebt den Zufall und sucht hier notfalls neu)
-  const m = stream(DUELLIST, HOURS, 827);
+  // (Startwert so gewählt, dass der Stream alles Verlangte enthält: 20 Duelle, 8 Ankünfte, 3× vorbeigerollt, 1× knapp
+  // hinter dem Haltepunkt – wer an den Bieterregeln dreht oder an den Listen, aus denen das Spiel würfelt (zuletzt der
+  // Ruf „Schöner Brunnen!“ samt Echo auch in übersprungenen Folgen), verschiebt den Zufall und sucht hier notfalls neu)
+  const m = stream(DUELLIST, HOURS, 842);
   console.log(
     `${DUELLIST.name}: ${fmt(m.hours)} h, ${m.duels} Duelle auf den letzten 150 m, ${m.bids} Gebote · danach ${m.arrivals}× am Brunnen gestanden (BrunnenTV;` +
       ` ${m.late2}× knapp hinter dem Haltepunkt), ${m.rolled}× vorbeigerollt, ${m.duels - m.spots}× war das Ziel am Brunnen gerade ein anderes` +
@@ -1033,11 +1034,11 @@ if (HOURS >= 3) {
   ok(sum((m) => m.arrivals) >= 30, `zu wenige Ankünfte: ${sum((m) => m.arrivals)}`);
   ok(sum((m) => m.lockFork) >= 10 && sum((m) => m.lockNode) >= 20, `zu wenige Gebote in Sperrzonen: ${sum((m) => m.lockFork)} / ${sum((m) => m.lockNode)}`);
   ok(sum((m) => m.navi.exit) > 2000 && sum((m) => m.navi.arrive) > 300, 'Navi und Welt: zu wenig geprüft');
-  ok(sum((m) => m.calls) >= 15, `„Schöner Brunnen!“ nur in ${sum((m) => m.calls)} Folgen geprüft`);
+  ok(sum((m) => m.calls) >= 15 && sum((m) => m.skipCalls) >= 3, `„Schöner Brunnen!“ nur in ${sum((m) => m.calls)} Folgen geprüft (${sum((m) => m.skipCalls)} übersprungen)`);
   ok(sum((m) => m.num.nextBoards) >= 200, `Vorwegweiser und nächste Ausfahrt im Navi: zu wenig geprüft (${sum((m) => m.num.nextBoards)})`);
   ok(sum((m) => m.num.kmReal) >= 500 && sum((m) => m.num.units) >= 20, `Anzeige auf echter Straße über ${BOARD_M} m und ihr Wechsel zu Metern: zu wenig geprüft (${sum((m) => m.num.kmReal)} Schritte, ${sum((m) => m.num.units)} Wechsel)`);
 }
-console.log(`Reise: ${rows.length} Streams zu je ${HOURS} h in ${((Date.now() - t0) / 1000).toFixed(0)} s · „Schöner Brunnen!“ in jeder der ${sum((m) => m.calls)} Folgen, die bis zum Ruf liefen`);
+console.log(`Reise: ${rows.length} Streams zu je ${HOURS} h in ${((Date.now() - t0) / 1000).toFixed(0)} s · „Schöner Brunnen!“ in jeder der ${sum((m) => m.calls)} Folgen (${sum((m) => m.skipCalls)} übersprungen, dann beim Losfahren)`);
 if (fails) {
   console.error(`${fails} Fehler`);
   process.exit(1);

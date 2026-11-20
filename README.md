@@ -24,8 +24,8 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
 - **BrunnenTV XXL:** Jedes Navi-Ziel ist der Hauptbrunnen eines Orts, und das Navi nennt ihn
   („Marktbrunnen, Würzburg“). Am Ziel hält Mini Adam neben dem Brunnen, kurbelt das Fahrerfenster herunter und
   macht mit dem Megafon BrunnenTV aus dem Auto: In jeder Folge ruft er tief und langgezogen „Schöner Brunnen!“,
-  der Chat jubelt, NOMI lobt den Brunnen, und die Folge kommt ins Album. Jede Taste überspringt sie, dann geht die
-  nächste Navi-Runde los.
+  der Chat jubelt, NOMI lobt den Brunnen, und die Folge kommt ins Album. Jede Taste überspringt sie (den Ruf gibt es
+  dann beim Losfahren), und die nächste Navi-Runde geht los.
 - **Losfahren am Supercharger:** Der Stecker springt aus der Buchse, die Klappe schließt, der Tesla rollt aus dem
   Ladepark in Erlensee, und die Kamera geht ins Cockpit. In den ersten Minuten erklären kurze Tipps am Bildrand,
   was gerade dran ist (Ausfahrt nehmen, Spurpfeile im Navi, Kamera, Megafon, Ladestopp) – jeder einmal je Spieler,

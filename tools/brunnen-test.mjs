@@ -6,7 +6,8 @@
 //   (das Megafon ist erst zu sehen, wenn das Fenster offen ist, und weg, bevor es wieder hochgeht).
 // - Überspringen früh (gleich nach TV.skip), spät (kurz vor dem Ende) und gar nicht: jedes Mal derselbe Endzustand –
 //   keine Folge mehr, Bauchbinde weg, der Wagen genau einmal freigegeben – und danach beginnt die nächste Bieterrunde
-//   (das erste Gebot frühestens TV.pause Sekunden nach der Freigabe).
+//   (das erste Gebot frühestens TV.pause Sekunden nach der Freigabe). Den Ruf gibt es jedes Mal genau einmal:
+//   übersprungen vor ihm kommt er beim Losfahren, mit dem Echo im Chat.
 // - Megafon als Ausstattung: kein Shop-Artikel, Taste H und Megafon-Wunsch ohne Upgrade in beiden Spielarten, ein
 //   gekauftes gibt es genau einmal zurück (save.js refundMegafon); der Titel sagt es bis zum ersten Besuch im Shop, auch
 //   nach dem Neuladen (save.megafonNote). Der Abspann der Reise zählt die Folgen (ABSPANN_REISE).
@@ -190,11 +191,11 @@ function episode(skipAt, seed, during = null) {
     windshield: loose({ firmware: 0, manual: () => 'wipe' }),
     cockpit: loose({ nomi: loose() }),
     audio: loose({ megafon: () => log.push({ k: 'horn', t: at() }), brunnenJingle: () => log.push({ k: 'jingle', t: at() }) }),
-    speech: loose({ say: (text, voice) => (log.push({ k: 'say', voice, text, t: at() }), 2.5), busy: false, queue: NONE, current: null }),
+    speech: loose({ say: (text, voice) => (log.push({ k: 'say', voice, text, t: at(), g: game.t }), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose({
       brunnenTV: (n, name) => log.push({ k: 'card', n, name, t: at() }),
       megafon: (text, dur, buyer, label) => log.push({ k: 'sub', text, label, t: at() }),
-      chat: (m) => log.push({ k: 'chat', text: m.text, t: at() }),
+      chat: (m) => log.push({ k: 'chat', text: m.text, t: at(), g: game.t }),
       nomi: (text) => log.push({ k: 'nomi', text, t: at(), tv: !!game.tv }),
     }),
     fx: loose(),
@@ -266,11 +267,14 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
   once(card.filter((e) => e.n > 0), TV.card, 'Bauchbinde');
   once(adam, TV.line, 'Megafon-Gruß');
   once(subs, TV.line, 'Megafon-Untertitel');
-  once(call, TV.call, '„Schöner Brunnen!“');
-  once(callSub, TV.call, 'Untertitel „SCHÖÖÖÖÖÖÖNER BRUNNEN!!!!!“');
-  // (der Chat ruft 0,6 s nach dem Ruf, mit dem nächsten Bild: Game.later)
-  if (end > TV.call + 0.6) ok(echo.length === 1 && echo[0].t >= TV.call + 0.6 - 1e-9 && echo[0].t <= TV.call + 0.6 + 3 * DT, `${name}: „${S.chat[0]}“ im Chat ${echo.length}× (${echo.map((e) => e.t).join(', ')} s)`);
-  else ok(echo.length === 0, `${name}: „${S.chat[0]}“ im Chat nach dem Überspringen`);
+  // der Ruf in jeder Folge genau einmal: zu seiner Zeit, übersprungen vorher mit dem Ende der Folge (beim Losfahren)
+  const callT = Math.min(TV.call, end);
+  for (const [list, what] of [[call, '„Schöner Brunnen!“'], [callSub, 'Untertitel „SCHÖÖÖÖÖÖÖNER BRUNNEN!!!!!“']]) {
+    ok(list.length === 1 && Math.abs(list[0].t - callT) < 2.5 * DT, `${name}: ${what} ${list.length}× (${list.map((e) => e.t).join(', ')} s, erwartet ${callT} s)`);
+  }
+  // (der Chat ruft 0,6 s nach dem Ruf, mit dem nächsten Bild: Game.later – auch nach dem Überspringen, Spielzeit g)
+  const gap = echo.length && call.length ? echo[0].g - call[0].g : NaN;
+  ok(echo.length === 1 && gap >= 0.6 - 1e-9 && gap <= 0.6 + 3 * DT, `${name}: „${S.chat[0]}“ im Chat ${echo.length}× (${gap.toFixed(3)} s nach dem Ruf)`);
   once(cheer, TV.chat, '„BRUNNENTV! 💦“ im Chat');
   // (NOMI gongt erst, ihr Satz kommt 0,35 s danach: Game.say)
   once(nomi, TV.nomi + 0.35, 'NOMI');
@@ -280,7 +284,7 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
     ok(adam[0].text === subs[0].text && !/\{|\}/.test(subs[0].text), `${name}: Megafon-Gruß „${subs[0].text}“`);
     ok(estimateSpeech(adam[0].text, VOICES.adam.rate) <= TV.call - TV.line - 0.3, `${name}: Gruß „${adam[0].text}“ läuft in den Ruf hinein`);
   }
-  if (end > TV.call) ok(call[0].text === S.say && callSub[0].label === 'Mini Adam durchs Megafon', `${name}: Ruf „${call[0].text}“ / ${callSub[0].label}`);
+  if (call.length && callSub.length) ok(call[0].text === S.say && callSub[0].label === 'Mini Adam durchs Megafon', `${name}: Ruf „${call[0].text}“ / ${callSub[0].label}`);
   if (end > TV.chat) ok(r.log.filter((e) => e.k === 'chat' && e.t >= TV.chat && e.t < TV.chat + 3.5).length >= 3, `${name}: der Chat jubelt kaum`);
 }
 // Der Ruf: in der Einstellung „Brunnen“, gesprochen, solange das Megafon am Mund ist, nach dem Gruß; tiefer und
@@ -401,7 +405,7 @@ const mega = { says: [], toasts: [] };
 // --- Ausgabe ---------------------------------------------------------------------------------------------------------
 const tl = (r) => `Ende ${r.endT.toFixed(2)} s, nächstes Gebot ${(r.bidT - r.releaseT).toFixed(1)} s danach`;
 console.log(`BrunnenTV-Fahrplan: Bauchbinde ${TV.card} s, Gruß ${TV.line} s, Chat ${TV.chat} s, „Schöner Brunnen!“ ${TV.call} s, NOMI ${TV.nomi} s, Ende ${TV.end} s; Fenster offen ${TV.window.down.join('–')} s, Megafon in der Hand ab ${MEGA.show * 100} % gehoben`);
-console.log(`Überspringen: ohne (${tl(runs.none)}) · früh bei ${(TV.skip + 0.05).toFixed(2)} s (${tl(runs.early)}) · spät bei ${(TV.nomi + 1.5).toFixed(1)} s (${tl(runs.late)}) – derselbe Endzustand`);
+console.log(`Überspringen: ohne (${tl(runs.none)}) · früh bei ${(TV.skip + 0.05).toFixed(2)} s (${tl(runs.early)}) · spät bei ${(TV.nomi + 1.5).toFixed(1)} s (${tl(runs.late)}) – derselbe Endzustand, der Ruf jedes Mal genau einmal`);
 console.log(`Kameras an ${cams.places} Orten: mindestens ${cams.minFountain.toFixed(2)} m vom Becken, Fenster und Brunnen höchstens ${cams.maxAngle.toFixed(0)}° neben der Blickrichtung (hochkant zurückgefahren ${cams.maxPortrait.toFixed(0)}° von ${portraitHalf.toFixed(0)}°), ${cams.lines} Sichtlinien zu Fenster und Brunnen frei von Häusern, Bäumen und Laternen`);
 console.log(`Megafon: kein Shop-Artikel, Taste H ohne Upgrade (${mega.toasts.join(' / ')}), ein gekauftes einmal erstattet (${MEGAFON_PRICE} €, auf dem Titel bis zum ersten Besuch im Shop); Abspann der Reise mit „${ABSPANN_REISE.at(-1)[0]}: ${fillTemplate(ABSPANN_REISE.at(-1)[1], { folgen: '1 Folge' })}“`);
 console.log(fails ? `${fails} Fehler (${checks} Prüfungen)` : `brunnen-test: alles grün (${checks} Prüfungen)`);

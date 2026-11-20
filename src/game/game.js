@@ -1377,7 +1377,7 @@ export class Game {
     const kinds = town && town.plan && Array.isArray(town.plan.fountains) ? town.plan.fountains.map((f) => f.kind) : [];
     const entry = addEpisode(this.save, { place: t.place, t: this.streamT, clock: this.clock, kinds });
     const n = entry.n;
-    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, skip: false, debate: entry.d || null };
+    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, skip: false, called: false, debate: entry.d || null };
     this.routeMark('brunnen', { n, place: t.place });
     this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town });
   }
@@ -1394,12 +1394,14 @@ export class Game {
 
   /**
    * Solange die Folge läuft, wartet die nächste Bieterrunde; ihre Momente kommen je einmal zu ihrer Zeit. Übersprungen
-   * (skipBrunnenTV) endet sie im nächsten Bild so, wie sie sonst endet; was noch nicht gesagt war, bleibt ungesagt.
+   * (skipBrunnenTV) endet sie im nächsten Bild so, wie sie sonst endet; was noch nicht gesagt war, bleibt ungesagt –
+   * bis auf den Ruf: „Schöner Brunnen!“ kommt in jeder Folge (der Eigentümer), übersprungen eben beim Losfahren.
    */
   tickBrunnenTV() {
     const tv = this.tv;
     this.T.bid = Math.max(this.T.bid, TV.pause);
     if (tv.skip) {
+      if (!tv.called) this.brunnenCall();
       this.endBrunnenTV();
       return;
     }
@@ -1441,10 +1443,11 @@ export class Game {
 
   /**
    * Der Ruf jeder Folge (SCHOENER_BRUNNEN): Mini Adam ruft „Schöner Brunnen!“ durchs Megafon, tief und langgezogen
-   * (VOICES.brunnen); der Untertitel schreibt es, wie es klingt, und der Chat ruft es nach.
+   * (VOICES.brunnen); der Untertitel schreibt es, wie es klingt, und der Chat ruft es nach. Genau einmal je Folge.
    */
   brunnenCall() {
     const S = SCHOENER_BRUNNEN;
+    if (this.tv) this.tv.called = true;
     this.audio.megafon();
     const dur = this.speech.say(S.say, 'brunnen');
     this.ui.megafon(S.text, dur + 1.2, '', 'Mini Adam durchs Megafon');
