@@ -17,6 +17,8 @@
 // - Ansagen stimmen: Wer im Chat, in einer Durchsage oder im Sprachstudio etwas über den Moment behauptet (Autobahn,
 //   Funkloch, Tempo, Regen, Ziel, Gebote), trägt dafür ein Stichwort (game.js FACTS) und kommt nur, wenn es gilt;
 //   Funklöcher kommen nie mitten in einer Szene, die linke Spur endet an der Ausfahrt.
+// - Running Gags: mindestens 40 neue Chat-Zeilen aus den stärksten Memes des Streams, jede mit ihrem Anlass (Stichwort
+//   oder Ereignis), nichts aus der Sperrliste der Recherche.
 import { readFileSync } from 'node:fs';
 import * as DATA from '../src/data.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
@@ -358,8 +360,8 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
     [/Wann sind wir da|bald da|noch an\?|kommt bestimmt ein Brunnen/, 'ziel'],
   ];
   // geprüft und für wahr befunden, obwohl ein Wort passt: Fragen und Witze, die nichts über den Moment behaupten
-  const FREE = new Set(['Ist das Bild wirklich Full HD?', 'Die Stimmung im Chat steigt. Es regnet Herzen.']);
-  const general = { ambient: CHAT.ambient, cheerful: CHAT.cheerful, restless: CHAT.restless, flott: CHAT.flott, schneller: CHAT.schneller, levels: STUDIO.levels.flat(), short: STUDIO.short.flat() };
+  const FREE = new Set(['Ist das Bild wirklich Full HD?', 'Die Stimmung im Chat steigt. Es regnet Herzen.', '[kassandra] Fräulein Kassandra, bitte langsamer lesen 😅']);
+  const general = { ambient: CHAT.ambient, cheerful: CHAT.cheerful, restless: CHAT.restless, flott: CHAT.flott, schneller: CHAT.schneller, meme: CHAT.meme, levels: STUDIO.levels.flat(), short: STUDIO.short.flat() };
   const tags = (l) => (l.startsWith('[') ? l.slice(1, l.indexOf(']')).split(' ') : []);
   let audited = 0;
   for (const [name, pool] of Object.entries(general)) {
@@ -398,17 +400,28 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
     ziel: (at) => !!at.target,
     stau: (at) => at.stuck,
     netz: (at, t, funk) => !at.funkloch && !funk.some((f) => f.on && f.t <= t && t - f.t <= 60),
+    start: (at, t) => t < 150,
+    lange: (at, t) => t > 3600,
+    weit: (at) => at.secs > 600 && at.secs < Infinity,
+    nah: (at) => at.secs < 60,
+    steht: (at) => at.kmh < 3 && !at.tv && !at.charging,
+    laden: (at) => at.charging,
+    tv: (at) => at.tv,
+    folge2: (at) => at.tv && at.n >= 2,
   };
+  // (was der Simulator nicht selbst sieht – Sprachstudio, Durchsage, Akku, Wochentag –, prüft FACTS im Moment der Zeile)
+  const holdsAt = (k, at, t, funk) => (holds[k] ? holds[k](at, t, funk) : at.facts.includes(k));
   const nah = new Set(STUDIO.why.up.nah);
   const stau = new Set(STUDIO.why.down.stau);
   const lane = new Set([...CHAT.leftLaneTease, ...CHAT.leftLaneDonor]);
-  const sum = { lines: 0, tagged: 0, keys: {}, funk: 0, durch: 0, studio: 0 };
+  const sum = { lines: 0, tagged: 0, keys: {}, funk: 0, durch: 0, studio: 0, meme: 0 };
   for (const [drv, seed] of [['mittel', 11], ['gemuetlich', 12], ['troedler', 13], ['zuegig', 14]]) {
     const sim = makeStream({ driver: DRIVERS[drv], seed, endless: true });
     const { log } = sim;
     sim.step(900);
     const all = [...log.chat, ...log.speak];
     sum.lines += all.length;
+    sum.meme += log.chat.filter((c) => CHAT.meme.some((l) => untag(l) === c.text)).length;
     ok(!all.some((x) => x.text.startsWith('[')), `${drv}: ein Satz zeigt seine Stichworte: ${(all.find((x) => x.text.startsWith('[')) || {}).text}`);
     for (const x of all) {
       const text = x.text;
@@ -418,7 +431,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
       if (x.who === 'durchsage') sum.durch++;
       for (const k of t) {
         sum.keys[k] = (sum.keys[k] || 0) + 1;
-        ok(holds[k](x.at, x.t, log.funk), `${drv} ${seed}: „${text}“ um ${x.t.toFixed(0)} s, aber ${k} gilt nicht (${x.at.kind}, ${x.at.kmh.toFixed(0)} km/h, ${x.at.phase})`);
+        ok(holdsAt(k, x.at, x.t, log.funk), `${drv} ${seed}: „${text}“ um ${x.t.toFixed(0)} s, aber ${k} gilt nicht (${x.at.kind}, ${x.at.kmh.toFixed(0)} km/h, ${x.at.phase})`);
       }
     }
     for (const f of log.funk.filter((f) => f.on)) {
@@ -435,6 +448,17 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
     ok(!log.chat.some((c) => lane.has(c.text) && c.at.kind !== 'ab'), `${drv} ${seed}: Der Chat will die linke Spur abseits der Autobahn`);
   }
   ok(sum.tagged >= 20 && Object.keys(sum.keys).length >= 4, `Ansagen: zu wenige Sätze mit Stichwort geprüft (${sum.tagged}: ${JSON.stringify(sum.keys)})`);
+  // Running Gags: jede Zeile mit Anlass, mindestens 40 neue (dazu die Ereignis-Zeilen), keine doppelt, nichts Gesperrtes
+  const memes = CHAT.meme;
+  const events = ['IST DAS LIVE?? 🤨', 'Funkloch vorbei. Tschüss, du Betrüger!', 'Null Balken 📵', 'Wer hat die Polizei Gifhorn gerufen? 😂', 'Wackel mal am Kabel'];
+  ok(memes.length >= 40 && memes.every((l) => tags(l).length > 0), `Running Gags: ${memes.length} Zeilen, ${memes.filter((l) => !tags(l).length).length} ohne Anlass`);
+  ok(events.every((l) => [CHAT.funklochBack, CHAT.funkloch, CHAT.police, CHAT.frog].some((p) => p.includes(l))), 'Running Gags: Ereignis-Zeilen fehlen');
+  const others = Object.entries(CHAT).filter(([k, v]) => k !== 'meme' && Array.isArray(v)).flatMap(([, v]) => v.map(untag));
+  ok(memes.every((l) => !others.includes(untag(l))) && new Set(memes).size === memes.length, 'Running Gags: eine Zeile gibt es schon');
+  ok(!memes.concat(events).some((l) => /Rettich|Hüttler|Trier|Weil es so geil|Drachen|Emskirchen/i.test(l)), 'Running Gags: etwas aus der Sperrliste');
+  ok(memes.concat(events).filter((l) => /Betrüger/.test(l)).every((l) => /Navi|Funkloch/.test(l)), 'Running Gags: „Tschüss du Betrüger“ nur gegen Dinge');
+  const shown = new Set(memes.map(untag));
+  console.log(`  Running Gags: ${memes.length} Zeilen mit Anlass (${[...new Set(memes.flatMap(tags))].length} Stichworte) und ${events.length} bei Ereignissen · im Spiel ${sum.meme} gezeigt, jede zur rechten Zeit`);
   console.log(`  Ansagen: ${audited} Sätze der allgemeinen Vorräte und Durchsagen durchgesehen · im Spiel ${sum.lines} Sätze, ${sum.tagged} mit Stichwort (${Object.entries(sum.keys).map(([k, n]) => k + ' ' + n).join(', ')}; ${sum.durch} Durchsagen), alle zur rechten Zeit · ${sum.funk} Funklöcher, keins in einer Szene · ${sum.studio} Studio-Anlässe „nah“/„Stau“ geprüft`);
 }
 

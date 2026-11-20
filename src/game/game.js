@@ -135,7 +135,30 @@ export const FACTS = {
   ziel: (g) => !!g.navi.target,
   stau: (g) => !!g.stuck,
   netz: (g) => g.funkloch <= 0 && g.t - g.funklochT > 60,
+  // … und für die Running Gags (CHAT.meme): start die ersten 150 s · lange nach einer Stunde · weit das Ziel mehr als
+  // zehn Minuten entfernt · nah weniger als eine · steht ohne Szene · laden an der Säule · tv in der Folge · folge2 ab der
+  // zweiten · wende das Navi will wenden · siegen/gifhorn das Ziel · akku unter 25 % · party beste Laune · studio das
+  // Sprachstudio sprach eben · durchsage eine Durchsage lief eben (kassandra: ihre) · donnerstag Streamtag
+  start: (g) => g.t < 150,
+  lange: (g) => g.t > 3600,
+  weit: (g) => !!g.navi.target && g.navi.driveSecs() > 600,
+  nah: (g) => !!g.navi.target && g.navi.driveSecs() < 60,
+  steht: (g) => g.player.kmh < 3 && !g.tv && !g.charging,
+  laden: (g) => !!g.charging,
+  tv: (g) => !!g.tv,
+  folge2: (g) => !!g.tv && g.tv.n >= 2,
+  wende: (g) => !!g.navi.wende,
+  siegen: (g) => !!g.navi.target && g.navi.target.special === 'siegen',
+  gifhorn: (g) => !!g.navi.target && g.navi.target.special === 'gifhorn',
+  akku: (g) => g.player.battery < 25,
+  party: (g) => g.eco.level >= 4,
+  studio: (g) => g.t - g.studio.last < 20,
+  durchsage: (g) => g.t - g.said.t < 20,
+  kassandra: (g) => g.t - g.said.t < 20 && g.said.voice === 'kassandra',
+  donnerstag: () => new Date().getDay() === 4,
 };
+// so oft greift der Chat zu einem Running Gag (CHAT.meme), wenn einer zum Moment passt
+const MEME_SHARE = 0.18;
 /** Der Satz ohne seine Stichworte: „[ab] Wir sind …“ → „Wir sind …“. */
 export const untag = (line) => (line.charCodeAt(0) === 91 ? line.slice(line.indexOf(']') + 2) : line);
 // Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
@@ -279,6 +302,7 @@ export class Game {
     this.landmark = null;
     this.funkloch = 0;
     this.funklochT = -99; // wann das letzte Funkloch begann (FACTS.netz)
+    this.said = { t: -99, voice: null }; // die letzte Sprachdurchsage (FACTS.durchsage)
     this.policeCar = null;
     this.shoulderWarned = false;
     this.batteryWarned = 0;
@@ -1672,6 +1696,7 @@ export class Game {
       this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
       this.later(1.2, () => {
         const dur = this.speech.say(text, d.voice);
+        this.said = { t: this.t, voice: d.voice };
         this.ui.durchsage(VOICES[d.voice].label, text, dur + 1, name);
         this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 1);
       });
@@ -2253,8 +2278,9 @@ export class Game {
       const pool = rainy && chance(0.22) ? CHAT.rain
         : lv < 2 && chance(lv === 0 ? 0.65 : 0.4) ? CHAT.restless
           : lv > 2 && chance(lv === 4 ? 0.65 : 0.4) ? CHAT.cheerful
-            : this.zufriedenPool() || CHAT.ambient;
-      this.chat(this.chatLine(pool));
+            : chance(MEME_SHARE) ? CHAT.meme
+              : this.zufriedenPool() || CHAT.ambient;
+      this.chat(this.chatLine(pool) || this.chatLine(CHAT.ambient));
     }
   }
 

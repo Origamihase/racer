@@ -5,7 +5,7 @@
 // Hinweis am Rand – je mit Spielzeit und der Lage in diesem Moment (Abschnitt, Tempo, Regen, Funkloch, Folge).
 import { PerspectiveCamera } from 'three';
 import { Trip, J } from '../src/game/trip.js';
-import { Game } from '../src/game/game.js';
+import { Game, FACTS } from '../src/game/game.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
 
@@ -49,7 +49,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
   let game = null;
   const state = () => {
     const sec = trip.section;
-    return { t: game ? game.t : 0, kind: sec.kind, kmh: game ? game.player.kmh : 0, rain: game ? game.weather.level : 0, funkloch: game ? game.funkloch > 0 : false, tv: !!(game && game.tv), stopping: !!(game && game.navi.stopping), target: game && game.navi.target ? game.navi.target.name : null, phase: game ? game.auction.phase : 'offen', stuck: !!(game && game.stuck), charging: !!(game && game.charging) };
+    return { t: game ? game.t : 0, kind: sec.kind, kmh: game ? game.player.kmh : 0, rain: game ? game.weather.level : 0, funkloch: game ? game.funkloch > 0 : false, tv: !!(game && game.tv), stopping: !!(game && game.navi.stopping), target: game && game.navi.target ? game.navi.target.name : null, phase: game ? game.auction.phase : 'offen', stuck: !!(game && game.stuck), charging: !!(game && game.charging), secs: game && game.navi.target ? game.navi.driveSecs() : Infinity, n: game && game.tv ? game.tv.n : 0, facts: game ? Object.keys(FACTS).filter((k) => FACTS[k](game)) : [] };
   };
   let ids = 0;
   const ui = loose({
