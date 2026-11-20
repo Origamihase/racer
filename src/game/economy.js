@@ -166,8 +166,9 @@ const OPENING_CALM = [0.6, 1.7];
 // Wem ein Gebot das erste stehende Ziel doch genommen hat, der hat die Regel gesehen – das nächste bleibt länger
 // stehen, damit auch die erste Runde eines gemütlichen Fahrers an einem Brunnen endet.
 const OPENING_AGAIN = [1.2, 2.4];
-// Bieterfenster nach jeder Folge (windowBid): mittlere Wartezeit aufs erste Gebot in Sekunden, [fest, je (1 − Stimmung)²]
-export const WINDOW = { mean: [3, 45] };
+// Bieterfenster nach jeder Folge (windowBid): mittlere Wartezeit aufs erste Gebot in Sekunden, [fest, je (1 − Stimmung)³]
+// (kubisch: Ein gut gelaunter Chat lässt einen ordentlichen Fahrer praktisch nie stehen, ein mürrischer oft)
+export const WINDOW = { mean: [3, 80] };
 
 // Sammelaktionen: Zielbeträge und was einzelne dazugeben
 const SAMMEL_GOALS = [20, 25, 30, 30, 35, 40, 50];
@@ -648,13 +649,14 @@ export class Economy {
 
   /**
    * Das Bieterfenster nach einer Folge (Game.updateNavi): Bietet in diesem Schritt (dt Sekunden) jemand als Erster der
-   * neuen Runde? Die Rate je Sekunde ist 1 / (WINDOW.mean[0] + WINDOW.mean[1] · (1 − m)²), m die träge Stimmung (den
+   * neuen Runde? Die Rate je Sekunde ist 1 / (WINDOW.mean[0] + WINDOW.mean[1] · (1 − m)³), m die träge Stimmung (den
    * Jubel der Ankunft hat sie erst zum Teil übernommen: Es zählt, wie die Runde war). Gut gelaunt (0,8) bietet im
-   * Mittel nach 5 s jemand, mittel (0,5) nach 14 s, verstimmt (0,3) nach 25 s – in einem Fenster von 25 s bietet so
-   * bei 0,8 fast immer jemand, bei 0,5 zu 83 %, bei 0,3 nur zu 63 %. Wer im Fenster trödelt, senkt die Stimmung weiter.
+   * Mittel nach 4 s jemand, mittel (0,5) nach 13 s, verstimmt (0,3) nach 30 s – im Fenster (nach James' Aufruf gut
+   * 23 s) bietet so bei 0,8 praktisch immer jemand, bei 0,5 zu 84 %, bei 0,3 nur zu 54 %. Wer im Fenster trödelt,
+   * senkt die Stimmung weiter.
    */
   windowBid(dt) {
-    return this.rnd() < dt / (WINDOW.mean[0] + WINDOW.mean[1] * (1 - this.#slow) ** 2);
+    return this.rnd() < dt / (WINDOW.mean[0] + WINDOW.mean[1] * (1 - this.#slow) ** 3);
   }
 
   /**
