@@ -405,7 +405,7 @@ export class UI {
     this.photos = [];
     this.jobsDone = null;
     this.subEl.classList.add('hidden');
-    this.tvEl.classList.add('hidden');
+    this.brunnenTV(0);
     this.photoEl.classList.add('hidden');
     this.hintEl.classList.add('hidden');
     // Funkloch-Anzeige samt „● LIVE“-Schild zurück (eine Fahrt kann mitten im Funkloch enden)
@@ -627,10 +627,13 @@ export class UI {
 
   /**
    * BrunnenTV am Navi-Ziel (XXL-Welt): die Bauchbinde der Folge n aus dem Ort name, unten im Bild wie im Fernsehen –
-   * der Brunnen in der Bildmitte bleibt zu sehen. n = 0 blendet sie aus.
+   * der Brunnen in der Bildmitte bleibt zu sehen. Solange die Folge läuft, trägt der Streifen .tv: Die Bauchbinde
+   * steht dann über dem Untertitel, statt zu warten, bis keiner mehr spricht (in der Folge spricht fast immer jemand).
+   * n = 0 blendet sie aus.
    */
   brunnenTV(n, name = '') {
     this.tvEl.classList.toggle('hidden', !n);
+    this.tvEl.parentElement.classList.toggle('tv', !!n);
     if (!n) return;
     this.tvEpisode.textContent = 'Folge ' + fmtNum(n);
     this.tvPlace.textContent = 'Heute aus ' + name;

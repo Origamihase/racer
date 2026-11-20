@@ -207,7 +207,7 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
   once(nomi, TV.nomi + 0.35, 'NOMI');
   if (end > TV.card) ok(card[0].name === 'Würzburg', `${name}: Bauchbinde „${card[0].name}“`);
   if (end > TV.line) {
-    ok(/BrunnenTV/.test(subs[0].label) && /Folge 1/.test(subs[0].label) && !/Megafon-Wunsch/.test(subs[0].label), `${name}: Untertitel des Megafons „${subs[0].label}“`);
+    ok(subs[0].label === 'Mini Adam durchs Megafon', `${name}: Untertitel des Megafons „${subs[0].label}“`);
     ok(william[0].text === subs[0].text && !/\{|\}/.test(subs[0].text), `${name}: Megafon-Satz „${subs[0].text}“`);
   }
   if (end > TV.chat) ok(r.log.filter((e) => e.k === 'chat' && e.t >= TV.chat && e.t < TV.chat + 3.5).length >= 3, `${name}: der Chat jubelt kaum`);

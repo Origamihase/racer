@@ -1401,13 +1401,13 @@ export class Game {
 
   /**
    * Mini Adam spricht durchs Megafon zum Brunnen: mit der Stimme der Taste H (Brüll-William), der Satz steht unten im
-   * Bild wie ein Megafon-Wunsch, nur mit der Folge statt eines Käufers.
+   * Bild wie ein Megafon-Wunsch, nur mit Mini Adam statt eines Käufers (die Folge steht in der Bauchbinde darüber).
    */
   brunnenMegafon(tv) {
     const text = fillTemplate(pick(BRUNNEN_MEGAFON), { ort: tv.name });
     this.audio.megafon();
     const dur = this.speech.say(text, 'william');
-    this.ui.megafon(text, dur + 1, '', `📢 BrunnenTV · Folge ${fmtNum(tv.n)}`);
+    this.ui.megafon(text, dur + 1, '', 'Mini Adam durchs Megafon');
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.line));
   }

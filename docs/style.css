@@ -191,6 +191,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .brunnentv-episode { font-size: 12px; font-weight: 800; line-height: 1.3; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
 .brunnentv-place { font-size: 14.5px; font-weight: 700; line-height: 1.3; color: #dff3ff; }
 .bottom-strip:has(> .sub-bar:not(.hidden)) > .brunnentv { display: none; }
+/* in der Folge am Brunnen (ui.js: Streifen .tv) steht der Wagen, und fast immer spricht jemand – das Navi, Mini Adam
+   durchs Megafon, NOMI: Dort wartet die Bauchbinde nicht, sie steht über dem Untertitel, in jedem Format am Rand */
+.bottom-strip.tv { flex-direction: column; align-items: center; }
+.bottom-strip.tv:has(> .sub-bar:not(.hidden)) > .brunnentv { display: flex; }
 /* Startszene der Reise (ui.show(false, true)): vom HUD nur der Untertitel */
 .hud.subs > :not(.bottom-strip), .hud.subs .bottom-strip > :not(.sub-bar) { display: none !important; }
 @media (min-width: 1240px) and (min-height: 561px) {
@@ -527,7 +531,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .title-hint { position: absolute; bottom: 18px; left: clamp(20px, 6vw, 110px); color: var(--sub); font-size: 13px; }
 /* einmal nach der Erstattung des gekauften Megafons (save.js refundMegafon): eine freundliche Zeile auf dem Titel und im Shop */
 .refund-note { margin: 12px 0 0; max-width: min(520px, calc(100vw - 56px)); color: #ffe39a; font-size: 14px; font-weight: 600; line-height: 1.35; text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
-.shop-card > .refund-note { margin: 0 0 14px; font-size: 15px; text-shadow: none; }
+.shop-card > .refund-note { margin: 0 0 14px; max-width: none; font-size: 15px; text-shadow: none; }
 
 .btn { font: inherit; font-size: 17px; font-weight: 600; padding: 11px 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.07);
   color: #fff; cursor: pointer; text-align: left; transition: background 0.15s, transform 0.1s, border-color 0.15s; }
