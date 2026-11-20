@@ -570,12 +570,12 @@ export class Menus {
     el('h3', '', tips, 'Tipps');
     for (const t of [
       'Geld gibt es nur vom Publikum: Spenden, Abos, Navi-Gebote. Fürs Fahren selbst zahlt niemand – aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.',
-      'Wenn NOMI sagt „Die linke Fahrspur ist freigeschaltet.“, hat jemand dafür gespendet: Eine Minute lang darfst du ganz links fahren. Nutzt du sie, freut sich der Chat. Danach gilt wieder das Rechtsfahrgebot, sonst kommt die Polizei Gifhorn.',
+      'Wenn OMI sagt „Die linke Fahrspur ist freigeschaltet.“, hat jemand dafür gespendet: Eine Minute lang darfst du ganz links fahren. Nutzt du sie, freut sich der Chat. Danach gilt wieder das Rechtsfahrgebot, sonst kommt die Polizei Gifhorn.',
       'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Zehner drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV. Dort rechnet auch die Werkstatt die Rempler der Runde ab, und je zügiger du von Ziel zu Ziel kommst, desto zufriedener ist der Chat (das Gesicht oben im Chat) – und desto lieber gibt er.',
       'Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.',
       'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
-      'Geladen wird in den Ladeparks an den Ausfahrten: Warnt NOMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) den nächsten Park ein, das Navi führt hinein und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.',
+      'Geladen wird in den Ladeparks an den Ausfahrten: Warnt OMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) den nächsten Park ein, das Navi führt hinein und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',
       'In den ersten Minuten erklären kurze Tipps am Bildrand, was gerade dran ist – jeder kommt nur einmal. Enter oder ✕ schaltet sie ab.',
     ]) el('p', '', tips, '• ' + t);
@@ -596,7 +596,7 @@ export class Menus {
       b.dataset.on = on ? '1' : '0';
     };
     toggle('sound', 'Geräusche', d.sound);
-    toggle('speech', 'Sprachausgabe (NOMI, Sprachstudio, Durchsagen)', d.speech);
+    toggle('speech', 'Sprachausgabe (OMI, Sprachstudio, Durchsagen)', d.speech);
     toggle('chat', 'Live-Chat anzeigen', d.chat);
     toggle('facecam', 'Facecam (Mini Adam im Bild)', d.facecam !== false);
     const vr = el('div', 'set-row', list);
@@ -615,7 +615,7 @@ export class Menus {
       const b = button(qs, label, 'quality', d.quality === v ? 'on' : 'off');
       b.dataset.value = v;
     }
-    if (!d.speechSupported) el('p', 'note', card, 'Hinweis: Dieser Browser hat keine deutsche Sprachausgabe – NOMI und das Sprachstudio sprechen dann nur per Untertitel.');
+    if (!d.speechSupported) el('p', 'note', card, 'Hinweis: Dieser Browser hat keine deutsche Sprachausgabe – OMI und das Sprachstudio sprechen dann nur per Untertitel.');
     // Lenkung, Fahrhilfen, Tempomat, Touch und Vibration (src/ui/drive-settings.js)
     renderDriveSettings(list, driveSettings(d), (k, v) => this.h.setting(k, v), button);
     const rr = el('div', 'set-row', list);
@@ -642,7 +642,7 @@ export class Menus {
     p('Jedes Navi-Ziel ist der Hauptbrunnen eines echten Orts, und jedes Gebot legt mindestens einen Zehner drauf. Steht Mini Adam am Brunnen, bevor wieder jemand überbietet, kurbelt er das Fenster herunter und macht mit dem Megafon BrunnenTV aus dem Auto – jede Folge kommt ins Album. Geladen wird in den Ladeparks an den Ausfahrten.');
     p('Fast alle Witze stammen aus dem SkylineTV LIVE Wiki: die freigeschaltete linke Spur, das Navi-Bieten, BrunnenTV mit Herrn Schönnbrun, Elsa, die Polizei Gifhorn, Meister Pünktlich (kommt gleich), Walte, die Farbe der Bank, Rahmen aus dem Live-Bereich, Sprachdurchsagen von Fräulein Kassandra und Brüll-William, das Sprachstudio in Mini Adams Ohr, Bananensaft statt Koriander, „You had 5 Jobs“ und die erlogenen Berufsbezeichnungen im Abspann.');
     p('Geld gibt es wie im echten Stream nur vom Publikum: Spenden, Ortsspenden, Abos, VIPs und Navi-Gebote. Wie der Chat gerade gelaunt ist, steht nirgends – das Sprachstudio sagt es Mini Adam ins Ohr.');
-    p('NOMI ist der Boardcomputer auf dem Armaturenbrett. Alle Grafiken, Geräusche und Stimmen entstehen direkt im Browser – ohne Bilder- oder Tondateien.');
+    p('OMI ist der Boardcomputer auf dem Armaturenbrett. Alle Grafiken, Geräusche und Stimmen entstehen direkt im Browser – ohne Bilder- oder Tondateien.');
     const ext = (parent, text, href) => {
       const a = el('a', 'link', parent, text);
       a.href = href;

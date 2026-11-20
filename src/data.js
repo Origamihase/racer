@@ -201,7 +201,7 @@ export const CHAT = {
     'James hat heute viel zu tun', 'Kanalpunkte sind gespart, was gibt es dafür?', 'Das Ziel stabilisiert sich … oder auch nicht',
     'Mini Adam, wink mal! 🧸', 'Die Kappe sitzt heute perfekt', 'Kommt gleich eine Raststätte?', 'Wer ist noch aus Hessen hier?',
     'erster stream für mich, wie geht das mit dem navi?', 'Einfach 10 € mehr bieten, dann gehört das Navi dir 😂',
-    'Das Lenkrad ist größer als Mini Adam', 'NOMI guckt so lieb', 'Wann wieder Drohne?', 'Supercharger wann?',
+    'Das Lenkrad ist größer als Mini Adam', 'OMI guckt so lieb', 'Wann wieder Drohne?', 'Supercharger wann?',
     'Mein Handy-Akku: 4 %. Eurer?', 'Chat, benehmt euch, Gifhorn liest mit', 'Schöne Grüße aus dem Homeoffice',
     'Ich sollte schlafen, aber das hier ist wichtiger', 'Bild und Ton synchron, ich bin beeindruckt',
     'Bin kurz Getränke holen, bitte nichts Spannendes machen!', 'Ebbelwoi steht kalt 🍏', 'Kriegt das Navi eigentlich Provision? 😂',
@@ -236,7 +236,7 @@ export const CHAT = {
     'Wisch! … oder auch nicht 😂', 'Tropfen zählen: 1, 2, viele'],
   // jemand ist zum ersten Mal da – das Sprachstudio begrüßt ihn dann mit Namen
   newViewer: ['Hallo! Bin zum ersten Mal hier 👋', 'Hi, bin neu. Warum fährt da ein Plüschtier? 😄',
-    'Moin aus {city}! Hab euch eben beim Zappen gefunden', 'Neu hier und schon Fan von NOMI 😍',
+    'Moin aus {city}! Hab euch eben beim Zappen gefunden', 'Neu hier und schon Fan von OMI 😍',
     'Ein Kumpel hat mir den Stream empfohlen. Hallo zusammen!'],
   // Abos und VIP
   sub: ['ABO! 🎉', 'Willkommen im Club ❤', 'Neuer Abonnent, hurra!', 'Abo-Hype!', 'Danke fürs Abo!',
@@ -397,9 +397,9 @@ export const CHAT = {
   // oder dem Sprachstudio); nur der Chat legt noch 2 Cent drauf oder frotzelt. Jedes Angebot höchstens einmal je Stream.
   fuenfCent: [
     '5 Cent, wenn du während der Fahrt den Kopf aus dem Fenster streckst.',
-    '5 Cent, wenn du NOMI einmal kitzelst 🤏',
-    'Angebot des Tages: 5 Cent für ein Tänzchen mit NOMI 💃',
-    '5 Cent, wenn du NOMI beibringst, „Bimmel hurra“ zu sagen',
+    '5 Cent, wenn du OMI einmal kitzelst 🤏',
+    'Angebot des Tages: 5 Cent für ein Tänzchen mit OMI 💃',
+    '5 Cent, wenn du OMI beibringst, „Bimmel hurra“ zu sagen',
     '5 Cent, wenn du dem Wischer ein Gute-Nacht-Lied singst',
     '5 Cent wenn du den wischer ab heute zucki nennst',
     '5 Cent, wenn du dem nächsten Brunnen einen Luftkuss zuwirfst 😘',
@@ -513,7 +513,7 @@ export const VOICES = {
   weronika: { label: 'Weronika', pitch: 1.1, rate: 0.95 },
   karla: { label: 'Karla', pitch: 1.0, rate: 1.05 },
   william: { label: 'Brüll-William', pitch: 0.55, rate: 1.12 },
-  board: { label: 'NOMI', pitch: 1.18, rate: 1.04 },
+  board: { label: 'OMI', pitch: 1.18, rate: 1.04 },
   schoennbrun: { label: 'Herr Schönnbrun', pitch: 0.45, rate: 0.82 },
   // Mini Adam bei BrunnenTV: tief und männlich (speech.js DEEP_MALE); sein Ruf „Schöner Brunnen!“ noch tiefer und
   // langgezogen
@@ -868,8 +868,8 @@ export const SHOP = [
   },
   {
     id: 'radar', icon: '📟', name: 'Radarwarner', cat: 'Spaß', prices: [250],
-    desc: 'Ein Kästchen fürs Armaturenbrett. Es piept, und NOMI sagt jeden Blitzer an, bevor es blitzt. Ohne ihn bleibt es beim Überraschungsfoto.',
-    effect: () => 'NOMI warnt vor jedem Blitzer',
+    desc: 'Ein Kästchen fürs Armaturenbrett. Es piept, und OMI sagt jeden Blitzer an, bevor es blitzt. Ohne ihn bleibt es beim Überraschungsfoto.',
+    effect: () => 'OMI warnt vor jedem Blitzer',
   },
   {
     id: 'starlink', icon: '🛰️', name: 'Satelliten-Schüssel', cat: 'Spaß', prices: [1100],
