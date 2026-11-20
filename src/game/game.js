@@ -1252,7 +1252,7 @@ export class Game {
         this.later(6, () => this.chat(pick(['Wie immer 😂', 'Er ist bestimmt gleich da', 'Fünf Minuten noch!'])));
         break;
       case 'malte':
-        this.burst(['Malte Malte Malte Malte', 'MALTE!', 'MaLTE', 'Malte ist eingestiegen ✔️'], 5, 3);
+        this.burst(['Walte Walte Walte Walte', 'WALTE!', 'WaLTE', 'Walte ist eingestiegen ✔️'], 5, 3);
         break;
       case 'siegen':
         this.burst(['SIEGEN!!! Es ist tatsächlich passiert 😱', 'Geschichte wurde geschrieben', 'Doppelte Ortsspenden für Siegen!'], 3, 2);
