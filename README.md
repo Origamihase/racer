@@ -1,4 +1,4 @@
-# Mini Adam – Tesla-Navi ferngesteuert
+# Mini Adam – Navi ferngesteuert BrunnenTV XXL
 
 *Live-Eskalationen immer woanders!*
 
@@ -20,6 +20,10 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 
 ## Worum geht's?
 
+- **BrunnenTV XXL (Vorschau):** Auf der Reise über die echte Karte ist jedes Navi-Ziel der Hauptbrunnen eines Orts,
+  und das Navi nennt ihn („Marktbrunnen, Würzburg“). Am Ziel hält Mini Adam neben dem Brunnen, kurbelt das
+  Fahrerfenster herunter und macht mit dem Megafon BrunnenTV aus dem Auto – der Chat jubelt, NOMI lobt den Brunnen.
+  Jede Taste überspringt die Folge, dann geht die nächste Navi-Runde los. Klassisch bleibt die endlose Autobahn.
 - **Kameraschwenk zum Start:** Die Kamera fährt von außen an Mini Adam vorbei ins Cockpit.
 - **Geld gibt es nur vom Publikum** – wie im echten Stream: Spenden mit Alter-Skala, Ortsspenden, Abos,
   VIPs, Navi-Gebote, Sprachdurchsagen, Rahmen, Aktionen und Sammelaktionen. Fürs Fahren selbst zahlt

@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, MODE_TEXT, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, MODE_TEXT, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak } from '../data.js';
 import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -272,16 +272,17 @@ export class Menus {
   render_title(s, d) {
     s.textContent = '';
     const card = el('div', 'title-card', s);
-    // Jeder Modus hat seinen Titel (h.mode, src/mode.js): Untertitel und Zahlen sind seine, und ein Eintrag führt in
-    // den anderen – die Seite lädt dann neu, weil die Welt beim Laden gebaut wird
+    // Jeder Modus hat seinen Titel (h.mode, src/mode.js): Schildchen und Zahlen sind seine, der Name des Spiels ist
+    // derselbe, und ein Eintrag führt in den anderen – die Seite lädt dann neu, weil die Welt beim Laden gebaut wird
     const mode = this.h.mode || 'klassik';
     const M = MODE_TEXT[mode];
     const other = MODE_TEXT[otherMode(mode)];
     const logo = el('div', 'title-logo', card);
     el('span', 'title-live', logo, '● LIVE');
-    if (M.badge) el('span', 'title-badge', logo, M.badge);
+    if (M.badge) el('span', 'title-badge ' + mode, logo, M.badge);
     el('h1', '', card, GAME_TITLE);
-    el('h2', '', card, M.title);
+    const h2 = el('h2', '', card, GAME_SUBTITLE + ' ');
+    el('span', 'title-xxl', h2, GAME_XXL);
     el('p', 'tagline', card, TAGLINE);
     const menu = el('div', 'menu', card);
     button(menu, '▶  Losfahren', 'start', 'primary');
@@ -571,7 +572,8 @@ export class Menus {
     const card = el('div', 'card about-card', s);
     el('h2', '', card, 'ℹ️ Über das Spiel');
     const p = (t) => el('p', '', card, t);
-    p('„Mini Adam – Tesla-Navi ferngesteuert“ ist ein liebevolles, nicht-kommerzielles Fan-Spiel rund um SkylineTV LIVE. Mini Adam – der Plüsch-Adam mit Kappe, Bart und LIVE-Shirt – fährt den schwarzen Tesla Model 3 Long Range AWD mit 75-kWh-Akku über die Autobahn, während der Chat das Navi fernsteuert.');
+    p(`„${GAME_NAME}“ ist ein liebevolles, nicht-kommerzielles Fan-Spiel rund um SkylineTV LIVE. Mini Adam – der Plüsch-Adam mit Kappe, Bart und LIVE-Shirt – fährt den schwarzen Tesla Model 3 Long Range AWD mit 75-kWh-Akku über die Autobahn, während der Chat das Navi fernsteuert.`);
+    p('Auf der Reise über die echte Karte ist jedes Navi-Ziel der Hauptbrunnen eines Orts: Dort hält Mini Adam neben dem Brunnen, kurbelt das Fenster herunter und macht mit dem Megafon BrunnenTV aus dem Auto. Das Megafon gehört zur Ausstattung.');
     p('Fast alle Witze stammen aus dem SkylineTV LIVE Wiki: die freigeschaltete linke Spur, das Navi-Bieten mit einem Cent mehr, BrunnenTV mit Herrn Schönnbrun, Elsa, die Polizei Gifhorn, Meister Pünktlich (kommt gleich), Malte, die Farbe der Bank, Rahmen aus dem Live-Bereich, Sprachdurchsagen von Fräulein Kassandra und Brüll-William, das Sprachstudio in Mini Adams Ohr, Bananensaft statt Koriander, „You had 5 Jobs“ und die erlogenen Berufsbezeichnungen im Abspann.');
     p('Geld gibt es wie im echten Stream nur vom Publikum: Spenden, Ortsspenden, Abos, VIPs und Navi-Gebote. Wie der Chat gerade gelaunt ist, steht nirgends – das Sprachstudio sagt es Mini Adam ins Ohr.');
     p('NOMI ist der Boardcomputer auf dem Armaturenbrett. Alle Grafiken, Geräusche und Stimmen entstehen direkt im Browser – ohne Bilder- oder Tondateien.');

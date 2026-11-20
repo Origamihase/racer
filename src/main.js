@@ -1,4 +1,4 @@
-// Mini Adam – Tesla-Navi ferngesteuert
+// Mini Adam – Navi ferngesteuert BrunnenTV XXL
 // Hauptprogramm: Renderer, Bildkomposition (Welt → Regentropfen/Effekte → Cockpit), Kameras
 // (Cockpit, Drohne, Kameraschwenk beim Start, Vorführmodus), Zustände und Menüs.
 import * as THREE from 'three';

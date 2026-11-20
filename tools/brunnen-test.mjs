@@ -7,6 +7,8 @@
 //   (das erste Gebot frühestens TV.pause Sekunden nach der Freigabe).
 // - Megafon als Ausstattung: kein Shop-Artikel, Taste H und Megafon-Wunsch ohne Upgrade in beiden Spielarten, ein
 //   gekauftes gibt es genau einmal zurück (save.js refundMegafon).
+// - Der Name „Mini Adam – Navi ferngesteuert BrunnenTV XXL“ steht überall gleich: Seitentitel, Ladekarte, README,
+//   INSIDER, package.json, Über das Spiel; der Titelbildschirm setzt ihn aus denselben Teilen zusammen.
 // - Kameras: Für jeden Ort der Karte (Insel und Haltepunkt wie plan.js squareOf) stehen die drei Kameras außerhalb des
 //   Wagens und nie im Brunnen, und Totale und Brunnen-Kamera haben Fenster und Brunnen im Bild.
 import { PerspectiveCamera } from 'three';
@@ -17,7 +19,8 @@ import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor 
 import { squareOf } from '../src/world/xxl/plan.js';
 import { FOUNTAIN_R, goalKind, goalName } from '../src/world/kit/layout.js';
 import { MEGA } from '../src/models/miniAdam.js';
-import { SHOP, UPGRADE_LIMITS, AKTIONEN } from '../src/data.js';
+import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, MODE_TEXT } from '../src/data.js';
+import { readFileSync } from 'node:fs';
 import { loadSave, storeSave, refundMegafon, MEGAFON_PRICE, DEFAULT_SAVE } from '../src/save.js';
 
 let fails = 0;
@@ -266,6 +269,21 @@ const mega = { says: [], toasts: [] };
   const c = { ...structuredClone(DEFAULT_SAVE), wallet: 3, upgrades: { radar: 1 } };
   ok(refundMegafon(c) === 0 && c.wallet === 3 && !c.megafonRefund, 'Ohne gekauftes Megafon gab es Geld');
   ok(refundMegafon(structuredClone(DEFAULT_SAVE)) === 0, 'Ein neuer Spielstand bekam Geld');
+}
+
+// --- Der Name des Spiels ----------------------------------------------------------------------------------------------
+{
+  const NAME = 'Mini Adam – Navi ferngesteuert BrunnenTV XXL';
+  const file = (f) => readFileSync(new URL('../' + f, import.meta.url), 'utf8');
+  ok(GAME_NAME === NAME && `${GAME_TITLE} – ${GAME_SUBTITLE} ${GAME_XXL}` === NAME, `Name in data.js: ${GAME_NAME}`);
+  const html = file('docs/index.html');
+  ok(html.includes(`<title>${NAME}</title>`) && html.includes(`<p class="load-sub">${GAME_SUBTITLE} ${GAME_XXL}</p>`), 'Seitentitel oder Ladekarte ohne den Namen');
+  ok(file('README.md').startsWith(`# ${NAME}\n`) && file('INSIDER.md').includes(`**${NAME}**`), 'README oder INSIDER ohne den Namen');
+  ok(JSON.parse(file('package.json')).description.startsWith(NAME), 'package.json ohne den Namen');
+  const menus = file('src/ui/menus.js');
+  ok(menus.includes('`„${GAME_NAME}“ ist ein liebevolles') && menus.includes("el('span', 'title-xxl', h2, GAME_XXL)"), 'Über das Spiel oder der Titel ohne den Namen');
+  ok(!/Tesla-Navi ferngesteuert/.test(html + file('README.md') + menus + file('src/main.js').split('\n')[0]), 'Der alte Name steht noch da');
+  ok(MODE_TEXT.klassik.name === 'Klassik' && MODE_TEXT.xxl.name === GAME_XXL, `Modi: ${MODE_TEXT.klassik.name}, ${MODE_TEXT.xxl.name}`);
 }
 
 // --- Ausgabe ---------------------------------------------------------------------------------------------------------

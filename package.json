@@ -2,7 +2,7 @@
   "name": "mini-adam-tesla-navi-ferngesteuert",
   "version": "2.0.0",
   "private": true,
-  "description": "Mini Adam: Tesla-Navi ferngesteuert – ein liebevoller 3D-Autobahn-Racer im Browser (Fan-Spiel zu SkylineTV LIVE).",
+  "description": "Mini Adam – Navi ferngesteuert BrunnenTV XXL – ein liebevoller 3D-Racer im Browser (Fan-Spiel zu SkylineTV LIVE).",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
