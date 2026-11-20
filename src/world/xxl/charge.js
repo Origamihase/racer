@@ -228,7 +228,7 @@ export function dockPath(u, u0, x0 = lane) {
  * von Erlensee (SCENE, ihr t = 0): Stecker heraus, Klappe zu, Ausparken bis zur Übergabe in der Spur (end). shift: so
  * lange vor dem Anrollen liegt R schon drin.
  */
-export const STOP = { shift: 0.4, flap: [0.15, 0.5], plug: [0.45, 1.55], fill: [1.6, 8.2], pop: [2.0, 7.8], juice: 4.6, nomi: 1.9, unplug: 8.4 };
+export const STOP = { shift: 0.4, flap: [0.15, 0.5], plug: [0.45, 1.55], fill: [1.6, 8.2], pop: [2.0, 7.8], juice: 5.2, nomi: 1.9, unplug: 8.4 };
 STOP.roll = STOP.unplug + SCENE.roll;
 STOP.end = STOP.unplug + SCENE.end;
 

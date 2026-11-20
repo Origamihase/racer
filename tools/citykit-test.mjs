@@ -400,6 +400,22 @@ for (const p of places) {
     n++;
   }
   ok(n === PARKS.length && n > 100, 'Ladepark: zu wenig geprüft');
+  // geparkte Autos: die Buchse, in der das Kabel ihrer Säule steckt, sitzt auf ihrer Flanke zur Säule, hinter dem Bug
+  const { parkedPorts } = await import('../src/world/kit/rest.js');
+  const plan0 = parkPlan(city, { kind: 'park', park: 0, s0: S0, s1: S0 + PARK.len, spotS: S0 + PARK.halt - 2 });
+  const parked = plan0.items.filter((it) => city.info(it.name).kind === 'car');
+  let plugs = 0;
+  for (const [px, pz] of info.posts) {
+    for (const port of Object.values(parkedPorts(px))) {
+      const x = CHARGE.front - (pz + port[2]);
+      const z = -(PARK.u - (px + port[0]));
+      const car = parked.find((it) => Math.abs(it.z - z) < 1.3 && Math.abs(it.x - x) < 2);
+      const ci = car && city.info(car.name);
+      ok(car && near(Math.abs(car.z - z), (ci.w - 0.06) / 2, 0.005) && Math.abs(car.x - x) < (ci.d - 0.12) / 2 - 0.3, `Ladepark: Kabel an Säule ${px} steckt in keinem Auto`);
+      plugs++;
+    }
+  }
+  ok(plugs === info.parked.length && parked.length === plugs, `Ladepark: ${plugs} Kabel für ${parked.length} geparkte Autos`);
   // in der Welt: geplant und gebaut wie ein Ort, aber kein Ort
   const THREE = await import('three');
   const { Towns } = await import('../src/world/xxl/towns.js');
@@ -415,7 +431,7 @@ for (const p of places) {
   ok(t && t.group && !t.group.pending && t.group.visible && towns.list().length === 0, 'Ladepark in der Welt: nicht gebaut oder als Ort gezählt');
   // Stecker und Kabel der Heldensäule für den Ladestopp (chargerig.js), der Stecker im Halter
   ok(t && t.charge && t.charge.k === 1 && t.charge.group.parent === t.group, 'Ladepark in der Welt: kein Stecker an der Heldensäule');
-  console.log(`Ladeparks: ${n} Pläne geprüft (Park bei u ${PARK.u}, Halt bei ${PARK.halt} m, Bordstein abgesenkt, Buchten ${info.hero - 1}–${info.hero + 1} frei), in der Welt ${t ? t.group.children.length : 0} Teile`);
+  console.log(`Ladeparks: ${n} Pläne geprüft (Park bei u ${PARK.u}, Halt bei ${PARK.halt} m, Bordstein abgesenkt, Buchten ${info.hero - 1}–${info.hero + 1} frei, ${plugs} geparkte Autos am Kabel), in der Welt ${t ? t.group.children.length : 0} Teile`);
   towns.reset();
 }
 

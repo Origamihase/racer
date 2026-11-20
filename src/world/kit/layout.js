@@ -421,7 +421,7 @@ export function planTown(place, opts = {}) {
     const span = { side: 1, u0: c.u - info.w / 2 - 1, u1: c.u + info.w / 2 + 1 };
     busy.push(span);
     keep.push(span);
-    for (const [i, car] of [[0, 'carCompact'], [6, 'carSmall'], [7, 'carCompact']]) {
+    for (const [i, car] of info.parked) {
       const [bx, bz] = info.bays[i];
       add(car, x0 - bz + 0.2, info.ground, -(c.u - bx), Math.PI / 2);
     }
@@ -843,10 +843,11 @@ export function planRest(opts = {}) {
     const [x, z] = toRoad(r1, -parkU, px, pz);
     return { x, y: top, z, kind };
   });
-  // Geparkte E-Autos (rückwärts eingeparkt); Bucht 1 bis 4 bleibt frei (Heldenbucht 3, die Kamera steht in Bucht 4)
-  for (const i of [0, 5, 7]) {
+  // Geparkte E-Autos (vorwärts eingeparkt, ihre Kabel stecken: rest.js PARKED); Bucht 1 bis 5 bleibt frei
+  // (Heldenbucht 3, die Kamera steht in Bucht 4)
+  for (const [i, car] of pi.parked) {
     const b = bays[i];
-    add(pick(rnd, ['carCompact', 'carSmall']), b.x + 0.2, 0.05, b.z, Math.PI / 2);
+    add(car, b.x + 0.2, 0.05, b.z, Math.PI / 2);
     b.free = false;
   }
   for (const b of bays) b.free = b.free ?? true;
@@ -980,7 +981,7 @@ export function planPark(opts = {}) {
   // Punkt (lx, lz) im Rahmen des Parks → Ortskoordinaten
   const P = (lx, lz) => [x0 - lz, -u + lx];
   const park = add(kind, x0, 0, -u, FACE);
-  for (const [i, car] of [[0, 'carCompact'], [6, 'carSmall'], [7, 'carCompact']]) {
+  for (const [i, car] of pi.parked) {
     const [bx, bz] = pi.bays[i];
     add(car, x0 - bz + 0.2, pi.ground, -(u - bx), Math.PI / 2);
   }

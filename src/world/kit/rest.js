@@ -511,19 +511,24 @@ function drawBananaPoster(c, w, h) {
  * Kabel (Schlauch) hängt in einer Schlaufe (Radius R, Mitte in Höhe yc) in der Ebene der Wand und läuft auf der Seite
  * −dir (±z) hinauf in eine Tülle an der Wand. Von vorn sieht man davon nur die Kante.
  */
-function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable, bare = false) {
+function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable, bare = false, port = null) {
   const { F } = b;
   const xs = xw + s * 0.045;
   F.rbox(xw + s * 0.018, yp - 0.13, zp, 0.036, 0.28, 0.17, 0.016, C.postCap, { seg: 1 });
   // bare: nur der Halter (Stecker und Kabel bringt die Startszene mit, xxl/chargerig.js)
   if (bare) return;
-  F.rbox(xs, yp - 0.1, zp, 0.085, 0.21, 0.12, 0.035, C.plug, { seg: 1 });
+  // port: der Stecker steckt in einem geparkten Auto (pluggedCable), der Halter bleibt leer
+  if (!port) F.rbox(xs, yp - 0.1, zp, 0.085, 0.21, 0.12, 0.035, C.plug, { seg: 1 });
   // Tülle an der Wand, aus der das Kabel kommt: ganz auf dem geraden Stück der Wand (bei der Ladesäule endet es 13 cm
   // hinter der Mitte, dahinter biegt die Kante rund ab – dort stünde die Tülle frei in der Luft)
   const zc = zp - dir * 0.07;
   const zg = zc - dir * 0.08;
   const yg = yc + 0.22;
   F.rbox(xw + s * 0.04, yg, zg, 0.09, 0.07, 0.09, 0.025, C.plug, { seg: 1 });
+  if (port) {
+    pluggedCable(b, s, xw + s * 0.04, yg, zg, port, col);
+    return;
+  }
   // Ein Schlauch ohne Naht: vom Stecker auf der Tangente an den Kreis der Schlaufe, unten herum und auf der zweiten
   // Tangente hinauf in die Tülle; die Enden stecken 3 cm tief im Stecker und in der flachen Tülle so tief, dass der
   // Rand des Schlauchs 4 mm unter ihrem Deckel bleibt: offen ist nichts. Mittellinie in der Wandebene als (u, y),
@@ -580,11 +585,30 @@ function hose(b, s, xw, yp, zp, dir, R, yc, col = C.cable, bare = false) {
 }
 
 /**
- * Säule im eigenen Rahmen (Mitte der Grundfläche im Ursprung): kind 'dc' (groß, je Seite ein Kabel) oder 'ac' (klein,
- * ein Kabel rechts). body(y, w, h, d, seg) baut den Kasten (eingefärbt oder fest); bare: diese Seite (−1 | 1) bekommt
- * nur den Halter. Ergebnis: Oberkante.
+ * Kabel der Seite s einer Säule, das in einem geparkten Auto steckt (hose mit port): aus der Tülle (xg, yg, zg)
+ * senkrecht nach unten, in flachem Bogen über dem Boden zur Flanke des Autos und schräg hinauf in seine Buchse port
+ * (Mitte auf der Flanke, die zur Säule schaut); der Stecker sitzt mit der Spitze 3,5 cm tief darin.
  */
-function chargePost(b, kind, near, body, bare = 0) {
+function pluggedCable(b, s, xg, yg, zg, port, col) {
+  const { F } = b;
+  const [px, py, pz] = port;
+  const a = 0.6; // Neigung des Steckers gegen die Waagerechte
+  // Punkt k Meter längs des Steckers (zur Spitze, in die Flanke hinein: +k)
+  const at = (k) => [px + s * Math.cos(a) * k, py + Math.sin(a) * k, pz];
+  b.xf(port, [0, 0, -s * (Math.PI / 2 - a)], 1, () => F.rbox(0, -0.175, 0, 0.085, 0.21, 0.12, 0.035, C.plug, { seg: 1 }));
+  const p1 = at(-0.26);
+  const low = [p1[0] * 0.55 + xg * 0.45, 0.24, (pz + zg) / 2];
+  // die Enden stecken in Stecker und Tülle; zur Wand hin bleibt der Schlauch außen (Bogen nicht in die Säule)
+  cord(F, [at(-0.14), p1, low, [xg + s * 0.05, 0.45, zg + 0.1], [xg + s * 0.005, yg - 0.15, zg], [xg, yg + 0.03, zg]], 0.032, col, 40, 10);
+}
+
+/**
+ * Säule im eigenen Rahmen (Mitte der Grundfläche im Ursprung): kind 'dc' (groß, je Seite ein Kabel) oder 'ac' (klein,
+ * ein Kabel auf der Seite ac). body(y, w, h, d, seg) baut den Kasten (eingefärbt oder fest); bare: diese Seite (−1 | 1)
+ * bekommt nur den Halter; ports: Seite → Buchse eines geparkten Autos, in der das Kabel dieser Seite steckt.
+ * Ergebnis: Oberkante.
+ */
+function chargePost(b, kind, near, body, bare = 0, ports = {}, ac = 1) {
   const { F, G, L } = b;
   const dc = kind === 'dc';
   const hh = dc ? 1.86 : 1.3;
@@ -605,7 +629,7 @@ function chargePost(b, kind, near, body, bare = 0) {
   G.rect(0, sy + 0.035, dd / 2 + 0.004, sw - 0.07, sh - 0.07, C.screen, { g: [1.18, 0.82] });
   G.sign(0, y0 + 0.3, dd / 2 + 0.003, ww * 0.44, 'y:charge');
   // Stecker im Halter an der Seitenwand, Kabel in der Schlaufe längs der Seite
-  for (const s of dc ? [-1, 1] : [1]) hose(b, s, s * ww / 2, y0 + hh * (dc ? 0.56 : 0.6), 0.07, 1, dc ? 0.19 : 0.15, dc ? 0.8 : 0.64, C.cable, s === bare);
+  for (const s of dc ? [-1, 1] : [ac]) hose(b, s, s * ww / 2, y0 + hh * (dc ? 0.56 : 0.6), 0.07, 1, dc ? 0.19 : 0.15, dc ? 0.8 : 0.64, C.cable, s === bare, ports[s] ?? null);
   return y0 + hh + 0.07;
 }
 defs.lade_saeule = {
@@ -933,6 +957,25 @@ defs.lade_dach_3 = {
 const BAY = 2.6;
 const BAYS = Array.from({ length: 8 }, (_, i) => -9.1 + i * BAY);
 const POSTS = [[-5.2, 'dc'], [0, 'dc'], [5.2, 'dc'], [-10.7, 'ac'], [10.7, 'ac']];
+// Geparkte Autos (Bucht, Baustein aus kit/street.js), wie kit/layout.js sie hinstellt: vorwärts eingeparkt, 0,2 m
+// tiefer als die Buchtmitte, ihr Kabel steckt schon an der nächsten Säule. L, W, wz: Länge, Breite und Vorderachse wie
+// toyCar in street.js; die Buchse sitzt in der Flanke zur Säule hinter dem vorderen Radkasten, hoch oben auf dem
+// geraden Stück der Flanke (y, unter der Rundung zur Gürtellinie), 0,55 m hinter der Achse.
+const PARKED = [[0, 'carCompact'], [6, 'carSmall'], [7, 'carCompact']];
+const PARKED_CAR = { carCompact: { L: 3.9, W: 1.72, wz: 1.21, y: 0.6 }, carSmall: { L: 3.2, W: 1.62, wz: 1.0, y: 0.56 } };
+/** Buchsen der geparkten Autos an der Säule bei x (Rahmen der Säule): Seite → [x, y, z]. */
+export function parkedPorts(x) {
+  const ports = {};
+  for (const [i, name] of PARKED) {
+    const d = BAYS[i] - x;
+    if (Math.abs(d) > BAY) continue;
+    const c = PARKED_CAR[name];
+    const s = Math.sign(d);
+    // Wagenmitte bei z −3,3 − 0,2, Bug zur Säule (−z); Säule bei z −5,3
+    ports[s] = [d - (s * c.W) / 2, c.y, -3.5 - (c.wz - 0.55) + 5.3];
+  }
+  return ports;
+}
 defs.ladepark = {
   kind: 'rest', far: true,
   // heroFree: an der Säule der Heldenbucht hängt auf deren Seite nur der Halter (ladepark_start, siehe unten)
@@ -953,10 +996,11 @@ defs.ladepark = {
       for (const z of [-2.4, -5.1]) flat(L, cx - 3.6, z - 0.18, cx + 3.6, z + 0.18, 4.13, C.warm, true);
       for (const dx of [-2.9, 2.9]) F.lathe(cx + dx, 0.05, -6.4, [[0.4, 0], [0.4, 0.15], [0.25, 0.32], [0.25, 4.1]], C.column, { seg: near ? 12 : 6, top: false });
     }
-    // Säulen (DC zwischen je zwei Buchten, AC an den Enden) mit Poller davor
+    // Säulen (DC zwischen je zwei Buchten, AC an den Enden mit dem Kabel zur Bucht hin) mit Poller davor
     for (const [x, kind] of POSTS) {
       const bare = heroFree && x === POSTS[1][0] ? -1 : 0;
-      b.at(x, 0.05, -5.3, 0, () => chargePost(b, kind, near, (y, w, hh, d, seg) => F.rbox(0, y, 0, w, hh, d, 0.07, C.body, { seg }), bare));
+      const body = (y, w, hh, d, seg) => F.rbox(0, y, 0, w, hh, d, 0.07, C.body, { seg });
+      b.at(x, 0.05, -5.3, 0, () => chargePost(b, kind, near, body, bare, parkedPorts(x), x < 0 ? 1 : -1));
       F.cyl(x, 0.05, -4.6, 0.14, 0.14, 0.85, C.mustard, { seg: near ? 10 : 5 });
       if (near) F.cyl(x, 0.75, -4.6, 0.142, 0.142, 0.06, C.white, { seg: 10, top: false });
     }
@@ -982,7 +1026,8 @@ defs.ladepark = {
     // Zufahrt, wie an echten Schnellladern), die Säule 1 rechts neben der Bucht steht dann an seiner linken hinteren
     // Ecke, wo die Ladeklappe sitzt. Auf ihrem Poller hat der Popcorn-Eimer Platz (popcorn = Mitte seines Bodens).
     const posts = POSTS.map(([x, kind]) => [x, -5.3, 0.05 + 0.12 + (kind === 'dc' ? 1.86 : 1.3) + 0.07, kind]);
-    return { w: 24, d: 11, h: 4.5, bays: BAYS.map((x) => [x, -3.3]), hero: 3, heroPost: 1, posts, popcorn: [POSTS[1][0], 0.9, -4.6], ground: 0.05, groundD: 8 };
+    // parked: wo kit/layout.js welche Autos hinstellt (ihre Kabel stecken), parkedCar: deren Maße
+    return { w: 24, d: 11, h: 4.5, bays: BAYS.map((x) => [x, -3.3]), hero: 3, heroPost: 1, posts, popcorn: [POSTS[1][0], 0.9, -4.6], ground: 0.05, groundD: 8, parked: PARKED, parkedCar: PARKED_CAR };
   },
   extras(kit) {
     const m = textPanel(kit.core, 'rast:plug', 1.2, 1.2, 256, (c, w, h) => drawBoard(c, w, h, { icons: ['plug'] }));
