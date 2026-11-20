@@ -241,8 +241,16 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   const peak = drawQuote({ getContext: () => ctx }, o, 640, 170, 2);
   ok(peak.v === Math.max(...o.v), `Einschaltquote: Spitze ${peak.v}, höchster Wert ${Math.max(...o.v)}`);
   ok(calls.some((c) => c[0] === 'fillText' && /^Spitze /.test(c[1])) && calls.filter((c) => c[0] === 'arc').length >= o.tv.length + 1, 'Einschaltquote: Spitze oder Folgen nicht gezeichnet');
+  // die Zeitachse: kurze Sendungen sekundengenau (sonst „0:00“ an beiden Enden), lange in Minuten und Stunden
+  const axis = (t) => {
+    calls.length = 0;
+    drawQuote({ getContext: () => ctx }, { dt: QUOTE_DT, v: [240, 300, 410, 463], tv: [], t }, 640, 170, 2);
+    return calls.filter((c) => c[0] === 'fillText' && /^\d/.test(c[1]) && c[3] === 170 - 8).map((c) => c[1]).join(' ');
+  };
+  const axes = [28, 83, 300, 1500, 4500].map(axis);
+  ok(axes.join(' | ') === '0:00 0:28 | 0:00 1:23 | 0:00 5:00 | 0:00 13 min 25 min | 0:00 38 min 1:15 h', `Einschaltquote: Zeitachse ${axes.join(' | ')}`);
   ok(/quoteBlock\(card, o\.quote\)/.test(read('src/ui/menus.js')), 'menus.js: Abspann zeigt die Einschaltquote nicht');
-  console.log(`  Zuschauer: eine Zahl am 👁 · Einschaltquote ${o.v.length} Werte, Spitze ${peak.v}, ${o.tv.length} Folgen markiert`);
+  console.log(`  Zuschauer: eine Zahl am 👁 · Einschaltquote ${o.v.length} Werte, Spitze ${peak.v}, ${o.tv.length} Folgen markiert · Zeitachse ${axes.join(' | ')}`);
 }
 
 // --- Reihenfolge und Stimme rund um BrunnenTV ---------------------------------------------------------------------

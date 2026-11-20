@@ -10,8 +10,15 @@ const T = THEMES.light;
 const TV_BLUE = '#1f8fd8'; // wie die Folgen auf der Route des Tages
 const PAD = { l: 46, r: 16, t: 28, b: 26 };
 
-/** Sendezeit als Achsenbeschriftung: „0:00“, „12 min“, „1:05 h“. */
-function clock(s) {
+/**
+ * Sendezeit als Achsenbeschriftung: „0:00“, „12 min“, „1:05 h“ – eine kurze Sendung (exact, unter zehn Minuten, etwa
+ * nach früher Werkstatt) sekundengenau, „0:00“ bis „1:23“, sonst stünde an beiden Enden „0:00“.
+ */
+function clock(s, exact = false) {
+  if (exact) {
+    const t = Math.round(s);
+    return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  }
   const m = Math.round(s / 60);
   if (m < 60) return m ? m + ' min' : '0:00';
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')} h`;
@@ -75,7 +82,7 @@ export function drawQuote(canvas, q, w, h, dpr = 1) {
   ctx.textAlign = 'center';
   if (span >= 600) ctx.fillText(clock(span / 2), (x0 + x1) / 2, h - 8);
   ctx.textAlign = 'right';
-  ctx.fillText(clock(span), x1, h - 8);
+  ctx.fillText(clock(span, span < 600), x1, h - 8);
 
   // die Kurve: Fläche wie Wasser, Linie wie die Route (Schein, Rand, Blau)
   const path = new Path2D();
