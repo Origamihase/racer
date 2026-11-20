@@ -112,6 +112,13 @@ export const TOWN_HOLD = 75;
 export const AUKTION = { lock: 5, window: 25, warn: 10 };
 // Einschaltquote für den Abspann (menus.js, ui/quotechart.js): alle QUOTE_DT Sekunden die Zuschauerzahl
 export const QUOTE_DT = 5;
+/**
+ * „Trödeladam“ (der Eigentümer, 20.11.2026): Wer lange steht (stand Sekunden, ohne Szene und ohne Halt am Ziel),
+ * lange unter dem Tempo des Navis bleibt (Fortschritt unter slowPace, slowFor Sekunden lang; satisfaction.js) oder
+ * eine Runde vertrödelt (Urteil am Ziel unter round), den nennt der Chat so – mit Abstand (cool Sekunden, mit jedem
+ * Mal etwas mehr, höchstens das Dreifache), und es kostet die Stimmung ein wenig (mood).
+ */
+export const TROEDEL = { stand: 14, slowPace: 0.7, slowFor: 45, round: 0.8, cool: 75, mood: 0.03 };
 // Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
 // Kästchen, lead Sekunden später folgen NOMIs Gong und ihre Ansage
 const RADAR = { ahead: 180, lead: 0.45 };
@@ -256,6 +263,8 @@ export class Game {
     this.shoulderWarned = false;
     this.batteryWarned = 0;
     this.lowBat = { lvl: 0, t: 0 };
+    // Trödeladam (TROEDEL): Sekunden im Stand und unter dem Tempo des Navis, wann der Chat ihn zuletzt so nannte
+    this.troedel = { standT: 0, slowT: 0, lastT: -99, n: 0 };
     this.lastHugo = 0;
 
     this.scenery.reset();
@@ -1309,6 +1318,8 @@ export class Game {
     // (der Ton passt zur Laune: ein mürrischer Chat lobt nicht, ein glücklicher drängelt nicht)
     const dz = this.zufrieden.arrive();
     const zv = this.zufrieden.value;
+    // eine vertrödelte Runde: Der Chat sagt es nach dem Jubel
+    if (this.zufrieden.q < TROEDEL.round) this.later(3.4, () => this.troedeln('runde'));
     if (dz >= 9 && zv > ZUFRIEDEN.grumpy) this.later(2.6, () => this.chat(this.chatLine(CHAT.flott)));
     else if (dz <= -3 && zv < ZUFRIEDEN.happy) this.later(2.6, () => this.chat(this.chatLine(CHAT.schneller)));
     // bis hier steht die letzte Ortsspende spätestens im Chat (ein „5 Cent“-Angebot zum Ziel kommt erst danach)
@@ -1915,6 +1926,7 @@ export class Game {
     d.funkloch = this.funkloch > 0;
     // Reise: Ein zufriedener Chat gibt mehr und lockt mehr Zuschauer an (satisfaction.js gain, audience)
     this.updateZufrieden(dt, d);
+    this.updateTroedel(dt, d);
     for (const e of this.eco.update(dt, d)) this.onStream(e);
     this.viewers = this.eco.viewers;
     this.peakViewers = Math.max(this.peakViewers, this.viewers);
@@ -1951,6 +1963,33 @@ export class Game {
     // der Fortschritt zum Ziel bewegt auch die heimliche Stimmung (economy.js PROGRESS) – solange gezählt wird
     d.pace = counted && Number.isFinite(secs) ? Z.pace : undefined;
     d.near = secs;
+  }
+
+  /**
+   * Trödeladam (TROEDEL): Steht der Wagen lange ohne Grund – keine Folge, kein Ladestopp, kein Halt am Brunnen, kein
+   * Funkloch – oder bleibt er lange unter dem Tempo des Navis (d.pace, nur solange ein Ziel zählt), ruft ihn der Chat so.
+   */
+  updateTroedel(dt, d) {
+    const Tr = this.troedel;
+    const scene = !!(this.tv || this.charging || this.halt || this.navi.stopping || this.world.stopping() || this.funkloch > 0);
+    Tr.standT = !scene && this.player.kmh < 3 ? Tr.standT + dt : 0;
+    Tr.slowT = !scene && Number.isFinite(d.pace) && d.pace < TROEDEL.slowPace ? Tr.slowT + dt : 0;
+    if (Tr.standT > TROEDEL.stand) this.troedeln('steht');
+    else if (Tr.slowT > TROEDEL.slowFor) this.troedeln('langsam');
+  }
+
+  /** Der Chat nennt ihn Trödeladam (why: steht · langsam · runde) – nie öfter als alle TROEDEL.cool Sekunden. */
+  troedeln(why) {
+    const Tr = this.troedel;
+    Tr.standT = 0;
+    Tr.slowT = 0;
+    // (ein Spitzname nutzt sich ab: Mit jedem Mal wartet der Chat etwas länger, bis er ihn wieder ruft)
+    if (this.t - Tr.lastT < TROEDEL.cool * Math.min(3, 1 + Tr.n / 2)) return;
+    Tr.lastT = this.t;
+    Tr.n++;
+    this.chat(this.chatLine(CHAT.troedel[why]));
+    if (chance(0.45)) this.later(rand(1.2, 2.2), () => this.chat(this.chatLine(CHAT.troedel.echo)));
+    this.eco.sway(-TROEDEL.mood, 'troedel');
   }
 
   /**

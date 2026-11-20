@@ -303,6 +303,19 @@ export const CHAT = {
     'Die Plüsch-Hände sind heil, das zählt 🧸'],
   heil: ['Keine Kratzer, keine Rechnung ✨', 'Sauber gefahren!', 'Die Werkstatt hat heute frei 😎',
     'Ohne eine Schramme 👏', 'Der Lack glänzt noch'],
+  // Trödeladam (game.js TROEDEL): wenn er lange steht, lange langsam ist oder eine Runde vertrödelt hat – freundlich
+  // geneckt, je Anlass eigene Sätze, dazu manchmal ein Echo aus dem Chat
+  troedel: {
+    steht: ['Trödeladam! 🐌', 'Trödeladam, der Brunnen läuft nicht weg … wir aber auch nicht 😅', 'Steht der Wagen, oder ruckelt mein Stream? Ach so, Trödeladam 😅',
+      'Trödeladam macht Pause. Schon wieder 😂', 'Hallo? Trödeladam? Die Straße wartet!', 'Trödeladam parkt wie ein Profi 🅿️',
+      'Ich hol mir schnell Pommes, Trödeladam steht ja eh 🍟'],
+    langsam: ['TRÖDELADAM 🐌', 'Trödeladam, das Navi schläft gleich ein 😴', 'Sogar die Schnecken überholen uns, Trödeladam 🐌',
+      'Trödeladam auf Sightseeing-Tour 📸', 'Gas ist rechts, Trödeladam 😂', 'Gemütlich, Trödeladam, sehr gemütlich 🐢',
+      'Das Navi hat die Ankunftszeit gerade nach hinten geschoben, Trödeladam'],
+    runde: ['Trödeladam ist angekommen. Endlich 😂', 'Rekord im Trödeln, Trödeladam 🏆🐌', 'Da ist er ja, unser Trödeladam ⛲',
+      'Für die Runde gibt es den Trödelpokal 🐌', 'Trödeladam hat den Brunnen gefunden. Irgendwann.'],
+    echo: ['🐌🐌🐌', 'Trödeladam 😂', 'Hahaha Trödeladam', 'Trödeladam, der neue Spitzname?', '#Trödeladam', 'Trödeladam forever 🐌'],
+  },
   // am Ziel vorbeigefahren (kommt mit der Karte und ihren echten Ausfahrten)
   missedTarget: ['Die Ausfahrt war DA 😭', 'Vorbei … so nah dran', 'Das Navi weint leise', 'Nächste Ausfahrt dann, ja?',
     'Zu flott für die Ausfahrt 😅', 'Tschüss, schönes Ziel 👋'],
@@ -651,6 +664,7 @@ export const STUDIO = {
         'Beim Funkloch haben alle F geschrieben, das wirkt noch nach.'],
       verpasst: ['Dem verpassten Ziel trauern sie noch nach.', 'Die Ausfahrt von eben lässt sie nicht los.'],
       strafe: ['Das Verwarngeld fanden sie nicht so lustig.', 'Die Polizei Gifhorn war ihnen einmal zu oft zu Besuch.'],
+      troedel: ['Im Chat heißt er gerade Trödeladam.', 'Der Chat hat einen neuen Spitznamen verteilt: Trödeladam.', 'Trödeladam, sagen sie. Liebevoll, aber deutlich.'],
     },
   },
   // Kassensturz zwischendurch ({summe}) …

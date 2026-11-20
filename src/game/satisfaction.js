@@ -48,6 +48,7 @@ export class Satisfaction {
     this.time = 0; // gezählte Sekunden der Runde (T)
     this.standT = 0;
     this.wrong = false; // eine falsche Ausfahrt war gerade: der nächste Sprung ist der Umweg
+    this.q = 1;
     return this;
   }
 
@@ -99,6 +100,7 @@ export class Satisfaction {
   arrive() {
     const A = ZUFRIEDEN.arrive;
     const q = this.time >= A.minT ? this.fair / this.time : 1;
+    this.q = q; // das Urteil der letzten Runde (Game.onArrive: Trödeladam)
     const before = this.value;
     this.value = clamp(this.value + clamp(A.k * (q - 1), A.lo, A.hi) + A.bonus, 0, 100);
     this.fair = 0;

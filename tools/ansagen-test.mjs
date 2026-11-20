@@ -12,11 +12,13 @@
 //   zweite Zahl im Chat-Kopf); der Abspann zeigt die Einschaltquote als Kurve (ui/quotechart.js).
 // - Reihenfolge und Stimme: In einer BrunnenTV-Folge spricht OMI genau einmal, Sprachstudio und Durchsagen warten bis
 //   danach; was Mini Adam durchs Megafon sagt, sagt er mit seiner Stimme, nie mit OMIs.
+// - Trödeladam: Wer lange steht, lange langsam fährt oder eine Runde vertrödelt, den nennt der Chat so – mit Abstand,
+//   nur wenn es stimmt, und es kostet ein wenig Stimmung; wer zügig fährt, hört es nie.
 import { readFileSync } from 'node:fs';
 import * as DATA from '../src/data.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
 import { MOOD_START, Economy } from '../src/game/economy.js';
-import { AUKTION, QUOTE_DT, fountainIn } from '../src/game/game.js';
+import { AUKTION, QUOTE_DT, TROEDEL, fountainIn } from '../src/game/game.js';
 import { drawQuote } from '../src/ui/quotechart.js';
 import { Speech } from '../src/speech.js';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
@@ -274,6 +276,69 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   sp.voices = [{ name: 'Anna', lang: 'de-DE' }];
   ok(sp.pickVoice('adam') === sp.voices[0], 'Mit einer Stimme bleibt Mini Adam stumm');
   console.log(`  Reihenfolge: ${episodes.length} Folgen, je genau ein Satz von OMI, Studio und Durchsagen danach; Megafon immer mit Mini Adams Stimme`);
+}
+
+// --- Trödeladam ------------------------------------------------------------------------------------------------------
+{
+  const T = DATA.CHAT.troedel;
+  const why = new Map();
+  for (const k of ['steht', 'langsam', 'runde']) for (const line of T[k]) why.set(line, k);
+  ok(Object.values(T).every((pool) => pool.length >= 5) && [...why.keys()].every((l) => /trödel/i.test(l)), 'Trödeladam: zu wenige Sätze, oder einer ohne den Namen');
+  const sum = { troedler: 0, zuegig: 0, steht: 0, langsam: 0, runde: 0, echo: 0, mins: 0 };
+  for (const seed of [1, 2, 3]) {
+    for (const drv of ['troedler', 'zuegig']) {
+      const sim = makeStream({ driver: DRIVERS[drv], seed, endless: true });
+      const { game, log } = sim;
+      const arrivals = [];
+      let tv = null;
+      for (let t = 0; t < 900 && sim.step(1); t++) {
+        if (game.tv && !tv) arrivals.push(game.t);
+        tv = game.tv;
+      }
+      const calls = log.chat.filter((c) => why.has(c.text));
+      sum[drv] += calls.length;
+      if (drv === 'zuegig') {
+        ok(calls.length === 0, `Seed ${seed}: Der zügige Fahrer heißt ${calls.length}× Trödeladam (${calls.map((c) => c.text).join(' | ')})`);
+        continue;
+      }
+      sum.mins += game.t / 60;
+      sum.echo += log.chat.filter((c) => T.echo.includes(c.text)).length;
+      ok(calls.length >= 2, `Seed ${seed}: Der Trödler hört in ${(game.t / 60).toFixed(0)} min nur ${calls.length}× Trödeladam`);
+      ok(calls.length <= 2 + game.t / 150, `Seed ${seed}: ${calls.length}× Trödeladam in ${(game.t / 60).toFixed(0)} min ist zu oft`);
+      ok(game.eco.causes.down.troedel > 0 || calls.length === 0, `Seed ${seed}: Trödeladam kostet keine Stimmung`);
+      for (let i = 0; i < calls.length; i++) {
+        const c = calls[i];
+        const k = why.get(c.text);
+        sum[k]++;
+        if (i) ok(c.t - calls[i - 1].t >= TROEDEL.cool - 0.01, `Seed ${seed}: Trödeladam nach ${(c.t - calls[i - 1].t).toFixed(0)} s schon wieder`);
+        // jeder Satz passt zum Moment: steht – der Wagen steht (keine Folge, kein Halt); langsam – er fährt zu einem
+        // Ziel; runde – er ist gerade angekommen
+        if (k === 'steht') ok(c.at.kmh < 3 && !c.at.tv && !c.at.stopping, `Seed ${seed}: „${c.text}“ bei ${c.at.kmh.toFixed(0)} km/h${c.at.tv ? ' in der Folge' : ''}`);
+        if (k === 'langsam') ok(c.at.target && !c.at.tv && !c.at.stopping, `Seed ${seed}: „${c.text}“ ohne Fahrt zum Ziel`);
+        if (k === 'runde') ok(arrivals.some((a) => c.t - a > 0 && c.t - a < 8), `Seed ${seed}: „${c.text}“ ohne Ankunft kurz davor (${c.t.toFixed(0)} s)`);
+      }
+    }
+  }
+  ok(sum.steht > 0 && sum.langsam > 0, `Trödeladam: zu wenig Anlässe geprüft (steht ${sum.steht}, langsam ${sum.langsam})`);
+  // eine vertrödelte Runde (Urteil am Ziel unter TROEDEL.round): Der Chat sagt es kurz nach der Ankunft, in der Folge
+  {
+    const sim = makeStream({ driver: DRIVERS.mittel, seed: 4, endless: true });
+    const { game, log } = sim;
+    const Z = game.zufrieden;
+    const arrive = Z.arrive.bind(Z);
+    Z.arrive = () => {
+      const dz = arrive();
+      Z.q = TROEDEL.round - 0.1;
+      return dz;
+    };
+    let t0 = -1;
+    for (let t = 0; t < 900 && t0 < 0 && sim.step(0.5); t += 0.5) if (game.tv) t0 = game.t;
+    sim.step(8);
+    const r = log.chat.filter((c) => c.t > t0 && T.runde.includes(c.text));
+    ok(t0 > 0 && r.length === 1 && r[0].at.tv && r[0].t - t0 > 2.8 && r[0].t - t0 < 4.2, `Vertrödelte Runde: ${r.length} Sätze nach der Ankunft um ${t0.toFixed(0)} s`);
+    sum.runde += r.length;
+  }
+  console.log(`  Trödeladam: der Trödler ${sum.troedler}× in ${sum.mins.toFixed(0)} min (steht ${sum.steht}, langsam ${sum.langsam}, Runde ${sum.runde}; ${sum.echo} Echos aus dem Chat), der zügige Fahrer ${sum.zuegig}×`);
 }
 
 console.log(`ansagen-test: ${checks} Prüfungen, ${fails} Fehler`);

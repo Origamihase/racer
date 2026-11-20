@@ -406,13 +406,16 @@ console.log('Zufriedenheit des Chats (Reise):');
   const [mz, mm, mg] = DRIVERS.map((d) => mean(d.name));
   ok(mz > mm + 3 && mm > mg + 3, `im Spiel nicht geordnet: zügig ${fmt(mz, 1)}, mittel ${fmt(mm, 1)}, gemütlich ${fmt(mg, 1)}`);
   // Wirkung: derselbe Stream mit festgehaltener Zufriedenheit 90 und 10
-  const held = (v) => journey(DRIVERS[1], 30, 77, { frame: (game) => (game.zufrieden.value = v) });
+  // (drei Streams je Wert: Eine einzelne große Spende soll den Vergleich nicht kippen)
+  const held = (v) => [77, 78, 79].map((seed) => journey(DRIVERS[1], 30, seed, { frame: (game) => (game.zufrieden.value = v) }));
   const hi = held(90);
   const lo = held(10);
-  const gifts = (r) => ['Spenden', 'Abos', 'VIP-Abos'].reduce((a, k) => a + (r.game.breakdown[k] || 0), 0);
-  const tone = (r, pool) => r.chat.filter((m) => pool.includes(m.text)).length;
+  const gifts = (rs) => rs.reduce((a, r) => a + ['Spenden', 'Abos', 'VIP-Abos'].reduce((b, k) => b + (r.game.breakdown[k] || 0), 0), 0);
+  const plain = (pool) => pool.map((l) => l.replace(/^\[[a-z0-9 ]+\] /, ''));
+  const tone = (rs, pool) => rs.reduce((a, r) => a + r.chat.filter((m) => plain(pool).includes(m.text)).length, 0);
+  const views = (rs) => rs.reduce((a, r) => a + r.viewSum, 0) / rs.reduce((a, r) => a + r.zN, 0);
   const gr = gifts(hi) / gifts(lo);
-  const vr = hi.viewSum / hi.zN / (lo.viewSum / lo.zN);
+  const vr = views(hi) / views(lo);
   ok(gr > 1.5 && vr > 1.15 && tone(hi, CHAT.flott) >= 3 && tone(lo, CHAT.schneller) >= 3 && !tone(hi, CHAT.schneller) && !tone(lo, CHAT.flott), `Wirkung: Spenden/Abos/VIP ×${fmt(gr, 2)}, Zuschauer ×${fmt(vr, 2)}, Ton ${tone(hi, CHAT.flott)}/${tone(lo, CHAT.schneller)}`);
   console.log(`  im Spiel (Mittel je Fahrer): zügig ${fmt(mz, 1)}, mittel ${fmt(mm, 1)}, gemütlich ${fmt(mg, 1)} · bei 90 statt 10: Spenden, Abos, VIP ×${fmt(gr, 2)} (${fmt(gifts(hi))} € statt ${fmt(gifts(lo))} €), Zuschauer ×${fmt(vr, 2)}, flotte Zeilen ${tone(hi, CHAT.flott)}, ungeduldige ${tone(lo, CHAT.schneller)}`);
 }
