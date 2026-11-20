@@ -597,11 +597,14 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .crew { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .crew-row .k { color: var(--sub); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; display: block; }
 .crew-row .v { font-weight: 700; display: block; }
+/* eine lange Zeile (die Moderation der Reise) über die ganze Breite statt vier Zeilen in einer Spalte */
+.crew-row.wide { grid-column: 1 / -1; }
 /* „Danke an“: die Unterstützenden als eigener Abschnitt unter der Crew, die Überschrift über die ganze Breite */
 .crew.thanks { margin-top: 14px; }
-/* Abspann der Reise: ganz am Ende eine leise Zeile des Gedenkens, allein */
-.gedenken { margin: 22px auto 2px; max-width: 560px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--sub); font-style: italic; text-wrap: balance; }
 .crew.thanks h3 { grid-column: 1 / -1; margin: 0 0 2px; }
+/* Abspann der Reise: ganz am Ende eine leise Zeile des Gedenkens, allein, mit einem kurzen Strich davor */
+.gedenken { margin: 26px auto 2px; max-width: 560px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--sub); font-style: italic; text-wrap: balance; }
+.gedenken::before { content: ''; display: block; width: 48px; height: 1px; margin: 0 auto 14px; background: var(--line); }
 
 .shop-card { max-width: 1180px; }
 /* schmal: das Guthaben rutscht unter den Titel, statt Titel und Betrag zu zerbrechen */

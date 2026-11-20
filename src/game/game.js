@@ -76,6 +76,7 @@ export class Game {
     this.eco = new Economy({ zehner: this.worldNavi });
     // Reise: die sichtbare Zufriedenheit des Chats (wie zügig es von Ziel zu Ziel geht; satisfaction.js)
     this.zufrieden = this.worldNavi ? new Satisfaction() : null;
+    this.tally = { income: 0, hits: 0, marks: 0 };
     this.ecoIn = { kmh: 0, limit: false, stuck: false, leftOpen: false, inLeft: false, funkloch: false };
     this.seenAhead = new WeakSet();
     // Entfernung zum Navi-Ziel ab der Schilderbrücke (die wird gut 1,7 km voraus gebaut). Was jede Brücke als Navi-Ziel
@@ -315,6 +316,9 @@ export class Game {
       this.later(1.1, () => this.chat(this.chatLine(CHAT.bontanaSelbst), BONTANA.name));
     } else if (him && plan.last) {
       this.ui.toast(`🔥 ${BONTANA.name} ESKALIERT: ${fmtEuro(nv.bid)} für ${nv.target.name}!`, 'good', 'bontana');
+      // sein Schlusswort (ohne Zufall: der n-te Auftritt wählt die Zeile), dann ist der Chat außer sich
+      const last = CHAT.bontanaSchluss;
+      this.later(0.9, () => this.chat(last[Math.max(0, this.eco.bontana.n - 1) % last.length], BONTANA.name));
       this.burst(CHAT.bontanaEnde, 4, 3);
     } else if (him) this.burst(CHAT.bontana, 2, 2);
     else if (chance(0.7)) this.later(0.6, () => this.chat(this.chatLine(CHAT.bontanaKonter)));
@@ -1303,11 +1307,13 @@ export class Game {
 
   /**
    * Die Werkstatt-Rechnung einer Runde: bezahlt aus der Stream-Kasse (die Abrechnung am Ende führt sie unter
-   * „Reparaturen“), was die Kasse nicht hergibt, erlässt die Werkstatt. Am Rand die Zeile der Runde, am Guthaben der
-   * Abzug, James bucht, der Chat nimmt es gelassen – und wer heil angekommen ist, wird gefeiert.
+   * „Reparaturen“), was die Kasse nicht hergibt, erlässt die Werkstatt. Sie nimmt nur ganze Euro – die Rechnung ist
+   * ganz (REPARATUR), also gehen Bezahltes und Erlassenes in der Zeile genau auf, und die Cent bleiben in der Kasse.
+   * Am Rand die Zeile der Runde, am Guthaben der Abzug, James bucht, der Chat nimmt es gelassen – und wer heil
+   * angekommen ist, wird gefeiert.
    */
   payBill(b) {
-    const paid = Math.min(this.money, b.amount);
+    const paid = Math.min(Math.floor(this.money + 1e-6), b.amount);
     if (paid > 0) {
       this.money -= paid;
       this.breakdown.Reparaturen = (this.breakdown.Reparaturen || 0) - paid;

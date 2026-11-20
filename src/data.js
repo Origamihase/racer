@@ -130,8 +130,8 @@ export const FINES = ['Bußgeld', 'Verwarngeld', 'Reparaturen'];
 /**
  * Reise: An jedem erreichten Ziel kommt die Werkstatt-Rechnung der Runde (game.js settleRound). bump: Euro je
  * zählendem Rempler (ein Karosserie-Punkt, so viel wie ein gewöhnliches Siegergebot), mark: je neuer Kratzspur von der
- * Leitplanke (höchstens drei je Seite, damage.js). Bezahlt wird aus der Stream-Kasse; was sie nicht hergibt, erlässt
- * die Werkstatt. Wann die Fahrt in der Werkstatt endet (keine Punkte mehr), bleibt, wie es ist.
+ * Leitplanke (höchstens drei je Seite, damage.js). Bezahlt wird aus der Stream-Kasse in ganzen Euro; was sie nicht
+ * hergibt, erlässt die Werkstatt. Wann die Fahrt in der Werkstatt endet (keine Punkte mehr), bleibt, wie es ist.
  */
 export const REPARATUR = { bump: 150, mark: 25 };
 
@@ -273,6 +273,8 @@ export const CHAT = {
   bontanaSelbst: ['Ich lege nach 😎', 'Gute Fahrt, Mini Adam! 💸', 'Das Ziel gefällt mir', 'Da fahren wir hin 😎'],
   bontanaKonter: ['Der traut sich was!', 'Einfach dagegenhalten 😂', 'Mutig!', '+10 € gegen Bontana lol',
     'David gegen Goliath', 'Nicht aufgeben!', 'Ehrenmann, hält dagegen'],
+  // sein Schlusswort beim letzten Gebot, je Auftritt des Streams eins (BONTANA.max = 2)
+  bontanaSchluss: ['Mein letztes Gebot. Gute Fahrt, Mini Adam! 😎', 'So, und jetzt ab dahin 💸'],
   bontanaEnde: ['BONTANA ESKALIERT 🔥🔥🔥', 'Gekauft. Das Ziel gehört ihm.', 'Das war’s, Leute 😂', 'Legendär',
     'Danke BontanaBack! 💸', 'Ich hab Gänsehaut', 'Das Navi braucht jetzt eine Pause', 'Und das an einem Dienstag 😂'],
   // Zufriedenheit des Chats (Reise, satisfaction.js): zufrieden klingt er flott, unzufrieden ruft er nach Tempo – nie
@@ -942,15 +944,18 @@ export const ABSPANN_CREW = [
   ['Scheibenwischer', 'Auto-Wischer (Beta)'],
   ['Navigation', 'ferngesteuert vom Chat'],
 ];
-/** Abspann der Reise: die Leute des Streams, mit ausgedachten Berufen (nach ABSPANN_CREW, vor „Danke an“). */
+/**
+ * Abspann der Reise: die Leute des Streams, mit ausgedachten Berufen (nach ABSPANN_CREW, vor „Danke an“). Ein drittes
+ * Feld 'wide' gibt einer langen Zeile die ganze Breite; sie steht darum am Schluss, damit das Raster keine Lücke hat.
+ */
 export const ABSPANN_REISE = [
   ['Musik', 'Elti und IceBonbon'],
   ['Stimmen im Sprachstudio', '?CF und IceDrache'],
   ['Geek im Hintergrund', 'Arno Nühm'],
-  ['Moderation', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen'],
   ['Discord', 'Wils und DomZe'],
   ['Großbieter vom Dienst', 'BontanaBack'],
   ['Raid-Kommando', 'König Knolli'],
+  ['Moderation', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'wide'],
 ];
 /** Ganz am Ende des Abspanns der Reise, allein und leise (Wortlaut des Eigentümers, unverändert). */
 export const GEDENKEN = 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte';

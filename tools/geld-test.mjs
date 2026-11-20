@@ -9,8 +9,9 @@
 //   er und wer vorn lag im Wechsel, sein letztes Gebot auf einer 500er-Marke von 1.000 bis 3.000 €. Geprüft an der
 //   Stream-Kasse allein (viele Streams) und im echten Spiel (lange Streams: Rand, Chat, James).
 // - Werkstatt-Rechnung (data.js REPARATUR): An jedem Ziel kostet jeder zählende Rempler der Runde bump, jede neue
-//   Kratzspur mark Euro, bezahlt aus der Stream-Kasse (was fehlt, wird erlassen); die Zeile der Runde am Rand nennt
-//   Einnahmen und Reparatur, und die Einnahmen aller Runden ergeben zusammen genau, was der Stream verdient hat.
+//   Kratzspur mark Euro, bezahlt aus der Stream-Kasse in ganzen Euro (was fehlt, wird erlassen); die Zeile der Runde
+//   am Rand nennt Einnahmen und Reparatur, und die Einnahmen aller Runden ergeben zusammen genau, was der Stream
+//   verdient hat.
 // - Zufriedenheit des Chats (satisfaction.js): die Formel an gestellten Fahrten (Gleichgewicht je Tempo, Stehen, neuer
 //   Plan, Umweg, Urteil am Ziel), im Spiel geordnet nach Fahrer (zügig > mittel > gemütlich), und ihre Wirkung auf
 //   Spenden, Abos, VIP, Zuschauer und den Ton des Chats.
@@ -111,7 +112,7 @@ function journey(driver, minutes, seed, hook = null) {
     if (hook && hook.bill) hook.bill(game, b);
     const before = game.money;
     payBill(b);
-    run.bills.push({ ...b, t: game.t, paid: before - game.money, toast: toasts[toasts.length - 1], james: chat.filter((m) => m.name === 'James').pop() });
+    run.bills.push({ ...b, t: game.t, paid: before - game.money, left: game.money, toast: toasts[toasts.length - 1], james: chat.filter((m) => m.name === 'James').pop() });
   };
   const overbid = nv.overbid.bind(nv);
   nv.overbid = (s, bidder, inc, target) => {
@@ -280,9 +281,10 @@ console.log('BontanaBack (Reise):');
       const t1 = x[x.length - 1].t;
       const edge = r.toasts.filter((m) => m.key === 'bontana' && m.t >= t0 - 0.01 && m.t <= t1 + 0.01);
       const own = r.chat.some((m) => m.name === BONTANA.name && m.t >= t0 && m.t <= t1 + 3);
+      const said = r.chat.some((m) => m.name === BONTANA.name && CHAT.bontanaSchluss.includes(m.text) && m.t >= t1 && m.t <= t1 + 2);
       const wild = r.chat.filter((m) => m.t >= t0 && m.t <= t1 + 4 && (CHAT.bontana.includes(m.text) || CHAT.bontanaEnde.includes(m.text))).length;
       const james = r.chat.filter((m) => m.name === 'James' && m.t >= t0 - 0.01 && m.t <= t1 + 0.01 && m.text.includes(' bietet ')).length;
-      ok(edge.length === 2 && /steigt ein/.test(edge[0].text) && /ESKALIERT: [\d.]+\s€ für /.test(edge[1].text) && own && wild >= 3 && james >= x.length, `${where}: Eskalation zeigt Rand ${edge.map((m) => m.text).join(' | ')}, er selbst ${own}, Chat ${wild} Zeilen, James ${james}`);
+      ok(edge.length === 2 && /steigt ein/.test(edge[0].text) && /ESKALIERT: [\d.]+\s€ für /.test(edge[1].text) && own && said && wild >= 3 && james >= x.length, `${where}: Eskalation zeigt Rand ${edge.map((m) => m.text).join(' | ')}, er selbst ${own}, Schlusswort ${said}, Chat ${wild} Zeilen, James ${james}`);
       shown++;
     }
   }
@@ -297,6 +299,7 @@ console.log('Werkstatt-Rechnung (Reise):');
   // ein seitlicher Rempler, wie ihn der Verkehr meldet (zählt, wenn die Schonfrist vorbei ist)
   const bump = (game) => game.onCrash({ car: { s: game.player.s, speed: 20, len: 4.6, behavior: 'normal' }, lonOverlap: 3, latOverlap: 0.3, dx: 1, ds: 0 });
   // Runde 1: zwei Rempler und eine Kratzspur; Runde 2: heil; Runde 3: ein Rempler, aber die Kasse ist fast leer
+  // (40,50 €: die Werkstatt nimmt ganze 40 €, erlässt 110 €, und die 50 Cent bleiben)
   const plan = { done: new Set(), hits: () => 0 };
   const hook = {
     frame(game) {
@@ -309,7 +312,7 @@ console.log('Werkstatt-Rechnung (Reise):');
       if (r === 3 && game.navi.target && !game.tv) once('r3', () => bump(game));
     },
     bill(game, b) {
-      if (b.n === 3) game.money = 40;
+      if (b.n === 3) game.money = 40.5;
     },
   };
   const run = journey(DRIVERS[0], 60, 2024, hook);
@@ -321,7 +324,7 @@ console.log('Werkstatt-Rechnung (Reise):');
     ok(/^🧾 Runde 1 · Einnahmen \+[\d.]+\s€ · Reparatur −325\s€$/.test(b1.toast.text) && b1.toast.key === 'rechnung', `Runde 1 am Rand: ${b1.toast.text}`);
     ok(b1.james && /Werkstatt-Rechnung für Runde 1: 325\s€ für 2 Rempler und 1 Kratzer – bezahlt aus der Stream-Kasse\./.test(b1.james.text), `Runde 1, James: ${b1.james && b1.james.text}`);
     ok(b2.n === 2 && b2.amount === 0 && b2.paid === 0 && /keine Schäden ✨$/.test(b2.toast.text) && b2.toast.kind === 'good', `Runde 2 ohne Schäden: ${b2.toast.text}`);
-    ok(b3.n === 3 && b3.amount === R.bump && b3.paid === 40 && /Reparatur −40\s€ \(Rest 110\s€ erlassen\)$/.test(b3.toast.text) && /Bezahlt sind 40\s€, den Rest erlässt die Werkstatt/.test(b3.james.text), `Runde 3, Kasse fast leer: ${b3.toast.text} / ${b3.james && b3.james.text}`);
+    ok(b3.n === 3 && b3.amount === R.bump && b3.paid === 40 && Math.abs(b3.left - 0.5) < 1e-9 && /Reparatur −40\s€ \(Rest 110\s€ erlassen\)$/.test(b3.toast.text) && /Bezahlt sind 40\s€, den Rest erlässt die Werkstatt/.test(b3.james.text), `Runde 3, Kasse fast leer: ${b3.toast.text} / ${b3.james && b3.james.text}`);
   }
   const paid = run.bills.reduce((a, b) => a + b.paid, 0);
   ok(Math.abs((g.breakdown.Reparaturen || 0) + paid) < 1e-6, `Abrechnung: Reparaturen ${g.breakdown.Reparaturen} €, bezahlt ${paid} €`);

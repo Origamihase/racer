@@ -409,15 +409,15 @@ export class Menus {
         el('figcaption', '', f, p.kmh + ' km/h');
       }
     }
-    const credit = (grid, k, lines) => {
-      const c = el('div', 'crew-row', grid);
+    const credit = (grid, k, lines, wide) => {
+      const c = el('div', wide ? 'crew-row wide' : 'crew-row', grid);
       el('span', 'k', c, k);
       for (const v of lines) el('span', 'v', c, v);
     };
     const crew = el('div', 'crew', card);
     for (const [k, v] of ABSPANN_CREW) credit(crew, k, [v]);
     // Reise: die Leute des Streams, mit ausgedachten Berufen
-    if (o.travel) for (const [k, v] of ABSPANN_REISE) credit(crew, k, [v]);
+    if (o.travel) for (const [k, v, wide] of ABSPANN_REISE) credit(crew, k, [v], wide === 'wide');
     // Wie im echten Abspann danach die Unterstützenden: größte Spende, Abo-Verschenker (die meisten zuerst), neue VIPs
     const F = o.fans;
     if (F && (F.top || F.gifters.length || F.vips.length)) {
@@ -503,7 +503,7 @@ export class Menus {
       'Geld gibt es nur vom Publikum: Spenden, Abos, Navi-Gebote. Fürs Fahren selbst zahlt niemand – aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.',
       'Wenn NOMI sagt „Die linke Fahrspur ist freigeschaltet.“, hat jemand dafür gespendet: Eine Minute lang darfst du ganz links fahren. Nutzt du sie, freut sich der Chat. Danach gilt wieder das Rechtsfahrgebot, sonst kommt die Polizei Gifhorn.',
       reise
-        ? 'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Cent drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV.'
+        ? 'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Zehner drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV. Dort rechnet auch die Werkstatt die Rempler der Runde ab, und je zügiger du von Ziel zu Ziel kommst, desto zufriedener ist der Chat (das Gesicht oben im Chat) – und desto lieber gibt er.'
         : 'Das Navi-Ziel ändert sich ständig – jeder Bieter legt mindestens einen Cent drauf. Kommst du trotzdem an, feiert der Chat mit Ortsspenden.',
       ...(reise ? ['Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.'] : []),
       'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Tesla-Shop den Radarwarner.',
