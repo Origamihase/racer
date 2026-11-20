@@ -185,7 +185,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .sub-adam .sub-text { font-style: italic; }
 /* BrunnenTV am Navi-Ziel (XXL): die Bauchbinde der Folge, wie eine Sendung ihren Titel einblendet – der Brunnen in
    der Bildmitte bleibt zu sehen. Wer spricht, hat den Streifen: Die Bauchbinde wartet so lange. Nur in breiten
-   Fenstern bleibt sie neben einem kurzen Satz stehen („Sie haben Ihr Ziel erreicht.“; ui.js setzt .short). */
+   Fenstern bleibt sie neben einem kurzen Satz stehen („Neues Ziel: Brunnen in Hanau!“; ui.js setzt .short). */
 .brunnentv { flex: none; max-width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 10px; border-radius: 14px; border: 2px solid rgba(190, 236, 255, 0.85);
   background: linear-gradient(160deg, rgba(18, 96, 150, 0.96), rgba(10, 44, 92, 0.96)); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
 .brunnentv.pop { animation: tvin 0.5s cubic-bezier(.2,1.3,.4,1); }
@@ -253,15 +253,6 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .chat { position: absolute; top: 14px; right: 14px; width: min(310px, 30vw); max-height: max(84px, calc(23vh - 14px)); display: flex; flex-direction: column; background: rgba(10, 10, 13, 0.6);
   border: 1px solid var(--line); border-radius: 14px; overflow: hidden; backdrop-filter: blur(4px); z-index: 3; }
 .chat-head { display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; padding: 7px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sub); border-bottom: 1px solid var(--line); }
-.chat-count { text-transform: none; letter-spacing: 0; font-weight: 600; }
-/* Reise: Zufriedenheit des Chats im Kopf – Gesicht und schmaler Balken (grün, ab 35–59 gold, darunter rot) */
-.chat-mood { display: none; align-items: center; gap: 5px; margin-left: auto; text-transform: none; letter-spacing: 0; }
-.chat-mood.on { display: inline-flex; }
-.chat-mood-face { font-family: var(--emoji); font-size: 13px; line-height: 1; }
-.chat-mood-bar { display: block; width: 44px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
-.chat-mood-fill { display: block; height: 100%; width: 60%; border-radius: 2px; background: var(--green); transition: width 0.4s linear, background-color 0.4s; }
-.chat-mood.mid .chat-mood-fill { background: var(--gold); }
-.chat-mood.low .chat-mood-fill { background: var(--bad); }
 /* oben nur ganze Nachrichten: eine angeschnittene blendet ui.trimChat aus (.gone) */
 .chat-list { overflow: hidden; padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; line-height: 1.32; }
 .msg { animation: msgin 0.25s; overflow-wrap: anywhere; }
@@ -777,7 +768,6 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .hud-info { transform: scale(0.85); transform-origin: top left; }
   .chat { font-size: 12px; }
   .chat-list { font-size: 12px; }
-  .chat-count { display: none; }
   .crow { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
   .crow span:nth-child(4) { display: none; }
 }
@@ -942,6 +932,9 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 .lg-start { background: radial-gradient(circle, #e8212e 0 3px, #ffffff 3.5px); border: 2.5px solid #1d1f22; }
 .lg-tv { background: #1f8fd8; border: 2px solid #fff; }
 .lg-park { background: #2f8f4e; border: 2px solid #fff; }
+/* Einschaltquote (src/ui/quotechart.js): niedriger als die Karte, die Linie wie die Route */
+.quote-wrap { height: 170px; background: #ebe8e1; }
+.lg-quote { width: 18px !important; height: 5px !important; border-radius: 3px !important; background: #2f6fe4; box-shadow: 0 0 0 1.5px #1e4fb0; }
 .lg-park::after { content: ''; width: 6px; height: 7px; border-radius: 1px 1px 3px 3px; background: #fff; box-shadow: -2px -3px 0 -1.5px #fff, 2px -3px 0 -1.5px #fff; }
 .route-totals { display: flex; flex-direction: column; gap: 8px; }
 .rt { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center; column-gap: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 10px; padding: 7px 12px; }

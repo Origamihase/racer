@@ -7,6 +7,7 @@ import { renderDriveSettings, driveSettings } from './drive-settings.js';
 import { MapScreen, visitLine } from './mapscreen.js';
 import { renderAlbum } from './album.js';
 import { drawRouteMap } from './routemap.js';
+import { drawQuote } from './quotechart.js';
 import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
 import { canFullscreen, fullscreenLabel, toggleFullscreen, onFullscreenChange, homeScreenHint } from './fullscreen.js';
 
@@ -385,7 +386,9 @@ export class Menus {
     button(menu, '🏠 Hauptmenü', 'menu');
     // die Route des Tages auf der Karte, daneben die Summen
     this.routeObs?.disconnect();
+    this.quoteObs?.disconnect();
     if (o.route) this.routeBlock(card, o);
+    if (o.quote && o.quote.v.length > 1) this.quoteBlock(card, o.quote);
     const cols = el('div', 'over-cols', card);
     const left = el('div', 'over-col', cols);
     el('h3', '', left, 'Abrechnung');
@@ -502,6 +505,39 @@ export class Menus {
     };
     this.routeObs = new ResizeObserver(draw);
     this.routeObs.observe(wrap);
+  }
+
+  /**
+   * Abspann der Reise: die Einschaltquote – wie viele zugeschaut haben, über die ganze Sendezeit (ui/quotechart.js),
+   * im Stil der Route darüber. Neu gezeichnet, wenn sich die Größe ändert.
+   */
+  quoteBlock(card, q) {
+    const box = el('section', 'over-route over-quote', card);
+    el('h3', '', box, 'Einschaltquote');
+    const wrap = el('div', 'route-map-wrap quote-wrap', box);
+    const canvas = el('canvas', 'route-map', wrap);
+    canvas.setAttribute('role', 'img');
+    let peak = 0;
+    for (const v of q.v) peak = Math.max(peak, v);
+    canvas.setAttribute('aria-label', `Zuschauer im Lauf des Streams, Spitze ${fmtNum(peak)}`);
+    const legend = el('div', 'route-legend', box);
+    const e = el('span', 'lg', legend);
+    el('i', 'lg-quote', e, '');
+    e.append('Zuschauer im Lauf des Streams');
+    if (q.tv.length) {
+      const f = el('span', 'lg', legend);
+      el('i', 'lg-tv', f, '1');
+      f.append('BrunnenTV-Folge');
+    }
+    const draw = () => {
+      const w = Math.round(wrap.clientWidth);
+      const h = Math.round(wrap.clientHeight);
+      if (w < 20 || h < 20 || canvas.dataset.size === w + 'x' + h) return;
+      canvas.dataset.size = w + 'x' + h;
+      drawQuote(canvas, q, w, h, Math.min(2, window.devicePixelRatio || 1));
+    };
+    this.quoteObs = new ResizeObserver(draw);
+    this.quoteObs.observe(wrap);
   }
 
   render_shop(s, d) {

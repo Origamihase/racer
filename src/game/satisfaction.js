@@ -1,5 +1,6 @@
-// Zufriedenheit des Chats auf der Reise (0 … 100, sichtbar im Chat-Kopf). Der Eigentümer: „Je schneller man von Ziel zu
-// Ziel ist, desto zufriedener ist der Chat. Die Zufriedenheit des Chats beeinflusst natürlich auch das Finanzielle.“
+// Zufriedenheit des Chats auf der Reise (0 … 100; das HUD zeigt sie nie, sie wirkt nur). Der Eigentümer: „Je
+// schneller man von Ziel zu Ziel ist, desto zufriedener ist der Chat. Die Zufriedenheit des Chats beeinflusst
+// natürlich auch das Finanzielle.“
 //
 // Gemessen wird nicht die Strecke, sondern der Fortschritt gegen eine faire Zeit: R ist die Fahrzeit zum Ziel, wie
 // das Navi sie im eigenen Tempo rechnet (trip.reach().secs: Autobahn 38 m/s, Landstraße 24, Rampe 21, Ort 13). Wer im
@@ -33,11 +34,6 @@ export const ZUFRIEDEN = {
   // Ton des Chats: ab happy klingt er zu share fröhlich-flott, bis grumpy zu share ungeduldig
   happy: 70, happyShare: 0.2, grumpy: 35, grumpyShare: 0.25,
 };
-
-/** Das Gesicht im Chat-Kopf zur Zufriedenheit. */
-export function moodEmoji(s) {
-  return s < 20 ? '😤' : s < 40 ? '😕' : s < 60 ? '🙂' : s < 80 ? '😄' : '🤩';
-}
 
 export class Satisfaction {
   constructor(start = ZUFRIEDEN.start) {

@@ -8,11 +8,14 @@
 //   mit Brunnen und Ort an.
 // - Streamende: Nach jeder Folge öffnet ein Bieterfenster; ob jemand bietet, hängt an der Stimmung, und bietet niemand,
 //   ist der Stream vorbei (Abspann 'stream').
+// - Zuschauer: Während der Fahrt zeigt das HUD nur die Zahl am 👁 (kein Gesicht, kein Balken, keine Kurve, keine
+//   zweite Zahl im Chat-Kopf); der Abspann zeigt die Einschaltquote als Kurve (ui/quotechart.js).
 import { readFileSync } from 'node:fs';
 import * as DATA from '../src/data.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
 import { MOOD_START, Economy } from '../src/game/economy.js';
-import { AUKTION, fountainIn } from '../src/game/game.js';
+import { AUKTION, QUOTE_DT, fountainIn } from '../src/game/game.js';
+import { drawQuote } from '../src/ui/quotechart.js';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
 
 let fails = 0;
@@ -197,6 +200,35 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   }
   ok(!sim2.game.over && bidT > 0 && Math.abs(bidT - open2 - 7) < 0.6 && sim2.game.navi.target && sim2.game.navi.window === 0, `Gebot im Fenster: nach ${(bidT - open2).toFixed(1)} s, Stream ${sim2.game.over ? 'vorbei' : 'läuft'}`);
   console.log(`  Bieterfenster ${AUKTION.window} s: niemand bietet bei Stimmung 0,8 ${pct(p8)} · 0,5 ${pct(p5)} · 0,3 ${pct(p3)} · 0,1 ${pct(p1)}; ohne Gebot endet der Stream ${(game.t - opened).toFixed(1)} s nach dem Öffnen`);
+}
+
+// --- Eine Zuschauerzahl, die Einschaltquote im Abspann --------------------------------------------------------------
+{
+  const ui = read('src/ui/ui.js');
+  ok(/'👁 ' \+ fmtNum\(Math\.round\(g\.viewers\)\)/.test(ui), 'HUD: Zuschauerzahl am 👁 fehlt');
+  ok(!/chatCount|chat-count|chatMood|Zuschauer'/.test(ui), 'HUD: eine zweite Zuschauerzahl oder die Stimmung im Chat-Kopf');
+  ok(!/chat-count|chat-mood/.test(read('docs/style.css')), 'style.css: Reste von Zuschauerzahl oder Stimmung im Chat-Kopf');
+  const sim = makeStream({ driver: DRIVERS.zuegig, seed: 2 });
+  sim.step(300);
+  const q = sim.game.quote;
+  ok(Math.abs(q.v.length - 300 / QUOTE_DT) <= 2 && q.v.every((v) => v > 0), `Einschaltquote: ${q.v.length} Werte in 300 s`);
+  ok(q.tv.length === sim.game.stats.brunnenTV && q.tv.every((e) => e.t > 0 && e.n > 0), 'Einschaltquote: Folgen fehlen');
+  sim.game.end('quit');
+  const o = sim.game.over.quote;
+  ok(o && o.v.length === q.v.length + 1 && o.t === sim.game.t, 'Abspann ohne Einschaltquote');
+  // gezeichnet mit einer Leinwand zum Mitschreiben (Node hat keine): Kurve, Folgen, Spitze
+  const calls = [];
+  const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : k === 'measureText' ? () => ({ width: 60 }) : k === 'createLinearGradient' ? () => ({ addColorStop() {} }) : (...a) => calls.push([k, ...a])), set: (t, k, v) => ((t[k] = v), true) });
+  globalThis.Path2D = class {
+    moveTo() {}
+    lineTo() {}
+    closePath() {}
+  };
+  const peak = drawQuote({ getContext: () => ctx }, o, 640, 170, 2);
+  ok(peak.v === Math.max(...o.v), `Einschaltquote: Spitze ${peak.v}, höchster Wert ${Math.max(...o.v)}`);
+  ok(calls.some((c) => c[0] === 'fillText' && /^Spitze /.test(c[1])) && calls.filter((c) => c[0] === 'arc').length >= o.tv.length + 1, 'Einschaltquote: Spitze oder Folgen nicht gezeichnet');
+  ok(/quoteBlock\(card, o\.quote\)/.test(read('src/ui/menus.js')), 'menus.js: Abspann zeigt die Einschaltquote nicht');
+  console.log(`  Zuschauer: eine Zahl am 👁 · Einschaltquote ${o.v.length} Werte, Spitze ${peak.v}, ${o.tv.length} Folgen markiert`);
 }
 
 console.log(`ansagen-test: ${checks} Prüfungen, ${fails} Fehler`);

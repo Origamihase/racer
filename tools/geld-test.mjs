@@ -21,7 +21,7 @@ import { PerspectiveCamera } from 'three';
 import { Trip, J } from '../src/game/trip.js';
 import { Game } from '../src/game/game.js';
 import { Economy, BONTANA } from '../src/game/economy.js';
-import { Satisfaction, ZUFRIEDEN, moodEmoji } from '../src/game/satisfaction.js';
+import { Satisfaction, ZUFRIEDEN } from '../src/game/satisfaction.js';
 import { clamp } from '../src/util.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { CHAT, REPARATUR, CREW, CREW_LINES, ABSPANN_REISE, GEDENKEN } from '../src/data.js';
@@ -399,7 +399,7 @@ console.log('Zufriedenheit des Chats (Reise):');
   const dSlow = slow.arrive();
   ok(Math.abs(dFast - (Math.min(Z.arrive.hi, Z.arrive.k * 0.3) + Z.arrive.bonus)) < 0.6 && Math.abs(dSlow - (Z.arrive.bonus - Z.arrive.k * 0.3)) < 0.6, `am Ziel: zügig ${fmt(dFast, 1)}, langsam ${fmt(dSlow, 1)}`);
   const at = (v) => Object.assign(new Satisfaction(), { value: v });
-  ok(at(0).gain === 0.6 && at(50).gain === 1 && Math.abs(at(100).gain - 1.4) < 1e-12 && at(50).audience === 1 && moodEmoji(10) === '😤' && moodEmoji(90) === '🤩', 'Faktoren oder Gesichter falsch');
+  ok(at(0).gain === 0.6 && at(50).gain === 1 && Math.abs(at(100).gain - 1.4) < 1e-12 && at(50).audience === 1, 'Faktoren falsch');
   console.log(`  Formel: Gleichgewicht bei p 1,25 / 1 / 0,85: ${fmt(e125, 1)} / ${fmt(e100, 1)} / ${fmt(e085, 1)} · eine Minute Stehen −${fmt(standDrop, 1)} · am Ziel zügig (q 1,3) ${fmt(dFast, 1)}, langsam (q 0,7) ${fmt(dSlow, 1)}`);
   // im Spiel: die Fahrer von oben, Mittel über ihre Streams
   const mean = (name) => runs.get(name).reduce((a, r) => a + r.zSum, 0) / runs.get(name).reduce((a, r) => a + r.zN, 0);

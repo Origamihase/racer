@@ -110,6 +110,8 @@ export const TOWN_HOLD = 75;
  * vor dem Ende des Fensters meldet sich der Chat.
  */
 export const AUKTION = { lock: 5, window: 25, warn: 10 };
+// Einschaltquote für den Abspann (menus.js, ui/quotechart.js): alle QUOTE_DT Sekunden die Zuschauerzahl
+export const QUOTE_DT = 5;
 // Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
 // Kästchen, lead Sekunden später folgen NOMIs Gong und ihre Ansage
 const RADAR = { ahead: 180, lead: 0.45 };
@@ -177,6 +179,8 @@ export class Game {
     this.crewT = { raid: M(CREW.raid.first), knolli: Infinity, mod: M(CREW.modEvery), discord: M(CREW.discordEvery), heart: M(CREW.heartEvery) };
     this.viewers = this.eco.viewers;
     this.peakViewers = 240;
+    // Einschaltquote (QUOTE_DT): Zuschauer je Schritt und die Folgen mit ihrer Zeit, für die Kurve im Abspann
+    this.quote = { dt: QUOTE_DT, v: [], tv: [], next: 0 };
     this.recordShown = false;
     this.lastHorn = -99;
     this.megafonCd = 0;
@@ -1486,6 +1490,7 @@ export class Game {
     const entry = addEpisode(this.save, { place: t.place, t: this.streamT, clock: this.clock, kinds });
     const n = entry.n;
     this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, skip: false, called: false, debate: entry.d || null };
+    this.quote.tv.push({ t: this.t, n });
     this.routeMark('brunnen', { n, place: t.place });
     this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town });
   }
@@ -1911,6 +1916,10 @@ export class Game {
     this.viewers = this.eco.viewers;
     this.peakViewers = Math.max(this.peakViewers, this.viewers);
     this.stats.maxViewers = this.peakViewers;
+    if (this.t >= this.quote.next) {
+      this.quote.v.push(Math.round(this.viewers));
+      this.quote.next += QUOTE_DT;
+    }
     const best = Math.max(500, this.save.best.viewers || 0);
     if (!this.recordShown && this.viewers > best && this.t > 45) {
       this.recordShown = true;
@@ -2429,6 +2438,8 @@ export class Game {
       // die Route des Streams (genommene Abschnitte, Folgen, Ladestopps; die Summe ist der Kilometerzähler)
       route: this.route.finish(this.odometer),
       air: this.airtime,
+      // die Einschaltquote des Streams (Kurve im Abspann)
+      quote: { dt: this.quote.dt, v: [...this.quote.v, Math.round(this.viewers)], tv: this.quote.tv.slice(), t: this.t },
       money: Math.max(0, Math.round(this.money * 100) / 100),
       breakdown: { ...this.breakdown },
       jobs: this.jobs.map((j) => ({ text: j.text, done: j.done, pledge: j.pledge, pledger: j.pledger })),

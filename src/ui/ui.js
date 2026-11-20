@@ -6,11 +6,9 @@ import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
 import { fmtOdo } from '../map/navroute.js';
-import { moodEmoji } from '../game/satisfaction.js';
 import { NARROW_MID, infoWidth, overlap } from './sicht.js';
 
 /** Zufriedenheit des Chats sichtbar im Chat-Kopf? Nein: Die Chat-Stimmung gehört nicht ins HUD (Besitzer, 17.11.). */
-const CHAT_MOOD_SICHTBAR = false;
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -130,15 +128,10 @@ export class UI {
 
     // --- rechts: Chat ---
     this.chatEl = el('div', 'chat', this.hud);
+    // (die Zuschauerzahl steht nur oben links am 👁: eine Zahl, an einer Stelle – der Eigentümer, 20.11.2026; die
+    // Stimmung des Chats zeigt das HUD nie, sie wirkt nur: Geld, Zuschauer, Ton)
     const head = el('div', 'chat-head', this.chatEl);
     el('span', '', head, 'Live-Chat');
-    // wie zufrieden der Chat ist (Gesicht und schmaler Balken; satisfaction.js), ausgeblendet (CHAT_MOOD_SICHTBAR)
-    this.chatMood = el('span', 'chat-mood', head);
-    this.chatMood.title = 'Zufriedenheit des Chats';
-    this.chatMoodFace = el('span', 'chat-mood-face', this.chatMood, '');
-    this.chatMoodFill = el('i', 'chat-mood-fill', el('span', 'chat-mood-bar', this.chatMood));
-    this.chatMoodShown = '';
-    this.chatCount = el('span', 'chat-count', head, '');
     this.chatList = el('div', 'chat-list', this.chatEl);
 
     // Funkloch: Der Stream ist weg – das steht dort, wo er fehlt, im Chat-Feld an Stelle der Nachrichten
@@ -898,24 +891,5 @@ export class UI {
         if (short && first() > max) this.naviTarget.textContent = short;
       }
     }
-    this.chatCount.textContent = fmtNum(Math.round(g.viewers)) + ' Zuschauer';
-    this.showChatMood(g.zufrieden);
-  }
-
-  /** Zufriedenheit im Chat-Kopf (Reise): Gesicht, Balken, Farbe; neu geschrieben nur, wenn sich etwas ändert. */
-  showChatMood(z) {
-    const v = z ? Math.round(z.value) : -1;
-    const key = String(v);
-    if (key === this.chatMoodShown) return;
-    this.chatMoodShown = key;
-    // Der Besitzer (17.11.): „Die Chat-Stimmung soll nicht ins HUD.“ Die Zufriedenheit wirkt auf Geld, Zuschauer und
-    // Ton, angezeigt wird sie nicht; das Element bleibt aus, bis er es anders will (CHAT_MOOD_SICHTBAR).
-    this.chatMood.classList.toggle('on', CHAT_MOOD_SICHTBAR && v >= 0);
-    if (v < 0 || !CHAT_MOOD_SICHTBAR) return;
-    this.chatMoodFace.textContent = moodEmoji(v);
-    this.chatMoodFill.style.width = v + '%';
-    this.chatMood.classList.toggle('low', v < 35);
-    this.chatMood.classList.toggle('mid', v >= 35 && v < 60);
-    this.chatMood.setAttribute('aria-label', `Zufriedenheit des Chats: ${v} von 100`);
   }
 }
