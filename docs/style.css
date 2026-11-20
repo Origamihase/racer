@@ -929,3 +929,7 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .route-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .route-totals .rt:last-child { grid-column: 1 / -1; }
 }
+/* Handy quer: so niedrig, dass Karte und Zeichenerklärung unter der Überschrift ganz ins Bild passen */
+@media (max-height: 500px) {
+  .route-map-wrap { height: 220px; }
+}

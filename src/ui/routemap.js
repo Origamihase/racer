@@ -3,10 +3,13 @@
 // Weg des Navis), der Start in Erlensee, jede BrunnenTV-Folge mit ihrer Nummer, jeder Ladestopp mit dem Stecker wie im
 // Navi und das Auto am Ende. Der Ausschnitt passt sich der Route an, in einer Maßstabsstufe der großen Karte (gleiche
 // Punkte, gleiche Namen wie dort).
-import { MapPainter, THEMES, bucketScale, project } from '../map/mapview.js';
+import { MapPainter, THEMES, bucketScale, project, spotBox, dotRadius, PLACE_BY_INDEX, menuLayoutOf } from '../map/mapview.js';
 import { drawCar, drawTurnIcon, FONT } from '../map/symbols.js';
 
 const PAD = 30; // Rand um die Route (CSS-Bildpunkte): Platz für Marken und Auto
+const EDGE = 3; // Namen bleiben so weit vom Rand der Karte …
+const CORNER = 14; // … und aus ihren runden Ecken (style.css .route-map-wrap border-radius)
+const CAR_R = 12; // halbe Breite des Autos (drawCar mit 20 Bildpunkten) für die Namen, die ihm ausweichen
 const MIN_B = 4; // gröbste Stufe (ganz Europa auf einer Handbreit)
 const MAX_B = 19; // feinste Stufe: auch eine kurze Route zeigt noch die Gegend
 const START = project(50.2276, 8.9576); // Erlensee, falls der Weg leer ist
@@ -51,16 +54,12 @@ function ends(L) {
 }
 
 /**
- * Die Route auf die Leinwand zeichnen: w × h CSS-Bildpunkte, ps Bildpunkte der Leinwand je CSS-Bildpunkt. route =
- * { line: [x, y, …] Karteneinheiten (NaN: Sprung übers Wasser), marks: [{ type: 'brunnen' | 'laden', n, x, y }] }.
- * Ergebnis: Lage der Marken im Bild (CSS-Bildpunkte) für Prüfungen: [{ type, n, x, y, moved (zur Seite gerückt) }].
+ * Ausschnitt der Karte für eine Route (ohne Leinwand, läuft auch unter Node): w × h CSS-Bildpunkte; route = { line:
+ * [x, y, …] Karteneinheiten (NaN: Sprung übers Wasser), marks: [{ type: 'brunnen' | 'laden', n, x, y }] }. Ergebnis:
+ * Maßstabsstufe b, Maßstab s (CSS-Bildpunkte je Einheit), linke obere Ecke (wx, wy), X/Y (Karte → Bild), die Marken
+ * (items: Start, Ladestopps, Folgen mit Lage x, y, ihrer Stelle x0, y0 und Halbmesser r), das Auto (car, Richtung a).
  */
-export function drawRouteMap(canvas, route, w, h, ps) {
-  painter = painter || new MapPainter({ theme: 'light', look: 'menu' });
-  const T = THEMES.light;
-  canvas.width = Math.max(1, Math.round(w * ps));
-  canvas.height = Math.max(1, Math.round(h * ps));
-  const ctx = canvas.getContext('2d');
+export function routeView(route, w, h) {
   const L = route.line || [];
   const box = bounds(route) || [START.x, START.y, START.x, START.y];
   const bw = Math.max(box[2] - box[0], 1e-4);
@@ -69,17 +68,128 @@ export function drawRouteMap(canvas, route, w, h, ps) {
   const fit = Math.min((w - 2 * PAD) / bw, (h - 2 * PAD) / bh);
   const b = Math.min(MAX_B, Math.max(MIN_B, Math.floor(Math.log2(Math.max(fit, 1)) * 2)));
   const s = bucketScale(b);
-  const cx = (box[0] + box[2]) / 2;
-  const cy = (box[1] + box[3]) / 2;
-  const wx = cx - w / 2 / s;
-  const wy = cy - h / 2 / s;
-  painter.renderStatic(ctx, wx, wy, s * ps, canvas.width, canvas.height, ps, b);
+  const wx = (box[0] + box[2]) / 2 - w / 2 / s;
+  const wy = (box[1] + box[3]) / 2 - h / 2 / s;
   const X = (x) => (x - wx) * s;
   const Y = (y) => (y - wy) * s;
+  // Marken: der Start, dann die Ladestopps, darüber die Folgen. Was sich deckt (auch mit dem Auto am Ende), rückt ein
+  // Stück zur Seite und zeigt mit einem dünnen Strich auf seine Stelle.
+  const { first, last, prev } = ends(L);
+  const car = last ? { x: X(last[0]), y: Y(last[1]), a: prev ? Math.atan2(last[0] - prev[0], -(last[1] - prev[1])) : 0 } : null;
+  const placed = car ? [[car.x, car.y]] : [];
+  const items = [];
+  const put = (type, mx, my, data = {}) => {
+    const x = X(mx);
+    const y = Y(my);
+    let px = x;
+    let py = y;
+    for (let k = 0; k < 12 && placed.some((q) => Math.hypot(q[0] - px, q[1] - py) < 22); k++) {
+      const a = -Math.PI / 4 + k * 1.1;
+      px = x + Math.cos(a) * 21 * (1 + k * 0.15);
+      py = y + Math.sin(a) * 21 * (1 + k * 0.15);
+    }
+    placed.push([px, py]);
+    // Halbmesser samt weißem Rand (Start 9 + 1,5; Marken 11 oder 13 + 1,25)
+    const r = type === 'start' ? 10.5 : type === 'brunnen' && String(data.n).length > 2 ? 14.5 : 12.5;
+    items.push({ type, ...data, x0: x, y0: y, x: px, y: py, r });
+  };
+  const st = first || [START.x, START.y];
+  put('start', st[0], st[1]);
+  const marks = (route.marks || []).filter((m) => Number.isFinite(m.x) && Number.isFinite(m.y));
+  for (const m of marks) if (m.type === 'laden') put('laden', m.x, m.y);
+  for (const m of marks) if (m.type === 'brunnen') put('brunnen', m.x, m.y, { n: m.n });
+  return { w, h, b, s, wx, wy, X, Y, items, car };
+}
+
+/**
+ * Welche Namen und Schilder der großen Karte (layout = menuLayout der Stufe: labels nach Vorrang, shown = Orte mit
+ * Punkt) die Routenkarte zeigt und wo. Sie stehen über dem Weg (mit ihrem hellen Rand lesbar), aber ganz im Bild und
+ * in seinen runden Ecken, frei von Marken, Auto, Ortspunkten und einander: Ein verdeckter Ortsname versucht die anderen
+ * Seiten seines Punkts, sonst bleibt er weg. Geprüft wird wie in menuLayout: der Kasten selbst gegen Punkte (um 1
+ * vergrößert) und gesetzte Kästen (um 2 × 1). Ergebnis: Map Name → [x0, y0] (linke obere Ecke, CSS-Bildpunkte).
+ */
+export function routeLabels(v, layout) {
+  const { w, h, s, X, Y } = v;
+  const taken = []; // [x0, y0, x1, y1, Ort des Punkts (sein eigener Name steht daneben)]
+  const free = (x0, y0, x1, y1, own) => !taken.some((q) => q[4] !== own && x0 < q[2] && x1 > q[0] && y0 < q[3] && y1 > q[1]);
+  for (const i of layout.shown) {
+    const p = PLACE_BY_INDEX[i];
+    const r = dotRadius(p, s) + 1;
+    const x = X(p.x);
+    const y = Y(p.y);
+    if (x > -r && y > -r && x < w + r && y < h + r) taken.push([x - r, y - r, x + r, y + r, i]);
+  }
+  for (const it of v.items) {
+    taken.push([it.x - it.r, it.y - it.r, it.x + it.r, it.y + it.r]);
+    if (it.x !== it.x0 || it.y !== it.y0) taken.push([it.x0 - 5, it.y0 - 5, it.x0 + 5, it.y0 + 5]);
+  }
+  if (v.car) taken.push([v.car.x - CAR_R, v.car.y - CAR_R, v.car.x + CAR_R, v.car.y + CAR_R]);
+  const inside = (x0, y0, x1, y1) => {
+    if (x0 < EDGE || y0 < EDGE || x1 > w - EDGE || y1 > h - EDGE) return false;
+    // in den runden Ecken muss auch die Ecke des Kastens im Bogen liegen
+    for (const [px, py] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) {
+      const qx = Math.min(Math.max(px, CORNER), w - CORNER);
+      const qy = Math.min(Math.max(py, CORNER), h - CORNER);
+      if (Math.hypot(px - qx, py - qy) > CORNER - EDGE) return false;
+    }
+    return true;
+  };
+  // Liegt eine Marke oder das Auto auf dem Ortspunkt (die Folge in ihrem Ort), rückt sein Name um sie herum
+  const cover = (x, y, r) => {
+    let R = r;
+    for (const [mx, my, mr] of v.items.map((it) => [it.x, it.y, it.r]).concat(v.car ? [[v.car.x, v.car.y, CAR_R]] : [])) {
+      const d = Math.hypot(mx - x, my - y);
+      if (d < mr + r) R = Math.max(R, d + mr);
+    }
+    return R;
+  };
+  const out = new Map();
+  for (const l of layout.labels) {
+    const x0 = X(l.x) + l.dx;
+    const y0 = Y(l.y) + l.dy;
+    if (x0 > w || y0 > h || x0 + l.w < 0 || y0 + l.h < 0) continue;
+    const own = l.kind === 'place' ? l.i : -1;
+    const tries = [[x0, y0]];
+    if (own >= 0) {
+      const r = dotRadius(PLACE_BY_INDEX[own], s);
+      const R = cover(X(l.x), Y(l.y), r);
+      for (const rr of R > r ? [r, R] : [r]) for (let k = 0; k < 8; k++) tries.push(spotBox(X(l.x), Y(l.y), rr, 3, l.w, l.h, k));
+      // über oder unter dem Punkt auch seitlich verschoben, solange der Punkt über oder unter dem Namen bleibt
+      for (const k of [2, 3]) {
+        const [cx, cy] = spotBox(X(l.x), Y(l.y), R, 3, l.w, l.h, k);
+        for (let d = 6; d <= l.w / 2 - R; d += 6) tries.push([cx - d, cy], [cx + d, cy]);
+      }
+    }
+    for (const [bx, by] of tries) {
+      if (!inside(bx, by, bx + l.w, by + l.h) || !free(bx, by, bx + l.w, by + l.h, own)) continue;
+      taken.push([bx - 2, by - 1, bx + l.w + 2, by + l.h + 1]);
+      out.set(l, [bx, by]);
+      break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Die Route auf die Leinwand zeichnen: w × h CSS-Bildpunkte, ps Bildpunkte der Leinwand je CSS-Bildpunkt, route wie
+ * bei routeView. Ergebnis: Lage der Marken im Bild (CSS-Bildpunkte) für Prüfungen: [{ type, n, x, y, moved }].
+ */
+export function drawRouteMap(canvas, route, w, h, ps) {
+  painter = painter || new MapPainter({ theme: 'light', look: 'menu', labels: false });
+  const T = THEMES.light;
+  const v = routeView(route, w, h);
+  const { X, Y } = v;
+  const names = routeLabels(v, menuLayoutOf(v.b));
+  canvas.width = Math.max(1, Math.round(w * ps));
+  canvas.height = Math.max(1, Math.round(h * ps));
+  const ctx = canvas.getContext('2d');
+  // Land, Straßen und Ortspunkte wie in der großen Karte; die Namen kommen erst über den Weg
+  painter.renderStatic(ctx, v.wx, v.wy, v.s * ps, canvas.width, canvas.height, ps, v.b);
   ctx.setTransform(ps, 0, 0, ps, 0, 0);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   // der gefahrene Weg in den Farben der Route des Navis
+  const L = route.line || [];
   if (L.length >= 4) {
     const p = new Path2D();
     let pen = false;
@@ -98,32 +208,15 @@ export function drawRouteMap(canvas, route, w, h, ps) {
       ctx.stroke(p);
     }
   }
-  // Marken: erst der Start, dann die Ladestopps, darüber die Folgen. Was sich deckt (auch mit dem Auto am Ende), rückt
-  // ein Stück zur Seite und zeigt mit einem dünnen Strich auf seine Stelle.
-  const { first, last, prev } = ends(L);
-  const car = last ? [X(last[0]), Y(last[1])] : null;
-  const placed = car ? [car] : [];
-  const items = [];
-  const put = (type, mx, my, data = {}) => {
-    const x = X(mx);
-    const y = Y(my);
-    let px = x;
-    let py = y;
-    for (let k = 0; k < 12 && placed.some((q) => Math.hypot(q[0] - px, q[1] - py) < 22); k++) {
-      const a = -Math.PI / 4 + k * 1.1;
-      px = x + Math.cos(a) * 21 * (1 + k * 0.15);
-      py = y + Math.sin(a) * 21 * (1 + k * 0.15);
-    }
-    placed.push([px, py]);
-    items.push({ type, ...data, x0: x, y0: y, x: px, y: py });
-  };
-  const st = first || [START.x, START.y];
-  put('start', st[0], st[1]);
-  const marks = (route.marks || []).filter((m) => Number.isFinite(m.x) && Number.isFinite(m.y));
-  for (const m of marks) if (m.type === 'laden') put('laden', m.x, m.y);
-  for (const m of marks) if (m.type === 'brunnen') put('brunnen', m.x, m.y, { n: m.n });
+  painter.renderLabels(ctx, v.wx, v.wy, v.s * ps, canvas.width, canvas.height, ps, v.b, 0, 0, (l) => {
+    const q = names.get(l);
+    return q ? [q[0] * ps, q[1] * ps] : null;
+  });
+  ctx.setTransform(ps, 0, 0, ps, 0, 0);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
   // Striche von verschobenen Marken zu ihrer Stelle, mit einem Punkt dort (unter allen Marken)
-  for (const it of items) {
+  for (const it of v.items) {
     if (it.x === it.x0 && it.y === it.y0) continue;
     ctx.beginPath();
     ctx.moveTo(it.x0, it.y0);
@@ -152,7 +245,7 @@ export function drawRouteMap(canvas, route, w, h, ps) {
     ctx.stroke();
   };
   const out = [];
-  for (const it of items) {
+  for (const it of v.items) {
     const { x, y } = it;
     if (it.type === 'start') {
       // Start: Erlensee, ein weißer Punkt mit dunklem Rand und dem roten LIVE-Punkt
@@ -183,11 +276,10 @@ export function drawRouteMap(canvas, route, w, h, ps) {
     }
     out.push({ type: it.type, ...(it.n !== undefined ? { n: it.n } : {}), x: Math.round(x), y: Math.round(y), moved: it.x !== it.x0 || it.y !== it.y0 });
   }
-  // das Auto am Ende des Wegs, in Fahrtrichtung (über allem; die Marken sind ihm ausgewichen)
-  if (car) {
-    const a = prev ? Math.atan2(last[0] - prev[0], -(last[1] - prev[1])) : 0;
-    drawCar(ctx, car[0], car[1], a, 20, null);
-    out.push({ type: 'auto', x: Math.round(car[0]), y: Math.round(car[1]) });
+  // das Auto am Ende des Wegs, in Fahrtrichtung (über allem; die Marken und Namen sind ihm ausgewichen)
+  if (v.car) {
+    drawCar(ctx, v.car.x, v.car.y, v.car.a, 20, null);
+    out.push({ type: 'auto', x: Math.round(v.car.x), y: Math.round(v.car.y) });
   }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   return out;

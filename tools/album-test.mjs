@@ -7,6 +7,7 @@
 // - Streitfragen des Wikis, Datum und Uhr wie im HUD.
 // - Route (src/game/routelog.js): Abschnitte in der Reihenfolge des Fahrens, Marken mit Zählerstand, Summe gleich
 //   Kilometerzähler (die Fahrt im Spiel prüft tools/journey-test.mjs).
+// - Karte der Route im Abspann (src/ui/routemap.js): Marken, Namen im Bild und frei von Marken und Auto.
 // node tools/album-test.mjs
 let fails = 0;
 let checks = 0;
@@ -226,6 +227,73 @@ const pic = (n, len) => 'data:image/webp;base64,' + String(n % 10).repeat(len - 
   const sum = out.secs.reduce((a, c) => a + c.km, 0);
   ok(Math.abs(sum * 1000 - (odo + 95)) < 1e-6 && Math.abs(out.km * 1000 - (odo + 95)) < 1e-6, `Summe ${sum} km, Zähler ${(odo + 95) / 1000} km`);
   ok(mk.km === 0.65 && out.marks[1].km === 19.65 && out.marks[1].n === 7 && out.marks.length === 2, `Marken ${JSON.stringify(out.marks)}`);
+}
+
+// --- Karte der Route im Abspann (src/ui/routemap.js, ohne Leinwand) -------------------------------------------------------
+// Marken an ihrer Stelle oder sichtbar daneben, keine zwei übereinander; jeder Name ganz in der Karte (auch in den runden
+// Ecken) und frei von Marken, Auto, Ortspunkten und anderen Namen – auf dem Desktop, hochkant und quer auf dem Handy.
+{
+  const { routeView, routeLabels } = await import('../src/ui/routemap.js');
+  const { menuLayout, PLACE_BY_INDEX, dotRadius } = await import('../src/map/mapview.js');
+  // Schriftbreite wie in tools/map-test.mjs geschätzt (Node misst keine Schrift)
+  const measure = (text, font, spacing = 0) => text.length * (parseFloat(/(\d+)px/.exec(font)[1]) * 0.6 + spacing);
+  const at = (key) => PLACE_BY_INDEX[idx(key)];
+  // Weg von Ort zu Ort (gerade Stücke, 120 Punkte je Stück); null: Sprung übers Wasser
+  const line = (...keys) => {
+    const L = [];
+    for (let j = 0; j + 1 < keys.length; j++) {
+      if (!keys[j] || !keys[j + 1]) {
+        L.push(NaN, NaN);
+        continue;
+      }
+      const [a, b] = [at(keys[j]), at(keys[j + 1])];
+      for (let i = 0; i <= 120; i++) L.push(a.x + ((b.x - a.x) * i) / 120, a.y + ((b.y - a.y) * i) / 120);
+    }
+    return L;
+  };
+  const mark = (type, key, n) => ({ type, ...(n ? { n } : { park: 1 }), x: at(key).x + 0.0004, y: at(key).y - 0.0003 });
+  const ROUTES = {
+    lang: { line: line('Erlensee', 'Hanau', 'Würzburg', 'Nürnberg', 'Erlangen'), marks: [mark('brunnen', 'Hanau', 8), mark('laden', 'Würzburg'), mark('brunnen', 'Nürnberg', 9), mark('brunnen', 'Erlangen', 10)] },
+    kurz: { line: line('Erlensee', 'Hanau'), marks: [mark('brunnen', 'Hanau', 8)] },
+    rund: { line: line('Erlensee', 'Hanau', 'Erlensee'), marks: [mark('brunnen', 'Hanau', 8), mark('laden', 'Erlensee')] },
+    ausland: { line: line('Erlensee', 'Hamburg', null, 'Danzig'), marks: [mark('brunnen', 'Hamburg', 102), mark('brunnen', 'Danzig', 1003)] },
+  };
+  // Kartengrößen wie im Abspann gemessen: 1280×720, 1600×900, Handy hochkant 390×844 und quer 844×390
+  const SIZES = [[730, 290], [1018, 290], [332, 230], [530, 290]];
+  const hit = (a, b) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+  let names = 0;
+  for (const [what, route] of Object.entries(ROUTES)) {
+    for (const [w, h] of SIZES) {
+      const tag = `Routenkarte ${what} ${w}×${h}`;
+      const v = routeView(route, w, h);
+      const layout = menuLayout(v.b, measure);
+      const plan = routeLabels(v, layout);
+      names += plan.size;
+      ok(plan.size > 0, `${tag}: keine Namen`);
+      const start = v.items.find((it) => it.type === 'start');
+      ok(start && Math.abs(start.x0 - v.X(route.line[0])) < 1e-9 && Math.abs(start.y0 - v.Y(route.line[1])) < 1e-9, `${tag}: Start nicht am Anfang des Wegs`);
+      const want = route.marks.map((m) => (m.type === 'laden' ? 'laden' : m.n)).sort().join();
+      ok(v.items.filter((it) => it.type !== 'start').map((it) => (it.type === 'laden' ? 'laden' : it.n)).sort().join() === want, `${tag}: Marken fehlen`);
+      const marks = v.items.map((it) => [it.x - it.r, it.y - it.r, it.x + it.r, it.y + it.r]);
+      if (v.car) marks.push([v.car.x - 12, v.car.y - 12, v.car.x + 12, v.car.y + 12]);
+      for (const it of v.items) ok(it.x - it.r >= 0 && it.y - it.r >= 0 && it.x + it.r <= w && it.y + it.r <= h, `${tag}: Marke ${it.type} ${it.n ?? ''} ragt aus der Karte`);
+      for (let i = 0; i < v.items.length; i++) {
+        for (let j = i + 1; j < v.items.length; j++) ok(Math.hypot(v.items[i].x - v.items[j].x, v.items[i].y - v.items[j].y) >= 21, `${tag}: Marken ${v.items[i].type} und ${v.items[j].type} decken sich`);
+      }
+      const dots = [...layout.shown].map((i) => [i, v.X(PLACE_BY_INDEX[i].x), v.Y(PLACE_BY_INDEX[i].y), dotRadius(PLACE_BY_INDEX[i], v.s)]);
+      const boxes = [];
+      for (const [l, [x0, y0]] of plan) {
+        const B = [x0, y0, x0 + l.w, y0 + l.h];
+        const inCorner = [[B[0], B[1]], [B[2], B[1]], [B[0], B[3]], [B[2], B[3]]].every(([px, py]) => Math.hypot(px - Math.min(Math.max(px, 14), w - 14), py - Math.min(Math.max(py, 14), h - 14)) <= 11 + 1e-9);
+        ok(B[0] >= 3 && B[1] >= 3 && B[2] <= w - 3 && B[3] <= h - 3 && inCorner, `${tag}: „${l.text}“ ragt über den Rand`);
+        ok(!marks.some((m) => hit(B, m)), `${tag}: „${l.text}“ liegt unter einer Marke oder dem Auto`);
+        ok(!boxes.some((q) => hit(B, q)), `${tag}: „${l.text}“ deckt einen anderen Namen`);
+        ok(!dots.some(([i, x, y, r]) => i !== l.i && hit(B, [x - r, y - r, x + r, y + r])), `${tag}: „${l.text}“ deckt einen Ortspunkt`);
+        boxes.push(B);
+      }
+    }
+  }
+  ok(names > 100, `Routenkarten mit zusammen nur ${names} Namen`);
 }
 
 console.log(`Album und Route: ${checks} Prüfungen`);
