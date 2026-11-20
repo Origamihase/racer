@@ -18,6 +18,7 @@ import {
 import { roadAhead, closeScene, curvePoint } from './roadahead.js';
 import { Persp, TiltView, ribbon } from './persp.js';
 import { places } from './graph.js';
+import { goalName } from '../world/kit/layout.js';
 import { fmtOdo } from './navroute.js';
 import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawCar, drawShield, drawFlag, drawHeart } from './symbols.js';
 
@@ -821,8 +822,8 @@ export class NaviScreen {
       ctx.font = `700 40px ${FONT}`;
       ctx.fillText(dist, tx, y + 48);
       const dx = tx + ctx.measureText(dist).width + 16;
-      ctx.fillText(shrink(ctx, head, right - dx, 600, 27, 21), dx, y + 47);
-    } else ctx.fillText(shrink(ctx, head, right - tx, 700, 30, 22), tx, y + 47);
+      ctx.fillText(shrink(ctx, prefer(ctx, head, ins.short, right - dx, 600, 21), right - dx, 600, 27, 21), dx, y + 47);
+    } else ctx.fillText(shrink(ctx, prefer(ctx, head, ins.short, right - tx, 700, 22), right - tx, 700, 30, 22), tx, y + 47);
     ctx.fillStyle = '#c9d6ff';
     ctx.fillText(shrink(ctx, sub || '', right - lanesW - tx, 500, 22, 18), tx, y + 84);
   }
@@ -955,8 +956,9 @@ export class NaviScreen {
     ctx.fillText(right, x + bw - 16, cy + 31);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#c9d6ff';
-    // der Name des Ziels wie auf seiner Ortstafel: lange Namen kleiner gesetzt, nie um einen Zusatz gekürzt
-    ctx.fillText(shrink(ctx, '🏁 ' + pl.name, bw - rw - 50, 700, 22, 16), x + 16, cy + 31);
+    // das Ziel: der Brunnen und sein Ort, der Name wie auf der Ortstafel; lange Namen kleiner gesetzt, nie um einen
+    // Zusatz gekürzt – passt beides nicht, steht der Ort allein da
+    ctx.fillText(shrink(ctx, prefer(ctx, '⛲ ' + goalName(pl), '⛲ ' + pl.name, bw - rw - 50, 700, 16), bw - rw - 50, 700, 22, 16), x + 16, cy + 31);
     this.drawStrip(ctx, m, x + 18, cy + 68, bw - 36, km);
   }
 
@@ -1022,6 +1024,13 @@ export class NaviScreen {
 }
 
 /** Text in die Breite: erst die Schrift von px bis minPx verkleinern, dann kürzen (setzt ctx.font). */
+/** text, wenn er in der kleinsten Schrift (minPx) in maxW passt, sonst alt (wo es eines gibt). */
+function prefer(ctx, text, alt, maxW, weight, minPx) {
+  if (!alt) return text;
+  ctx.font = `${weight} ${minPx}px ${FONT}`;
+  return ctx.measureText(text).width <= maxW ? text : alt;
+}
+
 function shrink(ctx, text, maxW, weight, px, minPx) {
   for (let size = px; size >= minPx; size--) {
     ctx.font = `${weight} ${size}px ${FONT}`;

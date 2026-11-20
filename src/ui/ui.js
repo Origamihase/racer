@@ -850,10 +850,11 @@ export class UI {
     let join = '\u00a0· ';
     const t = g.worldNavi ? nv.shown : !nv.arrived && nv.target;
     if (t) {
-      target = pin + t.name;
+      target = pin + (t.goal ?? t.name);
       // (auf der Reise wird in Zehnern geboten: ganze Euro, „Gebot 1.250 € von …“)
       bid = `Gebot ${g.worldNavi ? fmtEuro(nv.bid) : fmtCent(nv.bid)} von ${nv.bidder}`;
-      if (g.worldNavi) km = nv.distance;
+      // (das Ziel der Reise ist ein Brunnen, „Marktbrunnen, Würzburg“; wo das nicht passt, steht nur der Ort da)
+      if (g.worldNavi) [km, short] = [nv.distance, pin + t.name];
       else {
         // (ein Ort der Reise behält immer seinen ganzen Namen: „Frankfurt“ ist nicht „Frankfurt (Oder)“)
         short = pin + shortName(t);
@@ -863,6 +864,7 @@ export class UI {
     } else {
       [target, bid, join] = splitWait(g.worldNavi ? nv.waitLine : `🏁 Ziel erreicht: ${nv.target.name} – warte auf das nächste Gebot …`);
       if (!g.worldNavi) short = '🏁 Ziel erreicht: ' + shortName(nv.target);
+      else if (nv.reached) short = '📍 Ziel erreicht: ' + nv.reached.name;
     }
     this.naviEl.classList.toggle('news', news);
     const line = target + '|' + km + '|' + bid + '|' + this.naviMax;

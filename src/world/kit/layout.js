@@ -58,6 +58,8 @@ const SPECIAL = { Augsburg: 'fountainOrigin', 'Nürnberg': 'fountainBoss' };
 // Radius der Brunnen, die Hauptbrunnen eines Orts sein können (info.r aus fountains.js; tools/citykit-test.mjs prüft,
 // dass beide übereinstimmen): damit lässt sich die Insel eines Zielbrunnens ohne Grafik planen
 export const FOUNTAIN_R = { fountainTrough: 2.8, fountainMarket: 4.2, fountainBowls: 4.3, fountainJets: 4.6, fountainGrand: 7.5, fountainOrigin: 4.5, fountainBoss: 7.3 };
+// Namen derselben Brunnen (info.title, ebenso geprüft): so heißt das Navi-Ziel, ohne dass ein Brunnen gebaut wird
+export const FOUNTAIN_TITLE = { fountainTrough: 'Dorfbrunnen', fountainMarket: 'Marktbrunnen', fountainBowls: 'Schalenbrunnen', fountainJets: 'Wasserspiel', fountainGrand: 'Prachtbrunnen', fountainOrigin: 'Der Ursprung', fountainBoss: 'Der Endgegner' };
 // Insel des Zielbrunnens im Straßenbau: Bordstein und ein schmaler Pflasterring um das Becken, höchstens 8 m Radius
 export const ISLAND = { kerb: 0.45, ring: 0.35, max: 8 };
 
@@ -98,6 +100,15 @@ export function goalKind(place, size = sizeOf(place.pop ?? 0)) {
 /** Radius der Insel, auf der der Zielbrunnen eines Orts mitten im Brunnenplatz der Straße steht. */
 export function islandRadius(place) {
   return Math.min(ISLAND.max, FOUNTAIN_R[goalKind(place)] + ISLAND.kerb + ISLAND.ring);
+}
+
+/**
+ * Name des Navi-Ziels in einem Ort: sein Hauptbrunnen und der Ort, „Marktbrunnen, Würzburg“; ohne bekannten Namen
+ * „Brunnen in Würzburg“. name: der Ort, wie das Navi ihn schreibt (Standard: place.name).
+ */
+export function goalName(place, name = place.name) {
+  const title = FOUNTAIN_TITLE[goalKind(place)];
+  return title ? `${title}, ${name}` : `Brunnen in ${name}`;
 }
 
 /** Name auf Ortsschild und Navi: wie shortName in src/game/navi.js (Zusätze in Klammern, nach Komma oder Strich fallen weg). */

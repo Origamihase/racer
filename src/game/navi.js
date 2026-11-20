@@ -7,6 +7,7 @@ import { NAVI_TARGETS, BANK_FARBEN, INSIDER_ORTE } from '../data.js';
 import { rand, chance, pick, weightedPick, fmtCent, fmtEuro, fmtClock, clamp } from '../util.js';
 import { places } from '../map/graph.js';
 import { fmtRoad, fmtDistance } from '../map/navroute.js';
+import { goalName } from '../world/kit/layout.js';
 
 /** Kurzer Name für Schilderbrücken und das Navi-Kärtchen. */
 export function shortName(t) {
@@ -194,9 +195,10 @@ export class WorldNavi {
    */
   constructor(world) {
     this.world = world;
-    // je Ort ein festes Ziel-Objekt (economy.pickTarget vergleicht Objekte): Name wie auf der Ortstafel, dazu der
-    // Insider des Orts (special: besondere Ankunft, note: Zeile unter dem Hinweis aufs neue Ziel)
-    this.targets = places.map((p) => ({ place: p.i, name: p.name, weight: 0, ...INSIDER_ORTE[p.key] }));
+    // je Ort ein festes Ziel-Objekt (economy.pickTarget vergleicht Objekte): Name wie auf der Ortstafel, goal: das
+    // Ziel selbst, der Hauptbrunnen des Orts („Marktbrunnen, Würzburg“, kit/layout.js goalName), dazu der Insider des
+    // Orts (special: besondere Ankunft, note: Zeile unter dem Hinweis aufs neue Ziel)
+    this.targets = places.map((p) => ({ place: p.i, name: p.name, goal: goalName(p), weight: 0, ...INSIDER_ORTE[p.key] }));
     this.list = [];
     this.screenOut = { bidder: '', bid: '', bar: '', wait: '' };
     this.reset();
@@ -380,11 +382,11 @@ export class WorldNavi {
     return this.target || this.stopping;
   }
 
-  /** Das Navi-Ziel in Worten (Pause-Karte). */
+  /** Das Navi-Ziel in Worten (Pause-Karte): der Brunnen und sein Ort. */
   get label() {
     const t = this.shown;
-    if (t) return t.name;
-    return this.reached ? this.reached.name + ' (erreicht)' : 'noch offen';
+    if (t) return t.goal;
+    return this.reached ? this.reached.goal + ' (erreicht)' : 'noch offen';
   }
 
   /**
@@ -392,7 +394,7 @@ export class WorldNavi {
    * verpassten Ankunft.
    */
   get waitLine() {
-    if (this.reached) return `📍 Ziel erreicht: ${this.reached.name} – warte auf das nächste Gebot …`;
+    if (this.reached) return `📍 Ziel erreicht: ${this.reached.goal} – warte auf das nächste Gebot …`;
     return this.missed ? '📍 Am Brunnen vorbeigerollt – gleich kommt das nächste Gebot …' : '📍 Wohin geht die Reise? Gleich kommt das erste Gebot …';
   }
 
@@ -412,7 +414,7 @@ export class WorldNavi {
     // (das Navi selbst meldet „Ziel erreicht“ schon am Zielpunkt, wie jedes Navi – darum gilt das Kärtchen ab dort)
     const r = this.stopping || this.reached;
     S.bar = r ? '📡 Neue Runde: Gebote ab 10 €' : this.missed ? '📡 Der Chat bietet weiter …' : '📡 Der Chat bietet: Gebote ab 10 €';
-    S.wait = r ? '⛲ Ziel erreicht: ' + r.name : this.missed ? '⏳ Vorbeigerollt – gleich kommt das nächste Gebot …' : '⏳ Gleich kommt das erste Gebot …';
+    S.wait = r ? '⛲ Ziel erreicht: ' + r.goal : this.missed ? '⏳ Vorbeigerollt – gleich kommt das nächste Gebot …' : '⏳ Gleich kommt das erste Gebot …';
     return S;
   }
 }

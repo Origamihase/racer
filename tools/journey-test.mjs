@@ -41,6 +41,7 @@ import { BID_PLACES, OPENING } from '../src/game/navi.js';
 import { INSIDER_ORTE, REISE_JOBS } from '../src/data.js';
 import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
+import { goalName } from '../src/world/kit/layout.js';
 import { signsAlong, BOARD_D } from '../src/world/xxl/signplan.js';
 import { parkBoard, PARK_STOP_AFTER, PARKS } from '../src/map/parks.js';
 
@@ -153,7 +154,8 @@ function checkNavi(trip, nav, promised, n, where) {
     n.arrive++;
     const c = trip.cur.sections.find((q) => q.kind === 'stadt' && q.place === trip.target && !q.spotDone && q.s1 > trip.s);
     ok(c && near(ins.dist, c.spotS - trip.s), `${where}: Ziel-Entfernung ohne Zielpunkt: ${ins.head}`);
-    ok(!c || ins.head === places[c.place].name, `${where}: Zielname ≠ Ortsschild: ${ins.head}`);
+    // das Ziel ist der Brunnen des Orts („Marktbrunnen, Würzburg“), kurz der Ort wie auf seiner Tafel
+    ok(!c || (ins.head === goalName(places[c.place]) && ins.short === places[c.place].name), `${where}: Zielname ≠ Brunnen und Ortsschild: ${ins.head}`);
   } else {
     ok(ins.turn !== 'faehre' && ins.turn !== 'zug' && ins.turn !== 'flug', `${where}: Das Navi sagt eine Überfahrt an (${ins.turn}: ${ins.head})`);
     ok(ins.dist === 0 || ins.turn === 'faehre' || ins.turn === 'zug' || ins.turn === 'flug', `${where}: Ansage ${ins.turn} „${ins.head}“ mit Entfernung ${ins.dist}, aber ohne Stelle`);
@@ -473,7 +475,7 @@ function stream(driver, hours, seed, firstRound = false) {
     const secs = nv.driveSecs();
     ok(km > 0 && isFinite(km) && secs > 0 && isFinite(secs), `Ziel ${t.name} ist von hier nicht erreichbar (${km} km, ${secs} s)`);
     // HUD-Zeile, Pause-Karte und roter Balken nennen sofort das neue Ziel, seine Entfernung und den Bieter
-    ok(nv.shown === t && nv.label === t.name && /^[\d.,]+ (km|m)$/.test(nv.distance) && nv.screen().bidder === nv.bidder && nv.bidder, `Nach dem Gebot auf ${t.name} zeigt das Navi „${nv.label} · ${nv.distance}“ von „${nv.screen().bidder}“`);
+    ok(nv.shown === t && nv.label === t.goal && t.goal === goalName(places[t.place]) && /^[\d.,]+ (km|m)$/.test(nv.distance) && nv.screen().bidder === nv.bidder && nv.bidder, `Nach dem Gebot auf ${t.name} zeigt das Navi „${nv.label} · ${nv.distance}“ von „${nv.screen().bidder}“`);
     if (opening) {
       // erste Runde: ein naher Ort, nie der Startort, die Ansage zeigt nach vorn, und die Vorhersage stimmte
       const O = m.open;
@@ -691,12 +693,13 @@ function stream(driver, hours, seed, firstRound = false) {
       if (lastPlan && lastPlan.stand) lastPlan.stand.reached = true;
       tvT0 = game.t;
       // ab jetzt gilt „Ziel erreicht“, und der rote Balken nennt keinen Bieter mehr: Die neue Runde ist offen
-      ok(!nv.shown && nv.waitLine.includes('Ziel erreicht: ' + places[game.tv.place].name) && nv.screen().bidder === '', 'Am Brunnen angekommen, aber die Anzeigen nennen noch ein Ziel oder einen Bieter');
+      // (das Ziel ist der Brunnen des Orts: „Ziel erreicht: Marktbrunnen, Würzburg“)
+      ok(!nv.shown && nv.waitLine.includes('Ziel erreicht: ' + goalName(places[game.tv.place])) && nv.screen().wait === '⛲ Ziel erreicht: ' + goalName(places[game.tv.place]) && nv.screen().bidder === '', 'Am Brunnen angekommen, aber die Anzeigen nennen noch ein Ziel oder einen Bieter');
       if (LOG) console.log(`  ${game.t.toFixed(0)} s: steht am Brunnen von ${places[game.tv.place].name}${rest ? '' : ' (knapp hinter dem Haltepunkt)'}`);
     } else if (nv.stopping) {
       halting = true;
       // bis der Wagen steht, nennen HUD-Zeile und roter Balken noch Ziel, Gebot und Bieter der Runde
-      ok(nv.shown === nv.stopping && nv.label === nv.stopping.name && nv.distance === '0 m' && nv.screen().bidder === nv.bidder, 'Zwischen Zielpunkt und Halt zeigen die Anzeigen nicht mehr das Ziel der Runde');
+      ok(nv.shown === nv.stopping && nv.label === nv.stopping.goal && nv.distance === '0 m' && nv.screen().bidder === nv.bidder, 'Zwischen Zielpunkt und Halt zeigen die Anzeigen nicht mehr das Ziel der Runde');
     } else if (halting) {
       // am Brunnen vorbeigerollt: keine Ankunft, die Runde läuft weiter
       halting = false;

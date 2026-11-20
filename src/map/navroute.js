@@ -10,6 +10,7 @@
 import { nodes, places, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle } from './graph.js';
 import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm } from './mapview.js';
 import { PARKS, parkBoard } from './parks.js';
+import { goalName } from '../world/kit/layout.js';
 
 const NODE_XY = nodes.map((n) => project(n.lat, n.lon));
 /** Kilometer → Karteneinheiten in der Kartenhöhe y. */
@@ -985,7 +986,7 @@ export class NavModel {
     let g = trip.guidance();
     const sec = trip.section;
     const out = {
-      turn: 'none', dist: 0, km: 0, say: '', calm: false, head: '', sub: '', road: '', lanes: null, node: -1, fork: null,
+      turn: 'none', dist: 0, km: 0, say: '', calm: false, head: '', short: '', sub: '', road: '', lanes: null, node: -1, fork: null,
       mapKm: g.km, toTarget: g.type === 'none' ? '' : fmtDistance(g), clock: g.clock, mins: g.mins, target: trip.target,
     };
     // gerade unterwegs zu einem Terminal? Dann ist die Überfahrt die nächste Handlung (Stelle: das Terminal der Fahrt)
@@ -1019,8 +1020,10 @@ export class NavModel {
       out.dist = g.dist;
       out.km = this.kmAhead(g.dist);
       out.say = out.toTarget;
-      out.head = places[trip.target].name;
-      out.sub = 'Ziel liegt in der Ortsmitte';
+      // das Ziel ist der Brunnen des Orts („Marktbrunnen, Würzburg“); passt das nicht, steht der Ort allein da (short)
+      out.head = goalName(places[trip.target]);
+      out.short = places[trip.target].name;
+      out.sub = 'Halt am Brunnen in der Ortsmitte';
       return out;
     }
     if (g.type === 'stop') {

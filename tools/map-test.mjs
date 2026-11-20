@@ -8,6 +8,7 @@ import {
 import { places, nodes, edges, deRev, deRoad, deTowards } from '../src/map/graph.js';
 import { Line, fmtRoad, fmtKm, fmtOdo, fmtDistance } from '../src/map/navroute.js';
 import { MapDemo } from '../src/map/mapdemo.js';
+import { goalName } from '../src/world/kit/layout.js';
 import { Persp, TiltView, ribbon } from '../src/map/persp.js';
 
 let fails = 0;
@@ -438,7 +439,7 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
         n.arrive++;
         const c = trip.cur.sections.find((q) => q.kind === 'stadt' && q.place === trip.target && !q.spotDone && q.s1 > trip.s);
         if (!c || !near(ins.dist, c.spotS - trip.s)) fail('Ziel-Entfernung ohne Zielpunkt: ' + ins.head);
-        if (c && ins.head !== places[c.place].name) fail('Zielname ≠ Ortsschild: ' + ins.head);
+        if (c && (ins.head !== goalName(places[c.place]) || ins.short !== places[c.place].name)) fail('Zielname ≠ Brunnen und Ortsschild: ' + ins.head);
       } else if (ins.turn === 'faehre' || ins.turn === 'zug' || ins.turn === 'flug') {
         n.transit++;
         const c = trip.cur.sections.find((q) => q.kind === 'term' && !q.arrival && q.transit === ins.turn && q.s1 > trip.s);
@@ -506,12 +507,13 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
   // Die Orte der XXL-Welt in der Nahansicht (towns.js naviLayout über setTownLayout, wie src/main.js es anschließt):
   // die Zielfahne steckt im Zielbrunnen auf der Insel des Straßenbaus (plan.js squareOf) statt am Zielpunkt davor,
   // der Platz liegt in jedem Ort der Nahansicht um seinen Brunnen und reicht bis an den Bordstein der geweiteten
-  // Fahrbahn, Nebenstraßen gibt es keine. Die Route endet am Zielpunkt: von dort sind es längs höchstens 25 m bis
-  // zur Mitte des Brunnens, der links neben der eigenen Spur steht (der haltende Wagen hat ihn schräg vor sich).
+  // Fahrbahn, Nebenstraßen gibt es keine. Die Route endet am Zielpunkt; der Brunnen steht links neben der eigenen
+  // Spur, so weit hinter dem Haltepunkt, dass ihn der Fahrer im Seitenfenster hat (SIDE_VIEW: gut 65° gegen die
+  // Fahrtrichtung).
   {
     const { setTownLayout } = await import('../src/map/roadahead.js');
     const { naviLayout } = await import('../src/world/xxl/towns.js');
-    const { squareOf } = await import('../src/world/xxl/plan.js');
+    const { squareOf, SIDE_VIEW, STOP_AFTER_SPOT } = await import('../src/world/xxl/plan.js');
     const { PROFILES } = await import('../src/game/trip.js');
     setTownLayout((trip, sec) => naviLayout(sec));
     const e = { trips: 0, scenes: 0, squares: 0, pins: 0 };
@@ -556,8 +558,13 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
         const c = trip.cur.sections.concat(...trip.paths().map((p) => p.path.sections)).find((q) => q.kind === 'stadt' && q.place === pin.place && q.spotS !== undefined && !q.spotDone);
         const sq = c ? squareOf(c) : null;
         if (!sq || !near(pin.d, sq.s - trip.s) || !near(pin.X, world(c, sq.s, sq.x))) fail('Zielfahne nicht im Zielbrunnen der Welt');
-        else if (!(sq.s - c.spotS > sq.r && sq.s - c.spotS <= 25 && sq.x + sq.r < PROFILES.stadt.lanes[0].x)) fail(`Zielbrunnen ${(sq.s - c.spotS).toFixed(1)} m hinter dem Zielpunkt, Mitte bei x ${sq.x.toFixed(1)}`);
-        else if (sc.route.length >= 2 && sc.route[sc.route.length - 2] > c.spotS - trip.s + 0.01) fail('Route führt über den Zielpunkt hinaus');
+        else {
+          // vom Auge des Fahrers am Halt: Winkel gegen die Fahrtrichtung bis zur Mitte des Brunnens
+          const eye = { s: c.spotS + STOP_AFTER_SPOT - SIDE_VIEW.back, x: PROFILES.stadt.lanes[0].x - SIDE_VIEW.left };
+          const deg = (Math.atan2(eye.x - sq.x, sq.s - eye.s) * 180) / Math.PI;
+          if (!(sq.stop === c.spotS + STOP_AFTER_SPOT && deg > 55 && deg < 75 && sq.x + sq.r < PROFILES.stadt.lanes[0].x - 1)) fail(`Zielbrunnen ${(sq.s - sq.stop).toFixed(1)} m vor dem Haltepunkt, ${deg.toFixed(0)}° vom Fahrer, Mitte bei x ${sq.x.toFixed(1)}`);
+          else if (sc.route.length >= 2 && sc.route[sc.route.length - 2] > c.spotS - trip.s + 0.01) fail('Route führt über den Zielpunkt hinaus');
+        }
       }
     }
     setTownLayout(null);
@@ -820,7 +827,7 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
   // setzen, zuletzt Auslassungspunkte am Ende, und davor bleibt stehen, was den Ort von jedem anderen unterscheidet.
   // Für alle Orte der Karte: Ortstafel, Ortsende und Zielschild des Schilderplans nennen den Namen, die Tafel bricht
   // ihn höchstens um; das Navi zeigt ihn im Kärtchen und in der Ansage der Ankunft ungekürzt (neben der breitesten
-  // Angabe rechts bzw. der längsten Entfernung), in der Nebenzeile „dann zum Ziel …“ neben fünf Spurpfeilen und im
+  // Angabe rechts bzw. der längsten Entfernung; fast immer mit dem Brunnen davor, „Marktbrunnen, Würzburg“), in der Nebenzeile „dann zum Ziel …“ neben fünf Spurpfeilen und im
   // Routenstreifen höchstens hinter dem Stück gekürzt, das ihn eindeutig macht; die große Karte führt denselben Namen.
   // Die Ansage im HUD (Drohnenansicht, schmale Formate) bricht lange Zeilen um und kürzt nie (docs/style.css).
   // Kein Modul der XXL-Welt ruft die Kurznamen des klassischen Spiels (shortName, signName), die Zusätze streichen.
@@ -880,7 +887,7 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
     const nav = new NavModel(trip);
     const navi = new NaviScreen();
     const st = { bidder: '', bid: '', clockMin: 23 * 60 };
-    const e = { places: 0, card: 0, split: 0, subCut: 0, stripCut: 0, noRoute: 0 };
+    const e = { places: 0, card: 0, cardGoal: 0, bannerGoal: 0, split: 0, subCut: 0, stripCut: 0, noRoute: 0 };
     const wrong = [];
     for (const p of places) {
       const i = p.i;
@@ -895,10 +902,12 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
       // umbrochen an einem Leerzeichen (es entfällt) oder hinter einem Bindestrich (er bleibt): sonst fehlt kein Zeichen
       if (lines.length > 2 || (lines.join(' ') !== name && lines.join('') !== name) || lines.some((ln) => !ln || ln !== ln.trim())) wrong.push(`${name}: Ortstafel zeigt „${lines.join(' / ')}“`);
       if (PLACE_BY_INDEX[i].name !== name) wrong.push(`${name}: große Karte nennt ihn „${PLACE_BY_INDEX[i].name}“`);
-      // Navi: Ansage der Ankunft mit der längsten Entfernung davor
+      // Navi: Ansage der Ankunft mit der längsten Entfernung davor (das Ziel ist der Brunnen des Orts: „Marktbrunnen,
+      // Würzburg“, wo es passt, sonst der Ort allein)
       texts.length = 0;
-      navi.drawBanner(ctx, { turn: 'arrive', dist: 1900, head: name, sub: 'Ziel liegt in der Ortsmitte', lanes: null }, W, 'light', null);
-      if (!texts.includes(name)) wrong.push(`${name}: Ansage der Ankunft zeigt „${texts.find((q) => q.includes(name.slice(0, 3)))}“`);
+      navi.drawBanner(ctx, { turn: 'arrive', dist: 1900, head: goalName(p), short: name, sub: 'Halt am Brunnen in der Ortsmitte', lanes: null }, W, 'light', null);
+      if (texts.includes(goalName(p))) e.bannerGoal++;
+      else if (!texts.includes(name)) wrong.push(`${name}: Ansage der Ankunft zeigt „${texts.find((q) => q.includes(name.slice(0, 3)))}“`);
       // Nebenzeile vor der Ausfahrt des Ziels, neben fünf Spurpfeilen
       texts.length = 0;
       navi.drawBanner(ctx, { turn: 'exit', dist: 950, head: 'Ausfahrt', sub: 'dann zum Ziel ' + name, lanes: { n: 5, use: [4], exit: true } }, W, 'light', null);
@@ -910,7 +919,8 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
       const stop = fit(ctx, name, 150);
       if (!shown(stop, i)) wrong.push(`${name}: Routenstreifen zeigt „${stop}“`);
       else if (stop !== name) e.stripCut++;
-      // Kärtchen unten: der ganze Name neben der breitesten Angabe rechts
+      // Kärtchen unten: der ganze Name neben der breitesten Angabe rechts (meist mit dem Brunnen davor; nur wo der
+      // nicht mehr daneben passt, steht der Ort allein da)
       trip.setTarget(i);
       nav.update(0.1);
       if (!nav.route || trip.target !== i) {
@@ -919,12 +929,15 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
       }
       texts.length = 0;
       navi.drawBottom(ctx, nav, { ...nav.instruction(), turn: 'straight', mapKm: 8888, toTarget: '8.888 km', mins: 59 }, st, W, H, 'light');
-      const card = texts.find((q) => q.startsWith('🏁 '));
-      if (card !== '🏁 ' + name) wrong.push(`${name}: Kärtchen zeigt „${card}“ neben „${texts.find((q) => q.includes('Ankunft'))}“`);
-      else e.card++;
+      const card = texts.find((q) => q.startsWith('⛲ '));
+      if (card !== '⛲ ' + goalName(p) && card !== '⛲ ' + name) wrong.push(`${name}: Kärtchen zeigt „${card}“ neben „${texts.find((q) => q.includes('Ankunft'))}“`);
+      else {
+        e.card++;
+        if (card !== '⛲ ' + name) e.cardGoal++;
+      }
     }
     ok(!wrong.length, 'Ein Name je Ort: ' + wrong.slice(0, 12).join(' | '));
-    ok(e.places === 426 && e.card >= 420 && e.noRoute <= 3 && e.split > 20, 'Ein Name je Ort: zu wenig geprüft ' + JSON.stringify(e));
+    ok(e.places === 426 && e.card >= 420 && e.noRoute <= 3 && e.split > 20 && e.cardGoal >= 330 && e.bannerGoal >= 400, 'Ein Name je Ort: zu wenig geprüft ' + JSON.stringify(e));
     // die Kurznamen des klassischen Spiels streichen Zusätze („Frankfurt (Oder)“ → „Frankfurt“): Navi, Karte, Schilder
     // und Orte der XXL-Welt rufen sie nicht
     const src = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8');

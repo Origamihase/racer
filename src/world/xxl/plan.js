@@ -163,11 +163,11 @@ export function forestRanges(path, out = []) {
 /**
  * Jede Ortsdurchfahrt (außer dem Startort) hat am Zielpunkt (spotS) einen kleinen gepflasterten Platz: links weitet
  * sich die Straße, auf einer runden Insel steht der Brunnen, die Gegenrichtung fährt links um ihn herum, unsere Spur
- * (J.L0) bleibt gerade. Ist der Ort das Navi-Ziel, hält der Wagen STOP_AFTER_SPOT hinter dem Zielpunkt an, ahead
- * Meter vor der Mitte des Brunnens: er steht dann schräg rechts vor ihm, nichts ist im Weg.
+ * (J.L0) bleibt gerade. Ist der Ort das Navi-Ziel, hält der Wagen STOP_AFTER_SPOT hinter dem Zielpunkt an, NEBEN dem
+ * Brunnen: vom Fahrersitz aus liegt seine Mitte SIDE_VIEW.angle vor der Querrichtung, mitten im linken Seitenfenster
+ * (das reicht etwa von 36° bis 109° gegen die Fahrtrichtung), zwischen Wagen und Insel ist nur Fahrbahn.
  */
 export const SQUARE = {
-  ahead: 15, // Haltepunkt → Mitte des Brunnens (längs); Inseln über 3,5 m Radius rücken weiter weg (r + 11,5)
   edge: J.L0 - 1.3, // rechter Rand der Insel (quer): 1,3 m links neben der Mitte unserer Spur
   r: 3.4, // Radius der Insel (Bordstein und Pflaster, darauf der Brunnen), wo kein Ort bekannt ist; siehe FOUNTAIN.radius
   run: 26, // so weit reicht der Platz vor und hinter der Insel
@@ -177,6 +177,15 @@ export const SQUARE = {
 };
 /** Halt am Navi-Ziel: so weit hinter dem Zielpunkt (spotS) steht der Wagen still (das Ziel zählt dann schon). */
 export const STOP_AFTER_SPOT = 2;
+/**
+ * Blick aus dem Seitenfenster am Halt: Auge des Fahrers back m hinter und left m links der Wagenmitte (cockpit.js EYE),
+ * die Mitte des Brunnens liegt angle vor der Querrichtung (25°: gut 65° gegen die Fahrtrichtung).
+ */
+export const SIDE_VIEW = { back: 0.27, left: 0.37, angle: (25 * Math.PI) / 180 };
+/** So weit liegt die Mitte einer Insel mit Radius r vor dem Haltepunkt (längs), damit sie im Seitenfenster steht. */
+export function squareAhead(r) {
+  return Math.tan(SIDE_VIEW.angle) * (J.L0 - SIDE_VIEW.left - (SQUARE.edge - r)) - SIDE_VIEW.back;
+}
 /**
  * radius(place) gibt den Radius der Insel für den Brunnen dieses Orts (Brunnen-Radius plus Rand), zwischen 2,5 und
  * 8 m: der Stadtbaukasten kennt den Hauptbrunnen jedes Orts (kit/layout.js islandRadius, ohne Grafik). Ein anderer
@@ -196,9 +205,8 @@ export function squareOf(sec) {
   if (q) return q;
   const r = Math.min(8, Math.max(2.5, +FOUNTAIN.radius(sec.place, sec) || SQUARE.r));
   const stop = sec.spotS + STOP_AFTER_SPOT;
-  // aus dem Cockpit (Fahrersitz 0,37 m links der Wagenmitte) liegt der Brunnen so rund 16° links vor dem Wagen,
-  // zwischen Innenspiegel und A-Säule (die verdeckt erst ab etwa 22°)
-  const s = stop + Math.max(SQUARE.ahead, r + 11.5);
+  // neben dem Wagen auf der Fahrerseite: 1,9 m (kleine Insel) bis 4 m (große) vor der Wagenmitte, auf Höhe der Haube
+  const s = stop + squareAhead(r);
   const x = SQUARE.edge - r;
   const half = r + SQUARE.run;
   q = { s, x, r, s0: s - half, s1: s + half, aL: x - r - SQUARE.loop, stop, heading: Math.atan2(J.L0 - x, s - stop) };

@@ -201,6 +201,10 @@ for (const size of SIZES) {
 // Hauptbrunnen jedes Orts (zugleich Zielbrunnen auf der Insel des Straßenbaus): die Tabelle der Radien stimmt mit den
 // Brunnen überein, die Sonderbrunnen stehen nur in ihren Städten, jeder Brunnen passt mit Bordstein auf seine Insel
 for (const [kind, r] of Object.entries(L.FOUNTAIN_R)) ok(city.info(kind).r === r, `FOUNTAIN_R.${kind} ${r} ≠ info.r ${city.info(kind).r}`);
+// … und ihre Namen (so heißt das Navi-Ziel: „Marktbrunnen, Würzburg“)
+for (const kind of Object.keys(L.FOUNTAIN_R)) ok(L.FOUNTAIN_TITLE[kind] === city.info(kind).title, `FOUNTAIN_TITLE.${kind} „${L.FOUNTAIN_TITLE[kind]}“ ≠ info.title „${city.info(kind).title}“`);
+ok(Object.keys(L.FOUNTAIN_TITLE).length === Object.keys(L.FOUNTAIN_R).length, 'FOUNTAIN_TITLE kennt andere Brunnen als FOUNTAIN_R');
+ok(L.goalName({ key: 'X', name: 'Würzburg', pop: 130000 }).endsWith(', Würzburg') && L.goalName({ key: 'Augsburg', name: 'Augsburg', pop: 300000 }) === 'Der Ursprung, Augsburg', 'goalName: Brunnen, Ort');
 const islands = {};
 for (const row of PLACES) {
   const place = { key: row[0], name: row[1], lat: row[2], cc: row[4], n: row[5], pop: row[6] };
@@ -223,7 +227,9 @@ for (const row of PLACES) {
 // Bordstein der geweiteten Fahrbahn; am Start liegt er rechts neben der Straße um den Brunnen des Plans.
 const { places, townLen } = await import('../src/map/graph.js');
 const { townPlan, islandOf, naviLayout } = await import('../src/world/xxl/towns.js');
-const xxl = { towns: 0, houses: 0, fountains: 0 };
+const { squareOf, SIDE_VIEW } = await import('../src/world/xxl/plan.js');
+const { J } = await import('../src/game/trip.js');
+const xxl = { towns: 0, houses: 0, fountains: 0, side: [90, 0] };
 for (const p of places) {
   const len = townLen(p.pop);
   const sec = { kind: 'stadt', place: p.i, s0: 1000, s1: 1000 + len, spotS: 1000 + Math.round(len * 0.6) };
@@ -238,6 +244,17 @@ for (const p of places) {
   ok(near(main.x, isl.x) && near(main.z, -isl.u) && near(main.y, isl.y) && main.r + L.ISLAND.kerb <= isl.r + 1e-9, `${where}: Zielbrunnen liegt nicht auf der Insel`);
   ok(plan.fountains.filter((f) => f.goal).length === 1 && plan.goal === isl.u, `${where}: nicht genau ein Ziel`);
   ok(plan.items.filter((it) => it.external).length === 1 && plan.items.find((it) => it.external).fountain === 0, `${where}: der Brunnen der Insel gehört dem Straßenbau`);
+  // Halt am Navi-Ziel neben dem Brunnen (plan.js SIDE_VIEW): vom Auge des Fahrers liegt seine Mitte im linken
+  // Seitenfenster (gut 65° gegen die Fahrtrichtung; das Fenster reicht etwa von 36° bis 109°), zwischen Wagen und
+  // Insel liegt nur Fahrbahn, nichts Hohes verstellt die Sicht, und das Navi nennt ihn mit seinem Namen und dem Ort
+  const sq = squareOf(sec);
+  const eye = [J.L0 - SIDE_VIEW.left, -(sq.stop - SIDE_VIEW.back - sec.s0)];
+  const side = (Math.atan2(eye[0] - main.x, -main.z + eye[1]) * 180) / Math.PI;
+  xxl.side = [Math.min(xxl.side[0], side), Math.max(xxl.side[1], side)];
+  ok(side > 55 && side < 75 && main.x + isl.r < J.L0 - 1.2, `${where}: am Halt nicht im Seitenfenster (${side.toFixed(0)}°)`);
+  const halt = L.sightBlockers(plan, main, [eye]);
+  ok(halt.length === 0, `${where}: am Halt verstellt ${halt.map((i) => plan.items[i].name).join(', ')} den Brunnen`);
+  ok(L.goalName(p) === `${city.info(main.kind).title}, ${p.name}`, `${where}: Navi-Ziel „${L.goalName(p)}“ ist nicht der Brunnen`);
   ok(plan.fountains.slice(1).every((f) => Math.abs(f.u - isl.u) >= 40 && !f.special), `${where}: zweiter Brunnen neben dem Zielbrunnen`);
   const lay = plan.layout;
   ok(lay.goal && near(lay.goal.x, isl.x) && near(lay.goal.z, -isl.u) && lay.squares[lay.goal.square].kind === 'island' && lay.squares[lay.goal.square].fountain === 0, `${where}: Lageplan zeigt nicht auf die Insel`);
@@ -722,7 +739,7 @@ console.log('Lageplan gegen Meshes:', meshChecks.join(' · '));
 console.log('Rastanlagen:', restChecks.join(' · '));
 console.log(`Bausteine: ${blocks} Fassungen, Geometrie im Rahmen von info (Ursprung, w, d, h); ${terrainEdges.length} Gelände ohne offene Ränder`);
 console.log('Zielbrunnen-Arten:', Object.entries(goalKinds).map(([k, v]) => `${k} ${v}`).join(', '));
-console.log(`Orte in der XXL-Welt: ${xxl.towns} mit Insel und als Startort, ${xxl.houses} Häuser, ${xxl.fountains} Brunnen, je einer davon das Ziel auf der Insel; Lebenslauf: ${xxl.parts} Teile in Schritten gebaut, starr im gescherten Rahmen; Plan in Raten: ${xxl.calls} Aufrufe für Hanau, derselbe Plan`);
+console.log(`Orte in der XXL-Welt: ${xxl.towns} mit Insel und als Startort, ${xxl.houses} Häuser, ${xxl.fountains} Brunnen, je einer davon das Ziel auf der Insel, am Halt im Seitenfenster bei ${xxl.side.map((d) => d.toFixed(1)).join('–')}°; Lebenslauf: ${xxl.parts} Teile in Schritten gebaut, starr im gescherten Rahmen; Plan in Raten: ${xxl.calls} Aufrufe für Hanau, derselbe Plan`);
 console.log('Hauptbrunnen der Orte (auf der Insel am Ziel):', Object.entries(islands).map(([k, v]) => `${k} ${v}`).join(', '));
 console.log(fails ? `${fails} FEHLER` : 'Alles in Ordnung: jeder Ort hat mindestens einen Brunnen, frei sichtbar und beleuchtet.');
 process.exit(fails ? 1 : 0);
