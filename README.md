@@ -49,8 +49,9 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
   was auch nicht immer klappt. Der Chat liebt es trotzdem.
 - **Akku und Blech:** Die Stream-Technik im Kofferraum zieht Strom. Geladen wird in den Ladeparks an den
   Ausfahrten: <kbd>L</kbd> (oder der Knopf „Ladestopp einplanen“) plant den nächsten ein, das Navi führt hinein und
-  danach weiter zum Ziel. Rempler kosten Karosserie-Punkte, die Werkstatt rechnet sie am Brunnen ab. Leerer Akku
-  oder zu viel Blechschaden beendet die Fahrt.
+  danach weiter zum Ziel. Bei 10 und bei 5 % warnt der Mittelbildschirm mit einer roten Karte; ist der Akku
+  leer, rollt der Wagen aus, und die Fahrt ist zu Ende. Rempler kosten Karosserie-Punkte, die Werkstatt rechnet sie
+  am Brunnen ab; zu viel Blechschaden beendet die Fahrt ebenfalls.
 - **Live-Chat und Live-Bereich:** Spenden mit Alter-Skala, Sprachdurchsagen, gekaufte Rahmen
   (Rosen, Sonnenblumen, Pappkartons …), Funklöcher, Polizei Gifhorn, Blitzer mit Polaroid,
   Brunnen und die blaue Plüsch-Elsa mit Krönchen und Schärpe am Straßenrand, Bananensaft und Koriander – und ab und zu ein lächerliches

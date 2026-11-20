@@ -380,7 +380,8 @@ export class Player {
     // die Bremse gewinnt immer: wer beide Pedale tritt, bremst
     let throttle = brake > 0.02 ? 0 : throttleIn;
     let acc = 0;
-    if (this.cruiseSet !== null && brake <= 0.02 && throttle <= 0.02) {
+    // mit leerem Akku hält der Tempomat nichts mehr: Der Wagen rollt aus wie ohne Pedal (das Tempo folgt ihm)
+    if (this.cruiseSet !== null && !this.empty && brake <= 0.02 && throttle <= 0.02) {
       // Tempomat: hält das gesetzte Tempo, auch am Berg; Obergrenzen der Welt übernimmt er ruckfrei
       const want = clamp((Math.min(this.cruiseSet, top) - v) * 0.9, -2.2, 1.6) - (top < this.cruiseSet ? fall : 0);
       this.aAuto += clamp(want - this.aAuto, -5 * H, 5 * H);

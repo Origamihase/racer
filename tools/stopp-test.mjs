@@ -12,7 +12,8 @@ import { STREET } from '../src/world/kit/layout.js';
 import { TESLA } from '../src/models/tesla.js';
 import { Trip, J } from '../src/game/trip.js';
 import { Arrival, limitsFor, AUTO } from '../src/world/xxl/plan.js';
-import { Game } from '../src/game/game.js';
+import { Game, AKKU_CARD, akkuLevel } from '../src/game/game.js';
+import { DRIVE_DEFAULTS } from '../src/game/player.js';
 import { BOARD, REISE_AKKU, fillTemplate } from '../src/data.js';
 
 let fails = 0;
@@ -324,6 +325,87 @@ for (const [name, r] of runs) {
   ok(!r.nomi.some((e) => e.text === BOARD.wiperPhantom) && r.nomi.filter((e) => !e.during && e.text === 'Prüfsatz nach dem Stopp.').length === 1, `${name}: zurückgehalten ${r.nomi.map((e) => e.text).join(' | ')}`);
 }
 
+// --- 4. Akku leer -----------------------------------------------------------------------------------------------------
+// Mit 10,6 % Akku auf der Autobahn, Tempomat auf 130 km/h, kein Ladestopp: Der Mittelbildschirm zeigt bei 10 % „Akku
+// fast leer“ mit dem nächsten Ladepark, bei 5 % „Akku kritisch“ (je AKKU_CARD.show Sekunden), leer „Akku leer“ bis
+// zum Ende, und das HUD sagt es einmal; leer hält der Tempomat nichts mehr, der Wagen rollt aus, und im Stand endet
+// die Fahrt mit „akku“.
+function emptyRun() {
+  Math.random = mulberry32(5);
+  const trip = new Trip({ rng: Math.random });
+  const arrival = new Arrival();
+  const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 3000);
+  const out = { cards: [], toasts: [], emptyAt: null, stopT: null, faster: 0, reason: null, vEmpty: 0 };
+  let ids = 0;
+  const game = new Game({
+    traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
+    scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
+    road: loose(), sky: loose(), rain: loose(), windshield: loose({ firmware: 0, manual: () => 'wipe' }),
+    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    ui: loose({ toast: (text, kind, key) => out.toasts.push({ text, kind, key }) }), fx: loose(), pickups: loose({ update: () => NONE }),
+    world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
+  });
+  game.start({ upgrades: {}, best: {} });
+  const p = game.player;
+  p.configure({ ...DRIVE_DEFAULTS, cruise: true });
+  p.s = trip.s;
+  p.x = trip.x;
+  p.speed = 130 / 3.6;
+  p.cruiseSet = p.speed;
+  p.battery = 10.6;
+  const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+  const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
+  let last = null;
+  for (let i = 0; i < 600 / DT; i++) {
+    game.T.bid = Math.max(game.T.bid, 60);
+    limitsFor(trip, lim, arrival.stop(trip));
+    p.setLimits(lim);
+    const sec = trip.section;
+    let want = J.L0;
+    if (sec.kind === 'ab') {
+      const f = sec.fork;
+      want = 5.625;
+      if (f && !f.taken && f.s - trip.s < J.decel - 10 && (f.forced || trip.planFor(f) === 'exit')) want = J.L0;
+    }
+    const dx = want - (p.x + p.vx * AUTO.look);
+    ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
+    game.offAutobahn = sec.kind !== 'ab';
+    const v0 = p.speed;
+    game.update(DT, ctl, camera);
+    if (out.emptyAt === null && p.empty) {
+      out.emptyAt = game.t;
+      out.vEmpty = v0;
+    } else if (out.emptyAt !== null && p.speed > v0 + 1e-9) out.faster++;
+    if (game.over) break;
+    const c = game.screenState().lowBattery;
+    if (c && (!last || c.lvl !== last.lvl)) out.cards.push({ lvl: c.lvl, t: game.t, pct: p.battery, park: c.park, km: c.km, alpha: c.alpha });
+    if (!c && last) out.cards[out.cards.length - 1].gone = game.t;
+    if (c) out.cards[out.cards.length - 1].alphaMax = Math.max(out.cards[out.cards.length - 1].alphaMax || 0, c.alpha);
+    last = c;
+    for (const ev of trip.update(p.s, p.x)) game.onTrip(ev);
+    arrival.update(trip, [], p.speed);
+  }
+  out.stopT = game.over ? game.t : null;
+  out.reason = game.over ? game.over.reason : null;
+  return out;
+}
+const E = emptyRun();
+const [c1, c2, c3] = E.cards;
+ok(akkuLevel(10.01) === 0 && akkuLevel(10) === 1 && akkuLevel(5) === 2 && akkuLevel(0.01) === 2 && akkuLevel(0) === 3, 'Stufen der Akku-Karte');
+ok(E.cards.length === 3 && c1.lvl === 1 && c2.lvl === 2 && c3.lvl === 3, `Akku-Karten ${JSON.stringify(E.cards)}`);
+if (c1 && c2 && c3) {
+  ok(c1.pct <= 10 && c1.pct > 9.8 && c2.pct <= 5 && c2.pct > 4.8 && c3.pct === 0, `Karten bei ${c1.pct.toFixed(2)} / ${c2.pct.toFixed(2)} / ${c3.pct} %`);
+  ok(near(c1.gone - c1.t, AKKU_CARD.show, 0.05) && near(c2.gone - c2.t, AKKU_CARD.show, 0.05) && !c3.gone, `Karten stehen ${(c1.gone - c1.t).toFixed(2)} / ${(c2.gone - c2.t).toFixed(2)} s, „Akku leer“ bis zum Ende: ${!c3.gone}`);
+  ok(c1.alpha < 0.2 && c1.alphaMax === 1 && c3.alphaMax === 1, `Einblenden: erstes Bild ${c1.alpha.toFixed(2)}, ganz da ${c1.alphaMax} / ${c3.alphaMax}`);
+  ok(c1.park !== '' && c1.km > 0 && c2.park !== '' && c3.park === '', `Ladepark auf der Karte: ${c1.park} ${c1.km.toFixed(1)} km / ${c2.park} / „${c3.park}“`);
+}
+ok(E.toasts.filter((t) => t.key === 'akku').length === 1, `HUD meldet den leeren Akku ${E.toasts.filter((t) => t.key === 'akku').length}×`);
+ok(E.emptyAt !== null && E.vEmpty > 30 && E.faster === 0, `leer bei ${E.vEmpty.toFixed(1)} m/s, danach ${E.faster}× schneller geworden (Tempomat)`);
+ok(E.reason === 'akku' && E.stopT - E.emptyAt < 40, `leer: Ende ${E.reason} nach ${E.stopT !== null ? (E.stopT - E.emptyAt).toFixed(1) : '–'} s Ausrollen`);
+
+console.log(
+  `Akku leer: Karten bei ${E.cards.map((c) => c.pct.toFixed(1) + ' %').join(' / ')} (${c1 ? c1.park + ', ' + c1.km.toFixed(1) + ' km' : '–'}), ausgerollt aus ${(E.vEmpty * 3.6).toFixed(0)} km/h in ${E.stopT !== null ? (E.stopT - E.emptyAt).toFixed(1) : '–'} s`,
+);
 console.log(
   `Ladestopp: Halt bei u ${PARK.halt} m, Einparken ${dockStat.len.toFixed(2)} m in ${dockStat.T.toFixed(2)} s (Abstand ${dockStat.minC.toFixed(2)} m zu ${dockStat.minWho}), ` +
     `Ausparken ${ROLL_T.toFixed(2)} s bis u ${e.u.toFixed(2)} (Abstand ${rollStat.minC.toFixed(2)} m zu ${rollStat.minWho}), ganzer Stopp ${full.charged ? full.charged.t : '?'} s; ` +

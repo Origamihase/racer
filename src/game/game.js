@@ -73,10 +73,21 @@ export function exitLine(nx) {
   return nx.plan === 'stay' ? head + ' ' + fillTemplate(L.stay, { road: nx.road }) : head;
 }
 /**
- * Verbrauch des Akkus seit dem letzten Laden (Game.journeyBattery): Meter Straße und Prozent, getrennt nach offener
- * Strecke und echter Straße; s und b sind Bandmeter und Akku der letzten Messung (NaN: noch keine).
+ * Akku-Karte des Mittelbildschirms (Game.lowBattery, screenState lowBattery): unter at[0] Prozent „Akku fast leer“,
+ * unter at[1] „Akku kritisch“, je show Sekunden; leer steht „Akku leer“, bis der Wagen ausgerollt ist. fade: Sekunden
+ * zum Ein- und Ausblenden. Nach dem Laden (über at[0] + 2 %) kommt sie wieder.
  */
-const meterAkku = () => ({ next: 0, s: NaN, b: 0, open: { m: 0, pct: 0 }, real: { m: 0, pct: 0 } });
+export const AKKU_CARD = { at: [10, 5], show: 8, fade: 0.35 };
+/** Stufe der Akku-Karte bei pct Prozent: 0 keine, 1 fast leer, 2 kritisch, 3 leer. */
+export function akkuLevel(pct) {
+  return pct <= 0 ? 3 : pct <= AKKU_CARD.at[1] ? 2 : pct <= AKKU_CARD.at[0] ? 1 : 0;
+}
+/**
+ * Verbrauch des Akkus seit dem letzten Laden (Game.journeyBattery): Meter Straße und Prozent, getrennt nach offener
+ * Strecke und echter Straße; s und b sind Bandmeter und Akku der letzten Messung (NaN: noch keine); park: der nächste
+ * Ladepark für die Akku-Karte (Name, Kilometerstand der Reise dort, eingeplant?), sobald sie kommen kann.
+ */
+const meterAkku = () => ({ next: 0, s: NaN, b: 0, open: { m: 0, pct: 0 }, real: { m: 0, pct: 0 }, park: null });
 /** Ein Weg, den kein Akku schafft (Game.reachable): kein Ziel oder kein Park dahinter. */
 const NOWHERE = { m: Infinity, realM: 0 };
 // Erste Runde: Fährt der Wagen schon im Zielort, wartet das nächste Gebot – höchstens so viele Sekunden nach der
@@ -221,6 +232,7 @@ export class Game {
     this.policeCar = null;
     this.shoulderWarned = false;
     this.batteryWarned = 0;
+    this.lowBat = { lvl: 0, t: 0 };
     this.lastHugo = 0;
 
     this.scenery.reset();
@@ -580,8 +592,10 @@ export class Game {
     }
     if (p.shoulderTime <= 0) this.shoulderWarned = false;
 
-    // Akku: NOMI nennt den nächsten Ladepark (journeyBattery)
+    // Akku: NOMI nennt den nächsten Ladepark (journeyBattery), der Mittelbildschirm zeigt die Akku-Karte (lowBattery);
+    // leer hält der Tempomat nichts mehr (Player.longStep): Der Wagen rollt aus, im Stand ist die Fahrt zu Ende
     this.journeyBattery();
+    this.lowBattery();
     if (p.empty && p.speed < 1.5) this.end('akku');
   }
 
@@ -610,6 +624,10 @@ export class Game {
     }
     a.s = p.s;
     a.b = p.battery;
+    if (p.battery <= AKKU_CARD.at[0] + 1) {
+      const [q] = trip.restsAhead(1);
+      a.park = q ? { name: q.name, at: trip.km + q.km, planned: q.planned } : null;
+    }
     if (p.battery > A.early + 5) this.batteryWarned = 0;
     const lvl = p.battery < A.warn[1] ? 3 : p.battery < A.warn[0] ? 2 : 0;
     if (lvl && lvl <= this.batteryWarned) return;
@@ -625,6 +643,35 @@ export class Game {
     this.say(fillTemplate(text, vars), 'worried');
     if (r && !r.planned) this.ui.toast(this.touchUI ? '🔌 Ladestopp einplanen: Knopf unten' : '🔌 Ladestopp einplanen: Taste L', 'info', 'ladestopp');
     this.chat(pick(['Akku! 🔋', 'Ab in den Ladepark!', 'Popcorn-Pause? 🍿', 'Lade-Pause!']));
+  }
+
+  /**
+   * Akku-Karte (AKKU_CARD): merkt sich, wann der Akku unter eine Stufe fiel. Leer sagt es auch das HUD – in jeder
+   * Ansicht, nicht nur im Cockpit.
+   */
+  lowBattery() {
+    const p = this.player;
+    const c = this.lowBat;
+    const lvl = akkuLevel(p.battery);
+    if (lvl > c.lvl) {
+      c.lvl = lvl;
+      c.t = this.t;
+      if (lvl === 3) this.ui.toast('🔋 Akku leer – der Wagen rollt aus', 'bad', 'akku');
+    } else if (p.battery > AKKU_CARD.at[0] + 2) c.lvl = 0;
+  }
+
+  /**
+   * Die Akku-Karte für den Mittelbildschirm (null: keine): Stufe (akkuLevel), Prozent, Deckkraft beim Ein- und
+   * Ausblenden und der nächste Ladepark (Name, Reisekilometer bis dorthin, eingeplant?).
+   */
+  lowBatteryCard() {
+    const c = this.lowBat;
+    const age = this.t - c.t;
+    if (!c.lvl || (c.lvl < 3 && age > AKKU_CARD.show)) return null;
+    const F = AKKU_CARD.fade;
+    const alpha = Math.min(1, age / F, c.lvl < 3 ? (AKKU_CARD.show - age) / F : 1);
+    const pk = c.lvl < 3 ? this.akku.park : null;
+    return { lvl: c.lvl, pct: this.player.battery, alpha, park: pk ? pk.name : '', km: pk ? Math.max(0, pk.at - this.world.trip().km) : 0, planned: !!(pk && pk.planned) };
   }
 
   /**
@@ -2318,6 +2365,7 @@ export class Game {
       funkloch: this.funkloch > 0 ? 1 : 0,
       wiperOn: W.level > 0.05,
       damage: p.damage,
+      lowBattery: this.lowBatteryCard(),
     };
   }
 }

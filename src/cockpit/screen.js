@@ -5,6 +5,7 @@ import { clamp, lerp, fmtNum, tachoKmh } from '../util.js';
 import { roundRect } from '../textures.js';
 import { drawDamageCar, damageBand } from './screen-damage.js';
 import { NaviScreen } from '../map/navview.js';
+import { fmtKm } from '../map/navroute.js';
 
 const CW = 1024;
 const CH = 640;
@@ -87,6 +88,7 @@ export class CenterScreen {
     this.drawTopBar(ctx, st, T);
     if (st.gear === 'R') this.drawRearFrame(ctx);
     this.drawDock(ctx, st, T);
+    if (st.lowBattery) this.drawLowBattery(ctx, st.lowBattery);
     if (st.funkloch > 0) {
       ctx.fillStyle = `rgba(120,120,120,${0.35 * st.funkloch})`;
       ctx.fillRect(SPLIT, 0, CW - SPLIT, CH - 64);
@@ -381,6 +383,68 @@ export class CenterScreen {
     }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
+  }
+
+  /**
+   * Akku-Karte (game.js AKKU_CARD; b: screenState lowBattery): rot über der Spuransicht – „Akku fast leer“ bei 10 %,
+   * „Akku kritisch“ bei 5 %, „Akku leer“, bis der Wagen steht; mit dem Rest im Batteriesymbol, den Prozent, was zu tun
+   * ist, und dem nächsten Ladepark. Gleitet herein und hinaus, ab „kritisch“ pulsiert der Rand.
+   */
+  drawLowBattery(ctx, b) {
+    const x = 14;
+    const w = SPLIT - 28;
+    const h = 176;
+    const y = 270 + (1 - b.alpha) * 18;
+    ctx.save();
+    ctx.globalAlpha = b.alpha;
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 5;
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, b.lvl > 1 ? '#e0281e' : '#e4502f');
+    g.addColorStop(1, b.lvl > 1 ? '#a3101a' : '#b8291c');
+    ctx.fillStyle = g;
+    roundRect(ctx, x, y, w, h, 16);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    if (b.lvl > 1) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.5 + 0.35 * Math.sin(this.spin * 6)})`;
+      ctx.lineWidth = 3;
+      roundRect(ctx, x + 1.5, y + 1.5, w - 3, h - 3, 15);
+      ctx.stroke();
+    }
+    // Batteriesymbol mit dem Rest; leer ein Ausrufezeichen
+    const ix = x + 20;
+    const iy = y + 22;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3.5;
+    roundRect(ctx, ix, iy, 56, 28, 6);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(ix + 58, iy + 9, 5, 10);
+    ctx.textBaseline = 'middle';
+    if (b.lvl < 3) ctx.fillRect(ix + 5, iy + 5, Math.max(4, 46 * clamp(b.pct / 100, 0, 1)), 18);
+    else {
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 22px Arial, sans-serif';
+      ctx.fillText('!', ix + 28, iy + 15);
+    }
+    // Titel, Prozent und was zu tun ist
+    ctx.textAlign = 'left';
+    ctx.font = '700 28px "Helvetica Neue", Arial, sans-serif';
+    fitText(ctx, ['', 'Akku fast leer', 'Akku kritisch', 'Akku leer'][b.lvl], ix + 80, iy + 15, x + w - 98 - ix);
+    ctx.font = '700 46px "Helvetica Neue", Arial, sans-serif';
+    const pct = Math.round(clamp(b.pct, 0, 100)) + ' %';
+    ctx.fillText(pct, x + 20, y + 98);
+    const tx = x + 34 + ctx.measureText(pct).width;
+    ctx.font = '600 22px "Helvetica Neue", Arial, sans-serif';
+    fitText(ctx, ['', 'Bitte bald laden', 'Jetzt laden!', 'Der Wagen rollt aus'][b.lvl], tx, y + 100, x + w - 18 - tx);
+    // der nächste Ladepark (leer: nichts mehr zu planen)
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = '500 20px "Helvetica Neue", Arial, sans-serif';
+    const park = b.park ? (b.planned ? 'Ladestopp: ' : 'Nächster Ladepark: ') + b.park + ' · ' + fmtKm(b.km) : 'Nächsten Ladepark ansteuern';
+    fitText(ctx, b.lvl === 3 ? 'Kein Strom mehr für den Antrieb' : park, x + 20, y + 146, w - 40);
+    ctx.restore();
   }
 }
 
