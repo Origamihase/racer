@@ -16,7 +16,8 @@ Jedes Ziel ist der Hauptbrunnen eines echten Orts.
 - **Lokal:** `docs/index.html` einfach im Chrome öffnen (Doppelklick genügt, kein Server nötig).
   Alternativ `npm run serve` und <http://localhost:8080> aufrufen.
 
-Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad und Touch werden unterstützt.
+Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad und Touch werden unterstützt. Vollbild gibt
+es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen → „Zum Home-Bildschirm“).
 
 ## Worum geht's?
 
@@ -79,6 +80,7 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 | Kamera (Cockpit / Drohne) | V | B | 🎥 |
 | Chat ein/aus | C | – | – |
 | Ton aus | M | – | – |
+| Vollbild an/aus (auch Knopf im Menü und in der Pause) | F | – | ⛶ im Menü |
 | Pause | Esc oder P | Start | ⏸ |
 
 Guthaben, Upgrades, Rekorde, besuchte Orte, Einstellungen und das Album der BrunnenTV-Folgen werden im Browser

@@ -8,6 +8,7 @@ import { MapScreen, visitLine } from './mapscreen.js';
 import { renderAlbum } from './album.js';
 import { drawRouteMap } from './routemap.js';
 import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
+import { canFullscreen, fullscreenLabel, toggleFullscreen, onFullscreenChange, homeScreenHint } from './fullscreen.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -70,6 +71,10 @@ export class Menus {
       this.action(b.dataset.action, b);
     });
     window.addEventListener('keydown', (e) => this.onKey(e));
+    // Vollbild an oder aus (Knopf, Taste F oder Esc): die Knöpfe sagen, was ein Klick jetzt tut
+    onFullscreenChange(() => {
+      for (const b of this.root.querySelectorAll('.fs-btn')) b.textContent = fullscreenLabel();
+    });
   }
 
   get open() {
@@ -220,6 +225,9 @@ export class Menus {
           b.classList.add('danger');
         }
         break;
+      case 'vollbild':
+        toggleFullscreen();
+        break;
       case 'credits': {
         // „Über das Spiel“: die Hinweise der Höhendaten auf- und zuklappen (der Knopf bleibt, wo er ist)
         const box = this.screens.about.querySelector('.credit-notices');
@@ -304,13 +312,19 @@ export class Menus {
     el('span', '', stats, '❤️ ' + visitLine(d.visits));
     // das gekaufte Megafon ist erstattet worden (save.js refundMegafon): die Zeile steht bis zum ersten Besuch im Shop
     if (d.megafonNote) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.megafonNote)));
-    el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause');
+    el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause' + (canFullscreen() ? ' · F: Vollbild' : ''));
+    // Vollbild: oben rechts in der Ecke (die Liste darunter bleibt kurz); ein iPhone kann es nur vom Home-Bildschirm
+    if (canFullscreen()) button(s, fullscreenLabel(), 'vollbild', 'fs-btn fs-corner');
+    else if (homeScreenHint()) el('p', 'fs-hint', card, '📱 Ohne Leisten spielen: Teilen ⬆️ → „Zum Home-Bildschirm“');
   }
 
   render_pause(s, g) {
     s.textContent = '';
     const card = el('div', 'card pause-card', s);
-    el('h2', '', card, '⏸ Pause');
+    // neben der Überschrift der Knopf fürs Vollbild (die sechs Knöpfe unten bleiben in einer Zeile)
+    const head = el('div', 'pause-head', card);
+    el('h2', '', head, '⏸ Pause');
+    if (canFullscreen()) button(head, fullscreenLabel(), 'vollbild', 'fs-btn');
     el('p', 'sub', card, 'Kappandramäßige Zusammenfassung für alle, die gerade erst reingekommen sind:');
     const grid = el('div', 'summary-grid', card);
     const item = (k, v) => {
@@ -543,6 +557,7 @@ export class Menus {
       ['Kamera (Cockpit / Drohne)', 'V', 'B', '🎥'],
       ['Chat ein/aus', 'C', '–', '–'],
       ['Ton aus', 'M', '–', '–'],
+      ['Vollbild an/aus', 'F', '–', '⛶ im Menü'],
       ['Pause', 'Esc oder P', 'Start', '⏸'],
     ];
     const head = el('div', 'crow head', tbl);
