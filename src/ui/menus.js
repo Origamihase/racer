@@ -5,6 +5,7 @@ import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.j
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
 import { MapScreen, visitLine } from './mapscreen.js';
+import { renderAlbum } from './album.js';
 import { otherMode } from '../mode.js';
 import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
 
@@ -58,7 +59,7 @@ export class Menus {
     this.screens = {};
     this.current = null;
     this.stack = [];
-    for (const name of ['title', 'pause', 'over', 'shop', 'about', 'controls', 'settings', 'karte']) {
+    for (const name of ['title', 'pause', 'over', 'shop', 'about', 'controls', 'settings', 'karte', 'album']) {
       const s = el('section', 'screen screen-' + name + ' hidden', this.root);
       this.screens[name] = s;
     }
@@ -160,7 +161,15 @@ export class Menus {
       case 'controls':
       case 'settings':
       case 'karte':
+      case 'album':
         this.push(a, this.h.dataFor ? this.h.dataFor(a) : null);
+        break;
+      case 'albumtab':
+        // BrunnenTV-Album: der andere Reiter (Folgen / Fehlen noch), der Knopf behält den Fokus
+        this.data = { ...this.data, tab: b.dataset.value };
+        this.render_album(this.screens.album, this.data);
+        this.watchScroll(this.screens.album);
+        this.screens.album.querySelector(`[data-action="albumtab"][data-value="${b.dataset.value}"]`)?.focus({ preventScroll: true });
         break;
       case 'buy': {
         const id = b.dataset.id;
@@ -294,6 +303,8 @@ export class Menus {
     sub.append(other.sub);
     button(menu, '🛒  Tesla-Shop', 'shop');
     button(menu, '🗺️  Karte', 'karte');
+    // die Reise sammelt ihre BrunnenTV-Folgen in einem Album (src/ui/album.js)
+    if (mode === 'xxl') button(menu, '⛲  BrunnenTV-Folgen', 'album');
     button(menu, '🎮  Steuerung', 'controls');
     button(menu, '⚙️  Einstellungen', 'settings');
     button(menu, 'ℹ️  Über das Spiel', 'about');
@@ -346,6 +357,7 @@ export class Menus {
     button(menu, '▶ Weiterfahren', 'resume', 'primary');
     button(menu, '↻ Neustart', 'restart');
     button(menu, '🗺️ Karte', 'karte');
+    if (g.worldNavi) button(menu, '⛲ Folgen', 'album');
     button(menu, '⚙️ Einstellungen', 'settings');
     button(menu, '⏹ Stream beenden', 'quit');
   }
@@ -562,6 +574,10 @@ export class Menus {
     button(rr, 'Spielstand zurücksetzen', 'reset', 'off');
     const menu = el('div', 'menu row', card);
     button(menu, '← Zurück', 'back', 'primary');
+  }
+
+  render_album(s, d) {
+    renderAlbum(s, d);
   }
 
   render_karte(s, d) {

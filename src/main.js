@@ -47,6 +47,7 @@ import { MapDemo } from './map/mapdemo.js';
 import { NavModel } from './map/navroute.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
+import { albumBadges } from './ui/album.js';
 import { clamp, lerp, damp, easeInOut, smoothstep } from './util.js';
 
 const QUALITY = {
@@ -115,6 +116,8 @@ const sky = new Sky(renderer, scene, { shadows: quality.shadows, shadowSize: qua
 const road = new Road(scene, XXL ? ROAD_OPTS : undefined);
 const scenery = new Scenery(scene);
 const xxl = XXL ? new XxlWorld({ scene, road, scenery }) : null;
+// die große Karte der Reise zeigt die BrunnenTV-Folgen des Albums als Abzeichen (goldene Ringe, Zähler)
+if (xxl) albumBadges(save);
 const rain = new Rain(scene);
 const traffic = new Traffic(scene, rain);
 const pickups = new Pickups(scene);
@@ -574,6 +577,8 @@ const menus = new Menus(app, {
     if (name === 'title') return save;
     if (name === 'pause') return game;
     if (name === 'karte') return { save, nav: xxl ? xxlNav : mapDemo ? mapDemo.model : null, travel: !!xxl, odo: xxl && paused ? game.odometer : null };
+    // BrunnenTV-Album: Folgen aus dem Spielstand, Bilder unter ihrem eigenen Schlüssel (frisch gelesen)
+    if (name === 'album') return { save, pics: loadPictures(), tab: 'folgen' };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
     if (name === 'over') return lastOver ? { ...lastOver, wallet: save.wallet } : data;
     return data;

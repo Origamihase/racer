@@ -857,3 +857,51 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .wallet { font-size: 18px; }
   .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 }
+
+/* --- BrunnenTV-Album der Reise (src/ui/album.js) ---------------------------------------------------------------- */
+.album-card { max-width: 1040px; }
+.album-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 14px; }
+.album-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
+  background: rgba(95, 208, 255, 0.12); border: 1px solid rgba(95, 208, 255, 0.38); color: #e2f6ff; }
+.album-chip.miss { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.16); color: #e1e4ea; }
+.album-chip-icon, .ep-drawn-icon, .ep-intl, .ep-chat-k { font-family: var(--font), var(--emoji); }
+.album-tabs { justify-content: flex-start; margin: 0 0 14px; }
+.album-tabs .btn { font-size: 15px; padding: 8px 14px; }
+.album-tabs .btn.on { background: rgba(95, 208, 255, 0.22); border-color: rgba(95, 208, 255, 0.7); }
+.album-empty { color: var(--sub) !important; max-width: 640px; }
+/* eine Folge: Standbild (288 × 162, halb so groß gezeigt: scharf auf DPR 2) links, daneben Nummer, Zeit, Ort, Brunnen */
+.album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(318px, 100%), 1fr)); gap: 12px; }
+.ep { display: grid; grid-template-columns: 144px minmax(0, 1fr); gap: 7px 12px; align-items: start; min-width: 0;
+  background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 8px; }
+.ep-pic { width: 144px; height: 81px; border-radius: 9px; overflow: hidden; background: #1d2a38; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) inset; }
+.ep-pic img { width: 100%; height: 100%; display: block; object-fit: cover; }
+/* ohne Bild: eine gezeichnete Karte – Himmel, Wiese, der Brunnen und die Nummer der Folge */
+.ep-drawn { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse 46% 22% at 50% 76%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 70%),
+    linear-gradient(180deg, #8fd2ff 0%, #d8f1ff 62%, #b9e2ae 62%, #93cf86 100%); }
+.ep-drawn-icon { font-size: 46px; line-height: 1; filter: drop-shadow(0 2px 3px rgba(10, 50, 90, 0.28)); }
+.ep-drawn-n { position: absolute; right: 6px; bottom: 5px; font-size: 12px; font-weight: 800; line-height: 1.35; color: #0e3a63;
+  background: rgba(255, 255, 255, 0.82); border-radius: 6px; padding: 0 5px; }
+.ep-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ep-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+.ep-n { font-size: 14px; font-weight: 800; color: #5fd0ff; white-space: nowrap; }
+.ep-when { font-size: 12px; color: var(--sub); white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* lange Ortsnamen brechen um („Bad Homburg vor der Höhe“, „Krausnick (Tropical Islands)“), etwas kleiner gesetzt */
+.ep-place { font-size: 17px; font-weight: 800; line-height: 1.22; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.ep-place.long { font-size: 15.5px; }
+.ep-kind { font-size: 13px; color: #cfd5e2; }
+.ep-intl { margin-left: 6px; color: #9fe0ff; white-space: nowrap; }
+.ep-chat { grid-column: 1 / -1; font-size: 13px; line-height: 1.38; color: #e3e8f0; background: rgba(95, 208, 255, 0.08);
+  border-left: 3px solid rgba(95, 208, 255, 0.7); border-radius: 6px; padding: 5px 9px; }
+.ep-chat-k { font-weight: 700; color: #9fe0ff; margin-right: 6px; white-space: nowrap; }
+/* Reiter „Fehlen noch“: die Orte je Land als fortlaufende Zeile */
+.album-miss-sub { max-width: 760px; font-size: 14px; }
+.miss-group h3 { margin: 12px 0 4px; }
+.miss-names { margin: 0; font-size: 14px; line-height: 1.6; color: #dfe2e8; }
+.miss-name { white-space: nowrap; }
+@media (max-width: 480px) {
+  .ep { grid-template-columns: 128px minmax(0, 1fr); gap: 6px 10px; }
+  .ep-pic { width: 128px; height: 72px; }
+  .ep-drawn-icon { font-size: 40px; }
+  .ep-place { font-size: 16px; }
+}
