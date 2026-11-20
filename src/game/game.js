@@ -2227,11 +2227,8 @@ export class Game {
     if (chance(0.12)) this.chat(pick(['Bimmel hurra! 📯', 'HUP HUP', 'Hupkonzert!']));
   }
 
+  /** Taste H: Das Megafon gehört zur Ausstattung (kein Shop-Artikel mehr), es lädt nur nach jeder Durchsage nach. */
   useMegafon() {
-    if (!this.up.megafon) {
-      this.ui.toast('📢 Das Megafon gibt es im Tesla-Shop', 'info');
-      return;
-    }
     if (this.megafonCd > 0) {
       this.ui.toast(`📢 Megafon lädt noch (${Math.ceil(this.megafonCd)} s)`, 'info');
       return;

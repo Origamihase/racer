@@ -13,6 +13,8 @@ export const DEFAULT_SAVE = {
   visits: {},
   // der auf dem Titelbildschirm gewählte Modus ('klassik' | 'xxl', siehe src/mode.js); null: noch nie gewählt
   mode: null,
+  // das gekaufte Megafon ist erstattet (refundMegafon): so viele Euro, einmal; 0: nichts erstattet
+  megafonRefund: 0,
 };
 
 /** Ein gespeicherter Teil-Spielstand (best, stats, …) – oder nichts, wenn dort etwas anderes steht als ein Objekt. */
@@ -39,6 +41,19 @@ export function loadSave() {
   } catch (e) {
     return structuredClone(DEFAULT_SAVE);
   }
+}
+
+// Das Megafon gehört zur Ausstattung und ist kein Shop-Artikel mehr. Wer es gekauft hat, bekommt den Preis einmal
+// zurück; der Artikel verschwindet aus den Upgrades, und megafonRefund merkt sich die Erstattung.
+export const MEGAFON_PRICE = 450;
+
+/** Das gekaufte Megafon einmal erstatten (beim Laden): Ergebnis der erstattete Betrag, sonst 0. */
+export function refundMegafon(save) {
+  if (save.megafonRefund || !save.upgrades.megafon) return 0;
+  delete save.upgrades.megafon;
+  save.wallet = Math.round((save.wallet + MEGAFON_PRICE) * 100) / 100;
+  save.megafonRefund = MEGAFON_PRICE;
+  return MEGAFON_PRICE;
 }
 
 export function storeSave(save) {

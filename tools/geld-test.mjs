@@ -467,8 +467,10 @@ console.log('Die Leute des Streams (Reise):');
 // --- Klassisch bleibt es beim Cent ----------------------------------------------------------------------------------
 // Die Stream-Kasse würfelt klassisch dieselben Cent-Schritte wie vor den Zehnern, und derselbe klassische Stream (Startwert
 // 7, 150 km/h geradeaus, ohne Verkehr) kommt auf den Cent zum selben Geld mit denselben Geboten wie vorher (gemessen mit
-// dem Stand vor den Zehnern, 8002ce7).
-const KLASSIK = { marks: ['46.10', '228.12', '436.23'], bids: [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 33.42] };
+// dem Stand vor den Zehnern, 8002ce7). Seit das Megafon zur Ausstattung gehört, kann auch klassisch der Megafon-Wunsch
+// unter den Aktionen gezogen werden; die erste Aktion kommt frühestens nach zwei Minuten, darum ist nur die dritte Marke
+// eine andere (vorher 436.23 €; mit dem alten „needs: 'megafon'“ wieder genau so).
+const KLASSIK = { marks: ['46.10', '228.12', '464.23'], bids: [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 33.42] };
 {
   const cents = new Set([0.01, 0.02, 0.03, 0.05, 0.1, 0.25, 0.5, 1, 1.5, 2, 2.5, 3, 5, 10, 15, 20, 25, 33.33, 50]);
   const eco = new Economy({ seed: 3 });

@@ -146,11 +146,12 @@ export const SPENDEN_ZWECKE = [
   'die richtige Currywurstbude', 'Sitzheizung für alle', 'eine Fusselrolle', 'gute Laune',
 ];
 
-// Aktionen, die Zuschauer im Live-Bereich kaufen (needs: nur mit diesem Upgrade an Bord)
+// Aktionen, die Zuschauer im Live-Bereich kaufen (needs: nur mit diesem Upgrade an Bord; das Megafon gehört zur
+// Ausstattung, sein Wunsch geht immer)
 export const AKTIONEN = [
   { id: 'trunk', name: 'Kofferraum öffnen', price: 5 },
   { id: 'hupe', name: 'Einmal hupen', price: 2 },
-  { id: 'megafon', name: 'Megafon-Wunsch', price: 4, needs: 'megafon' },
+  { id: 'megafon', name: 'Megafon-Wunsch', price: 4 },
 ];
 // Was Brüll-William dann durchs Megafon ruft
 export const MEGAFON_WUENSCHE = [
@@ -885,11 +886,6 @@ export const SHOP = [
     effect: (l) => ['Version 0.1 Beta: zuckt nur', 'Version 11.1 Beta: wischt ab und zu', 'Version 11.2 Beta: wischt öfter', 'Version 12 (immer noch Beta)'][l],
   },
   {
-    id: 'megafon', icon: '📢', name: 'Megafon', cat: 'Spaß', prices: [450],
-    desc: 'Wie in Gifhorn: Mit einer Megafon-Durchsage macht der Verkehr vor dir Platz. Taste H.',
-    effect: () => 'Autos vor dir wechseln die Spur',
-  },
-  {
     id: 'radar', icon: '📟', name: 'Radarwarner', cat: 'Spaß', prices: [250],
     desc: 'Ein Kästchen fürs Armaturenbrett. Es piept, und NOMI sagt jeden Blitzer an, bevor es blitzt. Ohne ihn bleibt es beim Überraschungsfoto.',
     effect: () => 'NOMI warnt vor jedem Blitzer',
@@ -922,6 +918,8 @@ export const SHOP = [
 ];
 
 export const UPGRADE_LIMITS = Object.fromEntries(SHOP.map((s) => [s.id, s.prices.length]));
+// Das Megafon ist kein Shop-Artikel mehr (save.js refundMegafon): Titel und Shop sagen es dem, der es gekauft hatte
+export const MEGAFON_ERSTATTET = (euro) => `📢 Das Megafon gehört jetzt zur Ausstattung – deine ${euro} sind zurück im Guthaben.`;
 
 // Abspann-Crew
 /**

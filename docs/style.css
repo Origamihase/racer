@@ -519,6 +519,9 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 /* (die Zahlen dürfen breiter werden als die Karte: In der Reise sind es vier, und sie bleiben in einer Zeile, wo Platz ist) */
 .title-stats { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 22px; color: #e1e4ea; font-size: 15px; font-weight: 600; width: max-content; max-width: min(760px, calc(100vw - 56px)); }
 .title-hint { position: absolute; bottom: 18px; left: clamp(20px, 6vw, 110px); color: var(--sub); font-size: 13px; }
+/* einmal nach der Erstattung des gekauften Megafons (save.js refundMegafon): eine freundliche Zeile auf dem Titel und im Shop */
+.refund-note { margin: 12px 0 0; max-width: min(520px, calc(100vw - 56px)); color: #ffe39a; font-size: 14px; font-weight: 600; line-height: 1.35; text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
+.shop-card > .refund-note { margin: 0 0 14px; font-size: 15px; text-shadow: none; }
 
 .btn { font: inherit; font-size: 17px; font-weight: 600; padding: 11px 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.07);
   color: #fff; cursor: pointer; text-align: left; transition: background 0.15s, transform 0.1s, border-color 0.15s; }

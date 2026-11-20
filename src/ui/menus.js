@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, MODE_TEXT, TAGLINE, INCOME, FINES, fmtBetrag, nameBreak } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, MODE_TEXT, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak } from '../data.js';
 import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -304,6 +304,8 @@ export class Menus {
     el('span', '', stats, '🛣️ ' + (travel ? fmtOdo(d.stats.reiseKm || 0) : fmtKm((d.stats.totalKm || 0) * 1000, 1)) + ' gesamt');
     // die Reise zählt dazu ihre Orte, dieselbe Zahl wie auf der großen Karte
     if (mode === 'xxl') el('span', '', stats, '❤️ ' + visitLine(d.visits));
+    // das gekaufte Megafon ist eben erstattet worden (main.js, save.js refundMegafon)
+    if (this.h.refund) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(this.h.refund)));
     el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause');
   }
 
@@ -440,6 +442,7 @@ export class Menus {
     el('h2', '', head, '🛒 Tesla-Shop');
     el('div', 'wallet', head, '💶 ' + fmtCent(d.wallet));
     el('p', 'sub', card, 'Upgrades für den schwarzen Model 3 Long Range AWD. Bezahlt wird mit den Stream-Einnahmen: Spenden, Abos, Navi-Gebote.');
+    if (this.h.refund) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(this.h.refund)));
     const grid = el('div', 'shop-grid', card);
     for (const it of SHOP) {
       const lvl = d.upgrades[it.id] || 0;
@@ -482,7 +485,7 @@ export class Menus {
       ['Rückwärtsgang (im Stand halten, zurück mit Strom)', '↓ oder S', 'LT oder Steuerkreuz ↓', 'Bremse'],
       ['Hupen (Brunnen & Elsa grüßen)', 'Leertaste', 'A', '📯'],
       ['Scheibenwischer von Hand', 'E', 'X', '🌧️'],
-      ['Megafon (aus dem Shop)', 'H', 'Y', '📢'],
+      ['Megafon', 'H', 'Y', '📢'],
       ...(this.h.mode === 'xxl' ? [['Ladestopp einplanen (nächster Ladepark)', 'L', '–', '🔌 Ladestopp']] : []),
       ['Kamera (Cockpit / Drohne)', 'V', 'B', '🎥'],
       ['Chat ein/aus', 'C', '–', '–'],
