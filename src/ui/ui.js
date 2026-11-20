@@ -569,14 +569,34 @@ export class UI {
     // eine Gutschrift auf einmal an Stelle von „Guthaben“; die nächste löst die vorige ab
     this.moneyPops.textContent = '';
     const p = el('span', 'money-pop ' + (amount >= 0 ? 'plus' : 'minus'), this.moneyPops, (amount >= 0 ? '+' : '−') + fmtCent(Math.abs(amount)));
-    if (label) {
-      el('small', '', p, label);
-      // passt der Grund nicht mehr ins Feld, bleibt nur der Betrag
-      if (p.offsetWidth > this.moneySlot.clientWidth) p.lastChild.remove();
-    }
+    if (label) el('small', '', p, label);
+    this.popAmount = amount;
+    this.fitMoneyPop();
     this.moneySlot.classList.add('popping');
     clearTimeout(this.moneyTimer);
     this.moneyTimer = setTimeout(() => this.clearMoneyPop(), 1900);
+  }
+
+  /**
+   * Die stehende Gutschrift bleibt im Feld neben dem Guthaben: Passt sie nicht, fällt erst der Grund weg, dann bei
+   * einem runden Betrag die Cent („+1.000 €“ – auf der Reise ist das Guthaben schnell fünfstellig und ein Gebot bis
+   * 3.000 € hoch), zuletzt wird sie kleiner. Geprüft auch, wenn das Guthaben danach eine Stelle länger wird.
+   */
+  fitMoneyPop() {
+    const p = this.moneyPops.firstChild;
+    const fits = () => p.offsetWidth <= this.moneySlot.clientWidth;
+    if (!p || fits()) return;
+    const label = p.querySelector('small');
+    if (label) {
+      label.remove();
+      if (fits()) return;
+    }
+    const v = Math.abs(this.popAmount);
+    if (Number.isInteger(v)) {
+      p.firstChild.nodeValue = (this.popAmount >= 0 ? '+' : '−') + fmtEuro(v);
+      if (fits()) return;
+    }
+    p.classList.add('tight');
   }
 
   clearMoneyPop() {
@@ -779,7 +799,12 @@ export class UI {
     this.recordEl.textContent = odo > best && best > 0 ? '🏆 neuer Rekord!' : best > 0 ? 'Rekord ' + strecke(best) : '';
     this.recordEl.classList.toggle('record', odo > best && best > 0);
     if (tacho === null) this.showKmh(tachoKmh(p.kmh));
-    this.moneyRow.textContent = fmtCent(g.money);
+    const money = fmtCent(g.money);
+    if (money !== this.moneyRow.textContent) {
+      this.moneyRow.textContent = money;
+      // ein längeres Guthaben lässt einer stehenden Gutschrift weniger Platz
+      if (this.moneyPops.firstChild) this.fitMoneyPop();
+    }
     this.batteryEl.textContent = Math.round(p.battery) + ' %';
     this.batteryFill.style.width = clamp(p.battery, 0, 100) + '%';
     this.batteryFill.className = 'battery-fill' + (p.battery < 15 ? ' low' : p.battery < 30 ? ' mid' : '');

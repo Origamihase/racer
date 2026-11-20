@@ -18,6 +18,7 @@
 // - Die Leute des Streams (data.js CREW): wie oft König Knolli raidet und jubelt, die Mods (mit MOD), Discord, die
 //   Meldung nach dem Funkloch und das stille Herz; der Abspann der Reise mit der Zeile des Gedenkens im Wortlaut.
 // - Klassisch bleibt alles beim Cent: dieselben Cent-Schritte und derselbe Stream wie vor den Zehnern (KLASSIK).
+import { readFileSync } from 'fs';
 import { PerspectiveCamera } from 'three';
 import { Trip, J } from '../src/game/trip.js';
 import { Game } from '../src/game/game.js';
@@ -332,6 +333,10 @@ console.log('Werkstatt-Rechnung (Reise):');
   const income = run.bills.reduce((a, b) => a + b.income, 0) + g.tally.income;
   ok(Math.abs(income - run.earned) < 1e-6, `Einnahmen der Runden ${income} € statt ${run.earned} €`);
   for (const b of run.bills) ok(b.toast.parts.map((x) => x[0]).join('') === b.toast.text, `Zeile in Teilen ≠ Text: ${b.toast.text}`);
+  // Im Browser geht der Hinweis über die UI-Fassade in main.js: Sie muss die Teile weiterreichen, sonst steht die Zeile
+  // einfarbig am Rand (so war es bis 694f1ff – die Bilder zeigten es, dieser Test nicht)
+  const facade = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8').match(/^\s*toast: \(([^)]*)\) => ui\.toast\(([^)]*)\)/m);
+  ok(facade && facade[1].split(',').length === 4 && /\bparts\b/.test(facade[2]), `UI-Fassade (main.js) reicht die Teile eines Hinweises nicht weiter: ${facade && facade[0].trim()}`);
   console.log(`  60 min zügig: ${run.bills.map((b) => `Runde ${b.n} +${fmt(b.income)} € / −${fmt(b.paid)} €${b.paid < b.amount ? ` (${fmt(b.amount - b.paid)} € erlassen)` : ''}`).join(' · ')} · „${b1 && b1.toast.text}“`);
   // ohne Absicht: wie oft rempelt und kratzt der zügige Fahrer ohne Verkehr? (gar nicht – die Rechnung kommt vom Verkehr)
   const all = [...runs.values()].flat().flatMap((r) => r.bills);
