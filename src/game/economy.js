@@ -167,8 +167,9 @@ const OPENING_CALM = [0.6, 1.7];
 // stehen, damit auch die erste Runde eines gemütlichen Fahrers an einem Brunnen endet.
 const OPENING_AGAIN = [1.2, 2.4];
 // Bieterfenster nach jeder Folge (windowBid): mittlere Wartezeit aufs erste Gebot in Sekunden, [fest, je (1 − Stimmung)³]
-// (kubisch: Ein gut gelaunter Chat lässt einen ordentlichen Fahrer praktisch nie stehen, ein mürrischer oft)
-export const WINDOW = { mean: [3, 80] };
+// (kubisch: Ein gut gelaunter Chat lässt einen ordentlichen Fahrer praktisch nie stehen, ein mürrischer oft; bei mittlerer
+// Stimmung 0,5 bleibt ein Fenster etwa jedes neunte Mal leer – milder für langsame Fahrer, der Eigentümer am 20.11.)
+export const WINDOW = { mean: [3, 60] };
 
 // Sammelaktionen: Zielbeträge und was einzelne dazugeben
 const SAMMEL_GOALS = [20, 25, 30, 30, 35, 40, 50];

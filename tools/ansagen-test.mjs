@@ -174,7 +174,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
     return n / 2000;
   };
   const [p8, p5, p3, p1] = [0.8, 0.5, 0.3, 0.1].map(none);
-  ok(p8 < 0.03 && p5 < 0.2 && p3 > 0.15 && p1 > p3 && p3 > p5 && p5 > p8, `Bieterfenster: niemand bietet bei 0,8 ${pct(p8)}, 0,5 ${pct(p5)}, 0,3 ${pct(p3)}, 0,1 ${pct(p1)}`);
+  ok(p8 < 0.03 && p5 > 0.05 && p5 < 0.14 && p3 > 0.15 && p1 > p3 && p3 > p5 && p5 > p8, `Bieterfenster: niemand bietet bei 0,8 ${pct(p8)}, 0,5 ${pct(p5)}, 0,3 ${pct(p3)}, 0,1 ${pct(p1)}`);
   ok(/stream: \{ title: 'Keine Gebote mehr'/.test(read('src/ui/menus.js')), 'menus.js: Abspann für das Streamende ohne Gebot fehlt');
 
   // nach der ersten Folge bietet niemand: Das Fenster läuft ab, James und der Chat verabschieden sich, OMI sagt Gute Nacht
