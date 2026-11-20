@@ -230,11 +230,19 @@ function drive(trip, metres, decide, opts = {}) {
   const r0 = trip.reach();
   const nr = trip.nextRest();
   ok(nr && nr.name === 'Ladepark Aschaffenburg' && !nr.planned, 'nächster Ladepark nach Würzburg: ' + (nr && nr.name));
+  // der Akku leert sich je Meter Straße: die echte Straße darunter (realM), der Abstecher wie nach setStop (detour, bis
+  // zum Haltepunkt) und der Weg hinter dem Ziel weiter zum nächsten Park von dort (pastTarget)
+  const dt = trip.detour(nr.park);
+  const D = PARK_STOP_AFTER;
+  ok(nr.realM > J.ramp && nr.realM < nr.m && Math.abs(dt.km - nr.km + D / 1000) < 1e-9 && Math.abs(dt.m - nr.m + D) < 1e-9 && Math.abs(dt.realM - nr.realM + D) < 1e-9, `Abstecher zum Park: ${dt.m} m (${dt.realM} echt) statt ${nr.m} m (${nr.realM} echt)`);
+  const pt = trip.pastTarget();
+  ok(pt && pt.km > r0.km && pt.m > r0.m && pt.realM > r0.realM && pt.m - r0.m >= pt.realM - r0.realM, `hinter Würzburg zum nächsten Park: ${pt && pt.m} m (${pt && pt.realM} echt)`);
   trip.setStop(nr.park);
   const r1 = trip.reach();
   const nr1 = trip.nextRest();
-  ok(trip.stop === nr.park && nr1.planned && Math.abs(nr1.km - nr.km) < 1e-9 && Math.abs(nr1.m - nr.m) < 1e-9, 'geplanter Stopp: nextRest nennt ihn mit denselben Zahlen');
+  ok(trip.stop === nr.park && nr1.planned && Math.abs(nr1.km - nr.km) < 1e-9 && Math.abs(nr1.m - nr.m) < 1e-9 && Math.abs(nr1.realM - nr.realM) < 1e-9, 'geplanter Stopp: nextRest nennt ihn mit denselben Zahlen');
   ok(Math.abs(r1.km - r0.km - (J.hide + J.show) / 1000) < 1e-6, `Umweg des Ladestopps ${(r1.km - r0.km).toFixed(3)} km = Rampe bis Auffahrt`);
+  ok(Math.abs(r1.realM - r0.realM - (J.hide + J.show)) < 1e-6 && trip.pastTarget() === null, `Umweg des Ladestopps: ${r1.realM - r0.realM} m echte Straße`);
   let m = run(trip, false);
   ok(m.planned === true && Math.abs(m.park - (nr.km - PARK_STOP_AFTER / 1000)) < 0.003, `Kilometer bis zum Park ${m.park} statt ${nr.km}`);
   ok(m.arrive !== null && Math.abs(m.arrive - r1.km) < 0.003, `Kilometer bis Würzburg über den Park ${m.arrive} statt ${r1.km}`);

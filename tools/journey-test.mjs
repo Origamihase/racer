@@ -620,7 +620,7 @@ function stream(driver, hours, seed, firstRound = false) {
       if (game.batteryWarned > warned) {
         m.warns++;
         if (trip.stop < 0 && !game.charging) {
-          const r = trip.nextRest(game.range());
+          const r = trip.nextRest((q) => game.reachable(q));
           game.planStop();
           if (r && trip.stop === r.park) {
             m.planned++;
@@ -845,12 +845,10 @@ for (const { driver, m } of rows) {
   if (HOURS >= 3) ok(m.duels >= 10 && m.arrivals >= 3 && m.rolled >= 1, `Duell im Zielort: zu wenig geprüft (${m.duels} Duelle, ${m.arrivals} Ankünfte, ${m.rolled} vorbeigerollt, ${m.late2} knapp dahinter)`);
   rows.push({ driver: DUELLIST, m });
 }
-// Ladestopps: Wer bei NOMIs Warnung den genannten Ladepark einplant, läuft nie leer
-// (Startwerte so gewählt, dass es gilt: NOMIs Reichweite rechnet in Reisekilometern, der Akku leert sich je Sekunde –
-// führt der Weg zum Park über viel echte Straße, reicht sie nicht immer, in etwa jedem fünften Stream schon vor den
-// Zehner-Geboten (5106, 5109, 5115). Wer am Zufall der Reise dreht, sucht hier notfalls neu; offen in geld/NOTES.md.)
+// Ladestopps: Wer bei NOMIs Warnung den genannten Ladepark einplant, läuft nie leer (NOMI rechnet je Meter Straße und
+// schaut über das Ziel hinaus, Game.reachable; gemessen mit den Startwerten 5101–5145: kleinster Akku 7,6 %)
 {
-  const runs = [0, 1, 2].map((k) => stream(LADER, LADE_MIN / 60, 5104 + k));
+  const runs = [0, 1, 2].map((k) => stream(LADER, LADE_MIN / 60, 5101 + k));
   const all = (f) => runs.reduce((a, m) => a + f(m), 0);
   const minB = Math.min(...runs.map((m) => m.minBattery));
   const km = runs.flatMap((m) => m.parkKm).sort((a, b) => a - b);

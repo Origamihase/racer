@@ -838,8 +838,12 @@ export const REISE_JOBS = {
 export const REISE_AKKU = {
   warn: [25, 10], // Prozent: NOMI warnt, und noch einmal, wenn es knapp wird
   early: 70, // darunter warnt sie früher, sobald der nächste Park der letzte in Reichweite ist
-  reserve: 0.85, // so viel der geschätzten Reichweite gilt als sicher
-  kmPerPct: 0.8, // Reisekilometer je Prozent, solange noch nichts gemessen ist (vorsichtig geschätzt)
+  reserve: 0.85, // so viel des Akkus gilt als sicher nutzbar
+  // Prozent je Meter Straße, bis measure Meter davon seit dem Laden gemessen sind (Player.update: auf der Autobahn bei
+  // 38 m/s rund 0,0052; echte Straße mischt Rampen und Zubringer um 0,006 mit Orten um 0,0086 – gemessen 0,0053 bis
+  // 0,0061 samt dem Halt am Brunnen)
+  perM: { open: 0.0052, real: 0.0065 },
+  measure: 1500,
   low: 'Akku {pct} Prozent. Nächster Ladepark: {park}, in {km}. Ladestopp einplanen?',
   last: 'Akku {pct} Prozent. {park} in {km} liegt noch in Reichweite. Ladestopp einplanen?',
   veryLow: 'Akku nur noch {pct} Prozent! {park} in {km}. Bitte dort laden.',

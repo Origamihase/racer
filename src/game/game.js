@@ -50,6 +50,13 @@ function kmWords(km) {
   }
   return Math.round(km) + ' Kilometern';
 }
+/**
+ * Verbrauch des Akkus seit dem letzten Laden (Game.journeyBattery): Meter Straße und Prozent, getrennt nach offener
+ * Strecke und echter Straße; s und b sind Bandmeter und Akku der letzten Messung (NaN: noch keine).
+ */
+const meterAkku = () => ({ next: 0, s: NaN, b: 0, open: { m: 0, pct: 0 }, real: { m: 0, pct: 0 } });
+/** Ein Weg, den kein Akku schafft (Game.reachable): kein Ziel oder kein Park dahinter. */
+const NOWHERE = { m: Infinity, realM: 0 };
 // Erste Runde: Fährt der Wagen schon im Zielort, wartet das nächste Gebot – höchstens so viele Sekunden nach der
 // Einfahrt (wer dort parkt, statt zum Brunnen zu fahren, hält die Bieter nicht ewig auf)
 export const TOWN_HOLD = 75;
@@ -160,11 +167,11 @@ export class Game {
     // laufende BrunnenTV-Folge am Navi-Ziel (XXL) oder null
     this.tv = null;
     // Reise: Ladestopp im Ladepark ({ t0, from, park, name, sec, plan, … }, startCharge) oder null; Verbrauch seit dem
-    // letzten Laden (Reisemeter und Akku, für die Reichweite in NOMIs Warnung) und wann sie wieder rechnet; sugarDue: der
-    // Zuckerschub des Bananensafts kommt, sobald der Wagen nach dem Stopp wieder auf der Autobahn ist
+    // letzten Laden (meterAkku: Meter Straße und Akku je Art der Straße, für NOMIs Warnung) und wann sie wieder misst;
+    // sugarDue: der Zuckerschub des Bananensafts kommt, sobald der Wagen nach dem Stopp wieder auf der Autobahn ist
     this.charging = null;
     this.sugarDue = false;
-    this.akku = { m: 0, b: 100, next: 0 };
+    this.akku = meterAkku();
     // zwischen Zielpunkt und Halt am Brunnen: { sec: Ortsdurchfahrt, still: so lange steht der Wagen schon }
     this.halt = null;
     // Für jeden der fünf Jobs hat jemand im Chat eine Spende versprochen – und einer für alle zusammen
@@ -605,42 +612,63 @@ export class Game {
    * Akku auf der Reise (REISE.md A5): Geladen wird in den Ladeparks an den Ausfahrten. NOMI warnt bei REISE_AKKU.warn
    * (25 % und 10 %) und nennt den nächsten Ladepark in Reichweite mit Entfernung (trip.nextRest: auf dem Weg, sonst
    * der nächste über Straßen, ein Abstecher). Schon früher, unter REISE_AKKU.early, warnt sie, sobald er der letzte in
-   * Reichweite ist (die schätzt range): Der übernächste und das Ziel liegen weiter weg, wer an ihm vorbeifährt, kommt
-   * nicht mehr an. Ist ein Stopp geplant, sagt sie nur, wie weit es bis dorthin ist. batteryWarned: 1 früh, 2 bei 25 %,
-   * 3 bei 10 %; nach dem Laden wieder 0.
+   * Reichweite ist (reachable): Der übernächste und das Ziel liegen weiter weg, wer an ihm vorbeifährt, kommt nicht mehr
+   * an. Ist ein Stopp geplant, sagt sie nur, wie weit es bis dorthin ist. batteryWarned: 1 früh, 2 bei 25 %, 3 bei
+   * 10 %; nach dem Laden wieder 0. Einmal je Sekunde misst sie dazu den Verbrauch je Meter Straße (akku, perM).
    */
   journeyBattery() {
     const p = this.player;
     const A = REISE_AKKU;
     if (this.charging || this.t < this.akku.next) return;
-    this.akku.next = this.t + 1;
+    const a = this.akku;
+    const trip = this.world.trip();
+    a.next = this.t + 1;
+    // gemessen wird, wo der Wagen fährt: auf der offenen Strecke (Zeitraffer) oder auf echter Straße (1:1); ein Sprung auf
+    // dem Band zählt nicht
+    const ds = p.s - a.s;
+    if (ds < 120) {
+      const k = trip.scale > 1 ? a.open : a.real;
+      k.m += Math.max(0, ds);
+      k.pct += Math.max(0, a.b - p.battery);
+    }
+    a.s = p.s;
+    a.b = p.battery;
     if (p.battery > A.early + 5) this.batteryWarned = 0;
     const lvl = p.battery < A.warn[1] ? 3 : p.battery < A.warn[0] ? 2 : 0;
     if (lvl && lvl <= this.batteryWarned) return;
     if (!lvl && (this.batteryWarned || p.battery > A.early)) return;
-    const range = this.range();
-    const trip = this.world.trip();
-    const [r, r2] = trip.restsAhead(2, range);
-    // früh nur, wenn hinter dem nächsten Park weder der übernächste noch das Ziel in Reichweite liegt
-    const beyond = Math.min(r2 ? r2.km : Infinity, trip.target >= 0 ? trip.reach().km : Infinity);
-    if (!lvl && (!r || r.planned || (r.km <= range && beyond <= range))) return;
+    const fits = (q) => this.reachable(q);
+    const [r, r2] = trip.restsAhead(2, fits);
+    // früh nur, wenn hinter dem nächsten Park weder der übernächste in Reichweite liegt noch das Ziel und von dort ein Park
+    const beyond = () => (r2 && fits(r2)) || fits(trip.pastTarget() ?? NOWHERE);
+    if (!lvl && (!r || r.planned || (fits(r) && beyond()))) return;
     this.batteryWarned = lvl || 1;
     const vars = { pct: Math.round(p.battery), park: r ? r.name : '', km: r ? kmWords(r.km) : '' };
-    const text = !r ? A.none : r.planned ? A.planned : lvl === 3 ? A.veryLow : lvl || r.km > range ? A.low : A.last;
+    const text = !r ? A.none : r.planned ? A.planned : lvl === 3 ? A.veryLow : lvl || !fits(r) ? A.low : A.last;
     this.say(fillTemplate(text, vars), 'worried');
     if (r && !r.planned) this.ui.toast(this.device === 'touch' ? '🔌 Ladestopp einplanen: Knopf unten' : '🔌 Ladestopp einplanen: Taste L', 'info', 'ladestopp');
     this.chat(pick(['Akku! 🔋', 'Ab in den Ladepark!', 'Popcorn-Pause? 🍿', 'Lade-Pause!']));
   }
 
-  /** Reichweite in Reisekilometern mit Reserve: Akku × Reisekilometer je Prozent seit dem letzten Laden (kmPerPct). */
-  range() {
-    return this.player.battery * this.kmPerPct() * REISE_AKKU.reserve;
+  /**
+   * Erreicht der Wagen das Stück Weg r (m Meter Straße, davon realM auf echter Straße; ein Ladepark aus trip.restsAhead
+   * oder trip.reach() bis zum Ziel) mit dem Akku, den er hat, und der Reserve? Der Akku leert sich je Sekunde, im
+   * Zeitraffer der offenen Strecke trägt ein Prozent rund zwanzigmal so viele Reisekilometer wie auf echter Straße – je
+   * Meter Straße dagegen kostet die Fahrt fast überall gleich viel (perM).
+   */
+  reachable(r) {
+    const need = (r.m - r.realM) * this.perM('open') + r.realM * this.perM('real');
+    return need <= this.player.battery * REISE_AKKU.reserve;
   }
 
-  /** Reisekilometer je Prozent Akku seit dem letzten Laden (vorsichtig geschätzt, bis 4 % verbraucht sind). */
-  kmPerPct() {
-    const used = this.akku.b - this.player.battery;
-    return used >= 4 ? Math.max(0.2, (this.odometer - this.akku.m) / 1000 / used) : REISE_AKKU.kmPerPct;
+  /**
+   * Akku in Prozent je Meter Straße seit dem letzten Laden, k = 'open' (offene Strecke) oder 'real' (echte Straße):
+   * gemessen, sobald REISE_AKKU.measure Meter davon gefahren sind, bis dahin vorsichtig geschätzt (REISE_AKKU.perM, für
+   * einen größeren Akku entsprechend weniger).
+   */
+  perM(k) {
+    const a = this.akku[k];
+    return a.m >= REISE_AKKU.measure ? a.pct / a.m : (REISE_AKKU.perM[k] * 75) / this.player.capacity;
   }
 
   /** Soll der Touch-Knopf „Ladestopp einplanen“ zu sehen sein? (Reise, kein Stopp geplant, Akku halb leer oder Warnung) */
@@ -665,7 +693,7 @@ export class Game {
       this.say(A.cancel, 'think', { priority: false });
       return;
     }
-    const r = trip.nextRest(this.range());
+    const r = trip.nextRest((q) => this.reachable(q));
     if (!r) {
       this.say(A.noPark, 'think', { priority: false });
       return;
@@ -752,8 +780,7 @@ export class Game {
     p.empty = false;
     if (!c.juice) this.stats.bananas++;
     this.stats.parkCharges++;
-    this.akku.m = this.odometer;
-    this.akku.b = p.battery;
+    this.akku = meterAkku();
     this.batteryWarned = 0;
     this.ui.toast('🔋 Akku voll', 'good');
     // der Zuckerschub des Bananensafts, sobald der Wagen wieder auf der Autobahn ist (im Park und auf dem Zubringer
