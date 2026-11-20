@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { W } from '../../curve.js';
 import { roundRect } from '../../textures.js';
 import { sectionSigns } from './signplan.js';
+import { drawTurnIcon } from '../../map/symbols.js';
 
 const FONT = '"DIN Alternate", "Arial Narrow", Arial, sans-serif';
 const BLUE = '#1452a8';
@@ -111,6 +112,14 @@ function pictogram(ctx, kind, x, y, s) {
   }
 }
 
+/** Stecker im weißen Feld (Zeile eines Ladeparks, Tafel „Ladepark …“); s: Kantenlänge, (x, y) linke obere Ecke. */
+function plugBox(ctx, x, y, s) {
+  ctx.fillStyle = WHITE;
+  roundRect(ctx, x, y, s, s, s * 0.16);
+  ctx.fill();
+  drawTurnIcon(ctx, 'stop', x + s / 2, y + s * 0.47, s * 0.86, BLUE);
+}
+
 /** Vorwegweiser (Inhalt aus signplan.boardOf): Kopf mit Sinnbild, Zeilen mit Straßenschild, Entfernung unten rechts. */
 function boardTexture(b, wM, hM) {
   const w = Math.round(wM * PX);
@@ -131,6 +140,10 @@ function boardTexture(b, wM, hM) {
   for (const r of b.rows) {
     let x = pad + 4;
     if (r.road) x += shield(ctx, r.road, r.kind, x, y, rowH * 0.74) + 18;
+    else if (r.kind === 'park') {
+      plugBox(ctx, x, y - rowH * 0.37, rowH * 0.74);
+      x += rowH * 0.74 + 18;
+    }
     ctx.fillStyle = WHITE;
     ctx.font = `bold ${Math.round(rowH * 0.66)}px ${FONT}`;
     fitText(ctx, r.text, x, y + 2, w - pad - x);
@@ -139,6 +152,28 @@ function boardTexture(b, wM, hM) {
   ctx.font = `bold ${Math.round(rowH * 0.66)}px ${FONT}`;
   ctx.fillStyle = WHITE;
   fitText(ctx, b.dist, w - pad, h - pad - rowH * 0.36, w * 0.4, 'right');
+  return toTexture(c);
+}
+
+/** Tafel „Ladepark …“ 2000 m vor seiner Ausfahrt: Stecker im weißen Feld, darunter der Name, Entfernung unten rechts. */
+function parkTexture(name, dist, wM, hM) {
+  const w = Math.round(wM * PX);
+  const h = Math.round(hM * PX);
+  const c = makeCanvas(w, h);
+  const ctx = c.getContext('2d');
+  plate(ctx, w, h, BLUE, WHITE);
+  ctx.textBaseline = 'middle';
+  const pad = 34;
+  const ps = 0.62 * PX;
+  plugBox(ctx, pad, pad, ps);
+  ctx.fillStyle = WHITE;
+  ctx.font = `bold ${Math.round(0.36 * PX)}px ${FONT}`;
+  fitText(ctx, 'Ladepark', pad + ps + 24, pad + ps / 2 + 2, w - pad * 2 - ps - 24);
+  const place = name.replace(/^Ladepark /, '');
+  ctx.font = `bold ${Math.round(0.4 * PX)}px ${FONT}`;
+  fitText(ctx, place, pad + 4, pad + ps + 0.38 * PX, w - pad * 2 - 8);
+  ctx.font = `bold ${Math.round(0.3 * PX)}px ${FONT}`;
+  fitText(ctx, dist, w - pad, h - pad - 0.17 * PX, w * 0.4, 'right');
   return toTexture(c);
 }
 
@@ -319,6 +354,8 @@ function layout(e) {
       return { w: 3.9, h: 0.6 + 0.46 * Math.max(1, e.board.rows.length) + 0.68, y: 1.7, posts: [-1.25, 1.25] };
     case 'tafel':
       return { w: 3.6, h: 0.5 + 0.5 * e.rows.length, y: 1.7, posts: [-1.15, 1.15] };
+    case 'ladepark':
+      return { w: 3.0, h: 2.0, y: 1.7, posts: [-0.95, 0.95] };
     case 'ausfahrt':
       return { w: 1.45, h: 0.5, y: 1.05, posts: [-0.45, 0.45] };
     case 'auffahrt':
@@ -336,6 +373,8 @@ function textureOf(e, L) {
       return boardTexture(e.board, L.w, L.h);
     case 'tafel':
       return tableTexture(e.rows, L.w, L.h);
+    case 'ladepark':
+      return parkTexture(e.name, e.texts[1], L.w, L.h);
     case 'ausfahrt':
       return exitTexture(L.w, L.h);
     case 'auffahrt':
@@ -346,7 +385,7 @@ function textureOf(e, L) {
 }
 
 /** Arten, die diese Klasse selbst baut (die übrigen stehen nur im Log). */
-const BUILDS = new Set(['vorweg', 'tafel', 'ausfahrt', 'auffahrt', 'ort', 'ortsende']);
+const BUILDS = new Set(['vorweg', 'tafel', 'ladepark', 'ausfahrt', 'auffahrt', 'ort', 'ortsende']);
 
 export class Signs {
   constructor(world) {

@@ -81,7 +81,7 @@ function can(S, base, yaw) {
 }
 
 /** Megafon: weißer Trichter mit rotem Rand, dunkler Lautsprecher, Pistolengriff mit rotem Auslöser. */
-function megaphone(S, m) {
+export function megaphone(S, m) {
   const add = (slot, g, color, opts) => S[slot].push(prep(g.applyMatrix4(m), color, opts));
   // Trichter entlang +y: hinten das Mundstück-Gehäuse, vorn die Öffnung (innen eine zweite Wand)
   const horn = lathe([

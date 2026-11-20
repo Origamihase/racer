@@ -2,15 +2,20 @@
 // Quellen der Insider: SkylineTV LIVE Wiki (siehe INSIDER.md im Repo).
 import { pick, randInt, chance, fmtEuro, fmtCent } from './util.js';
 
+// Der Name des Spiels ist „Mini Adam – Navi ferngesteuert BrunnenTV XXL“ (GAME_NAME: Über das Spiel, Seitentitel und
+// README sagen es so). Auf dem Titelbildschirm steht er in beiden Modi unter dem großen „Mini Adam“: GAME_SUBTITLE,
+// dahinter GAME_XXL in Brunnenblau.
 export const GAME_TITLE = 'Mini Adam';
-export const GAME_SUBTITLE = 'Tesla-Navi ferngesteuert';
+export const GAME_SUBTITLE = 'Navi ferngesteuert';
+export const GAME_XXL = 'BrunnenTV XXL';
+export const GAME_NAME = `${GAME_TITLE} – ${GAME_SUBTITLE} ${GAME_XXL}`;
 export const TAGLINE = 'Live-Eskalationen immer woanders!';
-// Die beiden Modi (src/mode.js) auf dem Titelbildschirm: title steht als Untertitel auf dem Titel des Modus selbst,
-// badge daneben als Schildchen; icon, name und sub (die kleine Zeile darunter) bilden den Eintrag, der vom Titel des
-// anderen Modus dorthin führt. Die Reise ist eine Vorschau, solange an ihr gebaut wird – das sagt sie selbst.
+// Die beiden Modi (src/mode.js) auf dem Titelbildschirm: badge steht als Schildchen neben LIVE und sagt, in welchem
+// Modus der Titel steht; icon, name und sub (die kleine Zeile darunter) bilden den Eintrag, der vom Titel des anderen
+// Modus dorthin führt. Die Reise ist eine Vorschau, solange an ihr gebaut wird – das sagt sie selbst.
 export const MODE_TEXT = {
-  klassik: { title: GAME_SUBTITLE, icon: '🛣️', name: 'Klassik', sub: 'die endlose Autobahn' },
-  xxl: { title: 'Navi ferngesteuert XXL', badge: '🚧 Vorschau – hier wird noch gebaut', icon: '🧭', name: 'Navi ferngesteuert XXL', sub: 'Vorschau – hier wird noch gebaut' },
+  klassik: { badge: '🛣️ Klassik', icon: '🛣️', name: 'Klassik', sub: 'die endlose Autobahn' },
+  xxl: { badge: '🚧 Vorschau – hier wird noch gebaut', icon: '🧭', name: 'BrunnenTV XXL', sub: 'Vorschau – hier wird noch gebaut' },
 };
 
 // ---------------------------------------------------------------------------
@@ -125,7 +130,15 @@ export const INCOME = {
   Challenges: 'Challenge',
 };
 // Abzüge stehen in der Abrechnung ganz unten
-export const FINES = ['Bußgeld', 'Verwarngeld'];
+export const FINES = ['Bußgeld', 'Verwarngeld', 'Reparaturen'];
+
+/**
+ * Reise: An jedem erreichten Ziel kommt die Werkstatt-Rechnung der Runde (game.js settleRound). bump: Euro je
+ * zählendem Rempler (ein Karosserie-Punkt, so viel wie ein gewöhnliches Siegergebot), mark: je neuer Kratzspur von der
+ * Leitplanke (höchstens drei je Seite, damage.js). Bezahlt wird aus der Stream-Kasse in ganzen Euro; was sie nicht
+ * hergibt, erlässt die Werkstatt. Wann die Fahrt in der Werkstatt endet (keine Punkte mehr), bleibt, wie es ist.
+ */
+export const REPARATUR = { bump: 150, mark: 25 };
 
 // Wofür gespendet wird (etwa jede dritte Spende nennt einen Zweck)
 export const SPENDEN_ZWECKE = [
@@ -138,11 +151,12 @@ export const SPENDEN_ZWECKE = [
   'die richtige Currywurstbude', 'Sitzheizung für alle', 'eine Fusselrolle', 'gute Laune',
 ];
 
-// Aktionen, die Zuschauer im Live-Bereich kaufen (needs: nur mit diesem Upgrade an Bord)
+// Aktionen, die Zuschauer im Live-Bereich kaufen (needs: nur mit diesem Upgrade an Bord; das Megafon gehört zur
+// Ausstattung, sein Wunsch geht immer)
 export const AKTIONEN = [
   { id: 'trunk', name: 'Kofferraum öffnen', price: 5 },
   { id: 'hupe', name: 'Einmal hupen', price: 2 },
-  { id: 'megafon', name: 'Megafon-Wunsch', price: 4, needs: 'megafon' },
+  { id: 'megafon', name: 'Megafon-Wunsch', price: 4 },
 ];
 // Was Brüll-William dann durchs Megafon ruft
 export const MEGAFON_WUENSCHE = [
@@ -150,6 +164,28 @@ export const MEGAFON_WUENSCHE = [
   'Hier spricht Mini Adam. Bitte einmal freundlich winken!',
   'Durchsage vom Chat: Wer einen Brunnen sieht, bitte hupen!',
   'Achtung! Hier fährt ein Plüschtier. Bitte nicht streicheln!',
+];
+
+// BrunnenTV am Navi-Ziel der Reise: Mini Adam spricht durchs offene Fenster mit dem Megafon zum Brunnen (Stimme wie
+// bei der Taste H), {ort} = der Ort – kurz wie die Megafon-Wünsche (mit einem Ortsnamen von 20 Zeichen nicht länger
+// als der längste von ihnen, tools/sicht-test.mjs); danach sagt NOMI etwas dazu ({n} = Folge)
+export const BRUNNEN_MEGAFON = [
+  'Achtung, Achtung! BrunnenTV live aus {ort}!',
+  'Hallo {ort}! Hier ist BrunnenTV!',
+  'Achtung! Dieser Brunnen ist jetzt auf Sendung!',
+  'Liebe Leute in {ort}: Was für ein Brunnen!',
+  'Durchsage an den Brunnen: Der Chat hat dich lieb!',
+  'Achtung! Wasser läuft, Kamera läuft. BrunnenTV!',
+  'Hier spricht BrunnenTV. Bitte kräftig sprudeln!',
+  'Fünf von fünf Tropfen für {ort}!',
+  'Bitte weiterplätschern! Hier ist BrunnenTV!',
+];
+export const BRUNNEN_NOMI = [
+  'Folge {n} ist im Kasten. Ich finde, das Becken hat heute besonders geglänzt.',
+  'Ich habe den Brunnen geprüft: Das Wasser läuft, die Tauben sind zufrieden.',
+  'BrunnenTV, Folge {n}: gesendet. Ich speichere diesen Brunnen unter Favoriten.',
+  'Laut meinen Daten ist das ein ausgezeichneter Brunnen. Meine Daten irren sich nie.',
+  'Das Plätschern liegt bei hervorragenden Werten. Ich bin beeindruckt.',
 ];
 
 // Sammelaktionen: Der Chat legt zusammen, bis das Ziel erreicht ist – dann passiert es
@@ -249,6 +285,41 @@ export const CHAT = {
     'Na also, wir haben ein Ziel'],
   bidBig: ['WAS?! 😱', 'Da meint es jemand ernst', 'Jetzt traut sich keiner mehr', 'Ansage!',
     'Das Ziel steht jetzt wohl fest', 'So viel für ein Navi-Ziel 😂', 'Wer legt 100 € drauf? Mehr geht auf einmal ja nicht'],
+  // Reise: Dort wird in Zehnern geboten, bis in die Hunderte (Chaos am Anfang der Runde, großes Gebot; je Zeile wie
+  // bidChaos und bidBig, so zieht der Chat gleich viele Zufallszahlen)
+  zehnerChaos: ['Zehner drauf! 🤑', '+10 €!', 'Und noch ein Zehner', 'Zehner-Krieg 😂', 'Das Navi dreht durch',
+    'Wohin denn jetzt?!', 'Mein Zehner, mein Ziel', 'Überboten in 2 Sekunden lol', 'Bieter-Chaos! 🍿',
+    'Ich komm nicht mehr mit', 'Das Navi braucht Urlaub', 'Jeder Zehner zählt 💶', 'Route wird neu berechnet. Schon wieder.',
+    'Schnell ein Screenshot, bevor der nächste Zehner kommt 📸', 'Noch ein Zehner und wir drehen um 👀'],
+  zehnerGross: ['WAS?! 😱', 'Da meint es jemand ernst', 'Jetzt traut sich keiner mehr', 'Ansage!',
+    'Das Ziel steht jetzt wohl fest', 'So viel für ein Navi-Ziel 😂', 'Gleich ein paar Hunderter auf einmal 💸'],
+  // BontanaBack (Reise, ausgedachter Großbieter): Der Chat dreht durch, er selbst sagt wenig, wer vorn lag, hält tapfer
+  // dagegen, und am Ende steht die Summe
+  bontana: ['BONTANA ESKALIERT 🔥', 'BontanaBack ist da!!', 'Wie viel?! 😱', 'Der Chat brennt 🔥', 'Das Navi zittert',
+    'Ich kann nicht mehr 😂', 'Bontana-Modus aktiviert 💸', 'Schnell ein Screenshot 📸', 'Was passiert hier gerade',
+    'Hunderter fliegen durch den Chat', 'Der meint das ernst 😳', 'Mini Adam, schau dir das an!'],
+  bontanaSelbst: ['Ich lege nach 😎', 'Gute Fahrt, Mini Adam! 💸', 'Das Ziel gefällt mir', 'Da fahren wir hin 😎'],
+  bontanaKonter: ['Der traut sich was!', 'Einfach dagegenhalten 😂', 'Mutig!', '+10 € gegen Bontana lol',
+    'David gegen Goliath', 'Nicht aufgeben!', 'Ehrenmann, hält dagegen'],
+  // sein Schlusswort beim letzten Gebot, je Auftritt des Streams eins (BONTANA.max = 2)
+  bontanaSchluss: ['Mein letztes Gebot. Gute Fahrt, Mini Adam! 😎', 'So, und jetzt ab dahin 💸'],
+  bontanaEnde: ['BONTANA ESKALIERT 🔥🔥🔥', 'Gekauft. Das Ziel gehört ihm.', 'Das war’s, Leute 😂', 'Legendär',
+    'Danke BontanaBack! 💸', 'Ich hab Gänsehaut', 'Das Navi braucht jetzt eine Pause', 'Und das an einem Dienstag 😂'],
+  // Zufriedenheit des Chats (Reise, satisfaction.js): zufrieden klingt er flott, unzufrieden ruft er nach Tempo – nie
+  // gemein
+  flott: ['Das geht ja zack zack 🏎️', 'So macht Reisen Spaß', 'Mini Adam liefert!', 'Ziel um Ziel, sehr stark',
+    'Tempo! Ich liebe es', 'Das Navi kommt kaum hinterher 😂', 'Der Chat ist zufrieden 😌', 'Läuft heute 👌',
+    'Schon wieder ein Ziel geschafft?!', 'Reisen mit Mini Adam = Express 🚄', 'Die Bieter kommen gar nicht hinterher',
+    'Bestes Roadtrip-Tempo'],
+  schneller: ['Schneller! 😩', 'Wann sind wir da?', 'Gib Gas, Mini Adam!', 'Das dauert ja ewig', 'Ich schlaf gleich ein 😴',
+    'Bitte etwas zügiger 🙏', 'Sind wir bald da?', 'Das Navi wartet auf dich 😅', 'Das Ziel läuft uns nicht weg … oder? 😅',
+    'Ein bisschen mehr Tempo bitte', 'Mein Popcorn ist schon alle 🍿', 'Gleich überholt uns ein Traktor 🚜'],
+  // Werkstatt-Rechnung am Ziel (Reise): freundlich, die Werkstatt gehört dazu – und wer heil ankommt, wird gefeiert
+  reparatur: ['Die Werkstatt freut sich 😅', 'Ein bisschen Spachtel, ein bisschen Liebe', 'Beulen gehören dazu',
+    'Hauptsache, Mini Adam ist gut angekommen ❤', 'Gut, dass der Chat zusammenlegt 😂', 'Neue Beule, neue Geschichte',
+    'Die Plüsch-Hände sind heil, das zählt 🧸'],
+  heil: ['Keine Kratzer, keine Rechnung ✨', 'Sauber gefahren!', 'Die Werkstatt hat heute frei 😎',
+    'Ohne eine Schramme 👏', 'Der Lack glänzt noch'],
   // am Ziel vorbeigefahren (kommt mit der Karte und ihren echten Ausfahrten)
   missedTarget: ['Die Ausfahrt war DA 😭', 'Vorbei … so nah dran', 'Das Navi weint leise', 'Nächste Ausfahrt dann, ja?',
     'Zu flott für die Ausfahrt 😅', 'Tschüss, schönes Ziel 👋'],
@@ -301,7 +372,9 @@ export const CHAT = {
     'Knapp daneben ist auch vorbei', 'Der Chat hat sich mal wieder nicht entscheiden können 😇'],
   brunnenTV: ['BRUNNENTV!!! ⛲', 'BrunnenTV! BrunnenTV!', 'Neue Folge BrunnenTV!', 'Herr Schönnbrun, übernehmen Sie!', '⛲⛲⛲',
     'Endlich wieder BrunnenTV ❤', 'Darauf hat der Chat gewartet', 'Was für ein Brunnen!', 'Die Folge speichere ich mir',
-    '#BrunnenTV', 'Brunnen gesichtet, Ziel erreicht, alles richtig gemacht'],
+    '#BrunnenTV', 'Brunnen gesichtet, Ziel erreicht, alles richtig gemacht', '💦', '💦💦💦', 'Megafon-Folge! 📢⛲',
+    'Fenster runter, Megafon raus 📢', 'Der Brunnen hat es gehört 💦', 'Lauter, Mini Adam! 📢', 'Ich höre es bis hierher plätschern 💦',
+    'Grüße an den Brunnen!'],
   elsaKassel: ['ELSA!!! ❤🐟', 'Elsa ❤', 'Kassel ist Elsa-Stadt 👑🐟', 'Grüß Elsa von uns!'],
   gifhornOrt: ['Gifhorn! Historisch bedeutsam 😂', 'Polizei Gifhorn grüßt bestimmt gleich 👮', 'Wo ist der Supermarkt-Parkplatz?'],
   crash: ['Rezeption!', 'Uff 🙈', 'Das gibt Ärger', 'Polizei Gifhorn ist unterwegs 🚓', 'Blechschaden!', 'Hoffentlich hat das keiner gesehen',
@@ -341,6 +414,9 @@ export const CHAT = {
   record: ['REKORD!!! 🎉', 'Neuer Zuschauerrekord!', 'Diesmal ohne Viewer-Bots 🤖', 'Hype!'],
   banana: ['🍌🍌🍌', 'Bananensaft-Power!', 'Lecker 🍌'],
   koriander: ['Bäh, Koriander 🤢', 'Nicht der Koriander!', 'Wer hat da Koriander bestellt?'],
+  // Reise: Ladestopp im Ladepark (Game.tickCharge), die Popcorn-Maschine an der Säule und die Saftpause
+  popcorn: ['Popcorn-Stream! 🍿', '🍿🍿🍿', 'Haushaltsgeräte an der E-Säule testen 😂', 'Die Säule kann auch Popcorn!', 'Popcorn mit Ökostrom 🔌', 'Salzig oder süß? 🍿'],
+  saftpause: ['Bananensaft-Pause! 🍌', 'Prost, Mini Adam! 🍌', 'Zucker tanken 🍌🔋', 'Erst Saft, dann Strom 😄'],
   shoulder: ['Standstreifen?! 😱', 'Polizei Gifhorn!!', 'Das ist keine Fahrspur!'],
   fiveJobs: ['Job erledigt ✅', 'Weiter so!', 'Noch ein Job weniger', 'Versprochen ist versprochen 🤝',
     'Jetzt wird gezahlt 😂', 'Challenge geschafft!'],
@@ -416,6 +492,12 @@ export const CHAT = {
     return n;
   },
 };
+// Reise: dasselbe Geplauder, nur wird dort in Zehnern geboten statt um einen Cent
+const ZEHNER_STATT_CENT = {
+  'Ich biete 1 Cent mehr 🤑': 'Ich biete 10 € mehr 🤑',
+  'Einfach 1 Cent mehr bieten, dann gehört das Navi dir 😂': 'Einfach 10 € mehr bieten, dann gehört das Navi dir 😂',
+};
+CHAT.ambientReise = CHAT.ambient.map((line) => ZEHNER_STATT_CENT[line] ?? line);
 
 function threeNumber() {
   const len = randInt(2, 4);
@@ -633,7 +715,7 @@ export const DURCHSAGEN = [
   { voice: 'weronika', text: 'Welche Farbe hat die Bank in {city}?' },
   { voice: 'william', text: 'Mini Adam, erzähl doch mal die Raab-Story!' },
   { voice: 'karla', text: 'Wir sind auf der Autobahn und streamen in Full HD!' },
-  { voice: 'william', text: 'Ich biete einen Cent mehr. Neues Ziel: {city}.' },
+  { voice: 'william', text: 'Ich biete einen Cent mehr. Neues Ziel: {city}.', reise: 'Ich biete zehn Euro mehr. Neues Ziel: {city}.' },
   { voice: 'kassandra', text: 'Bitte rechts fahren. Mit freundlichen Grüßen, die Polizei Gifhorn.' },
   { voice: 'weronika', text: 'Mini Adam, du fährst besser als jedes Navi.' },
   { voice: 'karla', text: 'Hallo Mini Adam! Schreib mal eine Zahl in den Chat. Aber bitte ohne Drei.' },
@@ -740,10 +822,38 @@ export const JOB_TEMPLATES = [
 // In der XXL-Welt zählen die Strecken-Aufträge Reisekilometer (Game.odometer): je Auftrag etwa so lange gefahren wie
 // klassisch (tools/journey-test.mjs: rund 7,5 Reisekilometer je Kilometer Straße; die Strecke ab dem Start etwas
 // weniger, weil der Startort echte Straße ist).
+// Lade-Ringe und Bananensaft-Flaschen liegen auf der Reise nicht auf der Straße (REISE.md A5): Geladen wird in den
+// Ladeparks an den Ausfahrten, also gelten dort deren Aufträge.
 export const REISE_JOBS = {
   clean5: { text: '40 km ohne Blechschaden', goal: 40000, wenn: 'du 40 km ohne Blechschaden schaffst' },
   dist8: { text: '50 km Strecke schaffen', goal: 50000, wenn: 'du 50 km weit kommst' },
   rain1: { text: '8 km im Regen fahren', goal: 8000, wenn: 'du 8 km im Regen durchhältst' },
+  banana2: { text: 'Einen Ladestopp einplanen', goal: 1, stat: 'stopsPlanned', wenn: 'du einen Ladestopp einplanst' },
+  charge2: { text: 'Im Ladepark den Akku füllen', goal: 1, stat: 'parkCharges', wenn: 'du im Ladepark den Akku füllst' },
+};
+
+// Reise: NOMIs Akku-Warnungen nennen den nächsten Ladepark auf dem Weg mit Entfernung (trip.js nextRest); Taste L oder
+// der Knopf „Ladestopp einplanen“ machen ihn zum Zwischenziel. Dort parkt der Wagen an der freien Säule ein und lädt im
+// Zeitraffer voll (Game.startCharge, xxl/charge.js STOP). {pct} Prozent, {park} Name, {km} Weg.
+export const REISE_AKKU = {
+  warn: [25, 10], // Prozent: NOMI warnt, und noch einmal, wenn es knapp wird
+  early: 70, // darunter warnt sie früher, sobald der nächste Park der letzte in Reichweite ist
+  reserve: 0.85, // so viel des Akkus gilt als sicher nutzbar
+  // Prozent je Meter Straße, bis measure Meter davon seit dem Laden gemessen sind (Player.update: auf der Autobahn bei
+  // 38 m/s rund 0,0052; echte Straße mischt Rampen und Zubringer um 0,006 mit Orten um 0,0086 – gemessen 0,0053 bis
+  // 0,0061 samt dem Halt am Brunnen)
+  perM: { open: 0.0052, real: 0.0065 },
+  measure: 1500,
+  low: 'Akku {pct} Prozent. Nächster Ladepark: {park}, in {km}. Ladestopp einplanen?',
+  last: 'Akku {pct} Prozent. {park} in {km} liegt noch in Reichweite. Ladestopp einplanen?',
+  veryLow: 'Akku nur noch {pct} Prozent! {park} in {km}. Bitte dort laden.',
+  planned: 'Akku {pct} Prozent. Der Ladestopp im {park} ist eingeplant, in {km}.',
+  none: 'Akku {pct} Prozent, und kein Ladepark auf dem Weg. Bitte sparsam fahren.',
+  set: 'Ladestopp eingeplant: {park}, in {km}.',
+  cancel: 'Ladestopp gestrichen.',
+  noPark: 'Kein Ladepark auf dem Weg.',
+  missed: 'Ladestopp verpasst. Ich suche den nächsten Ladepark.',
+  start: 'Ladestopp im {park}. Ich lade den Akku voll.',
 };
 
 // ---------------------------------------------------------------------------
@@ -785,11 +895,6 @@ export const SHOP = [
     effect: (l) => ['Version 0.1 Beta: zuckt nur', 'Version 11.1 Beta: wischt ab und zu', 'Version 11.2 Beta: wischt öfter', 'Version 12 (immer noch Beta)'][l],
   },
   {
-    id: 'megafon', icon: '📢', name: 'Megafon', cat: 'Spaß', prices: [450],
-    desc: 'Wie in Gifhorn: Mit einer Megafon-Durchsage macht der Verkehr vor dir Platz. Taste H.',
-    effect: () => 'Autos vor dir wechseln die Spur',
-  },
-  {
     id: 'radar', icon: '📟', name: 'Radarwarner', cat: 'Spaß', prices: [250],
     desc: 'Ein Kästchen fürs Armaturenbrett. Es piept, und NOMI sagt jeden Blitzer an, bevor es blitzt. Ohne ihn bleibt es beim Überraschungsfoto.',
     effect: () => 'NOMI warnt vor jedem Blitzer',
@@ -822,8 +927,46 @@ export const SHOP = [
 ];
 
 export const UPGRADE_LIMITS = Object.fromEntries(SHOP.map((s) => [s.id, s.prices.length]));
+// Das Megafon ist kein Shop-Artikel mehr (save.js refundMegafon): Titel und Shop sagen es dem, der es gekauft hatte
+export const MEGAFON_ERSTATTET = (euro) => `📢 Das Megafon gehört jetzt zur Ausstattung – deine ${euro} sind zurück im Guthaben.`;
 
 // Abspann-Crew
+/**
+ * Die Leute des Streams (nur auf der Reise; ausgedachte Namen, immer freundlich, keine Zitate echter Menschen, game.js
+ * updateCrew). Minuten, wo nicht anders gesagt.
+ * - König Knolli raidet: zuerst nach raid.first, dann alle raid.every Minuten, mit max(raid.min, raid.share der
+ *   Zuschauer) Leuten, die mit raid.fade Sekunden Zeitkonstante wieder gehen; Nora sagt es an, er grüßt, seine Leute
+ *   schreiben. Danach jubelt er alle knolli Minuten mit cheer Euro oder spendet gift Euro.
+ * - Die Mods (Abzeichen MOD) schreiben alle modEvery Minuten eine kurze freundliche Zeile.
+ * - Wils oder DomZe erinnern alle discordEvery Minuten an den Discord.
+ * - Nach jedem Funkloch meldet einer von back nach backAfter Sekunden (nach Nora), dass der Stream wieder läuft.
+ * - „❤“ schickt alle heart Minuten ein Herz, still – niemand antwortet.
+ */
+export const CREW = {
+  knolli: 'König Knolli',
+  raid: { first: [6, 14], every: [30, 45], min: 250, share: [0.2, 0.35], fade: 480 },
+  knolliEvery: [6, 11], cheer: [1, 5], gift: [2, 10],
+  mods: ['Wils', 'Walte', 'AchPünktchen', 'Delta34st', 'Eismann077', 'Cptbalu1991', 'Kieskauer', 'Muyinnchen'],
+  modEvery: [2.5, 5],
+  discord: ['Wils', 'DomZe'], discordEvery: [9, 15],
+  back: ['IceBonbon', 'Muyinnchen'], backAfter: 1.6,
+  heart: '❤', heartEvery: [7, 14],
+};
+export const CREW_LINES = {
+  raid: 'Raid! {name} kommt mit {n} Leuten vorbei. Willkommen!',
+  knolliHallo: ['Hallo Mini Adam! Wir kommen zu Besuch 👑', 'Grüße aus dem Knolli-Land! 👑', 'Gute Fahrt euch allen! 👑'],
+  raider: ['KNOLLI RAID 👑', 'Hallo zusammen! 👋', 'Wo fahren wir hin? 😄', 'Grüße vom Knolli-Stream', 'Schönes Auto!',
+    'Ich bleib noch ein bisschen 👀', 'Knolli hat uns hergebracht 👑', 'Was kostet ein Navi-Ziel hier?'],
+  knolliJubel: ['Weiter so, Mini Adam! 👑', 'Ich schau immer noch zu 👑', 'Starke Fahrt!', 'Grüße an den Chat 👑'],
+  cheer: '{name} jubelt mit {betrag}! 👑',
+  danke: ['Danke, König Knolli! 👑', 'Der König hat gesprochen 👑', 'Knolli ❤'],
+  mod: ['Bitte nett bleiben im Chat ❤', 'Willkommen an alle Neuen! 👋', 'Schön, dass ihr da seid!',
+    'Wer neu ist: Navi-Gebote gibt es ab 10 €', 'Alle Links findet ihr im Panel unter dem Stream',
+    'Gute Stimmung hier heute 😊', 'Grüße an alle Zuschauer!', 'Denkt an eine Pause und ein Glas Wasser 💧'],
+  discord: ['Discord-Link ist im Panel', 'Discord-Link ist im Panel 😊', 'Kommt in den Discord – der Link ist im Panel'],
+  back: ['Stream läuft wieder! 🎉', 'Wir sind wieder da!', 'Und weiter geht’s 🎉'],
+};
+
 export const ABSPANN_CREW = [
   ['Fahrer', 'Mini Adam'],
   ['Kamera', 'stationär'],
@@ -832,3 +975,20 @@ export const ABSPANN_CREW = [
   ['Scheibenwischer', 'Auto-Wischer (Beta)'],
   ['Navigation', 'ferngesteuert vom Chat'],
 ];
+/**
+ * Abspann der Reise: die Leute des Streams, mit ausgedachten Berufen (nach ABSPANN_CREW, vor „Danke an“). Ein drittes
+ * Feld 'wide' gibt einer langen Zeile die ganze Breite; sie steht darum am Schluss, damit das Raster keine Lücke hat.
+ * {folgen}: die BrunnenTV-Folgen dieser Reise (Game.stats.brunnenTV, „1 Folge“, „3 Folgen“); ohne Folge fehlt die Zeile.
+ */
+export const ABSPANN_REISE = [
+  ['Musik', 'Elti und IceBonbon'],
+  ['Stimmen im Sprachstudio', '?CF und IceDrache'],
+  ['Geek im Hintergrund', 'Arno Nühm'],
+  ['Discord', 'Wils und DomZe'],
+  ['Großbieter vom Dienst', 'BontanaBack'],
+  ['Raid-Kommando', 'König Knolli'],
+  ['Moderation', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'wide'],
+  ['BrunnenTV', '{folgen} mit Mini Adam am Megafon', 'wide'],
+];
+/** Ganz am Ende des Abspanns der Reise, allein und leise (Wortlaut des Eigentümers, unverändert). */
+export const GEDENKEN = 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte';

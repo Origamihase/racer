@@ -14,7 +14,7 @@ const options = {
   legalComments: 'none',
   outfile: 'docs/game.js',
   banner: {
-    js: '/* Mini Adam: Tesla-Navi ferngesteuert – gebaut aus src/ (npm run build). Enthält three.js (MIT). */',
+    js: '/* Mini Adam – Navi ferngesteuert BrunnenTV XXL – gebaut aus src/ (npm run build). Enthält three.js (MIT). */',
   },
   logLevel: 'info',
 };

@@ -307,7 +307,8 @@ ok(slowPlain.game.stats.blitzerClean === 1 && slowRadar.game.stats.blitzerClean 
   const i = SHOP.findIndex((x) => x.id === 'radar');
   const it = SHOP[i];
   ok(!!it, 'Der Shop hat keinen Radarwarner');
-  ok(it && SHOP[i - 1].id === 'megafon' && it.cat === SHOP[i - 1].cat, 'Der Radarwarner steht nicht hinter dem Megafon in dessen Rubrik');
+  // (früher stand er hinter dem Megafon; das gehört jetzt zur Ausstattung, und der Radarwarner führt die Rubrik an)
+  ok(it && it.cat === 'Spaß' && SHOP[i - 1].cat !== it.cat, 'Der Radarwarner steht nicht vorn in der Rubrik Spaß');
   ok(it && same(it.prices, [250]) && UPGRADE_LIMITS.radar === 1, 'Der Radarwarner hat nicht genau eine Stufe für 250 €');
   ok(it && it.name === 'Radarwarner' && it.icon && it.desc.length > 20 && typeof it.effect(1) === 'string', 'Dem Artikel fehlen Name, Zeichen, Beschreibung oder Wirkung');
   ok(new Set(SHOP.map((x) => x.id)).size === SHOP.length, 'Zwei Artikel teilen sich eine Kennung');

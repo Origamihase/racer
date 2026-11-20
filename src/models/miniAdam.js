@@ -7,7 +7,7 @@ import { W } from '../curve.js';
 import { liveLogoTexture } from '../textures.js';
 import { plush, eyeMaterial } from './plushMaterial.js';
 import { buildAdamGeometry, FABRIC, NECK, HEAD_C, EYE_C, EYE_R, BROW_C, JAW_C, STACHE_SMILE, STACHE_POUT, SHOULDER, UPPER_ARM, FORE_ARM, HIP } from './adamSculpt.js';
-import { Mimic } from './adamMimic.js';
+import { Mimic, GESTURES } from './adamMimic.js';
 
 export { plush };
 
@@ -114,6 +114,60 @@ const sideV = (v, side, out) => out.set(v.x * side, v.y, v.z);
 /** Welche Hand winkt: im Auto die Fensterhand, stehend die freie (die Fensterhand hält das Mikrofon) */
 export const waveSide = (wheel) => (wheel ? 1 : -1);
 
+// Megafon (BrunnenTV, nur im Auto): Die Fensterhand holt es neben dem Sitz unter der Gürtellinie hervor (LOW, ab
+// MEGA.show ist es zu sehen) und hält es vor den Mund, der Trichter zeigt durchs offene Fenster schräg nach vorn zum
+// Brunnen (MEGA.dir); der Kopf ist dabei zum Fenster gedreht (look, Gierwinkel bis 0,75). Lage in Körperkoordinaten,
+// Megafon-Rahmen wie cockpit/props.js megaphone: Achse +y zur Öffnung, Pistolengriff nach −x, Maßstab MEGA.s.
+export const MEGA = {
+  show: 0.4,
+  s: 1.2,
+  low: new THREE.Vector3(0.17, 0.36, 0.17),
+  via: new THREE.Vector3(0.25, 0.47, 0.23),
+  at: new THREE.Vector3(0.131, 0.602, 0.12),
+  dir: new THREE.Vector3(0.82, -0.06, 0.57).normalize(),
+  carry: new THREE.Vector3(0.15, 0.25, 0.96).normalize(),
+  grip: new THREE.Vector3(-0.0553, -0.0055, 0),
+  pole: new THREE.Vector3(0.75, -0.6, -0.2).normalize(),
+};
+const megaTmp = { q0: new THREE.Quaternion(), q1: new THREE.Quaternion(), m: new THREE.Matrix4(), x: V(), y: V(), z: V(), g: V(), a: V(), b: V() };
+/** Drehung des Megafon-Rahmens, dessen Achse (+y) nach dir zeigt, der Griff (−x) möglichst nach unten. */
+function megaQuat(dir, out) {
+  const { x, y, z, m } = megaTmp;
+  y.copy(dir);
+  x.set(0, 1, 0).addScaledVector(y, -y.y).normalize();
+  z.crossVectors(x, y);
+  return out.setFromRotationMatrix(m.makeBasis(x, y, z));
+}
+/**
+ * Megafon in der Hand bei k (0 … 1, siehe MEGA): Ziel der Hand am Griff (out.pos, Ellbogen out.pole, Handfläche
+ * out.palm) und, ab MEGA.show, Lage des Megafons (mp: Position, mq: Drehung; sonst mp = null).
+ */
+export function megaphoneHold(k, from, out, mp, mq) {
+  const { g, a, b, q0, q1 } = megaTmp;
+  const show = MEGA.show;
+  if (k < show) {
+    // die Hand geht vom Lenkrad (oder vom Jubeln) hinunter neben den Sitz
+    const u = smooth(0, show, k);
+    out.pos.copy(from).lerp(MEGA.low, u);
+    out.pole.lerp(MEGA.pole, u).normalize();
+    out.palm.lerp(MEGA.dir, u).normalize();
+    return false;
+  }
+  // von dort mit dem Megafon (quadratische Bézierkurve) hoch vor den Mund, dabei dreht es sich zum Fenster
+  const u = smooth(show, 1, k);
+  megaQuat(MEGA.carry, q0);
+  megaQuat(MEGA.dir, q1);
+  mq.copy(q0).slerp(q1, u);
+  g.copy(MEGA.grip).multiplyScalar(MEGA.s).applyQuaternion(q1);
+  const end = b.copy(MEGA.at).add(g);
+  a.copy(MEGA.low).multiplyScalar((1 - u) * (1 - u)).addScaledVector(MEGA.via, 2 * u * (1 - u)).addScaledVector(end, u * u);
+  out.pos.copy(a);
+  out.pole.copy(MEGA.pole);
+  out.palm.copy(MEGA.dir);
+  mp.copy(MEGA.grip).multiplyScalar(MEGA.s).applyQuaternion(mq).negate().add(a);
+  return true;
+}
+
 export function handTarget(side, wheel, { wave = 0, cheer = 0, steer = 0, t = 0 } = {}, out = { pos: V(), pole: V(), palm: V() }) {
   if (wheel) {
     // Griff am Kranz: Hand auf der Fensterseite bei etwa halb zehn, die andere bei halb drei; Lenken nach rechts
@@ -153,6 +207,24 @@ export function handTarget(side, wheel, { wave = 0, cheer = 0, steer = 0, t = 0 
     out.palm.lerp(sideV(gripTmp.n.copy(WAVE_PALM).lerp(CHEER_PALM, kc), side, gripTmp.m), smooth(0.2, 0.9, w)).normalize();
   }
   return out;
+}
+
+/**
+ * Bananensaft für die Hand (wie im Becherhalter, ohne Schrift): gelbe Flasche, helles Etikett, grüner Deckel; Boden
+ * im Ursprung, Hals nach +y.
+ */
+function buildBottle(curved) {
+  const g = new THREE.Group();
+  g.name = 'bananensaft';
+  const add = (geo, color, roughness) => {
+    const params = { color, roughness };
+    g.add(new THREE.Mesh(geo, curved ? W.std(params) : new THREE.MeshStandardMaterial(params)));
+  };
+  const lathe = (pts) => new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 16);
+  add(lathe([[0, 0], [0.023, 0], [0.03, 0.005], [0.0318, 0.026], [0.0318, 0.116], [0.0296, 0.131], [0.019, 0.153], [0.0122, 0.163], [0.0122, 0.1745], [0, 0.1745]]), 0xf3c53a, 0.3);
+  add(new THREE.CylinderGeometry(0.0324, 0.0324, 0.074, 16, 1, true).translate(0, 0.071, 0), 0xfaf6e8, 0.6);
+  add(lathe([[0, 0.1735], [0.0152, 0.1735], [0.0152, 0.1905], [0, 0.1915]]), 0x2f9e44, 0.5);
+  return g;
 }
 
 /**
@@ -227,6 +299,10 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
   mesh(G.micFoam, mic, 'micFoam');
   mesh(G.micBody, mic, 'micBody', mMic);
   armR.userData.hand.add(mic);
+  // Bananensaft in der Fensterhand (raiseBottle): erst beim ersten Prost gebaut, zu sehen nur, solange die Hand dabei
+  // oben ist
+  let bottle = null;
+  let bottleUntil = -1;
 
   // --- Kopf ---------------------------------------------------------------
   const head = new THREE.Group();
@@ -268,13 +344,24 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
   // Lenkrad (von außen gesehen): wird vom Auto gesetzt, Standard: vor der Brust
   const wheel = { m: new THREE.Matrix4().makeRotationX(0.35).setPosition(0, 0.44, 0.22), r: 0.17 };
   const targets = [{ pos: V(), pole: V(), palm: V() }, { pos: V(), pole: V(), palm: V() }];
-  const gest = { steer: 0, wave: 0, cheer: 0, t: 0 };
+  const gest = { steer: 0, wave: 0, cheer: 0, t: 0, megafon: 0 };
+  // Megafon in der Fensterhand (BrunnenTV): das Modell hängt der Aufrufer an (holdMegaphone), sonst gibt es keins
+  let prop = null;
+  const megaFrom = V();
   const poseArms = () => {
     const drive = api.pose === 'drive';
     for (const [arm, side, tg] of [[armL, -1, targets[0]], [armR, 1, targets[1]]]) {
       handTarget(side, drive ? wheel : null, gest, tg);
       // hüpft er auf dem Sitz, bleiben die Hände trotzdem am Lenkrad
       if (drive) tg.pos.y -= body.position.y;
+      // das Megafon hält er vor dem Körper (es hüpft mit ihm)
+      const mega = drive && side === waveSide(wheel) && gest.megafon > 0;
+      if (mega) {
+        megaFrom.copy(tg.pos);
+        const shown = megaphoneHold(gest.megafon, megaFrom, tg, prop ? prop.position : megaFrom, prop ? prop.quaternion : megaTmp.q0);
+        if (prop) prop.visible = shown;
+      }
+      if (side === waveSide(wheel) && prop && !mega) prop.visible = false;
       solveArm(arm, tg.pos, tg.pole, tg.palm);
       const waving = side === waveSide(drive ? wheel : null);
       arm.userData.hand.rotation.set(0, 0, waving ? side * Math.sin(gest.t * 9 - 0.6) * 0.3 * smooth(0.7, 1, gest.wave) * (1 - gest.cheer) : 0);
@@ -364,15 +451,43 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
     gesture(name) {
       mimic.gesture(name);
     },
+    /** Prost mit Bananensaft (Ladestopp): jubelt wie 'cheer', die Flasche in der Fensterhand. */
+    raiseBottle() {
+      if (!bottle) {
+        bottle = buildBottle(curved);
+        // Boden vorn in der Faust, Bauch mit Etikett und Hals ragen über die Fingerspitzen hinaus
+        bottle.rotation.z = Math.PI;
+        bottle.position.set(0, -0.03, 0.006);
+        bottle.scale.setScalar(1);
+        bottle.visible = false;
+        armR.userData.hand.add(bottle);
+      }
+      bottleUntil = gest.t + GESTURES.cheer;
+      mimic.gesture('cheer');
+    },
     /** Blick für seconds Sekunden auf ein Ziel ('camera', 'screen', 'mirror', 'nomi', 'wiper' … oder [x, y, z]) */
     lookAt(target, seconds) {
       mimic.lookAt(target, seconds);
     },
     /**
+     * Megafon für die Fensterhand (BrunnenTV): ein Objekt im Megafon-Rahmen (MEGA), Maßstab setzt die Figur. Zu sehen
+     * ist es nur, solange animate es mit megafon über MEGA.show hält.
+     */
+    holdMegaphone(o) {
+      prop = o;
+      prop.scale.setScalar(MEGA.s);
+      prop.visible = false;
+      body.add(prop);
+    },
+    /** Ist das Megafon gerade in der Hand zu sehen? */
+    get megaphoneShown() {
+      return !!prop && prop.visible;
+    },
+    /**
      * @param {number} t Zeit in Sekunden
-     * @param {{wave?: number, steer?: number, talk?: number, look?: number, sleepy?: number}} s wave 0 … 1 (Winken
-     *   von außen, zusätzlich zu den Gesten), steer −1 … 1, talk 0 … 1 (spricht gerade), look −1 … 1 (Kopf zur
-     *   Fensterseite +), sleepy 0 … 1
+     * @param {{wave?: number, steer?: number, talk?: number, look?: number, sleepy?: number, megafon?: number}} s
+     *   wave 0 … 1 (Winken von außen, zusätzlich zu den Gesten), steer −1 … 1, talk 0 … 1 (spricht gerade), look −1 … 1
+     *   (Kopf zur Fensterseite +), sleepy 0 … 1, megafon 0 … 1 (Megafon an den Mund, nur im Auto, siehe MEGA)
      */
     animate(t, s = {}) {
       const f = mimic.update(t, s);
@@ -382,6 +497,8 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
       gest.wave = Math.max(s.wave || 0, f.wave);
       gest.cheer = f.cheer;
       gest.t = t;
+      gest.megafon = s.megafon || 0;
+      if (bottle) bottle.visible = t < bottleUntil && f.cheer > 0.25;
       poseArms();
     },
   };

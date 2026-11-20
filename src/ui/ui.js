@@ -1,13 +1,17 @@
 // Das Stream-Overlay über dem Spiel: LIVE-Anzeige, Zuschauer, Strecke, Guthaben, Akku, Karosserie-Punkte, Chat mit
 // Bots, die Streifen oben (Navi, Hinweise) und unten (Untertitel, BrunnenTV), Rahmen und Blitzerfotos. Wo was wohnt
 // und welches Rechteck dabei frei bleibt, steht in sicht.js: Über der Bildmitte liegt nichts, solange gefahren wird.
-import { fmtNum, fmtCent, fmtKm, fmtDuration, fmtClock, clamp, tachoKmh } from '../util.js';
+import { fmtNum, fmtCent, fmtEuro, fmtKm, fmtDuration, fmtClock, clamp, tachoKmh } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
 import { fmtOdo } from '../map/navroute.js';
 import { shortName } from '../game/navi.js';
+import { moodEmoji } from '../game/satisfaction.js';
 import { NARROW_MID, infoWidth, overlap } from './sicht.js';
+
+/** Zufriedenheit des Chats sichtbar im Chat-Kopf? Nein: Die Chat-Stimmung gehört nicht ins HUD (Besitzer, 17.11.). */
+const CHAT_MOOD_SICHTBAR = false;
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -125,6 +129,12 @@ export class UI {
     this.chatEl = el('div', 'chat', this.hud);
     const head = el('div', 'chat-head', this.chatEl);
     el('span', '', head, 'Live-Chat');
+    // Reise: wie zufrieden der Chat ist (Gesicht und schmaler Balken; satisfaction.js), klassisch ausgeblendet
+    this.chatMood = el('span', 'chat-mood', head);
+    this.chatMood.title = 'Zufriedenheit des Chats';
+    this.chatMoodFace = el('span', 'chat-mood-face', this.chatMood, '');
+    this.chatMoodFill = el('i', 'chat-mood-fill', el('span', 'chat-mood-bar', this.chatMood));
+    this.chatMoodShown = '';
     this.chatCount = el('span', 'chat-count', head, '');
     this.chatList = el('div', 'chat-list', this.chatEl);
 
@@ -395,7 +405,7 @@ export class UI {
     this.photos = [];
     this.jobsDone = null;
     this.subEl.classList.add('hidden');
-    this.tvEl.classList.add('hidden');
+    this.brunnenTV(0);
     this.photoEl.classList.add('hidden');
     this.hintEl.classList.add('hidden');
     // Funkloch-Anzeige samt „● LIVE“-Schild zurück (eine Fahrt kann mitten im Funkloch enden)
@@ -404,7 +414,7 @@ export class UI {
   }
 
   // --- Chat -------------------------------------------------------------------
-  chat({ name, text, bot, icon }) {
+  chat({ name, text, bot, icon, badge }) {
     const m = el('div', 'msg' + (bot ? ' bot bot-' + bot : ''), this.chatList);
     // Leerzeichen zwischen den Teilen, sonst bricht ein schmaler Chat mitten im Namen um
     if (bot) {
@@ -414,6 +424,11 @@ export class UI {
       m.append(' ');
       el('span', 'bot-tag', m, 'BOT');
     } else {
+      // Abzeichen vor dem Namen (die Mods der Reise: MOD)
+      if (badge) {
+        el('span', 'mod-tag', m, badge);
+        m.append(' ');
+      }
       const n = el('span', 'name', m, nameBreak(name));
       n.style.color = nameColor(name);
     }
@@ -456,8 +471,8 @@ export class UI {
    * gerade gezeigten – für Meldungen, die ein Zustand sind und keine Schlange (etwa was das Navi zum Ziel sagt).
    * Rückgabe: { drop() } nimmt ihn vorzeitig weg, ob er wartet oder steht.
    */
-  toast(text, kind = 'info', key = '') {
-    const n = { text, kind, key, t: NOTICE.read, age: 0, wait: 0, gone: false, drop: () => this.dropNotice(n) };
+  toast(text, kind = 'info', key = '', parts = null) {
+    const n = { text, kind, key, parts, t: NOTICE.read, age: 0, wait: 0, gone: false, drop: () => this.dropNotice(n) };
     if (key) this.dropKey(key);
     // Dringendes vor allem, was nicht dringend ist; sonst der Reihe nach
     let i = this.notices.length;
@@ -488,7 +503,17 @@ export class UI {
     const n = (this.notice = this.notices.shift() || null);
     this.noticeEl.textContent = '';
     if (!n) return;
-    el('div', 'toast toast-' + n.kind, this.noticeEl, n.text);
+    if (!n.parts) {
+      el('div', 'toast toast-' + n.kind, this.noticeEl, n.text);
+      return;
+    }
+    // in Teilen: [Text, Klasse] – etwa Einnahmen grün und Reparatur rot (Zeile der Runde, game.js payBill). Teile mit
+    // Klasse bleiben beisammen (nowrap), die ohne sind Text zwischen ihnen: Nur dort darf die Zeile umbrechen.
+    const box = el('div', 'toast toast-' + n.kind, this.noticeEl);
+    for (const [text, cls] of n.parts) {
+      if (cls) el('span', cls, box, text);
+      else box.append(text);
+    }
   }
 
   tickNotices(dt) {
@@ -551,14 +576,34 @@ export class UI {
     // eine Gutschrift auf einmal an Stelle von „Guthaben“; die nächste löst die vorige ab
     this.moneyPops.textContent = '';
     const p = el('span', 'money-pop ' + (amount >= 0 ? 'plus' : 'minus'), this.moneyPops, (amount >= 0 ? '+' : '−') + fmtCent(Math.abs(amount)));
-    if (label) {
-      el('small', '', p, label);
-      // passt der Grund nicht mehr ins Feld, bleibt nur der Betrag
-      if (p.offsetWidth > this.moneySlot.clientWidth) p.lastChild.remove();
-    }
+    if (label) el('small', '', p, label);
+    this.popAmount = amount;
+    this.fitMoneyPop();
     this.moneySlot.classList.add('popping');
     clearTimeout(this.moneyTimer);
     this.moneyTimer = setTimeout(() => this.clearMoneyPop(), 1900);
+  }
+
+  /**
+   * Die stehende Gutschrift bleibt im Feld neben dem Guthaben: Passt sie nicht, fällt erst der Grund weg, dann bei
+   * einem runden Betrag die Cent („+1.000 €“ – auf der Reise ist das Guthaben schnell fünfstellig und ein Gebot bis
+   * 3.000 € hoch), zuletzt wird sie kleiner. Geprüft auch, wenn das Guthaben danach eine Stelle länger wird.
+   */
+  fitMoneyPop() {
+    const p = this.moneyPops.firstChild;
+    const fits = () => p.offsetWidth <= this.moneySlot.clientWidth;
+    if (!p || fits()) return;
+    const label = p.querySelector('small');
+    if (label) {
+      label.remove();
+      if (fits()) return;
+    }
+    const v = Math.abs(this.popAmount);
+    if (Number.isInteger(v)) {
+      p.firstChild.nodeValue = (this.popAmount >= 0 ? '+' : '−') + fmtEuro(v);
+      if (fits()) return;
+    }
+    p.classList.add('tight');
   }
 
   clearMoneyPop() {
@@ -572,17 +617,23 @@ export class UI {
     this.speak('durchsage', '»' + text + '«', clamp(dur, 3, 14), `${voiceLabel} · Sprachdurchsage von ${buyer}`);
   }
 
-  /** Ein Wunsch fürs Megafon, den der Wagen gerade ausruft: auch das ist gesprochen und steht deshalb hier. */
-  megafon(text, dur, buyer) {
-    this.speak('megafon', '»' + text + '«', clamp(dur, 3, 14), 'Megafon-Wunsch von ' + buyer);
+  /**
+   * Durchsage durchs Megafon: ein Wunsch, den der Wagen gerade ausruft (buyer), oder mit label Mini Adam selbst
+   * (BrunnenTV) – auch das ist gesprochen und steht deshalb hier.
+   */
+  megafon(text, dur, buyer, label = 'Megafon-Wunsch von ' + buyer) {
+    this.speak('megafon', '»' + text + '«', clamp(dur, 3, 14), label);
   }
 
   /**
    * BrunnenTV am Navi-Ziel (XXL-Welt): die Bauchbinde der Folge n aus dem Ort name, unten im Bild wie im Fernsehen –
-   * der Brunnen in der Bildmitte bleibt zu sehen. n = 0 blendet sie aus.
+   * der Brunnen in der Bildmitte bleibt zu sehen. Solange die Folge läuft, trägt der Streifen .tv: Die Bauchbinde
+   * steht dann über dem Untertitel, statt zu warten, bis keiner mehr spricht (in der Folge spricht fast immer jemand).
+   * n = 0 blendet sie aus.
    */
   brunnenTV(n, name = '') {
     this.tvEl.classList.toggle('hidden', !n);
+    this.tvEl.parentElement.classList.toggle('tv', !!n);
     if (!n) return;
     this.tvEpisode.textContent = 'Folge ' + fmtNum(n);
     this.tvPlace.textContent = 'Heute aus ' + name;
@@ -761,7 +812,12 @@ export class UI {
     this.recordEl.textContent = odo > best && best > 0 ? '🏆 neuer Rekord!' : best > 0 ? 'Rekord ' + strecke(best) : '';
     this.recordEl.classList.toggle('record', odo > best && best > 0);
     if (tacho === null) this.showKmh(tachoKmh(p.kmh));
-    this.moneyRow.textContent = fmtCent(g.money);
+    const money = fmtCent(g.money);
+    if (money !== this.moneyRow.textContent) {
+      this.moneyRow.textContent = money;
+      // ein längeres Guthaben lässt einer stehenden Gutschrift weniger Platz
+      if (this.moneyPops.firstChild) this.fitMoneyPop();
+    }
     this.batteryEl.textContent = Math.round(p.battery) + ' %';
     this.batteryFill.style.width = clamp(p.battery, 0, 100) + '%';
     this.batteryFill.className = 'battery-fill' + (p.battery < 15 ? ' low' : p.battery < 30 ? ' mid' : '');
@@ -800,9 +856,11 @@ export class UI {
     let join = '\u00a0· ';
     const t = g.worldNavi ? nv.shown : !nv.arrived && nv.target;
     if (t) {
-      target = pin + t.name;
-      bid = `Gebot ${fmtCent(nv.bid)} von ${nv.bidder}`;
-      if (g.worldNavi) km = nv.distance;
+      target = pin + (t.goal ?? t.name);
+      // (auf der Reise wird in Zehnern geboten: ganze Euro, „Gebot 1.250 € von …“)
+      bid = `Gebot ${g.worldNavi ? fmtEuro(nv.bid) : fmtCent(nv.bid)} von ${nv.bidder}`;
+      // (das Ziel der Reise ist ein Brunnen, „Marktbrunnen, Würzburg“; wo das nicht passt, steht nur der Ort da)
+      if (g.worldNavi) [km, short] = [nv.distance, pin + t.name];
       else {
         // (ein Ort der Reise behält immer seinen ganzen Namen: „Frankfurt“ ist nicht „Frankfurt (Oder)“)
         short = pin + shortName(t);
@@ -812,6 +870,7 @@ export class UI {
     } else {
       [target, bid, join] = splitWait(g.worldNavi ? nv.waitLine : `🏁 Ziel erreicht: ${nv.target.name} – warte auf das nächste Gebot …`);
       if (!g.worldNavi) short = '🏁 Ziel erreicht: ' + shortName(nv.target);
+      else if (nv.reached) short = '📍 Ziel erreicht: ' + nv.reached.name;
     }
     this.naviEl.classList.toggle('news', news);
     const line = target + '|' + km + '|' + bid + '|' + this.naviMax;
@@ -833,5 +892,23 @@ export class UI {
       }
     }
     this.chatCount.textContent = fmtNum(Math.round(g.viewers)) + ' Zuschauer';
+    this.showChatMood(g.zufrieden);
+  }
+
+  /** Zufriedenheit im Chat-Kopf (Reise): Gesicht, Balken, Farbe; neu geschrieben nur, wenn sich etwas ändert. */
+  showChatMood(z) {
+    const v = z ? Math.round(z.value) : -1;
+    const key = String(v);
+    if (key === this.chatMoodShown) return;
+    this.chatMoodShown = key;
+    // Der Besitzer (17.11.): „Die Chat-Stimmung soll nicht ins HUD.“ Die Zufriedenheit wirkt auf Geld, Zuschauer und
+    // Ton, angezeigt wird sie nicht; das Element bleibt aus, bis er es anders will (CHAT_MOOD_SICHTBAR).
+    this.chatMood.classList.toggle('on', CHAT_MOOD_SICHTBAR && v >= 0);
+    if (v < 0 || !CHAT_MOOD_SICHTBAR) return;
+    this.chatMoodFace.textContent = moodEmoji(v);
+    this.chatMoodFill.style.width = v + '%';
+    this.chatMood.classList.toggle('low', v < 35);
+    this.chatMood.classList.toggle('mid', v >= 35 && v < 60);
+    this.chatMood.setAttribute('aria-label', `Zufriedenheit des Chats: ${v} von 100`);
   }
 }

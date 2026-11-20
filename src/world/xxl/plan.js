@@ -4,6 +4,7 @@
 import { J, PROFILES } from '../../game/trip.js';
 import { places } from '../../map/graph.js';
 import { islandRadius } from '../kit/layout.js';
+import { PARKS, PARK_STOP_AFTER } from '../../map/parks.js';
 
 /** So weit hinter dem Spieler gibt es Welt (Boden, Straßen, Autobahn); dahinter beginnt der Himmel wie bisher. */
 export const XXL_BEHIND = 300;
@@ -118,8 +119,11 @@ export function chunksOf(sec) {
   return out;
 }
 
-/** Ortsdurchfahrt eines Orts der Karte: sie wird vom Stadtbaukasten bebaut (towns.js), nicht mit Platzhaltern. */
-export const kitTown = (sec) => sec.kind === 'stadt' && sec.place >= 0;
+/**
+ * Ortsdurchfahrt eines Orts der Karte oder Abschnitt eines Ladeparks: sie wird vom Stadtbaukasten bebaut (towns.js),
+ * nicht mit Platzhaltern.
+ */
+export const kitTown = (sec) => (sec.kind === 'stadt' && sec.place >= 0) || sec.kind === 'park';
 
 // --- Wald an den Wechseln der Autobahn ----------------------------------------------------------------------------
 /** Der Wald beginnt so viel vor dem Vorhang (trip.curtains) und endet so viel dahinter: Waldrand, der dichter wird. */
@@ -159,11 +163,11 @@ export function forestRanges(path, out = []) {
 /**
  * Jede Ortsdurchfahrt (außer dem Startort) hat am Zielpunkt (spotS) einen kleinen gepflasterten Platz: links weitet
  * sich die Straße, auf einer runden Insel steht der Brunnen, die Gegenrichtung fährt links um ihn herum, unsere Spur
- * (J.L0) bleibt gerade. Ist der Ort das Navi-Ziel, hält der Wagen STOP_AFTER_SPOT hinter dem Zielpunkt an, ahead
- * Meter vor der Mitte des Brunnens: er steht dann schräg rechts vor ihm, nichts ist im Weg.
+ * (J.L0) bleibt gerade. Ist der Ort das Navi-Ziel, hält der Wagen STOP_AFTER_SPOT hinter dem Zielpunkt an, NEBEN dem
+ * Brunnen: vom Fahrersitz aus liegt seine Mitte SIDE_VIEW.angle vor der Querrichtung, mitten im linken Seitenfenster
+ * (das reicht etwa von 36° bis 109° gegen die Fahrtrichtung), zwischen Wagen und Insel ist nur Fahrbahn.
  */
 export const SQUARE = {
-  ahead: 15, // Haltepunkt → Mitte des Brunnens (längs); Inseln über 3,5 m Radius rücken weiter weg (r + 11,5)
   edge: J.L0 - 1.3, // rechter Rand der Insel (quer): 1,3 m links neben der Mitte unserer Spur
   r: 3.4, // Radius der Insel (Bordstein und Pflaster, darauf der Brunnen), wo kein Ort bekannt ist; siehe FOUNTAIN.radius
   run: 26, // so weit reicht der Platz vor und hinter der Insel
@@ -173,6 +177,15 @@ export const SQUARE = {
 };
 /** Halt am Navi-Ziel: so weit hinter dem Zielpunkt (spotS) steht der Wagen still (das Ziel zählt dann schon). */
 export const STOP_AFTER_SPOT = 2;
+/**
+ * Blick aus dem Seitenfenster am Halt: Auge des Fahrers back m hinter und left m links der Wagenmitte (cockpit.js EYE),
+ * die Mitte des Brunnens liegt angle vor der Querrichtung (25°: gut 65° gegen die Fahrtrichtung).
+ */
+export const SIDE_VIEW = { back: 0.27, left: 0.37, angle: (25 * Math.PI) / 180 };
+/** So weit liegt die Mitte einer Insel mit Radius r vor dem Haltepunkt (längs), damit sie im Seitenfenster steht. */
+export function squareAhead(r) {
+  return Math.tan(SIDE_VIEW.angle) * (J.L0 - SIDE_VIEW.left - (SQUARE.edge - r)) - SIDE_VIEW.back;
+}
 /**
  * radius(place) gibt den Radius der Insel für den Brunnen dieses Orts (Brunnen-Radius plus Rand), zwischen 2,5 und
  * 8 m: der Stadtbaukasten kennt den Hauptbrunnen jedes Orts (kit/layout.js islandRadius, ohne Grafik). Ein anderer
@@ -192,9 +205,8 @@ export function squareOf(sec) {
   if (q) return q;
   const r = Math.min(8, Math.max(2.5, +FOUNTAIN.radius(sec.place, sec) || SQUARE.r));
   const stop = sec.spotS + STOP_AFTER_SPOT;
-  // aus dem Cockpit (Fahrersitz 0,37 m links der Wagenmitte) liegt der Brunnen so rund 16° links vor dem Wagen,
-  // zwischen Innenspiegel und A-Säule (die verdeckt erst ab etwa 22°)
-  const s = stop + Math.max(SQUARE.ahead, r + 11.5);
+  // neben dem Wagen auf der Fahrerseite: 1,9 m (kleine Insel) bis 4 m (große) vor der Wagenmitte, auf Höhe der Haube
+  const s = stop + squareAhead(r);
   const x = SQUARE.edge - r;
   const half = r + SQUARE.run;
   q = { s, x, r, s0: s - half, s1: s + half, aL: x - r - SQUARE.loop, stop, heading: Math.atan2(J.L0 - x, s - stop) };
@@ -215,11 +227,14 @@ export function squareWeight(sq, s) {
 /**
  * Ankunft am Navi-Ziel: kennt den Haltepunkt (vor der Ankunft aus dem Ziel, danach bis zum Stillstand) und meldet,
  * wenn der Wagen dort steht ({type: 'rest', place, sec, square}). Das Spiel kann daran die Brunnen-Szene hängen.
+ * Ebenso im Ladepark (geplanter Ladestopp oder rechts hinein, ohne Plan): Halt PARK_STOP_AFTER hinter dem Haltepunkt,
+ * neben der freien Heldenbucht, dann {type: 'charge', park, name, sec}. Einen Park hat der eigene Weg erst, wenn der Wagen
+ * an seiner Ausfahrt abgefahren ist.
  */
 export class Arrival {
   constructor() {
-    this.pending = null; // {s, sec, place, square} nach dem Ereignis 'arrive', bis der Wagen steht
-    this.stopOut = { s: 0, sec: null, place: -1 };
+    this.pending = null; // {s, sec, place, park, square} nach dem Ereignis 'arrive' bzw. 'park', bis der Wagen steht
+    this.stopOut = { s: 0, sec: null, place: -1, park: -1 };
     this.hold = false; // true: nach dem Halt stehen bleiben, bis release() (z. B. während der Brunnen-Szene)
     this.held = null;
   }
@@ -235,16 +250,19 @@ export class Arrival {
   stop(trip) {
     if (this.pending) return this.pending;
     if (this.held) return this.held;
-    if (trip.target < 0) return null;
     const L = trip.cur.sections;
     for (let i = 0; i < L.length; i++) {
       const c = L[i];
-      if (c.kind !== 'stadt' || c.place !== trip.target || c.spotDone || c.spotS === undefined || c.start) continue;
-      if (c.spotS + STOP_AFTER_SPOT < trip.s || c.spotS - trip.s > 1500) continue;
+      const park = c.kind === 'park';
+      if (!park && (c.kind !== 'stadt' || c.place !== trip.target || trip.target < 0)) continue;
+      if (c.spotDone || c.spotS === undefined || c.start) continue;
+      const after = park ? PARK_STOP_AFTER : STOP_AFTER_SPOT;
+      if (c.spotS + after < trip.s || c.spotS - trip.s > 1500) continue;
       const o = this.stopOut;
-      o.s = c.spotS + STOP_AFTER_SPOT;
+      o.s = c.spotS + after;
       o.sec = c;
-      o.place = c.place;
+      o.place = park ? -1 : c.place;
+      o.park = park ? c.park : -1;
       return o;
     }
     return null;
@@ -253,13 +271,15 @@ export class Arrival {
   update(trip, events, speed) {
     for (let i = 0; i < events.length; i++) {
       const e = events[i];
-      if (e.type === 'arrive' && !e.sec.start) this.pending = { s: e.sec.spotS + STOP_AFTER_SPOT, sec: e.sec, place: e.place, square: squareOf(e.sec) };
+      if (e.type === 'arrive' && !e.sec.start) this.pending = { s: e.sec.spotS + STOP_AFTER_SPOT, sec: e.sec, place: e.place, park: -1, square: squareOf(e.sec) };
+      if (e.type === 'park') this.pending = { s: e.sec.spotS + PARK_STOP_AFTER, sec: e.sec, place: -1, park: e.park, square: null };
     }
     const p = this.pending;
     if (!p) return null;
     if (speed < 0.15 && Math.abs(trip.s - p.s) < 2) {
       this.pending = null;
-      if (this.hold) this.held = { s: trip.s + 0.3, sec: p.sec, place: p.place };
+      if (this.hold) this.held = { s: trip.s + 0.3, sec: p.sec, place: p.place, park: p.park };
+      if (p.park >= 0) return { type: 'charge', park: p.park, name: PARKS[p.park].name, sec: p.sec };
       return { type: 'rest', place: p.place, sec: p.sec, square: p.square };
     }
     if (trip.s > p.s + 5 || trip.section !== p.sec) this.pending = null;

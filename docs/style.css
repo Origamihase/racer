@@ -1,4 +1,4 @@
-/* Mini Adam – Tesla-Navi ferngesteuert: Stream-Overlay, Menüs und Shop */
+/* Mini Adam – Navi ferngesteuert BrunnenTV XXL: Stream-Overlay, Menüs und Shop */
 :root {
   --text: #f4f5f7;
   --sub: #aab0ba;
@@ -77,6 +77,8 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .money-pops { position: absolute; left: 0; top: 0; bottom: 0; display: flex; align-items: center; pointer-events: none; }
 .money-pop { white-space: nowrap; font-size: 12.5px; font-weight: 800; line-height: 17px; padding: 0 7px; border-radius: 999px; transform-origin: left center; animation: moneypop 1.9s ease-out forwards; }
 .money-pop small { font-size: 11px; font-weight: 600; margin-left: 5px; opacity: 0.9; }
+/* kein Platz neben einem langen Guthaben (ui.js money): etwas kleiner statt aus dem Feld zu ragen */
+.money-pop.tight { font-size: 11px; padding: 0 5px; }
 .money-pop.plus { color: #a4ffc2; background: rgba(22, 96, 50, 0.92); box-shadow: inset 0 0 0 1px rgba(100, 235, 150, 0.55); }
 .money-pop.minus { color: #ffc9c4; background: rgba(120, 26, 22, 0.92); box-shadow: inset 0 0 0 1px rgba(255, 125, 115, 0.6); }
 @keyframes moneypop { 0% { transform: scale(0.7); opacity: 0; } 9% { transform: scale(1.08); opacity: 1; } 16% { transform: scale(1); } 82% { opacity: 1; } 100% { opacity: 0; } }
@@ -139,6 +141,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .toast-good { border-color: rgba(53, 200, 106, 0.7); }
 .toast-warn { border-color: rgba(255, 190, 70, 0.85); }
 .toast-bad { border-color: rgba(255, 90, 79, 0.8); }
+/* eine Zeile in Teilen (Runde abgerechnet): jeder Teil bleibt beisammen, umbrochen wird zwischen ihnen */
+.toast > span { white-space: nowrap; }
+.toast > .plus { color: var(--green); }
+.toast > .minus { color: var(--bad); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
 
 /* --- Streifen unten: wer spricht, steht hier – NOMI (ihre Augen), das Sprachstudio (Kopfhörer, warmer Rahmen), die
@@ -185,6 +191,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .brunnentv-episode { font-size: 12px; font-weight: 800; line-height: 1.3; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
 .brunnentv-place { font-size: 14.5px; font-weight: 700; line-height: 1.3; color: #dff3ff; }
 .bottom-strip:has(> .sub-bar:not(.hidden)) > .brunnentv { display: none; }
+/* in der Folge am Brunnen (ui.js: Streifen .tv) steht der Wagen, und fast immer spricht jemand – das Navi, Mini Adam
+   durchs Megafon, NOMI: Dort wartet die Bauchbinde nicht, sie steht über dem Untertitel, in jedem Format am Rand */
+.bottom-strip.tv { flex-direction: column; align-items: center; }
+.bottom-strip.tv:has(> .sub-bar:not(.hidden)) > .brunnentv { display: flex; }
 /* Startszene der Reise (ui.show(false, true)): vom HUD nur der Untertitel */
 .hud.subs > :not(.bottom-strip), .hud.subs .bottom-strip > :not(.sub-bar) { display: none !important; }
 @media (min-width: 1240px) and (min-height: 561px) {
@@ -227,6 +237,14 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   border: 1px solid var(--line); border-radius: 14px; overflow: hidden; backdrop-filter: blur(4px); z-index: 3; }
 .chat-head { display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; padding: 7px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sub); border-bottom: 1px solid var(--line); }
 .chat-count { text-transform: none; letter-spacing: 0; font-weight: 600; }
+/* Reise: Zufriedenheit des Chats im Kopf – Gesicht und schmaler Balken (grün, ab 35–59 gold, darunter rot) */
+.chat-mood { display: none; align-items: center; gap: 5px; margin-left: auto; text-transform: none; letter-spacing: 0; }
+.chat-mood.on { display: inline-flex; }
+.chat-mood-face { font-family: var(--emoji); font-size: 13px; line-height: 1; }
+.chat-mood-bar { display: block; width: 44px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
+.chat-mood-fill { display: block; height: 100%; width: 60%; border-radius: 2px; background: var(--green); transition: width 0.4s linear, background-color 0.4s; }
+.chat-mood.mid .chat-mood-fill { background: var(--gold); }
+.chat-mood.low .chat-mood-fill { background: var(--bad); }
 /* oben nur ganze Nachrichten: eine angeschnittene blendet ui.trimChat aus (.gone) */
 .chat-list { overflow: hidden; padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; line-height: 1.32; }
 .msg { animation: msgin 0.25s; overflow-wrap: anywhere; }
@@ -238,6 +256,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
    ohne Rand oben und unten, damit zwei Zeilen von James hineinpassen (flex: none, sonst drückt die Spalte sie auf null) */
 .msg.cut { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; flex: none; padding-block: 0; }
 .bot-icon { margin-right: 4px; font-family: var(--emoji); }
+.mod-tag { font-size: 9px; font-weight: 800; background: rgba(53, 200, 106, 0.22); color: var(--green); border-radius: 3px; padding: 0 4px; margin-right: 1px; vertical-align: 1px; white-space: nowrap; }
 .bot-tag { font-size: 9px; font-weight: 800; background: rgba(255,215,106,0.25); color: var(--gold); border-radius: 3px; padding: 0 4px; margin-right: 2px; vertical-align: 1px; white-space: nowrap; }
 @keyframes msgin { from { opacity: 0; transform: translateX(10px); } }
 
@@ -364,6 +383,11 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .touch .t-brake { right: 128px; bottom: 26px; background: rgba(170,40,40,0.5); font-size: 16px; font-family: var(--font); font-weight: 700; }
 .touch .t-small { width: 54px; height: 54px; font-size: 22px; bottom: 140px; }
 .touch .t-horn { right: 18px; } .touch .t-wiper { right: 80px; } .touch .t-megafon { right: 142px; } .touch .t-camera { left: 18px; } .touch .t-pause { left: 80px; }
+/* Reise: „Ladestopp einplanen“ (Taste L), eine Pille in der Reihe der kleinen Knöpfe, nur wenn das Spiel sie anbietet */
+.touch .t-stop { display: none; left: 142px; bottom: 140px; width: 118px; height: 54px; border-radius: 27px; padding: 0 8px;
+  background: rgba(20,82,168,0.62); font-family: var(--font); font-size: 12px; font-weight: 700; line-height: 1.15; }
+.touch .t-stop span { font-family: var(--emoji); font-size: 16px; }
+.touch .t-stop.show { display: block; }
 @media (pointer: coarse) { body.playing .touch { display: block; } }
 /* schmale Handys hochkant: Knöpfe kleiner, damit „Bremse“ nicht über dem Pfeil liegt */
 @media (max-width: 480px) {
@@ -376,6 +400,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .touch .t-small { width: 48px; height: 48px; font-size: 20px; bottom: calc(var(--tb) * 1.14 + 40px); }
   .touch .t-camera { left: 12px; } .touch .t-pause { left: 66px; }
   .touch .t-horn { right: 12px; } .touch .t-wiper { right: 66px; } .touch .t-megafon { right: 120px; }
+  .touch .t-stop { left: 120px; width: calc(100vw - 300px); max-width: 118px; height: 48px; bottom: calc(var(--tb) * 1.14 + 40px); font-size: 11px; }
 }
 /* Handy quer: unten rechts liegt im Cockpit der Mittelbildschirm – Pfeile und Pedale kleiner und tiefer, rechts nur so
    viele kleine Knöpfe, wie neben den Bildschirm passen: das Megafon steht links, auf schmalen Handys auch der Scheibenwischer.
@@ -390,6 +415,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .touch .t-small { bottom: 108px; }
   .touch .t-horn { right: 14px; } .touch .t-wiper { right: 76px; }
   .touch .t-camera { left: 14px; } .touch .t-pause { left: 76px; } .touch .t-megafon { right: auto; left: 138px; }
+  .touch .t-stop { left: 200px; bottom: 108px; }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) and (max-aspect-ratio: 2.08/1) {
   :root { --touch-top: 152px; }
@@ -397,6 +423,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .touch .t-brake { width: 76px; height: 76px; right: 104px; }
   .touch .t-small { width: 44px; height: 44px; font-size: 19px; bottom: 100px; }
   .touch .t-pause { left: 64px; } .touch .t-megafon { left: 114px; } .touch .t-wiper { right: auto; left: 164px; }
+  .touch .t-stop { left: 214px; bottom: 100px; height: 44px; }
 }
 
 /* --- Touch-Lenkung (src/ui/touch.js) ------------------------------------------ */
@@ -447,9 +474,15 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .title-logo { display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
 .title-live { background: var(--live); padding: 3px 10px; border-radius: 6px; font-weight: 800; letter-spacing: 0.08em; font-size: 14px; animation: livepulse 2s infinite; }
 .title-card h1 { font-size: clamp(54px, 8vw, 104px); line-height: 0.95; margin: 10px 0 6px; font-weight: 850; letter-spacing: -0.03em; text-shadow: 0 6px 30px rgba(0,0,0,0.6); }
-.title-card h2 { font-size: clamp(20px, 2.6vw, 32px); margin: 0; font-weight: 700; color: #ff4d57; text-shadow: 0 2px 16px rgba(0,0,0,0.6); }
-/* die Reise ist noch eine Vorschau: ein Schildchen neben LIVE sagt es */
+/* der Name des Spiels in einer Zeile: „Navi ferngesteuert“ in Rot, „BrunnenTV XXL“ in Brunnenblau */
+.title-card h2 { font-size: clamp(19px, 2.2vw, 28px); margin: 0; font-weight: 700; color: #ff4d57; text-shadow: 0 2px 16px rgba(0,0,0,0.6); }
+.title-xxl { color: #5fd0ff; white-space: nowrap; }
+/* schmale Handys: „BrunnenTV XXL“ auf einer eigenen Zeile (sonst bräche es je nach Schrift mal um und mal nicht) */
+@media (max-width: 480px) { .title-xxl { display: block; } }
+/* ein Schildchen neben LIVE sagt, in welchem Modus der Titel steht: die Reise ist noch eine Vorschau (gelb), die
+   Klassik schlicht hell */
 .title-badge { background: rgba(255, 196, 61, 0.16); border: 1px solid rgba(255, 196, 61, 0.55); color: #ffd97a; padding: 2px 9px; border-radius: 6px; font-weight: 700; font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.title-badge.klassik { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.42); color: #e9ecf1; }
 .tagline { font-style: italic; color: #d6dae2; margin: 8px 0 22px; font-size: 17px; text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 2px 16px rgba(0,0,0,0.6); }
 /* Hochkant steht die Titelkarte oben und das Dunkel kommt von oben (quer endet es schon in der Bildmitte, die Zeilen
    liefen dort in den hellen Himmel); darunter bleibt der Streifen für den Wagen frei */
@@ -496,6 +529,9 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 /* (die Zahlen dürfen breiter werden als die Karte: In der Reise sind es vier, und sie bleiben in einer Zeile, wo Platz ist) */
 .title-stats { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 22px; color: #e1e4ea; font-size: 15px; font-weight: 600; width: max-content; max-width: min(760px, calc(100vw - 56px)); }
 .title-hint { position: absolute; bottom: 18px; left: clamp(20px, 6vw, 110px); color: var(--sub); font-size: 13px; }
+/* einmal nach der Erstattung des gekauften Megafons (save.js refundMegafon): eine freundliche Zeile auf dem Titel und im Shop */
+.refund-note { margin: 12px 0 0; max-width: min(520px, calc(100vw - 56px)); color: #ffe39a; font-size: 14px; font-weight: 600; line-height: 1.35; text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
+.shop-card > .refund-note { margin: 0 0 14px; max-width: none; font-size: 15px; text-shadow: none; }
 
 .btn { font: inherit; font-size: 17px; font-weight: 600; padding: 11px 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.07);
   color: #fff; cursor: pointer; text-align: left; transition: background 0.15s, transform 0.1s, border-color 0.15s; }
@@ -576,9 +612,14 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .crew { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .crew-row .k { color: var(--sub); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; display: block; }
 .crew-row .v { font-weight: 700; display: block; }
+/* eine lange Zeile (die Moderation der Reise) über die ganze Breite statt vier Zeilen in einer Spalte */
+.crew-row.wide { grid-column: 1 / -1; }
 /* „Danke an“: die Unterstützenden als eigener Abschnitt unter der Crew, die Überschrift über die ganze Breite */
 .crew.thanks { margin-top: 14px; }
 .crew.thanks h3 { grid-column: 1 / -1; margin: 0 0 2px; }
+/* Abspann der Reise: ganz am Ende eine leise Zeile des Gedenkens, allein, mit einem kurzen Strich davor */
+.gedenken { margin: 26px auto 2px; max-width: 560px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--sub); font-style: italic; text-wrap: balance; }
+.gedenken::before { content: ''; display: block; width: 48px; height: 1px; margin: 0 auto 14px; background: var(--line); }
 
 .shop-card { max-width: 1180px; }
 /* schmal: das Guthaben rutscht unter den Titel, statt Titel und Betrag zu zerbrechen */

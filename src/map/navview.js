@@ -18,6 +18,7 @@ import {
 import { roadAhead, closeScene, curvePoint } from './roadahead.js';
 import { Persp, TiltView, ribbon } from './persp.js';
 import { places } from './graph.js';
+import { goalName } from '../world/kit/layout.js';
 import { fmtOdo } from './navroute.js';
 import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawCar, drawShield, drawFlag, drawHeart } from './symbols.js';
 
@@ -196,7 +197,7 @@ export class NaviScreen {
     if (kind === 'zub' || kind === 'term') return 95;
     if (kind === 'ramp' || kind === 'auf' || kind === 'conn') return 80;
     const base = kind === 'land' ? 26 : 9;
-    if (ins.turn === 'exit' || ins.turn === 'arrive' || ins.turn === 'faehre' || ins.turn === 'zug' || ins.turn === 'flug') {
+    if (ins.turn === 'exit' || ins.turn === 'arrive' || ins.turn === 'stop' || ins.turn === 'faehre' || ins.turn === 'zug' || ins.turn === 'flug') {
       if (isFinite(ins.km) && ins.km > 0) return clamp(150 / Math.max(ins.km, 0.4), base, 110);
     }
     return base;
@@ -234,7 +235,7 @@ export class NaviScreen {
     // Ausfahrt (am Ende der Sperrfläche) oder eines Terminals gut 20 px darunter, die Zielfahne mit ihrem ganzen Mast
     const room = this.cam.depthAtY(ins.turn === 'arrive' ? 268 : 244);
     const fitQ = (d) => room / Math.max(d + 60, 1);
-    const act = ins.dist > 0 && (ins.turn === 'exit' || ins.turn === 'arrive' || TRANSIT_TURN[ins.turn]);
+    const act = ins.dist > 0 && (ins.turn === 'exit' || ins.turn === 'arrive' || ins.turn === 'stop' || TRANSIT_TURN[ins.turn]);
     if (sec.kind === 'ab' || sec.kind === 'land') {
       const q0 = kT * (sec.kmPerM || 0.02);
       return act ? clamp(fitQ(ins.dist), Math.min(q0, 0.2), 1.6) : q0;
@@ -268,7 +269,7 @@ export class NaviScreen {
 
     // Nahansicht (die Straße, wie die Welt sie baut) nah an der nächsten Handlung und abseits von Autobahn und
     // Landstraße, sonst die Karte; beim Wechsel blenden beide über, Kurs und Lage des Autos bleiben dieselben
-    const act = ins.dist > 0 && (ins.turn === 'exit' || ins.turn === 'arrive' || TRANSIT_TURN[ins.turn]);
+    const act = ins.dist > 0 && (ins.turn === 'exit' || ins.turn === 'arrive' || ins.turn === 'stop' || TRANSIT_TURN[ins.turn]);
     const near = !hop && (!onRoad || (act && ins.dist < (this.closeOn ? 2600 : 2200)));
     // Maßstäbe: Karte k (Bildpunkte je Kartenkilometer), Nahansicht q (je Meter der Fahrt); der gerade nicht gezeigte
     // läuft über kmPerM des Abschnitts mit, damit der Wechsel ohne Sprung geht
@@ -623,6 +624,20 @@ export class NaviScreen {
         ctx.stroke();
         drawTransitShape(ctx, mk.transit, 0, 0, 0.85, TRANSIT_COLOR[mk.transit] || '#4d86c6');
         ctx.restore();
+      } else if (mk.type === 'park') {
+        // Halt des Ladestopps: grüner Kreis mit Stecker
+        ctx.save();
+        ctx.translate(o[0], o[1]);
+        ctx.scale(k, k);
+        ctx.fillStyle = '#2f8f4e';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, 20, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        drawTurnIcon(ctx, 'stop', 0, 0, 26, '#ffffff');
+        ctx.restore();
       } else if (mk.type === 'exit') exitButton(ctx, o[0], o[1], T, k);
       else if (mk.type === 'pin') drawFlag(ctx, o[0], o[1], flagPop(m) * k, theme === 'dark' ? '#e6e8eb' : '#1d1f22');
     }
@@ -807,8 +822,8 @@ export class NaviScreen {
       ctx.font = `700 40px ${FONT}`;
       ctx.fillText(dist, tx, y + 48);
       const dx = tx + ctx.measureText(dist).width + 16;
-      ctx.fillText(shrink(ctx, head, right - dx, 600, 27, 21), dx, y + 47);
-    } else ctx.fillText(shrink(ctx, head, right - tx, 700, 30, 22), tx, y + 47);
+      ctx.fillText(shrink(ctx, prefer(ctx, head, ins.short, right - dx, 600, 21), right - dx, 600, 27, 21), dx, y + 47);
+    } else ctx.fillText(shrink(ctx, prefer(ctx, head, ins.short, right - tx, 700, 22), right - tx, 700, 30, 22), tx, y + 47);
     ctx.fillStyle = '#c9d6ff';
     ctx.fillText(shrink(ctx, sub || '', right - lanesW - tx, 500, 22, 18), tx, y + 84);
   }
@@ -941,8 +956,9 @@ export class NaviScreen {
     ctx.fillText(right, x + bw - 16, cy + 31);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#c9d6ff';
-    // der Name des Ziels wie auf seiner Ortstafel: lange Namen kleiner gesetzt, nie um einen Zusatz gekürzt
-    ctx.fillText(shrink(ctx, '🏁 ' + pl.name, bw - rw - 50, 700, 22, 16), x + 16, cy + 31);
+    // das Ziel: der Brunnen und sein Ort, der Name wie auf der Ortstafel; lange Namen kleiner gesetzt, nie um einen
+    // Zusatz gekürzt – passt beides nicht, steht der Ort allein da
+    ctx.fillText(shrink(ctx, prefer(ctx, '⛲ ' + goalName(pl), '⛲ ' + pl.name, bw - rw - 50, 700, 16), bw - rw - 50, 700, 22, 16), x + 16, cy + 31);
     this.drawStrip(ctx, m, x + 18, cy + 68, bw - 36, km);
   }
 
@@ -1008,6 +1024,13 @@ export class NaviScreen {
 }
 
 /** Text in die Breite: erst die Schrift von px bis minPx verkleinern, dann kürzen (setzt ctx.font). */
+/** text, wenn er in der kleinsten Schrift (minPx) in maxW passt, sonst alt (wo es eines gibt). */
+function prefer(ctx, text, alt, maxW, weight, minPx) {
+  if (!alt) return text;
+  ctx.font = `${weight} ${minPx}px ${FONT}`;
+  return ctx.measureText(text).width <= maxW ? text : alt;
+}
+
 function shrink(ctx, text, maxW, weight, px, minPx) {
   for (let size = px; size >= minPx; size--) {
     ctx.font = `${weight} ${size}px ${FONT}`;

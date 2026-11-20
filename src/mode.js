@@ -1,4 +1,4 @@
-// Der Spielmodus: „Klassik“ (die endlose Autobahn) oder „Navi ferngesteuert XXL“ (die Reise über die echte Karte).
+// Der Spielmodus: „Klassik“ (die endlose Autobahn) oder „BrunnenTV XXL“ (die Reise über die echte Karte).
 // Die Welt wird beim Laden gebaut, also gilt je Seitenaufruf genau ein Modus, und er wird hier an einer Stelle
 // entschieden (modeFor). Gewählt wird auf dem Titelbildschirm: Der Eintrag merkt die Wahl im Spielstand (save.mode)
 // und lädt die Seite neu (modeSearch) – in den anderen Modus kommt man von dort immer zurück.

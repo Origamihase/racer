@@ -4,9 +4,10 @@
 // mit seinen erfundenen Zielen an der endlosen Autobahn, WorldNavi für „Navi ferngesteuert XXL“ – dort nennt jedes
 // Gebot einen echten Ort der Karte, und Weg, Entfernung und Ankunft gehören der Fahrt (trip.js).
 import { NAVI_TARGETS, BANK_FARBEN, INSIDER_ORTE } from '../data.js';
-import { rand, chance, pick, weightedPick, fmtCent, fmtClock, clamp } from '../util.js';
+import { rand, chance, pick, weightedPick, fmtCent, fmtEuro, fmtClock, clamp } from '../util.js';
 import { places } from '../map/graph.js';
 import { fmtRoad, fmtDistance } from '../map/navroute.js';
+import { goalName } from '../world/kit/layout.js';
 
 /** Kurzer Name für Schilderbrücken und das Navi-Kärtchen. */
 export function shortName(t) {
@@ -162,8 +163,12 @@ export const BID_PLACES = { minKm: 12, nearKm: 30, farKm: 250, pull: 1.3, fade: 
  * Die erste Runde eines Streams – vom Start bis zum ersten Halt an einem Brunnen (oder dem ersten Vorbeirollen): Wer
  * neu ist, soll in seinen ersten Minuten erleben, worum es geht. Darum nennen die Gebote dort nur Orte in der Nähe:
  * höchstens secs Sekunden Fahrt im Tempo des Navis, von dort, wo der Wagen gerade ist (trip.whatIf – vom Start in
- * Erlensee sind das Hanau 2:22, Bad Vilbel 2:45, Frankfurt am Main 3:54, Eschborn 3:58 und Offenbach am Main 4:21),
- * mindestens aber die min nächsten. Unter ihnen entscheiden Bekanntheit und Neuheit wie sonst; die Entfernung zählt
+ * Erlensee sind das Hanau 2:22, Bad Vilbel 2:45, Frankfurt am Main 3:54, Eschborn 3:58 und Offenbach am Main 4:21);
+ * nur wenn weniger als min Orte so nah liegen, die min nächsten (zwei: neben dem aktuellen Ziel, auf das nie geboten
+ * wird, bleibt so immer ein anderer Ort). Das gilt für jedes Gebot der Runde, auch für eins, das ein stehendes Ziel
+ * wieder wegnimmt (tools/journey-test.mjs, 300 erste Runden je Fahrer: mit min 4 lagen 33 bis 47 % dieser Ziele
+ * weiter als secs entfernt, bis 363 s, mit min 2 sind es 24 bis 32 %, bis 345 s).
+ * Unter ihnen entscheiden Bekanntheit und Neuheit wie sonst; die Entfernung zählt
  * nicht weiter, auch minKm nicht (sonst fiele Hanau heraus). Nie zur Wahl stehen der Ort, in dem die Fahrt begonnen
  * hat (ein Gebot auf Erlensee wäre von Erlensee aus eine Schleife von 16 km), und Orte, zu denen das Navi erst
  * „Bitte wenden“ sagen müsste: Der Weg aus dem Startort liegt fest, bevor das erste Gebot kommt, und die erste
@@ -171,7 +176,7 @@ export const BID_PLACES = { minKm: 12, nearKm: 30, farKm: 250, pull: 1.3, fade: 
  * durchgerechnet. Wie lange das Ziel danach stehen bleibt, regelt economy.js (OPENING_CALM); im Zielort selbst wartet
  * das nächste Gebot, bis der Wagen am Brunnen steht oder vorbeigerollt ist (Game.updateNavi).
  */
-export const OPENING = { secs: 270, min: 4, pool: 16 };
+export const OPENING = { secs: 270, min: 2, pool: 16 };
 
 /** Gewicht der Entfernung (Kartenkilometer über Straßen): 0 = steht nicht zur Wahl. */
 export function placeWeight(km) {
@@ -190,9 +195,10 @@ export class WorldNavi {
    */
   constructor(world) {
     this.world = world;
-    // je Ort ein festes Ziel-Objekt (economy.pickTarget vergleicht Objekte): Name wie auf der Ortstafel, dazu der
-    // Insider des Orts (special: besondere Ankunft, note: Zeile unter dem Hinweis aufs neue Ziel)
-    this.targets = places.map((p) => ({ place: p.i, name: p.name, weight: 0, ...INSIDER_ORTE[p.key] }));
+    // je Ort ein festes Ziel-Objekt (economy.pickTarget vergleicht Objekte): Name wie auf der Ortstafel, goal: das
+    // Ziel selbst, der Hauptbrunnen des Orts („Marktbrunnen, Würzburg“, kit/layout.js goalName), dazu der Insider des
+    // Orts (special: besondere Ankunft, note: Zeile unter dem Hinweis aufs neue Ziel)
+    this.targets = places.map((p) => ({ place: p.i, name: p.name, goal: goalName(p), weight: 0, ...INSIDER_ORTE[p.key] }));
     this.list = [];
     this.screenOut = { bidder: '', bid: '', bar: '', wait: '' };
     this.reset();
@@ -274,8 +280,11 @@ export class WorldNavi {
     return near;
   }
 
-  /** Ein Zuschauer überbietet: Gebot + increment, die Fahrt plant zum Ort des Ziels (nur über Straßen). */
-  overbid(s, bidder, increment = 0.01, target) {
+  /**
+   * Ein Zuschauer überbietet: Gebot + increment, die Fahrt plant zum Ort des Ziels (nur über Straßen). Auf der Reise
+   * wird in Zehnern geboten (economy.js: jeder Schritt ein Vielfaches von 10 €, das erste Gebot einer Runde 10 €).
+   */
+  overbid(s, bidder, increment = 10, target) {
     this.bid = Math.round((this.bid + increment) * 100) / 100;
     this.changes++;
     this.target = target;
@@ -373,11 +382,11 @@ export class WorldNavi {
     return this.target || this.stopping;
   }
 
-  /** Das Navi-Ziel in Worten (Pause-Karte). */
+  /** Das Navi-Ziel in Worten (Pause-Karte): der Brunnen und sein Ort. */
   get label() {
     const t = this.shown;
-    if (t) return t.name;
-    return this.reached ? this.reached.name + ' (erreicht)' : 'noch offen';
+    if (t) return t.goal;
+    return this.reached ? this.reached.goal + ' (erreicht)' : 'noch offen';
   }
 
   /**
@@ -385,7 +394,7 @@ export class WorldNavi {
    * verpassten Ankunft.
    */
   get waitLine() {
-    if (this.reached) return `📍 Ziel erreicht: ${this.reached.name} – warte auf das nächste Gebot …`;
+    if (this.reached) return `📍 Ziel erreicht: ${this.reached.goal} – warte auf das nächste Gebot …`;
     return this.missed ? '📍 Am Brunnen vorbeigerollt – gleich kommt das nächste Gebot …' : '📍 Wohin geht die Reise? Gleich kommt das erste Gebot …';
   }
 
@@ -394,17 +403,18 @@ export class WorldNavi {
   }
 
   /**
-   * Für den Mittelbildschirm (st.navi → st.nav, src/map/navview.js): Bieter und Gebot im roten Balken; ohne Gebot der
-   * Text des Balkens (bar) und die Zeile im Kärtchen (wait). Weg, Kilometer und Ankunft zeigt das Navi aus der Fahrt.
+   * Für den Mittelbildschirm (st.navi → st.nav, src/map/navview.js): Bieter und Gebot (ganze Euro) im roten Balken;
+   * ohne Gebot der Text des Balkens (bar) und die Zeile im Kärtchen (wait). Weg, Kilometer und Ankunft zeigt das Navi
+   * aus der Fahrt.
    */
   screen() {
     const S = this.screenOut;
     S.bidder = this.shown ? this.bidder : '';
-    S.bid = this.shown ? fmtCent(this.bid) : '';
+    S.bid = this.shown ? fmtEuro(this.bid) : '';
     // (das Navi selbst meldet „Ziel erreicht“ schon am Zielpunkt, wie jedes Navi – darum gilt das Kärtchen ab dort)
     const r = this.stopping || this.reached;
-    S.bar = r ? '📡 Neue Runde: Gebote ab 0,01 €' : this.missed ? '📡 Der Chat bietet weiter …' : '📡 Der Chat bietet: Gebote ab 0,01 €';
-    S.wait = r ? '⛲ Ziel erreicht: ' + r.name : this.missed ? '⏳ Vorbeigerollt – gleich kommt das nächste Gebot …' : '⏳ Gleich kommt das erste Gebot …';
+    S.bar = r ? '📡 Neue Runde: Gebote ab 10 €' : this.missed ? '📡 Der Chat bietet weiter …' : '📡 Der Chat bietet: Gebote ab 10 €';
+    S.wait = r ? '⛲ Ziel erreicht: ' + r.goal : this.missed ? '⏳ Vorbeigerollt – gleich kommt das nächste Gebot …' : '⏳ Gleich kommt das erste Gebot …';
     return S;
   }
 }

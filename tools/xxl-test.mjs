@@ -28,6 +28,7 @@ import { curveTable, curveAt } from '../src/curve.js';
 import { forestRanges, limitsFor, autoTarget, autoDrive, AUTO, Arrival, squareOf, eachPiece, FOREST_IN, FOREST_OUT, AHEAD, XXL_BEHIND } from '../src/world/xxl/plan.js';
 import { sectionSigns, tableAt, BOARD_D, BEACON_D, NEAR_ROAD } from '../src/world/xxl/signplan.js';
 import { crossSection } from '../src/world/xxl/roadkit.js';
+import { PARKS, parkAt, PARK_STOP_AFTER } from '../src/map/parks.js';
 
 let fails = 0;
 const kinds = new Map(); // Art des Fehlers (Meldung ohne Zahlen) → Anzahl; jede Art wird höchstens dreimal gezeigt
@@ -50,7 +51,7 @@ function rng(seed) {
 }
 const FOG_END = 1550;
 const shearMap = new Map();
-const stats = { shears: 0, metres: 0, forks: 0, wrong: 0, rails: 0, entries: 0, over: 0, maxOver: 0, curtains: 0, forests: 0, stops: 0, rests: 0, island: 0, pieces: 0, rebuilt: 0, seams: 0, bendM: 0, tightM: 0, maxOff: 0, maxLat: 0, links: 0 };
+const stats = { shears: 0, metres: 0, forks: 0, wrong: 0, rails: 0, entries: 0, over: 0, maxOver: 0, curtains: 0, forests: 0, stops: 0, rests: 0, charges: 0, island: 0, pieces: 0, rebuilt: 0, seams: 0, bendM: 0, tightM: 0, maxOff: 0, maxLat: 0, links: 0 };
 
 /**
  * Neubauten von Straßenstücken (wie XxlWorld.sync): built = Stück-Id (Abschnitt, Lage, Nummer) → Schlüssel. Ein
@@ -221,7 +222,12 @@ function drive(trip, metres, { mode = 'auto', decide = null, dt = 1 / 30, onEven
     }
     // Halt am Ziel
     const rest = arrival.update(trip, evs, p.speed);
-    if (rest) {
+    if (rest && rest.type === 'charge') {
+      // im Ladepark: neben der freien Heldenbucht (Haltepunkt + PARK_STOP_AFTER)
+      stats.charges++;
+      ok(rest.sec.kind === 'park' && Math.abs(rest.sec.spotS + PARK_STOP_AFTER - p.s) < 1.5, `steht ${(rest.sec.spotS + PARK_STOP_AFTER - p.s).toFixed(2)} m vor dem Halt im Ladepark`);
+      resting = 2;
+    } else if (rest) {
       stats.rests++;
       ok(rest.square && Math.abs(rest.square.stop - p.s) < 1.5, `steht ${(rest.square ? rest.square.stop - p.s : NaN).toFixed(2)} m vor dem Haltepunkt`);
       resting = 2;
@@ -304,7 +310,7 @@ for (let r = 0; r < runs; r++) {
   }
 }
 // --- Schilder gegen Navi ------------------------------------------------------------------------------------------
-const sig = { trips: 0, km: 0, forks: 0, said: 0, boards: 0, tables: 0, rows: 0, maxDev: 0, gantries: 0, towns: 0, arrive: 0 };
+const sig = { trips: 0, km: 0, forks: 0, said: 0, boards: 0, parks: 0, tables: 0, rows: 0, maxDev: 0, gantries: 0, towns: 0, arrive: 0 };
 {
   const placeNames = new Set(G.places.map((p) => p.name));
   const nodeNames = new Set(G.nodes.map((n) => n.name));
@@ -387,8 +393,14 @@ const sig = { trips: 0, km: 0, forks: 0, said: 0, boards: 0, tables: 0, rows: 0,
             ok(b.title === g.title && b.texts[0] === g.title && b.texts[b.texts.length - 1] === dd + ' m', `Vorwegweiser „${b.texts.join(' / ')}“ zur Ansage „${g.title}“`);
             for (const row of b.board.rows) {
               ok(!row.road || roadLabels.has(row.road), `Vorwegweiser nennt unbekannte Straße ${row.road}`);
+              if (row.kind === 'park') continue;
               ok(placeNames.has(row.text) || nodeNames.has(row.text), `Vorwegweiser nennt unbekannten Ort ${row.text}`);
             }
+            // liegt an der Ausfahrt ein Ladepark, nennt ihn die letzte Zeile (mit Stecker), sonst keine
+            const pk = f.forced ? -1 : parkAt(f.node);
+            const parkRows = b.board.rows.filter((r) => r.kind === 'park');
+            ok(pk < 0 ? !parkRows.length : parkRows.length === 1 && b.board.rows[b.board.rows.length - 1].text === PARKS[pk].name, `Vorwegweiser an ${g.title}: Ladepark-Zeile ${parkRows.map((r) => r.text).join(', ') || 'fehlt'}`);
+            if (pk >= 0) sig.parks++;
           }
           for (const dd of BEACON_D) ok(list.some((e) => e.kind === 'bake' && e.fork === f.id && Math.abs(e.s - (f.s - dd)) < 1e-6), `keine Bake ${dd} m vor ${g.title}`);
           ok(list.some((e) => (f.forced ? e.kind === 'ende' : e.kind === 'ausfahrt') && e.fork === f.id), `keine Tafel ${f.forced ? 'Ende der Autobahn' : 'Ausfahrt'} an ${g.title}`);
@@ -439,8 +451,8 @@ const sig = { trips: 0, km: 0, forks: 0, said: 0, boards: 0, tables: 0, rows: 0,
   }
   ok(sig.trips >= 50 && sig.forks > 150 && sig.tables > 200 && sig.arrive > 5, `zu wenig geprüft: ${JSON.stringify(sig)}`);
 }
-console.log(`Schilder gegen Navi: ${sig.trips} Fahrten, ${sig.km.toFixed(0)} km, ${sig.forks} angesagte Gabelungen (${sig.boards} Vorwegweiser, ${sig.said} Ansagen genau an einer Tafel), ${sig.arrive} Ziele, ${sig.tables} Entfernungstafeln und ${sig.gantries} Schilderbrücken mit ${sig.rows} Zeilen (größte Abweichung zum Navi ${sig.maxDev.toFixed(2)} km), ${sig.towns} Ortstafeln`);
-console.log(`XXL-Planung: ${(stats.metres / 1000).toFixed(1)} km gefahren, ${stats.forks} Gabelungen, ${stats.entries} Einfahrten mit Limit (${stats.over} über +4 km/h, höchstens +${stats.maxOver.toFixed(1)} km/h), ${stats.forests} Waldstücke, ${stats.rests} Halte am Ziel, ${stats.island} Bilder neben einer Brunneninsel, ${stats.shears} Scherungsvergleiche, ${stats.pieces} Stückabgleiche (${stats.rebuilt} Neubauten, alle jenseits des Dunsts), ${stats.seams} Nähte zwischen Abschnitten, ${stats.rails} Plankenstöße; Kurven: ${(stats.bendM / 1000).toFixed(1)} km gelenkt (${(stats.tightM / 1000).toFixed(1)} km enger als R 450), höchstens ${stats.maxOff.toFixed(2)} m neben der Linie, Querbeschleunigung bis ${stats.maxLat.toFixed(1)} m/s², ${stats.links} Bilder an Knotenpunkten gerade`);
+console.log(`Schilder gegen Navi: ${sig.trips} Fahrten, ${sig.km.toFixed(0)} km, ${sig.forks} angesagte Gabelungen (${sig.boards} Vorwegweiser, ${sig.parks} davon mit Ladepark-Zeile, ${sig.said} Ansagen genau an einer Tafel), ${sig.arrive} Ziele, ${sig.tables} Entfernungstafeln und ${sig.gantries} Schilderbrücken mit ${sig.rows} Zeilen (größte Abweichung zum Navi ${sig.maxDev.toFixed(2)} km), ${sig.towns} Ortstafeln`);
+console.log(`XXL-Planung: ${(stats.metres / 1000).toFixed(1)} km gefahren, ${stats.forks} Gabelungen, ${stats.entries} Einfahrten mit Limit (${stats.over} über +4 km/h, höchstens +${stats.maxOver.toFixed(1)} km/h), ${stats.forests} Waldstücke, ${stats.rests} Halte am Ziel, ${stats.charges} in einem Ladepark, ${stats.island} Bilder neben einer Brunneninsel, ${stats.shears} Scherungsvergleiche, ${stats.pieces} Stückabgleiche (${stats.rebuilt} Neubauten, alle jenseits des Dunsts), ${stats.seams} Nähte zwischen Abschnitten, ${stats.rails} Plankenstöße; Kurven: ${(stats.bendM / 1000).toFixed(1)} km gelenkt (${(stats.tightM / 1000).toFixed(1)} km enger als R 450), höchstens ${stats.maxOff.toFixed(2)} m neben der Linie, Querbeschleunigung bis ${stats.maxLat.toFixed(1)} m/s², ${stats.links} Bilder an Knotenpunkten gerade`);
 for (const [k, n] of kinds) if (n > 3) console.log(`  … ${n}× ${k}`);
 console.log(fails ? `${fails} FEHLER` : 'alles in Ordnung');
 process.exit(fails ? 1 : 0);

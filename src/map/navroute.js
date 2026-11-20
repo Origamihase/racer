@@ -9,6 +9,8 @@
 // entlang der Route, Überfahrten (Fähre, Autozug, Flug) als Hüpfer und die Ansage für das Navi. Läuft auch unter Node.
 import { nodes, places, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle } from './graph.js';
 import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm } from './mapview.js';
+import { PARKS, parkBoard } from './parks.js';
+import { goalName } from '../world/kit/layout.js';
 
 const NODE_XY = nodes.map((n) => project(n.lat, n.lon));
 /** Kilometer → Karteneinheiten in der Kartenhöhe y. */
@@ -524,6 +526,7 @@ const TRANSIT_NAME = { faehre: 'Fähre', zug: 'Autozug', flug: 'Luftfracht' };
 function thenText(th) {
   if (!th) return '';
   if (th.type === 'ziel') return 'dann zum Ziel ' + places[th.place].name;
+  if (th.type === 'park') return 'dann zum ' + PARKS[th.park].name;
   if (th.type === 'ab' || th.type === 'land') return (th.wende ? 'dann wenden: ' : 'dann ') + th.road + ' Richtung ' + th.towards;
   if (TRANSIT_NAME[th.type]) return 'dann ' + TRANSIT_NAME[th.type] + ' nach ' + nodes[th.to].name;
   return '';
@@ -642,7 +645,7 @@ export class NavModel {
     if (sec.kind !== 'conn' && !(sec.kind === 'zub' && sec.back)) return null;
     if (!f || f.t !== 'node' || f.n !== sec.node || path.sections[path.sections.length - 1] !== sec) return null;
     const pick = this.pickAfter(path, f);
-    if (pick && pick.goal) return { kind: 'zub', node: f.n, place: this.trip.policy.place, back: false };
+    if (pick && pick.goal) return { kind: 'zub', node: f.n, place: this.trip.policy.place, park: this.trip.policy.park ?? -1, back: false };
     const t = pick && pick.t;
     if (!t || t.type !== 'enter' || !(t.de >= 0)) return null;
     const kind = deKind(t.de);
@@ -672,9 +675,12 @@ export class NavModel {
     const trip = this.trip;
     const pick = trip.pickLeave(f.n, f.via);
     const last = path.sections[path.sections.length - 1];
-    if (!pick || !pick.goal || !trip.policy || !last || last.place !== trip.policy.place) return pick;
     const saved = trip.policy;
-    trip.policy = null;
+    if (!pick || !pick.goal || !saved || !last) return pick;
+    // aus dem Park des Ladestopps heraus gilt der Weg zum Ziel (wie Trip.leave2)
+    const park = saved.park >= 0;
+    if (park ? last.park !== saved.park : last.place !== saved.place) return pick;
+    trip.policy = park ? saved.then : null;
     try {
       return trip.pickLeave(f.n, f.via);
     } finally {
@@ -727,8 +733,8 @@ export class NavModel {
   /** Geplanter Weg: eigener Weg bis zur geplanten Ausfahrt, deren Zweig, dann laut Routenplan bis zum Ziel. */
   buildRoute(curPieces) {
     const trip = this.trip;
-    const pol = trip.policy;
-    if (trip.target < 0 || !pol) {
+    let pol = trip.policy;
+    if ((trip.target < 0 && trip.stop < 0) || !pol) {
       this.route = null;
       return;
     }
@@ -756,6 +762,14 @@ export class NavModel {
         if (p.s0 >= upTo) break;
         line.push(p.pts, p.s0, p.s1, p.kind);
         const sec = this.secById(p.sec);
+        // durch den Park des Ladestopps: dahinter gilt der Weg zum Ziel (ohne Ziel endet die Route am Halt)
+        if (sec && sec.kind === 'park' && pol && pol.park === sec.park && sec.spotS !== undefined && p.s1 >= sec.spotS) {
+          pol = pol.then;
+          if (!pol) {
+            reached = true;
+            return;
+          }
+        }
         if (sec && sec.kind === 'stadt' && sec.place >= 0) {
           addStop(sec.place, line.len);
           if (sec.place === trip.target && sec.spotS !== undefined && p.s1 >= sec.spotS) {
@@ -779,7 +793,19 @@ export class NavModel {
     else if (frontier && frontier.t === 'node') st = stateOfNode(frontier.n);
     let guard = 0;
     let join = true;
-    while (!reached && st >= 0 && st !== pol.goal && guard++ < 400) {
+    while (!reached && st >= 0 && guard++ < 400) {
+      if (st === pol.goal) {
+        // am Knoten des Ladestopps: in den Park und weiter auf dem Weg zum Ziel
+        if (!(pol.park >= 0)) break;
+        const N = NODE_XY[nodes[PARKS[pol.park].node].i];
+        line.push([N.x, N.y]);
+        pol = pol.then;
+        if (!pol) {
+          reached = true;
+          break;
+        }
+        continue;
+      }
       const t = pol.next[st];
       if (!t) break;
       const de = t.type === 'stay' ? t.to : t.de;
@@ -803,7 +829,7 @@ export class NavModel {
       line.push([C.x, C.y]);
       addStop(pol.place, line.len);
     }
-    this.route = { line, stops, dest: pol.place };
+    this.route = { line, stops, dest: trip.target };
   }
   secById(id) {
     for (const { path } of this.trip.paths()) for (const c of path.sections) if (c.id === id) return c;
@@ -960,7 +986,7 @@ export class NavModel {
     let g = trip.guidance();
     const sec = trip.section;
     const out = {
-      turn: 'none', dist: 0, km: 0, say: '', calm: false, head: '', sub: '', road: '', lanes: null, node: -1, fork: null,
+      turn: 'none', dist: 0, km: 0, say: '', calm: false, head: '', short: '', sub: '', road: '', lanes: null, node: -1, fork: null,
       mapKm: g.km, toTarget: g.type === 'none' ? '' : fmtDistance(g), clock: g.clock, mins: g.mins, target: trip.target,
     };
     // gerade unterwegs zu einem Terminal? Dann ist die Überfahrt die nächste Handlung (Stelle: das Terminal der Fahrt)
@@ -994,15 +1020,28 @@ export class NavModel {
       out.dist = g.dist;
       out.km = this.kmAhead(g.dist);
       out.say = out.toTarget;
-      out.head = places[trip.target].name;
-      out.sub = 'Ziel liegt in der Ortsmitte';
+      // das Ziel ist der Brunnen des Orts („Marktbrunnen, Würzburg“); passt das nicht, steht der Ort allein da (short)
+      out.head = goalName(places[trip.target]);
+      out.short = places[trip.target].name;
+      out.sub = 'Halt am Brunnen in der Ortsmitte';
+      return out;
+    }
+    if (g.type === 'stop') {
+      // im Zweig zum geplanten Ladestopp: Halt an der freien Säule (Entfernung wie jede andere: Meter auf echter Straße)
+      out.turn = 'stop';
+      out.dist = g.dist;
+      out.km = this.kmAhead(g.dist);
+      out.say = fmtDistance(trip.reach(trip.s + g.dist));
+      out.head = PARKS[g.park].name;
+      out.sub = 'Ladestopp an der freien Säule';
       return out;
     }
     if (g.type === 'exit') {
       out.turn = 'exit';
       out.dist = g.dist;
       out.km = this.kmAhead(g.dist);
-      out.calm = g.far || g.dist > BOARD_M;
+      // vor der Ausfahrt eines Ladeparks steht schon 2000 m vorher seine Tafel (parks.js parkBoard): ab dort Meter
+      out.calm = g.far || g.dist > (parkBoard(g.fork) || BOARD_M);
       out.say = out.calm ? fmtKm(g.toKm) : fmtRoad(g.dist);
       out.node = g.node;
       out.fork = g.fork || null;
@@ -1070,12 +1109,14 @@ export class NavModel {
   roadName(sec) {
     if (sec.de >= 0 && (sec.kind === 'ab' || sec.kind === 'land')) return deRoad(sec.de).label + ' Richtung ' + deTowards(sec.de).name;
     if (sec.kind === 'zub' || sec.kind === 'conn' || sec.kind === 'auf') {
-      const next = this.trip.cur.sections.find((c) => c.s0 >= sec.s1 && (c.kind === 'ab' || c.kind === 'land' || c.kind === 'stadt'));
+      const next = this.trip.cur.sections.find((c) => c.s0 >= sec.s1 && (c.kind === 'ab' || c.kind === 'land' || c.kind === 'stadt' || c.kind === 'park'));
+      if (next && next.kind === 'park') return 'Richtung ' + PARKS[next.park].name;
       if (next && next.kind === 'stadt' && next.place >= 0) return 'Richtung ' + places[next.place].name;
       if (next && next.kind !== 'stadt' && next.de >= 0) return (next.kind === 'ab' ? 'Auffahrt ' : 'Weiter auf der ') + deRoad(next.de).label;
       // aus dem Ort hinaus, solange die Fahrt die Straße hinter dem Zubringer noch nicht geplant hat
       if (sec.kind === 'zub' && sec.back) return 'Der Straße folgen';
     }
+    if (sec.kind === 'park') return PARKS[sec.park].name;
     if (sec.node >= 0) return nodeTitle(sec.node);
     return '';
   }

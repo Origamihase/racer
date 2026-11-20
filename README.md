@@ -1,4 +1,4 @@
-# Mini Adam – Tesla-Navi ferngesteuert
+# Mini Adam – Navi ferngesteuert BrunnenTV XXL
 
 *Live-Eskalationen immer woanders!*
 
@@ -20,6 +20,10 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 
 ## Worum geht's?
 
+- **BrunnenTV XXL (Vorschau):** Auf der Reise über die echte Karte ist jedes Navi-Ziel der Hauptbrunnen eines Orts,
+  und das Navi nennt ihn („Marktbrunnen, Würzburg“). Am Ziel hält Mini Adam neben dem Brunnen, kurbelt das
+  Fahrerfenster herunter und macht mit dem Megafon BrunnenTV aus dem Auto – der Chat jubelt, NOMI lobt den Brunnen.
+  Jede Taste überspringt die Folge, dann geht die nächste Navi-Runde los. Klassisch bleibt die endlose Autobahn.
 - **Kameraschwenk zum Start:** Die Kamera fährt von außen an Mini Adam vorbei ins Cockpit.
 - **Geld gibt es nur vom Publikum** – wie im echten Stream: Spenden mit Alter-Skala, Ortsspenden, Abos,
   VIPs, Navi-Gebote, Sprachdurchsagen, Rahmen, Aktionen und Sammelaktionen. Fürs Fahren selbst zahlt
@@ -47,9 +51,10 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 - **You had 5 Jobs:** Pro Fahrt fünf kleine Aufgaben. Für jede verspricht ein Zuschauer eine Spende
   („Wenn du 200 km/h fährst, spende ich 20 €!“), für alle fünf legt noch jemand ordentlich drauf.
 - **Tesla-Shop:** Mit den Stream-Einnahmen rüstest du den Tesla auf: Beschleunigung, Tempo-Freischaltung,
-  Akku-Puffer, Stream-Technik, Sportreifen, Plüsch-Polster, Wischer-Firmware (Beta), Megafon, Radarwarner,
+  Akku-Puffer, Stream-Technik, Sportreifen, Plüsch-Polster, Wischer-Firmware (Beta), Radarwarner,
   Satelliten-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone. Blitzer kommen
-  unangekündigt – nur wer den Radarwarner an Bord hat, hört es vorher piepen und NOMI warnen.
+  unangekündigt – nur wer den Radarwarner an Bord hat, hört es vorher piepen und NOMI warnen. Das Megafon gehört
+  zur Ausstattung (wer es früher gekauft hat, bekommt die 450 € einmal zurück).
 - **Abspann** mit Abrechnung, Statistik, Blitzerfotos, erlogener Berufsbezeichnung des Tages und einem
   „Danke an“ – größte Spende, wer Abos verschenkt hat und wer neu VIP geworden ist.
 
@@ -63,7 +68,7 @@ Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad un
 | Rückwärtsgang: im Stand die Bremse halten (½ s), zurück in D mit Strom | ↓ oder S | LT oder Steuerkreuz ↓ | Bremse |
 | Hupen (Brunnen und Elsa grüßen) | Leertaste | A | 📯 |
 | Scheibenwischer von Hand | E | X | 🌧️ |
-| Megafon (aus dem Shop) | H | Y | 📢 |
+| Megafon | H | Y | 📢 |
 | Kamera (Cockpit / Drohne) | V | B | 🎥 |
 | Chat ein/aus | C | – | – |
 | Ton aus | M | – | – |

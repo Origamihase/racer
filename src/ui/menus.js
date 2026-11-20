@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, GAME_TITLE, MODE_TEXT, TAGLINE, INCOME, FINES, fmtBetrag, nameBreak } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, MODE_TEXT, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate } from '../data.js';
 import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -272,16 +272,17 @@ export class Menus {
   render_title(s, d) {
     s.textContent = '';
     const card = el('div', 'title-card', s);
-    // Jeder Modus hat seinen Titel (h.mode, src/mode.js): Untertitel und Zahlen sind seine, und ein Eintrag führt in
-    // den anderen – die Seite lädt dann neu, weil die Welt beim Laden gebaut wird
+    // Jeder Modus hat seinen Titel (h.mode, src/mode.js): Schildchen und Zahlen sind seine, der Name des Spiels ist
+    // derselbe, und ein Eintrag führt in den anderen – die Seite lädt dann neu, weil die Welt beim Laden gebaut wird
     const mode = this.h.mode || 'klassik';
     const M = MODE_TEXT[mode];
     const other = MODE_TEXT[otherMode(mode)];
     const logo = el('div', 'title-logo', card);
     el('span', 'title-live', logo, '● LIVE');
-    if (M.badge) el('span', 'title-badge', logo, M.badge);
+    if (M.badge) el('span', 'title-badge ' + mode, logo, M.badge);
     el('h1', '', card, GAME_TITLE);
-    el('h2', '', card, M.title);
+    const h2 = el('h2', '', card, GAME_SUBTITLE + ' ');
+    el('span', 'title-xxl', h2, GAME_XXL);
     el('p', 'tagline', card, TAGLINE);
     const menu = el('div', 'menu', card);
     button(menu, '▶  Losfahren', 'start', 'primary');
@@ -304,6 +305,8 @@ export class Menus {
     el('span', '', stats, '🛣️ ' + (travel ? fmtOdo(d.stats.reiseKm || 0) : fmtKm((d.stats.totalKm || 0) * 1000, 1)) + ' gesamt');
     // die Reise zählt dazu ihre Orte, dieselbe Zahl wie auf der großen Karte
     if (mode === 'xxl') el('span', '', stats, '❤️ ' + visitLine(d.visits));
+    // das gekaufte Megafon ist erstattet worden (save.js refundMegafon): die Zeile steht bis zum ersten Besuch im Shop
+    if (d.megafonNote) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.megafonNote)));
     el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause');
   }
 
@@ -386,7 +389,7 @@ export class Menus {
     };
     line('Navi-Ziele erreicht', fmtNum(st.naviReached));
     if (st.brunnenTV) line('BrunnenTV-Folgen', fmtNum(st.brunnenTV));
-    line('Navi-Gebote · höchstes', fmtNum(st.naviChanges) + ' · ' + fmtCent(st.topBid));
+    line('Navi-Gebote · höchstes', fmtNum(st.naviChanges) + ' · ' + (o.travel ? fmtEuro(st.topBid) : fmtCent(st.topBid)));
     line('Spenden · Abos · neue VIPs', fmtNum(st.donations) + ' · ' + fmtNum(st.subs) + ' · ' + fmtNum(st.vips));
     line('Haarscharf überholt', fmtNum(st.nearMisses));
     line('Rempler', fmtNum(st.crashes));
@@ -409,13 +412,16 @@ export class Menus {
         el('figcaption', '', f, p.kmh + ' km/h');
       }
     }
-    const credit = (grid, k, lines) => {
-      const c = el('div', 'crew-row', grid);
+    const credit = (grid, k, lines, wide) => {
+      const c = el('div', wide ? 'crew-row wide' : 'crew-row', grid);
       el('span', 'k', c, k);
       for (const v of lines) el('span', 'v', c, v);
     };
     const crew = el('div', 'crew', card);
     for (const [k, v] of ABSPANN_CREW) credit(crew, k, [v]);
+    // Reise: die Leute des Streams, mit ausgedachten Berufen, und die BrunnenTV-Folgen der Reise
+    const folgen = st.brunnenTV === 1 ? '1 Folge' : fmtNum(st.brunnenTV || 0) + ' Folgen';
+    if (o.travel) for (const [k, v, wide] of ABSPANN_REISE) if (st.brunnenTV || !v.includes('{folgen}')) credit(crew, k, [fillTemplate(v, { folgen })], wide === 'wide');
     // Wie im echten Abspann danach die Unterstützenden: größte Spende, Abo-Verschenker (die meisten zuerst), neue VIPs
     const F = o.fans;
     if (F && (F.top || F.gifters.length || F.vips.length)) {
@@ -427,6 +433,8 @@ export class Menus {
       if (F.gifters.length) credit(thanks, 'Abos verschenkt', top3(F.gifters, (x) => `${nameBreak(x.name)} (${x.count})`));
       if (F.vips.length) credit(thanks, 'Neue VIPs', top3(F.vips, nameBreak));
     }
+    // Reise: ganz am Ende, allein und leise
+    if (o.travel) el('p', 'gedenken', card, GEDENKEN);
   }
 
   render_shop(s, d) {
@@ -436,6 +444,7 @@ export class Menus {
     el('h2', '', head, '🛒 Tesla-Shop');
     el('div', 'wallet', head, '💶 ' + fmtCent(d.wallet));
     el('p', 'sub', card, 'Upgrades für den schwarzen Model 3 Long Range AWD. Bezahlt wird mit den Stream-Einnahmen: Spenden, Abos, Navi-Gebote.');
+    if (d.refund) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.refund)));
     const grid = el('div', 'shop-grid', card);
     for (const it of SHOP) {
       const lvl = d.upgrades[it.id] || 0;
@@ -478,7 +487,8 @@ export class Menus {
       ['Rückwärtsgang (im Stand halten, zurück mit Strom)', '↓ oder S', 'LT oder Steuerkreuz ↓', 'Bremse'],
       ['Hupen (Brunnen & Elsa grüßen)', 'Leertaste', 'A', '📯'],
       ['Scheibenwischer von Hand', 'E', 'X', '🌧️'],
-      ['Megafon (aus dem Shop)', 'H', 'Y', '📢'],
+      ['Megafon', 'H', 'Y', '📢'],
+      ...(this.h.mode === 'xxl' ? [['Ladestopp einplanen (nächster Ladepark)', 'L', '–', '🔌 Ladestopp']] : []),
       ['Kamera (Cockpit / Drohne)', 'V', 'B', '🎥'],
       ['Chat ein/aus', 'C', '–', '–'],
       ['Ton aus', 'M', '–', '–'],
@@ -498,12 +508,14 @@ export class Menus {
       'Geld gibt es nur vom Publikum: Spenden, Abos, Navi-Gebote. Fürs Fahren selbst zahlt niemand – aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.',
       'Wenn NOMI sagt „Die linke Fahrspur ist freigeschaltet.“, hat jemand dafür gespendet: Eine Minute lang darfst du ganz links fahren. Nutzt du sie, freut sich der Chat. Danach gilt wieder das Rechtsfahrgebot, sonst kommt die Polizei Gifhorn.',
       reise
-        ? 'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Cent drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV.'
+        ? 'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Zehner drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV. Dort rechnet auch die Werkstatt die Rempler der Runde ab, und je zügiger du von Ziel zu Ziel kommst, desto zufriedener ist der Chat (das Gesicht oben im Chat) – und desto lieber gibt er.'
         : 'Das Navi-Ziel ändert sich ständig – jeder Bieter legt mindestens einen Cent drauf. Kommst du trotzdem an, feiert der Chat mit Ortsspenden.',
       ...(reise ? ['Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.'] : []),
       'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Tesla-Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
-      'Lade-Ringe füllen den Akku. Bananensaft ist super, Koriander leider nicht.',
+      reise
+        ? 'Geladen wird in den Ladeparks an den Ausfahrten: Warnt NOMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) den nächsten Park ein, das Navi führt hinein und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.'
+        : 'Lade-Ringe füllen den Akku. Bananensaft ist super, Koriander leider nicht.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',
     ]) el('p', '', tips, '• ' + t);
     const menu = el('div', 'menu row', card);
@@ -561,7 +573,8 @@ export class Menus {
     const card = el('div', 'card about-card', s);
     el('h2', '', card, 'ℹ️ Über das Spiel');
     const p = (t) => el('p', '', card, t);
-    p('„Mini Adam – Tesla-Navi ferngesteuert“ ist ein liebevolles, nicht-kommerzielles Fan-Spiel rund um SkylineTV LIVE. Mini Adam – der Plüsch-Adam mit Kappe, Bart und LIVE-Shirt – fährt den schwarzen Tesla Model 3 Long Range AWD mit 75-kWh-Akku über die Autobahn, während der Chat das Navi fernsteuert.');
+    p(`„${GAME_NAME}“ ist ein liebevolles, nicht-kommerzielles Fan-Spiel rund um SkylineTV LIVE. Mini Adam – der Plüsch-Adam mit Kappe, Bart und LIVE-Shirt – fährt den schwarzen Tesla Model 3 Long Range AWD mit 75-kWh-Akku über die Autobahn, während der Chat das Navi fernsteuert.`);
+    p('Auf der Reise über die echte Karte ist jedes Navi-Ziel der Hauptbrunnen eines Orts: Dort hält Mini Adam neben dem Brunnen, kurbelt das Fenster herunter und macht mit dem Megafon BrunnenTV aus dem Auto. Das Megafon gehört zur Ausstattung.');
     p('Fast alle Witze stammen aus dem SkylineTV LIVE Wiki: die freigeschaltete linke Spur, das Navi-Bieten mit einem Cent mehr, BrunnenTV mit Herrn Schönnbrun, Elsa, die Polizei Gifhorn, Meister Pünktlich (kommt gleich), Malte, die Farbe der Bank, Rahmen aus dem Live-Bereich, Sprachdurchsagen von Fräulein Kassandra und Brüll-William, das Sprachstudio in Mini Adams Ohr, Bananensaft statt Koriander, „You had 5 Jobs“ und die erlogenen Berufsbezeichnungen im Abspann.');
     p('Geld gibt es wie im echten Stream nur vom Publikum: Spenden, Ortsspenden, Abos, VIPs und Navi-Gebote. Wie der Chat gerade gelaunt ist, steht nirgends – das Sprachstudio sagt es Mini Adam ins Ohr.');
     p('NOMI ist der Boardcomputer auf dem Armaturenbrett. Alle Grafiken, Geräusche und Stimmen entstehen direkt im Browser – ohne Bilder- oder Tondateien.');

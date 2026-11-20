@@ -2,7 +2,7 @@
 // einzige Ausnahme und die drei Sprachdurchsagen des 19.11. Aufruf: node tools/sicht-test.mjs (Teil von „npm test“).
 // Der Browser-Teil (jede Einblendung gegen dasselbe Rechteck gemessen) ist tools/sicht-check.js.
 import { freeView, isNarrow, isCompact, chatBottom, chatWidth, infoWidth, stripWidth, cockpitParts, droneCar, overlap, COVERS, HOMES, NARROW_MID } from '../src/ui/sicht.js';
-import { BOARD, STUDIO, MEGAFON_WUENSCHE, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP } from '../src/data.js';
+import { BOARD, STUDIO, MEGAFON_WUENSCHE, BRUNNEN_MEGAFON, BRUNNEN_NOMI, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP } from '../src/data.js';
 import { DAMAGE_LINES } from '../src/game/damage.js';
 import { readFileSync } from 'node:fs';
 
@@ -87,8 +87,14 @@ const browser = readFileSync(new URL('./sicht-check.js', import.meta.url), 'utf8
 const LONG = Function('return ' + browser.match(/const LONG = (\{[\s\S]*?\});/)[1])();
 const flat = (x) => (typeof x === 'string' ? [x] : x && typeof x === 'object' ? Object.values(x).flatMap(flat) : []);
 const maxLen = (x) => Math.max(...flat(x).map((t) => t.length));
-// ({city} in einer Durchsage wird ein Ortsname: dafür 20 Zeichen Luft)
-const spoken = { nomi: [BOARD, DAMAGE_LINES], studio: [STUDIO], durchsage: [all.map((t) => t.replace('{city}', 'x'.repeat(20)))], megafon: [MEGAFON_WUENSCHE] };
+// ({city} in einer Durchsage und {ort} in BrunnenTV werden ein Ortsname: dafür 20 Zeichen Luft; {n} ist die Folge)
+const town = (list, key) => list.map((t) => t.replace('{' + key + '}', 'x'.repeat(20)));
+const spoken = {
+  nomi: [BOARD, DAMAGE_LINES, BRUNNEN_NOMI.map((t) => t.replace('{n}', '9.999'))],
+  studio: [STUDIO],
+  durchsage: [town(all, 'city')],
+  megafon: [MEGAFON_WUENSCHE, town(BRUNNEN_MEGAFON, 'ort')],
+};
 for (const [who, lists] of Object.entries(spoken)) check(maxLen(lists) <= LONG[who].length, `${who}: längster Satz ${maxLen(lists)} Zeichen, gemessen wird mit ${LONG[who].length}`);
 check(all.includes(browser.match(/const BREIT = '([^']+)';/)[1]), 'die Sprachdurchsage mit den meisten Zeilen (BREIT) steht so in den Daten');
 

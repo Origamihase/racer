@@ -167,8 +167,11 @@ export function buildTeslaCabin({ uToZ, bodyY, open, wheel }) {
   add(place(new THREE.CylinderGeometry(0.03, 0.068, 0.15, 16, 1, true), 0.25, sy + 0.075, uToZ(2.62)), 0xf3f0ea);
   add(place(new THREE.TorusGeometry(0.067, 0.007, 6, 22).rotateX(Math.PI / 2), 0.25, sy + 0.006, uToZ(2.62)), 0xd8342c);
   add(place(new THREE.CylinderGeometry(0.03, 0.031, 0.03, 16), 0.25, sy + 0.165, uToZ(2.62)), 0xd8342c);
+  // (das Megafon sind die letzten Ecken des Meshes: Hat Mini Adam es in der Hand, zeichnet seatMegaphone sie nicht)
+  const megaN = parts.slice(-3).reduce((n, g) => n + g.attributes.position.count, 0);
   const mesh = new THREE.Mesh(mergeGeometries(parts), W.std({ vertexColors: true, roughness: 0.78, metalness: 0.05 }));
   for (const g of parts) g.dispose();
   group.add(mesh);
-  return { group, recLed };
+  const seatMegaphone = (show) => mesh.geometry.setDrawRange(0, show ? Infinity : mesh.geometry.attributes.position.count - megaN);
+  return { group, recLed, seatMegaphone };
 }
