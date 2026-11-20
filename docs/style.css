@@ -139,6 +139,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .toast-good { border-color: rgba(53, 200, 106, 0.7); }
 .toast-warn { border-color: rgba(255, 190, 70, 0.85); }
 .toast-bad { border-color: rgba(255, 90, 79, 0.8); }
+/* eine Zeile in Teilen (Runde abgerechnet): jeder Teil bleibt beisammen, umbrochen wird zwischen ihnen */
+.toast > span { white-space: nowrap; }
+.toast > .plus { color: var(--green); }
+.toast > .minus { color: var(--bad); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
 
 /* --- Streifen unten: wer spricht, steht hier – NOMI (ihre Augen), das Sprachstudio (Kopfhörer, warmer Rahmen), die
@@ -227,6 +231,14 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   border: 1px solid var(--line); border-radius: 14px; overflow: hidden; backdrop-filter: blur(4px); z-index: 3; }
 .chat-head { display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; padding: 7px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sub); border-bottom: 1px solid var(--line); }
 .chat-count { text-transform: none; letter-spacing: 0; font-weight: 600; }
+/* Reise: Zufriedenheit des Chats im Kopf – Gesicht und schmaler Balken (grün, ab 35–59 gold, darunter rot) */
+.chat-mood { display: none; align-items: center; gap: 5px; margin-left: auto; text-transform: none; letter-spacing: 0; }
+.chat-mood.on { display: inline-flex; }
+.chat-mood-face { font-family: var(--emoji); font-size: 13px; line-height: 1; }
+.chat-mood-bar { display: block; width: 44px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
+.chat-mood-fill { display: block; height: 100%; width: 60%; border-radius: 2px; background: var(--green); transition: width 0.4s linear, background-color 0.4s; }
+.chat-mood.mid .chat-mood-fill { background: var(--gold); }
+.chat-mood.low .chat-mood-fill { background: var(--bad); }
 /* oben nur ganze Nachrichten: eine angeschnittene blendet ui.trimChat aus (.gone) */
 .chat-list { overflow: hidden; padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; line-height: 1.32; }
 .msg { animation: msgin 0.25s; overflow-wrap: anywhere; }
@@ -238,6 +250,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
    ohne Rand oben und unten, damit zwei Zeilen von James hineinpassen (flex: none, sonst drückt die Spalte sie auf null) */
 .msg.cut { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; flex: none; padding-block: 0; }
 .bot-icon { margin-right: 4px; font-family: var(--emoji); }
+.mod-tag { font-size: 9px; font-weight: 800; background: rgba(53, 200, 106, 0.22); color: var(--green); border-radius: 3px; padding: 0 4px; margin-right: 1px; vertical-align: 1px; white-space: nowrap; }
 .bot-tag { font-size: 9px; font-weight: 800; background: rgba(255,215,106,0.25); color: var(--gold); border-radius: 3px; padding: 0 4px; margin-right: 2px; vertical-align: 1px; white-space: nowrap; }
 @keyframes msgin { from { opacity: 0; transform: translateX(10px); } }
 
@@ -586,6 +599,8 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .crew-row .v { font-weight: 700; display: block; }
 /* „Danke an“: die Unterstützenden als eigener Abschnitt unter der Crew, die Überschrift über die ganze Breite */
 .crew.thanks { margin-top: 14px; }
+/* Abspann der Reise: ganz am Ende eine leise Zeile des Gedenkens, allein */
+.gedenken { margin: 22px auto 2px; max-width: 560px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--sub); font-style: italic; text-wrap: balance; }
 .crew.thanks h3 { grid-column: 1 / -1; margin: 0 0 2px; }
 
 .shop-card { max-width: 1180px; }

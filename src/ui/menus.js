@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, GAME_TITLE, MODE_TEXT, TAGLINE, INCOME, FINES, fmtBetrag, nameBreak } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, MODE_TEXT, TAGLINE, INCOME, FINES, fmtBetrag, nameBreak } from '../data.js';
 import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -386,7 +386,7 @@ export class Menus {
     };
     line('Navi-Ziele erreicht', fmtNum(st.naviReached));
     if (st.brunnenTV) line('BrunnenTV-Folgen', fmtNum(st.brunnenTV));
-    line('Navi-Gebote · höchstes', fmtNum(st.naviChanges) + ' · ' + fmtCent(st.topBid));
+    line('Navi-Gebote · höchstes', fmtNum(st.naviChanges) + ' · ' + (o.travel ? fmtEuro(st.topBid) : fmtCent(st.topBid)));
     line('Spenden · Abos · neue VIPs', fmtNum(st.donations) + ' · ' + fmtNum(st.subs) + ' · ' + fmtNum(st.vips));
     line('Haarscharf überholt', fmtNum(st.nearMisses));
     line('Rempler', fmtNum(st.crashes));
@@ -416,6 +416,8 @@ export class Menus {
     };
     const crew = el('div', 'crew', card);
     for (const [k, v] of ABSPANN_CREW) credit(crew, k, [v]);
+    // Reise: die Leute des Streams, mit ausgedachten Berufen
+    if (o.travel) for (const [k, v] of ABSPANN_REISE) credit(crew, k, [v]);
     // Wie im echten Abspann danach die Unterstützenden: größte Spende, Abo-Verschenker (die meisten zuerst), neue VIPs
     const F = o.fans;
     if (F && (F.top || F.gifters.length || F.vips.length)) {
@@ -427,6 +429,8 @@ export class Menus {
       if (F.gifters.length) credit(thanks, 'Abos verschenkt', top3(F.gifters, (x) => `${nameBreak(x.name)} (${x.count})`));
       if (F.vips.length) credit(thanks, 'Neue VIPs', top3(F.vips, nameBreak));
     }
+    // Reise: ganz am Ende, allein und leise
+    if (o.travel) el('p', 'gedenken', card, GEDENKEN);
   }
 
   render_shop(s, d) {

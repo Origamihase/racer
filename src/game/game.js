@@ -2,14 +2,18 @@
 // Sprachdurchsagen, Rahmen, Funkloch, Zuschauer, Spenden, Jobs) und die Abrechnung am Ende.
 // Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
 import {
-  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_JOBS, REISE_AKKU, INCOME, SPENDEN_ZWECKE, AKTIONEN,
+  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_JOBS, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, NAVI_TARGETS, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
 import { Player, KMH } from './player.js';
 import { damageLine } from './damage.js';
+
+/** Kratzspuren von der Leitplanke am ganzen Wagen (je Seite höchstens drei, damage.js). */
+const scratchMarks = (damage) => Object.values(damage.scratches).reduce((a, v) => a + v, 0);
 import { Navi, WorldNavi, shortName } from './navi.js';
-import { Economy } from './economy.js';
+import { Economy, BONTANA } from './economy.js';
+import { Satisfaction, ZUFRIEDEN } from './satisfaction.js';
 import { Vector3 } from 'three';
 import { EYE } from '../cockpit/cockpit.js';
 import { ELSA_STATUE } from '../world/scenery.js';
@@ -67,8 +71,11 @@ export class Game {
     this.worldNavi = !!this.world;
     this.player = new Player();
     this.navi = this.world ? new WorldNavi(this.world) : new Navi(this.scenery);
-    // Stream-Kasse samt heimlicher Chat-Stimmung, und was sie in jedem Schritt vom Fahren wissen will
-    this.eco = new Economy();
+    // Stream-Kasse samt heimlicher Chat-Stimmung, und was sie in jedem Schritt vom Fahren wissen will (auf der Reise
+    // wird in Zehnern geboten)
+    this.eco = new Economy({ zehner: this.worldNavi });
+    // Reise: die sichtbare Zufriedenheit des Chats (wie zügig es von Ziel zu Ziel geht; satisfaction.js)
+    this.zufrieden = this.worldNavi ? new Satisfaction() : null;
     this.ecoIn = { kmh: 0, limit: false, stuck: false, leftOpen: false, inLeft: false, funkloch: false };
     this.seenAhead = new WeakSet();
     // Entfernung zum Navi-Ziel ab der Schilderbrücke (die wird gut 1,7 km voraus gebaut). Was jede Brücke als Navi-Ziel
@@ -101,6 +108,8 @@ export class Game {
     this.t = 0;
     this.money = 0;
     this.breakdown = {};
+    // Reise: was die laufende Runde eingebracht und gekostet hat (Rempler, Kratzspuren bis dahin; settleRound)
+    this.tally = { income: 0, hits: 0, marks: 0 };
     this.over = null;
     this.running = true;
     this.queue = [];
@@ -111,6 +120,10 @@ export class Game {
     this.travel = null; // XXL: Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
     this.revDebt = 0; // rückwärts gefahrene Meter, die noch nicht wieder vorwärts gefahren sind (siehe update)
     this.eco.reset(up);
+    if (this.zufrieden) this.zufrieden.reset();
+    // Reise: wann die Leute des Streams das nächste Mal vorbeischauen (Sekunden; updateCrew)
+    const M = (r) => rand(r[0], r[1]) * 60;
+    this.crewT = this.worldNavi ? { raid: M(CREW.raid.first), knolli: Infinity, mod: M(CREW.modEvery), discord: M(CREW.discordEvery), heart: M(CREW.heartEvery) } : null;
     this.viewers = this.eco.viewers;
     this.peakViewers = 240;
     this.recordShown = false;
@@ -213,7 +226,7 @@ export class Game {
     this.later(1.2, () => this.chat('Hallo Mini Adam ❤'));
     this.later(2.0, () => this.chat('Wohin fahren wir heute?'));
     // klassisch steht das erste Ziel schon fest; in der XXL-Welt sucht es der Chat erst aus
-    this.later(3.2, () => this.bot('james', this.worldNavi ? 'Die Gebote sind eröffnet: Wohin soll die Reise gehen? Ab 0,01 € seid ihr dabei.' : `Startgebot: ${fmtCent(this.navi.bid)} – Ziel: ${this.navi.target.name}`));
+    this.later(3.2, () => this.bot('james', this.worldNavi ? 'Die Gebote sind eröffnet: Wohin soll die Reise gehen? Ab 10 € seid ihr dabei.' : `Startgebot: ${fmtCent(this.navi.bid)} – Ziel: ${this.navi.target.name}`));
     // die Challenges des Abends: Wer was verspricht, steht im Chat
     this.jobs.forEach((j, i) => this.later(10 + i * 11 + rand(0, 5), () => {
       if (!j.done) this.chat(fillTemplate(pick(CHAT.pledge), { wenn: j.wenn, betrag: fmtBetrag(j.pledge) }), j.pledger);
@@ -288,6 +301,30 @@ export class Game {
     return line;
   }
 
+  /**
+   * BontanaBack eskaliert (Reise, economy.js BONTANA): Sein Auftritt steht am Rand, der Chat dreht durch, er selbst
+   * grüßt kurz, wer vorn lag, hält tapfer dagegen – und nach seinem letzten Gebot steht die Summe am Rand. James meldet
+   * jedes Gebot wie immer.
+   */
+  bontanaChat(plan, bidder) {
+    const nv = this.navi;
+    const him = bidder === BONTANA.name;
+    if (plan.first) {
+      this.ui.toast(`🔥 ${BONTANA.name} steigt ein: ${fmtEuro(nv.bid)}!`, 'good', 'bontana');
+      this.burst(CHAT.bontana, 3, 2.5);
+      this.later(1.1, () => this.chat(this.chatLine(CHAT.bontanaSelbst), BONTANA.name));
+    } else if (him && plan.last) {
+      this.ui.toast(`🔥 ${BONTANA.name} ESKALIERT: ${fmtEuro(nv.bid)} für ${nv.target.name}!`, 'good', 'bontana');
+      this.burst(CHAT.bontanaEnde, 4, 3);
+    } else if (him) this.burst(CHAT.bontana, 2, 2);
+    else if (chance(0.7)) this.later(0.6, () => this.chat(this.chatLine(CHAT.bontanaKonter)));
+  }
+
+  /** Ein Navi-Gebot in Worten: klassisch auf den Cent, auf der Reise in ganzen Euro („1.250 €“). */
+  bidText(v) {
+    return this.worldNavi ? fmtEuro(v) : fmtCent(v);
+  }
+
   burst(pool, n = 3, spread = 2.5) {
     const list = typeof pool === 'function' ? null : pool;
     for (let i = 0; i < n; i++) {
@@ -351,6 +388,7 @@ export class Game {
     if (amount <= 0) return 0;
     this.money += amount;
     this.breakdown[label] = (this.breakdown[label] || 0) + amount;
+    this.tally.income += amount;
     if (!silent) {
       this.popT = this.t;
       this.ui.money(amount, INCOME[label] || label);
@@ -938,12 +976,12 @@ export class Game {
         // Siegen wird geboten … und sofort überboten
         const n = viewerName();
         // Das Siegen-Gebot zählt wirklich: Das Navi stellt kurz auf Siegen um (Navi, Schilderbrücken und James sagen
-        // dasselbe), die Kasse bekommt den Cent, und das Gegengebot danach liegt mindestens 1 Cent darüber.
-        nv.overbid(p.s, n, 0.01, siegen);
+        // dasselbe), die Kasse bekommt den Cent (auf der Reise den Zehner), und das Gegengebot liegt darüber.
+        nv.overbid(p.s, n, this.eco.extraBid(), siegen);
         this.stats.naviChanges++;
         this.stats.topBid = Math.max(this.stats.topBid, nv.bid);
         this.earn(nv.bid, 'Navi-Gebote', { silent: true });
-        this.bot('james', `${n} bietet ${fmtCent(nv.bid)} – neues Ziel: Siegen`);
+        this.bot('james', `${n} bietet ${this.bidText(nv.bid)} – neues Ziel: Siegen`);
         this.chat(pick(['SIEGEN!', 'Siegen? 👀', 'Diesmal Siegen!']));
         if (this.gantryStale()) this.scenery.relabelGantries();
         // bis das Gegengebot da ist, ruht die Uhr
@@ -976,10 +1014,12 @@ export class Game {
     }
     let bidder = viewerName();
     let target;
-    if (plan.kind === 'duel') {
+    if (plan.kind === 'duel' || plan.kind === 'bontana') {
       // Bieterduell: Zwei schaukeln sich hoch, jeder mit seinem Ziel – der Herausforderer und wer gerade vorn lag
+      // (BontanaBacks Auftritt läuft genauso, nur ist er der Herausforderer)
       if (plan.first || !this.duel) {
         const holder = nv.bidder === 'Mini Adam' ? viewerName() : nv.bidder;
+        if (plan.kind === 'bontana') bidder = BONTANA.name;
         this.duel = { n: 0, who: [{ name: bidder, target: this.pickBidTarget() }, { name: holder, target: nv.target }] };
       }
       const d = this.duel.who[this.duel.n++ % 2];
@@ -995,9 +1035,9 @@ export class Game {
     this.earn(nv.bid, 'Navi-Gebote', { silent: nv.bid < 1 && this.t - this.popT < 1.6 });
     // im Chaos fasst James sich kurz, sonst schieben seine Meldungen den ganzen Chat aus dem Fenster
     // (echte Orte heißen überall wie auf ihrer Ortstafel, auch wenn es eilt)
-    this.bot('james', `${bidder} bietet ${fmtCent(nv.bid)} – neues Ziel: ${chaos && !this.worldNavi ? shortName(t) : t.name}`);
+    this.bot('james', `${bidder} bietet ${this.bidText(nv.bid)} – neues Ziel: ${chaos && !this.worldNavi ? shortName(t) : t.name}`);
     if (siegenOverbid) this.later(0.8, () => this.chat(pick(['Siegen wurde überboten. Wie immer 😂', 'Nicht schon wieder Siegen verpasst', 'Klassiker'])));
-    this.eco.cheer(chaos ? 'bidChaos' : plan.kind === 'big' ? 'bidBig' : 'bid');
+    this.eco.cheer(chaos ? 'bidChaos' : plan.kind === 'big' || plan.kind === 'bontana' ? 'bidBig' : 'bid');
     // XXL: Echte Orte liegen Minuten auseinander – die Stream-Kasse plant die Ruhe danach mit der Fahrzeit des Navis
     const next = this.eco.nextBid(this.worldNavi ? { bid: nv.bid, drive: nv.driveSecs(), opening: nv.opening } : { bid: nv.bid });
     this.bidPlan = next;
@@ -1006,10 +1046,12 @@ export class Game {
     // Was der Chat dazu sagt
     if (chaos) {
       this.audio.tone(1174.7, 0.07, 'triangle', 0.035);
+      // (auf der Reise wird in Zehnern geboten: eigene Zeilen ohne Cent)
+      const pool = this.worldNavi ? CHAT.zehnerChaos : CHAT.bidChaos;
       if (plan.first) {
-        this.ui.toast('🤑 Bieter-Chaos im Chat: Jeder legt einen Cent drauf!', 'info');
-        this.burst(CHAT.bidChaos, 2, 2.5);
-      } else if (chance(0.3)) this.chat(this.chatLine(CHAT.bidChaos));
+        this.ui.toast(this.worldNavi ? '🤑 Bieter-Chaos im Chat: Jeder legt einen Zehner drauf!' : '🤑 Bieter-Chaos im Chat: Jeder legt einen Cent drauf!', 'info');
+        this.burst(pool, 2, 2.5);
+      } else if (chance(0.3)) this.chat(this.chatLine(pool));
     } else {
       this.audio.naviAlert();
       if (plan.kind === 'duel') {
@@ -1018,9 +1060,10 @@ export class Game {
           this.burst(CHAT.bidDuel, 3, 3);
         } else if (chance(0.4)) this.chat(this.chatLine(CHAT.bidDuel));
         if (next.kind !== 'duel' || next.first) this.later(1.6, () => this.chat(this.chatLine(CHAT.bidDuelEnd)));
-      } else if (plan.kind === 'big') {
-        this.ui.toast(`🤑 Großes Gebot: ${fmtCent(nv.bid)} von ${bidder}`, 'good');
-        this.burst(CHAT.bidBig, 3, 2.5);
+      } else if (plan.kind === 'bontana') this.bontanaChat(plan, bidder);
+      else if (plan.kind === 'big') {
+        this.ui.toast(`🤑 Großes Gebot: ${this.bidText(nv.bid)} von ${bidder}`, 'good');
+        this.burst(this.worldNavi ? CHAT.zehnerGross : CHAT.bidBig, 3, 2.5);
       } else if (plan.late) this.burst(CHAT.bidLate, 3, 2);
       else this.burst(this.worldNavi ? CHAT.ortChanged : CHAT.naviChanged, 2, 3);
     }
@@ -1109,7 +1152,16 @@ export class Game {
     this.burst(this.worldNavi ? CHAT.ortReached : CHAT.naviReached, 4, 3);
     // Fürs Ankommen selbst gibt es nichts – aber der Chat feiert es mit einem Schwung Ortsspenden (Siegen: doppelt;
     // am Drive-In ist die erste natürlich für „Pommes ohne Rückfragen“)
+    const round = this.eco.round;
     const gifts = this.eco.arrive({ double: t.special === 'siegen' });
+    // Reise: Die Runde wird abgerechnet – ihre Einnahmen (samt dieser Ortsspenden) und die Werkstatt-Rechnung; der Chat
+    // urteilt über die ganze Runde (satisfaction.js arrive) und sagt es, wenn es deutlich war
+    if (this.worldNavi) {
+      this.settleRound(round, gifts);
+      const dz = this.zufrieden.arrive();
+      if (dz >= 9) this.later(2.6, () => this.chat(this.chatLine(CHAT.flott)));
+      else if (dz <= -3) this.later(2.6, () => this.chat(this.chatLine(CHAT.schneller)));
+    }
     // bis hier steht die letzte Ortsspende spätestens im Chat (ein „5 Cent“-Angebot zum Ziel kommt erst danach)
     this.cent5.arrivedT = this.t + 2.4 + (gifts.length - 1) * 1.1;
     gifts.forEach((v, i) => this.later(1.8 + i * 1.1 + rand(0, 0.6), () => {
@@ -1203,6 +1255,8 @@ export class Game {
       // der Stopp ist weg, die nächste Warnung bietet den nächsten Park an)
       if (e.wrong) this.say(e.stop ? REISE_AKKU.missed : 'Route wird neu berechnet.', 'think', { priority: false });
       if (e.wrong && e.stop) this.batteryWarned = 0;
+      // ein Umweg mit Ziel: Der Chat stöhnt, und die Zeit des Umwegs zählt (satisfaction.js)
+      if (e.wrong && this.zufrieden && this.navi.target) this.zufrieden.detour();
       if (e.wrong && e.planned === 'exit') {
         this.missedTarget();
         this.onMood('startled', 0.5);
@@ -1231,6 +1285,51 @@ export class Game {
   }
 
   /** Der Wagen steht am Brunnen des Navi-Ziels: Ankunft feiern (wie klassisch), dann BrunnenTV. */
+  /**
+   * Reise: Am Ziel wird die Runde abgerechnet (REPARATUR, data.js). Was sie eingebracht hat (samt der Ortsspenden, die
+   * gleich kommen) und was die Werkstatt für ihre Rempler und neuen Kratzspuren bekommt, steht kurz nebeneinander am
+   * oberen Rand (payBill); ab hier zählt die nächste Runde.
+   */
+  settleRound(n, gifts) {
+    const T = this.tally;
+    const sum = gifts.reduce((a, v) => a + v, 0);
+    const marks = scratchMarks(this.player.damage);
+    const bill = { n, income: T.income + sum, hits: T.hits, marks: marks - T.marks };
+    bill.amount = REPARATUR.bump * bill.hits + REPARATUR.mark * bill.marks;
+    // (die Ortsspenden dieser Ankunft buchen sich gleich noch, gehören aber zu dieser Runde)
+    this.tally = { income: -sum, hits: 0, marks };
+    this.later(3.2, () => this.payBill(bill));
+  }
+
+  /**
+   * Die Werkstatt-Rechnung einer Runde: bezahlt aus der Stream-Kasse (die Abrechnung am Ende führt sie unter
+   * „Reparaturen“), was die Kasse nicht hergibt, erlässt die Werkstatt. Am Rand die Zeile der Runde, am Guthaben der
+   * Abzug, James bucht, der Chat nimmt es gelassen – und wer heil angekommen ist, wird gefeiert.
+   */
+  payBill(b) {
+    const paid = Math.min(this.money, b.amount);
+    if (paid > 0) {
+      this.money -= paid;
+      this.breakdown.Reparaturen = (this.breakdown.Reparaturen || 0) - paid;
+      this.ui.money(-paid, 'Reparatur');
+    }
+    const parts = [[`🧾 Runde ${b.n} · `], [`Einnahmen +${fmtEuro(b.income)}`, 'plus'], [' · ']];
+    if (!b.amount) parts.push(['keine Schäden ✨', 'plus']);
+    else if (paid <= 0) parts.push([`Reparatur ${fmtEuro(b.amount)} erlassen`, 'minus']);
+    else {
+      parts.push([`Reparatur −${fmtEuro(paid)}`, 'minus']);
+      if (paid < b.amount) parts.push([` (Rest ${fmtEuro(b.amount - paid)} erlassen)`]);
+    }
+    this.ui.toast(parts.map((x) => x[0]).join(''), b.amount ? 'info' : 'good', 'rechnung', parts);
+    if (!b.amount) {
+      if (chance(0.6)) this.later(1, () => this.chat(this.chatLine(CHAT.heil)));
+      return;
+    }
+    const what = [b.hits ? `${b.hits} Rempler` : '', b.marks ? `${b.marks} Kratzer` : ''].filter(Boolean).join(' und ');
+    this.bot('james', `Werkstatt-Rechnung für Runde ${b.n}: ${fmtEuro(b.amount)} für ${what}` + (paid >= b.amount ? ' – bezahlt aus der Stream-Kasse.' : paid > 0 ? `. Bezahlt sind ${fmtEuro(paid)}, den Rest erlässt die Werkstatt.` : '. Die Werkstatt erlässt sie diesmal.'));
+    this.later(1.2, () => this.chat(this.chatLine(CHAT.reparatur)));
+  }
+
   arriveAtFountain() {
     const sec = this.halt.sec;
     this.halt = null;
@@ -1297,7 +1396,7 @@ export class Game {
       T.durchsage = rand(48, 85);
       const pool = this.weather.level > 0.3 && chance(0.5) ? DURCHSAGEN_REGEN : DURCHSAGEN;
       const d = pick(pool);
-      const text = fillTemplate(d.text);
+      const text = fillTemplate(this.worldNavi && d.reise ? d.reise : d.text);
       const name = viewerName();
       this.donate(name, this.eco.durchsagePrice(), 'Sprachdurchsage', { label: 'Sprachdurchsagen' });
       this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
@@ -1326,6 +1425,11 @@ export class Game {
         this.ui.funkloch(false);
         this.burst(CHAT.funklochBack, 3, 1.5);
         this.later(1.2, () => this.bot('nora', 'Verbindung zum Streaming-Server steht wieder. Weiter geht’s!'));
+        // Reise: und aus dem Chat meldet sich jemand, den man kennt (CREW.back)
+        if (this.crewT) {
+          const who = pick(CREW.back);
+          this.later(1.2 + CREW.backAfter, () => this.chat(pick(CREW_LINES.back), who, this.crewBadge(who)));
+        }
       }
     }
     if (T.funkloch <= 0 && p.s > 1500) {
@@ -1619,6 +1723,8 @@ export class Game {
     d.leftOpen = this.left.open && !this.offAutobahn;
     d.inLeft = p.inLeftLane;
     d.funkloch = this.funkloch > 0;
+    // Reise: Ein zufriedener Chat gibt mehr und lockt mehr Zuschauer an (satisfaction.js gain, audience)
+    if (this.zufrieden) this.updateZufrieden(dt, d);
     for (const e of this.eco.update(dt, d)) this.onStream(e);
     this.viewers = this.eco.viewers;
     this.peakViewers = Math.max(this.peakViewers, this.viewers);
@@ -1634,6 +1740,19 @@ export class Game {
       this.ui.toast('🏆 Neuer Zuschauerrekord!', 'good');
       if (this.up.konfetti) this.cockpit.addConfetti(30);
     }
+  }
+
+  /**
+   * Reise: Zufriedenheit des Chats fortschreiben. Gezählt wird, solange ein Ziel gilt und der Wagen nicht am Brunnen
+   * (BrunnenTV, Halt) oder an der Säule steht; R ist die Fahrzeit, die das Navi bis zum Ziel nennt.
+   */
+  updateZufrieden(dt, d) {
+    const Z = this.zufrieden;
+    const nv = this.navi;
+    const counted = !!nv.target && !nv.stopping && !this.tv && !this.charging && !this.world.stopping();
+    Z.update(dt, { secs: counted ? nv.driveSecs() : Infinity, counted, kmh: this.player.kmh });
+    d.gain = Z.gain;
+    d.audience = Z.audience;
   }
 
   /**
@@ -1762,8 +1881,79 @@ export class Game {
     }
   }
 
+  /**
+   * Reise: Der Ton des Chats folgt seiner Zufriedenheit – zufrieden klingt er öfter flott, unzufrieden ruft er nach
+   * Tempo (ZUFRIEDEN.happy/grumpy). Klassisch null (und keine Zufallszahl).
+   */
+  zufriedenPool() {
+    const Z = this.zufrieden;
+    if (!Z) return null;
+    if (Z.value >= ZUFRIEDEN.happy) return chance(ZUFRIEDEN.happyShare) ? CHAT.flott : null;
+    if (Z.value <= ZUFRIEDEN.grumpy) return chance(ZUFRIEDEN.grumpyShare) ? CHAT.schneller : null;
+    return null;
+  }
+
+  /** Abzeichen im Chat: Die Mods tragen MOD. */
+  crewBadge(name) {
+    return CREW.mods.includes(name) ? { badge: 'MOD' } : {};
+  }
+
+  /**
+   * Reise: die Leute des Streams (data.js CREW) – König Knollis Raid und sein Jubel danach, die Mods, die
+   * Discord-Erinnerung und das stille Herz. Ihre Uhren laufen nicht, solange der Stream im Funkloch hängt.
+   */
+  updateCrew(dt) {
+    const T = this.crewT;
+    if (!T || this.funkloch > 0) return;
+    const M = (r) => rand(r[0], r[1]) * 60;
+    for (const k in T) T[k] -= dt;
+    if (T.raid <= 0) {
+      T.raid = M(CREW.raid.every);
+      T.knolli = M(CREW.knolliEvery);
+      this.raid();
+    }
+    if (T.knolli <= 0) {
+      T.knolli = M(CREW.knolliEvery);
+      const name = CREW.knolli;
+      if (chance(0.5)) {
+        const v = randInt(CREW.cheer[0], CREW.cheer[1]);
+        this.donate(name, v, '', { line: fillTemplate(CREW_LINES.cheer, { name, betrag: fmtCent(v) }) });
+      } else this.donate(name, randInt(CREW.gift[0], CREW.gift[1]), '');
+      this.later(1.4, () => this.chat(pick(chance(0.5) ? CREW_LINES.knolliJubel : CREW_LINES.danke), chance(0.5) ? name : viewerName()));
+    }
+    if (T.mod <= 0) {
+      T.mod = M(CREW.modEvery);
+      this.chat(this.chatLine(CREW_LINES.mod), pick(CREW.mods), { badge: 'MOD' });
+    }
+    if (T.discord <= 0) {
+      T.discord = M(CREW.discordEvery);
+      const who = pick(CREW.discord);
+      this.chat(pick(CREW_LINES.discord), who, this.crewBadge(who));
+    }
+    if (T.heart <= 0) {
+      T.heart = M(CREW.heartEvery);
+      this.chat('❤', CREW.heart);
+    }
+  }
+
+  /**
+   * König Knolli raidet (Reise): Nora sagt es an, die Zuschauerzahl springt (CREW.raid, verblasst langsam), er grüßt,
+   * und seine Leute sagen Hallo.
+   */
+  raid() {
+    const R = CREW.raid;
+    const n = Math.round(Math.max(R.min, this.viewers * rand(R.share[0], R.share[1])));
+    this.eco.raidIn(n, R.fade);
+    this.viewers = this.eco.viewers;
+    this.bot('nora', fillTemplate(CREW_LINES.raid, { name: CREW.knolli, n: fmtNum(n) }));
+    this.ui.toast(`👑 Raid von ${CREW.knolli}: +${fmtNum(n)} Zuschauer`, 'good', 'raid');
+    this.later(1.3, () => this.chat(pick(CREW_LINES.knolliHallo), CREW.knolli));
+    shuffle([...CREW_LINES.raider]).slice(0, 4).forEach((line, i) => this.later(2.2 + i * rand(0.5, 1.1), () => this.chat(line)));
+  }
+
   updateChat(dt, kappa = 0) {
     this.updateCentOffers(dt, kappa);
+    this.updateCrew(dt);
     this.chatT -= dt;
     if (this.chatT <= 0) {
       // Die heimliche Stimmung färbt den Chat: wie flott er schreibt und was. Im Regen ist er ohnehin gesprächig.
@@ -1772,7 +1962,8 @@ export class Game {
       this.chatT = rand(1.5, 3.8) * clamp(600 / Math.max(this.viewers, 1), 0.75, 1.4) * CHAT_PACE[lv] * (rainy ? 0.9 : 1);
       const pool = rainy && chance(0.22) ? CHAT.rain
         : lv < 2 && chance(lv === 0 ? 0.65 : 0.4) ? CHAT.restless
-          : lv > 2 && chance(lv === 4 ? 0.65 : 0.4) ? CHAT.cheerful : CHAT.ambient;
+          : lv > 2 && chance(lv === 4 ? 0.65 : 0.4) ? CHAT.cheerful
+            : this.zufriedenPool() || (this.worldNavi ? CHAT.ambientReise : CHAT.ambient);
       this.chat(this.chatLine(pool));
     }
   }
@@ -2017,6 +2208,7 @@ export class Game {
     const p = this.player;
     if (!p.collide(e)) return;
     this.stats.crashes++;
+    this.tally.hits++;
     this.stats.cleanDistance = 0;
     this.eco.cheer('crash');
     this.audio.crash(e.zone, e.power);

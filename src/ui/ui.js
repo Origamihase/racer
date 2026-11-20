@@ -1,12 +1,13 @@
 // Das Stream-Overlay über dem Spiel: LIVE-Anzeige, Zuschauer, Strecke, Guthaben, Akku, Karosserie-Punkte, Chat mit
 // Bots, die Streifen oben (Navi, Hinweise) und unten (Untertitel, BrunnenTV), Rahmen und Blitzerfotos. Wo was wohnt
 // und welches Rechteck dabei frei bleibt, steht in sicht.js: Über der Bildmitte liegt nichts, solange gefahren wird.
-import { fmtNum, fmtCent, fmtKm, fmtDuration, fmtClock, clamp, tachoKmh } from '../util.js';
+import { fmtNum, fmtCent, fmtEuro, fmtKm, fmtDuration, fmtClock, clamp, tachoKmh } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
 import { fmtOdo } from '../map/navroute.js';
 import { shortName } from '../game/navi.js';
+import { moodEmoji } from '../game/satisfaction.js';
 import { NARROW_MID, infoWidth, overlap } from './sicht.js';
 
 function el(tag, cls, parent, text) {
@@ -125,6 +126,12 @@ export class UI {
     this.chatEl = el('div', 'chat', this.hud);
     const head = el('div', 'chat-head', this.chatEl);
     el('span', '', head, 'Live-Chat');
+    // Reise: wie zufrieden der Chat ist (Gesicht und schmaler Balken; satisfaction.js), klassisch ausgeblendet
+    this.chatMood = el('span', 'chat-mood', head);
+    this.chatMood.title = 'Zufriedenheit des Chats';
+    this.chatMoodFace = el('span', 'chat-mood-face', this.chatMood, '');
+    this.chatMoodFill = el('i', 'chat-mood-fill', el('span', 'chat-mood-bar', this.chatMood));
+    this.chatMoodShown = '';
     this.chatCount = el('span', 'chat-count', head, '');
     this.chatList = el('div', 'chat-list', this.chatEl);
 
@@ -404,7 +411,7 @@ export class UI {
   }
 
   // --- Chat -------------------------------------------------------------------
-  chat({ name, text, bot, icon }) {
+  chat({ name, text, bot, icon, badge }) {
     const m = el('div', 'msg' + (bot ? ' bot bot-' + bot : ''), this.chatList);
     // Leerzeichen zwischen den Teilen, sonst bricht ein schmaler Chat mitten im Namen um
     if (bot) {
@@ -414,6 +421,11 @@ export class UI {
       m.append(' ');
       el('span', 'bot-tag', m, 'BOT');
     } else {
+      // Abzeichen vor dem Namen (die Mods der Reise: MOD)
+      if (badge) {
+        el('span', 'mod-tag', m, badge);
+        m.append(' ');
+      }
       const n = el('span', 'name', m, nameBreak(name));
       n.style.color = nameColor(name);
     }
@@ -456,8 +468,8 @@ export class UI {
    * gerade gezeigten – für Meldungen, die ein Zustand sind und keine Schlange (etwa was das Navi zum Ziel sagt).
    * Rückgabe: { drop() } nimmt ihn vorzeitig weg, ob er wartet oder steht.
    */
-  toast(text, kind = 'info', key = '') {
-    const n = { text, kind, key, t: NOTICE.read, age: 0, wait: 0, gone: false, drop: () => this.dropNotice(n) };
+  toast(text, kind = 'info', key = '', parts = null) {
+    const n = { text, kind, key, parts, t: NOTICE.read, age: 0, wait: 0, gone: false, drop: () => this.dropNotice(n) };
     if (key) this.dropKey(key);
     // Dringendes vor allem, was nicht dringend ist; sonst der Reihe nach
     let i = this.notices.length;
@@ -488,7 +500,13 @@ export class UI {
     const n = (this.notice = this.notices.shift() || null);
     this.noticeEl.textContent = '';
     if (!n) return;
-    el('div', 'toast toast-' + n.kind, this.noticeEl, n.text);
+    if (!n.parts) {
+      el('div', 'toast toast-' + n.kind, this.noticeEl, n.text);
+      return;
+    }
+    // in Teilen: [Text, Klasse] – etwa Einnahmen grün und Reparatur rot (Zeile der Runde, game.js payBill)
+    const box = el('div', 'toast toast-' + n.kind, this.noticeEl);
+    for (const [text, cls] of n.parts) el('span', cls || '', box, text);
   }
 
   tickNotices(dt) {
@@ -801,7 +819,8 @@ export class UI {
     const t = g.worldNavi ? nv.shown : !nv.arrived && nv.target;
     if (t) {
       target = pin + t.name;
-      bid = `Gebot ${fmtCent(nv.bid)} von ${nv.bidder}`;
+      // (auf der Reise wird in Zehnern geboten: ganze Euro, „Gebot 1.250 € von …“)
+      bid = `Gebot ${g.worldNavi ? fmtEuro(nv.bid) : fmtCent(nv.bid)} von ${nv.bidder}`;
       if (g.worldNavi) km = nv.distance;
       else {
         // (ein Ort der Reise behält immer seinen ganzen Namen: „Frankfurt“ ist nicht „Frankfurt (Oder)“)
@@ -833,5 +852,21 @@ export class UI {
       }
     }
     this.chatCount.textContent = fmtNum(Math.round(g.viewers)) + ' Zuschauer';
+    this.showChatMood(g.zufrieden);
+  }
+
+  /** Zufriedenheit im Chat-Kopf (Reise): Gesicht, Balken, Farbe; neu geschrieben nur, wenn sich etwas ändert. */
+  showChatMood(z) {
+    const v = z ? Math.round(z.value) : -1;
+    const key = String(v);
+    if (key === this.chatMoodShown) return;
+    this.chatMoodShown = key;
+    this.chatMood.classList.toggle('on', v >= 0);
+    if (v < 0) return;
+    this.chatMoodFace.textContent = moodEmoji(v);
+    this.chatMoodFill.style.width = v + '%';
+    this.chatMood.classList.toggle('low', v < 35);
+    this.chatMood.classList.toggle('mid', v >= 35 && v < 60);
+    this.chatMood.setAttribute('aria-label', `Zufriedenheit des Chats: ${v} von 100`);
   }
 }

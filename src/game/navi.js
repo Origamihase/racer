@@ -4,7 +4,7 @@
 // mit seinen erfundenen Zielen an der endlosen Autobahn, WorldNavi für „Navi ferngesteuert XXL“ – dort nennt jedes
 // Gebot einen echten Ort der Karte, und Weg, Entfernung und Ankunft gehören der Fahrt (trip.js).
 import { NAVI_TARGETS, BANK_FARBEN, INSIDER_ORTE } from '../data.js';
-import { rand, chance, pick, weightedPick, fmtCent, fmtClock, clamp } from '../util.js';
+import { rand, chance, pick, weightedPick, fmtCent, fmtEuro, fmtClock, clamp } from '../util.js';
 import { places } from '../map/graph.js';
 import { fmtRoad, fmtDistance } from '../map/navroute.js';
 
@@ -278,8 +278,11 @@ export class WorldNavi {
     return near;
   }
 
-  /** Ein Zuschauer überbietet: Gebot + increment, die Fahrt plant zum Ort des Ziels (nur über Straßen). */
-  overbid(s, bidder, increment = 0.01, target) {
+  /**
+   * Ein Zuschauer überbietet: Gebot + increment, die Fahrt plant zum Ort des Ziels (nur über Straßen). Auf der Reise
+   * wird in Zehnern geboten (economy.js: jeder Schritt ein Vielfaches von 10 €, das erste Gebot einer Runde 10 €).
+   */
+  overbid(s, bidder, increment = 10, target) {
     this.bid = Math.round((this.bid + increment) * 100) / 100;
     this.changes++;
     this.target = target;
@@ -398,16 +401,17 @@ export class WorldNavi {
   }
 
   /**
-   * Für den Mittelbildschirm (st.navi → st.nav, src/map/navview.js): Bieter und Gebot im roten Balken; ohne Gebot der
-   * Text des Balkens (bar) und die Zeile im Kärtchen (wait). Weg, Kilometer und Ankunft zeigt das Navi aus der Fahrt.
+   * Für den Mittelbildschirm (st.navi → st.nav, src/map/navview.js): Bieter und Gebot (ganze Euro) im roten Balken;
+   * ohne Gebot der Text des Balkens (bar) und die Zeile im Kärtchen (wait). Weg, Kilometer und Ankunft zeigt das Navi
+   * aus der Fahrt.
    */
   screen() {
     const S = this.screenOut;
     S.bidder = this.shown ? this.bidder : '';
-    S.bid = this.shown ? fmtCent(this.bid) : '';
+    S.bid = this.shown ? fmtEuro(this.bid) : '';
     // (das Navi selbst meldet „Ziel erreicht“ schon am Zielpunkt, wie jedes Navi – darum gilt das Kärtchen ab dort)
     const r = this.stopping || this.reached;
-    S.bar = r ? '📡 Neue Runde: Gebote ab 0,01 €' : this.missed ? '📡 Der Chat bietet weiter …' : '📡 Der Chat bietet: Gebote ab 0,01 €';
+    S.bar = r ? '📡 Neue Runde: Gebote ab 10 €' : this.missed ? '📡 Der Chat bietet weiter …' : '📡 Der Chat bietet: Gebote ab 10 €';
     S.wait = r ? '⛲ Ziel erreicht: ' + r.name : this.missed ? '⏳ Vorbeigerollt – gleich kommt das nächste Gebot …' : '⏳ Gleich kommt das erste Gebot …';
     return S;
   }

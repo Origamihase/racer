@@ -8,7 +8,8 @@
 // - Ziele: Jedes Gebot nennt einen echten Ort, den die Fahrt von hier über Straßen erreicht (keine Fähre, kein
 //   Autozug, keine Luftfracht – ihre Terminals baut die Welt noch nicht), und nie das aktuelle Ziel; die Insider-Ziele
 //   aus data.js gibt es in der Karte.
-// - Kasse: Jedes Gebot ist genau einmal Einnahme (Summe aller Gebote = Posten „Navi-Gebote“ der Abrechnung).
+// - Kasse: Jedes Gebot ist genau einmal Einnahme (Summe aller Gebote = Posten „Navi-Gebote“ der Abrechnung), und auf
+//   der Reise wird in Zehnern geboten: Jedes Gebot und jeder Schritt ist ein Vielfaches von 10 €.
 // - Navi und Welt (COMMON.md §9, wie tools/map-test.mjs) über alle Zielwechsel hinweg, auch bei Geboten in den
 //   Sperrzonen vor Gabelung (J.lock) und Knoten (J.lockNode): Jede Ansage meint eine Stelle, die die Fahrt wirklich
 //   hat, und wer dem Navi folgt, wird an keiner Gabelung „falsch“ gefahren sein.
@@ -460,9 +461,11 @@ function stream(driver, hours, seed, firstRound = false) {
     const opening = nv.opening;
     // erste Runde: was die Wahl der nahen Orte vor dem Gebot über dieses Ziel wusste
     const guess = opening ? trip.whatIf(target.place, true) : null;
+    const was = nv.bid;
     const t = overbid(s, bidder, inc, target);
     m.bids++;
     m.bidSum += nv.bid;
+    ok(nv.bid % 10 === 0 && inc % 10 === 0 && nv.bid > was, `Gebot ${nv.bid} € (Schritt ${inc} €) ist kein Zehner`);
     ok(t && places[t.place] && places[t.place].name === t.name, `Gebot auf etwas, das kein Ort der Karte ist: ${t && t.name}`);
     ok(t !== before, `Gebot auf das aktuelle Ziel ${t.name}`);
     ok(trip.target === t.place && trip.policy && trip.policy.road, `Die Fahrt führt nach dem Gebot nicht über Straßen nach ${t.name}`);
@@ -498,8 +501,8 @@ function stream(driver, hours, seed, firstRound = false) {
     if (!roundOpen) {
       roundOpen = true;
       m.firstN++;
-      if (Math.abs(nv.bid - 0.01) < 1e-9) m.first1++;
-      ok(nv.bid <= 0.05 + 1e-9, `Die Runde beginnt bei ${nv.bid} € statt bei Cent-Geboten`);
+      if (nv.bid === 10) m.first1++;
+      ok(nv.bid <= 30, `Die Runde beginnt bei ${nv.bid} € statt bei einem Zehner`);
       if (arrivedT >= 0) ok(game.t - Math.max(arrivedT, tvEndT) < 12, `Erstes Gebot der Runde erst ${(game.t - Math.max(arrivedT, tvEndT)).toFixed(1)} s nach der Ankunft`);
     }
     m.maxGap = Math.max(m.maxGap, game.t - lastBidT);
@@ -599,7 +602,7 @@ function stream(driver, hours, seed, firstRound = false) {
         m.duels++;
         game.eco.bids.chaos = 0;
         game.eco.bids.duel = hasty ? 10 + Math.floor(30 * Math.random()) : 1 + Math.floor(8 * Math.random());
-        game.bidPlan = { increment: 0.1, delay: 0, kind: 'duel', first: true };
+        game.bidPlan = { increment: 10, delay: 0, kind: 'duel', first: true };
         game.T.bid = 0;
       } else if (sec === duelSec && !sec.spotDone && game.bidPlan.kind === 'duel' && game.T.bid > duelPace) game.T.bid = duelPace * (0.5 + 0.5 * Math.random());
       const f = sec.fork;
@@ -837,8 +840,11 @@ for (const { driver, m } of rows) {
   rows.push({ driver: DUELLIST, m });
 }
 // Ladestopps: Wer bei NOMIs Warnung den genannten Ladepark einplant, läuft nie leer
+// (Startwerte so gewählt, dass es gilt: NOMIs Reichweite rechnet in Reisekilometern, der Akku leert sich je Sekunde –
+// führt der Weg zum Park über viel echte Straße, reicht sie nicht immer, in etwa jedem fünften Stream schon vor den
+// Zehner-Geboten (5106, 5109, 5115). Wer am Zufall der Reise dreht, sucht hier notfalls neu; offen in geld/NOTES.md.)
 {
-  const runs = [0, 1, 2].map((k) => stream(LADER, LADE_MIN / 60, 5101 + k));
+  const runs = [0, 1, 2].map((k) => stream(LADER, LADE_MIN / 60, 5104 + k));
   const all = (f) => runs.reduce((a, m) => a + f(m), 0);
   const minB = Math.min(...runs.map((m) => m.minBattery));
   const km = runs.flatMap((m) => m.parkKm).sort((a, b) => a - b);

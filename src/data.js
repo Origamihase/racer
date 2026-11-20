@@ -125,7 +125,15 @@ export const INCOME = {
   Challenges: 'Challenge',
 };
 // Abzüge stehen in der Abrechnung ganz unten
-export const FINES = ['Bußgeld', 'Verwarngeld'];
+export const FINES = ['Bußgeld', 'Verwarngeld', 'Reparaturen'];
+
+/**
+ * Reise: An jedem erreichten Ziel kommt die Werkstatt-Rechnung der Runde (game.js settleRound). bump: Euro je
+ * zählendem Rempler (ein Karosserie-Punkt, so viel wie ein gewöhnliches Siegergebot), mark: je neuer Kratzspur von der
+ * Leitplanke (höchstens drei je Seite, damage.js). Bezahlt wird aus der Stream-Kasse; was sie nicht hergibt, erlässt
+ * die Werkstatt. Wann die Fahrt in der Werkstatt endet (keine Punkte mehr), bleibt, wie es ist.
+ */
+export const REPARATUR = { bump: 150, mark: 25 };
 
 // Wofür gespendet wird (etwa jede dritte Spende nennt einen Zweck)
 export const SPENDEN_ZWECKE = [
@@ -249,6 +257,39 @@ export const CHAT = {
     'Na also, wir haben ein Ziel'],
   bidBig: ['WAS?! 😱', 'Da meint es jemand ernst', 'Jetzt traut sich keiner mehr', 'Ansage!',
     'Das Ziel steht jetzt wohl fest', 'So viel für ein Navi-Ziel 😂', 'Wer legt 100 € drauf? Mehr geht auf einmal ja nicht'],
+  // Reise: Dort wird in Zehnern geboten, bis in die Hunderte (Chaos am Anfang der Runde, großes Gebot; je Zeile wie
+  // bidChaos und bidBig, so zieht der Chat gleich viele Zufallszahlen)
+  zehnerChaos: ['Zehner drauf! 🤑', '+10 €!', 'Und noch ein Zehner', 'Zehner-Krieg 😂', 'Das Navi dreht durch',
+    'Wohin denn jetzt?!', 'Mein Zehner, mein Ziel', 'Überboten in 2 Sekunden lol', 'Bieter-Chaos! 🍿',
+    'Ich komm nicht mehr mit', 'Das Navi braucht Urlaub', 'Jeder Zehner zählt 💶', 'Route wird neu berechnet. Schon wieder.',
+    'Schnell ein Screenshot, bevor der nächste Zehner kommt 📸', 'Noch ein Zehner und wir drehen um 👀'],
+  zehnerGross: ['WAS?! 😱', 'Da meint es jemand ernst', 'Jetzt traut sich keiner mehr', 'Ansage!',
+    'Das Ziel steht jetzt wohl fest', 'So viel für ein Navi-Ziel 😂', 'Gleich ein paar Hunderter auf einmal 💸'],
+  // BontanaBack (Reise, ausgedachter Großbieter): Der Chat dreht durch, er selbst sagt wenig, wer vorn lag, hält tapfer
+  // dagegen, und am Ende steht die Summe
+  bontana: ['BONTANA ESKALIERT 🔥', 'BontanaBack ist da!!', 'Wie viel?! 😱', 'Der Chat brennt 🔥', 'Das Navi zittert',
+    'Ich kann nicht mehr 😂', 'Bontana-Modus aktiviert 💸', 'Schnell ein Screenshot 📸', 'Was passiert hier gerade',
+    'Hunderter fliegen durch den Chat', 'Der meint das ernst 😳', 'Mini Adam, schau dir das an!'],
+  bontanaSelbst: ['Ich lege nach 😎', 'Gute Fahrt, Mini Adam! 💸', 'Das Ziel gefällt mir', 'Da fahren wir hin 😎'],
+  bontanaKonter: ['Der traut sich was!', 'Einfach dagegenhalten 😂', 'Mutig!', '+10 € gegen Bontana lol',
+    'David gegen Goliath', 'Nicht aufgeben!', 'Ehrenmann, hält dagegen'],
+  bontanaEnde: ['BONTANA ESKALIERT 🔥🔥🔥', 'Gekauft. Das Ziel gehört ihm.', 'Das war’s, Leute 😂', 'Legendär',
+    'Danke BontanaBack! 💸', 'Ich hab Gänsehaut', 'Das Navi braucht jetzt eine Pause', 'Und das an einem Dienstag 😂'],
+  // Zufriedenheit des Chats (Reise, satisfaction.js): zufrieden klingt er flott, unzufrieden ruft er nach Tempo – nie
+  // gemein
+  flott: ['Das geht ja zack zack 🏎️', 'So macht Reisen Spaß', 'Mini Adam liefert!', 'Ziel um Ziel, sehr stark',
+    'Tempo! Ich liebe es', 'Das Navi kommt kaum hinterher 😂', 'Der Chat ist zufrieden 😌', 'Läuft heute 👌',
+    'Schon wieder ein Ziel geschafft?!', 'Reisen mit Mini Adam = Express 🚄', 'Die Bieter kommen gar nicht hinterher',
+    'Bestes Roadtrip-Tempo'],
+  schneller: ['Schneller! 😩', 'Wann sind wir da?', 'Gib Gas, Mini Adam!', 'Das dauert ja ewig', 'Ich schlaf gleich ein 😴',
+    'Bitte etwas zügiger 🙏', 'Sind wir bald da?', 'Das Navi wartet auf dich 😅', 'Das Ziel läuft uns nicht weg … oder? 😅',
+    'Ein bisschen mehr Tempo bitte', 'Mein Popcorn ist schon alle 🍿', 'Gleich überholt uns ein Traktor 🚜'],
+  // Werkstatt-Rechnung am Ziel (Reise): freundlich, die Werkstatt gehört dazu – und wer heil ankommt, wird gefeiert
+  reparatur: ['Die Werkstatt freut sich 😅', 'Ein bisschen Spachtel, ein bisschen Liebe', 'Beulen gehören dazu',
+    'Hauptsache, Mini Adam ist gut angekommen ❤', 'Gut, dass der Chat zusammenlegt 😂', 'Neue Beule, neue Geschichte',
+    'Die Plüsch-Hände sind heil, das zählt 🧸'],
+  heil: ['Keine Kratzer, keine Rechnung ✨', 'Sauber gefahren!', 'Die Werkstatt hat heute frei 😎',
+    'Ohne eine Schramme 👏', 'Der Lack glänzt noch'],
   // am Ziel vorbeigefahren (kommt mit der Karte und ihren echten Ausfahrten)
   missedTarget: ['Die Ausfahrt war DA 😭', 'Vorbei … so nah dran', 'Das Navi weint leise', 'Nächste Ausfahrt dann, ja?',
     'Zu flott für die Ausfahrt 😅', 'Tschüss, schönes Ziel 👋'],
@@ -419,6 +460,12 @@ export const CHAT = {
     return n;
   },
 };
+// Reise: dasselbe Geplauder, nur wird dort in Zehnern geboten statt um einen Cent
+const ZEHNER_STATT_CENT = {
+  'Ich biete 1 Cent mehr 🤑': 'Ich biete 10 € mehr 🤑',
+  'Einfach 1 Cent mehr bieten, dann gehört das Navi dir 😂': 'Einfach 10 € mehr bieten, dann gehört das Navi dir 😂',
+};
+CHAT.ambientReise = CHAT.ambient.map((line) => ZEHNER_STATT_CENT[line] ?? line);
 
 function threeNumber() {
   const len = randInt(2, 4);
@@ -636,7 +683,7 @@ export const DURCHSAGEN = [
   { voice: 'weronika', text: 'Welche Farbe hat die Bank in {city}?' },
   { voice: 'william', text: 'Mini Adam, erzähl doch mal die Raab-Story!' },
   { voice: 'karla', text: 'Wir sind auf der Autobahn und streamen in Full HD!' },
-  { voice: 'william', text: 'Ich biete einen Cent mehr. Neues Ziel: {city}.' },
+  { voice: 'william', text: 'Ich biete einen Cent mehr. Neues Ziel: {city}.', reise: 'Ich biete zehn Euro mehr. Neues Ziel: {city}.' },
   { voice: 'kassandra', text: 'Bitte rechts fahren. Mit freundlichen Grüßen, die Polizei Gifhorn.' },
   { voice: 'weronika', text: 'Mini Adam, du fährst besser als jedes Navi.' },
   { voice: 'karla', text: 'Hallo Mini Adam! Schreib mal eine Zahl in den Chat. Aber bitte ohne Drei.' },
@@ -851,6 +898,42 @@ export const SHOP = [
 export const UPGRADE_LIMITS = Object.fromEntries(SHOP.map((s) => [s.id, s.prices.length]));
 
 // Abspann-Crew
+/**
+ * Die Leute des Streams (nur auf der Reise; ausgedachte Namen, immer freundlich, keine Zitate echter Menschen, game.js
+ * updateCrew). Minuten, wo nicht anders gesagt.
+ * - König Knolli raidet: zuerst nach raid.first, dann alle raid.every Minuten, mit max(raid.min, raid.share der
+ *   Zuschauer) Leuten, die mit raid.fade Sekunden Zeitkonstante wieder gehen; Nora sagt es an, er grüßt, seine Leute
+ *   schreiben. Danach jubelt er alle knolli Minuten mit cheer Euro oder spendet gift Euro.
+ * - Die Mods (Abzeichen MOD) schreiben alle modEvery Minuten eine kurze freundliche Zeile.
+ * - Wils oder DomZe erinnern alle discordEvery Minuten an den Discord.
+ * - Nach jedem Funkloch meldet einer von back nach backAfter Sekunden (nach Nora), dass der Stream wieder läuft.
+ * - „❤“ schickt alle heart Minuten ein Herz, still – niemand antwortet.
+ */
+export const CREW = {
+  knolli: 'König Knolli',
+  raid: { first: [6, 14], every: [30, 45], min: 250, share: [0.2, 0.35], fade: 480 },
+  knolliEvery: [6, 11], cheer: [1, 5], gift: [2, 10],
+  mods: ['Wils', 'Walte', 'AchPünktchen', 'Delta34st', 'Eismann077', 'Cptbalu1991', 'Kieskauer', 'Muyinnchen'],
+  modEvery: [2.5, 5],
+  discord: ['Wils', 'DomZe'], discordEvery: [9, 15],
+  back: ['IceBonbon', 'Muyinnchen'], backAfter: 1.6,
+  heart: '❤', heartEvery: [7, 14],
+};
+export const CREW_LINES = {
+  raid: 'Raid! {name} kommt mit {n} Leuten vorbei. Willkommen!',
+  knolliHallo: ['Hallo Mini Adam! Wir kommen zu Besuch 👑', 'Grüße aus dem Knolli-Land! 👑', 'Gute Fahrt euch allen! 👑'],
+  raider: ['KNOLLI RAID 👑', 'Hallo zusammen! 👋', 'Wo fahren wir hin? 😄', 'Grüße vom Knolli-Stream', 'Schönes Auto!',
+    'Ich bleib noch ein bisschen 👀', 'Knolli hat uns hergebracht 👑', 'Was kostet ein Navi-Ziel hier?'],
+  knolliJubel: ['Weiter so, Mini Adam! 👑', 'Ich schau immer noch zu 👑', 'Starke Fahrt!', 'Grüße an den Chat 👑'],
+  cheer: '{name} jubelt mit {betrag}! 👑',
+  danke: ['Danke, König Knolli! 👑', 'Der König hat gesprochen 👑', 'Knolli ❤'],
+  mod: ['Bitte nett bleiben im Chat ❤', 'Willkommen an alle Neuen! 👋', 'Schön, dass ihr da seid!',
+    'Wer neu ist: Navi-Gebote gibt es ab 10 €', 'Alle Links findet ihr im Panel unter dem Stream',
+    'Gute Stimmung hier heute 😊', 'Grüße an alle Zuschauer!', 'Denkt an eine Pause und ein Glas Wasser 💧'],
+  discord: ['Discord-Link ist im Panel', 'Discord-Link ist im Panel 😊', 'Kommt in den Discord – der Link ist im Panel'],
+  back: ['Stream läuft wieder! 🎉', 'Wir sind wieder da!', 'Und weiter geht’s 🎉'],
+};
+
 export const ABSPANN_CREW = [
   ['Fahrer', 'Mini Adam'],
   ['Kamera', 'stationär'],
@@ -859,3 +942,15 @@ export const ABSPANN_CREW = [
   ['Scheibenwischer', 'Auto-Wischer (Beta)'],
   ['Navigation', 'ferngesteuert vom Chat'],
 ];
+/** Abspann der Reise: die Leute des Streams, mit ausgedachten Berufen (nach ABSPANN_CREW, vor „Danke an“). */
+export const ABSPANN_REISE = [
+  ['Musik', 'Elti und IceBonbon'],
+  ['Stimmen im Sprachstudio', '?CF und IceDrache'],
+  ['Geek im Hintergrund', 'Arno Nühm'],
+  ['Moderation', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen'],
+  ['Discord', 'Wils und DomZe'],
+  ['Großbieter vom Dienst', 'BontanaBack'],
+  ['Raid-Kommando', 'König Knolli'],
+];
+/** Ganz am Ende des Abspanns der Reise, allein und leise (Wortlaut des Eigentümers, unverändert). */
+export const GEDENKEN = 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte';
