@@ -3,10 +3,11 @@
 // tickCharge, skipCharge): Der Wagen setzt ohne Sprung und ohne etwas zu streifen rückwärts in die Bucht und steht dort
 // parallel zu ihr, die Räder kreuzen den Bordstein nur, wo er abgesenkt ist, ausgeparkt wird bis in die Spur des Parks;
 // wer überspringt, früh oder spät, steht im selben Zustand wie nach dem ganzen Stopp, und die Fahrt geht auf dem
-// geplanten Weg weiter zur Autobahn, ohne „Bitte wenden“. Aufruf: node tools/stopp-test.mjs
+// geplanten Weg weiter zur Autobahn, ohne „Bitte wenden“; wer ohne Plan rechts in einen Park fährt, bekommt denselben
+// Stopp. Aufruf: node tools/stopp-test.mjs
 import { PerspectiveCamera } from 'three';
 import { CHARGE, DOCK, STOP, SCENE, ROLL_T, dockHalt, dockPath, rollPose, stopEnd, stopPlan, chargeOf, kerbAt } from '../src/world/xxl/charge.js';
-import { PARK, PARKS } from '../src/map/parks.js';
+import { PARK, PARKS, parkAt } from '../src/map/parks.js';
 import { STREET } from '../src/world/kit/layout.js';
 import { TESLA } from '../src/models/tesla.js';
 import { Trip, J } from '../src/game/trip.js';
@@ -189,7 +190,7 @@ const rollStat = walk('Ausparken', ROLL_T, (t, out) => rollPose(U, t, out));
   ok(PARKS.length > 100, 'zu wenig Parks');
 }
 
-// --- 3. Im Spiel: einmal ganz, einmal früh und einmal spät übersprungen --------------------------------------------
+// --- 3. Im Spiel: einmal ganz, einmal früh und einmal spät übersprungen, einmal ohne Plan rechts hinein -------------
 const NONE = [];
 const noop = () => {};
 const loose = (base = {}) => new Proxy(base, { get: (t, k) => (k in t ? t[k] : noop) });
@@ -204,9 +205,11 @@ function mulberry32(a) {
 const DT = 1 / 30;
 /**
  * Ein Stream ab Erlensee mit 80 % Akku und gleich eingeplantem Ladestopp; der Fahrer folgt dem Navi. skip: Sekunden nach
- * dem Halt im Park, zu denen übersprungen wird (null: nie). Gibt den Zustand nach dem Stopp und nach der Weiterfahrt.
+ * dem Halt im Park, zu denen übersprungen wird (null: nie); plan false: der Stopp führt nur bis vor die Ausfahrt seines
+ * Parks und wird dort abgesagt, der Fahrer hält sich ohne Plan rechts hinein. Gibt den Zustand nach dem Stopp und nach
+ * der Weiterfahrt.
  */
-function stream(skip) {
+function stream(skip, plan = true) {
   Math.random = mulberry32(11);
   const trip = new Trip({ rng: Math.random });
   const arrival = new Arrival();
@@ -243,15 +246,16 @@ function stream(skip) {
       planned = trip.stop >= 0;
       ok(planned, 'Ladestopp lässt sich nicht einplanen');
     }
+    const sec = trip.section;
+    if (!plan && trip.stop >= 0 && sec.kind === 'ab' && sec.fork && parkAt(sec.fork.node) === trip.stop) game.planStop();
     limitsFor(trip, lim, arrival.stop(trip));
     p.setLimits(lim);
     let want = J.L0;
-    const sec = trip.section;
     if (sec.kind === 'ab') {
       if (!halt) abBefore = sec.fork;
       const f = sec.fork;
       want = 5.625;
-      if (f && !f.taken && f.s - trip.s < J.decel - 10 && (f.forced || trip.planFor(f) === 'exit')) want = J.L0;
+      if (f && !f.taken && f.s - trip.s < J.decel - 10 && (f.forced || trip.planFor(f) === 'exit' || (!plan && parkAt(f.node) >= 0))) want = J.L0;
     }
     const dx = want - (p.x + p.vx * AUTO.look);
     ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
@@ -275,6 +279,7 @@ function stream(skip) {
       halt = { t: game.t, s: p.s, x: p.x, sec: rest.sec };
       game.onTrip(rest);
       ok(game.charging && arrival.held && near(p.s, rest.sec.s0 + PARK.halt, 0.6), `Halt im Park ${(p.s - rest.sec.s0).toFixed(2)} m statt ${PARK.halt}`);
+      ok(plan || trip.stop < 0, 'ohne Plan: beim Halt ist doch ein Stopp geplant');
     }
     if (out.charged) {
       // nach dem Stopp: das Navi sagt nie „dann wenden“, der Weg führt auf dieselbe Autobahn zurück
@@ -292,7 +297,7 @@ function stream(skip) {
   return out;
 }
 
-const runs = [['ganz', null], ['früh übersprungen', 0.5], ['spät übersprungen', 14]].map(([name, skip]) => [name, stream(skip)]);
+const runs = [['ganz', null], ['früh übersprungen', 0.5], ['spät übersprungen', 14], ['ohne Plan', null, false]].map(([name, skip, plan]) => [name, stream(skip, plan)]);
 const [, full] = runs[0];
 ok(full.halt && full.charged, 'Der Lader kommt nicht in den Park oder wird nicht fertig');
 if (full.halt && full.charged) {

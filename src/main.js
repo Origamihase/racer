@@ -706,7 +706,8 @@ function resume() {
   paused = false;
   menus.hide();
   speech.pause(false);
-  input.pressed.clear();
+  // die Taste, die weiterfahren lässt, soll keinen Ladestopp überspringen
+  input.endFrame();
   input.releaseAll();
 }
 
@@ -1529,10 +1530,11 @@ const STOP_CTL = { steer: 0, throttle: 0, brake: 0, reverse: false, horn: false,
 const STOP_FADE = 0.35; // Aufblenden in der Spur nach dem Überspringen
 // c: game.charging (Fahrplan plan), town: der Park (Towns.of), rig: Stecker und Kabel seiner Heldensäule, pop: Popcorn
 // in der Maschine (beim ersten Stopp gebaut), q: Lage des Wagens, v: sein Tempo (rückwärts negativ), rev / brake:
-// Rückfahr- und Bremslicht, gear: Gang fürs Display, skipT: übersprungen bei (Zeit der Szene), fadeT: Aufblenden danach,
-// from / fromLook: Kamera beim Halt, cam / look: die der Drohne beim Einparken, done: Klänge und Gesten, die schon kamen
+// Rückfahr- und Bremslicht, gear: Gang fürs Display, inside: Kamera im Cockpit (für die Pause), skipT: übersprungen bei
+// (Zeit der Szene), fadeT: Aufblenden danach, from / fromLook: Kamera beim Halt, cam / look: die der Drohne beim
+// Einparken, done: Klänge und Gesten, die schon kamen
 const stopRun = {
-  on: false, c: null, town: null, rig: null, port: null, pop: null, q: {}, v: 0, rev: false, brake: false, gear: 'D', skipT: -1, fadeT: 0,
+  on: false, c: null, town: null, rig: null, port: null, pop: null, q: {}, v: 0, rev: false, brake: false, gear: 'D', inside: false, skipT: -1, fadeT: 0,
   from: new THREE.Vector3(), fromLook: new THREE.Vector3(), cam: new THREE.Vector3(), look: new THREE.Vector3(), done: {},
 };
 game.onCharge = (c) => stopBegin(c);
@@ -1702,6 +1704,7 @@ function stopPlace(dt) {
     if (ck) fade = te > sw - 0.25 && te < sw ? (te - (sw - 0.25)) / 0.25 : te >= sw && te < sw + STOP_FADE ? 1 - (te - sw) / STOP_FADE : 0;
   }
   fxState.fade = Math.max(fade, r.skipT >= 0 ? (t - r.skipT) / 0.25 : 0);
+  r.inside = inside;
   // Mini Adam winkt aus dem Fenster, wenn der Stecker sitzt, und schaut zur Säule, bis er sich löst
   return {
     inside,
@@ -1985,6 +1988,12 @@ function step(dt, { render = true } = {}) {
     }
     case 'drive': {
       if (paused) {
+        // im Ladestopp bleiben Wagen und Kamera, wie die Szene sie zuletzt gestellt hat
+        if (stopRun.on) {
+          stopPose(stopRun.q);
+          cockpitOn = stopRun.inside;
+          break;
+        }
         updateCarMatrix();
         if (view === 'cockpit') cockpit.placeCamera(camera, carMatrix, simT, 0, 0, 0);
         cockpitOn = view === 'cockpit';
