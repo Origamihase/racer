@@ -34,11 +34,12 @@ export const DRIVERS = {
 };
 
 /**
- * Baut einen Stream. opts: driver (DRIVERS), seed, upgrades, rain (0..1 dauerhaft), traffic (Ersatz für den Verkehr).
+ * Baut einen Stream. opts: driver (DRIVERS), seed, upgrades, traffic (Ersatz für den Verkehr), endless (der Stream
+ * endet nicht, wenn nach einer Folge niemand bietet: Game.endless).
  * Liefert { game, trip, p, log, step(secs), state() }; log.chat/log.say/log.toast: [{ t, text, name|voice, at }],
  * at = state() im Moment der Meldung.
  */
-export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, traffic = null } = {}) {
+export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, traffic = null, endless = false } = {}) {
   Math.random = mulberry32(seed);
   const trip = new Trip({ rng: Math.random });
   const arrival = new Arrival();
@@ -75,6 +76,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
     pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });
+  game.endless = endless;
   game.start({ upgrades, best: {} });
   const p = game.player;
   p.s = trip.s;

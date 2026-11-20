@@ -6,7 +6,7 @@
 //   (das Megafon ist erst zu sehen, wenn das Fenster offen ist, und weg, bevor es wieder hochgeht).
 // - Überspringen früh (gleich nach TV.skip), spät (kurz vor dem Ende) und gar nicht: jedes Mal derselbe Endzustand –
 //   keine Folge mehr, Bauchbinde weg, der Wagen genau einmal freigegeben – und danach beginnt die nächste Bieterrunde
-//   (das erste Gebot frühestens TV.pause Sekunden nach der Freigabe). Den Ruf gibt es jedes Mal genau einmal:
+//   (das erste Gebot frühestens TV.pause Sekunden nach der Freigabe, spätestens zum Ende des Bieterfensters). Den Ruf gibt es jedes Mal genau einmal:
 //   übersprungen vor ihm kommt er beim Losfahren, mit dem Echo im Chat.
 // - Megafon als Ausstattung: kein Shop-Artikel, Taste H und Megafon-Wunsch ohne Upgrade in beiden Spielarten, ein
 //   gekauftes gibt es genau einmal zurück (save.js refundMegafon); der Titel sagt es bis zum ersten Besuch im Shop, auch
@@ -19,7 +19,7 @@
 import { PerspectiveCamera } from 'three';
 import { places, townLen } from '../src/map/graph.js';
 import { Trip, J } from '../src/game/trip.js';
-import { Game } from '../src/game/game.js';
+import { Game, AUKTION } from '../src/game/game.js';
 import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor } from '../src/world/xxl/brunnentv.js';
 import { squareOf } from '../src/world/xxl/plan.js';
 import { FOUNTAIN_R, goalKind, goalName, sightBlockers } from '../src/world/kit/layout.js';
@@ -202,6 +202,8 @@ function episode(skipAt, seed, during = null) {
     pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => false, release: () => released++, square: () => null, town: () => null },
   });
+  // (der Stream endet hier nie: Bietet im Fenster nach der Folge niemand, bietet an seinem Ende doch noch jemand)
+  game.endless = true;
   game.start({ upgrades: {}, best: {} });
   const p = game.player;
   p.s = trip.s;
@@ -258,7 +260,7 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
   // Endzustand: keine Folge, Bauchbinde weg, genau einmal freigegeben – danach die nächste Bieterrunde
   ok(!r.game.tv && r.released === 1 && card.length && card[card.length - 1].n === 0, `${name}: Endzustand (Folge ${!!r.game.tv}, ${r.released}× freigegeben, Bauchbinde ${card.length ? card[card.length - 1].n : '–'})`);
   ok(Math.abs(r.endT - end) < 2.5 * DT, `${name}: Folge endet bei ${r.endT.toFixed(2)} s statt ${end.toFixed(2)} s`);
-  ok(r.bidT > 0 && r.bidT - r.releaseT >= TV.pause - DT && r.bidT - r.releaseT < 12, `${name}: nächstes Gebot ${(r.bidT - r.releaseT).toFixed(1)} s nach der Freigabe`);
+  ok(r.bidT > 0 && r.bidT - r.releaseT >= TV.pause - DT && r.bidT - r.releaseT < AUKTION.window + 1, `${name}: nächstes Gebot ${(r.bidT - r.releaseT).toFixed(1)} s nach der Freigabe`);
   // jeder Moment genau einmal zu seiner Zeit, wenn er vor dem Ende lag – sonst gar nicht
   const once = (list, t0, what) => {
     if (end > t0 || (what === 'NOMI' && end > TV.nomi)) ok(list.length === 1 && Math.abs(list[0].t - t0) < 2 * DT, `${name}: ${what} ${list.length}× (${list.map((e) => e.t).join(', ')} s, erwartet ${t0} s)`);

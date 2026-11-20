@@ -37,7 +37,7 @@ import { PerspectiveCamera } from 'three';
 import { places, nodeTitle, deEdge, OFF_KM } from '../src/map/graph.js';
 import { Trip, J, PROFILES } from '../src/game/trip.js';
 import { MapDemo } from './mapdemo.mjs';
-import { Game, TOWN_HOLD, EXIT_CALL, exitLine } from '../src/game/game.js';
+import { Game, TOWN_HOLD, AUKTION, EXIT_CALL, exitLine } from '../src/game/game.js';
 import { BID_PLACES, OPENING } from '../src/game/navi.js';
 import { INSIDER_ORTE, JOB_TEMPLATES, SCHOENER_BRUNNEN } from '../src/data.js';
 import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
@@ -93,11 +93,10 @@ const DRIVERS = [
   { name: 'gemütlich', cruise: 110, miss: 0.15, skip: false },
 ];
 /**
- * Härtetest für den Halt am Brunnen: Auf den letzten 150 m im Zielort bricht jedes Mal ein hastiges Bieterduell aus,
- * das Ziel springt bis zum Brunnen hin und her. Der Wagen steht danach am Brunnen (BrunnenTV), ist vorbeigerollt
- * (keine Ankunft) oder das Ziel ist weg – aber nie bleibt er hängen. Dazu fällt an jeder zehnten Gabelung ein Gebot
- * mitten in ihre Sperrzone (J.lock): Der Zweig dort bleibt, wie er gebaut ist, und Ansage und Zahlen müssen trotzdem
- * stimmen.
+ * Härtetest für den Zuschlag (game.js AUKTION, 5 km vor dem Brunnen): Auf den letzten 150 m im Zielort soll jedes Mal
+ * ein hastiges Bieterduell ausbrechen – das Ziel steht aber längst fest, kein Gebot ändert es mehr: Der Wagen steht
+ * am Brunnen (BrunnenTV) und rollt nie vorbei. Dazu fällt an jeder zehnten Gabelung ein Gebot mitten in ihre
+ * Sperrzone (J.lock): Der Zweig dort bleibt, wie er gebaut ist, und Ansage und Zahlen müssen trotzdem stimmen.
  */
 const DUELLIST = { name: 'zügig, Duell im Zielort', cruise: 185, miss: 0, skip: true, duel: true };
 /**
@@ -420,6 +419,8 @@ function stream(driver, hours, seed, firstRound = false) {
     pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });
+  // (Streams über Stunden: Auch wenn nach einer Folge niemand bietet, geht es weiter – das Ende prüft ansagen-test)
+  game.endless = true;
   game.start({ upgrades: {}, best: {} });
   const p = game.player;
   p.s = trip.s;
@@ -429,7 +430,7 @@ function stream(driver, hours, seed, firstRound = false) {
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
   const m = {
     bids: 0, bidSum: 0, earnN: 0, earnSum: 0, chaos: 0, calm: 0, late: 0, snatched: 0, spots: 0, rolled: 0, arrivals: 0, rests: 0, late2: 0, tvEnds: 0, calls: 0, skipCalls: 0, duels: 0,
-    lockFork: 0, lockNode: 0, wrong: 0, wende: 0, first1: 0, firstN: 0, maxGap: 0, maxTv: 0, minTv: Infinity, passed: 0,
+    lockFork: 0, lockNode: 0, wrong: 0, wende: 0, first1: 0, firstN: 0, firstWait: [], maxGap: 0, maxTv: 0, minTv: Infinity, passed: 0,
     bands: [0, 0, 0, 0], legs: [], navi: { checks: 0, exit: 0, far: 0, farKept: 0, arrive: 0, stop: 0, wende: 0 }, reroutes: 0, standing: 0, ratio: 0, stand: [], flipped: 0, minChoice: Infinity,
     // Ladeparks: Halte und Ladestopps; beim Lader dazu Warnungen, eingeplante Stopps, kleinster Akku und Ladestand danach
     charges: 0, warns: 0, planned: 0, minBattery: 100, full: 0, parkKm: [],
@@ -523,7 +524,12 @@ function stream(driver, hours, seed, firstRound = false) {
       m.firstN++;
       if (nv.bid === 10) m.first1++;
       ok(nv.bid <= 30, `Die Runde beginnt bei ${nv.bid} € statt bei einem Zehner`);
-      if (arrivedT >= 0) ok(game.t - Math.max(arrivedT, tvEndT) < 12, `Erstes Gebot der Runde erst ${(game.t - Math.max(arrivedT, tvEndT)).toFixed(1)} s nach der Ankunft`);
+      // (die neue Runde beginnt im Bieterfenster nach der Folge; der Dauerstream bekommt sein Gebot spätestens an dessen Ende)
+      if (arrivedT >= 0) {
+        const wait = game.t - Math.max(arrivedT, tvEndT);
+        m.firstWait.push(wait);
+        ok(wait < AUKTION.window + 1, `Erstes Gebot der Runde erst ${wait.toFixed(1)} s nach der Folge (Bieterfenster ${AUKTION.window} s)`);
+      }
     }
     m.maxGap = Math.max(m.maxGap, game.t - lastBidT);
     lastBidT = game.t;
@@ -612,7 +618,7 @@ function stream(driver, hours, seed, firstRound = false) {
     // der Parker hält in der ersten Runde gleich am Ortseingang des Ziels und wartet
     const parked = driver.park && nv.opening && nv.inTown;
     if (parked) Object.assign(ctl, { throttle: 0, brake: 1 });
-    if (nv.opening && nv.inTown && m.open.townIn < 0) Object.assign(m.open, { townIn: game.t, townLeft: game.T.bid });
+    if (nv.opening && nv.inTown && m.open.townIn < 0) Object.assign(m.open, { townIn: game.t, townLeft: game.T.bid, townKm: nv.km });
     if (driver.duel) {
       if (nv.inTown && sec !== duelSec && trip.guidance().dist < 150) {
         // mal ein kurzer Schlagabtausch, mal ein langer; mal hastig, mal mit Sekunden zwischen den Geboten
@@ -856,6 +862,7 @@ for (const { driver, m } of rows) {
       ` (${band(0, 0.9)} · ${band(0.9, 1.15)} · ${band(1.15, 9)})` +
       ` · ruhige Gebote ${m.calm}, im Chaos ${m.chaos}, spät ${m.late}, im Zielort weggeboten ${m.snatched}, am Brunnen vorbeigerollt ${m.rolled}, knapp hinter dem Haltepunkt gestanden ${m.late2}` +
       ` · längste Pause ${fmt(m.maxGap, 0)} s · Folge ${fmt(m.minTv)}–${fmt(m.maxTv)} s` +
+      ` · erstes Gebot nach der Folge ${fmt([...m.firstWait].sort((a, b) => a - b)[m.firstWait.length >> 1] ?? NaN)} s (Median), höchstens ${fmt(Math.max(0, ...m.firstWait))} s` +
       `\n    Fahrzeit zum Ziel: ~30 km ${legs(18, 45)} · ~100 km ${legs(75, 130)} · ~250 km ${legs(190, 320)}` +
       `\n    Ziele nach Entfernung: <${BID_PLACES.nearKm} km ${fmt((100 * m.bands[0]) / tot, 0)} % · bis ${BID_PLACES.farKm} km ${fmt((100 * m.bands[1]) / tot, 0)} % · bis 500 km ${fmt((100 * m.bands[2]) / tot, 0)} % · weiter ${fmt((100 * m.bands[3]) / tot, 0)} %` +
       ` · zur Wahl standen stets ≥ ${m.minChoice} Orte · in Sperrzonen geboten: ${m.lockFork} vor Gabelungen, ${m.lockNode} vor Knoten · an der Gabelung anders als angesagt ${m.wrong}× (${m.flipped}× kippte ein Gebot den Plan kurz davor) · Einnahmen ${fmt(m.money / h / 60, 2)} €/min` +
@@ -868,10 +875,9 @@ for (const { driver, m } of rows) {
 // Härtetest: Bieterduell auf den letzten Metern
 {
   if (LOG) console.log(DUELLIST.name + ':');
-  // (Startwert so gewählt, dass der Stream alles Verlangte enthält: 17 Duelle, 7 Ankünfte, 1× vorbeigerollt, 1× knapp
-  // hinter dem Haltepunkt – wer an den Bieterregeln dreht oder an den Listen, aus denen das Spiel würfelt (zuletzt der
-  // Ruf „Schöner Brunnen!“ samt Echo auch in übersprungenen Folgen, dann der Gruß des Chats zum Streamstart),
-  // verschiebt den Zufall und sucht hier notfalls neu)
+  // (Startwert so gewählt, dass der Stream genug Duelle und Ankünfte enthält – wer an den Bieterregeln dreht oder an
+  // den Listen, aus denen das Spiel würfelt (zuletzt der Gruß des Chats zum Streamstart und der Zuschlag), verschiebt
+  // den Zufall und sucht hier notfalls neu)
   const m = stream(DUELLIST, HOURS, 843);
   console.log(
     `${DUELLIST.name}: ${fmt(m.hours)} h, ${m.duels} Duelle auf den letzten 150 m, ${m.bids} Gebote · danach ${m.arrivals}× am Brunnen gestanden (BrunnenTV;` +
@@ -879,7 +885,8 @@ for (const { driver, m } of rows) {
       ` · in Sperrzonen geboten: ${m.lockFork} vor Gabelungen, ${m.lockNode} vor Knoten · an der Gabelung anders als angesagt ${m.wrong}× (${m.flipped}× kippte ein Gebot den Plan kurz davor)` +
       `\n    ${numbersLine(m)}`,
   );
-  if (HOURS >= 3) ok(m.duels >= 10 && m.arrivals >= 3 && m.rolled >= 1, `Duell im Zielort: zu wenig geprüft (${m.duels} Duelle, ${m.arrivals} Ankünfte, ${m.rolled} vorbeigerollt, ${m.late2} knapp dahinter)`);
+  ok(m.rolled === 0 && m.duels <= m.spots, `Duell im Zielort nach dem Zuschlag: ${m.rolled}× vorbeigerollt, ${m.duels - m.spots}× war das Ziel am Brunnen ein anderes`);
+  if (HOURS >= 3) ok(m.duels >= 10 && m.arrivals >= 3, `Duell im Zielort: zu wenig geprüft (${m.duels} Duelle, ${m.arrivals} Ankünfte, ${m.late2} knapp dahinter)`);
   rows.push({ driver: DUELLIST, m });
 }
 // Ladestopps: Wer bei NOMIs Warnung den genannten Ladepark einplant, läuft nie leer (NOMI rechnet je Meter Straße und
@@ -952,9 +959,9 @@ function atNaviPace(seed, lo, hi) {
 // OPENINGS = 60; wer an OPENING, OPENING_CALM oder den Pausen des Chaos dreht, sieht hier, was es mit den ersten
 // Minuten macht.
 const OPEN_BOUNDS = {
-  'zügig': { kept: [80, 100], episode: 95, median: 240, p90: 420 },
-  mittel: { kept: [62, 92], episode: 90, median: 270, p90: 540 },
-  'gemütlich': { kept: [50, 85], episode: 82, median: 320, p90: Infinity },
+  'zügig': { kept: [90, 100], episode: 95, median: 240, p90: 420 },
+  mittel: { kept: [85, 100], episode: 90, median: 270, p90: 540 },
+  'gemütlich': { kept: [65, 100], episode: 82, median: 320, p90: Infinity },
 };
 const OPEN_MIN = 10 / 60; // Stunden: zehn Minuten je Stream
 if (OPENINGS > 0) {
@@ -1016,20 +1023,28 @@ if (OPENINGS > 0) {
       ` · in ${((Date.now() - tOpen) / 1000).toFixed(0)} s`,
   );
   ok(list.length >= OPENING.min, `Erste Runde: nur ${list.length} verschiedene Orte wurden geboten`);
-  // Wer im Zielort parkt, statt zum Brunnen zu fahren, hält die Bieter höchstens TOWN_HOLD Sekunden auf
+  // Wer im Zielort parkt, statt zum Brunnen zu fahren: Liegt der Brunnen keine AUKTION.lock km mehr entfernt, ist der
+  // Zuschlag gefallen – kein Gebot nimmt ihm das Ziel weg. Nur weiter draußen hält er die Bieter höchstens TOWN_HOLD
+  // Sekunden auf.
   const parker = { name: 'Parker', cruise: 145, miss: 0, skip: false, park: true };
   const waits = [];
+  let fixed = 0;
   for (let r = 0; r < 10; r++) {
     const o = stream(parker, OPEN_MIN, 30000 + r, true).open;
     if (o.townIn < 0) continue;
+    if (o.townKm <= AUKTION.lock) {
+      fixed++;
+      ok(o.townBids.length === 0, `Erste Runde, Parker: Im Zielort kam nach dem Zuschlag ein Gebot (nach ${fmt(o.townBids[0] ?? NaN, 0)} s)`);
+      continue;
+    }
     // höchstens TOWN_HOLD gehalten; war die Ruhe nach dem letzten Gebot länger, kommt es erst mit ihrem Ende
     const allowed = Math.max(TOWN_HOLD + 1, o.townLeft) + 0.5;
     if (o.townIn + allowed > OPEN_MIN * 3600 - 1) continue;
     waits.push(o.townBids[0]);
     ok(o.townBids.length > 0 && o.townBids[0] <= allowed, `Erste Runde, Parker: Im Zielort kam ${o.townBids.length ? 'erst nach ' + fmt(o.townBids[0], 0) + ' s' : 'kein'} Gebot (erlaubt ${fmt(allowed, 0)} s)`);
   }
-  ok(waits.length >= 5, `Erste Runde, Parker: nur ${waits.length} von 10 Streams standen rechtzeitig im Zielort`);
-  console.log(`Erste Runde, Parker (hält am Ortseingang des Ziels): ${waits.length} von 10 Streams, das nächste Gebot kam dort nach ${waits.map((w) => fmt(w ?? NaN, 0)).join(', ')} s (höchstens ${TOWN_HOLD} s gehalten)`);
+  ok(fixed + waits.length >= 5, `Erste Runde, Parker: nur ${fixed + waits.length} von 10 Streams standen rechtzeitig im Zielort`);
+  console.log(`Erste Runde, Parker (hält am Ortseingang des Ziels): ${fixed + waits.length} von 10 Streams · ${fixed}× lag der Brunnen keine ${AUKTION.lock} km mehr entfernt, das Ziel blieb stehen` + (waits.length ? ` · sonst kam das nächste Gebot dort nach ${waits.map((w) => fmt(w ?? NaN, 0)).join(', ')} s (höchstens ${TOWN_HOLD} s gehalten)` : ''));
 }
 
 // genug geprüft?

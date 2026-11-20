@@ -22,6 +22,7 @@ import { Trip, J } from '../src/game/trip.js';
 import { Game } from '../src/game/game.js';
 import { Economy, BONTANA } from '../src/game/economy.js';
 import { Satisfaction, ZUFRIEDEN, moodEmoji } from '../src/game/satisfaction.js';
+import { clamp } from '../src/util.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { CHAT, REPARATUR, CREW, CREW_LINES, ABSPANN_REISE, GEDENKEN } from '../src/data.js';
 
@@ -97,6 +98,8 @@ function journey(driver, minutes, seed, hook = null) {
     pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });
+  // (die Streams laufen hier ihre volle Länge: Ob nach einer Folge noch jemand bietet, prüft ansagen-test)
+  game.endless = true;
   game.start({ upgrades: {}, best: {} });
   const p = game.player;
   p.s = trip.s;
@@ -260,15 +263,15 @@ console.log('BontanaBack (Reise):');
   ok(Math.abs(share - T.chance) < 0.05, `Kasse: BontanaBack in ${fmt(100 * share)} % der möglichen Runden (soll ${fmt(100 * T.chance)} %)`);
   console.log(`  Kasse allein, 400 Streams zu 12 Runden: in ${fmt(100 * share, 1)} % der möglichen Runden, je Stream 0/1/2-mal: ${per.join(' / ')} · Endstand Median ${q(finals, 0.5)} €, 9. Dezil ${q(finals, 0.9)} €, höchstens ${Math.max(...finals)} €`);
   // im echten Spiel: alle Streams von oben, dazu lange Streams des zügigen Fahrers (viele Runden) – mindestens drei
-  // und so viele mehr, bis drei Eskalationen ganz geprüft sind (höchstens acht): Ob BontanaBack vor der Ankunft
-  // zum Zug kommt, hängt am Zufall jedes Streams
+  // und so viele mehr, bis drei Eskalationen ganz geprüft sind (höchstens zwölf): Ob BontanaBack vor der Ankunft
+  // zum Zug kommt, hängt am Zufall jedes Streams (und seit dem Zuschlag 5 km vor dem Brunnen auch am Weg dorthin)
   let shown = 0;
   let complete = 0;
   let count = 0;
   let long = 0;
   const tops = [];
   const streams = [...runs.values()].flat();
-  for (let i = 0; i < streams.length || (long < 8 && (long < 3 || complete < 3)); i++) {
+  for (let i = 0; i < streams.length || (long < 12 && (long < 3 || complete < 3)); i++) {
     const r = i < streams.length ? streams[i] : journey(DRIVERS[0], 90, 4304 + 62 * long++);
     const where = `Spiel, Stream ${i}`;
     const esc = r.rounds.map((x) => x.filter((b) => b.kind === 'bontana')).filter((x) => x.length);
@@ -369,7 +372,9 @@ console.log('Zufriedenheit des Chats (Reise):');
   const e125 = eq(1.25);
   const e100 = eq(1);
   const e085 = eq(0.85);
-  ok(Math.abs(e125 - (Z.home + Z.rate * Z.homeTau * 0.25)) < 1.5 && Math.abs(e100 - Z.home) < 1.5 && Math.abs(e085 - (Z.home - Z.rate * Z.homeTau * 0.15)) < 1.5, `Gleichgewicht ${fmt(e125, 1)} / ${fmt(e100, 1)} / ${fmt(e085, 1)}`);
+  // (neutral ist das Tempo fair, knapp unter dem des Navis: Gleichgewicht home + rate · homeTau · (p − fair), in 0 … 100)
+  const want = (p) => clamp(Z.home + Z.rate * Z.homeTau * clamp(p - Z.fair, Z.lo, Z.hi), 0, 100);
+  ok(Math.abs(e125 - want(1.25)) < 1.5 && Math.abs(e100 - want(1)) < 1.5 && Math.abs(e085 - want(0.85)) < 1.5 && e125 > e100 && e100 > e085, `Gleichgewicht ${fmt(e125, 1)} / ${fmt(e100, 1)} / ${fmt(e085, 1)}`);
   const st = new Satisfaction();
   drive(st, 0, 60, 0);
   const standDrop = Z.start - st.value;

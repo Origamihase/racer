@@ -46,6 +46,13 @@ const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
 // BrunnenTV am Navi-Ziel (Reise): Fahrplan der Folge in world/xxl/brunnentv.js (TV); das erste Gebot der nächsten
 // Runde kommt frühestens TV.pause Sekunden, nachdem der Wagen fahren darf.
 /** Entfernung für NOMIs Ansage: „39 Kilometern“, unter 10 km mit einer Nachkommastelle („4,5 Kilometern“). */
+/** Das Ziel für NOMI: „Marktbrunnen, Würzburg“ → „Marktbrunnen in Würzburg“ (ohne eigenen Namen „Brunnen in …“). */
+export function fountainIn(t) {
+  const tail = ', ' + t.name;
+  const g = t.goal || 'Brunnen in ' + t.name;
+  return g.endsWith(tail) ? g.slice(0, -tail.length) + ' in ' + t.name : g;
+}
+
 function kmWords(km) {
   if (km < 10) {
     const v = Math.max(0.1, Math.ceil(km * 10 - 1e-6) / 10);
@@ -94,6 +101,15 @@ const NOWHERE = { m: Infinity, realM: 0 };
 // Erste Runde: Fährt der Wagen schon im Zielort, wartet das nächste Gebot – höchstens so viele Sekunden nach der
 // Einfahrt (wer dort parkt, statt zum Brunnen zu fahren, hält die Bieter nicht ewig auf)
 export const TOWN_HOLD = 75;
+/**
+ * Die Auktion ums Navi-Ziel (der Eigentümer, 20.11.2026: „Gebote dürfen das Ziel nur bis 5 km vor der Ankunft ändern,
+ * danach steht es fest.“): Ab lock Navi-Kilometern vor dem Brunnen fällt der Zuschlag (Game.zuschlag) – für den, der
+ * vorn liegt; ein laufendes Bieterrennen endet dort, und bis zur Ankunft ruht die Uhr der Gebote. Nach jeder Folge
+ * öffnet ein Bieterfenster von window Sekunden (Game.openWindow): Ob und wie schnell jemand bietet, hängt an der
+ * Stimmung (economy.js windowBid); bietet niemand, ist der Stream vorbei (Game.streamOver). warn: so viele Sekunden
+ * vor dem Ende des Fensters meldet sich der Chat.
+ */
+export const AUKTION = { lock: 5, window: 25, warn: 10 };
 // Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
 // Kästchen, lead Sekunden später folgen NOMIs Gong und ihre Ansage
 const RADAR = { ahead: 180, lead: 0.45 };
@@ -120,6 +136,8 @@ export class Game {
     this.seenAhead = new WeakSet();
     this.running = false;
     this.over = null;
+    // ein Stream ohne Ende: Bietet im Fenster nach einer Folge niemand, geht es trotzdem weiter (Prüfstände über Stunden)
+    this.endless = false;
     // abseits der Autobahn ruhen Ereignisse, die nur dort Sinn ergeben (setzt main.js jedes Bild)
     this.offAutobahn = false;
     // Mini Adams Mimik (main.js hängt sich ein): onMood(name, Stärke 0 … 1) bei Spenden, Schreck, Rempler, Ziel …
@@ -243,6 +261,10 @@ export class Game {
     this.T.bid = this.bidPlan.delay;
     this.roundNew = false;
     this.townT = 0; // Sekunden im Zielort der ersten Runde (updateNavi)
+    // Auktion (AUKTION): offen – Gebote ändern das Ziel · fest – Zuschlag erteilt, bis zur Ankunft ändert sich nichts
+    // · folge – am Brunnen · fenster – nach der Folge, bis zum ersten Gebot oder bis until · aus – niemand hat
+    // geboten, der Stream endet; said: das Ziel, das NOMI zuletzt angesagt hat
+    this.auction = { phase: 'offen', said: null, until: 0, warned: false };
     this.traffic.reset();
     this.traffic.populate(0, p.speed);
     this.pickups.reset();
@@ -1039,14 +1061,30 @@ export class Game {
   updateNavi(dt) {
     const p = this.player;
     const nv = this.navi;
-    // Kurz vor dem Ziel doch noch überboten – ein Klassiker. (Nur hier muss das Spiel wissen, wie viele Sekunden
-    // es noch bis zum Ziel sind: Die Fahrt kennt sie.) Die Pausen zwischen den Geboten sind mit der Fahrzeit gestreckt
-    // (bidPlan.stretch), also auch dieses Zeitfenster.
-    const eta = nv.eta(p.speed);
-    // (in der ersten Runde eines Streams bleibt dieses späte Gebot aus: nv.opening, siehe navi.js)
-    if (!nv.opening && eta < 8 && this.T.bid > eta && this.T.bid < 45 * (this.bidPlan.stretch || 1) && this.eco.lateBid()) {
-      this.T.bid = rand(0.4, Math.max(0.5, eta - 2.5));
-      this.bidPlan.late = true;
+    const A = this.auction;
+    // 5 km vor dem Brunnen fällt der Zuschlag: Ab da steht das Ziel fest, und bis zur Ankunft ruht die Uhr der Gebote
+    if (A.phase === 'offen' && nv.target && nv.km <= AUKTION.lock) this.zuschlag();
+    if (A.phase === 'fest' || A.phase === 'folge' || A.phase === 'aus') {
+      this.T.bid = Math.max(this.T.bid, 1);
+      return;
+    }
+    if (A.phase === 'fenster') {
+      // das Bieterfenster nach der Folge: Navi-Zeile und roter Balken zählen mit, der Chat kurz vor Schluss auch
+      const left = A.until - this.t;
+      nv.window = Math.max(0, Math.ceil(left));
+      if (!A.warned && left <= AUKTION.warn) {
+        A.warned = true;
+        this.chat(this.chatLine(this.eco.level >= 2 ? CHAT.fensterBald : CHAT.fensterStill));
+      }
+      // ob jemand bietet, würfelt die Stream-Kasse je Schritt nach der Stimmung (economy.js windowBid) – die ersten
+      // TV.pause Sekunden gehören James' Aufruf; bietet bis zum Ende niemand, ist der Stream vorbei (endless: dann
+      // bietet doch noch jemand)
+      const heard = this.t - (A.until - AUKTION.window) >= TV.pause;
+      if ((heard && this.eco.windowBid(dt)) || (left <= 0 && this.endless)) this.T.bid = 0;
+      else if (left <= 0) {
+        this.streamOver();
+        return;
+      } else this.T.bid = Math.max(this.T.bid, 1);
     }
     // (… und ist der Wagen dort schon im Zielort, wartet das nächste Gebot, bis er am Brunnen steht oder vorbeigerollt
     // ist: Die erste Runde soll an einem Brunnen enden, nicht zweihundert Meter davor – höchstens TOWN_HOLD lang)
@@ -1055,7 +1093,7 @@ export class Game {
     if (this.T.bid <= 0) {
       const plan = this.bidPlan;
       const siegen = this.bidTargets().find((x) => x.special === 'siegen');
-      if (plan.kind === 'step' && !plan.late && siegen && nv.target !== siegen && chance(0.16)) {
+      if (plan.kind === 'step' && siegen && nv.target !== siegen && chance(0.16)) {
         // Siegen wird geboten … und sofort überboten
         const n = viewerName();
         // Das Siegen-Gebot zählt wirklich: Das Navi stellt kurz auf Siegen um (Navi und James sagen dasselbe), die
@@ -1065,11 +1103,13 @@ export class Game {
         this.stats.topBid = Math.max(this.stats.topBid, nv.bid);
         this.earn(nv.bid, 'Navi-Gebote', { silent: true });
         this.bot('james', `${n} bietet ${fmtEuro(nv.bid)} – neues Ziel: Siegen`);
+        this.bidChip(n, siegen);
         this.chat(pick(['SIEGEN!', 'Siegen? 👀', 'Diesmal Siegen!']));
         // bis das Gegengebot da ist, ruht die Uhr
         this.T.bid = 99;
         // (Hält der Wagen in der Zwischenzeit am Brunnen von Siegen, gehört das nächste Gebot zur neuen Runde)
-        this.later(2.2, () => (this.roundNew || this.navi.stopping ? null : this.changeNavi(true)));
+        // (… es sei denn, in der Zwischenzeit fiel der Zuschlag: Dann setzt sich Siegen durch)
+        this.later(2.2, () => (this.roundNew || this.navi.stopping || this.auction.phase !== 'offen' ? null : this.changeNavi(true)));
       } else this.changeNavi(false);
     }
   }
@@ -1083,10 +1123,14 @@ export class Game {
     const nv = this.navi;
     const plan = this.bidPlan;
     const chaos = plan.kind === 'chaos';
-    // neue Runde nach einer Ankunft: Es geht wieder beim ersten Zehner los
+    // neue Runde nach einer Ankunft: Es geht wieder beim ersten Zehner los (und das Bieterfenster ist zu)
     if (this.roundNew) {
       this.roundNew = false;
       nv.bid = 0;
+    }
+    if (this.auction.phase === 'fenster') {
+      this.auction.phase = 'offen';
+      nv.window = 0;
     }
     let bidder = viewerName();
     let target;
@@ -1108,8 +1152,9 @@ export class Game {
     this.stats.naviChanges++;
     this.stats.topBid = Math.max(this.stats.topBid, nv.bid);
     this.earn(nv.bid, 'Navi-Gebote');
-    // (echte Orte heißen überall wie auf ihrer Ortstafel, auch wenn es eilt)
+    // (echte Orte heißen überall wie auf ihrer Ortstafel, auch wenn es eilt) – jedes Gebot im Chat und am Rand
     this.bot('james', `${bidder} bietet ${fmtEuro(nv.bid)} – neues Ziel: ${t.name}`);
+    this.bidChip(bidder, t);
     if (siegenOverbid) this.later(0.8, () => this.chat(pick(['Siegen wurde überboten. Wie immer 😂', 'Nicht schon wieder Siegen verpasst', 'Klassiker'])));
     this.eco.cheer(chaos ? 'bidChaos' : plan.kind === 'big' || plan.kind === 'bontana' ? 'bidBig' : 'bid');
     // Echte Orte liegen Minuten auseinander – die Stream-Kasse plant die Ruhe danach mit der Fahrzeit des Navis
@@ -1136,8 +1181,7 @@ export class Game {
       else if (plan.kind === 'big') {
         this.ui.toast(`🤑 Großes Gebot: ${fmtEuro(nv.bid)} von ${bidder}`, 'good');
         this.burst(CHAT.zehnerGross, 3, 2.5);
-      } else if (plan.late) this.burst(CHAT.bidLate, 3, 2);
-      else this.burst(CHAT.ortChanged, 2, 3);
+      } else this.burst(CHAT.ortChanged, 2, 3);
     }
     if (snatched) this.later(1, () => this.burst(CHAT.brunnenWeg, 2, 2.5));
     if (t.special === 'siegen') this.later(1.4, () => this.chat('SIEGEN SETZT SICH DURCH?! 😱'));
@@ -1145,15 +1189,8 @@ export class Game {
     // nicht hinterher
     if (next.delay > 6) {
       if (chaos) this.later(rand(2.5, 4), () => this.chat(this.chatLine(CHAT.bidCalm)));
-      if (this.t - this.naviSaidT > 10) {
-        this.naviSaidT = this.t;
-        this.say(BOARD.naviChanged, 'think');
-      }
+      this.announceTarget(t);
       this.onMood('curious', 1);
-      // Das neue Ziel sagt die Navi-Zeile selbst an (sie zählt Entfernung und Gebot ohnehin laufend mit). Was das Navi
-      // sonst dazu sagt – die Zeile zum Ort, „Bitte wenden“ –, steht als Hinweis mit dem Schlüssel 'navi' darunter:
-      // immer nur einer, und er geht mit dem Ziel, zu dem er gehört
-      this.ui.naviNews();
       if (t.note) this.ui.toast('📍 ' + t.note, 'info', 'navi');
       // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es nur, wenn sie zurückführt) – das
       // muss der Spieler fahren, deshalb als Warnung
@@ -1178,6 +1215,72 @@ export class Game {
     return this.eco.pickTarget(this.bidTargets(), this.navi.target);
   }
 
+  /**
+   * Die Folge ist vorbei: Das Bieterfenster der neuen Runde geht auf. James eröffnet es, Navi-Zeile und roter Balken
+   * zählen die Sekunden. Wann das erste Gebot kommt – oder ob keins –, würfelt die Stream-Kasse Schritt für Schritt
+   * nach der Stimmung (updateNavi, economy.js windowBid); ohne Gebot endet der Stream (außer endless: Prüfstände).
+   */
+  openWindow() {
+    const A = this.auction;
+    A.phase = 'fenster';
+    A.until = this.t + AUKTION.window;
+    A.warned = false;
+    this.navi.window = AUKTION.window;
+    this.T.bid = Math.max(this.T.bid, 1);
+    this.bot('james', `Neue Runde! Wohin geht es als Nächstes? Gebote ab 10 € – ihr habt ${AUKTION.window} Sekunden.`);
+  }
+
+  /**
+   * Im Bieterfenster hat niemand geboten: Der Stream ist vorbei. James sagt es, der Chat verabschiedet sich, dann der
+   * Abspann mit dem Grund 'stream' (wie nach der Werkstatt, menus.js REASONS).
+   */
+  streamOver() {
+    this.auction.phase = 'aus';
+    this.navi.window = 0;
+    this.bot('james', 'Keine Gebote mehr – niemand will weiter. Der Stream ist vorbei. Danke fürs Zuschauen! ❤');
+    this.burst(CHAT.streamEnde, 3, 2.4);
+    this.later(3.2, () => this.end('stream'));
+  }
+
+  /** Das Gebot am Rand (oben, als Hinweis der Auktion – ein neues ersetzt das alte): wer vorn liegt, wie viel, wohin. */
+  bidChip(bidder, t) {
+    this.ui.toast(`🔨 ${bidder} bietet ${fmtEuro(this.navi.bid)} → ${t.name}`, 'info', 'auktion');
+  }
+
+  /**
+   * Ein neues Ziel steht (das letzte Gebot eines Rennens, ein einzelnes ruhiges Gebot oder der Zuschlag): NOMI sagt
+   * es mit Brunnen und Ort an („Neues Ziel: Marktbrunnen in Würzburg!“), und die Navi-Zeile zeigt es hervorgehoben.
+   * Was das Navi sonst dazu sagt – die Zeile zum Ort, „Bitte wenden“ –, steht als Hinweis mit dem Schlüssel 'navi'
+   * darunter: immer nur einer, und er geht mit dem Ziel, zu dem er gehört.
+   */
+  announceTarget(t) {
+    if (this.auction.said === t) return;
+    this.auction.said = t;
+    this.naviSaidT = this.t;
+    this.say(fillTemplate(BOARD.neuesZiel, { ziel: fountainIn(t) }), 'think');
+    this.ui.naviNews();
+  }
+
+  /**
+   * Der Zuschlag (AUKTION.lock Navi-Kilometer vor dem Brunnen): Wer jetzt vorn liegt, bekommt das Ziel. Ein laufendes
+   * Rennen (Chaos, Duell, BontanaBack) endet hier, der Rest seiner Gebote entfällt. Kurze Fanfare, oben am Rand der
+   * Gewinner mit Betrag, James und der Chat feiern ihn; stand das Ziel noch nicht angesagt, sagt NOMI es jetzt.
+   */
+  zuschlag() {
+    const nv = this.navi;
+    const t = nv.target;
+    const plan = this.bidPlan;
+    const race = this.eco.cutRace() || ((plan.kind === 'chaos' || plan.kind === 'duel' || plan.kind === 'bontana') && !plan.last);
+    this.auction.phase = 'fest';
+    this.duel = null;
+    this.audio.zuschlag();
+    const who = nv.bidder;
+    this.ui.toast(`🔨 Zuschlag: ${who} · ${fmtEuro(nv.bid)} · ${t.name}`, 'good', 'auktion');
+    this.bot('james', `Zuschlag für ${who}: ${fmtEuro(nv.bid)}!` + (race ? ' Das Rennen ist entschieden.' : '') + ` Das Ziel steht fest: ${t.goal || t.name}.`);
+    this.later(0.8, () => this.burst(CHAT.zuschlag, 2, 2.5));
+    this.announceTarget(t);
+  }
+
   onArrive(e) {
     const p = this.player;
     const t = e.target;
@@ -1199,9 +1302,11 @@ export class Game {
     // Die Runde wird abgerechnet – ihre Einnahmen (samt dieser Ortsspenden) und die Werkstatt-Rechnung; der Chat urteilt
     // über die ganze Runde (satisfaction.js arrive) und sagt es, wenn es deutlich war
     this.settleRound(round, gifts);
+    // (der Ton passt zur Laune: ein mürrischer Chat lobt nicht, ein glücklicher drängelt nicht)
     const dz = this.zufrieden.arrive();
-    if (dz >= 9) this.later(2.6, () => this.chat(this.chatLine(CHAT.flott)));
-    else if (dz <= -3) this.later(2.6, () => this.chat(this.chatLine(CHAT.schneller)));
+    const zv = this.zufrieden.value;
+    if (dz >= 9 && zv > ZUFRIEDEN.grumpy) this.later(2.6, () => this.chat(this.chatLine(CHAT.flott)));
+    else if (dz <= -3 && zv < ZUFRIEDEN.happy) this.later(2.6, () => this.chat(this.chatLine(CHAT.schneller)));
     // bis hier steht die letzte Ortsspende spätestens im Chat (ein „5 Cent“-Angebot zum Ziel kommt erst danach)
     this.cent5.arrivedT = this.t + 2.4 + (gifts.length - 1) * 1.1;
     gifts.forEach((v, i) => this.later(1.8 + i * 1.1 + rand(0, 0.6), () => {
@@ -1212,6 +1317,7 @@ export class Game {
     this.later(1.2, () => this.chat(this.chatLine(CHAT.ortsspende)));
     // danach beginnt eine neue Bieterrunde beim ersten Zehner
     this.duel = null;
+    this.auction.phase = 'folge';
     this.roundNew = true;
     this.bidPlan = this.eco.nextBid({ bid: 0 });
     this.T.bid = this.bidPlan.delay;
@@ -1289,6 +1395,7 @@ export class Game {
     if (!this.world.stopping()) {
       this.halt = null;
       this.navi.miss();
+      this.auction.phase = 'offen';
       this.T.bid = rand(1.5, 3);
       this.burst(CHAT.brunnenVorbei, 3, 2.5);
       return;
@@ -1470,6 +1577,7 @@ export class Game {
     this.tv = null;
     this.ui.brunnenTV(0);
     this.world.release();
+    this.openWindow();
     this.sayHeld();
   }
 
@@ -2333,7 +2441,8 @@ export class Game {
     this.speech.stopAll();
     if (reason === 'akku') this.say('Akku leer. Die Stream-Technik verabschiedet sich.', 'sleep');
     else if (reason === 'werkstatt') this.say('Bitte einen Werkstatttermin vereinbaren.', 'dizzy');
-    if (reason === 'akku' || reason === 'werkstatt') this.onMood(reason === 'akku' ? 'sleepy' : 'ouch', 1);
+    else if (reason === 'stream') this.say('Keine Gebote mehr. Der Stream ist zu Ende. Gute Nacht!', 'sleep');
+    if (reason !== 'quit') this.onMood(reason === 'werkstatt' ? 'ouch' : 'sleepy', 1);
   }
 
   /**

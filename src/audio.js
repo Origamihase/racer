@@ -376,6 +376,14 @@ export class Audio {
     notes.forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.06, i * 0.12));
   }
 
+  /** Zuschlag der Auktion: ein Hammerschlag, dann eine kurze Fanfare. */
+  zuschlag() {
+    this.noiseBurst(0.08, 0.12, { type: 'lowpass', freq: 900 });
+    [392, 523.25, 659.25].forEach((f, i) => this.tone(f, 0.11, 'square', 0.035, 0.12 + i * 0.1));
+    this.tone(783.99, 0.5, 'triangle', 0.07, 0.42);
+    this.tone(1046.5, 0.45, 'sine', 0.03, 0.44);
+  }
+
   brunnenJingle() {
     [392, 523.25, 659.25, 523.25, 784].forEach((f, i) => this.tone(f, 0.3, 'sine', 0.07, i * 0.16));
     this.noiseBurst(1.2, 0.03, { type: 'highpass', freq: 4000, when: 0.1 });

@@ -76,6 +76,7 @@ export class WorldNavi {
     this.reached = null; // das zuletzt erreichte Ziel, solange noch kein neues Gebot da ist
     this.stopping = null; // das Ziel, an dessen Brunnen der Wagen gerade zum Halt bremst
     this.missed = false; // am Brunnen des letzten Ziels vorbeigerollt, noch kein neues Gebot
+    this.window = 0; // Sekunden, die das Bieterfenster nach einer Folge noch offen ist (Game.openWindow), sonst 0
     this.changes = 0;
     this.wende = false;
     this.visits = new Map(); // Ortsindex → Gewichtsfaktor aus den Besuchen dieses Streams
@@ -254,6 +255,7 @@ export class WorldNavi {
    * verpassten Ankunft.
    */
   get waitLine() {
+    if (this.reached && this.window > 0) return `📍 Ziel erreicht: ${this.reached.goal} – Gebote noch ${this.window} s …`;
     if (this.reached) return `📍 Ziel erreicht: ${this.reached.goal} – warte auf das nächste Gebot …`;
     return this.missed ? '📍 Am Brunnen vorbeigerollt – gleich kommt das nächste Gebot …' : '📍 Wohin geht die Reise? Gleich kommt das erste Gebot …';
   }
@@ -269,7 +271,7 @@ export class WorldNavi {
     S.bid = this.shown ? fmtEuro(this.bid) : '';
     // (das Navi selbst meldet „Ziel erreicht“ schon am Zielpunkt, wie jedes Navi – darum gilt das Kärtchen ab dort)
     const r = this.stopping || this.reached;
-    S.bar = r ? '📡 Neue Runde: Gebote ab 10 €' : this.missed ? '📡 Der Chat bietet weiter …' : '📡 Der Chat bietet: Gebote ab 10 €';
+    S.bar = r ? (this.window > 0 ? `📡 Neue Runde: noch ${this.window} s für Gebote` : '📡 Neue Runde: Gebote ab 10 €') : this.missed ? '📡 Der Chat bietet weiter …' : '📡 Der Chat bietet: Gebote ab 10 €';
     S.wait = r ? '⛲ Ziel erreicht: ' + r.goal : this.missed ? '⏳ Vorbeigerollt – gleich kommt das nächste Gebot …' : '⏳ Gleich kommt das erste Gebot …';
     return S;
   }

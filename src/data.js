@@ -306,8 +306,16 @@ export const CHAT = {
   // am Ziel vorbeigefahren (kommt mit der Karte und ihren echten Ausfahrten)
   missedTarget: ['Die Ausfahrt war DA 😭', 'Vorbei … so nah dran', 'Das Navi weint leise', 'Nächste Ausfahrt dann, ja?',
     'Zu flott für die Ausfahrt 😅', 'Tschüss, schönes Ziel 👋'],
-  bidLate: ['KURZ VORM ZIEL 😭', 'Nein!!! So knapp', 'Das war gemein 😂', 'Chat, wir waren fast da. FAST.',
-    'Ich konnte das Ziel schon sehen 😭', 'Auf den letzten Metern überboten', 'Last-Minute-Gebot. Frech, aber Königsdisziplin 👑'],
+  // das Bieterfenster nach einer Folge läuft bald ab (game.js updateNavi): gut gelaunt drängelt der Chat, sonst gähnt er
+  fensterBald: ['Leute, bietet mal! ⏳', 'Wer bietet? Die Uhr läuft ⏳', 'Zehn Sekunden noch, kommt schon 😅', 'Ich will weiterfahren, bietet jemand?',
+    'Nicht einschlafen, Chat! Bieten!', 'Ich würde ja bieten, aber mein Taschengeld 😭'],
+  fensterStill: ['…', 'Ist noch jemand da? 👀', 'Hm.', 'Schon spät heute 🥱', 'Ich glaub, das wars', 'Bietet keiner mehr?'],
+  // niemand hat geboten: Der Stream ist vorbei (game.js streamOver)
+  streamEnde: ['Gute Nacht, Mini Adam! 🌙', 'Danke für den Stream ❤', 'Bis zum nächsten Mal 👋', 'Schöner Stream heute', 'Tschüss Partypeople! 🎉',
+    'Das war schön ⛲'],
+  // der Zuschlag fünf Kilometer vor dem Brunnen (game.js zuschlag): Das Ziel steht fest
+  zuschlag: ['ZUSCHLAG! 🔨', 'Verkauft! 🔨', 'Glückwunsch zum Ziel 🎉', 'Jetzt gilt es, keine Gebote mehr', 'Ziel steht! Ab zum Brunnen ⛲',
+    'Das war ein Rennen 😮', 'Ehrenmensch hat gewonnen 👑', 'Ab jetzt wird nicht mehr umgeplant 😌', 'Gekauft wie gesehen 😂'],
   // Challenges („Wenn …, spende ich …“) – {wenn} und {betrag} kommen vom Job
   pledge: ['Wenn {wenn}, spende ich {betrag}!', '{betrag} von mir, wenn {wenn} 🤝', 'Challenge: {betrag}, wenn {wenn}',
     'Ich leg {betrag} drauf, wenn {wenn}', 'Deal: {betrag} in die Kasse, sobald {wenn}'],
@@ -710,7 +718,8 @@ export const DURCHSAGEN_REGEN = [
 // Boardcomputer-Sätze
 export const BOARD = {
   leftLane: 'Die linke Fahrspur ist freigeschaltet.',
-  naviChanged: 'Das Navi-Ziel wurde geändert.',
+  // jedes neue Ziel, sobald es steht (game.js announceTarget): {ziel} „Marktbrunnen in Würzburg“
+  neuesZiel: 'Neues Ziel: {ziel}!',
   // die nächste Ausfahrt am ersten Vorwegweiser (game.js exitLine): {name} wie auf dem Schild, {d} „1000 Metern“
   exit: {
     ausfahrt: 'Nächste Ausfahrt: {name} in {d}.',
