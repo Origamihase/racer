@@ -126,10 +126,11 @@ function missingList(card, album) {
   for (const [cc, list] of groups) {
     const g = el('section', 'miss-group', box);
     el('h3', '', g, `${countryName(cc)} · noch ${fmtNum(list.length)}`);
+    // der Punkt bleibt beim Namen davor: eine Zeile beginnt immer mit einem Namen
     const names = el('p', 'miss-names', g);
     list.forEach((p, i) => {
-      if (i) names.append(' · ');
-      el('span', 'miss-name', names, p.name);
+      if (i) names.append(' ');
+      el('span', 'miss-name', names, i < list.length - 1 ? `${p.name} ·` : p.name);
     });
   }
 }
