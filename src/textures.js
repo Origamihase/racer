@@ -155,96 +155,6 @@ function noiseSpeckle(ctx, W, H, n, color, seed) {
   for (let i = 0; i < n; i++) ctx.fillRect(rnd() * W, rnd() * H, 1 + rnd() * 2, 1 + rnd() * 2);
 }
 
-// Felder als Flickenteppich (kachelbar, 160 m): Raps, Weizen, junges Grün, Stroh, Acker und Wiesen, jedes Feld
-// mit runden Ecken, feinen Saatreihen und einem grünen Rain zum Nachbarn.
-export function fieldTexture() {
-  const S = 1024;
-  const c = canvas(S, S);
-  const ctx = c.getContext('2d');
-  const rnd = mulberry32(99);
-  ctx.fillStyle = '#74b85a';
-  ctx.fillRect(0, 0, S, S);
-  blotches(ctx, S, S, 30, 60, 160, ['rgba(150,214,110,0.16)', 'rgba(80,150,70,0.14)'], 5);
-  // [Grundton, Reihen-Ton, Gewicht]
-  const crops = [
-    ['#7fc35c', '#6fb650', 30], // Wiese
-    ['#9ad75f', '#86c552', 20], // junges Grün
-    ['#f1d667', '#e3c552', 16], // Raps
-    ['#e2bf66', '#d3ae57', 14], // Weizen
-    ['#f0e39a', '#e2d386', 8], // Stroh
-    ['#a58a68', '#94795a', 8], // Acker
-    ['#5fa651', '#539846', 4], // Klee
-  ];
-  const total = crops.reduce((n, k) => n + k[2], 0);
-  const pickCrop = () => {
-    let r = rnd() * total;
-    for (const k of crops) {
-      r -= k[2];
-      if (r <= 0) return k;
-    }
-    return crops[0];
-  };
-  // Reihen und Felder teilen die Kachel restlos auf (so passt auch der Rand zum Nachbarn)
-  const split = (len, min, max) => {
-    const cuts = [];
-    let p = 0;
-    while (len - p > max) {
-      p += min + rnd() * (max - min);
-      if (len - p < min) break;
-      cuts.push(p);
-    }
-    return [0, ...cuts, len];
-  };
-  const rows = split(S, 130, 250);
-  const gap = 5;
-  let last = null;
-  for (let j = 0; j < rows.length - 1; j++) {
-    const y = rows[j];
-    const h = rows[j + 1] - y;
-    const cols = split(S, 150, 380);
-    for (let i = 0; i < cols.length - 1; i++) {
-      const x = cols[i];
-      const w = cols[i + 1] - x;
-      let crop = pickCrop();
-      while (crop === last) crop = pickCrop();
-      last = crop;
-      ctx.save();
-      ctx.beginPath();
-      ctx.roundRect(x + gap, y + gap, w - 2 * gap, h - 2 * gap, 14);
-      ctx.clip();
-      ctx.fillStyle = crop[0];
-      ctx.fillRect(x, y, w, h);
-      // Saatreihen, längs oder quer
-      ctx.strokeStyle = crop[1];
-      ctx.lineWidth = 2.5;
-      const vertical = rnd() < 0.5;
-      const step = 7 + Math.floor(rnd() * 4);
-      ctx.beginPath();
-      for (let k = step / 2; k < (vertical ? w : h); k += step) {
-        if (vertical) {
-          ctx.moveTo(x + k, y);
-          ctx.lineTo(x + k, y + h);
-        } else {
-          ctx.moveTo(x, y + k);
-          ctx.lineTo(x + w, y + k);
-        }
-      }
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
-  // helle Feldwege in zwei Rainen
-  ctx.strokeStyle = 'rgba(226,212,170,0.85)';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(0, rows[1]);
-  ctx.lineTo(S, rows[1]);
-  ctx.moveTo(0, rows[Math.min(3, rows.length - 2)]);
-  ctx.lineTo(S, rows[Math.min(3, rows.length - 2)]);
-  ctx.stroke();
-  return tex(c, { repeat: true });
-}
-
 // Grundton des Rasens (das Mittel der beiden Mähstreifen). Auch die Wiesen der XXL-Welt nehmen ihn als Grund: sonst
 // läge der gemähte Streifen der Autobahn als heller Balken in einer dunkleren Wiese.
 export const GRASS_RGB = [117, 189, 86];
@@ -444,25 +354,6 @@ export function liveLogoTexture({ w = 512, h = 512, bg = null, color = '#f4f4f4'
   return t;
 }
 
-// Holz-/Zierleiste im Cockpit (dunkel, offenporig)
-export function woodTexture() {
-  const c = canvas(1024, 64);
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#3b2c22';
-  ctx.fillRect(0, 0, 1024, 64);
-  const rnd = mulberry32(5);
-  for (let i = 0; i < 90; i++) {
-    ctx.strokeStyle = `rgba(${20 + rnd() * 40},${15 + rnd() * 25},${10 + rnd() * 15},${0.3 + rnd() * 0.4})`;
-    ctx.lineWidth = 1 + rnd() * 2;
-    ctx.beginPath();
-    const y = rnd() * 64;
-    ctx.moveTo(0, y);
-    for (let x = 0; x <= 1024; x += 64) ctx.lineTo(x, y + Math.sin(x * 0.01 + i) * 3 + (rnd() - 0.5) * 2);
-    ctx.stroke();
-  }
-  return tex(c, { repeat: true });
-}
-
 // Feine Stoffstruktur (Plüsch / Shirt)
 export function fabricTexture(seed = 1) {
   const S = 128;
@@ -505,64 +396,6 @@ export function aeroWheelTexture() {
   ctx.arc(cx, cx, 20, 0, Math.PI * 2);
   ctx.fill();
   return tex(c);
-}
-
-export function rimTexture() {
-  const S = 128;
-  const c = canvas(S, S);
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#151515';
-  ctx.fillRect(0, 0, S, S);
-  ctx.fillStyle = '#8e9398';
-  ctx.beginPath();
-  ctx.arc(64, 64, 56, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#2b2b2b';
-  for (let i = 0; i < 5; i++) {
-    ctx.save();
-    ctx.translate(64, 64);
-    ctx.rotate((i / 5) * Math.PI * 2);
-    ctx.beginPath();
-    ctx.ellipse(0, 32, 9, 18, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-  ctx.fillStyle = '#555';
-  ctx.beginPath();
-  ctx.arc(64, 64, 10, 0, Math.PI * 2);
-  ctx.fill();
-  return tex(c);
-}
-
-// Weiche Wolke
-export function cloudTexture(seed = 1) {
-  const W = 512;
-  const H = 256;
-  const c = canvas(W, H);
-  const ctx = c.getContext('2d');
-  const rnd = mulberry32(seed);
-  for (let i = 0; i < 26; i++) {
-    const x = W * (0.15 + rnd() * 0.7);
-    const y = H * (0.35 + rnd() * 0.35);
-    const r = 40 + rnd() * 70;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, 'rgba(255,255,255,0.9)');
-    g.addColorStop(0.6, 'rgba(255,255,255,0.45)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Unterseite leicht grau
-  const shade = ctx.createLinearGradient(0, H * 0.4, 0, H);
-  shade.addColorStop(0, 'rgba(180,190,205,0)');
-  shade.addColorStop(1, 'rgba(150,160,175,0.55)');
-  ctx.globalCompositeOperation = 'source-atop';
-  ctx.fillStyle = shade;
-  ctx.fillRect(0, 0, W, H);
-  ctx.globalCompositeOperation = 'source-over';
-  return tex(c, { aniso: false });
 }
 
 // Weicher runder Partikel (Gischt, Rauch)
@@ -675,29 +508,6 @@ export function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// Braunes Touristik-Schild (Unterrichtungstafel)
-export function brownSignTexture(title, sub) {
-  const w = 512;
-  const h = 320;
-  const c = canvas(w, h);
-  const ctx = c.getContext('2d');
-  // ganz füllen (undurchsichtige Tafel: durchsichtige Ecken würden schwarz)
-  ctx.fillStyle = '#6b3d22';
-  ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 6;
-  roundRect(ctx, 10, 10, w - 20, h - 20, 10);
-  ctx.stroke();
-  ctx.fillStyle = '#fff';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = 'bold 44px Arial, sans-serif';
-  fitTextCenter(ctx, title, w / 2, h * 0.42, w - 60);
-  ctx.font = '30px Arial, sans-serif';
-  fitTextCenter(ctx, sub, w / 2, h * 0.72, w - 60);
-  return tex(c);
-}
-
 export function fitTextCenter(ctx, text, x, y, maxW) {
   let size = parseFloat(ctx.font.match(/(\d+(\.\d+)?)px/)[1]);
   while (ctx.measureText(text).width > maxW && size > 12) {
@@ -800,53 +610,4 @@ export function truckRearTexture(text = 'Abstand halten!') {
     ctx.fillRect(x, H - 26, 32, 18);
   }
   return tex(c);
-}
-
-// Normal-Map-Sprite für einen Regentropfen (R/G = Normale, B = Maske)
-export function dropSprite() {
-  const S = 64;
-  const c = canvas(S, S);
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(S, S);
-  for (let y = 0; y < S; y++) {
-    for (let x = 0; x < S; x++) {
-      const dx = (x - S / 2 + 0.5) / (S / 2);
-      const dy = (y - S / 2 + 0.5) / (S / 2);
-      const r2 = dx * dx + dy * dy;
-      const i = (y * S + x) * 4;
-      if (r2 < 1) {
-        const nz = Math.sqrt(1 - r2);
-        img.data[i] = 128 + dx * 127 * (1 - nz * 0.3);
-        img.data[i + 1] = 128 + dy * 127 * (1 - nz * 0.3);
-        img.data[i + 2] = 255 * Math.min(1, nz * 1.6);
-        // weicher Rand
-        img.data[i + 3] = 255 * Math.min(1, (1 - r2) * 4);
-      } else {
-        img.data[i + 3] = 0;
-      }
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  return c;
-}
-
-export function bananaTexture() {
-  const S = 256;
-  const c = canvas(S, S);
-  const ctx = c.getContext('2d');
-  ctx.font = '200px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('🍌', 128, 140);
-  return tex(c, { aniso: false });
-}
-
-export function emojiTexture(emoji, size = 256) {
-  const c = canvas(size, size);
-  const ctx = c.getContext('2d');
-  ctx.font = `${size * 0.8}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(emoji, size / 2, size * 0.55);
-  return tex(c, { aniso: false });
 }

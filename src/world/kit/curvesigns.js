@@ -16,7 +16,7 @@ const CREAM = '#fdfbf5';
 const RED = '#df4636';
 const INK = '#353a42';
 
-/** Klassische Autobahn: rechts hinter der Leitplanke, links im Mittelstreifen (wie die Tempo-Schilder in scenery.js). */
+/** Autobahn: rechts hinter der Leitplanke, links im Mittelstreifen (wie die Tempo-Schilder in scenery.js). */
 const AUTOBAHN = { right: ROAD.right + 1.3, left: MEDIAN_X };
 
 // --- Bildatlas: 512 × 768, vier Zellen 256 × 256 für Dreiecke und Scheiben, darunter die Richtungstafel 512 × 256 ---
@@ -268,7 +268,7 @@ function freeNear(s, busy, lo, hi) {
 
 /**
  * Lage der Schilder je Abschnitt: x rechts (hinter dem Bankett) und links (Mittelstreifen bzw. linker Fahrbahnrand).
- * Kurvenprobe und Endlos-Kurs zeichnen überall die klassische Autobahn; für die XXL-Fahrt passt profileLayout zu
+ * Kurvenprobe und Endlos-Kurs (die Prüfstände) zeichnen überall die Autobahn; für die Fahrt passt profileLayout zu
  * den Querschnitten der Engine (Asphalt der zweispurigen Straßen 3,25 … 11,25 m; Rampen und Orte haben keine engen
  * Kurven).
  */

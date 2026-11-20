@@ -1,149 +1,12 @@
-// Das ferngesteuerte Navi: Zuschauer überbieten sich (mindestens 1 Cent mehr), das Ziel wechselt
-// automatisch, die Route wird neu berechnet – manchmal mit „Bitte wenden“ auf der Autobahn.
-// Zwei Navis mit derselben Schnittstelle fürs Bieten (game.js updateNavi/changeNavi): Navi für das klassische Spiel
-// mit seinen erfundenen Zielen an der endlosen Autobahn, WorldNavi für „Navi ferngesteuert XXL“ – dort nennt jedes
-// Gebot einen echten Ort der Karte, und Weg, Entfernung und Ankunft gehören der Fahrt (trip.js).
-import { NAVI_TARGETS, BANK_FARBEN, INSIDER_ORTE } from '../data.js';
-import { rand, chance, pick, weightedPick, fmtCent, fmtEuro, fmtClock, clamp } from '../util.js';
+// Das ferngesteuerte Navi: Zuschauer überbieten sich (in Zehnern), das Ziel wechselt automatisch, die Route wird neu
+// berechnet – manchmal mit „Bitte wenden“ über die nächste Ausfahrt. Jedes Gebot nennt einen echten Ort der Karte;
+// Weg, Entfernung und Ankunft gehören der Fahrt (trip.js). Geboten wird in game.js (updateNavi/changeNavi).
+import { INSIDER_ORTE } from '../data.js';
+import { fmtEuro } from '../util.js';
 import { places } from '../map/graph.js';
 import { fmtRoad, fmtDistance } from '../map/navroute.js';
 import { goalName } from '../world/kit/layout.js';
 
-/** Kurzer Name für Schilderbrücken und das Navi-Kärtchen. */
-export function shortName(t) {
-  if (!t) return '';
-  if (t.short) return t.short;
-  const n = t.name.split(/[,(–:]/)[0].trim();
-  return n.length > 24 ? n.slice(0, 23) + '…' : n;
-}
-
-const SPARK_HEX = { rot: '#d5121e', blau: '#1d5fbf', 'weiß': '#f2f2f2', 'rot (wie immer)': '#d5121e', 'überraschend orange': '#f07a12' };
-
-export class Navi {
-  constructor(scenery) {
-    this.scenery = scenery;
-    this.requests = [];
-    this.reset(0);
-  }
-
-  reset(s) {
-    for (const id of this.requests) this.scenery.cancel(id);
-    this.requests = [];
-    this.bid = 0.01;
-    this.changes = 0;
-    this.history = [];
-    this.set(s, NAVI_TARGETS[0], 'Mini Adam', { first: true });
-  }
-
-  /** Neues Ziel auswählen (nie dasselbe wie gerade). */
-  pickTarget() {
-    const cur = this.target;
-    return weightedPick(NAVI_TARGETS.filter((t) => t !== cur), (t) => t.weight ?? 1);
-  }
-
-  /**
-   * Ein Zuschauer überbietet: neues Ziel, Gebot + increment (mindestens 1 Cent; wie viel, entscheidet die
-   * Stream-Kasse in economy.js). Im Bieterduell bringt jeder sein eigenes Ziel mit (target).
-   */
-  overbid(s, bidder, increment = 0.01, target = this.pickTarget()) {
-    this.bid = Math.round((this.bid + increment) * 100) / 100;
-    this.changes++;
-    this.set(s, target, bidder);
-    return target;
-  }
-
-  set(s, target, bidder, { first = false } = {}) {
-    // Überboten: Schild und Wahrzeichen des alten Ziels verschwinden. Schon angekommen: alles bleibt stehen.
-    for (const id of this.requests) this.scenery.cancel(id, !this.arrived);
-    this.requests = [];
-    this.target = target;
-    this.bidder = bidder;
-    this.km = rand(target.km[0], target.km[1]);
-    this.startS = s;
-    this.targetS = s + this.km * 1000;
-    this.recalc = first ? 0 : 1;
-    this.wende = !first && chance(0.28);
-    this.wendeS = s + rand(380, 820);
-    this.arrived = false;
-    this.side = chance(0.5) ? 1 : -1;
-    this.sparkColor = pick(BANK_FARBEN);
-    this.history.push({ name: target.name, bidder, bid: this.bid });
-    if (this.history.length > 12) this.history.shift();
-    this.placeLandmarks();
-  }
-
-  placeLandmarks() {
-    const t = this.target;
-    const S = this.targetS;
-    const req = (type, s, data) => this.requests.push(this.scenery.request(type, s, data));
-    req('ziel', S, { title: shortName(t) });
-    switch (t.special) {
-      case 'brunnen':
-        req('brunnen', S - 70);
-        break;
-      case 'elsa':
-        req('elsa', S - 70);
-        break;
-      case 'sparkasse':
-        req('sparkasse', S - 90, { color: SPARK_HEX[this.sparkColor] || '#d5121e' });
-        break;
-      case 'pommes':
-        req('kiosk', S - 80, { title: 'Drive-In', sub: 'Pommes ohne Rückfragen' });
-        break;
-      case 'bude':
-        req('kiosk', S - 80, { title: 'Currywurst', sub: 'die richtige Bude (wirklich!)' });
-        break;
-      case 'charger':
-        req('charger', S - 80);
-        break;
-      default:
-        break;
-    }
-    if (/Burg|Wartburg/.test(t.name)) req('burg', S - 40);
-    // Skyline hinter dem Ziel, damit ihr Segment erst abgebaut wird, wenn die Türme hinter uns liegen
-    if (/Frankfurt/.test(t.name)) req('skyline', S + 300);
-  }
-
-  get remaining() {
-    return Math.max(0, this.targetS - this._s);
-  }
-
-  update(dt, s) {
-    this._s = s;
-    const ev = [];
-    this.recalc = Math.max(0, this.recalc - dt / 2.4);
-    if (this.wende && s > this.wendeS) {
-      this.wende = false;
-      this.recalc = 0.8;
-      ev.push({ type: 'wendeIgnored' });
-    }
-    if (!this.arrived && s >= this.targetS) {
-      this.arrived = true;
-      ev.push({ type: 'arrived', target: this.target, km: this.km });
-    }
-    return ev;
-  }
-
-  /** Daten für den Mittelbildschirm. */
-  screen(s, clockMin, speed) {
-    const remaining = Math.max(0, this.targetS - s);
-    const eta = clockMin + (remaining / clamp(speed, 20, 70)) * 0.5;
-    return {
-      target: this.arrived ? 'Warte auf das nächste Gebot …' : this.target.name,
-      arrived: this.arrived,
-      remaining,
-      recalc: this.recalc,
-      side: this.side,
-      wende: this.wende,
-      wendeS: this.wendeS,
-      eta: this.arrived ? '' : 'Ankunft ' + fmtClock(eta),
-      bidder: this.bidder,
-      bid: fmtCent(this.bid),
-    };
-  }
-}
-
-// --- Navi ferngesteuert XXL: geboten wird auf echte Orte ------------------------------------------------------------
 /**
  * Wohin ein Bieter will (REISE A2): Gewicht eines Orts = Bekanntheit × Entfernung × Neuheit.
  * - Bekanntheit: Streams im Community-Wiki (places[].n), gedämpft als 1 + log2(n) – Frankfurt am Main 8, Kassel 4,6,
@@ -190,7 +53,7 @@ export function placeWeight(km) {
 
 export class WorldNavi {
   /**
-   * @param {{trip: () => object}} world die Fahrt der XXL-Welt (trip.js). Sie wird bei jedem Zugriff neu erfragt: jede
+   * @param {{trip: () => object}} world die Fahrt (trip.js). Sie wird bei jedem Zugriff neu erfragt: jede
    *   Fahrt hat ihre eigene, und die Welt legt sie erst nach Game.start an.
    */
   constructor(world) {
@@ -214,7 +77,6 @@ export class WorldNavi {
     this.stopping = null; // das Ziel, an dessen Brunnen der Wagen gerade zum Halt bremst
     this.missed = false; // am Brunnen des letzten Ziels vorbeigerollt, noch kein neues Gebot
     this.changes = 0;
-    this.history = [];
     this.wende = false;
     this.visits = new Map(); // Ortsindex → Gewichtsfaktor aus den Besuchen dieses Streams
     this.listKey = '';
@@ -281,8 +143,8 @@ export class WorldNavi {
   }
 
   /**
-   * Ein Zuschauer überbietet: Gebot + increment, die Fahrt plant zum Ort des Ziels (nur über Straßen). Auf der Reise
-   * wird in Zehnern geboten (economy.js: jeder Schritt ein Vielfaches von 10 €, das erste Gebot einer Runde 10 €).
+   * Ein Zuschauer überbietet: Gebot + increment, die Fahrt plant zum Ort des Ziels (nur über Straßen). Geboten wird in
+   * Zehnern (economy.js: jeder Schritt ein Vielfaches von 10 €, das erste Gebot einer Runde 10 €).
    */
   overbid(s, bidder, increment = 10, target) {
     this.bid = Math.round((this.bid + increment) * 100) / 100;
@@ -297,8 +159,6 @@ export class WorldNavi {
     // „Bitte wenden“ gibt es nur, wenn die Fahrt wirklich zurückführt: über die nächste Ausfahrt und ihre Rampen
     const g = trip.guidance();
     this.wende = !!(g.then && g.then.wende);
-    this.history.push({ name: target.name, bidder, bid: this.bid });
-    if (this.history.length > 12) this.history.shift();
     return target;
   }
 
@@ -398,10 +258,6 @@ export class WorldNavi {
     return this.missed ? '📍 Am Brunnen vorbeigerollt – gleich kommt das nächste Gebot …' : '📍 Wohin geht die Reise? Gleich kommt das erste Gebot …';
   }
 
-  update() {
-    return NO_EVENTS;
-  }
-
   /**
    * Für den Mittelbildschirm (st.navi → st.nav, src/map/navview.js): Bieter und Gebot (ganze Euro) im roten Balken;
    * ohne Gebot der Text des Balkens (bar) und die Zeile im Kärtchen (wait). Weg, Kilometer und Ankunft zeigt das Navi
@@ -418,4 +274,3 @@ export class WorldNavi {
     return S;
   }
 }
-const NO_EVENTS = [];

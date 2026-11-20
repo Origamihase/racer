@@ -45,7 +45,6 @@ function nf(min, max) {
 }
 
 export const fmtNum = (v, digits = 0) => nf(digits, digits).format(v);
-export const fmtKm = (meters, digits = 2) => nf(digits, digits).format(meters / 1000) + ' km';
 // geschütztes Leerzeichen: Betrag und € werden nie auf zwei Zeilen getrennt
 export const fmtEuro = (v, digits = 0) => nf(digits, digits).format(v) + '\u00a0€';
 export const fmtCent = (v) => nf(2, 2).format(v) + '\u00a0€';
@@ -64,12 +63,6 @@ export function fmtClock(minutesOfDay) {
 export function fmtSpan(seconds) {
   const m = Math.max(0, Math.floor(seconds / 60));
   return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min';
-}
-
-export function fmtDuration(seconds) {
-  const s = Math.max(0, Math.round(seconds));
-  const m = Math.floor(s / 60);
-  return m + ':' + String(s % 60).padStart(2, '0');
 }
 
 // Deterministischer Pseudo-Zufall (für reproduzierbare Szenerie-Muster)

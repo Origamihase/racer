@@ -1,5 +1,7 @@
 // „So steuerst du“: Beim ersten Start auf einem Gerät zeigt ein Hinweis die Bedienung – Tasten als kleine Tastenkappen,
-// auf dem Handy die Daumen-Bedienung, mit Gamepad dessen Knöpfe. Danach nur noch der kurze Tipp wie bisher.
+// auf dem Handy die Daumen-Bedienung, mit Gamepad dessen Knöpfe. Danach nur noch der kurze Tipp wie bisher. Auf
+// derselben Karte stehen danach die Tipps der ersten Minuten (first-tips.js, showTip).
+import { TIPS } from './first-tips.js';
 
 const SEEN = 'mini-adam-so-steuerst-du';
 
@@ -48,6 +50,9 @@ function keys(parent, list) {
 // nicht mehr so lange – er blendet dann nach frühestens 4 s aus, sonst nach 11 s.
 let hint = null;
 
+/** Steht „So steuerst du“ gerade? (Dann wartet ein Tipp der ersten Minuten.) */
+export const driveHintBusy = () => !!hint;
+
 /** Jedes Bild während der Fahrt (ctl: die Eingaben dieses Bildes). */
 export function driveHintTick(dt, ctl) {
   if (!hint) return;
@@ -77,7 +82,7 @@ export function showDriveHint(ui, device, ds) {
   showDriveHint.done = true;
   const card = ui.hintEl;
   card.textContent = '';
-  card.classList.remove('hidden');
+  card.classList.remove('hidden', 'tip');
   hint = { card, t: 11, age: 0, steered: false, pedal: false };
   el('div', 'hint-title', card, '🎮 So steuerst du');
   for (const [k, text, sub, ...more] of hintRows(device, ds)) {
@@ -92,4 +97,41 @@ export function showDriveHint(ui, device, ds) {
     if (sub) el('div', 'hint-sub', card, sub);
   }
   return true;
+}
+
+/**
+ * Ein Tipp der ersten Minuten auf der Karte des Hinweises (id aus TIPS; null räumt die Karte). Mit Tastatur sagt die
+ * letzte Zeile, wie man alle abschaltet; das ✕ oben rechts tut es für Maus und Finger (onOff).
+ */
+export function showTip(ui, id, device, onOff) {
+  const card = ui.hintEl;
+  if (!id) {
+    card.classList.add('hidden');
+    card.classList.remove('tip');
+    return;
+  }
+  const tip = TIPS[id];
+  card.textContent = '';
+  card.classList.remove('hidden');
+  card.classList.add('tip');
+  // neu einblenden wie ein frischer Hinweis
+  card.style.animation = 'none';
+  void card.offsetWidth;
+  card.style.animation = '';
+  el('div', 'hint-title', card, tip.title);
+  for (const [k, text] of tip.rows(device)) {
+    const r = el('div', 'hint-row', card);
+    if (k.length) keys(r, k);
+    el('span', 'hint-text', r, text);
+  }
+  if (device === 'keyboard') el('div', 'hint-sub hint-off', card, 'Enter: keine Tipps mehr');
+  const x = el('button', 'hint-close', card, '✕');
+  x.type = 'button';
+  x.title = 'Keine Tipps mehr';
+  x.setAttribute('aria-label', 'Keine Tipps mehr');
+  x.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onOff();
+  });
 }

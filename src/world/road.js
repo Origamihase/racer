@@ -3,7 +3,7 @@
 // Alles liegt im Kamera-Raum (Spieler bei z = 0) und wird per Textur-Offset bzw. Modulo verschoben.
 import * as THREE from 'three';
 import { W, CURVE_GLSL, curveUniforms } from '../curve.js';
-import { ROAD, roadTexture, grassTexture, fieldTexture, guardrailTexture } from '../textures.js';
+import { ROAD, roadTexture, grassTexture, guardrailTexture } from '../textures.js';
 
 export const MEDIAN_X = -9.0; // Mitte der Mittelleitplanke
 export const ONCOMING = (x) => 2 * MEDIAN_X - x; // spiegelt eine x-Position auf die Gegenfahrbahn
@@ -160,8 +160,8 @@ function zoneDepth(uniforms, Z) {
 
 export class Road {
   /**
-   * opts.flat (XXL-Welt): Bankette flach bei y = 0 (Breite opts.verge, Polygon-Offset opts.vergeLayer), kein ferner
-   * Boden (den liefert die Welt), Zonen für Lücken in der rechten Planke, Blockmarkierung und Anfang/Ende der Fahrbahn
+   * Bankette flach bei y = 0 (Breite opts.verge, Polygon-Offset opts.vergeLayer), kein ferner Boden (den liefert die
+   * Welt, xxl/ground.js), Zonen für Lücken in der rechten Planke, Blockmarkierung und Anfang/Ende der Fahrbahn
    * (opts.zone, siehe setZones), opts.behind: so weit reichen die Reihen nach hinten.
    */
   constructor(scene, opts = {}) {
@@ -170,8 +170,7 @@ export class Road {
     scene.add(this.group);
     this.s = 0;
     this.wet = 0;
-    this.flat = !!opts.flat;
-    const rows = this.flat ? makeRows(opts.behind || VIEW_BEHIND) : ROWS;
+    const rows = makeRows(opts.behind || VIEW_BEHIND);
 
     // --- Fahrbahnen ------------------------------------------------------
     this.roadTex = roadTexture();
@@ -194,39 +193,17 @@ export class Road {
     this.grassMat = W.lambert({ map: this.grassTex });
     this.grassMat.color = GRASS_TINT;
     const gUV = (x, y, z) => [x / 6, -z / 6];
-    const verge = this.flat
-      ? stripGeometry([
-        // flach: ein gemähter Streifen je Seite, Mittelstreifen wie bisher; dahinter liegt der Boden der Welt
-        { a: [ROAD.right - 0.02, 0], b: [ROAD.right + opts.verge, 0], uv: gUV },
-        { a: [ONCOMING(ROAD.left), 0], b: [ROAD.left, 0], uv: gUV },
-        { a: [ONCOMING(ROAD.right) - opts.verge, 0], b: [ONCOMING(ROAD.right) + 0.02, 0], uv: gUV },
-      ], rows)
-      : stripGeometry([
-        { a: [ROAD.right, 0.0], b: [ROAD.right + 3.2, 0.15], uv: gUV },
-        { a: [ROAD.right + 3.2, 0.15], b: [36, 0.25], uv: gUV },
-        { a: [ONCOMING(ROAD.left), 0], b: [ROAD.left, 0], uv: gUV },
-        { a: [-52, 0.25], b: [ONCOMING(ROAD.right) - 3.2, 0.15], uv: gUV },
-        { a: [ONCOMING(ROAD.right) - 3.2, 0.15], b: [ONCOMING(ROAD.right), 0.0], uv: gUV },
-      ]);
-    if (this.flat) Object.assign(this.grassMat, opts.vergeLayer);
+    // ein gemähter Streifen je Seite und der Mittelstreifen; dahinter liegt der Boden der Welt
+    const verge = stripGeometry([
+      { a: [ROAD.right - 0.02, 0], b: [ROAD.right + opts.verge, 0], uv: gUV },
+      { a: [ONCOMING(ROAD.left), 0], b: [ROAD.left, 0], uv: gUV },
+      { a: [ONCOMING(ROAD.right) - opts.verge, 0], b: [ONCOMING(ROAD.right) + 0.02, 0], uv: gUV },
+    ], rows);
+    Object.assign(this.grassMat, opts.vergeLayer);
     this.verge = new THREE.Mesh(verge, this.grassMat);
     this.verge.receiveShadow = true;
     this.verge.frustumCulled = false;
     this.group.add(this.verge);
-
-    this.fieldTex = fieldTexture();
-    this.fieldMat = W.lambert({ map: this.fieldTex });
-    const fUV = (x, y, z) => [x / 160, -z / 160];
-    const ground = stripGeometry([
-      { a: [36, 0.25], b: [420, 0.25], uv: fUV },
-      { a: [420, 0.25], b: [2600, -6], uv: fUV },
-      { a: [-420, 0.25], b: [-52, 0.25], uv: fUV },
-      { a: [-2600, -6], b: [-420, 0.25], uv: fUV },
-    ]);
-    this.ground = new THREE.Mesh(ground, this.fieldMat);
-    this.ground.receiveShadow = true;
-    this.ground.frustumCulled = false;
-    if (!this.flat) this.group.add(this.ground);
 
     // --- Schutzplanken --------------------------------------------------
     this.railTex = guardrailTexture();
@@ -290,8 +267,8 @@ export class Road {
     const bMesh = new THREE.InstancedMesh(bandGeo, blackMat, nD);
     const rMesh = new THREE.InstancedMesh(reflGeo, reflMat, nD);
     for (let i = 0; i < nD; i++) {
-      // flach: der Pfosten reicht 2 cm in den Boden (das Bankett liegt bei y = 0)
-      m4.makeTranslation(ROAD.right + 1.05, this.flat ? 0.07 : 0.12, VIEW_BEHIND * 0.5 - i * this.delinSpacing);
+      // der Pfosten reicht 2 cm in den Boden (das Bankett liegt bei y = 0)
+      m4.makeTranslation(ROAD.right + 1.05, 0.07, VIEW_BEHIND * 0.5 - i * this.delinSpacing);
       dMesh.setMatrixAt(i, m4);
       bMesh.setMatrixAt(i, m4);
       rMesh.setMatrixAt(i, m4);
@@ -302,13 +279,11 @@ export class Road {
     }
     this.delin = delin;
     this.group.add(delin);
-    if (this.flat) {
-      this.zoneU = { uXxlJ: { value: new THREE.Vector4(1e6, 0, 1e6, 0) }, uXxlClip: { value: new THREE.Vector2(-1e6, 1e6) } };
-      zonePatch(this.roadMat, 'road', this.zoneU, opts.zone);
-      zonePatch(this.grassMat, 'verge', this.zoneU, opts.zone);
-      for (const m of [this.railMat, postMat, whiteMat, blackMat, reflMat]) zonePatch(m, 'rail', this.zoneU, opts.zone);
-      this.posts.customDepthMaterial = zoneDepth(this.zoneU, opts.zone);
-    }
+    this.zoneU = { uXxlJ: { value: new THREE.Vector4(1e6, 0, 1e6, 0) }, uXxlClip: { value: new THREE.Vector2(-1e6, 1e6) } };
+    zonePatch(this.roadMat, 'road', this.zoneU, opts.zone);
+    zonePatch(this.grassMat, 'verge', this.zoneU, opts.zone);
+    for (const m of [this.railMat, postMat, whiteMat, blackMat, reflMat]) zonePatch(m, 'rail', this.zoneU, opts.zone);
+    this.posts.customDepthMaterial = zoneDepth(this.zoneU, opts.zone);
 
     // --- Leuchtende linke Spur ------------------------------------------
     this.laneUniforms = {
@@ -317,11 +292,10 @@ export class Road {
       uOpacity: { value: 0 },
       uWarn: { value: 0 },
     };
-    // Anfang und Ende der Fahrbahn in Metern vor dem Spieler (XXL-Welt, siehe setZones): Das Leuchten hört mit dem
-    // Asphalt auf, statt hinter dem Ende einer Autobahn über die Wiese weiterzulaufen. Klassisch: keine Grenzen.
-    const laneClip = this.flat ? this.zoneU.uXxlClip : { value: new THREE.Vector2(-1e6, 1e6) };
+    // Anfang und Ende der Fahrbahn in Metern vor dem Spieler (siehe setZones): Das Leuchten hört mit dem Asphalt auf,
+    // statt hinter dem Ende einer Autobahn über die Wiese weiterzulaufen
     const laneMat = new THREE.ShaderMaterial({
-      uniforms: { ...this.laneUniforms, uCurve: { value: null }, uXxlClip: laneClip },
+      uniforms: { ...this.laneUniforms, uCurve: { value: null }, uXxlClip: this.zoneU.uXxlClip },
       vertexShader: CURVE_GLSL + /* glsl */ `
         varying vec2 vUv;
         varying float vDist;
@@ -370,7 +344,7 @@ export class Road {
   }
 
   /**
-   * Nur flach (XXL): bis zu zwei Knotenpunkte in Metern vor dem Spieler (dist, type +1 Ausfahrt / −1 Einfädeln,
+   * Bis zu zwei Knotenpunkte in Metern vor dem Spieler (dist, type +1 Ausfahrt / −1 Einfädeln,
    * 0 = keiner) und das Stück der Fahrbahn, das existiert (begin, end, ebenfalls in Metern vor dem Spieler).
    */
   setZones(d0, t0, d1, t1, begin, end) {
@@ -384,14 +358,12 @@ export class Road {
     wetAsphalt(this.roadMat, w);
     this.railMat.roughness = 0.38 - w * 0.2;
     this.grassMat.color.setScalar(1 - w * 0.25);
-    this.fieldMat.color.setScalar(1 - w * 0.28);
   }
 
   update(s, dt, t, laneOpacity, laneWarn = 0) {
     this.s = s;
     this.roadTex.offset.y = (s / ROAD.texLength) % 1;
     this.grassTex.offset.y = (s / 6) % 1;
-    this.fieldTex.offset.y = (s / 160) % 1;
     this.railTex.offset.x = (s / 4) % 1;
     this.posts.position.z = s % this.postSpacing;
     this.delin.position.z = s % this.delinSpacing;

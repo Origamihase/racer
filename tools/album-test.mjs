@@ -63,7 +63,7 @@ for (const [what, raw] of [['Stand von main', MAIN], ['Reise vor dem Album', OLD
   put(raw);
   const s = loadSave();
   ok(same(s.album, { n: 0, list: [] }), `${what}: Album ist nicht leer (${JSON.stringify(s.album)})`);
-  ok(s.wallet === 137.42 && s.best.distance === 48211.5 && s.stats.runs === 12, `${what}: Guthaben oder Rekorde gingen verloren`);
+  ok(s.wallet === 137.42 && s.best.earned === 96.3 && s.stats.runs === 12 && !('distance' in s.best), `${what}: Guthaben oder Rekorde gingen verloren (oder der klassische Rekord blieb)`);
   const c = albumCounts(albumOf(s));
   ok(c.episodes === 0 && c.fountains === 0 && c.missing === places.length && missingPlaces(s.album).length === places.length, `${what}: Zählung ${JSON.stringify(c)}`);
 }

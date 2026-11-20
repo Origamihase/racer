@@ -13,8 +13,8 @@ import {
 } from '../map/mapview.js';
 import { places, nodes, routeFrom, stateOfNode } from '../map/graph.js';
 import { drawCar, drawFlag, drawHeart } from '../map/symbols.js';
-import { fmtNum, fmtKm } from '../util.js';
-import { fmtKm as fmtTravel, fmtOdo } from '../map/navroute.js';
+import { fmtNum } from '../util.js';
+import { fmtKm, fmtOdo } from '../map/navroute.js';
 
 const MIN_SCALE = 2.6; // ganze Welt
 const MAX_SCALE = 9000; // Straßen in den Orten
@@ -119,13 +119,12 @@ export class MapScreen {
   }
 
   /**
-   * In den Abschnitt s einhängen. d = {save, nav (NavModel der laufenden Fahrt oder null), travel (XXL-Welt: Reisekilometer),
-   * odo (Meter dieser Fahrt, wenn die Karte aus der Pause kommt)}.
+   * In den Abschnitt s einhängen. d = {save, nav (NavModel der laufenden Fahrt oder null), odo (Meter dieser Fahrt, wenn
+   * die Karte aus der Pause kommt)}.
    */
   mount(s, d) {
     this.save = d.save;
     this.nav = d.nav || null;
-    this.travel = !!d.travel;
     this.dist = null; // Straßenkilometer ab hier: beim nächsten Antippen neu
     const sum = visitSummary(this.save.visits);
     this.visited = sum.idx;
@@ -144,8 +143,8 @@ export class MapScreen {
     };
     chip('❤️', visitLine(this.save.visits));
     chip('🌍', sum.countries === 1 ? '1 Land' : `${fmtNum(sum.countries)} Länder`);
-    // XXL: aus der Pause die Kilometer dieser Fahrt (wie Pause-Karte und Abspann), sonst alle Fahrten der XXL-Welt
-    chip('🛣️', (this.travel ? fmtOdo(d.odo != null ? d.odo / 1000 : this.save.stats.reiseKm || 0) : fmtKm((this.save.stats.totalKm || 0) * 1000, 0)) + ' gefahren');
+    // aus der Pause die Kilometer dieser Fahrt (wie Pause-Karte und Abspann), sonst alle Fahrten
+    chip('🛣️', fmtOdo(d.odo != null ? d.odo / 1000 : this.save.stats.reiseKm || 0) + ' gefahren');
     for (const t of badgeTotals()) chip(t.icon, t.text);
     const back = el('div', 'menu row map-back', top);
     const bb = el('button', 'btn primary', back, '← Zurück');
@@ -438,7 +437,7 @@ export class MapScreen {
     row('📺', p.n === 1 ? '1 Stream laut Wiki' : `${fmtNum(p.n)} Streams laut Wiki`);
     row(n ? '❤️' : '🤍', n ? (n === 1 ? 'Einmal besucht' : `${fmtNum(n)}-mal besucht`) : 'Noch nicht besucht', n ? 'mc-visited' : '');
     const km = this.roadKm(i);
-    if (km !== null) row('🛣️', km < 1 ? 'Du bist hier' : `${this.travel ? fmtTravel(km) : fmtNum(Math.round(km)) + ' km'} Straßenweg ${this.nav ? 'von hier' : 'ab ' + HOME}`);
+    if (km !== null) row('🛣️', km < 1 ? 'Du bist hier' : `${fmtKm(km)} Straßenweg ${this.nav ? 'von hier' : 'ab ' + HOME}`);
     for (const b of badgesAt(i)) row(b.icon, b.text);
     // Ort nicht unter der Karte verstecken
     requestAnimationFrame(() => {

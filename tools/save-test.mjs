@@ -1,9 +1,9 @@
 // Prüft ohne Browser, was beim Laden der Seite als Erstes entschieden wird:
 // - Spielstand (src/save.js gegen einen Ersatz für localStorage): Alte Stände laden – einer vom Stand „main“ (ohne
-//   visits, best.reise, mode), einer dieses Zweigs vor der Moduswahl, einer mit Feldern, die niemand kennt (was sie
-//   enthalten, übersteht Laden und Speichern), kaputte und ein gesperrter Speicher.
-// - Modus (src/mode.js): Adresse vor gemerkter Wahl vor Standard; Prüfseiten nehmen den Standard; der Eintrag auf dem
-//   Titelbildschirm führt aus jedem Zustand in den anderen Modus und wieder zurück – niemand wird ausgesperrt.
+//   visits, best.reise), einer dieses Zweigs aus der Zeit mit zwei Modi (klassische Autobahn und Reise, mit Album),
+//   einer mit Feldern, die niemand kennt (was sie enthalten, übersteht Laden und Speichern), kaputte und ein
+//   gesperrter Speicher. Von der klassischen Autobahn bleibt nichts: Ihre Rekorde und Felder fallen still weg,
+//   Guthaben, Käufe, Album, besuchte Orte und Einstellungen bleiben.
 // - Kartendaten (src/map/credits.js): Die Hinweise der Höhenquellen passen zu den Ländern, die die Karte berührt.
 // node tools/save-test.mjs
 let fails = 0;
@@ -35,16 +35,18 @@ globalThis.localStorage = {
   },
 };
 const { DEFAULT_SAVE, loadSave, storeSave, resetSave } = await import('../src/save.js');
-const { MODES, DEFAULT_MODE, modeFor, otherMode, modeSearch } = await import('../src/mode.js');
 const put = (v) => box.set(KEY, typeof v === 'string' ? v : JSON.stringify(v));
-/** Hat der Stand alles, was das Spiel ohne Nachfragen liest? */
+/** Felder der klassischen Autobahn, die kein geladener Stand mehr trägt (save.js RETIRED). */
+const RETIRED = { top: ['mode', 'seenIntro'], best: ['distance'], stats: ['totalKm', 'leftLaneEuro'] };
+const retired = (s) => [...RETIRED.top.filter((k) => k in s), ...RETIRED.best.filter((k) => k in s.best).map((k) => 'best.' + k), ...RETIRED.stats.filter((k) => k in s.stats).map((k) => 'stats.' + k)];
+/** Hat der Stand alles, was das Spiel ohne Nachfragen liest – und nichts mehr von der klassischen Autobahn? */
 function whole(s, what) {
   ok(typeof s.wallet === 'number' && isFinite(s.wallet), `${what}: Guthaben ${s.wallet}`);
   for (const k of ['upgrades', 'best', 'stats', 'settings', 'visits']) ok(s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]), `${what}: ${k} fehlt oder ist kein Objekt`);
   for (const [k, v] of Object.entries(DEFAULT_SAVE.best)) ok(typeof s.best[k] === typeof v, `${what}: best.${k}`);
   for (const [k, v] of Object.entries(DEFAULT_SAVE.stats)) ok(typeof s.stats[k] === typeof v, `${what}: stats.${k}`);
   for (const [k, v] of Object.entries(DEFAULT_SAVE.settings)) ok(typeof s.settings[k] === typeof v, `${what}: settings.${k}`);
-  ok(MODES.includes(modeFor('', s.mode)), `${what}: aus mode „${s.mode}“ wird kein Modus`);
+  ok(!retired(s).length, `${what}: trägt noch ${retired(s).join(', ')}`);
 }
 
 // --- Spielstand ----------------------------------------------------------------------------------------------------------
@@ -52,12 +54,12 @@ function whole(s, what) {
 {
   const a = loadSave();
   ok(same(a, DEFAULT_SAVE), 'Ohne Spielstand kommt nicht der Standard');
-  a.best.distance = 5;
+  a.best.reise = 5;
   a.visits.Hanau = 1;
-  ok(DEFAULT_SAVE.best.distance === 0 && !('Hanau' in DEFAULT_SAVE.visits) && loadSave().best.distance === 0, 'Der Standard-Spielstand wird geteilt statt kopiert');
-  ok(a.mode === null && modeFor('', a.mode) === DEFAULT_MODE, 'Ein neuer Spielstand hat schon einen Modus gewählt');
+  ok(DEFAULT_SAVE.best.reise === 0 && !('Hanau' in DEFAULT_SAVE.visits) && loadSave().best.reise === 0, 'Der Standard-Spielstand wird geteilt statt kopiert');
 }
-// Stand „main“: ohne visits, best.reise, stats.reiseKm, settings.facecam, mode – dafür mit dem alten stats.leftLaneEuro
+// Stand „main“ (nur die klassische Autobahn): ohne visits, best.reise, stats.reiseKm, settings.facecam – dafür mit
+// Rekord und Kilometern der endlosen Strecke, dem alten stats.leftLaneEuro und seenIntro
 const MAIN = {
   wallet: 137.42, upgrades: { starlink: 1, wischer: 2 }, best: { distance: 48211.5, earned: 96.3, viewers: 1804 },
   stats: { runs: 12, totalKm: 301.7, naviReached: 31, crashes: 9, leftLaneEuro: 12.5 },
@@ -67,31 +69,32 @@ const MAIN = {
   put(MAIN);
   const s = loadSave();
   whole(s, 'Stand von main');
-  ok(s.wallet === 137.42 && same(s.upgrades, MAIN.upgrades) && s.best.distance === 48211.5 && s.best.earned === 96.3 && s.best.viewers === 1804, 'Stand von main: Guthaben, Upgrades oder Rekorde gingen verloren');
-  ok(s.stats.runs === 12 && s.stats.totalKm === 301.7 && s.stats.naviReached === 31 && s.stats.crashes === 9 && s.stats.leftLaneEuro === 12.5, 'Stand von main: Statistik ging verloren');
-  ok(s.settings.sound === false && s.settings.quality === 'mittel' && s.settings.volume === 0.35 && s.settings.facecam === true && s.seenIntro === true, 'Stand von main: Einstellungen gingen verloren');
-  ok(s.best.reise === 0 && s.stats.reiseKm === 0 && same(s.visits, {}) && s.mode === null, 'Stand von main: Die neuen Felder haben nicht ihren Standard');
-  ok(modeFor('', s.mode) === DEFAULT_MODE, 'Stand von main: lädt nicht im Standard-Modus');
+  ok(s.wallet === 137.42 && same(s.upgrades, MAIN.upgrades) && s.best.earned === 96.3 && s.best.viewers === 1804, 'Stand von main: Guthaben, Upgrades oder Rekorde gingen verloren');
+  ok(s.stats.runs === 12 && s.stats.naviReached === 31 && s.stats.crashes === 9, 'Stand von main: Statistik ging verloren');
+  ok(s.settings.sound === false && s.settings.quality === 'mittel' && s.settings.volume === 0.35 && s.settings.facecam === true, 'Stand von main: Einstellungen gingen verloren');
+  ok(s.best.reise === 0 && s.stats.reiseKm === 0 && same(s.visits, {}) && same(s.album, DEFAULT_SAVE.album), 'Stand von main: Die neuen Felder haben nicht ihren Standard');
+  ok(storeSave(s) && retired(JSON.parse(box.get(KEY))).length === 0, 'Stand von main: Nach dem Speichern stehen die klassischen Felder noch im Speicher');
 }
-// Stand dieses Zweigs vor der Moduswahl: mit Reise-Rekord, Reisekilometern und besuchten Orten
+// Stand dieses Zweigs aus der Zeit mit zwei Modi (zuletzt klassisch gespielt): klassischer Rekord und Kilometer neben
+// Reise-Rekord, Reisekilometern, besuchten Orten, Album und dem erstatteten Megafon
+const ALBUM = { n: 3, list: [{ n: 1, p: 'Hanau', k: 'fountainBowls', t: 1763650000000, u: 1104 }, { n: 3, p: 'Würzburg', k: 'fountainGrand', t: 1763660000000, u: 1180, d: 'kiliani' }] };
 const AUSBAU = {
-  ...MAIN, best: { ...MAIN.best, reise: 187400 }, stats: { runs: 14, totalKm: 301.7, naviReached: 35, crashes: 9, reiseKm: 412.6 },
-  settings: { ...MAIN.settings, facecam: false }, visits: { Hanau: 3, 'Frankfurt am Main': 1 },
+  ...MAIN, mode: 'klassik', best: { ...MAIN.best, reise: 187400 }, stats: { runs: 14, totalKm: 301.7, naviReached: 35, crashes: 9, reiseKm: 412.6 },
+  settings: { ...MAIN.settings, facecam: false }, visits: { Hanau: 3, 'Frankfurt am Main': 1 }, album: ALBUM, megafonRefund: 450,
 };
 {
   put(AUSBAU);
   const s = loadSave();
   whole(s, 'Stand des Zweigs');
-  ok(s.best.reise === 187400 && s.stats.reiseKm === 412.6 && same(s.visits, AUSBAU.visits) && s.settings.facecam === false && s.mode === null, 'Stand des Zweigs: Reise-Rekord, Kilometer, Orte oder Facecam gingen verloren');
-  // gewählter Modus übersteht Speichern und Laden – wie alles andere
-  s.mode = 'xxl';
+  ok(s.wallet === 137.42 && same(s.upgrades, MAIN.upgrades) && same(s.album, ALBUM) && s.megafonRefund === 450, 'Stand des Zweigs: Guthaben, Käufe, Album oder die Erstattung gingen verloren');
+  ok(s.best.reise === 187400 && s.best.earned === 96.3 && s.best.viewers === 1804 && s.stats.reiseKm === 412.6 && s.stats.runs === 14 && same(s.visits, AUSBAU.visits) && s.settings.facecam === false && s.settings.volume === 0.35, 'Stand des Zweigs: Rekorde, Kilometer, Orte oder Einstellungen gingen verloren');
   ok(storeSave(s) && same(loadSave(), s), 'Gespeichert und geladen ist nicht mehr derselbe Stand');
-  ok(loadSave().mode === 'xxl', 'Der gewählte Modus übersteht das Speichern nicht');
+  ok(retired(JSON.parse(box.get(KEY))).length === 0, 'Stand des Zweigs: Nach dem Speichern stehen die klassischen Felder noch im Speicher');
 }
 // Felder, die niemand kennt: oben, in den Teilen und geschachtelt – ihr Inhalt übersteht Laden und Speichern
 {
   const future = {
-    ...AUSBAU, mode: 'klassik', sammlung: [{ n: 1, ort: 'Hanau', bild: 'data:…' }], akku: { kwh: 75, laden: [1, 2, 3] }, flag: false, zahl: 0, text: '',
+    ...AUSBAU, sammlung: [{ n: 1, ort: 'Hanau', bild: 'data:…' }], akku: { kwh: 75, laden: [1, 2, 3] }, flag: false, zahl: 0, text: '',
     best: { ...AUSBAU.best, etappe: 303.2 }, stats: { ...AUSBAU.stats, tanken: 4 }, settings: { ...AUSBAU.settings, hud: 'klein' },
   };
   put(future);
@@ -101,13 +104,12 @@ const AUSBAU = {
   const again = JSON.parse(box.get(KEY));
   for (const k of ['sammlung', 'akku', 'flag', 'zahl', 'text']) ok(same(again[k], future[k]), `Unbekanntes Feld „${k}“ übersteht Laden und Speichern nicht`);
   ok(again.best.etappe === 303.2 && again.stats.tanken === 4 && again.settings.hud === 'klein', 'Unbekannte Felder in best, stats oder settings gehen verloren');
-  ok(same(loadSave(), s) && s.mode === 'klassik', 'Zweites Laden ergibt einen anderen Stand');
+  ok(same(loadSave(), s), 'Zweites Laden ergibt einen anderen Stand');
 }
 // kaputt: kein JSON, kein Objekt, falsche Arten in den Feldern – das Spiel bekommt immer einen ganzen Stand
 for (const [what, raw] of [
   ['abgeschnitten', '{"wallet":12,"best":{"dist'], ['leer', ''], ['null', 'null'], ['Zahl', '42'], ['Text', '"hallo"'], ['Liste', '[1,2,3]'],
-  ['Teile sind keine Objekte', JSON.stringify({ wallet: '12,5', upgrades: 3, best: 'weit', stats: [1, 2], settings: null, visits: 'Hanau', mode: 7 })],
-  ['Modus unbekannt', JSON.stringify({ ...MAIN, mode: 'turbo' })],
+  ['Teile sind keine Objekte', JSON.stringify({ wallet: '12,5', upgrades: 3, best: 'weit', stats: [1, 2], settings: null, visits: 'Hanau' })],
 ]) {
   put(raw);
   const s = loadSave();
@@ -115,10 +117,9 @@ for (const [what, raw] of [
   ok(storeSave(s) && same(loadSave(), s), `kaputter Stand (${what}): nach dem Speichern lädt etwas anderes`);
 }
 {
-  put(JSON.stringify({ ...MAIN, mode: 'turbo', wallet: 'viel' }));
+  put(JSON.stringify({ ...MAIN, wallet: 'viel' }));
   const s = loadSave();
-  ok(s.wallet === 0 && s.best.distance === MAIN.best.distance, 'Ein Guthaben, das keine Zahl ist, wird nicht zu 0 – oder reißt den Rest mit');
-  ok(s.mode === 'turbo' && modeFor('', s.mode) === DEFAULT_MODE, 'Ein unbekannter Modus im Spielstand führt nicht zum Standard');
+  ok(s.wallet === 0 && s.best.earned === MAIN.best.earned, 'Ein Guthaben, das keine Zahl ist, wird nicht zu 0 – oder reißt den Rest mit');
 }
 // gesperrter Speicher: Standard laden, Speichern meldet false, nichts wirft
 {
@@ -137,49 +138,6 @@ for (const [what, raw] of [
   put(AUSBAU);
   ok(same(resetSave(), DEFAULT_SAVE) && !box.has(KEY), 'Zurücksetzen lässt etwas übrig');
 }
-
-// --- Modus ---------------------------------------------------------------------------------------------------------------
-ok(MODES.length === 2 && MODES.includes(DEFAULT_MODE) && MODES.every((m) => otherMode(otherMode(m)) === m && otherMode(m) !== m), 'Zwei Modi, jeder der andere des anderen');
-const STORED = [null, undefined, 'klassik', 'xxl', 'turbo', 7];
-// 1. ein Schalter in der Adresse gewinnt gegen alles
-for (const st of STORED) {
-  for (const [search, want] of [
-    ['?xxl', 'xxl'], ['?klassik', 'klassik'], ['?debug&xxl', 'xxl'], ['?xxl&debug', 'xxl'], ['?debug&klassik', 'klassik'], ['?xxl=1', 'xxl'],
-    ['?foo=1&klassik&bar', 'klassik'], ['?debug&mapdemo&xxl', 'xxl'], ['?xxl&klassik', 'xxl'], ['?klassik&xxl', 'klassik'],
-  ]) ok(modeFor(search, st) === want, `modeFor('${search}', ${st}) = ${modeFor(search, st)} statt ${want}`);
-  // 2. Prüfseiten ohne Schalter: der Standard, nie die gemerkte Wahl; der Navi-Prüfstand steht neben der Klassik
-  for (const search of ['?debug', '?debug=1', '?foo&debug']) ok(modeFor(search, st) === DEFAULT_MODE, `Prüfseite '${search}' mit gemerktem ${st}: ${modeFor(search, st)}`);
-  ok(modeFor('?debug&mapdemo', st) === 'klassik', `Navi-Prüfstand mit gemerktem ${st}: ${modeFor('?debug&mapdemo', st)}`);
-  // 3. sonst die gemerkte Wahl, ohne gültige der Standard; ähnliche Wörter sind keine Schalter
-  for (const search of ['', '?', '?foo=1', '?xxlarge', '?maxxl', '?x=xxl', '?klassiker']) {
-    const want = MODES.includes(st) ? st : DEFAULT_MODE;
-    ok(modeFor(search, st) === want, `modeFor('${search}', ${st}) = ${modeFor(search, st)} statt ${want}`);
-  }
-}
-// der Eintrag auf dem Titelbildschirm: aus jeder Adresse und jeder gemerkten Wahl in den anderen Modus und zurück
-let trips = 0;
-for (const search0 of ['', '?xxl', '?klassik', '?xxl=1&foo=2', '?foo=2&klassik', '?debug', '?debug&xxl', '?xxl&debug', '?debug&klassik', '?debug&mapdemo', '?utm=x']) {
-  for (const st of STORED) {
-    let search = search0;
-    let stored = st;
-    let mode = modeFor(search, stored);
-    for (let k = 0; k < 4; k++) {
-      // wie switchMode in main.js: Wahl merken, Adresse ohne alten Schalter, neu laden
-      const want = otherMode(mode);
-      stored = want;
-      search = modeSearch(search, want);
-      mode = modeFor(search, stored);
-      trips++;
-      ok(mode === want, `Wechsel von '${search0}' (gemerkt ${st}), Schritt ${k + 1}: lädt ${mode} statt ${want} unter '${search}'`);
-      const debug = /[?&]debug/.test(search0);
-      ok(debug || !/[?&](xxl|klassik)(?=[&=]|$)/.test(search), `Nach dem Wechsel steht noch ein Schalter in der Adresse: '${search}'`);
-      ok(!debug || /[?&]debug/.test(search), `Die Prüfseite verliert ihren Schalter: '${search}'`);
-      // ein neuer Besuch ohne Schalter (Seite geschlossen und wieder geöffnet) bleibt im gewählten Modus
-      if (!debug) ok(modeFor('', stored) === want, `Die Wahl ${want} übersteht das Schließen der Seite nicht`);
-    }
-  }
-}
-ok(modeSearch('?foo=1&xxl&bar=2', 'klassik') === '?foo=1&bar=2' && modeSearch('?xxl', 'klassik') === '' && modeSearch('', 'xxl') === '' && modeSearch('?debug&mapdemo', 'xxl') === '?debug&mapdemo&xxl', 'modeSearch lässt andere Schalter nicht, wie sie sind');
 
 // --- Kartendaten: die Hinweise der Höhenquellen gegen die Karte ---------------------------------------------------------
 const { nodes } = await import('../src/map/graph.js');
@@ -203,7 +161,7 @@ const { MAP_SOURCES, TERRAIN_NOTICES } = await import('../src/map/credits.js');
   console.log(`Kartendaten: ${TERRAIN_NOTICES.length} Hinweise der Höhenquellen passen zur Karte (${cc.size} Länder, nördlichster Knoten ${north.toFixed(1)}°)`);
 }
 
-console.log(`Spielstand und Modus: ${checks} Prüfungen, ${trips} Wechsel des Modus, Standard „${DEFAULT_MODE}“`);
+console.log(`Spielstand: ${checks} Prüfungen`);
 if (fails) {
   console.error(`${fails} Fehler`);
   process.exit(1);

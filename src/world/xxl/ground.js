@@ -1,6 +1,5 @@
 // Der eine Boden der XXL-Welt: eine weiche Wiese im Kameraraum, knapp unter allen Straßen (y = −0,02), so weit und
-// breit wie die Sicht und an den Rändern sanft abfallend (so verschwindet das Ende der Welt wie beim klassischen
-// Boden im Dunst). Er wird nie geschert und läuft nur mit s mit, darf also kein Muster haben, dessen Gleiten man
+// breit wie die Sicht und an den Rändern sanft abfallend (so verschwindet das Ende der Welt im Dunst). Er wird nie geschert und läuft nur mit s mit, darf also kein Muster haben, dessen Gleiten man
 // neben einem gescherten Rahmen bemerken würde: nur feines, richtungsloses Gras. Felder, Wege und Teiche sind
 // aufgenähte Flicken der Rahmen (siehe roadkit/forest), nie Teil dieses Bodens.
 import * as THREE from 'three';

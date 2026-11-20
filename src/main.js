@@ -1,6 +1,6 @@
 // Mini Adam – Navi ferngesteuert BrunnenTV XXL
 // Hauptprogramm: Renderer, Bildkomposition (Welt → Regentropfen/Effekte → Cockpit), Kameras
-// (Cockpit, Drohne, Kameraschwenk beim Start, Vorführmodus), Zustände und Menüs.
+// (Cockpit, Drohne, Szenen), Zustände und Menüs.
 import * as THREE from 'three';
 import { W, curveTable, curveAt, curveOffset } from './curve.js';
 import { Course, MapPlanner, PROBE_MARKS } from './game/course.js';
@@ -31,19 +31,19 @@ import { Speech } from './speech.js';
 import { Input } from './input.js';
 import { TouchControls } from './ui/touch.js';
 import { driveSettings, playerOptions, IS_TOUCH } from './ui/drive-settings.js';
-import { showDriveHint, driveHintTick } from './ui/drive-hint.js';
+import { showDriveHint, driveHintTick, driveHintBusy, showTip } from './ui/drive-hint.js';
+import { FirstTips, loadTips, storeTips } from './ui/first-tips.js';
 import { Jolt } from './fx/jolt.js';
 import { TeslaDamage } from './models/damage-fx.js';
 import { CabinDamage } from './cockpit/damage-cabin.js';
 import { loadSave, storeSave, resetSave, refundMegafon, megafonNoteSeen, storePicture, loadPictures, PIC_MAX } from './save.js';
-import { modeFor, otherMode, modeSearch } from './mode.js';
 import { Game } from './game/game.js';
 import { Pickups } from './game/pickups.js';
 import { UI } from './ui/ui.js';
 import * as sicht from './ui/sicht.js';
 import { Menus } from './ui/menus.js';
+import { bindFullscreenKey } from './ui/fullscreen.js';
 import { SHOP, UPGRADE_LIMITS } from './data.js';
-import { MapDemo } from './map/mapdemo.js';
 import { NavModel } from './map/navroute.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
@@ -63,15 +63,8 @@ const save = loadSave();
 const megafonBack = refundMegafon(save);
 if (megafonBack) storeSave(save);
 let shopRefund = 0;
-// Der Modus dieses Seitenaufrufs (src/mode.js): ein Schalter in der Adresse (?xxl, ?klassik), sonst die Wahl vom
-// Titelbildschirm (save.mode), sonst der Standard. XXL ist die neue Welt mit Ausfahrten, Rampen, Landstraßen und Orten
-// (src/world/xxl); sie wird beim Laden gebaut, darum lädt der Wechsel des Modus die Seite neu (switchMode).
-const MODE = modeFor(location.search, save.mode);
-const XXL = MODE === 'xxl';
-// Prüfstand für Navi und Karte: eine echte Fahrt über die XXL-Karte neben dem klassischen Spiel (src/map/mapdemo.js);
-// in der XXL-Welt gibt es ihn nicht, dort führt das Navi die Fahrt der Welt
-const mapDemo = DEBUG && !XXL && /[?&]mapdemo/.test(location.search) ? new MapDemo() : null;
-let mapHudT = 0; // die Navi-Zeile des HUD (XXL-Fahrt, Prüfstand) folgt viermal je Sekunde
+let mapHudT = 0; // die Navi-Zeile des HUD folgt der Fahrt viermal je Sekunde
+let turnIns = null; // ihre letzte Ansage (NavModel.instruction), auch für die Tipps der ersten Minuten
 
 // ---------------------------------------------------------------------------
 const app = document.getElementById('app');
@@ -114,11 +107,12 @@ const rearCam = new THREE.PerspectiveCamera(21, 0.245 / 0.072, 0.6, 700);
 const photoCam = new THREE.PerspectiveCamera(24, 16 / 9, 0.2, 900);
 
 const sky = new Sky(renderer, scene, { shadows: quality.shadows, shadowSize: quality.shadowSize });
-const road = new Road(scene, XXL ? ROAD_OPTS : undefined);
+const road = new Road(scene, ROAD_OPTS);
 const scenery = new Scenery(scene);
-const xxl = XXL ? new XxlWorld({ scene, road, scenery }) : null;
+// die Welt der Reise (src/world/xxl): Autobahnen, Ausfahrten, Rampen, Landstraßen und Orte aus der echten Karte
+const xxl = new XxlWorld({ scene, road, scenery });
 // die große Karte der Reise zeigt die BrunnenTV-Folgen des Albums als Abzeichen (goldene Ringe, Zähler)
-if (xxl) albumBadges(save);
+albumBadges(save);
 const rain = new Rain(scene);
 const traffic = new Traffic(scene, rain);
 const pickups = new Pickups(scene);
@@ -138,32 +132,23 @@ sky.onEnv = (tex) => {
   cockpit.scene.environment = tex;
   facecam.scene.environment = tex;
 };
-// Verlauf der Straße: im klassischen Spiel ein entworfener Endlos-Kurs. Die XXL-Welt entwirft ihn aus der Karte
-// (MapPlanner) für die Abschnitte ihrer Fahrt (courseTrip = xxl.trip, siehe xxlStart): Autobahn, Landstraße und
-// Ortszufahrt biegen und steigen, wie die Karte sie zeigt; rund um Ausfahrten, Einfädelpunkte und Enden bleibt es gerade.
+// Verlauf der Straße: Die Welt entwirft ihn aus der Karte (MapPlanner) für die Abschnitte ihrer Fahrt (courseTrip =
+// xxl.trip, siehe xxlStart): Autobahn, Landstraße und Ortszufahrt biegen und steigen, wie die Karte sie zeigt; rund um
+// Ausfahrten, Einfädelpunkte und Enden bleibt es gerade.
 // Prüfstand: __MA.course.drive(kurs, fahrt, tick) fährt einen Kurs über eine Fahrt (trip.js), tick(s) vor jedem Bild
-let course = xxl ? new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) }) : new Course();
+let course = new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) });
 let courseTrip = null;
 let courseTick = null;
-// Navi-Prüfstand (?debug&mapdemo): seine Fahrt ist die Fahrt der Welt. Der Kurs entwirft sie aus der Karte, sie folgt
-// dem Spieler (p.s, vor course.fill), und das Navi liest die Straße voraus nur aus diesem Kurs (COMMON.md §9)
-if (mapDemo) {
-  course = new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) });
-  courseTick = (s, dt) => {
-    mapDemo.follow(s, dt);
-    courseTrip = mapDemo.trip;
-  };
-}
 // die Straße voraus des Navis: der Verlauf, den die Welt zeichnet (preview reicht 4 km weit)
 setRoadAhead((trip, s, dMax) => course.preview(trip, s, Math.min(dMax, 4000)));
-// und die Orte der XXL-Welt in seiner Nahansicht: Brunnenplatz und Zielbrunnen dort, wo die Welt sie baut
-if (xxl) setTownLayout((trip, sec) => naviLayout(sec, xxl.town(sec)));
+// und die Orte der Welt in seiner Nahansicht: Brunnenplatz und Zielbrunnen dort, wo die Welt sie baut
+setTownLayout((trip, sec) => naviLayout(sec, xxl.town(sec)));
 // Kurvenschilder rücken von Möbeln am Rand weg: vom Raster der Landschaft und von Blitzern, Tempo-Schildern und
-// Navi-Zielen, die das Spiel dort bestellt hat
-const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'ziel', 'elsa']);
+// Elsa, die das Spiel dort bestellt hat
+const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'elsa']);
 const curveSigns = new CurveSigns(scene, {
-  // XXL: am Rand des Querschnitts, den der Abschnitt hat (zweispurige Straßen sind schmaler als die Autobahn)
-  layout: xxl ? profileLayout : undefined,
+  // am Rand des Querschnitts, den der Abschnitt hat (zweispurige Straßen sind schmaler als die Autobahn)
+  layout: profileLayout,
   busy(s) {
     if (gridBusy(s)) return true;
     for (const r of scenery.requests) if (EDGE_REQUESTS.has(r.type) && Math.abs(r.s - s) < 8) return true;
@@ -345,16 +330,14 @@ for (const [action, label, cls] of [
   touchEl.appendChild(b);
   input.bindTouch(b, action);
 }
-// Reise: „Ladestopp einplanen“ (wie Taste L), zu sehen, wenn der Akku halb leer ist oder NOMI gewarnt hat
-const stopBtn = xxl ? document.createElement('button') : null;
-if (stopBtn) {
-  stopBtn.type = 'button';
-  stopBtn.className = 't-stop';
-  stopBtn.setAttribute('aria-label', 'Ladestopp einplanen');
-  stopBtn.innerHTML = '<span>🔌</span> Ladestopp einplanen';
-  touchEl.appendChild(stopBtn);
-  input.bindTouch(stopBtn, 'ladestopp');
-}
+// „Ladestopp einplanen“ (wie Taste L), zu sehen, wenn der Akku halb leer ist oder NOMI gewarnt hat
+const stopBtn = document.createElement('button');
+stopBtn.type = 'button';
+stopBtn.className = 't-stop';
+stopBtn.setAttribute('aria-label', 'Ladestopp einplanen');
+stopBtn.innerHTML = '<span>🔌</span> Ladestopp einplanen';
+touchEl.appendChild(stopBtn);
+input.bindTouch(stopBtn, 'ladestopp');
 app.appendChild(touchEl);
 const touch = new TouchControls(touchEl, input);
 const jolt = new Jolt();
@@ -408,17 +391,15 @@ const uiFacade = {
   brunnenTV: (n, name) => ui.brunnenTV(n, name),
 };
 
-// XXL: Das Spiel bietet auf echte Orte und braucht dafür die Fahrt der Welt (jedes Gebot setzt ihr Ziel), den Halt am
+// Das Spiel bietet auf echte Orte und braucht dafür die Fahrt der Welt (jedes Gebot setzt ihr Ziel), den Halt am
 // Brunnen (stopping: der Wagen bremst gerade dorthin · release: weiterfahren, auch wenn er knapp hinter dem
 // Haltepunkt zum Stehen kam) sowie Brunnenplatz und Ort für die BrunnenTV-Szene
-const gameWorld = xxl
-  ? { trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec) }
-  : null;
+const gameWorld = { trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec) };
 // (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
 const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
-// XXL: Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht,
-// BrunnenTV, Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
-if (xxl) xxl.on((e) => {
+// Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht, BrunnenTV,
+// Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
+xxl.on((e) => {
   game.onTrip(e);
   // an der angesagten Ausfahrt vorbei: Die Fahrt plant neu, das Navi im Auto zeigt es
   if (e.type === 'fork' && e.wrong && game.running) xxlNav.replanned();
@@ -548,8 +529,9 @@ let view = 'cockpit'; // oder 'drone'
 let stateT = 0;
 let paused = false;
 let lastOver = null;
-let introSkip = false;
 
+// Vollbild mit F, überall (Knöpfe in Titel und Pause: menus.js)
+bindFullscreenKey();
 const menus = new Menus(app, {
   click: () => {
     audio.init();
@@ -563,11 +545,8 @@ const menus = new Menus(app, {
       menus.hide();
       game.end('quit');
     } else if (a === 'menu') toTitle();
-    else if (a === 'mode') switchMode();
   },
   back: () => {},
-  mode: MODE, // der Titel nennt seinen Modus und bietet den anderen an
-  travel: !!xxl, // XXL-Welt: Rekord und Summe auf dem Titel in Reisekilometern
   dataFor: (name, data) => {
     if (name === 'shop' && save.megafonNote) {
       shopRefund = megafonNoteSeen(save);
@@ -577,7 +556,7 @@ const menus = new Menus(app, {
     if (name === 'settings') return { ...settings, speechSupported: speech.supported };
     if (name === 'title') return save;
     if (name === 'pause') return game;
-    if (name === 'karte') return { save, nav: xxl ? xxlNav : mapDemo ? mapDemo.model : null, travel: !!xxl, odo: xxl && paused ? game.odometer : null };
+    if (name === 'karte') return { save, nav: xxlNav, odo: paused ? game.odometer : null };
     // BrunnenTV-Album: Folgen aus dem Spielstand, Bilder unter ihrem eigenen Schlüssel (frisch gelesen)
     if (name === 'album') return { save, pics: loadPictures(), tab: 'folgen' };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
@@ -607,10 +586,9 @@ const menus = new Menus(app, {
     applySettings(key);
   },
   resetSave: () => {
-    // (die Wahl des Modus ist kein Spielstand: Wer die Reise gewählt hat, bleibt auch nach dem Löschen dort; die Zeile
-    // zum erstatteten Megafon gilt dem gelöschten Guthaben und verschwindet mit ihm)
+    // (die Zeile zum erstatteten Megafon gilt dem gelöschten Guthaben und verschwindet mit ihm)
     shopRefund = 0;
-    const fresh = { ...resetSave(), mode: save.mode };
+    const fresh = resetSave();
     for (const k of Object.keys(save)) delete save[k];
     Object.assign(save, fresh);
     settings = save.settings;
@@ -672,28 +650,6 @@ function applySettings(key) {
   }
 }
 
-let leaving = false; // die Seite lädt gerade in den anderen Modus
-/**
- * Der Eintrag für den anderen Modus auf dem Titelbildschirm: Wahl merken und die Seite in ihm laden (die Welt wird beim
- * Laden gebaut). Sofort steht wieder der Ladebildschirm des ersten Starts da – derselbe, den die neue Seite gleich
- * zeigt –, damit bis dahin nichts von der alten Welt zu sehen oder zu hören ist. Die neue Adresse trägt keinen
- * Schalter für den Modus mehr (modeSearch): Es gilt die gemerkte Wahl.
- */
-function switchMode() {
-  if (leaving) return;
-  leaving = true;
-  save.mode = otherMode(MODE);
-  storeSave(save);
-  speech.stopAll();
-  audio.suspend();
-  menus.hide();
-  loadingEl.classList.remove('done');
-  app.appendChild(loadingEl);
-  const url = location.href.split(/[?#]/)[0] + modeSearch(location.search, save.mode);
-  // erst zeichnen lassen, dann laden
-  setTimeout(() => location.replace(url), 80);
-}
-
 function toTitle() {
   state = 'title';
   stateT = 0;
@@ -702,8 +658,8 @@ function toTitle() {
   view = 'cockpit';
   ui.show(false);
   speech.stopAll();
-  game.startDemo();
-  if (xxl) xxlStart(true);
+  game.startTitle();
+  xxlStart(true);
   applyCosmetics();
   menus.hide();
   menus.show('title', save);
@@ -714,18 +670,17 @@ function startRun() {
   menus.hide();
   paused = false;
   game.start(save);
-  if (xxl) xxlStart(false);
+  xxlStart(false);
   applyCosmetics();
-  state = 'intro';
   stateT = 0;
-  introSkip = false;
   view = 'cockpit';
   ui.show(false);
   fxState.fade = 1;
   cockpit.shake = 0;
-  // XXL: jede Fahrt beginnt am Supercharger in Erlensee (Startszene statt Kameraschwenk)
-  if (xxl && chargeBegin()) state = 'charge';
-  // die Taste, die „Losfahren“ ausgelöst hat, soll den Kameraschwenk nicht gleich überspringen
+  // jede Fahrt beginnt mit der Startszene am Supercharger in Erlensee (ohne Ladepark gleich am Steuer)
+  state = 'charge';
+  if (!chargeBegin()) toDrive();
+  // die Taste, die „Losfahren“ ausgelöst hat, soll die Startszene nicht gleich überspringen
   input.endFrame();
 }
 
@@ -750,65 +705,22 @@ function pause() {
 function finishRun() {
   const o = game.over;
   const km = o.distance / 1000;
-  // XXL: Reisemeter mit eigenem Rekord und eigener Summe; die klassischen Zahlen bleiben Meter der Straße
-  const rec = o.travel ? 'reise' : 'distance';
-  const best = save.best[rec] || 0;
+  // Rekord und Summe in Reisemetern bzw. Reisekilometern
+  const best = save.best.reise || 0;
   const newRecord = o.distance > best && o.distance > 50;
   save.wallet = Math.round((save.wallet + o.money) * 100) / 100;
-  save.best[rec] = Math.max(best, o.distance);
+  save.best.reise = Math.max(best, o.distance);
   save.best.earned = Math.max(save.best.earned || 0, o.money);
   save.best.viewers = Math.max(save.best.viewers || 0, o.peakViewers);
   save.stats.runs++;
-  if (o.travel) save.stats.reiseKm = (save.stats.reiseKm || 0) + km;
-  else save.stats.totalKm += km;
+  save.stats.reiseKm = (save.stats.reiseKm || 0) + km;
   save.stats.naviReached += o.stats.naviReached;
   save.stats.crashes += o.stats.crashes;
   storeSave(save);
   if (newRecord) adamMood('proud');
-  // Reise: zur Route des Streams der gefahrene Weg des Navis (Kartenpunkte, ausgedünnt), für die Karte im Abspann
-  const route = o.route && xxlNav ? { ...o.route, line: thinLine(xxlNav.trail, 3000) } : o.route;
-  lastOver = { ...o, route, newRecord, best: save.best[rec], wallet: save.wallet, photos: ui.photos.slice() };
-}
-
-// --- Autopilot (Titel, Kameraschwenk, Abspann) -------------------------------------
-const ap = { lane: 2, cool: 0 };
-function autopilot(dt, targetKmh, allowChanges = true) {
-  const p = game.player;
-  ap.cool -= dt;
-  let lead = null;
-  let leadDs = Infinity;
-  for (const c of traffic.cars) {
-    const ds = c.s - p.s;
-    if (ds > 0 && ds < 70 && Math.abs(c.x - p.x) < 2.3 && ds < leadDs) {
-      lead = c;
-      leadDs = ds;
-    }
-  }
-  if (allowChanges && lead && leadDs < 55 && ap.cool <= 0) {
-    const free = (lane) => lane >= 1 && lane <= 3 && traffic.cars.every((c) => Math.abs(c.x - ROAD.laneCenter(lane)) > 2.4 || c.s - p.s < -22 || c.s - p.s > 48);
-    const cur = p.lane;
-    const opts = [cur - 1, cur + 1].filter(free);
-    if (opts.length) {
-      ap.lane = opts[0];
-      ap.cool = 3;
-    }
-  }
-  if (ap.cool <= -8 && ap.lane < 3) {
-    const lane = ap.lane + 1;
-    if (traffic.cars.every((c) => Math.abs(c.x - ROAD.laneCenter(lane)) > 2.4 || c.s - p.s < -22 || c.s - p.s > 60)) {
-      ap.lane = lane;
-      ap.cool = 3;
-    }
-  }
-  const dx = ROAD.laneCenter(ap.lane) - p.x;
-  const steer = Math.abs(dx) > 0.25 ? clamp(dx * 0.9, -1, 1) : 0;
-  let throttle = p.kmh < targetKmh ? 0.6 : 0;
-  let brake = 0;
-  if (lead && leadDs < 40 && lead.speed < p.speed) {
-    throttle = 0;
-    brake = clamp((p.speed - lead.speed) / 8 + (40 - leadDs) / 40, 0, 1);
-  }
-  return { steer, throttle, brake, horn: false, wiper: false, megafon: false };
+  // zur Route des Streams der gefahrene Weg des Navis (Kartenpunkte, ausgedünnt), für die Karte im Abspann
+  const route = { ...o.route, line: thinLine(xxlNav.trail, 3000) };
+  lastOver = { ...o, route, newRecord, best: save.best.reise, wallet: save.wallet, photos: ui.photos.slice() };
 }
 
 // --- Kameras -----------------------------------------------------------------------
@@ -857,96 +769,14 @@ function setFov(vfovCockpit) {
   const v = Math.max(THREE.MathUtils.degToRad(vfovCockpit), 2 * Math.atan(Math.tan(minH / 2) / aspect));
   camera.fov = clamp(THREE.MathUtils.radToDeg(v), 50, 78);
   camera.aspect = aspect;
-  // Bildverschiebung gibt es nur im Titel (titleViewOffset setzt sie danach wieder)
-  if (camera.view) camera.view.enabled = false;
   camera.updateProjectionMatrix();
-}
-
-// Im Titel fährt der Wagen sonst hinter den Menüknöpfen (4:3, Handy hochkant): Das Bild wird so verschoben, dass
-// der ganze Wagen (sein Umriss auf dem Bildschirm, nicht der Blickpunkt auf Dachhöhe) mitten in der freien Fläche
-// neben, unter oder über der Titelkarte steht – in der, in die er am besten passt. Ist auch die zu klein, fährt
-// die Orbit-Kamera so weit zurück, dass er hineinpasst.
-const viewOff = { x: 0, y: 0 };
-// so groß wird der Wagen auf dem Bildschirm höchstens (m, Seitenansicht etwas von oben), Abstände (px), Füllgrad
-const TITLE_CAR = { w: 5.4, h: 2.8, gap: 12, edge: 10, fill: 0.9, zoomMax: 1.7 };
-const carBoxPt = new THREE.Vector3();
-/** Bildschirm-Rechteck [x0, y0, x1, y1] um den Tesla für die Kamera ohne Bildverschiebung */
-function carScreenBox(Wd, Hd) {
-  camera.updateMatrixWorld();
-  let x0 = Infinity;
-  let y0 = Infinity;
-  let x1 = -Infinity;
-  let y1 = -Infinity;
-  for (let i = 0; i < 8; i++) {
-    carBoxPt.set(i & 1 ? 1.0 : -1.0, i & 2 ? 1.45 : 0, i & 4 ? 2.35 : -2.35).applyMatrix4(carMatrix).project(camera);
-    const px = ((carBoxPt.x + 1) / 2) * Wd;
-    const py = ((1 - carBoxPt.y) / 2) * Hd;
-    x0 = Math.min(x0, px);
-    x1 = Math.max(x1, px);
-    y0 = Math.min(y0, py);
-    y1 = Math.max(y1, py);
-  }
-  return [x0, y0, x1, y1];
-}
-/** Lage der Titelkarte ohne ihre Einflug-Animation (die schiebt sie nur kurz zur Seite) */
-function titleCardRect() {
-  const card = state === 'title' ? document.querySelector('.screen-title:not(.hidden) .title-card') : null;
-  if (!card || !card.offsetWidth) return null;
-  const par = card.offsetParent;
-  const pr = par ? par.getBoundingClientRect() : { left: 0, top: 0 };
-  const left = pr.left + card.offsetLeft - (par ? par.scrollLeft : 0);
-  const top = pr.top + card.offsetTop - (par ? par.scrollTop : 0);
-  return { left, top, right: left + card.offsetWidth, bottom: top + card.offsetHeight };
-}
-function titleViewOffset(dt) {
-  const Wd = window.innerWidth;
-  const Hd = window.innerHeight;
-  let tx = 0;
-  let ty = 0;
-  let zoom = 1;
-  const r = titleCardRect();
-  if (r) {
-    const G = TITLE_CAR;
-    const ppm = Hd / (2 * ORBIT.r * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
-    const regions = [
-      [r.right + G.gap, G.edge, Wd - G.edge, Hd - G.edge],
-      [G.edge, r.bottom + G.gap, Wd - G.edge, Hd - G.edge],
-      [G.edge, G.edge, Wd - G.edge, r.top - G.gap],
-    ];
-    let best = null;
-    let bestS = Infinity;
-    for (const g of regions) {
-      const w = g[2] - g[0];
-      const h = g[3] - g[1];
-      if (w < 60 || h < 40) continue;
-      // so viel weiter weg müsste die Kamera, damit der Wagen hineinpasst (unter 1: passt schon)
-      const s = Math.max(1, (G.w * ppm) / (w * G.fill), (G.h * ppm) / (h * G.fill));
-      if (s < bestS - 0.01) {
-        bestS = s;
-        best = g;
-      }
-    }
-    if (best) {
-      zoom = Math.min(bestS, G.zoomMax);
-      const b = carScreenBox(Wd, Hd);
-      tx = (best[0] + best[2]) / 2 - (b[0] + b[2]) / 2;
-      ty = (best[1] + best[3]) / 2 - (b[1] + b[3]) / 2;
-    }
-  }
-  // im ersten Bild (Titel, Abspann) gleich an Ort und Stelle, danach gleitend
-  const first = stateT <= dt * 1.5;
-  const k = first ? 1 : 1 - Math.exp(-dt * 4);
-  viewOff.x += (tx - viewOff.x) * k;
-  viewOff.y += (ty - viewOff.y) * k;
-  orbit.zoom += (zoom - orbit.zoom) * (first ? 1 : 1 - Math.exp(-dt * 1.5));
-  if (Math.abs(viewOff.x) + Math.abs(viewOff.y) > 0.5) camera.setViewOffset(Wd, Hd, -viewOff.x, -viewOff.y, Wd, Hd);
 }
 
 function localToWorld(v) {
   return tmpV.copy(v).applyMatrix4(carMatrix);
 }
 
-// Orbit-Kamera (Titel, Abspann): bleibt über der eigenen Fahrbahn – vor Lärmschutzwand, Schildern,
+// Orbit-Kamera (Abspann): bleibt über der eigenen Fahrbahn – vor Lärmschutzwand, Schildern,
 // Schilderbrücken- und Brückenpfeilern und der Mittelleitplanke (auf der Gegenfahrbahn kommen die
 // Autos zu schnell). Fahrzeuge, die ihr in den nächsten Sekunden die Sicht auf den Tesla nähmen oder unter ihr
 // durchführen (Lkw, Wohnmobil, Transporter, aber auch Autos), umfährt sie: Sie schwenkt rechtzeitig dorthin, wo der
@@ -971,14 +801,12 @@ const orbitPos = new THREE.Vector3();
 // angeschnitten). Wechselt das Auto mitten im Bogen auf eine enge Spur, verlässt sie die enge Seite zügig auf dem
 // kürzesten Weg. Sie springt dabei nie quer durchs Bild und dreht den Blick nie schneller als etwa 40°/s.
 const ORBIT_SPEED = 0.16; // rad/s
-// a: Winkel um das Auto (0 = dahinter, π/2 = rechts), w: Drehrate, esc: Ziel beim Ausweichen, zoom: Abstand im Titel
-const orbit = { a: 0.9, dir: 1, w: 0, esc: null, plan: 0, zoom: 1, phi: 0, dist: ORBIT.r };
+// a: Winkel um das Auto (0 = dahinter, π/2 = rechts), w: Drehrate, esc: Ziel beim Ausweichen
+const orbit = { a: 0.9, dir: 1, w: 0, esc: null, plan: 0, phi: 0, dist: ORBIT.r };
 function orbitRoom(p, side) {
-  // im Titel zählt schon die Spur, auf die der Autopilot gerade wechselt: so ist die Kamera rechtzeitig weg
-  const xs = [p.x, orbitLaneX(p)];
-  return Math.min(...xs.map((x) => (side > 0 ? ORBIT.xMax - x : x - ORBIT.xMin)));
+  return side > 0 ? ORBIT.xMax - p.x : p.x - ORBIT.xMin;
 }
-function orbitBlocked(p, side, r = ORBIT.r * orbit.zoom) {
+function orbitBlocked(p, side, r = ORBIT.r) {
   const room = orbitRoom(p, side);
   return room < r * 0.75 && orbitRoom(p, -side) > room;
 }
@@ -1040,12 +868,11 @@ function orbitSight(p, a, y, r, tau0 = 0, tau1 = ORBIT.see) {
   // nur Fahrzeuge zwischen Kamera und Tesla (seitlich) oder bei der Kamera zählen
   const sx0 = Math.min(cx, -1) - 1.5;
   const sx1 = Math.max(cx, 1) + 1.5;
-  const pT = orbitLaneX(p);
   let worst = 0;
   for (const c of traffic.cars) {
     const xt = c.change ? ROAD.laneCenter(c.change.to) : c.x;
     const hw = c.w / 2 + 0.15;
-    if (Math.max(c.x, xt) - Math.min(p.x, pT) + hw < sx0 || Math.min(c.x, xt) - Math.max(p.x, pT) - hw > sx1) continue;
+    if (Math.max(c.x, xt) - p.x + hw < sx0 || Math.min(c.x, xt) - p.x - hw > sx1) continue;
     const z0 = p.s - c.s;
     const vz = p.speed - c.speed;
     const h = c.v.height;
@@ -1053,11 +880,11 @@ function orbitSight(p, a, y, r, tau0 = 0, tau1 = ORBIT.see) {
     const zStop = (c.len + p.len) / 2 + 0.4;
     // zwischen zwei Prüfzeitpunkten zurückgelegter Weg zählt mit (schnelle Autos im Abspann, Spurwechsel)
     const hl = c.len / 2 + Math.abs(vz) * ORBIT.seeStep * 0.5;
-    const mx = c.change || pT !== p.x ? 0.5 : 0;
+    const mx = c.change ? 0.5 : 0;
     for (let tau = tau0; tau <= tau1 + 1e-6; tau += ORBIT.seeStep) {
       const wgt = 1 - 0.35 * Math.min(1, tau / ORBIT.see);
       if (wgt <= worst) break;
-      const xc = orbitRelX(c, p, pT, tau);
+      const xc = orbitRelX(c, p, tau);
       const xa = xc - mx;
       const xb = xc + mx;
       // wer in der Spur des Teslas fährt, fährt nicht durch ihn hindurch: Er bremst dahinter (oder wechselt die Spur)
@@ -1091,16 +918,11 @@ function orbitSight(p, a, y, r, tau0 = 0, tau1 = ORBIT.see) {
   }
   return worst;
 }
-/** Wohin der Tesla gerade quer fährt: im Titel auf die Spur, die der Autopilot gewählt hat */
-function orbitLaneX(p) {
-  return state === 'title' ? ROAD.laneCenter(ap.lane) : p.x;
-}
-/** Wo Fahrzeug c in tau Sekunden quer zum Tesla steht: Spurwechsel der anderen wie geplant, der Tesla fährt mit
- *  gut 4 m/s auf seine Spur pT (so schnell lenkt der Autopilot) */
-function orbitRelX(c, p, pT, tau) {
+/** Wo Fahrzeug c in tau Sekunden quer zum Tesla steht (Spurwechsel der anderen wie geplant) */
+function orbitRelX(c, p, tau) {
   const ch = c.change;
   const x = ch ? lerp(ROAD.laneCenter(ch.from), ROAD.laneCenter(ch.to), smoothstep(0, 1, (ch.t + tau - ch.delay) / ch.dur)) : c.x;
-  return x - p.x - clamp(pT - p.x, -4.3 * tau, 4.3 * tau);
+  return x - p.x;
 }
 function orbitCost(p, a, y, r) {
   return orbitAllowed(p, a, r) ? orbitSight(p, a, y, r) : 2;
@@ -1156,13 +978,11 @@ function orbitArrival(d) {
   const back = orbit.w * d < 0 ? Math.abs(orbit.w) / ORBIT.acc : 0;
   return back + 0.25 + Math.abs(d) / ORBIT.wEsc;
 }
-/** Startwinkel: im Titel schräg hinten auf der Seite mit Platz, im Abspann hinter dem stehenden Auto (rückt dort
- *  gerade einer auf oder fährt einer vorbei, davor oder schräg daneben) – jeweils mit freier Sicht. */
+/** Startwinkel: hinter dem stehenden Auto (rückt dort gerade einer auf oder fährt einer vorbei, davor oder schräg
+ *  daneben) – mit freier Sicht. */
 function orbitStart(p, y, r) {
-  const title = state === 'title' || state === 'loading'; // boot() setzt die Kamera schon vor dem Titel
-  const first = title ? (orbitBlocked(p, 1, r) ? -0.9 : 0.9) : 0;
-  const cands = [first, 0, Math.PI, 0.35, -0.35, Math.PI - 0.35, Math.PI + 0.35, 0.9, -0.9, Math.PI - 0.9, Math.PI + 0.9, 1.57, -1.57];
-  let best = first;
+  const cands = [0, Math.PI, 0.35, -0.35, Math.PI - 0.35, Math.PI + 0.35, 0.9, -0.9, Math.PI - 0.9, Math.PI + 0.9, 1.57, -1.57];
+  let best = 0;
   let bestC = Infinity;
   cands.forEach((a, i) => {
     const c = orbitCost(p, a, y, r) + i * 0.004;
@@ -1176,10 +996,10 @@ function orbitStart(p, y, r) {
   orbit.esc = null;
   // weiter in Richtung der Seite mit mehr Platz
   const side = orbitRoom(p, 1) >= orbitRoom(p, -1) ? 1 : -1;
-  orbit.dir = title ? 1 : side * (Math.cos(best) >= 0 ? 1 : -1);
+  orbit.dir = side * (Math.cos(best) >= 0 ? 1 : -1);
 }
 function orbitTarget(p, dt) {
-  const r = ORBIT.r * orbit.zoom;
+  const r = ORBIT.r;
   const y0 = 2.4 + Math.sin(stateT * 0.3) * 0.6;
   if (!drone.init) orbitStart(p, y0, r);
   else {
@@ -1229,7 +1049,6 @@ function orbitTarget(p, dt) {
   t.x = clamp(t.x, ORBIT.xMin, ORBIT.xMax);
   t.y += over * 0.3;
   const base = t.y;
-  const pT = orbitLaneX(p);
   for (const c of traffic.cars) {
     const zc = p.s - c.s;
     const h = c.v.height;
@@ -1239,7 +1058,7 @@ function orbitTarget(p, dt) {
       let lift = 0;
       for (let tau = 0; tau <= 2; tau += 0.4) {
         const z = zc + vz * tau;
-        const x = orbitRelX(c, p, pT, tau);
+        const x = orbitRelX(c, p, tau);
         const need = sightLift(t.x - p.x, t.z, x - c.w / 2 - 0.15, x + c.w / 2 + 0.15, z - c.len / 2, z + c.len / 2, h);
         if (need > 0 && need <= ORBIT.yLow) lift = Math.max(lift, lerp(base, need, 1 - tau / 2.6));
       }
@@ -1329,19 +1148,10 @@ function placeDrone(dt, mode) {
   if (cockpit.shake > 0) camera.position.y += Math.sin(stateT * 60) * cockpit.shake * 0.08;
   camera.lookAt(drone.look);
   setFov(50);
-  if (mode === 'orbit') titleViewOffset(dt);
-  else viewOff.x = viewOff.y = 0;
 }
 
-// Kameraschwenk beim Start: von vorne links an Mini Adam vorbei ins Cockpit
-const INTRO = [
-  { t: 0.0, pos: [-6.2, 2.4, -9.5], look: [-0.25, 0.95, 0.0] },
-  { t: 2.4, pos: [-2.7, 1.55, -3.4], look: [-0.37, 1.12, 0.22] },
-  { t: 4.6, pos: [-1.72, 1.26, 0.2], look: [-0.37, 1.16, 0.28] },
-];
-const INTRO_SWITCH = 4.85;
-const INTRO_END = 6.3;
-function lerpKeys(t, keys = INTRO) {
+/** Kamera zwischen Schlüsseln ({t, pos, look} im Rahmen des Wagens) zur Zeit t. */
+function lerpKeys(t, keys) {
   let a = keys[0];
   let b = keys[keys.length - 1];
   for (let i = 0; i < keys.length - 1; i++) {
@@ -1359,8 +1169,8 @@ function lerpKeys(t, keys = INTRO) {
   };
 }
 
-/** Kamera des Starts: Schlüssel im Rahmen des Wagens bis inside, danach im Cockpit (Kopf dreht nach vorne bis end). */
-function placeIntro(dt, keys = INTRO, t = stateT, inside = INTRO_SWITCH, end = INTRO_END) {
+/** Kamera einer Szene: Schlüssel im Rahmen des Wagens bis inside, danach im Cockpit (Kopf dreht nach vorne bis end). */
+function placeScene(dt, keys, t, inside, end) {
   if (t < inside) {
     const { pos, look } = lerpKeys(t, keys);
     pos.applyMatrix4(carMatrix);
@@ -1378,13 +1188,57 @@ function placeIntro(dt, keys = INTRO, t = stateT, inside = INTRO_SWITCH, end = I
   return 'inside';
 }
 
-/** Ende des Starts (Kameraschwenk oder Startszene): Das Spiel übernimmt, HUD und Facecam gehen an. */
+// Tipps der ersten Minuten (src/ui/first-tips.js): einmal je Spieler, am Rand auf der Karte von „So steuerst du“
+const firstTips = new FirstTips(loadTips());
+let tipT = 0; // Sekunden freier Fahrt in diesem Stream
+const tipsOff = () => {
+  firstTips.stop();
+  storeTips(firstTips);
+};
+
+/** Fährt vor dem Wagen auf seiner Spur jemand langsamer (20 bis 120 m voraus)? Dann hilft das Megafon. */
+function slowCarAhead(p) {
+  return traffic.cars.some((c) => {
+    const ds = c.s - p.s;
+    return ds > 20 && ds < 120 && Math.abs(c.x - p.x) < 1.8 && c.speed < p.speed - 3;
+  });
+}
+
+/** Jedes Bild der Fahrt: Tipps der ersten Minuten (camera: V in diesem Bild; ctl: die übrigen Eingaben). */
+function tipsTick(dt, ctl, camera) {
+  if (firstTips.done && !firstTips.cur) return;
+  const p = game.player;
+  // frei: kein Halt am Brunnen oder an der Säule, und „So steuerst du“ hat den Platz geräumt
+  const free = !game.charging && !game.navi.stopping && !driveHintBusy();
+  if (free) tipT += dt;
+  if (camera) firstTips.did('camera');
+  if (ctl.megafon) firstTips.did('megafon');
+  if (ctl.ladestopp) firstTips.did('ladestopp');
+  if (firstTips.cur && input.take('confirm')) tipsOff();
+  const ins = turnIns;
+  const ev = firstTips.update(dt, {
+    free,
+    t: tipT,
+    // die Ansage nennt ab dem 1000-m-Schild eine Ausfahrt, die noch nicht zu nah ist
+    exit: !!ins && ins.turn === 'exit' && !ins.calm && ins.dist > 250,
+    carAhead: !firstTips.seen.has('megafon') && slowCarAhead(p),
+    stop: game.stopOffer(),
+  });
+  if (!ev) return;
+  showTip(ui, ev.show || null, input.lastDevice, tipsOff);
+  if (ev.show) storeTips(firstTips);
+}
+
+/** Ende der Startszene: Das Spiel übernimmt, HUD und Facecam gehen an. */
 function toDrive() {
   state = 'drive';
   stateT = 0;
   ui.show(true);
   // die Facecam geht an: Mini Adam schaut hinein und winkt
   adamMood('wave');
+  // die Tipps der ersten Minuten zählen ab hier (first-tips.js); keiner steht noch vom letzten Stream
+  firstTips.restart();
+  tipT = 0;
   // beim ersten Start auf diesem Gerät „So steuerst du“, danach der kurze Tipp
   if (!showDriveHint(ui, input.lastDevice, driveSettings(settings))) {
     ui.toast(matchMedia('(pointer: coarse)').matches ? 'Tipp: ◀ ▶ lenken · Strom und Bremse rechts · 🎥 Kamera' : 'Tipp: ← → lenken · ↑ Strom · ↓ Bremse · V Kamera', 'info');
@@ -1395,7 +1249,7 @@ function toDrive() {
 // Das Spiel steht so lange still: Der Spieler wartet schon in der Spur, wie xxlStart ihn hinstellt (40 km/h,
 // geradeaus), und das Ausparken endet genau dort. Die Szene bewegt nur Wagen, Stecker, Klappe und Kamera; Tempo und
 // Lenkung des Spielers zeigen so lange die des Wagens (Räder, Lenkrad, Tacho, Motor) und stehen danach wieder wie vorher.
-// Kamera: Schlüssel im Rahmen des Wagens wie INTRO – schräg von vorne oben auf Buchse und Säule (von der Seite stünde
+// Kamera: Schlüssel im Rahmen des Wagens (placeScene) – schräg von vorne oben auf Buchse und Säule (von der Seite stünde
 // die Säule davor), beim Ausparken schräg von vorne, zuletzt am Seitenfenster und hinein ins Cockpit.
 const CHARGE_KEYS = [
   { t: 0, pos: [-2.4, 2.15, -1.3], look: [-0.85, 0.85, 1.9] },
@@ -1505,7 +1359,7 @@ function chargeStep(dt) {
     ui.studio(CHARGE_LINES.live, d + 0.8);
     run.greetT = simT + d + 1.1;
   }
-  const where = placeIntro(dt, CHARGE_KEYS, t, S.inside, S.end);
+  const where = placeScene(dt, CHARGE_KEYS, t, S.inside, S.end);
   const sw = S.inside;
   const fade = t < 0.6 ? 1 - t / 0.6 : t > sw - 0.25 && t < sw ? (t - (sw - 0.25)) / 0.25 : t >= sw && t < sw + 0.35 ? 1 - (t - sw) / 0.35 : 0;
   fxState.fade = Math.max(fade, run.skipT >= 0 ? (stateT - run.skipT) / 0.25 : 0);
@@ -1570,7 +1424,7 @@ game.onCharge = (c) => stopBegin(c);
 
 /** Game.onCharge: Der Wagen steht an seinem Halt im Park. Ohne gebauten Park (Prüfstand) läuft der Fahrplan ohne Bild. */
 function stopBegin(c) {
-  const town = xxl ? xxl.town(c.sec) : null;
+  const town = xxl.town(c.sec);
   if (!town || !town.charge) return;
   const r = stopRun;
   Object.assign(r, { on: true, c, town, rig: town.charge, port: tesla.port(), v: 0, rev: true, brake: true, gear: 'R', skipT: -1, fadeT: 0, done: {} });
@@ -1728,7 +1582,7 @@ function stopPlace(dt) {
   } else {
     // ausparken wie in Erlensee: im Cockpit-Blick am Ende hinein, sonst hinter den Wagen
     const ck = view === 'cockpit';
-    inside = placeIntro(dt, ck ? CHARGE_KEYS : STOP_ROLL_DRONE, te, ck ? SCENE.inside : Infinity, SCENE.end) === 'inside';
+    inside = placeScene(dt, ck ? CHARGE_KEYS : STOP_ROLL_DRONE, te, ck ? SCENE.inside : Infinity, SCENE.end) === 'inside';
     const sw = SCENE.inside;
     if (ck) fade = te > sw - 0.25 && te < sw ? (te - (sw - 0.25)) / 0.25 : te >= sw && te < sw + STOP_FADE ? 1 - (te - sw) / STOP_FADE : 0;
   }
@@ -2171,42 +2025,14 @@ function step(dt, { render = true } = {}) {
 
   switch (state) {
     case 'title': {
+      // (ohne Ladepark – den hat Erlensee immer – steht der Wagen am Start, die Kamera kreist um ihn)
       if (chargeRun.parked) chargeTitle();
       else {
-        ctl = autopilot(dt, 118);
-        game.demo(dt, ctl);
         updateCarMatrix();
         placeDrone(dt, 'orbit');
       }
       adamWave = smoothstep(0.72, 0.9, Math.sin(simT * 0.5));
       adamLook = Math.sin(simT * 0.4) * 0.6;
-      break;
-    }
-    case 'intro': {
-      if (stateT > 0.3 && (input.anyKey || input.take('confirm'))) introSkip = true;
-      if (introSkip && stateT < INTRO_SWITCH - 0.25) stateT = INTRO_SWITCH - 0.25;
-      ctl = autopilot(dt, 100, false);
-      ap.lane = 3;
-      game.update(dt, ctl, camera);
-      updateCarMatrix();
-      const where = placeIntro(dt);
-      cockpitOn = where === 'inside';
-      // winkt, solange die Kamera schräg von vorne kommt; am Seitenfenster sind die Hände wieder am Lenkrad
-      adamWave = smoothstep(1.0, 1.8, stateT) * (1 - smoothstep(3.4, 4.0, stateT));
-      adamLook = smoothstep(1.0, 2.6, stateT) * 1.0;
-      // Überblendung ins Cockpit
-      const tf = stateT;
-      fxState.fade = tf < 0.6 ? 1 - tf / 0.6 : tf > INTRO_SWITCH - 0.25 && tf < INTRO_SWITCH ? (tf - (INTRO_SWITCH - 0.25)) / 0.25 : tf >= INTRO_SWITCH && tf < INTRO_SWITCH + 0.35 ? 1 - (tf - INTRO_SWITCH) / 0.35 : 0;
-      if (!game._greeted && tf >= INTRO_SWITCH) {
-        game._greeted = true;
-        audio.whoosh();
-        game.say('Hallo Mini Adam! Der Stream läuft. Gute Fahrt!', 'happy');
-      }
-      if (tf > 0.4 && !game._introChime) {
-        game._introChime = true;
-        audio.nomiChime();
-      }
-      if (stateT >= INTRO_END) toDrive();
       break;
     }
     case 'charge': {
@@ -2281,7 +2107,8 @@ function step(dt, { render = true } = {}) {
         } else placeDrone(dt, 'follow');
         break;
       }
-      if (input.take('camera')) {
+      const camKey = input.take('camera');
+      if (camKey) {
         view = view === 'cockpit' ? 'drone' : 'cockpit';
         drone.init = false;
         ui.cameraLabel(view === 'cockpit' ? '🎥 Cockpit' : '🎥 Drohne');
@@ -2307,10 +2134,11 @@ function step(dt, { render = true } = {}) {
         kappa: DEBUG && window.__MA && window.__MA.kappaProbe ? window.__MA.kappaProbe(p.s) : courseEnv.kappa,
         grade: DEBUG && window.__MA && window.__MA.gradeProbe ? window.__MA.gradeProbe(p.s) : courseEnv.grade,
       };
-      if (xxl && DEBUG && window.__MA.xxl && window.__MA.xxl.auto) xxlAuto(p, ctl);
+      if (DEBUG && window.__MA.xxl && window.__MA.xxl.auto) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
       if (stopBtn) stopBtn.classList.toggle('show', game.stopOffer());
       driveHintTick(dt, ctl);
+      tipsTick(dt, ctl, camKey);
       // Leitplanke: der Kopf ruckt zur Planke hin, Gamepad und Handy rütteln kurz
       for (const e of p.events) {
         if (e.type !== 'rail') continue;
@@ -2365,8 +2193,8 @@ function step(dt, { render = true } = {}) {
   const cloud = Math.max(w, game.weather ? game.weather.sky || 0 : 0);
   const frozen = paused;
   if (!frozen) {
-    // XXL: zuerst die Fahrt fortschreiben (trip.update) – der Kurs liest gleich danach, welchen Weg sie nimmt
-    if (xxl) xxlStep(p, w, dt);
+    // zuerst die Fahrt fortschreiben (trip.update) – der Kurs liest gleich danach, welchen Weg sie nimmt
+    xxlStep(p, w, dt);
     // Ladestopp: Wagen und Kamera der Szene im Rahmen des Parks, wie ihn xxlStep eben gestellt hat
     if (stopRun.on) {
       const a = stopPlace(dt);
@@ -2402,7 +2230,7 @@ function step(dt, { render = true } = {}) {
     cockpit.scene.environmentRotation.copy(sky.envRotation);
     const L = game.left || { glow: 0 };
     road.update(s, dt, simT, L.glow || 0, L.open && L.timer < 10 ? 1 : 0);
-    curveSigns.update(course, s, xxl ? xxlSignShear : null);
+    curveSigns.update(course, s, xxlSignShear);
     road.setWet(w);
     scenery.update(s, dt);
     sky.setOvercast(cloud * 0.95);
@@ -2418,20 +2246,15 @@ function step(dt, { render = true } = {}) {
     tesla.adam.animate(simT, adamOpts);
     facecam.adam.animate(simT, adamOpts);
     facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake });
-    tesla.cabinLight.intensity = cockpitOn ? 0 : stopRun.on || tvRun.on || state === 'title' || state === 'intro' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
+    tesla.cabinLight.intensity = cockpitOn ? 0 : stopRun.on || tvRun.on || state === 'title' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     const scr = game.screenState ? safeScreen() : null;
     // Ladestopp: das Display zeigt den Gang des Wagens der Szene (in R mit dem Bild der Rückfahrkamera)
     if (scr && stopRun.on) scr.gear = stopRun.gear;
     if (scr && tvRun.on) scr.gear = 'P';
-    if (mapDemo && scr) {
-      const visits = mapDemo.takeVisits();
-      for (const i of visits) recordVisit(save, i);
-      if (visits.length) storeSave(save);
-      scr.nav = mapDemo.nav(scr, cockpitOn, scr.navi);
-    } else if (xxl && scr) {
-      // XXL: Karte, Route, Ansage und Ziel des Mittelbildschirms kommen aus der Fahrt der Welt (COMMON.md §9)
+    if (scr) {
+      // Karte, Route, Ansage und Ziel des Mittelbildschirms kommen aus der Fahrt der Welt (COMMON.md §9)
       xxlScreenNav.model = xxlNav;
       xxlScreenNav.bidder = scr.navi.bidder;
       xxlScreenNav.bid = scr.navi.bid;
@@ -2446,12 +2269,11 @@ function step(dt, { render = true } = {}) {
       xxlScreenRoad.extraLane = xxlLimits.extraLane;
       xxlScreenRoad.autobahn = !game.offAutobahn;
       scr.road = xxlScreenRoad;
-    }
-    if (scr && scr.nav) {
       scr.nav.visited = save.visits;
       if ((mapHudT -= dt) <= 0) {
         mapHudT = 0.25;
-        ui.setTurn(state === 'drive' ? scr.nav.model.instruction() : null);
+        turnIns = state === 'drive' ? scr.nav.model.instruction() : null;
+        ui.setTurn(turnIns);
       }
     }
     cockpit.update({
@@ -2480,7 +2302,7 @@ function step(dt, { render = true } = {}) {
   U.uFlash.value = fxState.flash;
   U.uGlitch.value = fxState.glitch > 0 ? 0.6 + 0.4 * Math.sin(simT * 40) : 0;
   U.uGreen.value = fxState.green > 0 ? (Math.sin(simT * 26) > 0.2 ? 1 : 0.15) : 0;
-  U.uFade.value = state === 'intro' || state === 'charge' || stopRun.on || stopRun.fadeT > 0 || tvRun.on || tvRun.fadeT > 0 ? clamp(fxState.fade, 0, 1) : 0;
+  U.uFade.value = state === 'charge' || stopRun.on || stopRun.fadeT > 0 || tvRun.on || tvRun.fadeT > 0 ? clamp(fxState.fade, 0, 1) : 0;
   U.uSat.value = 1.08 - cloud * 0.25;
 
   if (DEBUG && window.__MA && window.__MA.camHook) window.__MA.camHook(camera, carMatrix);
@@ -2490,23 +2312,24 @@ function step(dt, { render = true } = {}) {
   facecamBox = ui.placeFacecam(paused ? 0 : dt, state === 'drive' && cockpitOn);
   if (render) renderFrame(cockpitOn);
   // in der Pause bleiben Banner, Geld-Anzeigen und Funkloch stehen
-  ui.update(paused ? 0 : dt, state === 'drive' || state === 'intro' || state === 'charge' ? game : null, cockpit.screen.live ? cockpit.screen.kmh : null);
+  ui.update(paused ? 0 : dt, state === 'drive' || state === 'charge' ? game : null, cockpit.screen.live ? cockpit.screen.kmh : null);
   input.endFrame();
 }
 
 function safeScreen() {
   try {
-    return game.running || game.over ? game.screenState() : demoScreen();
+    return game.running || game.over ? game.screenState() : idleScreen();
   } catch (e) {
-    return demoScreen();
+    return idleScreen();
   }
 }
 
-function demoScreen() {
+/** Mittelbildschirm ohne laufenden Stream (Titel): Navi ohne Gebot, Akku voll. */
+function idleScreen() {
   const p = game.player;
   return {
     dark: false, battery: 100, speedKmh: p.kmh, limit: null, playerX: p.x, leftLane: 0, cars: traffic.nearby(p, 125), s: p.s,
-    navi: game.navi.screen(p.s, 18 * 60, p.speed), clock: '18:00', temp: 17, funkloch: 0, wiperOn: false,
+    navi: game.navi.screen(), clock: '18:00', temp: 17, funkloch: 0, wiperOn: false,
   };
 }
 
@@ -2543,20 +2366,15 @@ function xxlStart(title) {
   traffic.reset();
   pickups.reset();
   xxlTrafficFrame = null;
-  // beginnt die Fahrt am Supercharger in Erlensee, wartet der Wagen schon im Titel dort (sonst fährt er dort vor)
+  // die Fahrt beginnt am Supercharger in Erlensee: Dort wartet der Wagen schon im Titel
   const atCharger = title && !!chargeOf(xxl.trip.section);
   chargeRun.parked = false;
   stopRun.on = false;
   stopRun.fadeT = 0;
   tvStop();
   tvRun.fadeT = 0;
-  if (title && !atCharger) {
-    xxl.advance(p, 1300);
-    p.x = 1.875;
-  } else {
-    p.x = xxl.trip.x;
-    p.speed = title ? 0 : 40 / 3.6;
-  }
+  p.x = xxl.trip.x;
+  p.speed = title ? 0 : 40 / 3.6;
   xxl.update(p.s, p.x, 0);
   xxlNav.update(0);
   p.setLimits(xxl.limitsFor(xxlLimits));
@@ -2612,8 +2430,8 @@ function xxlAuto(p, ctl) {
 function boot() {
   applyCosmetics();
   applyDrive();
-  game.startDemo();
-  if (xxl) xxlStart(true);
+  game.startTitle();
+  xxlStart(true);
   // Ein paar Bilder vorab rendern (Shader kompilieren), dann Titel zeigen
   updateCarMatrix();
   placeDrone(0.016, 'orbit');
@@ -2642,7 +2460,7 @@ if (DEBUG) {
     // die freie Sicht und die Plätze der Einblendungen (tools/sicht-check.js misst das HUD dagegen)
     sicht,
     // für Prüfstände: Szene, three.js und die Weltmaterial-Fabrik (siehe curve.js)
-    scene, THREE, W, sky, road, mapdemo: mapDemo,
+    scene, THREE, W, sky, road,
     // der eine Stadtbaukasten des Spiels (die XXL-Welt baut ihre Orte daraus), auch für Prüfstände
     get city() {
       return cityKit();
@@ -2654,10 +2472,14 @@ if (DEBUG) {
     get stop() {
       return stopRun;
     },
+    // die Tipps der ersten Minuten (first-tips.js): Prüfbilder ohne Tipps rufen vor dem Losfahren __MA.tips.stop()
+    get tips() {
+      return firstTips;
+    },
     /** BrunnenTV-Folge: Szene (tvRun) und Zustand für Prüfbilder: Zeit, Kamera, Fenster, Megafon. */
     get tv() {
       const t = game.brunnenT();
-      return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t) : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, skipT: tvRun.skipT, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl || !xxl.arrival.held };
+      return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t) : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, skipT: tvRun.skipT, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl.arrival.held };
     },
     /** BrunnenTV-Album: Folgen im Spielstand, gespeicherte Bilder, zuletzt aufgenommenes Standbild. */
     get album() {
@@ -2668,8 +2490,9 @@ if (DEBUG) {
       view = v;
     },
     start: () => startRun(),
+    // die Startszene überspringen
     skipIntro: () => {
-      stateT = state === 'charge' ? SCENE.end : INTRO_END;
+      if (state === 'charge') stateT = SCENE.end;
     },
     step: (seconds, dt = 1 / 30) => {
       const n = Math.round(seconds / dt);
@@ -2689,7 +2512,7 @@ if (DEBUG) {
     },
     pause: () => pause(),
     resume: () => resume(),
-    // Kurven (src/game/course.js): Zustand ansehen, Kurs wählen ('classic' | 'probe'), an eine Stelle springen
+    // Kurven (src/game/course.js): Zustand ansehen, Kurs wählen ('endless' | 'probe'), an eine Stelle springen
     course: {
       get inst() {
         return course;
@@ -2721,13 +2544,11 @@ if (DEBUG) {
       },
     },
   };
-  if (xxl) {
-    installDebug(window.__MA, xxl, () => game.player, {
-      afterWarp: () => { traffic.reset(); pickups.reset(); scenery.reset(); },
-      // ein Sprung plant den Kurs unterwegs wie eine Fahrt mit 30 m/s (ohne die Tabelle des Shaders zu schreiben)
-      eachStep: (s, step) => course.fill(xxl.trip, s, null, step / 30),
-    });
-  }
+  installDebug(window.__MA, xxl, () => game.player, {
+    afterWarp: () => { traffic.reset(); pickups.reset(); scenery.reset(); },
+    // ein Sprung plant den Kurs unterwegs wie eine Fahrt mit 30 m/s (ohne die Tabelle des Shaders zu schreiben)
+    eachStep: (s, step) => course.fill(xxl.trip, s, null, step / 30),
+  });
   window.__MA.kit = { ...window.__MA.kit, nature: createNatureKit(W) };
 }
 

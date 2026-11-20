@@ -24,7 +24,7 @@ import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawCa
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-/** Farben der Karten über der Karte (wie im klassischen Bildschirm, etwas deckender: keine Ortspunkte scheinen durch). */
+/** Farben der Karten über der Karte (fast deckend: keine Ortspunkte scheinen durch). */
 const CARD = { light: 'rgba(32,34,38,0.96)', dark: 'rgba(10,11,13,0.96)' };
 // so viele Sekunden nach einer Neuplanung der Fahrt steht „Route wird neu berechnet“ unter der Ansage
 const REROUTE_NOTE = 2.4;
@@ -910,7 +910,7 @@ export class NaviScreen {
   drawBottom(ctx, m, ins, nav, w, h, theme) {
     const x = 14;
     const bw = w - 28;
-    // Bieter (rot, wie im klassischen Spiel)
+    // Bieter (rot wie das Navi-Gebot im Chat)
     const by = h - 64;
     ctx.fillStyle = 'rgba(200,16,46,0.94)';
     rrect(ctx, x, by, bw, 50, 14);

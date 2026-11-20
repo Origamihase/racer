@@ -21,7 +21,7 @@ import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor 
 import { squareOf } from '../src/world/xxl/plan.js';
 import { FOUNTAIN_R, goalKind, goalName, sightBlockers } from '../src/world/kit/layout.js';
 import { MEGA } from '../src/models/miniAdam.js';
-import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, MODE_TEXT, BOARD, BRUNNEN_NOMI, ABSPANN_REISE, fillTemplate } from '../src/data.js';
+import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, BOARD, BRUNNEN_NOMI, ABSPANN_REISE, fillTemplate } from '../src/data.js';
 import { readFileSync } from 'node:fs';
 import { loadSave, storeSave, refundMegafon, megafonNoteSeen, MEGAFON_PRICE, DEFAULT_SAVE } from '../src/save.js';
 
@@ -290,9 +290,9 @@ const mega = { says: [], toasts: [] };
   ok(!SHOP.some((x) => x.id === 'megafon') && !('megafon' in UPGRADE_LIMITS), 'Das Megafon steht noch im Shop');
   const wish = AKTIONEN.find((x) => x.id === 'megafon');
   ok(wish && !wish.needs, 'Der Megafon-Wunsch braucht noch ein Upgrade');
-  // Taste H ohne gekauftes Megafon, klassisch (ohne Welt) und in der Reise: Durchsage mit Brüll-Williams Stimme, kein
-  // Hinweis auf den Shop; während es nachlädt, sagt es das
-  for (const travel of [false, true]) {
+  // Taste H ohne gekauftes Megafon: Durchsage mit Brüll-Williams Stimme, kein Hinweis auf den Shop; während es
+  // nachlädt, sagt es das
+  {
     Math.random = mulberry32(7);
     const says = [];
     const toasts = [];
@@ -310,12 +310,12 @@ const mega = { says: [], toasts: [] };
       ui: loose({ toast: (text) => toasts.push(text) }),
       fx: loose(),
       pickups: loose({ update: () => NONE }),
-      ...(travel ? { world: { trip: () => trip, stopping: () => false, release: noop, square: () => null, town: () => null } } : {}),
+      world: { trip: () => trip, stopping: () => false, release: noop, square: () => null, town: () => null },
     });
     game.start({ upgrades: {}, best: {} });
     game.useMegafon();
     game.useMegafon();
-    const where = travel ? 'Reise' : 'klassisch';
+    const where = 'Reise';
     ok(says.length === 1 && says[0].voice === 'william' && game.megafonCd > 14, `${where}: Taste H ohne Upgrade (${says.length} Durchsagen)`);
     ok(toasts.length === 2 && /Platz/.test(toasts[0]) && /lädt noch/.test(toasts[1]) && !toasts.some((t) => /Shop/.test(t)), `${where}: Hinweise ${toasts.join(' | ')}`);
     mega.says.push(says.length);
@@ -365,7 +365,6 @@ const mega = { says: [], toasts: [] };
   const menus = file('src/ui/menus.js');
   ok(menus.includes('`„${GAME_NAME}“ ist ein liebevolles') && menus.includes("el('span', 'title-xxl', h2, GAME_XXL)"), 'Über das Spiel oder der Titel ohne den Namen');
   ok(!/Tesla-Navi ferngesteuert/.test(html + file('README.md') + menus + file('src/main.js').split('\n')[0]), 'Der alte Name steht noch da');
-  ok(MODE_TEXT.klassik.name === 'Klassik' && MODE_TEXT.xxl.name === GAME_XXL, `Modi: ${MODE_TEXT.klassik.name}, ${MODE_TEXT.xxl.name}`);
 }
 
 // --- Ausgabe ---------------------------------------------------------------------------------------------------------
@@ -373,6 +372,6 @@ const tl = (r) => `Ende ${r.endT.toFixed(2)} s, nächstes Gebot ${(r.bidT - r.re
 console.log(`BrunnenTV-Fahrplan: Bauchbinde ${TV.card} s, Megafon ${TV.line} s, Chat ${TV.chat} s, NOMI ${TV.nomi} s, Ende ${TV.end} s; Fenster offen ${TV.window.down.join('–')} s, Megafon in der Hand ab ${MEGA.show * 100} % gehoben`);
 console.log(`Überspringen: ohne (${tl(runs.none)}) · früh bei ${(TV.skip + 0.05).toFixed(2)} s (${tl(runs.early)}) · spät bei ${(TV.nomi + 1.5).toFixed(1)} s (${tl(runs.late)}) – derselbe Endzustand`);
 console.log(`Kameras an ${cams.places} Orten: mindestens ${cams.minFountain.toFixed(2)} m vom Becken, Fenster und Brunnen höchstens ${cams.maxAngle.toFixed(0)}° neben der Blickrichtung (hochkant zurückgefahren ${cams.maxPortrait.toFixed(0)}° von ${portraitHalf.toFixed(0)}°), ${cams.lines} Sichtlinien zu Fenster und Brunnen frei von Häusern, Bäumen und Laternen`);
-console.log(`Megafon: kein Shop-Artikel, Taste H ohne Upgrade klassisch und in der Reise (${mega.toasts.join(' / ')}), ein gekauftes einmal erstattet (${MEGAFON_PRICE} €, auf dem Titel bis zum ersten Besuch im Shop); Abspann der Reise mit „${ABSPANN_REISE.at(-1)[0]}: ${fillTemplate(ABSPANN_REISE.at(-1)[1], { folgen: '1 Folge' })}“`);
+console.log(`Megafon: kein Shop-Artikel, Taste H ohne Upgrade (${mega.toasts.join(' / ')}), ein gekauftes einmal erstattet (${MEGAFON_PRICE} €, auf dem Titel bis zum ersten Besuch im Shop); Abspann der Reise mit „${ABSPANN_REISE.at(-1)[0]}: ${fillTemplate(ABSPANN_REISE.at(-1)[1], { folgen: '1 Folge' })}“`);
 console.log(fails ? `${fails} Fehler (${checks} Prüfungen)` : `brunnen-test: alles grün (${checks} Prüfungen)`);
 process.exit(fails ? 1 : 0);

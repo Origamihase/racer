@@ -25,8 +25,8 @@
 //   endet gerade und eben: nirgends springt die Krümmung, auch nicht an den Grenzen.
 //
 // Diese Datei kennt keine Grafik und läuft auch unter Node (tools/course-test.mjs). Die Karte bekommt sie von
-// außen (new Course({ planner: new MapPlanner({ graph, shapes }) })): so lädt das klassische Spiel ohne Karte nicht
-// die ganzen Kartendaten.
+// außen (new Course({ planner: new MapPlanner({ graph, shapes }) })): so laden die Prüfstände ohne Karte nicht die
+// ganzen Kartendaten.
 
 /**
  * Maße der Knotenpunkte aus trip.js (J), hier abgeschrieben, weil trip.js die ganze Karte lädt.
@@ -649,14 +649,15 @@ const seg = () => ({ prof: null, sec: null, path: null, s0: 0, s1: 0 });
 export class Course {
   /**
    * @param {{planner?: MapPlanner, seed?: number}} opts planner: Entwurf aus der Karte für die Abschnitte einer
-   * XXL-Fahrt (new MapPlanner({ graph, shapes })); ohne ihn gibt es nur den klassischen Endlos-Kurs und die Kurvenprobe
+   * Fahrt (new MapPlanner({ graph, shapes })); ohne ihn gibt es nur den entworfenen Endlos-Kurs und die Kurvenprobe
+   * (für die Prüfstände)
    */
   constructor({ planner = null, seed = 7 } = {}) {
     this.planner = planner;
     this.seed = seed;
     this.cache = new WeakMap();
-    this.mode = 'classic'; // ohne Trip: 'classic' (endlos, entworfen) oder 'probe' (die feste Kurvenprobe)
-    this.virt = { classic: this.stream('classic'), probe: this.stream('probe') };
+    this.mode = 'endless'; // ohne Trip: 'endless' (entworfen) oder 'probe' (die feste Kurvenprobe)
+    this.virt = { endless: this.stream('endless'), probe: this.stream('probe') };
     // Zustand nach fill(): am Spieler Krümmung, Steigung, Kurs psi im Kartenrahmen; Lage im Kartenrahmen (Wolken)
     this.state = { kappa: 0, grade: 0, psi: 0, y: 0, xref: 0, mapX: 0, mapZ: 0, s: 0 };
     // zählt hoch, wenn sich die Auswahl der Abschnitte ändert (für Schilder und Verkehr: neu nachsehen)
@@ -691,7 +692,7 @@ export class Course {
     this.stats = { builds: 0, buildMs: 0, maxBuildMs: 0 };
   }
 
-  // --- Virtuelle Wege: klassischer Endlos-Kurs und Kurvenprobe -----------------------------------------------
+  // --- Virtuelle Wege: Endlos-Kurs und Kurvenprobe -----------------------------------------------
   stream(kind) {
     return { kind, sections: [], s1: -1000, n: 0 };
   }
@@ -708,7 +709,7 @@ export class Course {
       } else {
         const r = rng(hash(this.seed, k, v.kind === 'probe' ? 77 : 11));
         const len = Math.round(between(r, 2400, 4600) / 10) * 10;
-        sec = { kind: 'ab', len, s0: v.s1, s1: v.s1 + len, de: -1, classic: true, vid: k };
+        sec = { kind: 'ab', len, s0: v.s1, s1: v.s1 + len, de: -1, endless: true, vid: k };
       }
       v.sections.push(sec);
       v.s1 = sec.s1;
@@ -718,7 +719,7 @@ export class Course {
     while (v.sections.length > 12 && v.sections[2].s1 < upTo - 12000) v.sections.shift();
   }
 
-  /** Klassischen Kurs oder Kurvenprobe von vorn (für einen Teleport oder einen neuen Lauf). */
+  /** Endlos-Kurs oder Kurvenprobe von vorn (für einen Teleport oder einen neuen Lauf). */
   resetVirtual(mode = this.mode) {
     this.virt[mode] = this.stream(mode);
     this.lastS = NaN;
@@ -772,8 +773,8 @@ export class Course {
     if (sec.probe) {
       for (const e of sec.probe.k) P.bends.push({ ...e });
       for (const e of sec.probe.g) gel.push({ ...e });
-    } else if (sec.classic) {
-      // klassischer Endlos-Kurs: entworfen; der Kurs pendelt um die Ausgangsrichtung (die Sonne bleibt vertraut)
+    } else if (sec.endless) {
+      // Endlos-Kurs: entworfen; der Kurs pendelt um die Ausgangsrichtung (die Sonne bleibt vertraut)
       const r = rng(hash(this.seed, sec.vid, 5));
       const lo = 120;
       const hi = L - 120;
@@ -835,9 +836,9 @@ export class Course {
     return trip.planFor(f) === 'exit';
   }
 
-  /** Gilt der Trip als klassischer Endlos-Modus (eine einzige Autobahn ohne Kante)? */
+  /** Ohne Fahrt (Prüfstände) gilt der virtuelle Weg (mode). */
   isEndless(trip) {
-    return !trip || (trip.endless && trip.cur.sections.length === 1 && !(trip.cur.sections[0].de >= 0));
+    return !trip;
   }
 
   /** Einen Abschnitt in die Auswahl übernehmen. */
@@ -999,7 +1000,7 @@ export class Course {
 
   /**
    * Die Tabelle des Shaders füllen (src/curve.js: curveTable): relativ zum Spieler, d von −400 bis +3432 m entlang
-   * des Wegs, den er fährt (vor einer Gabelung der Zweig, den das Navi nimmt). trip = null: klassischer Kurs oder
+   * des Wegs, den er fährt (vor einer Gabelung der Zweig, den das Navi nimmt). trip = null: Endlos-Kurs oder
    * Kurvenprobe (mode). Ändert sich der Weg im Blickfeld, blendet die Tabelle in gut einer Sekunde über.
    */
   fill(trip, sPlayer, table, dt = 1 / 60) {

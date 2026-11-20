@@ -1,14 +1,14 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, MODE_TEXT, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate } from '../data.js';
-import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate } from '../data.js';
+import { fmtNum, fmtCent, fmtEuro, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
 import { MapScreen, visitLine } from './mapscreen.js';
 import { renderAlbum } from './album.js';
 import { drawRouteMap } from './routemap.js';
-import { otherMode } from '../mode.js';
 import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
+import { canFullscreen, fullscreenLabel, toggleFullscreen, onFullscreenChange, homeScreenHint } from './fullscreen.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -71,6 +71,10 @@ export class Menus {
       this.action(b.dataset.action, b);
     });
     window.addEventListener('keydown', (e) => this.onKey(e));
+    // Vollbild an oder aus (Knopf, Taste F oder Esc): die Knöpfe sagen, was ein Klick jetzt tut
+    onFullscreenChange(() => {
+      for (const b of this.root.querySelectorAll('.fs-btn')) b.textContent = fullscreenLabel();
+    });
   }
 
   get open() {
@@ -221,6 +225,9 @@ export class Menus {
           b.classList.add('danger');
         }
         break;
+      case 'vollbild':
+        toggleFullscreen();
+        break;
       case 'credits': {
         // „Über das Spiel“: die Hinweise der Höhendaten auf- und zuklappen (der Knopf bleibt, wo er ist)
         const box = this.screens.about.querySelector('.credit-notices');
@@ -282,51 +289,42 @@ export class Menus {
   render_title(s, d) {
     s.textContent = '';
     const card = el('div', 'title-card', s);
-    // Jeder Modus hat seinen Titel (h.mode, src/mode.js): Schildchen und Zahlen sind seine, der Name des Spiels ist
-    // derselbe, und ein Eintrag führt in den anderen – die Seite lädt dann neu, weil die Welt beim Laden gebaut wird
-    const mode = this.h.mode || 'klassik';
-    const M = MODE_TEXT[mode];
-    const other = MODE_TEXT[otherMode(mode)];
     const logo = el('div', 'title-logo', card);
     el('span', 'title-live', logo, '● LIVE');
-    if (M.badge) el('span', 'title-badge ' + mode, logo, M.badge);
     el('h1', '', card, GAME_TITLE);
     const h2 = el('h2', '', card, GAME_SUBTITLE + ' ');
     el('span', 'title-xxl', h2, GAME_XXL);
     el('p', 'tagline', card, TAGLINE);
     const menu = el('div', 'menu', card);
     button(menu, '▶  Losfahren', 'start', 'primary');
-    const mb = button(menu, '', 'mode', 'mode-entry');
-    el('span', 'mode-name', mb, `${other.icon}  ${other.name}`);
-    // (die kleine Zeile beginnt unter dem Namen: davor unsichtbar dasselbe Symbol in der Größe des Knopfs)
-    const sub = el('span', 'mode-sub', mb);
-    el('span', 'mode-pad', sub, other.icon + ' ').setAttribute('aria-hidden', 'true');
-    sub.append(other.sub);
     button(menu, '🛒  Tesla-Shop', 'shop');
     button(menu, '🗺️  Karte', 'karte');
     // die Reise sammelt ihre BrunnenTV-Folgen in einem Album (src/ui/album.js)
-    if (mode === 'xxl') button(menu, '⛲  BrunnenTV-Folgen', 'album');
+    button(menu, '⛲  BrunnenTV-Folgen', 'album');
     button(menu, '🎮  Steuerung', 'controls');
     button(menu, '⚙️  Einstellungen', 'settings');
     button(menu, 'ℹ️  Über das Spiel', 'about');
     const stats = el('div', 'title-stats', card);
     el('span', '', stats, '💶 ' + fmtCent(d.wallet) + ' Guthaben');
-    // XXL-Welt (h.travel): Rekord und Summe in Reisekilometern, eigene Felder neben den klassischen
-    const travel = !!this.h.travel;
-    el('span', '', stats, '🏆 Rekord ' + (travel ? fmtOdo((d.best.reise || 0) / 1000) : fmtKm(d.best.distance || 0)));
-    el('span', '', stats, '🛣️ ' + (travel ? fmtOdo(d.stats.reiseKm || 0) : fmtKm((d.stats.totalKm || 0) * 1000, 1)) + ' gesamt');
-    // die Reise zählt dazu ihre Orte, dieselbe Zahl wie auf der großen Karte
-    if (mode === 'xxl') el('span', '', stats, '❤️ ' + visitLine(d.visits));
+    // Rekord und Summe in Reisekilometern, dazu die besuchten Orte (dieselbe Zahl wie auf der großen Karte)
+    el('span', '', stats, '🏆 Rekord ' + fmtOdo((d.best.reise || 0) / 1000));
+    el('span', '', stats, '🛣️ ' + fmtOdo(d.stats.reiseKm || 0) + ' gesamt');
+    el('span', '', stats, '❤️ ' + visitLine(d.visits));
     // das gekaufte Megafon ist erstattet worden (save.js refundMegafon): die Zeile steht bis zum ersten Besuch im Shop
     if (d.megafonNote) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.megafonNote)));
-    el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause');
+    el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause' + (canFullscreen() ? ' · F: Vollbild' : ''));
+    // Vollbild: oben rechts in der Ecke (die Liste darunter bleibt kurz); ein iPhone kann es nur vom Home-Bildschirm
+    if (canFullscreen()) button(s, fullscreenLabel(), 'vollbild', 'fs-btn fs-corner');
+    else if (homeScreenHint()) el('p', 'fs-hint', card, '📱 Ohne Leisten spielen: Teilen ⬆️ → „Zum Home-Bildschirm“');
   }
 
   render_pause(s, g) {
     s.textContent = '';
-    // die Reise hat einen Knopf mehr („⛲ Folgen“): ihre Karte ist breiter, damit alle sechs in einer Zeile stehen
-    const card = el('div', g.worldNavi ? 'card pause-card pause-album' : 'card pause-card', s);
-    el('h2', '', card, '⏸ Pause');
+    const card = el('div', 'card pause-card', s);
+    // neben der Überschrift der Knopf fürs Vollbild (die sechs Knöpfe unten bleiben in einer Zeile)
+    const head = el('div', 'pause-head', card);
+    el('h2', '', head, '⏸ Pause');
+    if (canFullscreen()) button(head, fullscreenLabel(), 'vollbild', 'fs-btn');
     el('p', 'sub', card, 'Kappandramäßige Zusammenfassung für alle, die gerade erst reingekommen sind:');
     const grid = el('div', 'summary-grid', card);
     const item = (k, v) => {
@@ -334,13 +332,13 @@ export class Menus {
       el('span', 'k', r, k);
       el('span', 'v', r, v);
     };
-    item('Strecke', g.worldNavi ? fmtOdo(g.odometer / 1000) : fmtKm(g.odometer));
+    item('Strecke', fmtOdo(g.odometer / 1000));
     item('Einnahmen dieser Fahrt', fmtCent(g.money));
-    // XXL-Welt: ein echter Ort – oder, zwischen Ankunft und erstem Gebot der Runde, was gerade gilt (WorldNavi.label)
-    item('Navi-Ziel', g.worldNavi ? g.navi.label : g.navi.target.name);
+    // ein echter Ort – oder, zwischen Ankunft und erstem Gebot der Runde, was gerade gilt (WorldNavi.label)
+    item('Navi-Ziel', g.navi.label);
     item('Navi-Gebote', fmtNum(g.stats.naviChanges));
     item('Zuschauer', fmtNum(Math.round(g.viewers)));
-    item('Sendezeit', g.worldNavi ? fmtSpan(g.airtime) : fmtDuration(g.t));
+    item('Sendezeit', fmtSpan(g.airtime));
     // woher das Geld bisher kam – dieselben Posten wie später in der Abrechnung
     const rows = breakdownRows(g.breakdown);
     if (rows.length) {
@@ -359,7 +357,7 @@ export class Menus {
     button(menu, '▶ Weiterfahren', 'resume', 'primary');
     button(menu, '↻ Neustart', 'restart');
     button(menu, '🗺️ Karte', 'karte');
-    if (g.worldNavi) button(menu, '⛲ Folgen', 'album');
+    button(menu, '⛲ Folgen', 'album');
     button(menu, '⚙️ Einstellungen', 'settings');
     button(menu, '⏹ Stream beenden', 'quit');
   }
@@ -373,7 +371,7 @@ export class Menus {
     el('p', 'sub', card, r.sub);
     const big = el('div', 'over-big', card);
     const dist = el('div', 'over-dist', big);
-    const strecke = (m) => (o.travel ? fmtOdo(m / 1000) : fmtKm(m));
+    const strecke = (m) => fmtOdo(m / 1000);
     el('span', 'num', dist, strecke(o.distance));
     el('span', 'lbl', dist, o.newRecord ? '🏆 Neuer Rekord!' : 'Rekord: ' + strecke(o.best));
     const mon = el('div', 'over-money', big);
@@ -383,9 +381,9 @@ export class Menus {
     button(menu, '↻ Nochmal fahren', 'restart', 'primary');
     button(menu, '🛒 Tesla-Shop', 'shop');
     button(menu, '🏠 Hauptmenü', 'menu');
-    // Reise: die Route des Tages auf der Karte, daneben die Summen
+    // die Route des Tages auf der Karte, daneben die Summen
     this.routeObs?.disconnect();
-    if (o.travel && o.route) this.routeBlock(card, o);
+    if (o.route) this.routeBlock(card, o);
     const cols = el('div', 'over-cols', card);
     const left = el('div', 'over-col', cols);
     el('h3', '', left, 'Abrechnung');
@@ -406,14 +404,14 @@ export class Menus {
     };
     line('Navi-Ziele erreicht', fmtNum(st.naviReached));
     if (st.brunnenTV) line('BrunnenTV-Folgen', fmtNum(st.brunnenTV));
-    line('Navi-Gebote · höchstes', fmtNum(st.naviChanges) + ' · ' + (o.travel ? fmtEuro(st.topBid) : fmtCent(st.topBid)));
+    line('Navi-Gebote · höchstes', fmtNum(st.naviChanges) + ' · ' + fmtEuro(st.topBid));
     line('Spenden · Abos · neue VIPs', fmtNum(st.donations) + ' · ' + fmtNum(st.subs) + ' · ' + fmtNum(st.vips));
     line('Haarscharf überholt', fmtNum(st.nearMisses));
     line('Rempler', fmtNum(st.crashes));
     line('Höchstgeschwindigkeit', fmtNum(Math.round(st.maxSpeedKmh)) + ' km/h');
     line('Zuschauer-Spitze', fmtNum(o.peakViewers));
     line('Wischer: gezuckt / gewischt', fmtNum(st.twitches) + ' / ' + fmtNum(st.wipes));
-    line('Sendezeit', (o.travel ? fmtSpan(o.air) : fmtDuration(o.time)) + ' (bis ' + o.clock + ' Uhr)');
+    line('Sendezeit', fmtSpan(o.air) + ' (bis ' + o.clock + ' Uhr)');
     const beruf = el('div', 'beruf', right);
     el('div', 'beruf-k', beruf, 'Erlogene Berufsbezeichnung des Tages');
     el('div', 'beruf-v', beruf, 'Mini Adam, ' + o.beruf.job);
@@ -436,9 +434,9 @@ export class Menus {
     };
     const crew = el('div', 'crew', card);
     for (const [k, v] of ABSPANN_CREW) credit(crew, k, [v]);
-    // Reise: die Leute des Streams, mit ausgedachten Berufen, und die BrunnenTV-Folgen der Reise
+    // die Leute des Streams, mit ausgedachten Berufen, und die BrunnenTV-Folgen der Reise
     const folgen = st.brunnenTV === 1 ? '1 Folge' : fmtNum(st.brunnenTV || 0) + ' Folgen';
-    if (o.travel) for (const [k, v, wide] of ABSPANN_REISE) if (st.brunnenTV || !v.includes('{folgen}')) credit(crew, k, [fillTemplate(v, { folgen })], wide === 'wide');
+    for (const [k, v, wide] of ABSPANN_REISE) if (st.brunnenTV || !v.includes('{folgen}')) credit(crew, k, [fillTemplate(v, { folgen })], wide === 'wide');
     // Wie im echten Abspann danach die Unterstützenden: größte Spende, Abo-Verschenker (die meisten zuerst), neue VIPs
     const F = o.fans;
     if (F && (F.top || F.gifters.length || F.vips.length)) {
@@ -450,8 +448,8 @@ export class Menus {
       if (F.gifters.length) credit(thanks, 'Abos verschenkt', top3(F.gifters, (x) => `${nameBreak(x.name)} (${x.count})`));
       if (F.vips.length) credit(thanks, 'Neue VIPs', top3(F.vips, nameBreak));
     }
-    // Reise: ganz am Ende, allein und leise
-    if (o.travel) el('p', 'gedenken', card, GEDENKEN);
+    // ganz am Ende, allein und leise
+    el('p', 'gedenken', card, GEDENKEN);
   }
 
   /**
@@ -555,10 +553,11 @@ export class Menus {
       ['Hupen (Brunnen & Elsa grüßen)', 'Leertaste', 'A', '📯'],
       ['Scheibenwischer von Hand', 'E', 'X', '🌧️'],
       ['Megafon', 'H', 'Y', '📢'],
-      ...(this.h.mode === 'xxl' ? [['Ladestopp einplanen (nächster Ladepark)', 'L', '–', '🔌 Ladestopp']] : []),
+      ['Ladestopp einplanen (nächster Ladepark)', 'L', '–', '🔌 Ladestopp'],
       ['Kamera (Cockpit / Drohne)', 'V', 'B', '🎥'],
       ['Chat ein/aus', 'C', '–', '–'],
       ['Ton aus', 'M', '–', '–'],
+      ['Vollbild an/aus', 'F', '–', '⛶ im Menü'],
       ['Pause', 'Esc oder P', 'Start', '⏸'],
     ];
     const head = el('div', 'crow head', tbl);
@@ -569,21 +568,16 @@ export class Menus {
     }
     const tips = el('div', 'tips', card);
     el('h3', '', tips, 'Tipps');
-    // in der Reise sind die Ziele echte Orte mit Brunnen, und das Navi führt über Ausfahrten dorthin
-    const reise = this.h.mode === 'xxl';
     for (const t of [
       'Geld gibt es nur vom Publikum: Spenden, Abos, Navi-Gebote. Fürs Fahren selbst zahlt niemand – aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.',
       'Wenn NOMI sagt „Die linke Fahrspur ist freigeschaltet.“, hat jemand dafür gespendet: Eine Minute lang darfst du ganz links fahren. Nutzt du sie, freut sich der Chat. Danach gilt wieder das Rechtsfahrgebot, sonst kommt die Polizei Gifhorn.',
-      reise
-        ? 'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Zehner drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV. Dort rechnet auch die Werkstatt die Rempler der Runde ab, und je zügiger du von Ziel zu Ziel kommst, desto zufriedener ist der Chat (das Gesicht oben im Chat) – und desto lieber gibt er.'
-        : 'Das Navi-Ziel ändert sich ständig – jeder Bieter legt mindestens einen Cent drauf. Kommst du trotzdem an, feiert der Chat mit Ortsspenden.',
-      ...(reise ? ['Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.'] : []),
+      'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Zehner drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV. Dort rechnet auch die Werkstatt die Rempler der Runde ab, und je zügiger du von Ziel zu Ziel kommst, desto zufriedener ist der Chat (das Gesicht oben im Chat) – und desto lieber gibt er.',
+      'Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.',
       'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Tesla-Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
-      reise
-        ? 'Geladen wird in den Ladeparks an den Ausfahrten: Warnt NOMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) den nächsten Park ein, das Navi führt hinein und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.'
-        : 'Lade-Ringe füllen den Akku. Bananensaft ist super, Koriander leider nicht.',
+      'Geladen wird in den Ladeparks an den Ausfahrten: Warnt NOMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) den nächsten Park ein, das Navi führt hinein und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',
+      'In den ersten Minuten erklären kurze Tipps am Bildrand, was gerade dran ist – jeder kommt nur einmal. Enter oder ✕ schaltet sie ab.',
     ]) el('p', '', tips, '• ' + t);
     const menu = el('div', 'menu row', card);
     button(menu, '← Zurück', 'back', 'primary');
@@ -644,9 +638,9 @@ export class Menus {
     const card = el('div', 'card about-card', s);
     el('h2', '', card, 'ℹ️ Über das Spiel');
     const p = (t) => el('p', '', card, t);
-    p(`„${GAME_NAME}“ ist ein liebevolles, nicht-kommerzielles Fan-Spiel rund um SkylineTV LIVE. Mini Adam – der Plüsch-Adam mit Kappe, Bart und LIVE-Shirt – fährt den schwarzen Tesla Model 3 Long Range AWD mit 75-kWh-Akku über die Autobahn, während der Chat das Navi fernsteuert.`);
-    p('Auf der Reise über die echte Karte ist jedes Navi-Ziel der Hauptbrunnen eines Orts: Dort hält Mini Adam neben dem Brunnen, kurbelt das Fenster herunter und macht mit dem Megafon BrunnenTV aus dem Auto. Das Megafon gehört zur Ausstattung.');
-    p('Fast alle Witze stammen aus dem SkylineTV LIVE Wiki: die freigeschaltete linke Spur, das Navi-Bieten mit einem Cent mehr, BrunnenTV mit Herrn Schönnbrun, Elsa, die Polizei Gifhorn, Meister Pünktlich (kommt gleich), Walte, die Farbe der Bank, Rahmen aus dem Live-Bereich, Sprachdurchsagen von Fräulein Kassandra und Brüll-William, das Sprachstudio in Mini Adams Ohr, Bananensaft statt Koriander, „You had 5 Jobs“ und die erlogenen Berufsbezeichnungen im Abspann.');
+    p(`„${GAME_NAME}“ ist ein liebevolles, nicht-kommerzielles Fan-Spiel rund um SkylineTV LIVE. Mini Adam – der Plüsch-Adam mit Kappe, Bart und LIVE-Shirt – fährt den schwarzen Tesla Model 3 Long Range AWD mit 75-kWh-Akku vom Supercharger in Erlensee über echte Autobahnen, Landstraßen und Ortsdurchfahrten, während der Chat das Navi fernsteuert.`);
+    p('Jedes Navi-Ziel ist der Hauptbrunnen eines echten Orts, und jedes Gebot legt mindestens einen Zehner drauf. Steht Mini Adam am Brunnen, bevor wieder jemand überbietet, kurbelt er das Fenster herunter und macht mit dem Megafon BrunnenTV aus dem Auto – jede Folge kommt ins Album. Geladen wird in den Ladeparks an den Ausfahrten.');
+    p('Fast alle Witze stammen aus dem SkylineTV LIVE Wiki: die freigeschaltete linke Spur, das Navi-Bieten, BrunnenTV mit Herrn Schönnbrun, Elsa, die Polizei Gifhorn, Meister Pünktlich (kommt gleich), Walte, die Farbe der Bank, Rahmen aus dem Live-Bereich, Sprachdurchsagen von Fräulein Kassandra und Brüll-William, das Sprachstudio in Mini Adams Ohr, Bananensaft statt Koriander, „You had 5 Jobs“ und die erlogenen Berufsbezeichnungen im Abspann.');
     p('Geld gibt es wie im echten Stream nur vom Publikum: Spenden, Ortsspenden, Abos, VIPs und Navi-Gebote. Wie der Chat gerade gelaunt ist, steht nirgends – das Sprachstudio sagt es Mini Adam ins Ohr.');
     p('NOMI ist der Boardcomputer auf dem Armaturenbrett. Alle Grafiken, Geräusche und Stimmen entstehen direkt im Browser – ohne Bilder- oder Tondateien.');
     const ext = (parent, text, href) => {

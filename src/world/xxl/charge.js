@@ -55,8 +55,8 @@ export const ROLL_T = TA + TB + TC;
  * Die Startszene der Reise (main.js, Zustand 'charge') in Sekunden ab ihrem Beginn: Der Stecker verlässt die Buchse und
  * kehrt in seinen Halter zurück (plug), die Klappe schließt (flap), der Wagen rollt an (roll, ROLL_T später ist er dem
  * Spiel übergeben: end), NOMI gongt und Mini Adam winkt, sobald der Stecker hängt (chime, wave), das Sprachstudio
- * meldet sich (live; NOMI grüßt, wenn es ausgeredet hat), und die Kamera geht ins Cockpit (inside, wie beim
- * Kameraschwenk des klassischen Starts 1,45 s vor dem Ende). Überspringen geht ab skip.
+ * meldet sich (live; NOMI grüßt, wenn es ausgeredet hat), und die Kamera geht ins Cockpit (inside, 1,45 s vor dem
+ * Ende). Überspringen geht ab skip.
  */
 export const SCENE = { plug: [0.9, 2], flap: [1.25, 1.6], roll: 1.6, chime: 2, wave: [2, 3.3], live: 2.5, skip: 0.3 };
 SCENE.end = SCENE.roll + ROLL_T;

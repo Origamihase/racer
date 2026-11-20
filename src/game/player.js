@@ -69,7 +69,6 @@ export class Player {
     this.sFar = 0;
     this.revFloor = -REVERSE.back;
     this.revEnd = false;
-    this.bumpFwd = 0; // so weit hat ein Rempler rückwärts den Wagen nach vorn geschoben (Game zieht es von revDebt ab)
     this.x = ROAD.laneCenter(3);
     // Querdynamik (siehe steering.js): Lenkbefehl u (mit Vorstufe u1), Anteile Spieler / Kurve / Stoß
     this.u1 = 0;
@@ -113,7 +112,7 @@ export class Player {
     this.kPrev = 0;
     this.kS = null;
     this.ctrl.reset();
-    // Grenzen der Welt: klassisch die feste Autobahn; die XXL-Welt setzt sie jedes Bild neu (setLimits)
+    // Grenzen der Welt: bis die Welt sie setzt (jedes Bild, setLimits), die vier Spuren der Autobahn
     this.limits = { left: LEFT_LIMIT, right: RIGHT_LIMIT, shoulder: SHOULDER_X, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, back: 0 };
     this.lanes = [];
     this.laneKey = null;
@@ -130,13 +129,13 @@ export class Player {
   /**
    * Grenzen der Welt an der aktuellen Stelle; nicht angegebene Werte bleiben. left/right: Grenzen für die Wagenmitte
    * (Leitplanken, m), shoulder: ab hier zählt der Standstreifen (Infinity = keiner), lanes: Spuren wie in
-   * trip.profile() ([{ x, dir, closed }], auch bloße Zahlen; null = die klassischen vier), extraLane: zusätzliche
+   * trip.profile() ([{ x, dir, closed }], auch bloße Zahlen; null = die vier der Autobahn), extraLane: zusätzliche
    * Spur bei x (Ein- und Ausfädelstreifen, null = keine), vmax: Tempo-Obergrenze in m/s (Infinity = keine, 0 = Halt),
    * decel: Verzögerung in m/s², mit der vmax gerade planmäßig fällt (die XXL-Welt bremst so vor einem Tempolimit und
    * vor dem Halt am Ziel; 0 = fester Wert): Drossel und Tempomat bremsen dann mit, statt der Grenze nachzulaufen.
    * slack: Querbewegung nach außen in m/s, bis zu der eine Grenze den Wagen nur mitschiebt (siehe rails; 0 = feste
-   * Leitplanke wie klassisch, die XXL-Welt gibt ihren wandernden Grenzen dieses Spiel). back: bis hierher (Meter der
-   * Straße) darf der Rückwärtsgang zurück (klassisch der Start, die XXL-Welt der Anfang ihres Abschnitts).
+   * Leitplanke, die XXL-Welt gibt ihren wandernden Grenzen dieses Spiel). back: bis hierher (Meter der Straße) darf
+   * der Rückwärtsgang zurück (die XXL-Welt setzt den Anfang ihres Abschnitts).
    */
   setLimits(l = {}) {
     const L = this.limits;
@@ -480,7 +479,6 @@ export class Player {
       ev.zone = 'rear';
       ev.power = this.speed + Math.max(0, c.speed);
       const s1 = c.s + (c.len + this.len) / 2 + 0.35;
-      this.bumpFwd += Math.max(0, s1 - this.s);
       this.s = s1;
       this.speed = 0;
       if (counts) c.speed = Math.max(0, c.speed - 2);
@@ -521,10 +519,5 @@ export class Player {
     const k = this.damage.repair(n);
     this.hits = this.damage.hits;
     return k;
-  }
-
-  charge(pct) {
-    this.battery = Math.min(100, this.battery + pct);
-    this.empty = false;
   }
 }

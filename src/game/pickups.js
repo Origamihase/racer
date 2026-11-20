@@ -1,4 +1,4 @@
-// Dinge auf der Fahrbahn: Lade-Ringe (Akku), Bananensaft (ja!) und Koriander (nein!).
+// Koriander auf der Fahrbahn (nein!). Akku und Bananensaft gibt es im Ladepark (Game.tickCharge).
 import * as THREE from 'three';
 import { W, curveAt, curvePoint } from '../curve.js';
 import { ROAD, roundRect } from '../textures.js';
@@ -18,69 +18,6 @@ function canvasTexture(w, h, draw) {
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
   return t;
-}
-
-function bottleTexture() {
-  return canvasTexture(256, 384, (ctx, w, h) => {
-    ctx.translate(w / 2, 0);
-    // Flasche
-    ctx.beginPath();
-    ctx.moveTo(-26, 40);
-    ctx.lineTo(26, 40);
-    ctx.lineTo(26, 92);
-    ctx.quadraticCurveTo(84, 120, 84, 180);
-    ctx.lineTo(84, 340);
-    ctx.quadraticCurveTo(84, 370, 54, 370);
-    ctx.lineTo(-54, 370);
-    ctx.quadraticCurveTo(-84, 370, -84, 340);
-    ctx.lineTo(-84, 180);
-    ctx.quadraticCurveTo(-84, 120, -26, 92);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.fill();
-    ctx.lineWidth = 8;
-    ctx.strokeStyle = '#3a2a10';
-    ctx.stroke();
-    // Saft
-    ctx.save();
-    ctx.clip();
-    const g = ctx.createLinearGradient(-84, 0, 84, 0);
-    g.addColorStop(0, '#f2c419');
-    g.addColorStop(0.5, '#ffe45c');
-    g.addColorStop(1, '#e8b30e');
-    ctx.fillStyle = g;
-    ctx.fillRect(-90, 150, 180, 230);
-    ctx.restore();
-    // Deckel
-    ctx.fillStyle = '#2e7d32';
-    roundRect(ctx, -32, 14, 64, 32, 8);
-    ctx.fill();
-    // Etikett mit Banane
-    ctx.fillStyle = '#ffffff';
-    roundRect(ctx, -70, 205, 140, 110, 14);
-    ctx.fill();
-    ctx.strokeStyle = '#3a2a10';
-    ctx.lineWidth = 5;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-44, 228);
-    ctx.quadraticCurveTo(-30, 292, 46, 270);
-    ctx.quadraticCurveTo(-6, 270, -26, 226);
-    ctx.closePath();
-    ctx.fillStyle = '#ffd21f';
-    ctx.fill();
-    ctx.strokeStyle = '#6b4a00';
-    ctx.lineWidth = 4;
-    ctx.stroke();
-    ctx.fillStyle = '#3a2a10';
-    ctx.font = 'bold 22px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('BANANENSAFT', 0, 306, 124); // so schmal, dass es im Etikett bleibt
-    // Glanz
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    roundRect(ctx, -70, 140, 14, 190, 7);
-    ctx.fill();
-  });
 }
 
 function corianderTexture() {
@@ -137,9 +74,9 @@ function corianderTexture() {
 }
 
 /**
- * Weicher Schein hinter den Teilen. Läuft nach unten früher aus als nach oben: die Fläche steht
+ * Weicher Schein hinter dem Koriander. Läuft nach unten früher aus als nach oben: die Fläche steht
  * senkrecht und reicht unter die Fahrbahn, ein runder Schein würde dort mit harter Kante abgeschnitten.
- * Bei allen drei Teilen liegt die Fahrbahn etwa 14 % über der Unterkante der Fläche.
+ * Die Fahrbahn liegt etwa 14 % über der Unterkante der Fläche.
  */
 function glowTexture() {
   const S = 128;
@@ -171,115 +108,58 @@ function glowTexture() {
   return t;
 }
 
-function boltTexture() {
-  return canvasTexture(256, 256, (ctx, w, h) => {
-    ctx.translate(w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(18, -110);
-    ctx.lineTo(-62, 14);
-    ctx.lineTo(-8, 14);
-    ctx.lineTo(-24, 110);
-    ctx.lineTo(62, -22);
-    ctx.lineTo(8, -22);
-    ctx.closePath();
-    ctx.fillStyle = '#eaffef';
-    ctx.shadowColor = '#4dff9a';
-    ctx.shadowBlur = 24;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = '#1faa5a';
-    ctx.stroke();
-  });
-}
-
-export const PICKUP_TYPES = ['charge', 'banana', 'koriander'];
-
 export class Pickups {
   constructor(scene) {
     this.group = new THREE.Group();
     this.group.name = 'Pickups';
     scene.add(this.group);
     this.items = [];
-    this.pool = { charge: [], banana: [], koriander: [] };
+    this.pool = [];
     const glow = glowTexture();
     // Der Schein liegt in derselben Ebene wie das Teil davor: ein paar Tiefenstufen nach hinten geschoben,
     // damit er das Teil nie (je nach Rundung mal ja, mal nein) überstrahlt – sonst flimmert es und zeigt Streifen
     const BEHIND = { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 4 };
     this.mats = {
-      ring: W.basic({ color: new THREE.Color(0.25, 2.2, 0.9), toneMapped: true }),
-      bolt: W.basic({ map: boltTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide }),
-      bottle: W.basic({ map: bottleTexture(), transparent: true, alphaTest: 0.05, side: THREE.DoubleSide }),
       koriander: W.basic({ map: corianderTexture(), transparent: true, alphaTest: 0.05, side: THREE.DoubleSide }),
-      glowG: W.basic({ ...BEHIND, map: glow, color: 0x55ff99, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.8 }),
-      glowY: W.basic({ ...BEHIND, map: glow, color: 0xffd34d, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.6 }),
-      glowR: W.basic({ ...BEHIND, map: glow, color: 0xff6040, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.35 }),
+      glow: W.basic({ ...BEHIND, map: glow, color: 0xff6040, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.35 }),
     };
-    this.geo = {
-      ring: new THREE.TorusGeometry(0.95, 0.09, 10, 40),
-      plane: new THREE.PlaneGeometry(1, 1),
-    };
+    this.plane = new THREE.PlaneGeometry(1, 1);
   }
 
-  make(type) {
+  make() {
     const g = new THREE.Group();
-    const M = this.mats;
-    if (type === 'charge') {
-      const ring = new THREE.Mesh(this.geo.ring, M.ring);
-      ring.position.y = 1.15;
-      const bolt = new THREE.Mesh(this.geo.plane, M.bolt);
-      bolt.scale.setScalar(1.1);
-      bolt.position.y = 1.15;
-      const glow = new THREE.Mesh(this.geo.plane, M.glowG);
-      glow.scale.setScalar(3.2);
-      glow.position.y = 1.15;
-      g.add(glow, ring, bolt);
-      g.userData.spin = ring;
-      g.userData.face = [bolt, glow];
-    } else if (type === 'banana') {
-      const b = new THREE.Mesh(this.geo.plane, M.bottle);
-      b.scale.set(0.95, 1.42, 1);
-      b.position.y = 0.95;
-      const glow = new THREE.Mesh(this.geo.plane, M.glowY);
-      glow.scale.setScalar(2.6);
-      glow.position.y = 0.95;
-      g.add(glow, b);
-      g.userData.face = [b, glow];
-    } else {
-      const k = new THREE.Mesh(this.geo.plane, M.koriander);
-      k.scale.setScalar(1.35);
-      k.position.y = 0.85;
-      const glow = new THREE.Mesh(this.geo.plane, M.glowR);
-      glow.scale.setScalar(2.4);
-      glow.position.y = 0.85;
-      g.add(glow, k);
-      g.userData.face = [k, glow];
-    }
+    const k = new THREE.Mesh(this.plane, this.mats.koriander);
+    k.scale.setScalar(1.35);
+    k.position.y = 0.85;
+    const glow = new THREE.Mesh(this.plane, this.mats.glow);
+    glow.scale.setScalar(2.4);
+    glow.position.y = 0.85;
+    g.add(glow, k);
+    g.userData.face = [k, glow];
     this.group.add(g);
     return g;
   }
 
-  spawn(type, s, lane) {
-    const list = this.pool[type];
-    let obj = list.find((o) => !o.userData.inUse);
+  spawn(s, lane) {
+    let obj = this.pool.find((o) => !o.userData.inUse);
     if (!obj) {
-      obj = this.make(type);
-      list.push(obj);
+      obj = this.make();
+      this.pool.push(obj);
     }
     obj.userData.inUse = true;
     obj.visible = true;
     obj.scale.setScalar(1);
-    const it = { type, s, x: ROAD.laneCenter(lane), lane, obj, taken: false, fade: 0, ahead: 0, phase: Math.random() * 6 };
+    const it = { s, x: ROAD.laneCenter(lane), lane, obj, taken: false, fade: 0, ahead: 0, phase: Math.random() * 6 };
     this.items.push(it);
     return it;
   }
 
-  /** Spur mit wenig Verkehr für ein neues Teil suchen (XXL: nur, wo die Autobahn dort noch offene Fahrbahn hat). */
-  spawnAhead(type, sPlayer, traffic, dist = 650) {
+  /** Koriander in einer Spur mit wenig Verkehr auslegen (nur, wo die Autobahn dort noch offene Fahrbahn hat). */
+  spawnAhead(sPlayer, traffic, dist = 650) {
     const s = sPlayer + dist + rand(0, 120);
     const lanes = [0, 1, 2, 3].filter((l) => traffic.laneOpen(l, s) && traffic.laneFree(l, s, 26));
     if (!lanes.length) return null;
-    return this.spawn(type, s, pick(lanes));
+    return this.spawn(s, pick(lanes));
   }
 
   reset() {
@@ -290,7 +170,7 @@ export class Pickups {
     this.items = [];
   }
 
-  /** XXL-Welt: die Teile liegen auf einer Autobahn mit Scherung {a, b}; nach update() seitlich verschieben. */
+  /** Die Teile liegen auf einer Autobahn mit Scherung {a, b} (world/xxl): nach update() seitlich verschieben. */
   applyShear(sh, sPlayer) {
     for (const it of this.items) it.obj.position.x += sh.a + sh.b * (it.s - sPlayer);
   }
@@ -334,7 +214,6 @@ export class Pickups {
         o.scale.setScalar(Math.max(0.001, (1 - k) * (1 + 0.25 * Math.sin(k * Math.PI))));
       }
       o.position.set(x, y, -rel);
-      if (o.userData.spin) o.userData.spin.rotation.y = t * 1.8 + it.phase;
       // zur Kamera drehen (nur um die Hochachse): Richtung zur Kamera in der gebogenen Welt, abzüglich der
       // Drehung, die die Biegung dem Gegenstand an dieser Stelle ohnehin gibt
       const th = curveAt(rel, FRAME).th;

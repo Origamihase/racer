@@ -45,7 +45,7 @@ export const CHEER = {
   laneOpen: [0.005, 40], // linke Spur freigeschaltet
   laneUsed: [0.005, 0, 'spur'], // … und sie wurde gut genutzt (beim Schließen)
   bid: [0, 12], // neues Navi-Gebot
-  bidChaos: [0, 4], // Cent-Gebot im Chaos
+  bidChaos: [0, 4], // Gebot im Chaos
   bidBig: [0.02, 60, 'gebot'], // großes Gebot
   funny: [0.005, 15, 'spass'], // Frosch, Kofferraum, Rahmen, Zahlen im Chat, Polizei Gifhorn, Sammelaktion geschafft
   rainStart: [0.025, 30, 'regen'], // es fängt an zu regnen
@@ -111,33 +111,31 @@ const GIFT_COUNTS = [1, 1, 1, 3, 3, 5, 5, 5, 10, 10, 20];
 const VIP_PRICE = 7.99;
 const VIP_EXTRA = [9.99, 10, 12, 15, 20];
 
-// Navi-Gebote: im Chaos fast immer genau 1 Cent mehr, sonst auch mal ein kleiner Sprung, ein Duell (+0,10 … +5 €)
-// oder ganz selten ein Gebot, das ein Zeichen setzen soll. Auf der Reise wird in Zehnern geboten (der Eigentümer:
-// „keine Cent-Beträge, sondern in 10€ Abständen bis in die hunderte“): Je Eintrag steht neben dem Cent-Schritt des
-// klassischen Spiels der Euro-Schritt der Reise, und ein Wurf wählt beide. Der Takt der Gebote richtet sich auch auf
-// der Reise nach der Cent-Leiter (bids.level, siehe nextBid) – so bleibt der Rhythmus der Runden der gemessene
-// (tools/journey-test.mjs), nur die Beträge sind andere.
+// Navi-Gebote in Zehnern (der Eigentümer: „keine Cent-Beträge, sondern in 10€ Abständen bis in die hunderte“): im
+// Chaos fast immer genau ein Zehner mehr, sonst auch mal ein kleiner Sprung, ein Duell oder ganz selten ein Gebot, das
+// ein Zeichen setzen soll. Je Eintrag [Stufe der Takt-Leiter, Euro]: Nach der Takt-Leiter (bids.level, siehe nextBid)
+// richtet sich die Ruhe bis zum nächsten Gebot – ihre kleinen Stufen halten den Rhythmus der Runden, wie er gemessen
+// ist (tools/journey-test.mjs), gleich wie groß die Beträge werden.
 const STEP = [0.01, 10];
 const CHAOS_JUMPS = [[0.02, 20], [0.02, 20], [0.03, 20], [0.05, 30]];
 const SMALL_JUMPS = [[0.02, 10], [0.05, 20], [0.1, 20], [0.1, 20], [0.25, 30], [0.5, 50]];
 const DUEL_STEPS = [[0.1, 10], [0.5, 20], [0.5, 20], [1, 20], [1, 20], [1.5, 30], [2, 30], [2, 30], [2.5, 40], [3, 50], [5, 100]];
 const BIG_BIDS = [[10, 100], [15, 150], [20, 150], [25, 200], [33.33, 250], [50, 300]];
 /**
- * BontanaBack (nur auf der Reise): ein seltener Großbieter, der eine Runde in großen Schritten bis in die niedrigen
+ * BontanaBack: ein seltener Großbieter, der eine Runde in großen Schritten bis in die niedrigen
  * Tausender treibt. Ab Runde from (zwei Ziele erreicht) wird je Runde einmal gewürfelt (chance), wenn ihr Chaos vorbei
  * ist – höchstens max-mal je Stream und nie in zwei Runden hintereinander. Er nimmt den Platz des ersten ruhigen Gebots
  * ein (es kommt nach derselben Ruhe) und eskaliert mit bids Geboten (die größere Zahl mit Anteil five), er und wer vorn
  * lag im Wechsel, gap Sekunden auseinander, er zuletzt: seine Schritte first, dann then Euro (in Zehnern), sein letztes
  * Gebot landet auf der nächsten mark-Marke ab floor (höchstens cap); der andere hält mit rival Euro dagegen. Die
- * Cent-Leiter (Takt danach) steigt je Gebot um Euro / ladder: Danach ist es so lange still wie nach einem großen Gebot.
+ * Takt-Leiter steigt je Gebot um Euro / ladder: Danach ist es so lange still wie nach einem großen Gebot.
  */
 export const BONTANA = {
   name: 'BontanaBack',
   from: 3, chance: 0.35, max: 2, bids: [3, 5], five: 0.4, gap: [3, 5],
   first: [200, 400], then: [300, 500], mark: 500, floor: 1000, cap: 3000, rival: [10, 20, 50], ladder: 40,
 };
-// Die Ruhe nach einem Gebot ist für klassische Ziele gemacht, eine knappe Minute voraus. In der XXL-Welt liegen echte
-// Orte Minuten entfernt (30 Kartenkilometer gut 4 Minuten, 100 gut 6, 250 gut 11): Dort wächst die Ruhe mit der
+// Die Ruhe nach einem Gebot ist für ein Ziel eine knappe Minute voraus bemessen. Echte Orte liegen aber Minuten entfernt (30 Kartenkilometer gut 4 Minuten, 100 gut 6, 250 gut 11): Dort wächst die Ruhe mit der
 // Fahrzeit, die das Navi nennt – um (Fahrzeit / CALM_DRIVE) hoch CALM_GROW, also etwas langsamer als die Fahrzeit
 // selbst (nahe Ziele halten eher bis zur Ankunft als ferne), und nie länger als CALM_MAX × Fahrzeit (auch nach einem
 // großen Gebot schweigt der Chat nicht ewig). Die Werte sind mit tools/journey-test.mjs gemessen: Bei kleinen Geboten
@@ -176,12 +174,10 @@ export class Economy {
   #slow = NEUTRAL;
 
   /**
-   * @param {{seed?: number, zehner?: boolean}} opts mit seed läuft alles reproduzierbar, ohne über Math.random;
-   *   zehner: Navi-Gebote in 10-€-Schritten (die Reise), sonst in Cent (das klassische Spiel)
+   * @param {{seed?: number}} opts mit seed läuft alles reproduzierbar, ohne über Math.random
    */
-  constructor({ seed, zehner = false } = {}) {
+  constructor({ seed } = {}) {
     this.rnd = seed === undefined ? () => Math.random() : mulberry32(seed);
-    this.zehner = zehner;
     this.events = [];
     this.reset();
   }
@@ -369,7 +365,7 @@ export class Economy {
     let target = reach * (0.55 + 0.9 * this.#slow) + this.hype + 25 * Math.sin(this.t / 23) + this.raid;
     if (this.up.starlink) target *= 1.25;
     if (d.funkloch) target *= 0.8;
-    // Reise: ein zufriedener Chat lockt mehr Zuschauer an (satisfaction.js audience; klassisch 1)
+    // ein zufriedener Chat lockt mehr Zuschauer an (satisfaction.js audience; ohne Angabe 1)
     target *= d.audience ?? 1;
     this.viewers = damp(this.viewers, target, 0.4, dt);
 
@@ -377,7 +373,7 @@ export class Economy {
     const act = this.activity();
     const pace = this.tempo(act);
     const C = this.clock;
-    // Reise: Wie zufrieden der Chat ist, treibt Spenden, Abos und VIP an (satisfaction.js gain; klassisch 1)
+    // Wie zufrieden der Chat ist, treibt Spenden, Abos und VIP an (satisfaction.js gain; ohne Angabe 1)
     const gain = d.gain ?? 1;
     // frischer Trubel (Hype) lockt Spender, und mit Starlink kommt ein Fünftel mehr an
     C.donation -= dt * this.tempo(act * (1 + Math.min(this.hype, 300) / 600)) * (this.up.starlink ? 1.2 : 1) * gain;
@@ -488,23 +484,22 @@ export class Economy {
 
   // --- Navi-Gebote -----------------------------------------------------------------
   /**
-   * Neue Bieterrunde (Stream-Beginn oder Ziel erreicht): Es geht wieder bei 1 Cent los (auf der Reise bei 10 €) –
-   * erst einmal im Chaos. level: der Preis der Runde in Cent-Schritten (danach richtet sich der Takt), next: der
-   * Cent-Schritt des zuletzt geplanten Gebots.
+   * Neue Bieterrunde (Stream-Beginn oder Ziel erreicht): Es geht wieder bei 10 € los – erst einmal im Chaos. level:
+   * Stand der Takt-Leiter der Runde (danach richtet sich die Ruhe), next: ihre Stufe beim zuletzt geplanten Gebot.
    */
   newRound(first = false) {
     this.round = first ? 1 : this.round + 1;
     this.bids = { n: 0, chaos: first ? this.int(7, 11) : this.int(5, 9), duel: 0, calm: 0, quiet: false, late: false, level: 0, next: 0, bontana: 0, bontanaK: 0 };
   }
 
-  /** Das kleinste Gebot und der kleinste Schritt: 1 Cent, auf der Reise 10 €. */
+  /** Das kleinste Gebot und der kleinste Schritt: 10 €. */
   get minStep() {
-    return STEP[this.zehner ? 1 : 0];
+    return STEP[1];
   }
 
   /**
-   * Ein Gebot außer der Reihe (das Siegen-Gebot, game.js): Es legt den kleinsten Schritt drauf, die Cent-Leiter steigt
-   * um einen Cent wie der Preis im klassischen Spiel. Gibt den Schritt in der Währung der Runde zurück.
+   * Ein Gebot außer der Reihe (das Siegen-Gebot, game.js): Es legt den kleinsten Schritt drauf, die Takt-Leiter steigt
+   * um ihre kleinste Stufe. Gibt den Schritt in Euro zurück.
    */
   extraBid() {
     this.bids.level = cent(this.bids.level + STEP[0]);
@@ -513,25 +508,25 @@ export class Economy {
 
   /**
    * Das nächste Gebot: wie lange es noch dauert und um wie viel es das aktuelle überbietet.
-   * Direkt nach dem Start einer Runde hagelt es Cent-Gebote. Danach gilt: Je höher der Preis, desto seltener
+   * Direkt nach dem Start einer Runde hagelt es Gebote. Danach gilt: Je höher der Preis, desto seltener
    * findet sich jemand, der noch einen drauflegt (jeder zahlt sein ganzes Gebot, zurück gibt es nichts). Ab und zu
    * schaukeln sich zwei im Duell hoch, ganz selten setzt jemand mit einem großen Gebot ein Zeichen; danach ist
    * erst einmal Ruhe.
-   * @param {{bid:number, drive?:number, opening?:boolean}} state aktueller Preis in Euro; drive (nur XXL-Welt):
-   *   Sekunden Fahrt bis zum neuen Ziel, wie das Navi sie kennt. Die Ruhe nach einem Gebot ist für klassische Ziele
-   *   gemacht; liegt ein echter Ort Minuten entfernt, wächst sie mit der Fahrzeit (stretch, siehe CALM_DRIVE) – wer
+   * @param {{bid:number, drive?:number, opening?:boolean}} state aktueller Preis in Euro; drive: Sekunden Fahrt bis
+   *   zum neuen Ziel, wie das Navi sie kennt. Liegt das Ziel Minuten entfernt, wächst die Ruhe mit der Fahrzeit
+   *   (stretch, siehe CALM_DRIVE) – wer
    *   zügig fährt, kommt so oft an, bevor wieder jemand überbietet, aber nie sicher. opening: die erste Runde des
    *   Streams läuft noch – dann richtet sich die Ruhe allein nach der Fahrzeit (OPENING_CALM, OPENING_AGAIN), und
    *   ein Duell beginnt nicht.
-   *   Auf der Reise (zehner) ist increment ein Vielfaches von 10 € und die Ruhe rechnet mit der Cent-Leiter der Runde
-   *   (bids.level) statt mit dem Preis in Euro: So kommen die Gebote im selben Takt wie mit Cent-Beträgen.
+   *   increment ist ein Vielfaches von 10 €; die Ruhe rechnet mit der Takt-Leiter der Runde (bids.level) statt mit dem
+   *   Preis in Euro.
    * @returns {{increment:number, delay:number, kind:'chaos'|'step'|'duel'|'big'|'bontana', first?:boolean, last?:boolean,
    *   stretch?:number}} first: erstes Gebot einer Runde, eines Duells bzw. BontanaBacks Auftritt · last: sein letztes
    *   Gebot · stretch: um diesen Faktor ist die Ruhe gestreckt
    */
   nextBid({ bid = 0, drive = 0, opening = false } = {}) {
     const B = this.bids;
-    // das zuletzt geplante Gebot steht inzwischen: Die Cent-Leiter steigt um seinen Schritt
+    // das zuletzt geplante Gebot steht inzwischen: Die Takt-Leiter steigt um seine Stufe
     B.level = cent(B.level + B.next);
     const act = clamp(Math.sqrt(this.activity()), 0.75, 1.4);
     const plan = { increment: 0, delay: 0, kind: 'step' };
@@ -580,8 +575,7 @@ export class Economy {
         step = this.pick(DUEL_STEPS);
         B.duel = this.int(3, 6);
       } else if (r < 0.6) step = this.pick(SMALL_JUMPS);
-      const price = this.zehner ? B.level : bid;
-      plan.delay = (this.rand(0.7, 1.4) * (40 + 26 * Math.pow(price, 0.6)) * (B.quiet ? 1.5 : 1)) / act;
+      plan.delay = (this.rand(0.7, 1.4) * (40 + 26 * Math.pow(B.level, 0.6)) * (B.quiet ? 1.5 : 1)) / act;
       if (opening && drive > 0) {
         const range = B.calm ? OPENING_AGAIN : OPENING_CALM;
         plan.delay = drive * this.rand(range[0], range[1]);
@@ -592,20 +586,19 @@ export class Economy {
       B.quiet = quiet;
       B.calm++;
     }
-    plan.increment = step[this.zehner ? 1 : 0];
+    plan.increment = step[1];
     B.next = step[0];
     B.n++;
     return plan;
   }
 
   /**
-   * Kommt BontanaBack in dieser Runde? Nur auf der Reise und nur beim ersten ruhigen Gebot einer Runde gewürfelt
-   * (BONTANA: ab Runde from, höchstens max-mal je Stream, nie zwei Runden hintereinander). Klassisch zieht das keine
-   * Zufallszahl.
+   * Kommt BontanaBack in dieser Runde? Nur beim ersten ruhigen Gebot einer Runde gewürfelt (BONTANA: ab Runde from,
+   * höchstens max-mal je Stream, nie zwei Runden hintereinander).
    */
   #bontanaRoll(opening) {
     const T = BONTANA;
-    if (!this.zehner || opening || this.bids.calm > 0 || this.round < T.from) return false;
+    if (opening || this.bids.calm > 0 || this.round < T.from) return false;
     if (this.bontana.n >= T.max || this.bontana.round === this.round - 1 || !this.chance(T.chance)) return false;
     this.bontana.n++;
     this.bontana.round = this.round;
@@ -613,7 +606,7 @@ export class Economy {
   }
 
   /**
-   * Schritt des k-ten Gebots einer BontanaBack-Runde beim Preis bid, als [Cent-Leiter, Euro]: gerade k sind seine
+   * Schritt des k-ten Gebots einer BontanaBack-Runde beim Preis bid, als [Takt-Leiter, Euro]: gerade k sind seine
    * (das letzte landet auf der Marke), ungerade die Antworten dessen, der vorn lag.
    */
   #bontanaStep(bid, k, last) {

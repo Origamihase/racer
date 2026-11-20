@@ -7,7 +7,7 @@ import {
 } from '../src/map/mapview.js';
 import { places, nodes, edges, deRev, deRoad, deTowards } from '../src/map/graph.js';
 import { Line, fmtRoad, fmtKm, fmtOdo, fmtDistance } from '../src/map/navroute.js';
-import { MapDemo } from '../src/map/mapdemo.js';
+import { MapDemo } from './mapdemo.mjs';
 import { goalName } from '../src/world/kit/layout.js';
 import { Persp, TiltView, ribbon } from '../src/map/persp.js';
 
@@ -830,7 +830,7 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
   // Angabe rechts bzw. der längsten Entfernung; fast immer mit dem Brunnen davor, „Marktbrunnen, Würzburg“), in der Nebenzeile „dann zum Ziel …“ neben fünf Spurpfeilen und im
   // Routenstreifen höchstens hinter dem Stück gekürzt, das ihn eindeutig macht; die große Karte führt denselben Namen.
   // Die Ansage im HUD (Drohnenansicht, schmale Formate) bricht lange Zeilen um und kürzt nie (docs/style.css).
-  // Kein Modul der XXL-Welt ruft die Kurznamen des klassischen Spiels (shortName, signName), die Zusätze streichen.
+  // Kein Modul der Welt ruft die Kurznamen der Ortsschilder des Stadtbaukastens (signName), die Zusätze streichen.
   // Schriftbreiten schätzt eine Tabelle nach oben ab (je Zeichen das breitere aus Arial fett und Inter fett, der
   // Ersatzschrift ohne Helvetica und Arial, dazu 2 %; im Browser misst die Leinwand). Der Ort aus dem Stadtbaukasten
   // heißt ebenso (tools/citykit-test.mjs).
@@ -938,12 +938,12 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
     }
     ok(!wrong.length, 'Ein Name je Ort: ' + wrong.slice(0, 12).join(' | '));
     ok(e.places === 426 && e.card >= 420 && e.noRoute <= 3 && e.split > 20 && e.cardGoal >= 330 && e.bannerGoal >= 400, 'Ein Name je Ort: zu wenig geprüft ' + JSON.stringify(e));
-    // die Kurznamen des klassischen Spiels streichen Zusätze („Frankfurt (Oder)“ → „Frankfurt“): Navi, Karte, Schilder
-    // und Orte der XXL-Welt rufen sie nicht
+    // die Kurznamen des Stadtbaukastens streichen Zusätze („Frankfurt (Oder)“ → „Frankfurt“): Navi, Karte, Schilder
+    // und Orte der Welt rufen sie nicht
     const src = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8');
     const callers = ['map/navroute.js', 'map/navview.js', 'map/mapview.js', 'map/roadahead.js', 'map/symbols.js', 'ui/mapscreen.js', 'world/xxl/signplan.js', 'world/xxl/signs.js', 'world/xxl/towns.js', 'world/xxl/world.js']
-      .filter((f) => /\b(shortName|signName)\(/.test(src(f)));
-    ok(!callers.length, 'Ein Name je Ort: Kurznamen des klassischen Spiels in ' + callers.join(', '));
+      .filter((f) => /\bsignName\(/.test(src(f)));
+    ok(!callers.length, 'Ein Name je Ort: Kurznamen des Stadtbaukastens in ' + callers.join(', '));
     // die Ansage im HUD steht auf dem Handy in einer Spalte von rund 240 Bildpunkten: dort passt kaum ein Name in eine
     // Zeile. Weder ihre Regel noch die ihres Texts hält ihn deshalb in einer Zeile oder setzt Auslassungspunkte
     const css = readFileSync(new URL('../docs/style.css', import.meta.url), 'utf8');
@@ -963,7 +963,7 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
   const { loadSave, storeSave } = await import('../src/save.js');
   store.set('mini-adam-tesla-navi-v1', JSON.stringify({ wallet: 12.5, upgrades: { akku: 1 }, stats: { runs: 3, totalKm: 42 } }));
   const old = loadSave();
-  ok(old.wallet === 12.5 && old.stats.totalKm === 42 && old.upgrades.akku === 1, 'alter Spielstand verliert Werte');
+  ok(old.wallet === 12.5 && old.stats.runs === 3 && old.upgrades.akku === 1 && !('totalKm' in old.stats), 'alter Spielstand verliert Werte (oder behält die Kilometer der klassischen Autobahn)');
   ok(old.visits && Object.keys(old.visits).length === 0, 'alter Spielstand: Besuche nicht leer');
   // recordVisit/visitSummary ohne DOM (mapscreen.js braucht für sie nur den Spielstand)
   globalThis.document = undefined;
