@@ -974,8 +974,10 @@ export class NavModel {
    * Entfernung in Worten, '' ohne Stelle), calm, head (Hauptzeile), sub (Nebenzeile), road (Schild), lanes
    * (Spurpfeile), fork (die Gabelung, die die Ansage meint), node, mapKm (Reisekilometer bis zum Ziel), toTarget
    * (dieselben in Worten, wie Kärtchen und HUD-Zeile sie nennen), clock (Restfahrzeit in Sekunden der Uhr), mins,
-   * target}. Ohne bekannte Stelle (dem Straßenverlauf folgen) ist dist 0 und wird nicht gezeigt.
+   * target, next}. Ohne bekannte Stelle (dem Straßenverlauf folgen) ist dist 0 und wird nicht gezeigt.
    * Ohne Ziel nennt die Ansage nur die Straße – und ein Autobahnende, das auf dem eigenen Weg liegt.
+   * next: die nächste Ausfahrt auf der eigenen Autobahn (trip.nextExit), auch wenn die Route geradeaus bleibt, mit say
+   * in denselben Worten wie die Ansage (ab ihrer ersten Tafel Meter Straße, davor Reisekilometer) – oder null.
    *
    * Die Ausfahrt hat zwei Zustände, der Wechsel liegt am ersten Vorwegweiser (BOARD_M): Davor ist sie eine ruhige
    * Vorschau (calm: Name der Ausfahrt, darunter „in 55 km“ in Reisekilometern); ab der Tafel zählt say die Meter
@@ -987,8 +989,13 @@ export class NavModel {
     const sec = trip.section;
     const out = {
       turn: 'none', dist: 0, km: 0, say: '', calm: false, head: '', short: '', sub: '', road: '', lanes: null, node: -1, fork: null,
-      mapKm: g.km, toTarget: g.type === 'none' ? '' : fmtDistance(g), clock: g.clock, mins: g.mins, target: trip.target,
+      mapKm: g.km, toTarget: g.type === 'none' ? '' : fmtDistance(g), clock: g.clock, mins: g.mins, target: trip.target, next: null,
     };
+    const nx = trip.nextExit();
+    if (nx) {
+      nx.say = nx.dist <= (parkBoard(nx.fork) || BOARD_M) ? fmtRoad(nx.dist) : fmtKm(trip.reach(nx.fork.s).km);
+      out.next = nx;
+    }
     // gerade unterwegs zu einem Terminal? Dann ist die Überfahrt die nächste Handlung (Stelle: das Terminal der Fahrt)
     for (const c of trip.cur.sections) {
       if (c.s1 <= trip.s) continue;

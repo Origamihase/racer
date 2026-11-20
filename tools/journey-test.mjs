@@ -20,7 +20,8 @@
 //   Kilometerzähler steigt, und steigt nie, solange das Ziel steht und die Fahrt nicht neu plant; Meter nennt eine
 //   Anzeige nur, wo bis zur Stelle echte Straße (1:1) liegt und höchstens 1000 m davon (weiter weg auch dort
 //   Kilometer: „1,2 km“, am Wechsel wird daraus „1000 m“ und nichts steigt) – oder in der Ansage ab dem ersten
-//   Vorwegweiser, und dann sagt sie an jeder Tafel und Bake genau deren Meter; Ansage, Kärtchen und HUD-Zeile nennen im Zielort dieselbe
+//   Vorwegweiser, und dann sagt sie an jeder Tafel und Bake genau deren Meter (und an jedem Vorwegweiser nennt das
+//   Navi dessen Ausfahrt als nächste, auch wo die Route geradeaus bleibt); Ansage, Kärtchen und HUD-Zeile nennen im Zielort dieselbe
 //   Zahl; eine Entfernungstafel, die das Ziel nennt, zeigt die Kilometer des Navis; jeder Abschnitt zählt, was die
 //   Karte für seine Kante sagt (Rampen, Verbindungen und Orte: ihre Meter).
 // - Die erste Runde eines Streams (navi.js OPENING, economy.js OPENING_CALM): Bis zum ersten Halt an einem Brunnen
@@ -36,7 +37,7 @@ import { PerspectiveCamera } from 'three';
 import { places, nodeTitle, deEdge, OFF_KM } from '../src/map/graph.js';
 import { Trip, J, PROFILES } from '../src/game/trip.js';
 import { MapDemo } from './mapdemo.mjs';
-import { Game, TOWN_HOLD } from '../src/game/game.js';
+import { Game, TOWN_HOLD, EXIT_CALL, exitLine } from '../src/game/game.js';
 import { BID_PLACES, OPENING } from '../src/game/navi.js';
 import { INSIDER_ORTE, JOB_TEMPLATES } from '../src/data.js';
 import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
@@ -170,6 +171,7 @@ function checkNavi(trip, nav, promised, n, where) {
 // was graph.js und navroute.js von den Maßen der Fahrt und der Schilder wissen müssen, stimmt mit ihnen überein
 ok(OFF_KM.exit * 1000 === J.ramp && Math.abs(OFF_KM.enterAb * 1000 - (J.conn + J.auf)) < 1e-9, `graph.js OFF_KM ${JSON.stringify(OFF_KM)} passt nicht zu J.ramp ${J.ramp}, J.conn ${J.conn}, J.auf ${J.auf}`);
 ok(BOARD_M === BOARD_D[0], `Die Ansage wechselt bei ${BOARD_M} m, der erste Vorwegweiser steht bei ${BOARD_D[0]} m`);
+ok(EXIT_CALL.at === BOARD_D[0] && EXIT_CALL.late > BOARD_D[1], `NOMI nennt die nächste Ausfahrt ab ${EXIT_CALL.at} m bis ${EXIT_CALL.late} m, die Vorwegweiser stehen bei ${BOARD_D.join(' und ')} m`);
 
 /** Anzeige „… km“ oder „… m“ als Meter (für den Vergleich zweier Anzeigen). */
 function shownMetres(text) {
@@ -328,6 +330,17 @@ function numbers(trip, nav, nv, N, game) {
         if (e.s <= sBefore) continue;
         if (e.kind === 'vorweg' || e.kind === 'bake' || e.kind === 'ladepark') {
           ins = ins || nav.instruction();
+          if (e.kind === 'vorweg') {
+            // die nächste Ausfahrt im Navi (Schild, HUD-Zeile, NOMI) ist die des Vorwegweisers, auch wenn die Route
+            // geradeaus bleibt: derselbe Name, dieselben Meter; am ersten nennt NOMI sie mit Namen und Metern
+            const nx = ins.next;
+            ok(!!nx && nx.fork.id === e.fork && nx.title === e.board.title && nx.name === e.board.head && nx.say === e.board.dist, `Vorwegweiser „${e.board.title} ${e.board.dist}“, das Navi nennt als nächste Ausfahrt „${nx ? nx.title + ' ' + nx.say : '–'}“`);
+            if (nx && e.dist === EXIT_CALL.at) {
+              const line = exitLine(nx);
+              ok(line.includes(nx.kind === 'ende' ? '1000 Metern' : nx.name + ' in 1000 Metern') && (nx.plan !== 'stay' || line.includes(nx.road)), `NOMI am Vorwegweiser „${e.board.title} ${e.board.dist}“: „${line}“`);
+            }
+            N.nextBoards++;
+          }
           if (ins.turn !== 'exit' || !ins.fork || ins.fork.id !== e.fork) continue;
           const want = e.kind === 'vorweg' ? e.board.dist : e.dist + ' m';
           ok(ins.say === want && !ins.calm, `Tafel „${want}“ vor ${ins.head}, die Ansage sagt „${ins.say}“${ins.calm ? ' (noch als Vorschau)' : ''}`);
@@ -428,7 +441,7 @@ function stream(driver, hours, seed, firstRound = false) {
     // townBids = nach wie vielen Sekunden im Zielort dort ein Gebot kam (Game.updateNavi hält es höchstens TOWN_HOLD)
     open: { bids: [], standT: -1, standPlace: -1, calm: 0, drive: 0, changed: 0, end: '', endT: -1, kept: false, dev: 0, minChoice: Infinity, late: 0, townIn: -1, townLeft: 0, townBids: [] },
     num: {
-      steps: 0, falls: 0, plans: 0, maxErr: 0, metres: 0, kms: 0, kmReal: 0, units: 0, unitDrop: 0, boards: 0, parkBoards: 0, beacons: 0, tables: 0, tableRows: 0, tableDev: 0, sums: 0, same: 0, calm: 0, near: 0,
+      steps: 0, falls: 0, plans: 0, maxErr: 0, metres: 0, kms: 0, kmReal: 0, units: 0, unitDrop: 0, boards: 0, nextBoards: 0, parkBoards: 0, beacons: 0, tables: 0, tableRows: 0, tableDev: 0, sums: 0, same: 0, calm: 0, near: 0,
       edges: 0, edgeKm: 0, feederKm: 0, realKm: 0, realBy: {},
       clockErr: 0, clockKm: 0, clockMove: 0, clockStand: 0, etaLegs: [],
     },
@@ -773,7 +786,7 @@ function numbersLine(m) {
   return (
     `Die Zahlen passen zusammen: ${N.steps} Schritte, ${fmt(m.tripKm, 0)} Reisekilometer auf ${fmt(m.roadKm, 0)} km Straße · ${N.falls}× fiel die Entfernung zum Ziel genau wie der Zähler stieg (größter Fehler ${N.maxErr.toExponential(1)} km), ${N.plans} neue Pläne` +
     ` · Anzeige in km ${N.kms}× (davon ${N.kmReal}× auf echter Straße über ${BOARD_M} m: „1,2 km“ statt „1150 m“), in Metern ${N.metres}× (nur auf echter Straße bis ${BOARD_M} m), ${N.units} Wechsel km → m (größter Sprung der Zahl ${fmt(N.unitDrop, 0)} m, erlaubt 100 m)` +
-    ` · ${N.sums}× Ziel = Handlung + Rest, ${N.same}× im Zielort dieselbe Zahl auf Ansage, Kärtchen und HUD-Zeile, Ausfahrt ${N.calm}× als Vorschau in km und ${N.near}× in Metern, ${N.boards} Vorwegweiser, ${N.parkBoards} Ladepark-Tafeln und ${N.beacons} Baken mit der Zahl der Ansage` +
+    ` · ${N.sums}× Ziel = Handlung + Rest, ${N.same}× im Zielort dieselbe Zahl auf Ansage, Kärtchen und HUD-Zeile, Ausfahrt ${N.calm}× als Vorschau in km und ${N.near}× in Metern, ${N.boards} Vorwegweiser, ${N.parkBoards} Ladepark-Tafeln und ${N.beacons} Baken mit der Zahl der Ansage, ${N.nextBoards} Vorwegweiser = nächste Ausfahrt im Navi` +
     ` · ${N.tables} Entfernungstafeln, ${N.tableRows} nannten das Ziel (größte Abweichung ${fmt(N.tableDev, 2)} km)` +
     ` · ${N.edges} Kanten = ${fmt(N.edgeKm, 0)} km laut Karte, Zubringer ${fmt(N.feederKm, 0)} km, echte Straße ${fmt(N.realKm, 0)} km (${fmt((100 * N.realKm) / Math.max(all, 1e-9), 1)} %: ${by})` +
     `\n    Uhr = Reisezeit: ${fmt(N.clockMove / 3600, 2)} h der Uhr in Fahrt für ${fmt(N.clockKm, 0)} Reisekilometer (Uhr × Tempo = Reisemeter, größter Fehler ${N.clockErr.toExponential(1)} m), ${fmt(N.clockStand / 60, 1)} min im Stand wie die echte Zeit` +
@@ -1014,6 +1027,7 @@ if (HOURS >= 3) {
   ok(sum((m) => m.arrivals) >= 30, `zu wenige Ankünfte: ${sum((m) => m.arrivals)}`);
   ok(sum((m) => m.lockFork) >= 10 && sum((m) => m.lockNode) >= 20, `zu wenige Gebote in Sperrzonen: ${sum((m) => m.lockFork)} / ${sum((m) => m.lockNode)}`);
   ok(sum((m) => m.navi.exit) > 2000 && sum((m) => m.navi.arrive) > 300, 'Navi und Welt: zu wenig geprüft');
+  ok(sum((m) => m.num.nextBoards) >= 200, `Vorwegweiser und nächste Ausfahrt im Navi: zu wenig geprüft (${sum((m) => m.num.nextBoards)})`);
   ok(sum((m) => m.num.kmReal) >= 500 && sum((m) => m.num.units) >= 20, `Anzeige auf echter Straße über ${BOARD_M} m und ihr Wechsel zu Metern: zu wenig geprüft (${sum((m) => m.num.kmReal)} Schritte, ${sum((m) => m.num.units)} Wechsel)`);
 }
 console.log(`Reise: ${rows.length} Streams zu je ${HOURS} h in ${((Date.now() - t0) / 1000).toFixed(0)} s`);

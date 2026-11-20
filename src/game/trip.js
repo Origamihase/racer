@@ -34,6 +34,8 @@ import { PARK, PARK_STOP_AFTER, PARKS, parkAt, parkZub, parkExcursion, routeToPa
 const WALK_KM = 1500;
 /** nextRest ohne Frage nach dem Akku: jeder Park gilt als erreichbar. */
 const ALL = () => true;
+/** Schildtexte je Gabelung für nextExit (sie hängen nur an der Karte, darum gemerkt). */
+const EXIT_TITLE = new WeakMap();
 /** Routen zu Ladeparks für detour und pastTarget (sie hängen nur an der Karte, darum gemerkt). */
 const PARK_ROUTES = new Map();
 function parkRoute(pk) {
@@ -1122,6 +1124,31 @@ export class Trip {
       }
     }
     return { ...base, type: 'follow', dist: this.cur.s1 - this.s };
+  }
+  /**
+   * Die nächste Ausfahrt auf der eigenen Autobahn: die erste Gabelung voraus, ob der Plan dort abfährt oder geradeaus
+   * bleibt (das Navi zeigt sie immer, NOMI nennt sie am ersten Vorwegweiser). Nur auf der Autobahn, denn nur sie hat
+   * Gabelungen. Ergebnis {fork, dist (Meter Straße bis zur Gabelung), title (wie auf dem Schild: „Ausfahrt Hanau-Nord“,
+   * „Frankfurter Kreuz“, „Autobahnende“), name (ohne „Ausfahrt “), kind ('ausfahrt' | 'kreuz' | 'ende'), plan
+   * (planFor: 'exit', 'stay', ohne Ziel null), exit (der Plan fährt dort ab), road (die Autobahn geradeaus, am
+   * Autobahnende '')} oder null.
+   */
+  nextExit() {
+    if (!this.section || this.section.kind !== 'ab') return null;
+    for (const c of this.cur.sections) {
+      const f = c.fork;
+      if (c.s1 <= this.s || !f || f.taken || f.s <= this.s) continue;
+      let t = EXIT_TITLE.get(f);
+      if (!t) {
+        const title = f.forced ? 'Autobahnende' : nodeTitle(f.node);
+        const kind = f.forced ? 'ende' : title.startsWith('Ausfahrt ') ? 'ausfahrt' : 'kreuz';
+        t = { title, kind, name: kind === 'ausfahrt' ? title.slice(9) : title, road: f.stay >= 0 ? deRoad(f.stay).label : '' };
+        EXIT_TITLE.set(f, t);
+      }
+      const plan = this.planFor(f);
+      return { fork: f, dist: f.s - this.s, title: t.title, name: t.name, kind: t.kind, plan, exit: plan === 'exit', road: t.road };
+    }
+    return null;
   }
   /** Restkilometer und Restzeit bis zum Ziel ab der Spielerposition (reach bis zum Zielpunkt). */
   stateAhead() {

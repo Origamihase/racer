@@ -52,6 +52,20 @@ function kmWords(km) {
   return Math.round(km) + ' Kilometern';
 }
 /**
+ * NOMI und die nächste Ausfahrt (Game.exitCall): Sie nennt sie ab at Metern Straße vor der Gabelung (dem ersten
+ * Vorwegweiser, signplan.js BOARD_D), bis late Meter davor; eine Ausfahrt, an der die Route vorbeiführt, höchstens alle
+ * gap Sekunden.
+ */
+export const EXIT_CALL = { at: 1000, late: 700, gap: 90 };
+/** NOMIs Satz zur nächsten Ausfahrt (trip.nextExit): Name wie auf dem Schild, Meter in Worten, was die Route dort tut. */
+export function exitLine(nx) {
+  const L = BOARD.exit;
+  const d = Math.max(50, Math.round(nx.dist / 50) * 50) + ' Metern';
+  const head = fillTemplate(L[nx.kind], { name: nx.name, d });
+  if (nx.plan === 'exit' && nx.kind !== 'ende') return head + ' ' + L.take;
+  return nx.plan === 'stay' ? head + ' ' + fillTemplate(L.stay, { road: nx.road }) : head;
+}
+/**
  * Verbrauch des Akkus seit dem letzten Laden (Game.journeyBattery): Meter Straße und Prozent, getrennt nach offener
  * Strecke und echter Straße; s und b sind Bandmeter und Akku der letzten Messung (NaN: noch keine).
  */
@@ -135,6 +149,9 @@ export class Game {
     this.popT = -9;
     this.scrapeT = -9;
     this.naviSaidT = -99;
+    // die nächste Ausfahrt (exitCall): die Gabelung, die NOMI zuletzt genannt hat, und wann
+    this.exitSaid = null;
+    this.exitSaidT = -99;
     // Verkehr aus Sicht des Chats: hängt Mini Adam hinter jemandem fest? (siehe watchTraffic)
     this.trafficT = 0;
     this.stuck = false;
@@ -532,6 +549,7 @@ export class Game {
     if (this.tv) this.tickBrunnenTV();
     else if (this.navi.stopping) this.tickHalt(dt);
     this.updateNavi(dt);
+    this.exitCall();
     this.updateEvents(dt, camera);
     this.updatePickups(dt, camera);
     this.updateViewers(dt);
@@ -937,6 +955,29 @@ export class Game {
   }
 
   // --- Navi ------------------------------------------------------------------------
+  /**
+   * NOMI nennt die nächste Ausfahrt am ersten Vorwegweiser, wie das Schild am Rand: „Nächste Ausfahrt: Hanau-Nord in
+   * 1000 Metern.“ – und sagt dazu, ob die Route dort abfährt oder auf der Autobahn bleibt. Ruhig (EXIT_CALL): Eine
+   * Ausfahrt, an der die Route vorbeiführt, nennt sie höchstens alle EXIT_CALL.gap Sekunden; jede Gabelung einmal,
+   * nie in einer Szene und nie in einen anderen Satz hinein (wer dann zu spät kommt, entfällt).
+   */
+  exitCall() {
+    const nx = this.world.trip().nextExit();
+    if (!nx || nx.fork === this.exitSaid || nx.dist > EXIT_CALL.at) return;
+    if (nx.dist < EXIT_CALL.late) {
+      this.exitSaid = nx.fork;
+      return;
+    }
+    if (this.charging || this.tv || this.t < this.voiceUntil) return;
+    if (!nx.exit && this.t - this.exitSaidT < EXIT_CALL.gap) {
+      this.exitSaid = nx.fork;
+      return;
+    }
+    this.exitSaid = nx.fork;
+    this.exitSaidT = this.t;
+    this.say(exitLine(nx), 'talk', { priority: false });
+  }
+
   updateNavi(dt) {
     const p = this.player;
     const nv = this.navi;

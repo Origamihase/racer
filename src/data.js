@@ -690,6 +690,14 @@ export const BOARD = {
   leftLane: 'Die linke Fahrspur ist freigeschaltet.',
   leftLaneEnd: 'Die linke Fahrspur ist wieder gesperrt. Bitte rechts fahren.',
   naviChanged: 'Das Navi-Ziel wurde geändert.',
+  // die nächste Ausfahrt am ersten Vorwegweiser (game.js exitLine): {name} wie auf dem Schild, {d} „1000 Metern“
+  exit: {
+    ausfahrt: 'Nächste Ausfahrt: {name} in {d}.',
+    kreuz: 'Als Nächstes: {name} in {d}.',
+    ende: 'Die Autobahn endet in {d}. Alle Spuren führen hinaus.',
+    take: 'Dort fahren wir ab.',
+    stay: 'Wir bleiben auf der {road}.',
+  },
   arrived: 'Sie haben Ihr Ziel erreicht.',
   rain: 'Regen erkannt. Automatische Scheibenwischer aktiviert.',
   // NOMI entschuldigt sich ab und zu für den hängenden Wischer

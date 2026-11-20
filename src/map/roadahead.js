@@ -112,9 +112,9 @@ function chord(L, i) {
  * Alles in der Nahansicht: {roads: [{kind, role, fade, pts: [d, X, …], sec}], route: [d, X, …], trail: [d, X, …],
  * towns: [{place, sec, pts, streets: [{pts, w}], square: {d, X, r} | null}], marks: [{type, d, X, …}], carX}.
  * kind: Querschnitt ('ab', 'rampe', 'verbindung', 'land', 'stadt'); role: 'cur' | 'branch' | 'ghost' | 'ahead';
- * fade 0…1 (verlassene Wege verschwinden, wo die Welt sie verschwinden lässt); marks: 'exit' (angesagte Ausfahrt),
- * 'pin' (Zielpunkt), 'term' (Terminal), 'town' (Ortsanfang). ins: die Ansage des Navis (für die Ausfahrt, die sie
- * meint). Ohne gebogene Linie genügen Stützpunkte an den Knicken (gerade Rahmen, nur geschert).
+ * fade 0…1 (verlassene Wege verschwinden, wo die Welt sie verschwinden lässt); marks: 'exit' (angesagte Ausfahrt;
+ * name: ihr Schildtext), 'pin' (Zielpunkt), 'term' (Terminal), 'town' (Ortsanfang). ins: die Ansage des Navis (für
+ * die Ausfahrt, die sie meint). Ohne gebogene Linie genügen Stützpunkte an den Knicken (gerade Rahmen, nur geschert).
  */
 export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = STEP) {
   const s = trip.s;
@@ -285,7 +285,7 @@ export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = 
   if (fork && fork.branch && !fork.taken) {
     const ramp = fork.branch.sections[0];
     const so = fork.s + J.gore;
-    if (so < hi && so > lo) scene.marks.push({ type: 'exit', d: so - s, X: lat(ramp, so, MID.rampe) });
+    if (so < hi && so > lo) scene.marks.push({ type: 'exit', d: so - s, X: lat(ramp, so, MID.rampe), name: ins.head });
   }
   for (const { path: p, role } of trip.paths()) {
     if (role === 'ghost') continue;

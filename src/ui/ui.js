@@ -118,6 +118,10 @@ export class UI {
     this.turnIcon.width = this.turnIcon.height = 56;
     this.turnDist = el('b', 'navi-turn-dist', this.turnEl, '');
     this.turnText = el('span', 'navi-turn-text', this.turnEl, '');
+    // die nächste Ausfahrt, auch wenn die Route geradeaus bleibt: ein blaues Schild wie am Straßenrand (ins.next)
+    this.turnNext = el('span', 'navi-next', this.turnEl);
+    el('i', '', this.turnNext, 'Nächste Ausfahrt');
+    this.turnNextText = el('b', '', this.turnNext, '');
     this.leftLaneEl = el('div', 'leftlane hidden', second);
     this.leftLaneText = el('div', 'leftlane-text', this.leftLaneEl, '');
     const bar = el('div', 'leftlane-bar', this.leftLaneEl);
@@ -258,6 +262,12 @@ export class UI {
     const text = ins.calm && ins.say ? ins.head + ' · in ' + ins.say : ins.head;
     if (this.turnDist.textContent !== dist) this.turnDist.textContent = dist;
     if (this.turnText.textContent !== text) this.turnText.textContent = text;
+    // die nächste Ausfahrt – nicht, solange die Ansage selbst sie nennt
+    const nx = ins.next && ins.next.fork !== ins.fork ? ins.next : null;
+    const next = nx ? nx.name + ' · ' + nx.say : '';
+    this.turnNext.classList.toggle('on', !!nx);
+    this.turnNext.firstChild.textContent = nx && nx.kind === 'kreuz' ? 'Nächstes Kreuz' : 'Nächste Ausfahrt';
+    if (this.turnNextText.textContent !== next) this.turnNextText.textContent = next;
   }
 
   /** v: HUD an oder aus; subs (bei v = false): von allem nur der Untertitel-Streifen (Startszene der Reise). */
