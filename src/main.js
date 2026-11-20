@@ -36,14 +36,12 @@ import { Jolt } from './fx/jolt.js';
 import { TeslaDamage } from './models/damage-fx.js';
 import { CabinDamage } from './cockpit/damage-cabin.js';
 import { loadSave, storeSave, resetSave, refundMegafon, megafonNoteSeen, storePicture, loadPictures, PIC_MAX } from './save.js';
-import { modeFor, otherMode, modeSearch } from './mode.js';
 import { Game } from './game/game.js';
 import { Pickups } from './game/pickups.js';
 import { UI } from './ui/ui.js';
 import * as sicht from './ui/sicht.js';
 import { Menus } from './ui/menus.js';
 import { SHOP, UPGRADE_LIMITS } from './data.js';
-import { MapDemo } from './map/mapdemo.js';
 import { NavModel } from './map/navroute.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
@@ -63,15 +61,7 @@ const save = loadSave();
 const megafonBack = refundMegafon(save);
 if (megafonBack) storeSave(save);
 let shopRefund = 0;
-// Der Modus dieses Seitenaufrufs (src/mode.js): ein Schalter in der Adresse (?xxl, ?klassik), sonst die Wahl vom
-// Titelbildschirm (save.mode), sonst der Standard. XXL ist die neue Welt mit Ausfahrten, Rampen, Landstraßen und Orten
-// (src/world/xxl); sie wird beim Laden gebaut, darum lädt der Wechsel des Modus die Seite neu (switchMode).
-const MODE = modeFor(location.search, save.mode);
-const XXL = MODE === 'xxl';
-// Prüfstand für Navi und Karte: eine echte Fahrt über die XXL-Karte neben dem klassischen Spiel (src/map/mapdemo.js);
-// in der XXL-Welt gibt es ihn nicht, dort führt das Navi die Fahrt der Welt
-const mapDemo = DEBUG && !XXL && /[?&]mapdemo/.test(location.search) ? new MapDemo() : null;
-let mapHudT = 0; // die Navi-Zeile des HUD (XXL-Fahrt, Prüfstand) folgt viermal je Sekunde
+let mapHudT = 0; // die Navi-Zeile des HUD folgt der Fahrt viermal je Sekunde
 
 // ---------------------------------------------------------------------------
 const app = document.getElementById('app');
@@ -114,11 +104,12 @@ const rearCam = new THREE.PerspectiveCamera(21, 0.245 / 0.072, 0.6, 700);
 const photoCam = new THREE.PerspectiveCamera(24, 16 / 9, 0.2, 900);
 
 const sky = new Sky(renderer, scene, { shadows: quality.shadows, shadowSize: quality.shadowSize });
-const road = new Road(scene, XXL ? ROAD_OPTS : undefined);
+const road = new Road(scene, ROAD_OPTS);
 const scenery = new Scenery(scene);
-const xxl = XXL ? new XxlWorld({ scene, road, scenery }) : null;
+// die Welt der Reise (src/world/xxl): Autobahnen, Ausfahrten, Rampen, Landstraßen und Orte aus der echten Karte
+const xxl = new XxlWorld({ scene, road, scenery });
 // die große Karte der Reise zeigt die BrunnenTV-Folgen des Albums als Abzeichen (goldene Ringe, Zähler)
-if (xxl) albumBadges(save);
+albumBadges(save);
 const rain = new Rain(scene);
 const traffic = new Traffic(scene, rain);
 const pickups = new Pickups(scene);
@@ -138,32 +129,23 @@ sky.onEnv = (tex) => {
   cockpit.scene.environment = tex;
   facecam.scene.environment = tex;
 };
-// Verlauf der Straße: im klassischen Spiel ein entworfener Endlos-Kurs. Die XXL-Welt entwirft ihn aus der Karte
-// (MapPlanner) für die Abschnitte ihrer Fahrt (courseTrip = xxl.trip, siehe xxlStart): Autobahn, Landstraße und
-// Ortszufahrt biegen und steigen, wie die Karte sie zeigt; rund um Ausfahrten, Einfädelpunkte und Enden bleibt es gerade.
+// Verlauf der Straße: Die Welt entwirft ihn aus der Karte (MapPlanner) für die Abschnitte ihrer Fahrt (courseTrip =
+// xxl.trip, siehe xxlStart): Autobahn, Landstraße und Ortszufahrt biegen und steigen, wie die Karte sie zeigt; rund um
+// Ausfahrten, Einfädelpunkte und Enden bleibt es gerade.
 // Prüfstand: __MA.course.drive(kurs, fahrt, tick) fährt einen Kurs über eine Fahrt (trip.js), tick(s) vor jedem Bild
-let course = xxl ? new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) }) : new Course();
+let course = new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) });
 let courseTrip = null;
 let courseTick = null;
-// Navi-Prüfstand (?debug&mapdemo): seine Fahrt ist die Fahrt der Welt. Der Kurs entwirft sie aus der Karte, sie folgt
-// dem Spieler (p.s, vor course.fill), und das Navi liest die Straße voraus nur aus diesem Kurs (COMMON.md §9)
-if (mapDemo) {
-  course = new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) });
-  courseTick = (s, dt) => {
-    mapDemo.follow(s, dt);
-    courseTrip = mapDemo.trip;
-  };
-}
 // die Straße voraus des Navis: der Verlauf, den die Welt zeichnet (preview reicht 4 km weit)
 setRoadAhead((trip, s, dMax) => course.preview(trip, s, Math.min(dMax, 4000)));
-// und die Orte der XXL-Welt in seiner Nahansicht: Brunnenplatz und Zielbrunnen dort, wo die Welt sie baut
-if (xxl) setTownLayout((trip, sec) => naviLayout(sec, xxl.town(sec)));
+// und die Orte der Welt in seiner Nahansicht: Brunnenplatz und Zielbrunnen dort, wo die Welt sie baut
+setTownLayout((trip, sec) => naviLayout(sec, xxl.town(sec)));
 // Kurvenschilder rücken von Möbeln am Rand weg: vom Raster der Landschaft und von Blitzern, Tempo-Schildern und
 // Navi-Zielen, die das Spiel dort bestellt hat
 const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'ziel', 'elsa']);
 const curveSigns = new CurveSigns(scene, {
-  // XXL: am Rand des Querschnitts, den der Abschnitt hat (zweispurige Straßen sind schmaler als die Autobahn)
-  layout: xxl ? profileLayout : undefined,
+  // am Rand des Querschnitts, den der Abschnitt hat (zweispurige Straßen sind schmaler als die Autobahn)
+  layout: profileLayout,
   busy(s) {
     if (gridBusy(s)) return true;
     for (const r of scenery.requests) if (EDGE_REQUESTS.has(r.type) && Math.abs(r.s - s) < 8) return true;
@@ -345,16 +327,14 @@ for (const [action, label, cls] of [
   touchEl.appendChild(b);
   input.bindTouch(b, action);
 }
-// Reise: „Ladestopp einplanen“ (wie Taste L), zu sehen, wenn der Akku halb leer ist oder NOMI gewarnt hat
-const stopBtn = xxl ? document.createElement('button') : null;
-if (stopBtn) {
-  stopBtn.type = 'button';
-  stopBtn.className = 't-stop';
-  stopBtn.setAttribute('aria-label', 'Ladestopp einplanen');
-  stopBtn.innerHTML = '<span>🔌</span> Ladestopp einplanen';
-  touchEl.appendChild(stopBtn);
-  input.bindTouch(stopBtn, 'ladestopp');
-}
+// „Ladestopp einplanen“ (wie Taste L), zu sehen, wenn der Akku halb leer ist oder NOMI gewarnt hat
+const stopBtn = document.createElement('button');
+stopBtn.type = 'button';
+stopBtn.className = 't-stop';
+stopBtn.setAttribute('aria-label', 'Ladestopp einplanen');
+stopBtn.innerHTML = '<span>🔌</span> Ladestopp einplanen';
+touchEl.appendChild(stopBtn);
+input.bindTouch(stopBtn, 'ladestopp');
 app.appendChild(touchEl);
 const touch = new TouchControls(touchEl, input);
 const jolt = new Jolt();
@@ -408,17 +388,15 @@ const uiFacade = {
   brunnenTV: (n, name) => ui.brunnenTV(n, name),
 };
 
-// XXL: Das Spiel bietet auf echte Orte und braucht dafür die Fahrt der Welt (jedes Gebot setzt ihr Ziel), den Halt am
+// Das Spiel bietet auf echte Orte und braucht dafür die Fahrt der Welt (jedes Gebot setzt ihr Ziel), den Halt am
 // Brunnen (stopping: der Wagen bremst gerade dorthin · release: weiterfahren, auch wenn er knapp hinter dem
 // Haltepunkt zum Stehen kam) sowie Brunnenplatz und Ort für die BrunnenTV-Szene
-const gameWorld = xxl
-  ? { trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec) }
-  : null;
+const gameWorld = { trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec) };
 // (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
 const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
-// XXL: Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht,
-// BrunnenTV, Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
-if (xxl) xxl.on((e) => {
+// Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht, BrunnenTV,
+// Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
+xxl.on((e) => {
   game.onTrip(e);
   // an der angesagten Ausfahrt vorbei: Die Fahrt plant neu, das Navi im Auto zeigt es
   if (e.type === 'fork' && e.wrong && game.running) xxlNav.replanned();
@@ -563,11 +541,8 @@ const menus = new Menus(app, {
       menus.hide();
       game.end('quit');
     } else if (a === 'menu') toTitle();
-    else if (a === 'mode') switchMode();
   },
   back: () => {},
-  mode: MODE, // der Titel nennt seinen Modus und bietet den anderen an
-  travel: !!xxl, // XXL-Welt: Rekord und Summe auf dem Titel in Reisekilometern
   dataFor: (name, data) => {
     if (name === 'shop' && save.megafonNote) {
       shopRefund = megafonNoteSeen(save);
@@ -577,7 +552,7 @@ const menus = new Menus(app, {
     if (name === 'settings') return { ...settings, speechSupported: speech.supported };
     if (name === 'title') return save;
     if (name === 'pause') return game;
-    if (name === 'karte') return { save, nav: xxl ? xxlNav : mapDemo ? mapDemo.model : null, travel: !!xxl, odo: xxl && paused ? game.odometer : null };
+    if (name === 'karte') return { save, nav: xxlNav, odo: paused ? game.odometer : null };
     // BrunnenTV-Album: Folgen aus dem Spielstand, Bilder unter ihrem eigenen Schlüssel (frisch gelesen)
     if (name === 'album') return { save, pics: loadPictures(), tab: 'folgen' };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
@@ -607,10 +582,9 @@ const menus = new Menus(app, {
     applySettings(key);
   },
   resetSave: () => {
-    // (die Wahl des Modus ist kein Spielstand: Wer die Reise gewählt hat, bleibt auch nach dem Löschen dort; die Zeile
-    // zum erstatteten Megafon gilt dem gelöschten Guthaben und verschwindet mit ihm)
+    // (die Zeile zum erstatteten Megafon gilt dem gelöschten Guthaben und verschwindet mit ihm)
     shopRefund = 0;
-    const fresh = { ...resetSave(), mode: save.mode };
+    const fresh = resetSave();
     for (const k of Object.keys(save)) delete save[k];
     Object.assign(save, fresh);
     settings = save.settings;
@@ -672,28 +646,6 @@ function applySettings(key) {
   }
 }
 
-let leaving = false; // die Seite lädt gerade in den anderen Modus
-/**
- * Der Eintrag für den anderen Modus auf dem Titelbildschirm: Wahl merken und die Seite in ihm laden (die Welt wird beim
- * Laden gebaut). Sofort steht wieder der Ladebildschirm des ersten Starts da – derselbe, den die neue Seite gleich
- * zeigt –, damit bis dahin nichts von der alten Welt zu sehen oder zu hören ist. Die neue Adresse trägt keinen
- * Schalter für den Modus mehr (modeSearch): Es gilt die gemerkte Wahl.
- */
-function switchMode() {
-  if (leaving) return;
-  leaving = true;
-  save.mode = otherMode(MODE);
-  storeSave(save);
-  speech.stopAll();
-  audio.suspend();
-  menus.hide();
-  loadingEl.classList.remove('done');
-  app.appendChild(loadingEl);
-  const url = location.href.split(/[?#]/)[0] + modeSearch(location.search, save.mode);
-  // erst zeichnen lassen, dann laden
-  setTimeout(() => location.replace(url), 80);
-}
-
 function toTitle() {
   state = 'title';
   stateT = 0;
@@ -703,7 +655,7 @@ function toTitle() {
   ui.show(false);
   speech.stopAll();
   game.startDemo();
-  if (xxl) xxlStart(true);
+  xxlStart(true);
   applyCosmetics();
   menus.hide();
   menus.show('title', save);
@@ -714,7 +666,7 @@ function startRun() {
   menus.hide();
   paused = false;
   game.start(save);
-  if (xxl) xxlStart(false);
+  xxlStart(false);
   applyCosmetics();
   state = 'intro';
   stateT = 0;
@@ -723,8 +675,8 @@ function startRun() {
   ui.show(false);
   fxState.fade = 1;
   cockpit.shake = 0;
-  // XXL: jede Fahrt beginnt am Supercharger in Erlensee (Startszene statt Kameraschwenk)
-  if (xxl && chargeBegin()) state = 'charge';
+  // jede Fahrt beginnt am Supercharger in Erlensee (Startszene statt Kameraschwenk)
+  if (chargeBegin()) state = 'charge';
   // die Taste, die „Losfahren“ ausgelöst hat, soll den Kameraschwenk nicht gleich überspringen
   input.endFrame();
 }
@@ -1570,7 +1522,7 @@ game.onCharge = (c) => stopBegin(c);
 
 /** Game.onCharge: Der Wagen steht an seinem Halt im Park. Ohne gebauten Park (Prüfstand) läuft der Fahrplan ohne Bild. */
 function stopBegin(c) {
-  const town = xxl ? xxl.town(c.sec) : null;
+  const town = xxl.town(c.sec);
   if (!town || !town.charge) return;
   const r = stopRun;
   Object.assign(r, { on: true, c, town, rig: town.charge, port: tesla.port(), v: 0, rev: true, brake: true, gear: 'R', skipT: -1, fadeT: 0, done: {} });
@@ -2307,7 +2259,7 @@ function step(dt, { render = true } = {}) {
         kappa: DEBUG && window.__MA && window.__MA.kappaProbe ? window.__MA.kappaProbe(p.s) : courseEnv.kappa,
         grade: DEBUG && window.__MA && window.__MA.gradeProbe ? window.__MA.gradeProbe(p.s) : courseEnv.grade,
       };
-      if (xxl && DEBUG && window.__MA.xxl && window.__MA.xxl.auto) xxlAuto(p, ctl);
+      if (DEBUG && window.__MA.xxl && window.__MA.xxl.auto) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
       if (stopBtn) stopBtn.classList.toggle('show', game.stopOffer());
       driveHintTick(dt, ctl);
@@ -2365,8 +2317,8 @@ function step(dt, { render = true } = {}) {
   const cloud = Math.max(w, game.weather ? game.weather.sky || 0 : 0);
   const frozen = paused;
   if (!frozen) {
-    // XXL: zuerst die Fahrt fortschreiben (trip.update) – der Kurs liest gleich danach, welchen Weg sie nimmt
-    if (xxl) xxlStep(p, w, dt);
+    // zuerst die Fahrt fortschreiben (trip.update) – der Kurs liest gleich danach, welchen Weg sie nimmt
+    xxlStep(p, w, dt);
     // Ladestopp: Wagen und Kamera der Szene im Rahmen des Parks, wie ihn xxlStep eben gestellt hat
     if (stopRun.on) {
       const a = stopPlace(dt);
@@ -2402,7 +2354,7 @@ function step(dt, { render = true } = {}) {
     cockpit.scene.environmentRotation.copy(sky.envRotation);
     const L = game.left || { glow: 0 };
     road.update(s, dt, simT, L.glow || 0, L.open && L.timer < 10 ? 1 : 0);
-    curveSigns.update(course, s, xxl ? xxlSignShear : null);
+    curveSigns.update(course, s, xxlSignShear);
     road.setWet(w);
     scenery.update(s, dt);
     sky.setOvercast(cloud * 0.95);
@@ -2425,13 +2377,8 @@ function step(dt, { render = true } = {}) {
     // Ladestopp: das Display zeigt den Gang des Wagens der Szene (in R mit dem Bild der Rückfahrkamera)
     if (scr && stopRun.on) scr.gear = stopRun.gear;
     if (scr && tvRun.on) scr.gear = 'P';
-    if (mapDemo && scr) {
-      const visits = mapDemo.takeVisits();
-      for (const i of visits) recordVisit(save, i);
-      if (visits.length) storeSave(save);
-      scr.nav = mapDemo.nav(scr, cockpitOn, scr.navi);
-    } else if (xxl && scr) {
-      // XXL: Karte, Route, Ansage und Ziel des Mittelbildschirms kommen aus der Fahrt der Welt (COMMON.md §9)
+    if (scr) {
+      // Karte, Route, Ansage und Ziel des Mittelbildschirms kommen aus der Fahrt der Welt (COMMON.md §9)
       xxlScreenNav.model = xxlNav;
       xxlScreenNav.bidder = scr.navi.bidder;
       xxlScreenNav.bid = scr.navi.bid;
@@ -2446,8 +2393,6 @@ function step(dt, { render = true } = {}) {
       xxlScreenRoad.extraLane = xxlLimits.extraLane;
       xxlScreenRoad.autobahn = !game.offAutobahn;
       scr.road = xxlScreenRoad;
-    }
-    if (scr && scr.nav) {
       scr.nav.visited = save.visits;
       if ((mapHudT -= dt) <= 0) {
         mapHudT = 0.25;
@@ -2613,7 +2558,7 @@ function boot() {
   applyCosmetics();
   applyDrive();
   game.startDemo();
-  if (xxl) xxlStart(true);
+  xxlStart(true);
   // Ein paar Bilder vorab rendern (Shader kompilieren), dann Titel zeigen
   updateCarMatrix();
   placeDrone(0.016, 'orbit');
@@ -2642,7 +2587,7 @@ if (DEBUG) {
     // die freie Sicht und die Plätze der Einblendungen (tools/sicht-check.js misst das HUD dagegen)
     sicht,
     // für Prüfstände: Szene, three.js und die Weltmaterial-Fabrik (siehe curve.js)
-    scene, THREE, W, sky, road, mapdemo: mapDemo,
+    scene, THREE, W, sky, road,
     // der eine Stadtbaukasten des Spiels (die XXL-Welt baut ihre Orte daraus), auch für Prüfstände
     get city() {
       return cityKit();
@@ -2657,7 +2602,7 @@ if (DEBUG) {
     /** BrunnenTV-Folge: Szene (tvRun) und Zustand für Prüfbilder: Zeit, Kamera, Fenster, Megafon. */
     get tv() {
       const t = game.brunnenT();
-      return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t) : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, skipT: tvRun.skipT, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl || !xxl.arrival.held };
+      return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t) : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, skipT: tvRun.skipT, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl.arrival.held };
     },
     /** BrunnenTV-Album: Folgen im Spielstand, gespeicherte Bilder, zuletzt aufgenommenes Standbild. */
     get album() {
@@ -2721,13 +2666,11 @@ if (DEBUG) {
       },
     },
   };
-  if (xxl) {
-    installDebug(window.__MA, xxl, () => game.player, {
-      afterWarp: () => { traffic.reset(); pickups.reset(); scenery.reset(); },
-      // ein Sprung plant den Kurs unterwegs wie eine Fahrt mit 30 m/s (ohne die Tabelle des Shaders zu schreiben)
-      eachStep: (s, step) => course.fill(xxl.trip, s, null, step / 30),
-    });
-  }
+  installDebug(window.__MA, xxl, () => game.player, {
+    afterWarp: () => { traffic.reset(); pickups.reset(); scenery.reset(); },
+    // ein Sprung plant den Kurs unterwegs wie eine Fahrt mit 30 m/s (ohne die Tabelle des Shaders zu schreiben)
+    eachStep: (s, step) => course.fill(xxl.trip, s, null, step / 30),
+  });
   window.__MA.kit = { ...window.__MA.kit, nature: createNatureKit(W) };
 }
 

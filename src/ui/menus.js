@@ -1,13 +1,12 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, MODE_TEXT, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate } from '../data.js';
 import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
 import { MapScreen, visitLine } from './mapscreen.js';
 import { renderAlbum } from './album.js';
 import { drawRouteMap } from './routemap.js';
-import { otherMode } from '../mode.js';
 import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
 
 function el(tag, cls, parent, text) {
@@ -282,41 +281,27 @@ export class Menus {
   render_title(s, d) {
     s.textContent = '';
     const card = el('div', 'title-card', s);
-    // Jeder Modus hat seinen Titel (h.mode, src/mode.js): Schildchen und Zahlen sind seine, der Name des Spiels ist
-    // derselbe, und ein Eintrag führt in den anderen – die Seite lädt dann neu, weil die Welt beim Laden gebaut wird
-    const mode = this.h.mode || 'klassik';
-    const M = MODE_TEXT[mode];
-    const other = MODE_TEXT[otherMode(mode)];
     const logo = el('div', 'title-logo', card);
     el('span', 'title-live', logo, '● LIVE');
-    if (M.badge) el('span', 'title-badge ' + mode, logo, M.badge);
     el('h1', '', card, GAME_TITLE);
     const h2 = el('h2', '', card, GAME_SUBTITLE + ' ');
     el('span', 'title-xxl', h2, GAME_XXL);
     el('p', 'tagline', card, TAGLINE);
     const menu = el('div', 'menu', card);
     button(menu, '▶  Losfahren', 'start', 'primary');
-    const mb = button(menu, '', 'mode', 'mode-entry');
-    el('span', 'mode-name', mb, `${other.icon}  ${other.name}`);
-    // (die kleine Zeile beginnt unter dem Namen: davor unsichtbar dasselbe Symbol in der Größe des Knopfs)
-    const sub = el('span', 'mode-sub', mb);
-    el('span', 'mode-pad', sub, other.icon + ' ').setAttribute('aria-hidden', 'true');
-    sub.append(other.sub);
     button(menu, '🛒  Tesla-Shop', 'shop');
     button(menu, '🗺️  Karte', 'karte');
     // die Reise sammelt ihre BrunnenTV-Folgen in einem Album (src/ui/album.js)
-    if (mode === 'xxl') button(menu, '⛲  BrunnenTV-Folgen', 'album');
+    button(menu, '⛲  BrunnenTV-Folgen', 'album');
     button(menu, '🎮  Steuerung', 'controls');
     button(menu, '⚙️  Einstellungen', 'settings');
     button(menu, 'ℹ️  Über das Spiel', 'about');
     const stats = el('div', 'title-stats', card);
     el('span', '', stats, '💶 ' + fmtCent(d.wallet) + ' Guthaben');
-    // XXL-Welt (h.travel): Rekord und Summe in Reisekilometern, eigene Felder neben den klassischen
-    const travel = !!this.h.travel;
-    el('span', '', stats, '🏆 Rekord ' + (travel ? fmtOdo((d.best.reise || 0) / 1000) : fmtKm(d.best.distance || 0)));
-    el('span', '', stats, '🛣️ ' + (travel ? fmtOdo(d.stats.reiseKm || 0) : fmtKm((d.stats.totalKm || 0) * 1000, 1)) + ' gesamt');
-    // die Reise zählt dazu ihre Orte, dieselbe Zahl wie auf der großen Karte
-    if (mode === 'xxl') el('span', '', stats, '❤️ ' + visitLine(d.visits));
+    // Rekord und Summe in Reisekilometern, dazu die besuchten Orte (dieselbe Zahl wie auf der großen Karte)
+    el('span', '', stats, '🏆 Rekord ' + fmtOdo((d.best.reise || 0) / 1000));
+    el('span', '', stats, '🛣️ ' + fmtOdo(d.stats.reiseKm || 0) + ' gesamt');
+    el('span', '', stats, '❤️ ' + visitLine(d.visits));
     // das gekaufte Megafon ist erstattet worden (save.js refundMegafon): die Zeile steht bis zum ersten Besuch im Shop
     if (d.megafonNote) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.megafonNote)));
     el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause');
@@ -555,7 +540,7 @@ export class Menus {
       ['Hupen (Brunnen & Elsa grüßen)', 'Leertaste', 'A', '📯'],
       ['Scheibenwischer von Hand', 'E', 'X', '🌧️'],
       ['Megafon', 'H', 'Y', '📢'],
-      ...(this.h.mode === 'xxl' ? [['Ladestopp einplanen (nächster Ladepark)', 'L', '–', '🔌 Ladestopp']] : []),
+      ['Ladestopp einplanen (nächster Ladepark)', 'L', '–', '🔌 Ladestopp'],
       ['Kamera (Cockpit / Drohne)', 'V', 'B', '🎥'],
       ['Chat ein/aus', 'C', '–', '–'],
       ['Ton aus', 'M', '–', '–'],
@@ -569,20 +554,14 @@ export class Menus {
     }
     const tips = el('div', 'tips', card);
     el('h3', '', tips, 'Tipps');
-    // in der Reise sind die Ziele echte Orte mit Brunnen, und das Navi führt über Ausfahrten dorthin
-    const reise = this.h.mode === 'xxl';
     for (const t of [
       'Geld gibt es nur vom Publikum: Spenden, Abos, Navi-Gebote. Fürs Fahren selbst zahlt niemand – aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.',
       'Wenn NOMI sagt „Die linke Fahrspur ist freigeschaltet.“, hat jemand dafür gespendet: Eine Minute lang darfst du ganz links fahren. Nutzt du sie, freut sich der Chat. Danach gilt wieder das Rechtsfahrgebot, sonst kommt die Polizei Gifhorn.',
-      reise
-        ? 'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Zehner drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV. Dort rechnet auch die Werkstatt die Rempler der Runde ab, und je zügiger du von Ziel zu Ziel kommst, desto zufriedener ist der Chat (das Gesicht oben im Chat) – und desto lieber gibt er.'
-        : 'Das Navi-Ziel ändert sich ständig – jeder Bieter legt mindestens einen Cent drauf. Kommst du trotzdem an, feiert der Chat mit Ortsspenden.',
-      ...(reise ? ['Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.'] : []),
+      'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Zehner drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV. Dort rechnet auch die Werkstatt die Rempler der Runde ab, und je zügiger du von Ziel zu Ziel kommst, desto zufriedener ist der Chat (das Gesicht oben im Chat) – und desto lieber gibt er.',
+      'Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.',
       'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Tesla-Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
-      reise
-        ? 'Geladen wird in den Ladeparks an den Ausfahrten: Warnt NOMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) den nächsten Park ein, das Navi führt hinein und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.'
-        : 'Lade-Ringe füllen den Akku. Bananensaft ist super, Koriander leider nicht.',
+      'Geladen wird in den Ladeparks an den Ausfahrten: Warnt NOMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) den nächsten Park ein, das Navi führt hinein und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',
     ]) el('p', '', tips, '• ' + t);
     const menu = el('div', 'menu row', card);

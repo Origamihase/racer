@@ -479,10 +479,6 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .title-xxl { color: #5fd0ff; white-space: nowrap; }
 /* schmale Handys: „BrunnenTV XXL“ auf einer eigenen Zeile (sonst bräche es je nach Schrift mal um und mal nicht) */
 @media (max-width: 480px) { .title-xxl { display: block; } }
-/* ein Schildchen neben LIVE sagt, in welchem Modus der Titel steht: die Reise ist noch eine Vorschau (gelb), die
-   Klassik schlicht hell */
-.title-badge { background: rgba(255, 196, 61, 0.16); border: 1px solid rgba(255, 196, 61, 0.55); color: #ffd97a; padding: 2px 9px; border-radius: 6px; font-weight: 700; font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
-.title-badge.klassik { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.42); color: #e9ecf1; }
 .tagline { font-style: italic; color: #d6dae2; margin: 8px 0 22px; font-size: 17px; text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 2px 16px rgba(0,0,0,0.6); }
 /* Hochkant steht die Titelkarte oben und das Dunkel kommt von oben (quer endet es schon in der Bildmitte, die Zeilen
    liefen dort in den hellen Himmel); darunter bleibt der Streifen für den Wagen frei */
@@ -490,8 +486,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .screen-title { align-items: flex-start; background: linear-gradient(180deg, rgba(6,7,10,0.8) 0%, rgba(6,7,10,0.6) 42%, rgba(6,7,10,0) 66%); }
   .title-card .title-stats { text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
 }
-/* Handy hochkant: Mit dem Eintrag für den anderen Modus bleibt die Karte so hoch, wie sie war – enger gesetzt, damit
-   die Zahlen weiter vor dem Himmel stehen und nicht auf dem hellen Horizont */
+/* Handy hochkant: enger gesetzt, damit die Zahlen vor dem Himmel stehen und nicht auf dem hellen Horizont */
 @media (orientation: portrait) and (max-height: 900px) {
   .title-card .tagline { margin: 6px 0 14px; }
   .title-card .menu { gap: 6px; }
@@ -514,18 +509,13 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .title-card .menu { gap: 6px; }
   .title-card .menu .btn { padding: 8px 14px; font-size: 15px; }
   .title-card .title-stats { margin-top: 10px; font-size: 13px; }
-  /* mit dem Eintrag für den anderen Modus: die vier kleinen Einträge paarweise, „Über das Spiel“ darunter – die Karte
-     wird so nicht höher als vorher, und die Zahlen bleiben vor dem Himmel */
+  /* die sechs kleinen Einträge paarweise unter „Losfahren“: So bleiben die Zahlen vor dem Himmel */
   .title-card .menu { display: grid; grid-template-columns: 1fr 1fr; }
-  .title-card .menu .btn.primary, .title-card .menu .btn.mode-entry, .title-card .menu .btn:last-child { grid-column: 1 / -1; }
-  .title-card .menu .btn:not(.primary):not(.mode-entry) { padding-inline: 10px; }
+  .title-card .menu .btn.primary { grid-column: 1 / -1; }
+  .title-card .menu .btn:not(.primary) { padding-inline: 10px; }
 }
 .menu { display: flex; flex-direction: column; gap: 9px; align-items: stretch; max-width: 330px; }
 .menu.row { flex-direction: row; flex-wrap: wrap; max-width: none; margin-top: 18px; }
-/* Titel: der Eintrag für den anderen Modus trägt unter seinem Namen eine kleine Zeile */
-.btn.mode-entry { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
-.mode-sub { font-size: 0.74em; font-weight: 500; line-height: 1.25; color: #c5cbd6; }
-.mode-pad { font-size: calc(1em / 0.74); line-height: 0; visibility: hidden; }
 /* (die Zahlen dürfen breiter werden als die Karte: In der Reise sind es vier, und sie bleiben in einer Zeile, wo Platz ist) */
 .title-stats { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 22px; color: #e1e4ea; font-size: 15px; font-weight: 600; width: max-content; max-width: min(760px, calc(100vw - 56px)); }
 .title-hint { position: absolute; bottom: 18px; left: clamp(20px, 6vw, 110px); color: var(--sub); font-size: 13px; }
@@ -797,17 +787,15 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .menu .btn { padding: 8px 14px; font-size: 15px; }
   .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
   .sum { padding: 5px 9px; }
-  /* Titel: Logo, Untertitel und alle Knöpfe passen ohne Scrollen – „Losfahren“ und der andere Modus über die ganze
-     Breite (Name und kleine Zeile nebeneinander), die fünf übrigen Einträge in drei Spalten darunter */
+  /* Titel: Logo, Untertitel und alle Knöpfe passen ohne Scrollen – „Losfahren“ über die ganze Breite, die sechs übrigen
+     Einträge in drei Spalten darunter */
   .title-card h1 { font-size: 44px; margin: 4px 0 2px; }
   .title-card h2 { font-size: 18px; }
   .tagline { margin: 4px 0 10px; font-size: 14px; }
   .title-stats { margin-top: 10px; font-size: 13px; }
   .title-card .menu { display: grid; grid-template-columns: repeat(3, 1fr); width: 520px; max-width: 100%; }
-  .title-card .menu .btn.primary, .title-card .menu .btn.mode-entry { grid-column: 1 / -1; }
-  .title-card .menu .btn:not(.primary):not(.mode-entry) { padding-inline: 10px; }
-  .title-card .menu .btn.mode-entry { flex-direction: row; align-items: baseline; gap: 10px; }
-  .title-card .menu .mode-pad { display: none; }
+  .title-card .menu .btn.primary { grid-column: 1 / -1; }
+  .title-card .menu .btn:not(.primary) { padding-inline: 10px; }
 }
 /* --- HUD auf kleinen Formaten (Handy quer und hochkant): beide Streifen kompakt ------------------------------- */
 @media (max-height: 560px), (max-width: 480px) {

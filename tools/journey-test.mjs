@@ -35,7 +35,7 @@
 import { PerspectiveCamera } from 'three';
 import { places, nodeTitle, deEdge, OFF_KM } from '../src/map/graph.js';
 import { Trip, J, PROFILES } from '../src/game/trip.js';
-import { MapDemo } from '../src/map/mapdemo.js';
+import { MapDemo } from './mapdemo.mjs';
 import { Game, TOWN_HOLD } from '../src/game/game.js';
 import { BID_PLACES, OPENING } from '../src/game/navi.js';
 import { INSIDER_ORTE, REISE_JOBS } from '../src/data.js';

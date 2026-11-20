@@ -3,20 +3,13 @@
 import { pick, randInt, chance, fmtEuro, fmtCent } from './util.js';
 
 // Der Name des Spiels ist „Mini Adam – Navi ferngesteuert BrunnenTV XXL“ (GAME_NAME: Über das Spiel, Seitentitel und
-// README sagen es so). Auf dem Titelbildschirm steht er in beiden Modi unter dem großen „Mini Adam“: GAME_SUBTITLE,
-// dahinter GAME_XXL in Brunnenblau.
+// README sagen es so). Auf dem Titelbildschirm steht er unter dem großen „Mini Adam“: GAME_SUBTITLE, dahinter GAME_XXL
+// in Brunnenblau.
 export const GAME_TITLE = 'Mini Adam';
 export const GAME_SUBTITLE = 'Navi ferngesteuert';
 export const GAME_XXL = 'BrunnenTV XXL';
 export const GAME_NAME = `${GAME_TITLE} – ${GAME_SUBTITLE} ${GAME_XXL}`;
 export const TAGLINE = 'Live-Eskalationen immer woanders!';
-// Die beiden Modi (src/mode.js) auf dem Titelbildschirm: badge steht als Schildchen neben LIVE und sagt, in welchem
-// Modus der Titel steht; icon, name und sub (die kleine Zeile darunter) bilden den Eintrag, der vom Titel des anderen
-// Modus dorthin führt. Die Reise ist eine Vorschau, solange an ihr gebaut wird – das sagt sie selbst.
-export const MODE_TEXT = {
-  klassik: { badge: '🛣️ Klassik', icon: '🛣️', name: 'Klassik', sub: 'die endlose Autobahn' },
-  xxl: { badge: '🚧 Vorschau – hier wird noch gebaut', icon: '🧭', name: 'BrunnenTV XXL', sub: 'Vorschau – hier wird noch gebaut' },
-};
 
 // ---------------------------------------------------------------------------
 // Navi-Ziele aus echten „Tesla ferngesteuert“-Streams (plus ein paar Insider)

@@ -7,7 +7,7 @@ import {
 } from '../src/map/mapview.js';
 import { places, nodes, edges, deRev, deRoad, deTowards } from '../src/map/graph.js';
 import { Line, fmtRoad, fmtKm, fmtOdo, fmtDistance } from '../src/map/navroute.js';
-import { MapDemo } from '../src/map/mapdemo.js';
+import { MapDemo } from './mapdemo.mjs';
 import { goalName } from '../src/world/kit/layout.js';
 import { Persp, TiltView, ribbon } from '../src/map/persp.js';
 

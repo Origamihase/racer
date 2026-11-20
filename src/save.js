@@ -11,8 +11,6 @@ export const DEFAULT_SAVE = {
   seenIntro: false,
   // besuchte Orte der großen Karte: Wiki-Name → Zahl der Besuche
   visits: {},
-  // der auf dem Titelbildschirm gewählte Modus ('klassik' | 'xxl', siehe src/mode.js); null: noch nie gewählt
-  mode: null,
   // das gekaufte Megafon ist erstattet (refundMegafon): so viele Euro, einmal; 0: nichts erstattet
   megafonRefund: 0,
   // so viele erstattete Euro sagt der Titel noch an, bis zum ersten Besuch im Shop (megafonNoteSeen); 0: nichts
@@ -29,7 +27,7 @@ export function loadSave() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return structuredClone(DEFAULT_SAVE);
-    // Ältere Spielstände kennen manche Felder noch nicht (visits, best.reise, mode): Sie bekommen den Standard. Felder,
+    // Ältere Spielstände kennen manche Felder noch nicht (visits, best.reise, album): Sie bekommen den Standard. Felder,
     // die dieser Stand nicht kennt (ein neuerer hat sie geschrieben), bleiben erhalten und werden wieder mitgespeichert.
     const data = part(JSON.parse(raw));
     return {

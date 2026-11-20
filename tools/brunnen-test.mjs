@@ -21,7 +21,7 @@ import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor 
 import { squareOf } from '../src/world/xxl/plan.js';
 import { FOUNTAIN_R, goalKind, goalName, sightBlockers } from '../src/world/kit/layout.js';
 import { MEGA } from '../src/models/miniAdam.js';
-import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, MODE_TEXT, BOARD, BRUNNEN_NOMI, ABSPANN_REISE, fillTemplate } from '../src/data.js';
+import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, BOARD, BRUNNEN_NOMI, ABSPANN_REISE, fillTemplate } from '../src/data.js';
 import { readFileSync } from 'node:fs';
 import { loadSave, storeSave, refundMegafon, megafonNoteSeen, MEGAFON_PRICE, DEFAULT_SAVE } from '../src/save.js';
 
@@ -365,7 +365,6 @@ const mega = { says: [], toasts: [] };
   const menus = file('src/ui/menus.js');
   ok(menus.includes('`„${GAME_NAME}“ ist ein liebevolles') && menus.includes("el('span', 'title-xxl', h2, GAME_XXL)"), 'Über das Spiel oder der Titel ohne den Namen');
   ok(!/Tesla-Navi ferngesteuert/.test(html + file('README.md') + menus + file('src/main.js').split('\n')[0]), 'Der alte Name steht noch da');
-  ok(MODE_TEXT.klassik.name === 'Klassik' && MODE_TEXT.xxl.name === GAME_XXL, `Modi: ${MODE_TEXT.klassik.name}, ${MODE_TEXT.xxl.name}`);
 }
 
 // --- Ausgabe ---------------------------------------------------------------------------------------------------------
