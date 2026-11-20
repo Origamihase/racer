@@ -974,10 +974,12 @@ export function planPark(opts = {}) {
   };
   const x0 = STREET.curbR + STREET.pave; // Häuserflucht
   const FACE = -Math.PI / 2; // Vorderseite (+z) zur Straße (−x), wie planTown toRoad(1)
+  // kind 'ladepark_start': die Heldensäule ohne Stecker und Kabel (die bringt die Reise mit, xxl/chargerig.js)
+  const kind = opts.kind ?? 'ladepark';
   const pi = infoOf('ladepark');
   // Punkt (lx, lz) im Rahmen des Parks → Ortskoordinaten
   const P = (lx, lz) => [x0 - lz, -u + lx];
-  const park = add('ladepark', x0, 0, -u, FACE);
+  const park = add(kind, x0, 0, -u, FACE);
   for (const [i, car] of [[0, 'carCompact'], [6, 'carSmall'], [7, 'carCompact']]) {
     const [bx, bz] = pi.bays[i];
     add(car, x0 - bz + 0.2, pi.ground, -(u - bx), Math.PI / 2);
@@ -1012,7 +1014,7 @@ export function planPark(opts = {}) {
   }
   return {
     place: { key: title, name: title, cc: null }, size: 'park', region: 'default', len, items, fountains: [], squares: [], texts: [], goal: null, landmarks: [],
-    charge: { u, x: x0, kind: 'ladepark', park: aabb(park.fp) },
+    charge: { u, x: x0, kind, park: aabb(park.fp) },
     layout: { name: title, len, squares: [], goal: null, park: aabb(park.fp).map(r1c), shop: aabb(kiosk.fp).map(r1c) },
   };
 }

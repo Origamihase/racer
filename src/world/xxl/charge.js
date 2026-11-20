@@ -14,7 +14,7 @@ import { PARK } from '../../map/parks.js';
 export const CHARGE = {
   place: 'Erlensee',
   kind: 'ladepark',
-  kindStart: 'ladepark_start', // im Startort: die Heldensäule ohne Stecker und Kabel (die hat die Startszene, chargerig.js)
+  kindStart: 'ladepark_start', // Startort und Ladeparks: Heldensäule ohne Stecker und Kabel (die bringt chargerig.js)
   front: STREET.curbR + STREET.pave, // Vorderkante des Parks auf der Häuserflucht
   half: 12, // halbe Breite des Parks längs der Straße
   bay: [-1.3, -3.3], // Mitte der Heldenbucht im Rahmen des Parks (rest.js BAYS[3], Tiefe der Buchtmitte)

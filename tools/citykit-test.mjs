@@ -369,11 +369,11 @@ for (const p of places) {
     const where = pk.name;
     const plan = parkPlan(city, sec);
     const c = chargeOf(sec);
-    ok(c && !c.start && c.u === PARK.u && plan.charge.u === PARK.u && plan.charge.x === CHARGE.front && plan.charge.kind === CHARGE.kind, `${where}: Park nicht bei PARK.u`);
+    ok(c && !c.start && c.u === PARK.u && plan.charge.u === PARK.u && plan.charge.x === CHARGE.front && plan.charge.kind === CHARGE.kindStart, `${where}: Park nicht bei PARK.u`);
     ok(c && c.drive.s0 < sec.s0 + bayU && c.drive.s1 > sec.s0 + bayU, `${where}: kein abgesenkter Bordstein vor der Heldenbucht`);
     const pkBox = [CHARGE.front, CHARGE.front + info.d, -(PARK.u + CHARGE.half), -(PARK.u - CHARGE.half)];
     const front = [L.STREET.curbL, CHARGE.front, -(PARK.u + CHARGE.half + CHARGE.keep), -(PARK.u - CHARGE.half - CHARGE.keep)];
-    const solid = plan.items.filter((it) => !OVER.has(city.info(it.name).kind) && it.name !== CHARGE.kind);
+    const solid = plan.items.filter((it) => !OVER.has(city.info(it.name).kind) && it.name !== plan.charge.kind);
     for (const it of plan.items) {
       const k = city.info(it.name).kind;
       const b = baseBox(it);
@@ -413,6 +413,8 @@ for (const p of places) {
   for (let i = 0; i < 10 && !towns.of(sec); i++) towns.update(S0 - 100, shear, 0, 0);
   const t = towns.of(sec);
   ok(t && t.group && !t.group.pending && t.group.visible && towns.list().length === 0, 'Ladepark in der Welt: nicht gebaut oder als Ort gezählt');
+  // Stecker und Kabel der Heldensäule für den Ladestopp (chargerig.js), der Stecker im Halter
+  ok(t && t.charge && t.charge.k === 1 && t.charge.group.parent === t.group, 'Ladepark in der Welt: kein Stecker an der Heldensäule');
   console.log(`Ladeparks: ${n} Pläne geprüft (Park bei u ${PARK.u}, Halt bei ${PARK.halt} m, Bordstein abgesenkt, Buchten ${info.hero - 1}–${info.hero + 1} frei), in der Welt ${t ? t.group.children.length : 0} Teile`);
   towns.reset();
 }

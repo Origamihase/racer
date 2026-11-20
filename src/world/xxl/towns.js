@@ -75,7 +75,7 @@ export function townPlan(K, sec, budget = Infinity) {
  * Schilder, der Ladepark mit der Mitte bei PARK.u (dort hält der Wagen neben der freien Heldenbucht, PARK.halt).
  */
 export function parkPlan(K, sec) {
-  return K.planPark({ title: PARKS[sec.park].name, len: sec.s1 - sec.s0, u: PARK.u });
+  return K.planPark({ title: PARKS[sec.park].name, len: sec.s1 - sec.s0, u: PARK.u, kind: CHARGE.kindStart });
 }
 
 /**
@@ -169,7 +169,8 @@ export class Towns {
     this.root.add(group);
     it.plan = plan;
     it.group = group;
-    // im Startort: Stecker und Kabel an der Heldensäule des Ladeparks (die Startszene zieht sie aus dem Wagen)
+    // im Startort und in den Ladeparks: Stecker und Kabel an der Heldensäule (die Startszene zieht sie aus dem Wagen,
+    // der Ladestopp steckt sie hinein und wieder zurück)
     if (plan.charge?.kind === CHARGE.kindStart) {
       it.charge = buildChargeRig();
       it.charge.group.position.set(plan.charge.x - CHARGE.post[1], this.kit.info(plan.charge.kind).ground, -(plan.charge.u - CHARGE.post[0]));

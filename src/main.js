@@ -15,7 +15,8 @@ import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
 import { createNatureKit } from './world/kit/nature.js';
 import { cityKit, naviLayout } from './world/xxl/towns.js';
-import { SCENE, ROLL_T, rollPose, groundAt, chargeOf } from './world/xxl/charge.js';
+import { SCENE, ROLL_T, STOP, DOCK, CHARGE, rollPose, groundAt, chargeOf } from './world/xxl/charge.js';
+import { buildPopping, POPPING_AT } from './world/xxl/popping.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
@@ -1499,6 +1500,205 @@ function chargeGreet() {
   ui.nomi(CHARGE_LINES.greet, d + 0.8);
 }
 
+// --- Ladestopp im Park (world/xxl/charge.js STOP, Game.startCharge) -------------------------------------------------
+// Das Spiel läuft weiter (Uhr, Chat, Akku, Gebote, Spenden) und führt die Zeit; der Spieler wartet an seinem Halt in der
+// Spur, während der Wagen der Szene rückwärts in die freie Heldenbucht setzt, lädt und ausparkt (die Wege rechnet
+// charge.js im Rahmen des Parks). Passiert der ausparkende Wagen den Halt, folgt ihm der Spieler: Die Übergabe am Ende
+// ist ohne Sprung. Kamera: beim Einparken die des Spielers (im Cockpit bleibt sie dort, die Drohne steigt über die
+// Gegenspur und schaut zu), in der Bucht nah an Buchse, Säule und Popcorn-Stand (Schlüssel im Rahmen des Wagens wie in
+// Erlensee), beim Ausparken die Startszene (CHARGE_KEYS) zurück ins Cockpit bzw. hinter den Wagen wie die Drohne.
+const STOP_KEYS = [
+  { t: 0, pos: [-3.7, 1.7, -0.5], look: [-1.25, 0.85, 2.15] },
+  { t: STOP.juice, pos: [-3.05, 1.5, 0.45], look: [-1.55, 0.9, 2.45] },
+  { t: STOP.unplug, pos: CHARGE_KEYS[0].pos, look: CHARGE_KEYS[0].look },
+];
+// Drohne beim Einparken (Ortskoordinaten, u ab der Wagenmitte in der Bucht): über der Gegenspur hinter der Bucht
+const STOP_DRONE = { pos: [1.6, 6.6, 12], blend: 1.2 };
+// Drohne beim Ausparken: Erlensees Schlüssel, bis der Wagen in der Spur ist, dann hinter ihn wie die Verfolgerdrohne
+const STOP_ROLL_DRONE = [...CHARGE_KEYS.slice(0, 4), { t: SCENE.end, pos: [0, 3.3, 9.2], look: [0, 1.0, -14] }];
+const STOP_CTL = { steer: 0, throttle: 0, brake: 0, reverse: false, horn: false, wiper: false, megafon: false, ladestopp: false, device: null, kappa: 0, grade: 0 };
+const STOP_FADE = 0.35; // Aufblenden in der Spur nach dem Überspringen
+// c: game.charging (Fahrplan plan), town: der Park (Towns.of), rig: Stecker und Kabel seiner Heldensäule, pop: Popcorn
+// in der Maschine (beim ersten Stopp gebaut), q: Lage des Wagens, v: sein Tempo (rückwärts negativ), rev / brake:
+// Rückfahr- und Bremslicht, skipT: übersprungen bei (Zeit der Szene), fadeT: Aufblenden danach, from / fromLook: Kamera
+// beim Halt, cam / look: die der Drohne beim Einparken, done: Klänge und Gesten, die schon kamen
+const stopRun = {
+  on: false, c: null, town: null, rig: null, port: null, pop: null, q: {}, v: 0, rev: false, brake: false, skipT: -1, fadeT: 0,
+  from: new THREE.Vector3(), fromLook: new THREE.Vector3(), cam: new THREE.Vector3(), look: new THREE.Vector3(), done: {},
+};
+game.onCharge = (c) => stopBegin(c);
+
+/** Game.onCharge: Der Wagen steht an seinem Halt im Park. Ohne gebauten Park (Prüfstand) läuft der Fahrplan ohne Bild. */
+function stopBegin(c) {
+  const town = xxl ? xxl.town(c.sec) : null;
+  if (!town || !town.charge) return;
+  const r = stopRun;
+  Object.assign(r, { on: true, c, town, rig: town.charge, port: tesla.port(), v: 0, rev: true, brake: true, skipT: -1, fadeT: 0, done: {} });
+  // die Buchse des Wagens in der Bucht im Rahmen der Säule (wie chargePlug): dorthin führt der Stecker
+  stopPose(rollPose(c.plan.u, 0, r.q));
+  tesla.root.updateWorldMatrix(true, false);
+  r.rig.group.updateWorldMatrix(true, false);
+  chargeM.copy(r.rig.group.matrixWorld).invert();
+  const pos = tmpV.copy(r.port.pos).applyMatrix4(tesla.root.matrixWorld).applyMatrix4(chargeM);
+  const normal = tmpV2.copy(r.port.normal).transformDirection(tesla.root.matrixWorld).transformDirection(chargeM);
+  r.rig.plug(pos, normal);
+  r.rig.set(1);
+  r.port.set(0, 0);
+  stopPose(c.plan.dock.pose(0, r.q));
+  // Popcorn springt in der Maschine auf dem Tisch hinter der Säule
+  const st = town.plan.items.find((it) => it.name === 'popcorn_stand');
+  if (st) {
+    r.pop = r.pop || buildPopping();
+    r.pop.group.position.fromArray(POPPING_AT).applyAxisAngle(UP_AXIS, st.ry).add(tmpV.set(st.x, st.y, st.z));
+    r.pop.group.rotation.y = st.ry;
+    town.group.add(r.pop.group);
+  }
+  // die Drohne fliegt von dort los, wo sie gerade ist
+  r.from.copy(camera.position);
+  camera.getWorldDirection(r.fromLook).multiplyScalar(20).add(camera.position);
+  r.look.copy(r.fromLook);
+  if (stopBtn) stopBtn.classList.remove('show');
+  audio.gear('R');
+}
+
+/** Wagen der Szene an die Lage q (Ortskoordinaten des Parks): über die Matrix des Parks in die Welt (wie chargePose). */
+function stopPose(q) {
+  carPos.set(q.x, groundAt(q.x), -q.u).applyMatrix4(stopRun.town.group.matrix);
+  carEuler.set(0, -q.yaw, 0, 'YXZ');
+  carQuat.setFromEuler(carEuler);
+  carMatrix.compose(carPos, carQuat, ONE);
+  tesla.root.position.copy(carPos);
+  tesla.root.quaternion.copy(carQuat);
+  cockpit.root.position.copy(carPos);
+  cockpit.root.quaternion.copy(carQuat);
+}
+
+/**
+ * Nach game.update, vor der Welt: Lage des Wagens, Stecker, Klappe, Popcorn und Klänge für diese Zeit der Szene; ab
+ * dem Halt folgt der Spieler dem ausparkenden Wagen. Hat das Spiel den Stopp beendet (Fahrplan zu Ende oder
+ * übersprungen), übernimmt der Spieler in der Spur.
+ */
+function stopTick() {
+  const r = stopRun;
+  const p = game.player;
+  const c = r.c;
+  const P = c.plan;
+  if (!game.charging) {
+    // Übergabe: der Wagen steht da, wo das Ausparken endet, mit dessen Tempo; Stecker im Halter, Klappe zu
+    const e = rollPose(P.u, ROLL_T, r.q);
+    Object.assign(p, { s: c.sec.s0 + e.u, x: e.x, speed: e.v, wheel: 0, throttle: 0, braking: 0, yaw: 0, vx: 0 });
+    r.rig.set(1);
+    r.port.set(0, 0);
+    if (r.pop) {
+      r.pop.update(0, false);
+      r.pop.group.removeFromParent();
+    }
+    Object.assign(r, { on: false, rev: false, brake: false, v: e.v });
+    if (r.skipT >= 0) {
+      r.fadeT = STOP_FADE;
+      fxState.fade = 1;
+      drone.init = false;
+    } else {
+      drone.pos.copy(camera.position);
+      camera.getWorldDirection(drone.look).multiplyScalar(14).add(camera.position);
+      drone.init = true;
+    }
+    return;
+  }
+  const t = game.chargeT();
+  const te = t - P.at(STOP.unplug);
+  const q = t < P.d0 ? P.dock.pose(t - STOP.shift, r.q) : rollPose(P.u, clamp(te - SCENE.roll, 0, ROLL_T), r.q);
+  r.v = q.v;
+  r.rev = t < P.d0;
+  // Bremslicht, solange er in R wartet und wenn er vor der Bucht anhält
+  r.brake = t < STOP.shift + 0.15 || (t < P.d0 && t > P.d0 - DOCK.down);
+  // so zeigen Tacho, Räder, Lenkrad und Motor den Wagen der Szene (vor dem nächsten game.update steht der Spieler wieder)
+  p.speed = Math.abs(q.v);
+  p.wheel = q.steer / 0.35;
+  if (q.u > p.s - c.sec.s0) {
+    p.s = c.sec.s0 + q.u;
+    p.x = q.x;
+  }
+  // Stecker: aus dem Halter in die Buchse, nach dem Zeitraffer wie in Erlensee zurück; Klappe und Leuchtring
+  const S = SCENE;
+  if (te < 0) {
+    r.rig.set(1 - clamp((t - P.at(STOP.plug[0])) / (STOP.plug[1] - STOP.plug[0]), 0, 1));
+    r.port.set(smoothstep(P.at(STOP.flap[0]), P.at(STOP.flap[1]), t), smoothstep(P.at(STOP.plug[1]) - 0.05, P.at(STOP.plug[1]) + 0.25, t));
+  } else {
+    r.rig.set((te - S.plug[0]) / (S.plug[1] - S.plug[0]));
+    r.port.set(1 - smoothstep(S.flap[0], S.flap[1], te), 1 - smoothstep(S.plug[0], S.plug[0] + 0.15, te));
+  }
+  if (r.pop) r.pop.update(t - P.at(STOP.pop[0]), t >= P.at(STOP.pop[0]) && t < P.at(STOP.pop[1]));
+  // Klick, wenn der Stecker sitzt und wenn er sich löst, der Zirper von P nach D beim Anrollen; Mini Adam jubelt beim
+  // Bananensaft (nicht nachgeholt)
+  const once = (k, at, fn) => {
+    if (t < at || r.done[k]) return;
+    r.done[k] = true;
+    if (t < at + 0.3) fn();
+  };
+  once('in', P.at(STOP.plug[1]), () => audio.unplug());
+  once('juice', P.at(STOP.juice), () => adamDo((a) => {
+    a.gesture('cheer');
+    a.setMood('happy', 3);
+  }));
+  once('out', P.at(STOP.unplug + S.plug[0]), () => audio.unplug());
+  once('d', P.roll, () => audio.gear('D'));
+  // übersprungen: erst abblenden, dann beendet das Spiel den Stopp (im nächsten Bild die Übergabe)
+  if (r.skipT >= 0 && t - r.skipT >= 0.25) game.skipCharge();
+}
+
+/** Nach der Welt: Wagen und Kamera dieses Bilds. Ergebnis: { inside (Kamera im Cockpit), wave, look (Mini Adam) }. */
+function stopPlace(dt) {
+  const r = stopRun;
+  const P = r.c.plan;
+  const t = game.chargeT();
+  const te = t - P.at(STOP.unplug);
+  const tb = t - P.d0;
+  stopPose(r.q);
+  let inside = false;
+  let fade = 0;
+  if (t < P.d0) {
+    // Einparken: im Cockpit bleibt die Kamera dort; die Drohne steigt über die Gegenspur und schaut dem Wagen zu
+    if (view === 'cockpit') {
+      cockpit.placeCamera(camera, carMatrix, simT, Math.abs(r.v), 0, dt);
+      setFov(58);
+      inside = true;
+    } else {
+      const k = smoothstep(0, STOP_DRONE.blend, t);
+      const yb = P.u - CHARGE.bay[0] + CHARGE.off;
+      tmpV.set(STOP_DRONE.pos[0], STOP_DRONE.pos[1], -(yb + STOP_DRONE.pos[2])).applyMatrix4(r.town.group.matrix);
+      r.cam.lerpVectors(r.from, tmpV, k);
+      // Blick auf den Wagen, weich nachgeführt
+      tmpV2.set(0, 0.7, 0).applyMatrix4(carMatrix);
+      r.look.lerp(tmpV2, 1 - Math.exp(-dt * 5));
+      camera.position.copy(r.cam);
+      camera.lookAt(tmpV.lerpVectors(r.fromLook, r.look, k));
+      setFov(50);
+    }
+    if (t > P.d0 - 0.25) fade = (t - (P.d0 - 0.25)) / 0.25;
+  } else if (te < 0) {
+    // in der Bucht: nah an Buchse, Säule und Popcorn-Stand
+    const { pos, look } = lerpKeys(tb, STOP_KEYS);
+    camera.position.copy(pos.applyMatrix4(carMatrix));
+    camera.lookAt(look.applyMatrix4(carMatrix));
+    setFov(44);
+    if (tb < STOP_FADE) fade = 1 - tb / STOP_FADE;
+  } else {
+    // ausparken wie in Erlensee: im Cockpit-Blick am Ende hinein, sonst hinter den Wagen
+    const ck = view === 'cockpit';
+    inside = placeIntro(dt, ck ? CHARGE_KEYS : STOP_ROLL_DRONE, te, ck ? SCENE.inside : Infinity, SCENE.end) === 'inside';
+    const sw = SCENE.inside;
+    if (ck) fade = te > sw - 0.25 && te < sw ? (te - (sw - 0.25)) / 0.25 : te >= sw && te < sw + STOP_FADE ? 1 - (te - sw) / STOP_FADE : 0;
+  }
+  fxState.fade = Math.max(fade, r.skipT >= 0 ? (t - r.skipT) / 0.25 : 0);
+  // Mini Adam winkt aus dem Fenster, wenn der Stecker sitzt, und schaut zur Säule, bis er sich löst
+  return {
+    inside,
+    wave: smoothstep(1.2, 1.6, tb) * (1 - smoothstep(2.8, 3.2, tb)),
+    look: smoothstep(0.6, 1.4, tb) * (1 - smoothstep(-0.6, 0, te)),
+  };
+}
+
 // --- Fenstergröße & Auflösung -----------------------------------------------------
 function onResize() {
   renderer.setPixelRatio(pixelRatio);
@@ -1783,6 +1983,30 @@ function step(dt, { render = true } = {}) {
         pause();
         break;
       }
+      if (stopRun.fadeT > 0) {
+        // nach dem Überspringen des Ladestopps blendet das Bild in der Spur wieder auf
+        stopRun.fadeT = Math.max(0, stopRun.fadeT - dt);
+        fxState.fade = stopRun.fadeT / STOP_FADE;
+      }
+      if (stopRun.on) {
+        // Ladestopp: jede Taste überspringt ihn (wie die Startszene); das Spiel läuft weiter, der Spieler steht an
+        // seinem Halt (Wagen und Kamera stellt stopPlace nach der Welt)
+        const t = game.chargeT();
+        if (stopRun.skipT < 0 && t > SCENE.skip && (input.anyKey || input.take('confirm'))) stopRun.skipT = t;
+        STOP_CTL.device = input.lastDevice;
+        p.speed = 0;
+        game.update(dt, STOP_CTL, camera);
+        stopTick();
+        if (stopRun.on) break;
+        // übergeben: der Wagen steht in der Spur, wo das Ausparken endet; ab dem nächsten Bild fährt der Spieler
+        updateCarMatrix();
+        if (view === 'cockpit') {
+          cockpit.placeCamera(camera, carMatrix, simT, p.speed, 0, dt);
+          setFov(58);
+          cockpitOn = true;
+        } else placeDrone(dt, 'follow');
+        break;
+      }
       if (input.take('camera')) {
         view = view === 'cockpit' ? 'drone' : 'cockpit';
         drone.init = false;
@@ -1869,6 +2093,13 @@ function step(dt, { render = true } = {}) {
   if (!frozen) {
     // XXL: zuerst die Fahrt fortschreiben (trip.update) – der Kurs liest gleich danach, welchen Weg sie nimmt
     if (xxl) xxlStep(p, w, dt);
+    // Ladestopp: Wagen und Kamera der Szene im Rahmen des Parks, wie ihn xxlStep eben gestellt hat
+    if (stopRun.on) {
+      const a = stopPlace(dt);
+      cockpitOn = a.inside;
+      adamWave = a.wave;
+      adamLook = a.look;
+    }
     // Verlauf der Straße in die Tabelle des Shaders; Prüfstand (?debug): flache Welt, damit Bausteine unverzerrt
     // begutachtet werden können
     if (DEBUG && window.__MA && window.__MA.flat) {
@@ -1895,17 +2126,18 @@ function step(dt, { render = true } = {}) {
     scenery.update(s, dt);
     sky.setOvercast(cloud * 0.95);
     rain.update(dt, simT, { speed: p.speed, s, camX: camera.position.x, intensity: w });
-    tesla.update(dt, p.v, p.wheel, simT); // rückwärts drehen die Räder rückwärts
+    tesla.update(dt, stopRun.on ? stopRun.v : p.v, p.wheel, simT); // rückwärts drehen die Räder rückwärts
     teslaDamage.update(dt, simT, p.damage, p.speed);
     cabinDamage.update(dt, simT, p.damage, p.speed, cockpitOn);
-    // (am Supercharger, im Titel und in der Startszene, steht der Wagen beim Laden in P: ohne Bremslicht)
-    tesla.setBrake(state !== 'charge' && !(state === 'title' && chargeRun.parked) && (p.braking > 0.1 || p.speed < 1));
-    tesla.setReverse(p.gear === 'R');
+    // (am Supercharger, im Titel und in der Startszene, steht der Wagen beim Laden in P: ohne Bremslicht; beim Ladestopp
+    // leuchtet es, solange er in R wartet und wenn er vor der Bucht anhält)
+    tesla.setBrake(stopRun.on ? stopRun.brake : state !== 'charge' && !(state === 'title' && chargeRun.parked) && (p.braking > 0.1 || p.speed < 1));
+    tesla.setReverse(p.gear === 'R' || stopRun.rev);
     const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook });
     tesla.adam.animate(simT, adamOpts);
     facecam.adam.animate(simT, adamOpts);
     facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake });
-    tesla.cabinLight.intensity = cockpitOn ? 0 : state === 'title' || state === 'intro' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
+    tesla.cabinLight.intensity = cockpitOn ? 0 : stopRun.on || state === 'title' || state === 'intro' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     const scr = game.screenState ? safeScreen() : null;
@@ -1941,7 +2173,7 @@ function step(dt, { render = true } = {}) {
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
       sunDir: sky.sunDir, overcast: cloud, adam: adamOpts,
-      screen: scr, radar: game.radarAlarm, rear: cockpitOn && p.gear === 'R',
+      screen: scr, radar: game.radarAlarm, rear: cockpitOn && (p.gear === 'R' || stopRun.rev),
     });
     if (fxState.trunk > 0) {
       fxState.trunk -= dt;
@@ -1964,7 +2196,7 @@ function step(dt, { render = true } = {}) {
   U.uFlash.value = fxState.flash;
   U.uGlitch.value = fxState.glitch > 0 ? 0.6 + 0.4 * Math.sin(simT * 40) : 0;
   U.uGreen.value = fxState.green > 0 ? (Math.sin(simT * 26) > 0.2 ? 1 : 0.15) : 0;
-  U.uFade.value = state === 'intro' || state === 'charge' ? clamp(fxState.fade, 0, 1) : 0;
+  U.uFade.value = state === 'intro' || state === 'charge' || stopRun.on || stopRun.fadeT > 0 ? clamp(fxState.fade, 0, 1) : 0;
   U.uSat.value = 1.08 - cloud * 0.25;
 
   if (DEBUG && window.__MA && window.__MA.camHook) window.__MA.camHook(camera, carMatrix);
@@ -2030,6 +2262,8 @@ function xxlStart(title) {
   // beginnt die Fahrt am Supercharger in Erlensee, wartet der Wagen schon im Titel dort (sonst fährt er dort vor)
   const atCharger = title && !!chargeOf(xxl.trip.section);
   chargeRun.parked = false;
+  stopRun.on = false;
+  stopRun.fadeT = 0;
   if (title && !atCharger) {
     xxl.advance(p, 1300);
     p.x = 1.875;
@@ -2129,6 +2363,10 @@ if (DEBUG) {
     },
     get state() {
       return state;
+    },
+    // der Ladestopp im Park (stopBegin … stopTick): on, c (game.charging), q (Lage des Wagens), skipT
+    get stop() {
+      return stopRun;
     },
     set view(v) {
       view = v;

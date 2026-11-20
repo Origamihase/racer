@@ -721,7 +721,7 @@ function popcornHeap(b, x, y, z, rx, rz, h, count, near, seed = 1) {
  * Seiten, die Tür vorn steht offen (nach links geschwenkt); innen hängt der Kessel voll Popcorn am Dach, unten liegt
  * ein Haufen davon. Auf dem Dach eine kleine Kuppel. Die Kabeltülle sitzt links am Sockel (Punkt GLAND).
  */
-const MACHINE = { w: 0.34, d: 0.26, base: 0.16, cab: 0.3, gland: [-0.17, 0.08, -0.06] };
+export const MACHINE = { w: 0.34, d: 0.26, base: 0.16, cab: 0.3, gland: [-0.17, 0.08, -0.06] };
 function popcornMachine(b, near) {
   const { F, G } = b;
   const { w, d } = MACHINE;
@@ -831,8 +831,9 @@ function popcornBag(b, x, y, z, near) {
 }
 
 // Lage des Tischs im Rahmen der Heldensäule (Mitte der Säule, +z ihre Vorderseite): hinter der Säule, zur Seite der
-// freien Nachbarbucht (dort steht die Kamera der Nahaufnahme), frei von den Säulen des Ladedachs (1,25 / −1,1)
-const STAND = { at: [0.48, -0.78], top: 0.6, w: 0.58, d: 0.44 };
+// freien Nachbarbucht (dort steht die Kamera der Nahaufnahme), frei von den Säulen des Ladedachs (1,25 / −1,1);
+// machine: Mitte der Maschine auf der Platte (dort springt beim Ladestopp das Popcorn, xxl/popping.js)
+export const STAND = { at: [0.48, -0.78], top: 0.6, w: 0.58, d: 0.44, machine: [0.04, -0.04] };
 defs.popcorn_stand = {
   kind: 'rest', far: true,
   make(b) {
@@ -857,7 +858,7 @@ defs.popcorn_stand = {
       F.rod(at(a, 0.62), at(c, 0.62), 0.011, C.timberDark, { seg: 6 });
     }
     // Maschine rechts der Mitte, Tüte vorn rechts, Flasche hinten rechts; links bleibt Platz für das Kabel
-    const [mx, mz] = [0.04, -0.04];
+    const [mx, mz] = STAND.machine;
     b.at(mx, top, mz, 0, () => popcornMachine(b, near));
     popcornBag(b, 0.235, top, 0.155, near);
     juiceBottle(b, 0.255, top, -0.15, near);
@@ -989,7 +990,8 @@ defs.ladepark = {
     return [m];
   },
 };
-// Der Ladepark in Erlensee, an dem jede Fahrt beginnt: Stecker und Kabel der Heldenbucht gehören der Startszene
+// Der Ladepark in Erlensee, an dem jede Fahrt beginnt, und die Ladeparks der Reise: Stecker und Kabel der Heldenbucht
+// gehören der Startszene und dem Ladestopp (xxl/chargerig.js)
 defs.ladepark_start = { ...defs.ladepark, make: (b, lod) => defs.ladepark.make(b, lod, true) };
 
 // =================================================================================================================

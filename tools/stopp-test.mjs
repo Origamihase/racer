@@ -242,9 +242,7 @@ function stream(skip) {
       game.planStop();
       planned = trip.stop >= 0;
       ok(planned, 'Ladestopp lässt sich nicht einplanen');
-      if (process.env.LOG) console.log('geplant', trip.stop, JSON.stringify(trip.restsAhead(2).map((r) => [r.name, r.m, r.km])), trip.target);
     }
-    if (process.env.LOG && i % 900 === 0) console.log(game.t.toFixed(0), p.s.toFixed(0), trip.section.kind, p.kmh.toFixed(0), trip.stop, game.charging ? 'lädt' : '', arrival.pending ? 'pending' : '', arrival.held ? 'held' : '');
     limitsFor(trip, lim, arrival.stop(trip));
     p.setLimits(lim);
     let want = J.L0;
