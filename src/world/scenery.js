@@ -1,16 +1,16 @@
 // Landschaft entlang der Autobahn: Wälder, Felder, Dörfer, Windräder, Brücken mit Fan-Bannern,
-// Schilderbrücken mit dem aktuellen Navi-Ziel, Kilometerschilder, braune Touristik-Tafeln
-// und besondere Orte (Brunnen für BrunnenTV, Elsa, Burgen, Sparkasse, Skyline …).
+// Schilderbrücken (ihre Tafeln beschriftet die Welt), Kilometerschilder, Blitzer
+// und Wahrzeichen am Rand (Brunnen für BrunnenTV, Elsa).
 // Die Welt ist in 100-m-Segmente geteilt, die vor dem Spieler neu gebaut werden.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../curve.js';
 import {
-  ROAD, signTexture, brownSignTexture, speedSignTexture, roundRect, grassTexture, fitTextCenter, masonryTexture,
+  ROAD, signTexture, speedSignTexture, roundRect, grassTexture, fitTextCenter, masonryTexture,
 } from '../textures.js';
 import { colorize } from '../models/loft.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
-import { mulberry32, fbm1, smoothstep, pick } from '../util.js';
+import { mulberry32, fbm1, smoothstep } from '../util.js';
 import { MEDIAN_X, ONCOMING, GRASS_TINT } from './road.js';
 import { dropInGeo } from './kit/nature.js';
 import { box, rod, ball, lathe, bar, sweep, move, fuse, tone, blend } from './kit/shapes.js';
@@ -39,27 +39,12 @@ const FRONT = { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits
 // Lärmschutzwand am Dorf: Mitte der 0,3 m dicken Wand. Davor bleibt Platz für den Blitzer (bis +1,95 m) und
 // den Fuß der Schilderbrücke (bis +2,05 m), dahinter für die Brückenpfeiler (ab +2,9 m).
 const WALL_X = ROAD.right + 2.35;
-// Vor Navi-Zielen und Wahrzeichen rechts der Fahrbahn bleibt die Wand offen: ab 140 m davor, damit man sie
-// aus dem Cockpit schon aus ≈ 250 m sieht, bis 25 m dahinter. Kürzere Reststücke als 20 m entfallen.
-const WALL_GAP = new Set(['ziel', 'brunnen', 'elsa', 'sparkasse', 'kiosk', 'charger']);
+// Vor Wahrzeichen rechts der Fahrbahn bleibt die Wand offen: ab 140 m davor, damit man sie aus dem Cockpit schon
+// aus ≈ 250 m sieht, bis 25 m dahinter. Kürzere Reststücke als 20 m entfallen.
+const WALL_GAP = new Set(['brunnen', 'elsa']);
 const GAP_BEFORE = 140;
 const GAP_AFTER = 25;
 const WALL_MIN = 20;
-// Fuß des Burgbergs (Radius in m um die Burg, siehe makeCastle): darin stehen keine Häuser und keine Kirche
-const HILL_R = 97;
-// Sichtweite: so weit reicht der Nebel bei klarem Wetter (sky.js), dahinter hat alles die Nebelfarbe. Schrift auf
-// einer Tafel ist schon ab 150 m nur noch ein paar Pixel hoch.
-const VIEW_FAR = 1550;
-const READ_FAR = 150;
-/** So weit reicht ein Wahrzeichen vor seinen Ort (zum Spieler hin): der Burgberg 37 m, alles andere unter 10 m. */
-const reach = (r) => (r.type === 'burg' ? HILL_R - 60 : 10);
-/** Stünden zwei Navi-Wahrzeichen ineinander? (alle am rechten Rand, zwei Burgberge, zwei Skylines) */
-function clash(a, b) {
-  const d = Math.abs(a.s - b.s);
-  if (WALL_GAP.has(a.type) && WALL_GAP.has(b.type)) return d < 40;
-  if (a.type !== b.type) return false;
-  return (a.type === 'burg' && d < 2 * HILL_R + 10) || (a.type === 'skyline' && d < 270);
-}
 // Dorf: Grundriss der Kirche (makeChurch: Turm mit Helm bis −9,4 m, Dach bis +13,6 m, 4,8 m zu den Seiten),
 // halbe Dachfläche eines Hauses (roofGeo steht 6 % über), Abstand zwischen zwei Häusern, Kronenradius des
 // Laubbaums (decidGeo) bei Maßstab 1 und so viel Platz bleibt an den Dorfenden für die Kronen der Bäume draußen
@@ -74,12 +59,6 @@ const BANNERS = [
   'Ehrenmenschen-Brücke', 'Rechts fahren, Adam!', 'Wir streamen in Full HD', 'Live-Eskalationen immer woanders',
   'Ringtennis-Verein grüßt', 'Danke für alles ❤', 'Bimmel hurra!', 'Kanalpunkte-Wette läuft',
 ];
-const BROWN = [
-  ['Burg Hauneck', 'Haunetal'], ['Wartburg', 'Eisenach'], ['Weser-Skywalk', 'Beverungen'], ['Burg Ronneburg', 'Ronneburg'],
-  ['Elsa', 'Kassel grüßt'], ['Hochofenwerk Phoenix West', 'Dortmund'], ['BrunnenTV-Studio', 'Herr Schönnbrun'],
-  ['Megahub', 'Lehrte'], ['Rhön', 'Satelliten-Gebiet'], ['Zissel', 'Kassel'], ['Skyline', 'Frankfurt am Main'],
-];
-const PLACES = ['Kassel', 'Fulda', 'Frankfurt', 'Gifhorn', 'Hannover', 'Würzburg', 'Göttingen', 'Hamburg', 'Hanau', 'Siegen', 'Erlensee', 'Eisenach', 'Bad Hersfeld', 'Dortmund'];
 
 // ---------------------------------------------------------------------------
 // Geometrien für Instanzen: aus dem Natur-Baukasten (gleicher Ursprung, gleiche Maße wie die alten Klötze).
@@ -151,22 +130,6 @@ function lotDist(P, x, z) {
   return Math.sqrt(d2);
 }
 
-// Skyline (Gruppe bei x = SKYLINE_X): 16 Hochhäuser, immer dieselben, schräg nach hinten links gestaffelt – alles
-// weit jenseits der Gegenfahrbahn (die endet bei x ≈ −32). Mitte relativ zur Gruppe, Breite (quadratisch), Höhe.
-const SKYLINE_X = -75;
-let towers = null;
-function skylineTowers() {
-  if (!towers) {
-    const rnd = mulberry32(69);
-    towers = Array.from({ length: 16 }, (_, i) => {
-      const h = 60 + rnd() * 190;
-      const w = 18 + rnd() * 22;
-      return { x: -i * 22 - rnd() * 8, z: -i * 14 - rnd() * 40, w, h };
-    });
-  }
-  return towers;
-}
-
 const TREE_TINTS = [0xffffff, 0xe0f0e0, 0xc8e0c8, 0xf0ffe0, 0xd0e8d8, 0xfff4dc];
 const HOUSE_COLORS = PAL.wall;
 const ROOF_COLORS = PAL.roof;
@@ -182,7 +145,6 @@ export class Scenery {
     this.pools = new Map();
     this.animated = new Set();
     this.texCache = new Map();
-    this.gantryInfo = () => ({ target: 'Kassel', km: 42 });
     this.time = 0;
     this.mats = {
       concrete: W.std({ color: 0xbdb9ae, roughness: 0.92 }),
@@ -201,19 +163,14 @@ export class Scenery {
       glassBlue: W.std({ color: 0x5f7fa3, metalness: 0.8, roughness: 0.15, envMapIntensity: 1.2 }),
     };
     this.mats.grass.color = GRASS_TINT;
-    // XXL-Welt: Gebiete anderer Straßen (Keil an Knotenpunkten, vor dem Anfang und hinter dem Ende der Autobahn)
-    // bleiben frei. keepOut(x, s) → true: dort steht nichts · noCross(s0, s1) → true: keine Brücken,
-    // Schilderbrücken und Lärmschutzwände in diesem Stück. null = klassisch (alles erlaubt).
+    // Gebiete anderer Straßen (Keil an Knotenpunkten, vor dem Anfang und hinter dem Ende der Autobahn) bleiben frei
+    // (setzt die Welt). keepOut(x, s) → true: dort steht nichts · noCross(s0, s1) → true: keine Brücken,
+    // Schilderbrücken und Lärmschutzwände in diesem Stück. null = alles erlaubt.
     this.keepOut = null;
     this.noCross = null;
-    // XXL-Welt (COMMON.md 9: kein Zufallstext auf Schildern): gantryTexts(sSign) → {a, b} (Zeilen {left, right} der
-    // beiden Tafeln) oder null (dann steht dort keine Schilderbrücke); noRandomSigns: keine braunen und blauen Tafeln
-    // mit Fantasietexten. null/false = klassisch.
-    this.gantryTexts = null;
-    this.noRandomSigns = false;
-    // XXL: skipRequest(type) → true: angefragte Dinge dieser Art nicht aufstellen (Ziel-Tafel und Skyline des
-    // klassischen Navis gehören nicht an die XXL-Autobahn: Ziele liegen dort in den Orten)
-    this.skipRequest = null;
+    // die Welt beschriftet die Schilderbrücken (COMMON.md 9: kein Zufallstext auf Schildern): gantryTexts(sSign) →
+    // {a, b} (Zeilen {left, right} der beiden Tafeln) oder null (dann steht dort keine Schilderbrücke)
+    this.gantryTexts = () => null;
 
     this.makeInstanced();
   }
@@ -277,9 +234,6 @@ export class Scenery {
   request(type, s, data = {}) {
     const id = Math.random().toString(36).slice(2);
     const r = { id, type, s, data, built: false };
-    // Ein stehen gebliebenes Wahrzeichen eines überbotenen Ziels (siehe cancel), dem das neue in die Quere käme,
-    // macht Platz. Neue Navi-Ziele liegen mindestens 1,4 km voraus, es verschwindet also fast ganz im Nebel.
-    for (const q of this.requests) if (q.cancelled && clash(q, r)) this.drop(q);
     this.requests.push(r);
     // Falls das Segment schon steht: sofort einsetzen
     const k = Math.floor(s / SEG);
@@ -289,55 +243,6 @@ export class Scenery {
     // und eine schon stehende Lärmschutzwand davor öffnen
     if (WALL_GAP.has(type)) this.refreshWalls(s);
     return id;
-  }
-
-  /**
-   * Anfrage abbrechen (Ziel überboten). Schon gebaute Ziel-Schilder und Wahrzeichen verschwinden nur, wo man sie
-   * nicht mehr sieht: ganz hinten im Nebel. Alles Nähere (auch eine Burg 300 m voraus) bliebe sonst nicht einfach
-   * weg, es verschwände mitten im Bild. Es bleibt also stehen, bis sein Abschnitt hinter dem Auto abgebaut wird,
-   * und behält so lange seine Lücke in der Lärmschutzwand und seinen freien Platz; auf dem Ziel-Schild steht dann
-   * „Überboten:“ (siehe retireZiel). Mit removeBuilt = false (schon angekommen) bleibt ohnehin alles stehen.
-   */
-  cancel(id, removeBuilt = true) {
-    const r = this.requests.find((q) => q.id === id);
-    if (!r) return;
-    if (removeBuilt && r.built && r.s - reach(r) < this.track.position.z + VIEW_FAR) {
-      r.cancelled = true;
-      if (r.type === 'ziel') this.retireZiel(r);
-      return;
-    }
-    this.drop(r, removeBuilt);
-  }
-
-  /** Anfrage r streichen und (mit removeBuilt) ihre schon gebauten Teile abbauen. */
-  drop(r, removeBuilt = true) {
-    this.requests = this.requests.filter((q) => q !== r);
-    let removed = false;
-    if (removeBuilt && r.built) {
-      for (const slot of this.slots) {
-        const i = slot.items.findIndex((o) => o.userData.requestId === r.id);
-        if (i >= 0) {
-          this.release(slot.items[i]);
-          slot.items.splice(i, 1);
-          removed = true;
-        }
-      }
-    }
-    // die Lücke in der Lärmschutzwand wieder schließen, aber nur, solange ihr Anfang noch weit voraus liegt
-    // (sonst wüchse die Wand vor der Nase aus dem Boden); bleibt das Ziel stehen, bleibt auch die Lücke
-    const far = r.s - GAP_BEFORE - WALL_MIN > this.track.position.z + 300;
-    if (WALL_GAP.has(r.type) && (removed || !r.built) && far) this.refreshWalls(r.s);
-  }
-
-  /**
-   * Ziel-Schild eines überbotenen Ziels: „Überboten:“ statt „Ziel erreicht:“ – aber nur, solange es noch zu weit
-   * weg ist, um es zu lesen (sonst wechselte die Schrift vor den Augen; dann bleibt sie, man ist gleich vorbei).
-   */
-  retireZiel(r) {
-    if (r.s - this.track.position.z < READ_FAR) return;
-    for (const slot of this.slots) {
-      for (const o of slot.items) if (o.userData.requestId === r.id) o.userData.setText(r.data.title || 'Ziel', true);
-    }
   }
 
   /** Alles abbauen (neue Fahrt beginnt wieder bei 0 km). */
@@ -498,7 +403,7 @@ export class Scenery {
         }
       }
     }
-    // Lärmschutzwand am Dorf (mit Lücken vor Navi-Zielen und Wahrzeichen)
+    // Lärmschutzwand am Dorf (mit Lücken vor Wahrzeichen)
     const cross = !this.noCross || !this.noCross(s0 - 60, s0 + SEG + 60);
     if (this.hasWall(k) && cross) this.buildWall(slot);
 
@@ -514,14 +419,13 @@ export class Scenery {
       n.position.set(ROAD.right + 1.4, 0, z0 - 30);
       slot.items.push(n);
     }
-    // Schilderbrücke mit Navi-Ziel
-    // (XXL: keine Brücken über die Fahrbahn an Knotenpunkten)
+    // Schilderbrücke mit Entfernungstafeln aus der Fahrt
+    // (keine Brücken über die Fahrbahn an Knotenpunkten)
     const furn = this.furniture(k);
-    const gTexts = furn === 'gantry' && cross && this.gantryTexts ? this.gantryTexts(s0 + 50) : null;
-    if (furn === 'gantry' && cross && (!this.gantryTexts || gTexts)) {
+    const gTexts = furn === 'gantry' && cross ? this.gantryTexts(s0 + 50) : null;
+    if (gTexts) {
       const g = this.acquire('gantry', () => this.makeGantry());
-      if (gTexts) this.labelGantryWith(g, gTexts, s0 + 50);
-      else this.labelGantry(g, rnd, s0 + 50);
+      this.labelGantryWith(g, gTexts, s0 + 50);
       g.position.set(0, 0, z0 - 50);
       slot.items.push(g);
     } else if (furn === 'bridge' && cross) {
@@ -533,30 +437,15 @@ export class Scenery {
       // Widerlagern, 16,2 m zu den Seiten; Häuser sind bis 15 m groß)
       this.clearPlants((x, z) => x > -70 && x < 52 && Math.abs(z - (z0 - 50)) < 20, slotIdx);
       this.clearPlants((x, z) => x > -74 && x < 56 && Math.abs(z - (z0 - 50)) < 24, slotIdx, ['house', 'roof']);
-    } else if (furn === 'brown') {
-      // (die breiten Tafeln stünden mitten in der Lärmschutzwand, also gibt es dort keine, siehe furniture)
-      const [title, sub] = BROWN[Math.floor(rnd() * BROWN.length)];
-      const b = this.acquire('brown', () => this.makeBrownSign());
-      b.userData.setText(title, sub);
-      b.position.set(ROAD.right + 3.4, 0, z0 - 40);
-      slot.items.push(b);
-      this.clearPlants((x, z) => x > ROAD.right && x < ROAD.right + 8 && Math.abs(z - (z0 - 40)) < 5, slotIdx);
-    } else if (furn === 'blueinfo') {
-      const b = this.acquire('blueinfo', () => this.makeBlueInfo());
-      b.userData.setText(rnd() < 0.5 ? ['Rastplatz', 'Schäferborn  2 km'] : ['Raststätte', 'Bananensaft  1500 m']);
-      b.position.set(ROAD.right + 3.4, 0, z0 - 40);
-      slot.items.push(b);
-      this.clearPlants((x, z) => x > ROAD.right && x < ROAD.right + 8 && Math.abs(z - (z0 - 40)) < 5, slotIdx);
     }
 
     // Angefragte Orte; auch der Platz für Orte aus Nachbarsegmenten bleibt frei von Bäumen
     for (const r of this.requests) {
       if (!r.built && r.s >= s0 && r.s < s0 + SEG) this.placeRequest(slot, r);
-      // (die Grundflächen reichen höchstens gut 300 m weit, siehe plantFree)
+      // (die Grundflächen reichen keine 30 m weit, siehe plantFree)
       const near = Math.abs(r.s - s0 - SEG / 2) < 400;
       const free = near && this.plantFree(r);
       if (free) this.clearPlants(free, slotIdx);
-      if (near) this.clearHill(r, slotIdx);
     }
 
     // XXL: was auf fremdem Gebiet stünde (Schilder, Windräder, Wahrzeichen …), bleibt unsichtbar
@@ -578,14 +467,10 @@ export class Scenery {
     return 0;
   }
 
-  /** Was im Abschnitt k steht: Schilderbrücke, Brücke, braune oder blaue Tafel (oder nichts). */
+  /** Was im Abschnitt k über die Fahrbahn reicht: Schilderbrücke, Brücke (oder nichts). */
   furniture(k) {
     if (k % 13 === 7) return 'gantry';
     if (k % 23 === 15) return 'bridge';
-    // die breiten Tafeln stünden mitten in der Lärmschutzwand, also dort keine
-    if (this.hasWall(k) || this.noRandomSigns) return null;
-    if (k % 17 === 3) return 'brown';
-    if (k % 29 === 11) return 'blueinfo';
     return null;
   }
 
@@ -596,13 +481,12 @@ export class Scenery {
     const furn = this.furniture(k);
     if (this.hasWall(k)) return false;
     if ((furn === 'gantry' || furn === 'bridge') && Math.abs(o - 50) < 15) return false;
-    if ((furn === 'brown' || furn === 'blueinfo') && Math.abs(o - 40) < 6) return false;
     if (k % 20 === 10 && Math.abs(o - 30) < 5) return false; // Notrufsäule
     if ((k % 5 === 0 && o < 4) || ((k + 1) % 5 === 0 && o > SEG - 4)) return false; // Kilometerschild
     return !this.requests.some((q) => q !== self && Math.abs(q.s - s) < ELSA_ROOM);
   }
 
-  /** Kommt nachträglich etwas neben eine nah am Rand stehende Elsa (Blitzer, Schild, Ziel), rückt sie nach draußen. */
+  /** Kommt nachträglich etwas neben eine nah am Rand stehende Elsa (Blitzer, Schild), rückt sie nach draußen. */
   makeRoom(r) {
     for (const q of this.requests) {
       if (q.type !== 'elsa' || q.spot !== ELSA_STATUE || Math.abs(q.s - r.s) >= ELSA_ROOM) continue;
@@ -627,7 +511,6 @@ export class Scenery {
     for (let k = k0; k < k0 + 12; k++) {
       const at = k * SEG + LANDMARK_OFFSET;
       const furn = this.furniture(k);
-      // auch keine Tafel 35 m davor: die verdeckt sie beim Heranfahren fast ganz
       if (!furn && this.statueFree(at) && !this.requests.some((q) => Math.abs(q.s - at) < 40)) return at;
     }
     return s;
@@ -736,43 +619,10 @@ export class Scenery {
   plantFree(r) {
     const z = -r.s;
     if (WALL_GAP.has(r.type)) return (x, zz) => x > ROAD.right && x < ROAD.right + 28 && Math.abs(zz - z) < 18;
-    if (r.type === 'burg') return (x, zz) => Math.hypot(x - 160, zz - (z - 60)) < 100;
-    // unter den Hochhäusern und so weit daneben, wie die größten Kronen reichen
-    if (r.type === 'skyline') return (x, zz) => this.underSkyline(r, x, zz, 6);
     return null;
   }
 
-  /** Liegt (x, z) unter einem Hochhaus der Skyline von Anfrage r oder näher als m daran? */
-  underSkyline(r, x, z, m) {
-    return skylineTowers().some(
-      (t) => Math.abs(x - SKYLINE_X - t.x) < t.w / 2 + m && Math.abs(z + r.s - t.z) < t.w / 2 + m,
-    );
-  }
-
-  /**
-   * Steht die Burg oder die Skyline neben einem Dorf: Häuser und Kirche, die im Burgberg oder in einem Hochhaus
-   * stecken würden, abräumen (nur in Segment slotIdx oder überall). Häuser sind bis knapp 10 m (mit Dach gut 11 m),
-   * die Kirche bis 14 m (gut 14,5 m) um ihren Mittelpunkt groß.
-   */
-  clearHill(r, slotIdx = -1) {
-    let inside;
-    if (r.type === 'burg') {
-      const cz = -r.s - 60; // wie in placeRequest
-      inside = (x, z, m) => Math.hypot(x - 160, z - cz) < HILL_R + m;
-    } else if (r.type === 'skyline') inside = (x, z, m) => this.underSkyline(r, x, z, m + 1.5);
-    else return;
-    this.clearPlants((x, z) => inside(x, z, 10), slotIdx, ['house', 'roof']);
-    this.slots.forEach((slot, i) => {
-      if (slotIdx >= 0 && i !== slotIdx) return;
-      slot.items = slot.items.filter((o) => {
-        const buried = o.userData.type === 'church' && inside(o.position.x, o.position.z, 14);
-        if (buried) this.release(o);
-        return !buried;
-      });
-    });
-  }
-
-  /** Neues Navi-Ziel oder Wahrzeichen bei s: schon stehende Wandsegmente in der Nähe neu zuschneiden. */
+  /** Neues Wahrzeichen bei s: schon stehende Wandsegmente in der Nähe neu zuschneiden. */
   refreshWalls(s) {
     for (const slot of this.slots) {
       if (slot.k < 0 || !this.hasWall(slot.k)) continue;
@@ -782,7 +632,6 @@ export class Scenery {
 
   placeRequest(slot, r) {
     r.built = true;
-    if (this.skipRequest && this.skipRequest(r.type)) return;
     const z = -r.s;
     let obj = null;
     switch (r.type) {
@@ -802,33 +651,6 @@ export class Scenery {
         this.animated.add(obj);
         break;
       }
-      case 'burg':
-        obj = this.acquire('burg', () => this.makeCastle());
-        obj.position.set(160, 0, z - 60);
-        break;
-      case 'skyline':
-        obj = this.acquire('skyline', () => this.makeSkyline());
-        obj.position.set(SKYLINE_X, 0, z);
-        break;
-      case 'sparkasse':
-        obj = this.acquire('sparkasse', () => this.makeSparkasse());
-        obj.userData.setColor(r.data.color || '#d5121e');
-        obj.position.set(ROAD.right + 16, 0, z);
-        break;
-      case 'kiosk':
-        obj = this.acquire('kiosk', () => this.makeKiosk());
-        obj.userData.setText(r.data.title || 'Currywurst', r.data.sub || 'die richtige Bude');
-        obj.position.set(ROAD.right + 10, 0, z);
-        break;
-      case 'charger':
-        obj = this.acquire('charger', () => this.makeCharger());
-        obj.position.set(ROAD.right + 11, 0, z);
-        break;
-      case 'ziel':
-        obj = this.acquire('ziel', () => this.makeZiel());
-        obj.userData.setText(r.data.title || 'Ziel');
-        obj.position.set(ROAD.right + 3.5, 0, z);
-        break;
       case 'blitzer':
         obj = this.acquire('blitzer', () => this.makeBlitzer());
         obj.userData.flash.material.color.setScalar(1); // falls eine Fahrt mitten im Blitz endete
@@ -847,7 +669,6 @@ export class Scenery {
     // Bäume, die schon im Weg stehen (auch in den Nachbarsegmenten), verschwinden
     const free = this.plantFree(r);
     if (free) this.clearPlants(free);
-    this.clearHill(r);
   }
 
   // --- Bauteile --------------------------------------------------------
@@ -964,16 +785,7 @@ export class Scenery {
     return g;
   }
 
-  /** Navi-Ziel geändert: die Navi-Tafeln der stehenden Schilderbrücken neu beschriften. */
-  relabelGantries() {
-    const pool = this.pools.get('gantry');
-    if (!pool || !this.gantryInfo || this.gantryTexts) return;
-    for (const g of pool) {
-      if (g.userData.active && g.userData.sSign !== undefined) this.labelGantry(g, Math.random, g.userData.sSign, true);
-    }
-  }
-
-  /** XXL: beide Tafeln mit festen Zeilen beschriften ({a, b} aus gantryTexts). */
+  /** Beide Tafeln mit festen Zeilen beschriften ({a, b} aus gantryTexts). */
   labelGantryWith(g, t, sSign) {
     g.userData.sSign = sSign;
     g.userData.texts = t;
@@ -981,32 +793,6 @@ export class Scenery {
     for (const [m, rows] of [[a, t.a], [b, t.b]]) {
       if (m.map) m.map.dispose();
       m.map = signTexture(rows, { w: 768, h: 288, arrows: null });
-      m.needsUpdate = true;
-    }
-  }
-
-  /** sSign: Position der Schilderbrücke (die Entfernung zum Navi-Ziel gilt ab dem Schild). */
-  labelGantry(g, rnd, sSign, onlyNavi = false) {
-    g.userData.sSign = sSign;
-    g.userData.texts = null;
-    const info = this.gantryInfo(sSign);
-    const [a, b] = g.userData.panels;
-    const kmTxt = (km) => km.toLocaleString('de-DE', { maximumFractionDigits: km < 10 ? 1 : 0 }) + ' km';
-    // keine Stadt doppelt: weder auf beiden Tafeln noch zusätzlich zum Navi-Ziel
-    const pool = PLACES.filter((p) => !info || p !== info.target);
-    const p1 = pick(pool);
-    let p2 = pick(pool);
-    while (p2 === p1) p2 = pick(pool);
-    let p0 = pick(pool);
-    while (p0 === p1 || p0 === p2) p0 = pick(pool);
-    // liegt das Navi-Ziel schon vor dem Schild, zeigt es einfach zwei Orte
-    const tA = info
-      ? signTexture([{ left: info.target, right: kmTxt(info.km) }, { left: 'Navi-Ziel', right: '↑' }], { w: 768, h: 288, arrows: null })
-      : signTexture([{ left: p0, right: kmTxt(3 + Math.floor(rnd() * 20)) }, { left: 'Rastanlage', right: kmTxt(1 + Math.floor(rnd() * 9)) }], { w: 768, h: 288, arrows: null });
-    const tB = signTexture([{ left: p1, right: kmTxt(5 + Math.floor(rnd() * 60)) }, { left: p2, right: kmTxt(30 + Math.floor(rnd() * 120)) }], { w: 768, h: 288, arrows: null });
-    for (const [m, t] of onlyNavi ? [[a, tA]] : [[a, tA], [b, tB]]) {
-      if (m.map) m.map.dispose();
-      m.map = t;
       m.needsUpdate = true;
     }
   }
@@ -1179,59 +965,6 @@ export class Scenery {
     // Gras wie am Bankett (6 m pro Kachel); auf den Böschungen entlang der Falllinie gemessen
     const uvFn = ([x, y, z], out) => (out[0] === 0 && out[2] === 0 ? [x / 6, z / 6] : out[2] !== 0 ? [x / 6, (y * 1.8) / 6] : [z / 6, (y * 1.8) / 6]);
     return [wall, polyGeometry(bankPolys, uvFn)];
-  }
-
-  makeBrownSign() {
-    const g = new THREE.Group();
-    for (const x of [-1.3, 1.3]) {
-      const p = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3.8, 0.1), this.mats.steel);
-      p.position.set(x, 1.9, 0);
-      g.add(p);
-    }
-    const face = this.signBoard(g, 3.4, 2.1, 2.75);
-    g.rotation.y = -0.12;
-    g.userData.setText = (title, sub) => {
-      face.map = this.canvasTexFrom('brown:' + title, () => brownSignTexture(title, sub));
-      face.needsUpdate = true;
-    };
-    return g;
-  }
-
-  /**
-   * Schildtafel auf zwei Pfosten (Vorderseite der Pfosten bei z = 0,05): ein 5 cm dicker Kasten, Rückseite 1 cm vor
-   * den Pfosten, die Bildseite also 6 cm davor und mit Polygon-Offset. Gibt das Material der Bildseite zurück.
-   */
-  signBoard(g, w, h, y) {
-    if (!this.signEdgeGeo) this.signEdgeGeo = new Map();
-    const key = w + 'x' + h;
-    if (!this.signEdgeGeo.has(key)) this.signEdgeGeo.set(key, new THREE.BoxGeometry(w, h, 0.05));
-    const face = W.std({ ...FRONT, roughness: 0.6 });
-    const s = this.mats.steel;
-    const board = new THREE.Mesh(this.signEdgeGeo.get(key), [s, s, s, s, face, s]);
-    board.position.set(0, y, 0.085);
-    g.add(board);
-    return face;
-  }
-
-  canvasTexFrom(key, fn) {
-    if (!this.texCache.has(key)) this.texCache.set(key, fn());
-    return this.texCache.get(key);
-  }
-
-  makeBlueInfo() {
-    const g = new THREE.Group();
-    for (const x of [-1.3, 1.3]) {
-      const p = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3.6, 0.1), this.mats.steel);
-      p.position.set(x, 1.8, 0);
-      g.add(p);
-    }
-    const face = this.signBoard(g, 3.4, 1.8, 2.7);
-    g.rotation.y = -0.12;
-    g.userData.setText = (lines) => {
-      face.map = this.canvasTexFrom('blue:' + lines.join('|'), () => signTexture(lines, { w: 512, h: 272 }));
-      face.needsUpdate = true;
-    };
-    return g;
   }
 
   makeSpeedSign(limit) {
@@ -1537,183 +1270,6 @@ export class Scenery {
     sign.position.y = signY;
     g.add(ped, elsa, sign);
     g.userData.animate = (t) => animateElsa(elsa, t);
-    return g;
-  }
-
-  makeCastle() {
-    const g = new THREE.Group();
-    // Burgberg mit rundem Gipfelplateau (r = 24 m, die Türme reichen bis 21,8 m): Bergfried, Türme und Mauern
-    // stehen ab y = 42 auf festem Boden und stecken 0,6 m darin (vorher endete der Berg spitz bei y = 42).
-    const prof = [[97, 0], [90, 4], [78, 12.5], [62, 24], [46, 34.5], [34, 40.4], [28, 42.2], [24, 42.6], [0, 42.6]];
-    const hill = new THREE.Mesh(new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 24), W.lambert({ color: 0x5c8640 }));
-    const wallM = W.std({ color: 0xb7a98f, roughness: 0.95 });
-    const keep = new THREE.Mesh(new THREE.BoxGeometry(12, 30, 12), wallM);
-    keep.position.y = 42 + 15;
-    const keepRoof = new THREE.Mesh(new THREE.ConeGeometry(9.5, 12, 4), this.mats.redRoof);
-    keepRoof.rotation.y = Math.PI / 4;
-    keepRoof.position.y = 42 + 36;
-    g.add(hill, keep, keepRoof);
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2 + 0.4;
-      const t = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.8, 20, 12), wallM);
-      t.position.set(Math.sin(a) * 18, 42 + 10, Math.cos(a) * 18);
-      const r = new THREE.Mesh(new THREE.ConeGeometry(4.4, 8, 12), this.mats.redRoof);
-      r.position.set(Math.sin(a) * 18, 42 + 24, Math.cos(a) * 18);
-      g.add(t, r);
-      const b = (((i + 0.5) / 4) * Math.PI * 2) + 0.4;
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(24, 12, 2), wallM);
-      wall.position.set(Math.sin(b) * 13.5, 42 + 6, Math.cos(b) * 13.5);
-      wall.rotation.y = b;
-      g.add(wall);
-    }
-    return g;
-  }
-
-  makeSkyline() {
-    const g = new THREE.Group();
-    const mats = [this.mats.glassBlue, W.std({ color: 0xb9c2cc, metalness: 0.5, roughness: 0.3 }), W.std({ color: 0x6f7a86, metalness: 0.6, roughness: 0.25 })];
-    skylineTowers().forEach(({ x, z, w, h }, i) => {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mats[i % 3]);
-      b.position.set(x, h / 2, z);
-      g.add(b);
-      if (i === 7) {
-        const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.2, 50, 6), this.mats.steel);
-        ant.position.set(x, h + 25, z);
-        g.add(ant);
-      }
-    });
-    return g;
-  }
-
-  makeSparkasse() {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(14, 7, 10), W.std({ color: 0xe9e6df, roughness: 0.85 }));
-    body.position.y = 3.5;
-    // Fensterband 2,5 cm vor der Fassade mit Polygon-Offset; Schriftzug als 12 cm tiefer Kasten
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(12, 3), W.std({ ...FRONT, color: 0x5f7fa3, metalness: 0.8, roughness: 0.15, envMapIntensity: 1.2 }));
-    win.position.set(0, 2.2, 5.025);
-    const face = W.std({ ...FRONT, roughness: 0.5 });
-    const edge = this.mats.white;
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(8, 1.6, 0.12), [edge, edge, edge, edge, face, edge]);
-    panel.position.set(0, 6, 5.07);
-    g.add(body, win, panel);
-    g.rotation.y = -Math.PI / 2 + 0.25;
-    g.userData.setColor = (color) => {
-      const tex = this.canvasTex('spk:' + color, 512, 100, (ctx, w, h) => {
-        // helle Schrift (die Bank ist weiß) steht auf Blaugrau, sonst verschwände sie auf dem weißen Schild
-        const light = [1, 3, 5].reduce((a, i) => a + parseInt(color.slice(i, i + 2), 16), 0) > 600;
-        ctx.fillStyle = light ? '#5f7fa3' : '#ffffff';
-        ctx.fillRect(0, 0, w, h);
-        ctx.fillStyle = color;
-        ctx.font = 'bold 54px Arial, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('Bank am Markt', w / 2, h / 2 + 3);
-      });
-      face.map = tex;
-      face.needsUpdate = true;
-    };
-    return g;
-  }
-
-  makeKiosk() {
-    const g = new THREE.Group();
-    // Versatz wie beim Stahl: das Dach der Bude, flach von der Seite gesehen, stach sonst als heller Punkt durch das
-    // Vordach, das ihm aufliegt
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(5, 3, 4),
-      W.std({ color: 0xf0e0b0, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 0 }),
-    );
-    body.position.y = 1.5;
-    const awning = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.2, 1.6), W.std({ color: 0xd22020, roughness: 0.7 }));
-    awning.position.set(0, 2.8, 2.6);
-    awning.rotation.x = 0.25;
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 7, 8), this.mats.steel);
-    pole.position.set(-3.6, 3.5, 1);
-    // Tafel als 6 cm tiefer Kasten direkt vor dem Mast (Bildseite 6 cm vor ihm, mit Polygon-Offset)
-    const face = W.std({ ...FRONT, roughness: 0.5 });
-    const st = this.mats.steel;
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.8, 0.06), [st, st, st, st, face, st]);
-    panel.position.set(-3.6, 6.4, 1.15);
-    g.add(body, awning, pole, panel);
-    g.rotation.y = -0.4;
-    g.userData.setText = (title, sub) => {
-      const tex = this.canvasTex('kiosk:' + title + sub, 512, 288, (ctx, w, h) => {
-        // ganz füllen (undurchsichtige Tafel: durchsichtige Ecken würden schwarz), der rote Rahmen bleibt rund
-        ctx.fillStyle = '#fff4d0';
-        ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = '#d22020';
-        ctx.lineWidth = 12;
-        roundRect(ctx, 8, 8, w - 16, h - 16, 20);
-        ctx.stroke();
-        // beide Zeilen passen mit Abstand in den Rahmen (innen 484 px), notfalls etwas kleiner
-        ctx.fillStyle = '#b31515';
-        ctx.font = 'bold 72px Arial Black, Arial, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        fitTextCenter(ctx, title, w / 2, h * 0.4, w - 60);
-        ctx.fillStyle = '#333';
-        ctx.font = 'bold 38px Arial, sans-serif';
-        fitTextCenter(ctx, sub, w / 2, h * 0.75, w - 60);
-      });
-      face.map = tex;
-      face.needsUpdate = true;
-    };
-    return g;
-  }
-
-  makeCharger() {
-    const g = new THREE.Group();
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(14, 0.4, 6), W.std({ color: 0xf4f4f4, roughness: 0.6 }));
-    roof.position.y = 4.2;
-    g.add(roof);
-    for (const x of [-6, 6]) {
-      const p = new THREE.Mesh(new THREE.BoxGeometry(0.3, 4.2, 0.3), this.mats.steel);
-      p.position.set(x, 2.1, 0);
-      g.add(p);
-    }
-    for (let i = 0; i < 5; i++) {
-      const st = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.6, 0.35), W.std({ color: 0xf2f2f2, roughness: 0.4 }));
-      st.position.set(-5 + i * 2.5, 0.8, -1.5);
-      // das rote Band 2 cm über den Seiten der Säule (statt 5 mm) und mit Polygon-Offset
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.39, 0.25, 0.39), W.std({ ...FRONT, color: 0xd01c1c, emissive: 0x500000 }));
-      stripe.position.set(-5 + i * 2.5, 1.35, -1.5);
-      g.add(st, stripe);
-    }
-    const glow = new THREE.Mesh(new THREE.BoxGeometry(13.6, 0.08, 5.6), W.basic({ color: 0xbfe3ff }));
-    glow.position.y = 3.98;
-    g.add(glow);
-    g.rotation.y = -0.2;
-    return g;
-  }
-
-  makeZiel() {
-    const g = new THREE.Group();
-    for (const x of [-2.2, 2.2]) {
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4.6, 8), this.mats.steel);
-      p.position.set(x, 2.3, 0);
-      g.add(p);
-    }
-    const flagTex = this.canvasTex('checker', 256, 64, (ctx, w, h) => {
-      for (let y = 0; y < 4; y++) for (let x = 0; x < 16; x++) {
-        ctx.fillStyle = (x + y) % 2 ? '#111' : '#fff';
-        ctx.fillRect(x * 16, y * 16, 16, 16);
-      }
-    });
-    const flag = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.9, 10, 1), W.std({ map: flagTex, side: THREE.DoubleSide }));
-    flag.position.y = 4.15;
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.6), W.std({ roughness: 0.6 }));
-    panel.position.y = 2.9;
-    panel.position.z = 0.05;
-    g.add(flag, panel);
-    g.rotation.y = -0.15;
-    // overbid: das Ziel wurde überboten, bevor man ankam (siehe retireZiel)
-    g.userData.setText = (title, overbid = false) => {
-      const key = (overbid ? 'zielx:' : 'ziel:') + title;
-      const head = overbid ? 'Überboten:' : 'Ziel erreicht:';
-      panel.material.map = this.canvasTexFrom(key, () => signTexture([head, title], { w: 512, h: 196, bg: '#1d7a3a' }));
-      panel.material.needsUpdate = true;
-    };
     return g;
   }
 

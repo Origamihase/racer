@@ -1,12 +1,11 @@
 // Das Stream-Overlay über dem Spiel: LIVE-Anzeige, Zuschauer, Strecke, Guthaben, Akku, Karosserie-Punkte, Chat mit
 // Bots, die Streifen oben (Navi, Hinweise) und unten (Untertitel, BrunnenTV), Rahmen und Blitzerfotos. Wo was wohnt
 // und welches Rechteck dabei frei bleibt, steht in sicht.js: Über der Bildmitte liegt nichts, solange gefahren wird.
-import { fmtNum, fmtCent, fmtEuro, fmtKm, fmtDuration, fmtClock, clamp, tachoKmh } from '../util.js';
+import { fmtNum, fmtCent, fmtEuro, fmtClock, clamp, tachoKmh } from '../util.js';
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
 import { fmtOdo } from '../map/navroute.js';
-import { shortName } from '../game/navi.js';
 import { moodEmoji } from '../game/satisfaction.js';
 import { NARROW_MID, infoWidth, overlap } from './sicht.js';
 
@@ -75,7 +74,7 @@ export class UI {
     const live = el('div', 'live-row', info);
     this.liveBadge = el('span', 'live-badge', live, '● LIVE');
     this.viewersEl = el('span', 'viewers', live, '👁 0');
-    this.timeEl = el('span', 'streamtime', live, '0:00');
+    this.timeEl = el('span', 'streamtime', live, '');
     this.timeText = ''; // was die Uhr der Reise zuletzt gezeigt hat (nur bei einer neuen Minute wird geschrieben)
     const rows = el('div', 'stat-rows', info);
     const row = (icon, label) => {
@@ -113,7 +112,7 @@ export class UI {
     this.naviKm = el('span', 'navi-km', first, '');
     this.naviBid = el('span', 'navi-bid', this.naviEl, '');
     const second = el('div', 'top-row', strip);
-    // Navi-Ansage für Ansichten ohne Mittelbildschirm (XXL: Drohne, schmale Formate): Pfeil, Entfernung, Ausfahrt
+    // Navi-Ansage für Ansichten ohne Mittelbildschirm (Drohne, schmale Formate): Pfeil, Entfernung, Ausfahrt
     this.turnEl = el('div', 'navi-turn', second);
     this.turnIcon = el('canvas', 'navi-turn-icon', this.turnEl);
     this.turnIcon.width = this.turnIcon.height = 56;
@@ -129,7 +128,7 @@ export class UI {
     this.chatEl = el('div', 'chat', this.hud);
     const head = el('div', 'chat-head', this.chatEl);
     el('span', '', head, 'Live-Chat');
-    // Reise: wie zufrieden der Chat ist (Gesicht und schmaler Balken; satisfaction.js), klassisch ausgeblendet
+    // wie zufrieden der Chat ist (Gesicht und schmaler Balken; satisfaction.js), ausgeblendet (CHAT_MOOD_SICHTBAR)
     this.chatMood = el('span', 'chat-mood', head);
     this.chatMood.title = 'Zufriedenheit des Chats';
     this.chatMoodFace = el('span', 'chat-mood-face', this.chatMood, '');
@@ -238,7 +237,7 @@ export class UI {
     this.naviMax = Math.min(760, mid);
   }
 
-  /** Navi-Ansage der XXL-Fahrt (NavModel.instruction()) oder null; sichtbar nur ohne Mittelbildschirm (style.css). */
+  /** Navi-Ansage der Fahrt (NavModel.instruction()) oder null; sichtbar nur ohne Mittelbildschirm (style.css). */
   setTurn(ins) {
     const on = !!ins && ins.turn !== 'none';
     this.turnEl.classList.toggle('on', on);
@@ -626,7 +625,7 @@ export class UI {
   }
 
   /**
-   * BrunnenTV am Navi-Ziel (XXL-Welt): die Bauchbinde der Folge n aus dem Ort name, unten im Bild wie im Fernsehen –
+   * BrunnenTV am Navi-Ziel: die Bauchbinde der Folge n aus dem Ort name, unten im Bild wie im Fernsehen –
    * der Brunnen in der Bildmitte bleibt zu sehen. Solange die Folge läuft, trägt der Streifen .tv: Die Bauchbinde
    * steht dann über dem Untertitel, statt zu warten, bis keiner mehr spricht (in der Folge spricht fast immer jemand).
    * n = 0 blendet sie aus.
@@ -787,11 +786,10 @@ export class UI {
     }
     this.rahmenList = this.rahmenList.filter((r) => r.t > 0);
 
-    // Die Uhr der Reise steht, wo klassisch die Stoppuhr des Streams läuft: dieselbe wie auf dem Mittelbildschirm
-    // (Game.clock) – an ihr hängen die Ankunftszeit und „Sendezeit … (bis … Uhr)“ am Ende. Sie springt in jedem Bild
+    // Die Uhr der Reise neben LIVE: dieselbe wie auf dem Mittelbildschirm (Game.clock) – an ihr hängen die Ankunftszeit und „Sendezeit … (bis … Uhr)“ am Ende. Sie springt in jedem Bild
     // mit um, nicht erst mit den übrigen Zahlen: Auf geraffter Straße läuft sie schnell, und zwei Uhren, die eine
     // Zehntelsekunde lang verschiedene Minuten zeigen, fallen auf.
-    if (g && g.worldNavi) {
+    if (g) {
       const uhr = fmtClock(g.clock) + '\u202fUhr';
       if (uhr !== this.timeText) this.timeEl.textContent = this.timeText = uhr;
     }
@@ -803,12 +801,11 @@ export class UI {
     this.lastHud = 0.1;
     const p = g.player;
     this.viewersEl.textContent = '👁 ' + fmtNum(Math.round(g.viewers));
-    if (!g.worldNavi) this.timeEl.textContent = fmtDuration(g.t);
-    // XXL: der Kilometerzähler der Fahrt in Reisekilometern, mit dem Rekord der XXL-Welt (Game.odometer)
+    // der Kilometerzähler der Fahrt in Reisekilometern, mit dem Rekord (Game.odometer)
     const odo = g.odometer;
-    const strecke = (m) => (g.worldNavi ? fmtOdo(m / 1000) : fmtKm(m));
+    const strecke = (m) => fmtOdo(m / 1000);
     this.distEl.textContent = strecke(odo);
-    const best = (g.worldNavi ? g.save.best.reise : g.save.best.distance) || 0;
+    const best = g.save.best.reise || 0;
     this.recordEl.textContent = odo > best && best > 0 ? '🏆 neuer Rekord!' : best > 0 ? 'Rekord ' + strecke(best) : '';
     this.recordEl.classList.toggle('record', odo > best && best > 0);
     if (tacho === null) this.showKmh(tachoKmh(p.kmh));
@@ -843,8 +840,8 @@ export class UI {
       this.leftLaneEl.classList.toggle('warn', warn);
       this.leftLaneFill.style.width = clamp(L.timer / (L.dur || 60), 0, 1) * 100 + '%';
     }
-    // Navi-Zeile: Ziel, Entfernung, Gebot und Bieter. In der XXL-Welt ist das Ziel ein echter Ort, die Entfernung
-    // steht da wie auf dem Kärtchen im Auto (nv.distance), und zwischen Ankunft und erstem Gebot sagt die Zeile das.
+    // Navi-Zeile: Ziel, Entfernung, Gebot und Bieter. Das Ziel ist ein echter Ort, die Entfernung steht da wie auf dem
+    // Kärtchen im Auto (nv.distance), und zwischen Ankunft und erstem Gebot sagt die Zeile das.
     // Ein neues Ziel und die Ankunft sagt sie selbst an (naviNews) – so hängt die Nachricht nie hinter dem Navi her.
     const nv = g.navi;
     const news = this.newsT > 0;
@@ -854,23 +851,17 @@ export class UI {
     let km = '';
     let bid = '';
     let join = '\u00a0· ';
-    const t = g.worldNavi ? nv.shown : !nv.arrived && nv.target;
+    const t = nv.shown;
     if (t) {
       target = pin + (t.goal ?? t.name);
-      // (auf der Reise wird in Zehnern geboten: ganze Euro, „Gebot 1.250 € von …“)
-      bid = `Gebot ${g.worldNavi ? fmtEuro(nv.bid) : fmtCent(nv.bid)} von ${nv.bidder}`;
-      // (das Ziel der Reise ist ein Brunnen, „Marktbrunnen, Würzburg“; wo das nicht passt, steht nur der Ort da)
-      if (g.worldNavi) [km, short] = [nv.distance, pin + t.name];
-      else {
-        // (ein Ort der Reise behält immer seinen ganzen Namen: „Frankfurt“ ist nicht „Frankfurt (Oder)“)
-        short = pin + shortName(t);
-        const rem = Math.max(0, nv.targetS - p.s);
-        km = fmtKm(rem, rem < 10000 ? 1 : 0);
-      }
+      // (geboten wird in Zehnern: ganze Euro, „Gebot 1.250 € von …“)
+      bid = `Gebot ${fmtEuro(nv.bid)} von ${nv.bidder}`;
+      // (das Ziel ist ein Brunnen, „Marktbrunnen, Würzburg“; wo das nicht passt, steht nur der Ort da – mit seinem
+      // ganzen Namen: „Frankfurt“ ist nicht „Frankfurt (Oder)“)
+      [km, short] = [nv.distance, pin + t.name];
     } else {
-      [target, bid, join] = splitWait(g.worldNavi ? nv.waitLine : `🏁 Ziel erreicht: ${nv.target.name} – warte auf das nächste Gebot …`);
-      if (!g.worldNavi) short = '🏁 Ziel erreicht: ' + shortName(nv.target);
-      else if (nv.reached) short = '📍 Ziel erreicht: ' + nv.reached.name;
+      [target, bid, join] = splitWait(nv.waitLine);
+      if (nv.reached) short = '📍 Ziel erreicht: ' + nv.reached.name;
     }
     this.naviEl.classList.toggle('news', news);
     const line = target + '|' + km + '|' + bid + '|' + this.naviMax;

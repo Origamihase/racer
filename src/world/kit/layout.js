@@ -111,7 +111,7 @@ export function goalName(place, name = place.name) {
   return title ? `${title}, ${name}` : `Brunnen in ${name}`;
 }
 
-/** Name auf Ortsschild und Navi: wie shortName in src/game/navi.js (Zusätze in Klammern, nach Komma oder Strich fallen weg). */
+/** Kurzer Name für Ortsschilder des Stadtbaukastens: Zusätze in Klammern, nach Komma oder Strich fallen weg. */
 export function signName(name) {
   const n = String(name ?? '').split(/[,(–:]/)[0].trim();
   return n.length > 24 ? n.slice(0, 23) + '…' : n;
@@ -642,8 +642,8 @@ export function planTown(place, opts = {}) {
       u += 28 + rnd() * 4;
     }
   }
-  // Ortsschild und Ortsende mit dem Namen, den auch das Navi zeigt (opts.signName vom Straßenbau, sonst dieselbe Kürzung wie
-  // shortName in src/game/navi.js: bis zur ersten Klammer, zum ersten Komma oder Gedankenstrich, höchstens 24 Zeichen)
+  // Ortsschild und Ortsende mit dem Namen, den auch das Navi zeigt (opts.signName vom Straßenbau, sonst gekürzt: bis zur
+  // ersten Klammer, zum ersten Komma oder Gedankenstrich, höchstens 24 Zeichen)
   const sign = opts.signName ?? signName(plan.place.name);
   plan.signName = sign;
   if (opts.signs !== false) {

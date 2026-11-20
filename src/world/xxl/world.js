@@ -58,11 +58,8 @@ export class XxlWorld {
     this.scenery = scenery;
     scenery.keepOut = (x, s) => this.sceneryKeepOut(x, s);
     scenery.noCross = (s0, s1) => this.sceneryNoCross(s0, s1);
-    // keine Zufallstexte auf Schildern (COMMON.md 9): die Schilderbrücken tragen Entfernungstafeln aus der Fahrt,
-    // braune und blaue Fantasietafeln entfallen, ebenso Ziel-Tafel und Skyline des klassischen Navis
+    // keine Zufallstexte auf Schildern (COMMON.md 9): die Schilderbrücken tragen Entfernungstafeln aus der Fahrt
     scenery.gantryTexts = (s) => this.gantryTexts(s);
-    scenery.noRandomSigns = true;
-    scenery.skipRequest = (type) => type === 'ziel' || type === 'skyline';
     this.ground = new Ground(this.root);
     this.frames = new FramePool(this.root);
     this.frames.onRelease = (v) => {

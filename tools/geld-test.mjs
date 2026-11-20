@@ -1,8 +1,7 @@
 // Prüft das Geld der Reise ohne Grafik: das echte Spiel (Game mit seiner Stream-Kasse economy.js) auf der echten Fahrt
-// über die Karte (Trip, Halt am Brunnen), in simulierten Streams mit drei Fahrertypen – und dass das klassische Spiel
-// dabei auf den Cent bleibt, wie es war.
+// über die Karte (Trip, Halt am Brunnen), in simulierten Streams mit drei Fahrertypen.
 // node tools/geld-test.mjs [Streams je Fahrer, Standard 4] [Minuten je Stream, Standard 30]
-// - Gebote in Zehnern: Auf der Reise ist jedes Gebot und jeder Schritt ein Vielfaches von 10 €, jede Runde beginnt mit
+// - Gebote in Zehnern: Jedes Gebot und jeder Schritt ein Vielfaches von 10 €, jede Runde beginnt mit
 //   einem Zehner (im Chaos auch mal 20 oder 30 €); gewöhnliche Runden enden bei Zehnern bis wenigen Hundert Euro
 //   (Median, 9. Dezil und Höchstes stehen in der Ausgabe, die Grenzen bei TOPS). Die Kasse bucht jedes Gebot ganz.
 // - BontanaBack (economy.js BONTANA): ab der dritten Runde, höchstens zweimal je Stream, nie zwei Runden hintereinander;
@@ -17,7 +16,6 @@
 //   Spenden, Abos, VIP, Zuschauer und den Ton des Chats.
 // - Die Leute des Streams (data.js CREW): wie oft König Knolli raidet und jubelt, die Mods (mit MOD), Discord, die
 //   Meldung nach dem Funkloch und das stille Herz; der Abspann der Reise mit der Zeile des Gedenkens im Wortlaut.
-// - Klassisch bleibt alles beim Cent: dieselben Cent-Schritte und derselbe Stream wie vor den Zehnern (KLASSIK).
 import { readFileSync } from 'fs';
 import { PerspectiveCamera } from 'three';
 import { Trip, J } from '../src/game/trip.js';
@@ -227,7 +225,7 @@ console.log('BontanaBack (Reise):');
 {
   // die Stream-Kasse allein: 400 Streams zu 12 Runden, je Runde so viele Gebote, dass jede Eskalation zu Ende kommt
   const T = BONTANA;
-  const eco = new Economy({ seed: 11, zehner: true });
+  const eco = new Economy({ seed: 11 });
   let eligible = 0;
   let came = 0;
   const per = [0, 0, 0];
@@ -261,13 +259,17 @@ console.log('BontanaBack (Reise):');
   const share = came / eligible;
   ok(Math.abs(share - T.chance) < 0.05, `Kasse: BontanaBack in ${fmt(100 * share)} % der möglichen Runden (soll ${fmt(100 * T.chance)} %)`);
   console.log(`  Kasse allein, 400 Streams zu 12 Runden: in ${fmt(100 * share, 1)} % der möglichen Runden, je Stream 0/1/2-mal: ${per.join(' / ')} · Endstand Median ${q(finals, 0.5)} €, 9. Dezil ${q(finals, 0.9)} €, höchstens ${Math.max(...finals)} €`);
-  // im echten Spiel: lange Streams des zügigen Fahrers (viele Runden), dazu alle Streams von oben
-  const long = [0, 1, 2].map((k) => journey(DRIVERS[0], 90, 4242 + 31 * k));
+  // im echten Spiel: alle Streams von oben, dazu lange Streams des zügigen Fahrers (viele Runden) – mindestens drei
+  // und so viele mehr, bis drei Eskalationen ganz geprüft sind (höchstens acht): Ob BontanaBack vor der Ankunft
+  // zum Zug kommt, hängt am Zufall jedes Streams
   let shown = 0;
   let complete = 0;
   let count = 0;
+  let long = 0;
   const tops = [];
-  for (const [i, r] of [...long, ...[...runs.values()].flat()].entries()) {
+  const streams = [...runs.values()].flat();
+  for (let i = 0; i < streams.length || (long < 8 && (long < 3 || complete < 3)); i++) {
+    const r = i < streams.length ? streams[i] : journey(DRIVERS[0], 90, 4304 + 62 * long++);
     const where = `Spiel, Stream ${i}`;
     const esc = r.rounds.map((x) => x.filter((b) => b.kind === 'bontana')).filter((x) => x.length);
     const at = esc.map((x) => x[0].round);
@@ -290,7 +292,7 @@ console.log('BontanaBack (Reise):');
     }
   }
   ok(complete >= 3, `Spiel: nur ${complete} vollständige Eskalationen geprüft`);
-  console.log(`  im Spiel: ${count} Auftritte in ${long.length + [...runs.values()].flat().length} Streams (3 × 90 min zügig, dazu die von oben), ${complete} vollständig, ${shown} mit Rand, Chat und James · Endstand ${tops.join(', ')} €`);
+  console.log(`  im Spiel: ${count} Auftritte in ${streams.length + long} Streams (die von oben und ${long} × 90 min zügig), ${complete} vollständig, ${shown} mit Rand, Chat und James · Endstand ${tops.join(', ')} €`);
 }
 
 // --- Werkstatt-Rechnung je Runde -----------------------------------------------------------------------------------
@@ -462,51 +464,6 @@ console.log('Die Leute des Streams (Reise):');
   ok(want.every((w) => ABSPANN_REISE.some(([, v]) => v === w)), `Abspann: ${names}`);
   ok(GEDENKEN === 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte', `Gedenken nicht im Wortlaut: ${GEDENKEN}`);
   console.log(`  Abspann: ${ABSPANN_REISE.map(([k, v]) => `${k}: ${v}`).join(' · ')} · am Ende: „${GEDENKEN}“`);
-}
-
-// --- Klassisch bleibt es beim Cent ----------------------------------------------------------------------------------
-// Die Stream-Kasse würfelt klassisch dieselben Cent-Schritte wie vor den Zehnern, und derselbe klassische Stream (Startwert
-// 7, 150 km/h geradeaus, ohne Verkehr) kommt auf den Cent zum selben Geld mit denselben Geboten wie vorher (gemessen mit
-// dem Stand vor den Zehnern, 8002ce7). Seit das Megafon zur Ausstattung gehört, kann auch klassisch der Megafon-Wunsch
-// unter den Aktionen gezogen werden; die erste Aktion kommt frühestens nach zwei Minuten, darum ist nur die dritte Marke
-// eine andere (vorher 436.23 €; mit dem alten „needs: 'megafon'“ wieder genau so).
-const KLASSIK = { marks: ['46.10', '228.12', '464.23'], bids: [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 33.42] };
-{
-  const cents = new Set([0.01, 0.02, 0.03, 0.05, 0.1, 0.25, 0.5, 1, 1.5, 2, 2.5, 3, 5, 10, 15, 20, 25, 33.33, 50]);
-  const eco = new Economy({ seed: 3 });
-  let bad = 0;
-  for (let i = 0; i < 4000; i++) {
-    if (i % 40 === 0) eco.newRound(i === 0);
-    const plan = eco.nextBid({ bid: 0.5 });
-    if (!cents.has(plan.increment)) bad++;
-  }
-  ok(bad === 0 && eco.minStep === 0.01, `Klassisch: ${bad} Gebotsschritte sind keine der Cent-Schritte`);
-  Math.random = mulberry32(7);
-  const game = new Game({
-    traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
-    scenery: loose({ request: () => 1, landmarkSpot: (s) => s, placed: () => null }),
-    road: loose(),
-    sky: loose(),
-    rain: loose(),
-    windshield: loose({ firmware: 0, manual: () => 'wipe' }),
-    cockpit: loose({ nomi: loose() }),
-    audio: loose(),
-    speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
-    ui: loose(),
-    fx: loose(),
-    pickups: loose({ update: () => NONE }),
-  });
-  game.start({ upgrades: {}, best: {} });
-  const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
-  const marks = [];
-  for (let i = 0; i < 3 * 60 * 30; i++) {
-    ctl.throttle = game.player.kmh < 150 ? 1 : 0;
-    game.update(DT, ctl, null);
-    if (i % 1800 === 1799) marks.push(game.money.toFixed(2));
-  }
-  const bids = game.navi.history.map((x) => x.bid);
-  ok(JSON.stringify(marks) === JSON.stringify(KLASSIK.marks) && JSON.stringify(bids) === JSON.stringify(KLASSIK.bids), `Klassisch: Geld ${marks.join(' / ')} € statt ${KLASSIK.marks.join(' / ')} €, Gebote ${bids.join(', ')}`);
-  console.log(`Klassisch: Cent-Schritte wie immer, derselbe Stream nach 1, 2 und 3 Minuten ${marks.join(' / ')} € mit den Geboten ${bids.join(', ')} €`);
 }
 
 console.log(fails ? `geld-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `geld-test: alles grün (${checks} Prüfungen)`);

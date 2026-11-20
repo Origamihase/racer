@@ -1,7 +1,7 @@
 // Der große Mittelbildschirm (wie im Model 3): links die Fahrzeugansicht mit Spuren und
 // Verkehr, rechts die Navi-Karte mit Route – ferngesteuert von den Zuschauern.
 import * as THREE from 'three';
-import { clamp, lerp, fbm1, mulberry32, fmtNum, tachoKmh } from '../util.js';
+import { clamp, lerp, fmtNum, tachoKmh } from '../util.js';
 import { roundRect } from '../textures.js';
 import { drawDamageCar, damageBand } from './screen-damage.js';
 import { NaviScreen } from '../map/navview.js';
@@ -34,21 +34,8 @@ function roadEdges(road, out) {
   return out;
 }
 
-const LIGHT = {
-  bg: '#eceef0', panel: '#f4f5f6', text: '#1d1f22', sub: '#6b7078', lane: '#c3c7cc', car: '#9aa0a8',
-  land: '#efece6', road: '#ffffff', roadCase: '#d4d0c8', hwy: '#ffd36a', hwyCase: '#d9a640', water: '#a9d3ec',
-  park: '#cfe7c4', town: '#e2ddd5', route: '#2f6fe4', routeCase: '#1e4fb0', dock: '#1b1c1f', card: 'rgba(32,34,38,0.92)',
-};
-const DARK = {
-  bg: '#141518', panel: '#1b1c20', text: '#f2f3f5', sub: '#9097a1', lane: '#4a4f57', car: '#6d737c',
-  land: '#25272b', road: '#3a3d43', roadCase: '#2c2e33', hwy: '#8a6d2c', hwyCase: '#5d4a20', water: '#1d3550',
-  park: '#233428', town: '#2f3136', route: '#4c8dff', routeCase: '#2a5fc0', dock: '#0c0d0f', card: 'rgba(10,11,13,0.92)',
-};
-
-/** x-Position der Autobahn in der Karte (Meter) – sanft geschwungen. */
-export function mapRoadX(s) {
-  return 900 * fbm1(s / 3200, 5) + 260 * fbm1(s / 950, 8);
-}
+const LIGHT = { bg: '#eceef0', panel: '#f4f5f6', text: '#1d1f22', sub: '#6b7078', lane: '#c3c7cc', car: '#9aa0a8', dock: '#1b1c1f' };
+const DARK = { bg: '#141518', panel: '#1b1c20', text: '#f2f3f5', sub: '#9097a1', lane: '#4a4f57', car: '#6d737c', dock: '#0c0d0f' };
 
 export class CenterScreen {
   constructor() {
@@ -59,21 +46,19 @@ export class CenterScreen {
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.colorSpace = THREE.SRGBColorSpace;
     this.texture.anisotropy = 8;
-    this.zoom = 0.16;
     this.live = false;
     this.kmh = null; // die Zahl des Tachos im letzten Bild (null: noch keins)
     this.acc = 0;
     this.spin = 0;
-    this.featureCache = new Map();
     this.edges = []; // Linien der Spuransicht in der XXL-Welt (roadEdges), wiederverwendet
   }
 
   update(dt, st) {
     this.acc += dt;
     this.spin += dt;
-    // XXL: zeichnen und hochladen nur, solange das Cockpit zu sehen ist (live: dann zeigt das HUD die Zahl des Tachos
-    // hier, this.kmh, damit beide in jedem Bild dieselbe Geschwindigkeit nennen)
-    this.live = !(st.nav && st.nav.visible === false);
+    // zeichnen und hochladen nur, solange das Cockpit zu sehen ist (live: dann zeigt das HUD die Zahl des Tachos hier,
+    // this.kmh, damit beide in jedem Bild dieselbe Geschwindigkeit nennen)
+    this.live = st.nav.visible !== false;
     if (this.acc < 1 / 15) return;
     if (!this.live) return;
     this.step = this.acc;
@@ -89,9 +74,8 @@ export class CenterScreen {
     ctx.save();
     ctx.fillStyle = T.bg;
     ctx.fillRect(0, 0, CW, CH);
-    // XXL: echte Karte mit Navi (src/map/navview.js), sonst die klassische Karte
-    if (st.nav) (this.navi || (this.navi = new NaviScreen())).draw(ctx, SPLIT, 0, CW - SPLIT, CH - 64, st, this.step);
-    else this.drawMap(ctx, st, T);
+    // rechts die Karte mit Navi (src/map/navview.js)
+    (this.navi || (this.navi = new NaviScreen())).draw(ctx, SPLIT, 0, CW - SPLIT, CH - 64, st, this.step);
     this.drawCarPanel(ctx, st, T);
     // in R: über der Karte ein ruhiges Feld bis zur Unterkante des Kamerabilds (auch unter der halb durchsichtigen
     // oberen Leiste), damit neben dem Bild kein Rest der Route und der Straßen blitzt
@@ -282,296 +266,6 @@ export class CenterScreen {
       ctx.fillStyle = T.sub;
       ctx.fillText('Rechtsfahrgebot aktiv', SPLIT / 2, CH - 86);
     }
-  }
-
-  // ------------------------------------------------------------------
-  features(chunk) {
-    if (this.featureCache.has(chunk)) return this.featureCache.get(chunk);
-    const rnd = mulberry32(chunk * 977 + 3);
-    const s0 = chunk * 600;
-    const f = { roads: [], towns: [], parks: [], water: null, exit: null };
-    if (rnd() < 0.55) {
-      const s = s0 + rnd() * 600;
-      const a = (rnd() - 0.5) * 1.2;
-      f.roads.push({ s, a, len: 1500 + rnd() * 2500 });
-      if (rnd() < 0.6) f.exit = s;
-    }
-    if (rnd() < 0.35) {
-      const side = rnd() < 0.5 ? -1 : 1;
-      f.towns.push({ s: s0 + rnd() * 600, x: side * (300 + rnd() * 900), r: 120 + rnd() * 220, seed: chunk });
-    }
-    const np = Math.floor(rnd() * 3);
-    for (let i = 0; i < np; i++) {
-      f.parks.push({ s: s0 + rnd() * 600, x: (rnd() < 0.5 ? -1 : 1) * (200 + rnd() * 1400), r: 150 + rnd() * 400, k: rnd() });
-    }
-    if (rnd() < 0.12) f.water = { s: s0 + rnd() * 600, a: (rnd() - 0.5) * 0.8 };
-    this.featureCache.set(chunk, f);
-    if (this.featureCache.size > 80) this.featureCache.delete(this.featureCache.keys().next().value);
-    return f;
-  }
-
-  drawMap(ctx, st, T) {
-    const nv = st.navi || {};
-    const x0 = SPLIT;
-    const w = CW - SPLIT;
-    const h = CH - 64;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x0, 0, w, h);
-    ctx.clip();
-    ctx.fillStyle = T.land;
-    ctx.fillRect(x0, 0, w, h);
-
-    const s0 = st.s;
-    const remaining = Math.max(0, nv.remaining ?? 3000);
-    const targetZoom = clamp(330 / Math.max(remaining + 250, 400), 0.07, 0.42);
-    this.zoom = lerp(this.zoom, targetZoom, 0.08);
-    const z = this.zoom;
-    const cx = x0 + w / 2;
-    const cy = h * 0.8;
-    const ax = mapRoadX(s0);
-    const tan = (mapRoadX(s0 + 25) - mapRoadX(s0 - 25)) / 50;
-    const heading = Math.atan(tan);
-    const toScreen = (mx, ms) => {
-      const X = mx - ax;
-      const Y = -(ms - s0);
-      const c = Math.cos(-heading);
-      const s = Math.sin(-heading);
-      return [cx + (X * c - Y * s) * z, cy + (X * s + Y * c) * z];
-    };
-    const sMin = s0 - (h * 0.25) / z - 600;
-    const sMax = s0 + (h * 0.9) / z + 600;
-    const c0 = Math.floor(sMin / 600);
-    const c1 = Math.floor(sMax / 600);
-
-    // Parks, Orte, Wasser
-    for (let c = c0; c <= c1; c++) {
-      const f = this.features(c);
-      for (const p of f.parks) {
-        const [px, py] = toScreen(mapRoadX(p.s) + p.x, p.s);
-        ctx.fillStyle = T.park;
-        ctx.beginPath();
-        ctx.ellipse(px, py, p.r * z, p.r * z * (0.6 + p.k * 0.6), p.k * 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      if (f.water) {
-        ctx.strokeStyle = T.water;
-        ctx.lineWidth = Math.max(5, 60 * z);
-        ctx.beginPath();
-        const ws = f.water.s;
-        const a = f.water.a;
-        for (let i = -6; i <= 6; i++) {
-          const mx = mapRoadX(ws) + i * 400;
-          const ms = ws + i * 400 * Math.tan(a) + Math.sin(i) * 80;
-          const [px, py] = toScreen(mx, ms);
-          if (i === -6) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
-        }
-        ctx.stroke();
-      }
-      for (const t of f.towns) {
-        const rnd = mulberry32(t.seed);
-        const [tx, ty] = toScreen(mapRoadX(t.s) + t.x, t.s);
-        const R = t.r * z;
-        ctx.save();
-        ctx.fillStyle = T.town;
-        ctx.beginPath();
-        ctx.arc(tx, ty, R, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.clip();
-        // Ortsstraßen als lockeres Raster aus kurzen, versetzten Stücken (nicht alle durch die Mitte)
-        ctx.strokeStyle = T.road;
-        ctx.lineWidth = 2.5;
-        ctx.lineCap = 'round';
-        const a0 = rnd() * Math.PI;
-        for (let k = 0; k < 2; k++) {
-          const a = a0 + k * (Math.PI / 2 + (rnd() - 0.5) * 0.5);
-          const ca = Math.cos(a);
-          const sa = Math.sin(a);
-          for (let j = -2; j <= 2; j++) {
-            if (rnd() < 0.25) continue;
-            const off = (j + (rnd() - 0.5) * 0.5) * R * 0.36;
-            const len = R * (0.45 + rnd() * 0.75);
-            const along = (rnd() - 0.5) * R * 0.7;
-            const cx = tx - sa * off + ca * along;
-            const cy = ty + ca * off + sa * along;
-            ctx.beginPath();
-            ctx.moveTo(cx - (ca * len) / 2, cy - (sa * len) / 2);
-            ctx.lineTo(cx + (ca * len) / 2, cy + (sa * len) / 2);
-            ctx.stroke();
-          }
-        }
-        ctx.restore();
-      }
-    }
-    // Nebenstraßen
-    for (let c = c0; c <= c1; c++) {
-      const f = this.features(c);
-      for (const r of f.roads) {
-        const bx = mapRoadX(r.s);
-        const p1 = toScreen(bx - Math.cos(r.a) * r.len, r.s - Math.sin(r.a) * r.len);
-        const p2 = toScreen(bx + Math.cos(r.a) * r.len, r.s + Math.sin(r.a) * r.len);
-        ctx.strokeStyle = T.roadCase;
-        ctx.lineWidth = 9;
-        ctx.beginPath();
-        ctx.moveTo(p1[0], p1[1]);
-        ctx.lineTo(p2[0], p2[1]);
-        ctx.stroke();
-        ctx.strokeStyle = T.road;
-        ctx.lineWidth = 6;
-        ctx.stroke();
-      }
-    }
-    // Autobahn
-    const hwy = [];
-    for (let s = sMin; s <= sMax; s += 40 / Math.max(z, 0.05)) hwy.push(toScreen(mapRoadX(s), s));
-    const strokePath = (pts, color, width) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width;
-      ctx.lineJoin = 'round';
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
-      ctx.stroke();
-    };
-    strokePath(hwy, T.hwyCase, 17);
-    strokePath(hwy, T.hwy, 12);
-
-    // Route (nach der Ankunft gibt es keine, bis das nächste Gebot kommt)
-    if (nv.target && !nv.arrived) {
-      const rec = nv.recalc || 0;
-      const sT = s0 + remaining;
-      const side = nv.side || 1;
-      const route = [];
-      if (nv.wende && nv.wendeS > s0) {
-        for (let s = s0; s <= nv.wendeS; s += 30) route.push(toScreen(mapRoadX(s) + 6, s));
-        for (let i = 0; i <= 8; i++) {
-          const a = (i / 8) * Math.PI;
-          route.push(toScreen(mapRoadX(nv.wendeS) + 6 - (1 - Math.cos(a)) * 70, nv.wendeS + Math.sin(a) * 120));
-        }
-        for (let s = nv.wendeS; s >= s0 - 900; s -= 30) route.push(toScreen(mapRoadX(s) - 134, s));
-      } else {
-        const sExit = Math.max(s0, sT - 260);
-        for (let s = s0; s <= sExit; s += Math.max(20, 12 / z)) route.push(toScreen(mapRoadX(s), s));
-        const ex = mapRoadX(sExit);
-        const px = mapRoadX(sT) + side * 520;
-        for (let i = 1; i <= 10; i++) {
-          const k = i / 10;
-          route.push(toScreen(lerp(ex, px, k * k), lerp(sExit, sT + 120, k)));
-        }
-      }
-      if (rec < 1) {
-        ctx.globalAlpha = 1 - rec;
-        strokePath(route, T.routeCase, 15);
-        strokePath(route, T.route, 10);
-        ctx.globalAlpha = 1;
-      }
-      // Ziel-Pin
-      if (!nv.wende) {
-        const [px, py] = toScreen(mapRoadX(sT) + side * 520, sT + 120);
-        if (px > x0 - 40 && px < CW + 40 && py > -40 && py < h + 40) {
-          ctx.fillStyle = '#e8352b';
-          ctx.beginPath();
-          ctx.arc(px, py - 26, 15, Math.PI, 0);
-          ctx.lineTo(px, py);
-          ctx.closePath();
-          ctx.fill();
-          ctx.fillStyle = '#fff';
-          ctx.beginPath();
-          ctx.arc(px, py - 26, 6, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }
-
-    // Fahrzeugpfeil
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.fillStyle = 'rgba(47,111,228,0.18)';
-    ctx.beginPath();
-    ctx.arc(0, 0, 34, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.moveTo(0, -24);
-    ctx.lineTo(17, 18);
-    ctx.lineTo(0, 8);
-    ctx.lineTo(-17, 18);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#2f6fe4';
-    ctx.beginPath();
-    ctx.moveTo(0, -18);
-    ctx.lineTo(12, 13);
-    ctx.lineTo(0, 5);
-    ctx.lineTo(-12, 13);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    // Neuberechnung
-    if (nv.recalc > 0) {
-      ctx.fillStyle = `rgba(255,255,255,${0.5 * nv.recalc})`;
-      ctx.fillRect(x0, 0, w, h);
-      ctx.save();
-      ctx.translate(cx, h * 0.45);
-      ctx.strokeStyle = '#2f6fe4';
-      ctx.lineWidth = 8;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.arc(0, 0, 34, this.spin * 6, this.spin * 6 + 4.2);
-      ctx.stroke();
-      ctx.restore();
-      ctx.fillStyle = '#1d1f22';
-      ctx.font = 'bold 32px "Helvetica Neue", Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Route wird neu berechnet …', cx, h * 0.45 + 80);
-    }
-
-    // Navi-Karten oben links
-    if (nv.target) {
-      ctx.fillStyle = T.card;
-      roundRect(ctx, x0 + 18, 70, w - 36, 118, 16);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'left';
-      ctx.font = 'bold 30px "Helvetica Neue", Arial, sans-serif';
-      const instr = nv.arrived ? 'Ziel erreicht' : nv.wende && nv.wendeS > s0 ? 'Bitte wenden' : remaining > 400 ? 'A7 folgen' : 'Ausfahrt nehmen';
-      const nextDist = nv.wende && nv.wendeS > s0 ? nv.wendeS - s0 : Math.max(0, remaining - 260);
-      ctx.fillText(this.arrowFor(instr) + '  ' + instr, x0 + 38, 112);
-      ctx.font = '600 28px "Helvetica Neue", Arial, sans-serif';
-      ctx.textAlign = 'right';
-      if (!nv.arrived) ctx.fillText(fmtDist(nextDist), CW - 36, 112);
-      ctx.textAlign = 'left';
-      ctx.font = '26px "Helvetica Neue", Arial, sans-serif';
-      const right = nv.arrived ? '' : fmtDist(remaining) + (nv.eta ? ' · ' + nv.eta : '');
-      const rightW = ctx.measureText(right).width;
-      ctx.fillStyle = '#c9d6ff';
-      fitText(ctx, (nv.arrived ? '⏳ ' : '🏁 ') + nv.target, x0 + 38, 160, CW - 36 - rightW - 26 - (x0 + 38), 20);
-      ctx.font = '26px "Helvetica Neue", Arial, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(right, CW - 36, 160);
-      // Ferngesteuert-Banner
-      ctx.fillStyle = 'rgba(200,16,46,0.94)';
-      roundRect(ctx, x0 + 18, h - 74, w - 36, 56, 14);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'left';
-      ctx.font = 'bold 24px "Helvetica Neue", Arial, sans-serif';
-      fitText(ctx, '📡 Ferngesteuert von ' + (nv.bidder || '—'), x0 + 34, h - 38, w - 210);
-      ctx.textAlign = 'right';
-      ctx.font = 'bold 26px "Helvetica Neue", Arial, sans-serif';
-      ctx.fillText(nv.bid || '', CW - 36, h - 38);
-    }
-    ctx.restore();
-  }
-
-  arrowFor(instr) {
-    if (instr === 'Ziel erreicht') return '✓';
-    if (instr === 'Bitte wenden') return '↶';
-    if (instr === 'Ausfahrt nehmen') return '↗';
-    return '↑';
   }
 
   drawTopBar(ctx, st, T) {

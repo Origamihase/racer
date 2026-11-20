@@ -1,4 +1,5 @@
-// Prüft den Radarwarner ohne Grafik: das echte Spiel (Game, klassischer Modus) mit Mitspielern, die mitschreiben.
+// Prüft den Radarwarner ohne Grafik: das echte Spiel (Game) mit Mitspielern, die mitschreiben; die Fahrt steht dabei
+// am Start (die Blitzer stellt das Spiel an die Stelle p.s der Straße).
 // Die Regel: Einen Blitzer kündigt niemand an – außer dem Radarwarner aus dem Tesla-Shop. Blitz, Bußgeld, Foto,
 // Statistik und Stream-Kasse sind mit ihm und ohne ihn dieselben.
 // node tools/radar-test.mjs
@@ -13,6 +14,7 @@
 // - Derselbe Stream mit und ohne Radarwarner: Kasse, Abrechnung und Statistik stimmen auf den Cent überein.
 // - Der Artikel: steht im Shop, hat eine Stufe, übersteht Speichern und Laden; alte Spielstände laden unverändert.
 import { Game } from '../src/game/game.js';
+import { Trip } from '../src/game/trip.js';
 import { BOARD, CHAT, SHOP, UPGRADE_LIMITS } from '../src/data.js';
 import { loadSave, storeSave } from '../src/save.js';
 
@@ -69,7 +71,7 @@ const JOB_CALLS = new Set(['jobs', 'jobDone']);
 const jobTalk = (game, e) => JOB_CALLS.has(e.call) || (e.call === 'chat' && game.jobs.some((j) => e.args[0].name === j.pledger && e.args[0].text.includes(j.wenn)));
 
 /**
- * Ein klassischer Stream bis hinter die Tempo-120-Zone des letzten Blitzers.
+ * Ein Stream bis hinter die Tempo-120-Zone des letzten Blitzers.
  * radar: Stufe des Artikels im Spielstand · kmh: so schnell fährt der Wagen die ganze Zeit · cameras: so viele Blitzer.
  * Liefert das Spiel, das Protokoll, die Zonen ({ limitS, camS, endS, bornS }) und wann das Lämpchen an war.
  */
@@ -79,6 +81,7 @@ function stream({ radar = 0, kmh, cameras = 1, seed = 7 }) {
   let game = null;
   const now = () => ({ s: game ? game.player.s : 0, t: game ? game.t : 0 });
   let ids = 0;
+  const trip = new Trip({ rng: Math.random });
   game = new Game({
     traffic: witness('traffic', log, now, { cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
     scenery: witness('scenery', log, now, { request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
@@ -92,6 +95,7 @@ function stream({ radar = 0, kmh, cameras = 1, seed = 7 }) {
     ui: witness('ui', log, now),
     fx: witness('fx', log, now),
     pickups: witness('pickups', log, now, { update: () => NONE }),
+    world: { trip: () => trip, stopping: () => false, release: () => {}, square: () => null, town: () => null },
   });
   game.start({ upgrades: radar ? { radar } : {}, best: {} });
   // die Stimmung der Stream-Kasse mitschreiben (cheer), ohne sie zu ändern

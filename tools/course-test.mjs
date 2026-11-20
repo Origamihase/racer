@@ -1201,7 +1201,7 @@ naviDrive(synth, 'Künstliche Verläufe, Rhön', 30000, 33, 2000, ['Fulda', 'Bir
   const P = { x: 0, y: 0, z: 0 };
   let worst = 0;
   let n = 0;
-  for (const mode of ['probe', 'classic']) {
+  for (const mode of ['probe', 'endless']) {
     c.mode = mode;
     c.resetVirtual(mode);
     for (let s = -800; s < 18000; s += 40) {

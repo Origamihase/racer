@@ -2,17 +2,17 @@
 // Sprachdurchsagen, Rahmen, Funkloch, Zuschauer, Spenden, Jobs) und die Abrechnung am Ende.
 // Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
 import {
-  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_JOBS, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
-  MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, NAVI_TARGETS, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
+  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
+  MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
   BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
-import { Player, KMH } from './player.js';
+import { Player } from './player.js';
 import { damageLine } from './damage.js';
 
 /** Kratzspuren von der Leitplanke am ganzen Wagen (je Seite höchstens drei, damage.js). */
 const scratchMarks = (damage) => Object.values(damage.scratches).reduce((a, v) => a + v, 0);
-import { Navi, WorldNavi, shortName } from './navi.js';
+import { WorldNavi } from './navi.js';
 import { Economy, BONTANA } from './economy.js';
 import { Satisfaction, ZUFRIEDEN } from './satisfaction.js';
 import { Vector3 } from 'three';
@@ -32,8 +32,7 @@ const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST',
 const LAGE_SHARE = 0.4;
 const OFFER_EARLY = { ziel: 100, brunnen: 100, elsa: 100, laster: 50, regen: 50, gerade: 40 };
 // Lange Gerade: Die Krümmung unter dem Wagen (aus dem Kurs, siehe course.js) bleibt so klein, dass die Straße auf
-// 200 m höchstens 1 m zur Seite läuft, und das schon so viele Meter lang. Auf dem klassischen Kurs ist die Hälfte der
-// Geraden kürzer als 300 m; so zählt etwa ein Fünftel der Strecke als lange Gerade.
+// 200 m höchstens 1 m zur Seite läuft, und das schon so viele Meter lang.
 const STRAIGHT_KAPPA = 1 / 20000;
 const STRAIGHT_RUN = 400;
 // Rechts oben deckt der Innenspiegel aus Mini Adams Sicht ab etwa 17,8° rechts der Blickrichtung ab
@@ -69,41 +68,30 @@ const RADAR = { ahead: 180, lead: 0.45 };
 export class Game {
   /**
    * @param {object} ctx traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui, fx, pickups;
-   *   world: nur in der XXL-Welt, { trip(): die Fahrt über die echte Karte (trip.js), stopping(): bremst der Wagen
-   *   gerade zum Halt am Brunnen des Ziels?, release(): der Wagen am Brunnen darf weiterfahren, square(sec) und
-   *   town(sec): Brunnenplatz und Ort einer Ortsdurchfahrt für die BrunnenTV-Szene }. Dann wird
-   *   auf echte Orte geboten (WorldNavi): Jedes Gebot setzt das Ziel der Fahrt, das Navi im Auto zeigt sie
-   *   (src/map), und die Ankunft meldet onTrip am Brunnenplatz. worldNavi sagt der Anzeige, welches Navi führt.
+   *   world: { trip(): die Fahrt über die echte Karte (trip.js), stopping(): bremst der Wagen gerade zum Halt am Brunnen
+   *   des Ziels?, release(): der Wagen am Brunnen darf weiterfahren, square(sec) und town(sec): Brunnenplatz und Ort
+   *   einer Ortsdurchfahrt für die BrunnenTV-Szene }. Geboten wird auf echte Orte (WorldNavi): Jedes Gebot setzt das
+   *   Ziel der Fahrt, das Navi im Auto zeigt sie (src/map), und die Ankunft meldet onTrip am Brunnenplatz.
    *   touchUI: Das Bild zeigt Touch-Knöpfe (Handy, Tablet), der Hinweis zum Ladestopp nennt dann den Knopf.
    */
   constructor(ctx) {
     Object.assign(this, ctx);
-    this.worldNavi = !!this.world;
     this.player = new Player();
-    this.navi = this.world ? new WorldNavi(this.world) : new Navi(this.scenery);
-    // Stream-Kasse samt heimlicher Chat-Stimmung, und was sie in jedem Schritt vom Fahren wissen will (auf der Reise
-    // wird in Zehnern geboten)
-    this.eco = new Economy({ zehner: this.worldNavi });
-    // Reise: die sichtbare Zufriedenheit des Chats (wie zügig es von Ziel zu Ziel geht; satisfaction.js)
-    this.zufrieden = this.worldNavi ? new Satisfaction() : null;
+    this.navi = new WorldNavi(this.world);
+    // Stream-Kasse samt heimlicher Chat-Stimmung, und was sie in jedem Schritt vom Fahren wissen will
+    this.eco = new Economy();
+    // die sichtbare Zufriedenheit des Chats (wie zügig es von Ziel zu Ziel geht; satisfaction.js)
+    this.zufrieden = new Satisfaction();
     this.tally = { income: 0, hits: 0, marks: 0 };
     this.ecoIn = { kmh: 0, limit: false, stuck: false, leftOpen: false, inLeft: false, funkloch: false };
     this.seenAhead = new WeakSet();
-    // Entfernung zum Navi-Ziel ab der Schilderbrücke (die wird gut 1,7 km voraus gebaut). Was jede Brücke als Navi-Ziel
-    // zeigt (Schildposition → Ziel oder null), merkt sich gantryShown – so weiß changeNavi, ob es neu beschriften muss.
-    this.gantryShown = new Map();
-    this.scenery.gantryInfo = (sSign = this.player.s) => {
-      const info = this.gantryNavi(sSign);
-      this.gantryShown.set(sSign, info);
-      return info;
-    };
     this.running = false;
     this.over = null;
-    // XXL-Welt: abseits der Autobahn ruhen Ereignisse, die nur dort Sinn ergeben (setzt main.js jedes Bild)
+    // abseits der Autobahn ruhen Ereignisse, die nur dort Sinn ergeben (setzt main.js jedes Bild)
     this.offAutobahn = false;
     // Mini Adams Mimik (main.js hängt sich ein): onMood(name, Stärke 0 … 1) bei Spenden, Schreck, Rempler, Ziel …
     this.onMood = () => {};
-    // BrunnenTV am Navi-Ziel der XXL-Welt: Hier hängt sich die Szene ein (siehe startBrunnenTV)
+    // BrunnenTV am Navi-Ziel: Hier hängt sich die Szene ein (siehe startBrunnenTV)
     this.onBrunnenTV = () => {};
     // Ladestopp im Park: Hier hängt sich die Szene ein (siehe startCharge)
     this.onCharge = () => {};
@@ -126,20 +114,16 @@ export class Game {
     this.over = null;
     this.running = true;
     this.queue = [];
-    // Begrüßung und Gong beim Kameraschwenk gibt es in jeder Fahrt
-    this._greeted = false;
-    this._introChime = false;
     this.clock = 18 * 60;
     // Reise: Beginn des Streams (Datum im BrunnenTV-Album) und seine Route für den Abspann (routelog.js)
     this.streamT = Date.now();
-    this.route = this.worldNavi ? new RouteLog() : null;
-    this.travel = null; // XXL: Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
-    this.revDebt = 0; // rückwärts gefahrene Meter, die noch nicht wieder vorwärts gefahren sind (siehe update)
+    this.route = new RouteLog();
+    this.travel = null; // Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
     this.eco.reset(up);
-    if (this.zufrieden) this.zufrieden.reset();
-    // Reise: wann die Leute des Streams das nächste Mal vorbeischauen (Sekunden; updateCrew)
+    this.zufrieden.reset();
+    // wann die Leute des Streams das nächste Mal vorbeischauen (Sekunden; updateCrew)
     const M = (r) => rand(r[0], r[1]) * 60;
-    this.crewT = this.worldNavi ? { raid: M(CREW.raid.first), knolli: Infinity, mod: M(CREW.modEvery), discord: M(CREW.discordEvery), heart: M(CREW.heartEvery) } : null;
+    this.crewT = { raid: M(CREW.raid.first), knolli: Infinity, mod: M(CREW.modEvery), discord: M(CREW.discordEvery), heart: M(CREW.heartEvery) };
     this.viewers = this.eco.viewers;
     this.peakViewers = 240;
     this.recordShown = false;
@@ -168,11 +152,11 @@ export class Game {
     this.fans = { top: null, gifts: {}, vips: [] };
     this.stats = {
       leftLaneTime: 0, naviReached: 0, nearMisses: 0, maxSpeedKmh: 0, bananas: 0, cleanDistance: 0, naviChanges: 0,
-      maxViewers: 0, charges: 0, distance: 0, blitzerClean: 0, rainDistance: 0, crashes: 0, koriander: 0, fines: 0,
+      maxViewers: 0, distance: 0, blitzerClean: 0, rainDistance: 0, crashes: 0, koriander: 0, fines: 0,
       wipes: 0, twitches: 0, photos: 0, donations: 0, subs: 0, vips: 0, topBid: 0, overtakes: 0, brunnenTV: 0,
       stopsPlanned: 0, parkCharges: 0,
     };
-    // laufende BrunnenTV-Folge am Navi-Ziel (XXL) oder null
+    // laufende BrunnenTV-Folge am Navi-Ziel oder null
     this.tv = null;
     // Reise: Ladestopp im Ladepark ({ t0, from, park, name, sec, plan, … }, startCharge) oder null; Verbrauch seit dem
     // letzten Laden (meterAkku: Meter Straße und Akku je Art der Straße, für NOMIs Warnung) und wann sie wieder misst;
@@ -186,8 +170,7 @@ export class Game {
     this.halt = null;
     // Für jeden der fünf Jobs hat jemand im Chat eine Spende versprochen – und einer für alle zusammen
     const pledges = this.eco.pledges(5);
-    // (in der XXL-Welt zählen die Strecken-Aufträge Reisekilometer: REISE_JOBS)
-    this.jobs = shuffle(JOB_TEMPLATES).slice(0, 5).map((j, i) => ({ ...j, ...(this.worldNavi ? REISE_JOBS[j.id] : null), done: false, progress: 0, pledger: viewerName(), pledge: pledges.list[i] }));
+    this.jobs = shuffle(JOB_TEMPLATES).slice(0, 5).map((j, i) => ({ ...j, done: false, progress: 0, pledger: viewerName(), pledge: pledges.list[i] }));
     this.allJobs = { pledger: viewerName(), pledge: pledges.all };
     this.allJobsPaid = false;
 
@@ -206,10 +189,7 @@ export class Game {
     // „5 Cent, wenn du …“: welche Angebote in diesem Stream schon kamen (keins doppelt), wer zuletzt geboten hat, wie
     // lange die Straße schon geradeaus läuft (Meter) und wann zuletzt ein Ziel erreicht wurde (für Angebote zur Lage)
     this.cent5 = { used: new Set(), name: '', straightS: 0, arrivedT: -99, lage: chance(LAGE_SHARE) };
-    this.S = {
-      blitzer: rand(3000, 3800), elefant: rand(3200, 4200), landmark: rand(1400, 2000), charge: rand(700, 1000),
-      banana: rand(1100, 1500), koriander: rand(2200, 2800),
-    };
+    this.S = { blitzer: rand(3000, 3800), elefant: rand(3200, 4200), landmark: rand(1400, 2000), koriander: rand(2200, 2800) };
     this.blitzer = null;
     this.landmark = null;
     this.funkloch = 0;
@@ -219,9 +199,8 @@ export class Game {
     this.lastHugo = 0;
 
     this.scenery.reset();
-    this.gantryShown.clear();
-    this.navi.reset(0);
-    // die erste Bieterrunde: Kaum läuft der Stream, hagelt es Cent-Gebote
+    this.navi.reset();
+    // die erste Bieterrunde: Kaum läuft der Stream, hagelt es Gebote
     this.bidPlan = this.eco.nextBid({ bid: this.navi.bid });
     this.T.bid = this.bidPlan.delay;
     this.roundNew = false;
@@ -243,8 +222,8 @@ export class Game {
     this.bot('hugo', 'Der Stream läuft! Viel Spaß beim Zuschauen.');
     this.later(1.2, () => this.chat('Hallo Mini Adam ❤'));
     this.later(2.0, () => this.chat('Wohin fahren wir heute?'));
-    // klassisch steht das erste Ziel schon fest; in der XXL-Welt sucht es der Chat erst aus
-    this.later(3.2, () => this.bot('james', this.worldNavi ? 'Die Gebote sind eröffnet: Wohin soll die Reise gehen? Ab 10 € seid ihr dabei.' : `Startgebot: ${fmtCent(this.navi.bid)} – Ziel: ${this.navi.target.name}`));
+    // das erste Ziel sucht der Chat erst aus
+    this.later(3.2, () => this.bot('james', 'Die Gebote sind eröffnet: Wohin soll die Reise gehen? Ab 10 € seid ihr dabei.'));
     // die Challenges des Abends: Wer was verspricht, steht im Chat
     this.jobs.forEach((j, i) => this.later(10 + i * 11 + rand(0, 5), () => {
       if (!j.done) this.chat(fillTemplate(pick(CHAT.pledge), { wenn: j.wenn, betrag: fmtBetrag(j.pledge) }), j.pledger);
@@ -254,14 +233,11 @@ export class Game {
     });
   }
 
-  /** Vorführmodus für den Titelbildschirm: nur fahren, kein Stream-Trubel. */
-  startDemo() {
+  /** Titelbildschirm: Der Wagen steht am Supercharger (die Welt stellt ihn hin), kein Stream-Trubel. */
+  startTitle() {
     this.running = false;
     this.over = null;
-    this.demoT = 0;
     this.player.reset({});
-    this.player.x = 1.875;
-    this.player.speed = 118 * KMH;
     this.weather = { level: 0, target: 0, active: false, dur: 0, cool: 0, announced: false, sky: 0, front: 0, next: 0, calm: 0, crashes: 0 };
     this.left = { open: false, timer: 0, glow: 0 };
     this.sirenLevel = 0;
@@ -270,22 +246,9 @@ export class Game {
     this.windshield.setAuto(false);
     this.windshield.clear();
     this.scenery.reset();
-    this.navi.reset(0);
+    this.navi.reset();
     this.traffic.reset();
-    this.traffic.populate(0, this.player.speed);
     this.pickups.reset();
-  }
-
-  demo(dt, ctl) {
-    this.demoT += dt;
-    const p = this.player;
-    p.update(dt, ctl, { wet: 0 });
-    p.battery = 100;
-    p.hits = 0;
-    if (!p.damage.pristine) p.damage.reset(p.maxHits);
-    this.navi.update(dt, p.s);
-    if (this.navi.arrived && !this.worldNavi) this.navi.overbid(p.s, 'Demo', 0.01, this.pickBidTarget());
-    this.traffic.update(dt, this.demoT, p, { difficulty: 0.15, leftOpen: false, rain: 0 });
   }
 
   // --- Hilfen --------------------------------------------------------------
@@ -339,11 +302,6 @@ export class Game {
       this.burst(CHAT.bontanaEnde, 4, 3);
     } else if (him) this.burst(CHAT.bontana, 2, 2);
     else if (chance(0.7)) this.later(0.6, () => this.chat(this.chatLine(CHAT.bontanaKonter)));
-  }
-
-  /** Ein Navi-Gebot in Worten: klassisch auf den Cent, auf der Reise in ganzen Euro („1.250 €“). */
-  bidText(v) {
-    return this.worldNavi ? fmtEuro(v) : fmtCent(v);
   }
 
   burst(pool, n = 3, spread = 2.5) {
@@ -502,13 +460,6 @@ export class Game {
     // Eingaben des Spielers (ctl.reverse aus main.js) und nie, während die Welt den Wagen am Brunnen anhält
     p.update(dt, ctl, { wet: W.level, kappa: ctl.kappa || 0, grade: ctl.grade || 0, reverse: ctl.reverse === true && !this.halt && !this.tv });
     const ds = p.s - sBefore;
-    // Die Strecken zählen neue Straße: Rückwärts gefahrene Meter sind eine Schuld, die der Wagen vorwärts erst wieder
-    // abfährt, bevor etwas weiterzählt (Strecke, saubere Strecke, Regenstrecke). Ohne Rückwärtsgang bleibt sie 0.
-    let dsNew = ds;
-    if (p.gear === 'R' || this.revDebt > 0) {
-      dsNew = Math.max(0, ds - this.revDebt);
-      this.revDebt = Math.max(0, this.revDebt - ds);
-    }
     for (const e of p.events) {
       if (e.type === 'rail') {
         this.audio.scrape();
@@ -526,11 +477,11 @@ export class Game {
       } else if (e.type === 'gear') this.onGear(e.gear);
       else if (e.type === 'reverseEnd') this.say(BOARD.reverseEnd, 'think', { priority: false });
     }
-    // XXL: Uhr und Strecken zählen Reisezeit und Reisemeter (travelStep), klassisch Spielzeit und Meter der Straße
-    const go = this.worldNavi ? this.travelStep(dt) : null;
-    if (go && this.route) this.route.add(this.world.trip().section, go.m);
-    const dm = go ? go.m : dsNew;
-    st.distance = go ? this.odometer : p.s + this.revDebt;
+    // Uhr und Strecken zählen Reisezeit und Reisemeter (travelStep): rückwärts und auf schon gefahrener Straße nichts
+    const go = this.travelStep(dt);
+    this.route.add(this.world.trip().section, go.m);
+    const dm = go.m;
+    st.distance = this.odometer;
     st.maxSpeedKmh = Math.max(st.maxSpeedKmh, p.kmh);
     // neue Höchstgeschwindigkeit dieser Fahrt: Der Chat schaut auf den Tacho
     const mark = this.eco.speedMark(p.kmh);
@@ -540,8 +491,8 @@ export class Game {
     }
     st.cleanDistance += dm;
     if (W.level > 0.3) st.rainDistance += dm;
-    // die Uhr: klassisch 30 Spielminuten je Minute, in der XXL-Welt die Reisezeit
-    this.clock += go ? go.secs / 60 : dt * 0.5;
+    // die Uhr ist die Reisezeit
+    this.clock += go.secs / 60;
     this.megafonCd = Math.max(0, this.megafonCd - dt);
 
     // --- Eingaben ------------------------------------------------------------
@@ -559,11 +510,6 @@ export class Game {
       else if (e.type === 'passPolice') {
         this.chat(pick(['Polizei überholt?! Mutig! 😅', 'Tschüss Polizei Gifhorn 👋', 'Das gibt einen Eintrag ins Fahrtenbuch']));
       }
-    }
-    // ein Rempler rückwärts schiebt den Wagen ein Stück nach vorn, über schon gefahrene Straße: das ist keine Strecke
-    if (p.bumpFwd > 0) {
-      this.revDebt = Math.max(0, this.revDebt - p.bumpFwd);
-      p.bumpFwd = 0;
     }
     if (this.over) return;
 
@@ -608,27 +554,9 @@ export class Game {
     }
     if (p.shoulderTime <= 0) this.shoulderWarned = false;
 
-    // Akku: auf der Reise nennt NOMI den nächsten Ladepark (journeyBattery), klassisch warnt sie wie immer
-    if (this.worldNavi) this.journeyBattery();
-    else this.classicBattery();
+    // Akku: NOMI nennt den nächsten Ladepark (journeyBattery)
+    this.journeyBattery();
     if (p.empty && p.speed < 1.5) this.end('akku');
-  }
-
-  /** Akku-Warnungen der klassischen Strecke (dort füllen Lade-Ringe den Akku). */
-  classicBattery() {
-    const p = this.player;
-    // nach dem Laden wieder scharf schalten (mit etwas Abstand, damit es nicht flackert)
-    if (p.battery > 30) this.batteryWarned = 0;
-    else if (p.battery > 12 && this.batteryWarned > 1) this.batteryWarned = 1;
-    if (p.battery < 20 && this.batteryWarned < 1) {
-      this.batteryWarned = 1;
-      this.say(BOARD.lowBattery, 'worried');
-      this.chat(pick(['Akku! 🔋', 'Wo ist der nächste Supercharger?', 'Lade-Ringe einsammeln!']));
-    }
-    if (p.battery < 7 && this.batteryWarned < 2) {
-      this.batteryWarned = 2;
-      this.say(BOARD.veryLowBattery, 'worried');
-    }
   }
 
   /**
@@ -694,9 +622,9 @@ export class Game {
     return a.m >= REISE_AKKU.measure ? a.pct / a.m : (REISE_AKKU.perM[k] * 75) / this.player.capacity;
   }
 
-  /** Soll der Touch-Knopf „Ladestopp einplanen“ zu sehen sein? (Reise, kein Stopp geplant, Akku halb leer oder Warnung) */
+  /** Soll der Touch-Knopf „Ladestopp einplanen“ zu sehen sein? (kein Stopp geplant, Akku halb leer oder Warnung) */
   stopOffer() {
-    if (!this.worldNavi || !this.running || this.charging) return false;
+    if (!this.running || this.charging) return false;
     const trip = this.world.trip();
     // im Park selbst nicht: dort hält der Wagen ohnehin an der Säule
     if (trip.section && trip.section.kind === 'park') return false;
@@ -708,7 +636,7 @@ export class Game {
    * Zwischenziel, das Navi führt hinein und danach weiter zum Ziel. Ein zweiter Druck streicht den Stopp wieder.
    */
   planStop() {
-    if (!this.worldNavi || !this.running || this.charging) return;
+    if (!this.running || this.charging) return;
     const A = REISE_AKKU;
     const trip = this.world.trip();
     if (trip.stop >= 0) {
@@ -1013,9 +941,9 @@ export class Game {
     const p = this.player;
     const nv = this.navi;
     // Kurz vor dem Ziel doch noch überboten – ein Klassiker. (Nur hier muss das Spiel wissen, wie viele Sekunden
-    // es noch bis zum Ziel sind: klassisch aus den gezählten Metern, in der XXL-Welt kennt sie die Fahrt.) Dort sind
-    // die Pausen zwischen den Geboten mit der Fahrzeit gestreckt (bidPlan.stretch), also auch dieses Zeitfenster.
-    const eta = this.worldNavi ? nv.eta(p.speed) : nv.arrived ? Infinity : (nv.targetS - p.s) / Math.max(p.speed, 8);
+    // es noch bis zum Ziel sind: Die Fahrt kennt sie.) Die Pausen zwischen den Geboten sind mit der Fahrzeit gestreckt
+    // (bidPlan.stretch), also auch dieses Zeitfenster.
+    const eta = nv.eta(p.speed);
     // (in der ersten Runde eines Streams bleibt dieses späte Gebot aus: nv.opening, siehe navi.js)
     if (!nv.opening && eta < 8 && this.T.bid > eta && this.T.bid < 45 * (this.bidPlan.stretch || 1) && this.eco.lateBid()) {
       this.T.bid = rand(0.4, Math.max(0.5, eta - 2.5));
@@ -1024,33 +952,26 @@ export class Game {
     // (… und ist der Wagen dort schon im Zielort, wartet das nächste Gebot, bis er am Brunnen steht oder vorbeigerollt
     // ist: Die erste Runde soll an einem Brunnen enden, nicht zweihundert Meter davor – höchstens TOWN_HOLD lang)
     this.townT = nv.inTown ? this.townT + dt : 0;
-    if (nv.opening && this.worldNavi && nv.inTown && this.townT < TOWN_HOLD) this.T.bid = Math.max(this.T.bid, 1);
+    if (nv.opening && nv.inTown && this.townT < TOWN_HOLD) this.T.bid = Math.max(this.T.bid, 1);
     if (this.T.bid <= 0) {
       const plan = this.bidPlan;
       const siegen = this.bidTargets().find((x) => x.special === 'siegen');
       if (plan.kind === 'step' && !plan.late && siegen && nv.target !== siegen && chance(0.16)) {
         // Siegen wird geboten … und sofort überboten
         const n = viewerName();
-        // Das Siegen-Gebot zählt wirklich: Das Navi stellt kurz auf Siegen um (Navi, Schilderbrücken und James sagen
-        // dasselbe), die Kasse bekommt den Cent (auf der Reise den Zehner), und das Gegengebot liegt darüber.
+        // Das Siegen-Gebot zählt wirklich: Das Navi stellt kurz auf Siegen um (Navi und James sagen dasselbe), die
+        // Kasse bekommt den Zehner, und das Gegengebot liegt darüber.
         nv.overbid(p.s, n, this.eco.extraBid(), siegen);
         this.stats.naviChanges++;
         this.stats.topBid = Math.max(this.stats.topBid, nv.bid);
         this.earn(nv.bid, 'Navi-Gebote', { silent: true });
-        this.bot('james', `${n} bietet ${this.bidText(nv.bid)} – neues Ziel: Siegen`);
+        this.bot('james', `${n} bietet ${fmtEuro(nv.bid)} – neues Ziel: Siegen`);
         this.chat(pick(['SIEGEN!', 'Siegen? 👀', 'Diesmal Siegen!']));
-        if (this.gantryStale()) this.scenery.relabelGantries();
         // bis das Gegengebot da ist, ruht die Uhr
         this.T.bid = 99;
-        // (XXL: Hält der Wagen in der Zwischenzeit am Brunnen von Siegen, gehört das nächste Gebot zur neuen Runde)
-        this.later(2.2, () => (this.worldNavi && (this.roundNew || this.navi.stopping) ? null : this.changeNavi(true)));
+        // (Hält der Wagen in der Zwischenzeit am Brunnen von Siegen, gehört das nächste Gebot zur neuen Runde)
+        this.later(2.2, () => (this.roundNew || this.navi.stopping ? null : this.changeNavi(true)));
       } else this.changeNavi(false);
-    }
-    for (const e of this.navi.update(dt, p.s)) {
-      if (e.type === 'wendeIgnored') {
-        this.say('Route wird neu berechnet.', 'think', { priority: false });
-        if (chance(0.6)) this.chat(pick(['Wenden auf der Autobahn? 😂', 'Bitte wenden… nein!', 'Das Navi gibt nicht auf']));
-      } else if (e.type === 'arrived') this.onArrive(e);
     }
   }
 
@@ -1063,7 +984,7 @@ export class Game {
     const nv = this.navi;
     const plan = this.bidPlan;
     const chaos = plan.kind === 'chaos';
-    // neue Runde nach einer Ankunft: Es geht wieder bei 1 Cent los
+    // neue Runde nach einer Ankunft: Es geht wieder beim ersten Zehner los
     if (this.roundNew) {
       this.roundNew = false;
       nv.bid = 0;
@@ -1082,32 +1003,28 @@ export class Game {
       bidder = d.name;
       target = d.target;
     }
-    // XXL: Fährt der Wagen schon durch den Zielort, nimmt ihm dieses Gebot das BrunnenTV vor der Nase weg
-    const snatched = this.worldNavi && nv.inTown;
+    // Fährt der Wagen schon durch den Zielort, nimmt ihm dieses Gebot das BrunnenTV vor der Nase weg
+    const snatched = nv.inTown;
     const t = nv.overbid(p.s, bidder, plan.increment, target || this.pickBidTarget());
     this.stats.naviChanges++;
     this.stats.topBid = Math.max(this.stats.topBid, nv.bid);
-    // Cent-Gebote lassen eine frische größere Gutschrift am Guthaben stehen
-    this.earn(nv.bid, 'Navi-Gebote', { silent: nv.bid < 1 && this.t - this.popT < 1.6 });
-    // im Chaos fasst James sich kurz, sonst schieben seine Meldungen den ganzen Chat aus dem Fenster
+    this.earn(nv.bid, 'Navi-Gebote');
     // (echte Orte heißen überall wie auf ihrer Ortstafel, auch wenn es eilt)
-    this.bot('james', `${bidder} bietet ${this.bidText(nv.bid)} – neues Ziel: ${chaos && !this.worldNavi ? shortName(t) : t.name}`);
+    this.bot('james', `${bidder} bietet ${fmtEuro(nv.bid)} – neues Ziel: ${t.name}`);
     if (siegenOverbid) this.later(0.8, () => this.chat(pick(['Siegen wurde überboten. Wie immer 😂', 'Nicht schon wieder Siegen verpasst', 'Klassiker'])));
     this.eco.cheer(chaos ? 'bidChaos' : plan.kind === 'big' || plan.kind === 'bontana' ? 'bidBig' : 'bid');
-    // XXL: Echte Orte liegen Minuten auseinander – die Stream-Kasse plant die Ruhe danach mit der Fahrzeit des Navis
-    const next = this.eco.nextBid(this.worldNavi ? { bid: nv.bid, drive: nv.driveSecs(), opening: nv.opening } : { bid: nv.bid });
+    // Echte Orte liegen Minuten auseinander – die Stream-Kasse plant die Ruhe danach mit der Fahrzeit des Navis
+    const next = this.eco.nextBid({ bid: nv.bid, drive: nv.driveSecs(), opening: nv.opening });
     this.bidPlan = next;
     this.T.bid = next.delay;
 
     // Was der Chat dazu sagt
     if (chaos) {
       this.audio.tone(1174.7, 0.07, 'triangle', 0.035);
-      // (auf der Reise wird in Zehnern geboten: eigene Zeilen ohne Cent)
-      const pool = this.worldNavi ? CHAT.zehnerChaos : CHAT.bidChaos;
       if (plan.first) {
-        this.ui.toast(this.worldNavi ? '🤑 Bieter-Chaos im Chat: Jeder legt einen Zehner drauf!' : '🤑 Bieter-Chaos im Chat: Jeder legt einen Cent drauf!', 'info');
-        this.burst(pool, 2, 2.5);
-      } else if (chance(0.3)) this.chat(this.chatLine(pool));
+        this.ui.toast('🤑 Bieter-Chaos im Chat: Jeder legt einen Zehner drauf!', 'info');
+        this.burst(CHAT.zehnerChaos, 2, 2.5);
+      } else if (chance(0.3)) this.chat(this.chatLine(CHAT.zehnerChaos));
     } else {
       this.audio.naviAlert();
       if (plan.kind === 'duel') {
@@ -1118,17 +1035,13 @@ export class Game {
         if (next.kind !== 'duel' || next.first) this.later(1.6, () => this.chat(this.chatLine(CHAT.bidDuelEnd)));
       } else if (plan.kind === 'bontana') this.bontanaChat(plan, bidder);
       else if (plan.kind === 'big') {
-        this.ui.toast(`🤑 Großes Gebot: ${this.bidText(nv.bid)} von ${bidder}`, 'good');
-        this.burst(this.worldNavi ? CHAT.zehnerGross : CHAT.bidBig, 3, 2.5);
+        this.ui.toast(`🤑 Großes Gebot: ${fmtEuro(nv.bid)} von ${bidder}`, 'good');
+        this.burst(CHAT.zehnerGross, 3, 2.5);
       } else if (plan.late) this.burst(CHAT.bidLate, 3, 2);
-      else this.burst(this.worldNavi ? CHAT.ortChanged : CHAT.naviChanged, 2, 3);
+      else this.burst(CHAT.ortChanged, 2, 3);
     }
     if (snatched) this.later(1, () => this.burst(CHAT.brunnenWeg, 2, 2.5));
     if (t.special === 'siegen') this.later(1.4, () => this.chat('SIEGEN SETZT SICH DURCH?! 😱'));
-    // Die Navi-Tafeln der Schilderbrücken zeigen immer dasselbe Ziel wie das Navi, auch im Bieter-Chaos (Navi und Welt
-    // dürfen sich nie widersprechen). Liegt das Ziel vor allen Brücken voraus, zeigen sie Orte statt eines Navi-Ziels –
-    // die bleiben dann stehen, statt bei jedem Cent neu gewürfelt zu werden.
-    if (this.gantryStale()) this.scenery.relabelGantries();
     // NOMI und der Hinweis aufs neue Ziel kommen erst, wenn es kurz stehen bleibt – im Chaos und im Duell kämen sie
     // nicht hinterher
     if (next.delay > 6) {
@@ -1143,52 +1056,27 @@ export class Game {
       // immer nur einer, und er geht mit dem Ziel, zu dem er gehört
       this.ui.naviNews();
       if (t.note) this.ui.toast('📍 ' + t.note, 'info', 'navi');
-      const wenden = (text, kind) => this.later(3.5, () => nv.target === t && this.ui.toast(text, kind, 'navi'));
-      if (this.worldNavi) {
-        // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es dort nur, wenn sie zurückführt) –
-        // das muss der Spieler fahren, deshalb als Warnung
-        if (nv.wende) {
-          this.later(1.5, () => this.chat(this.chatLine(CHAT.ortWende)));
-          wenden('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'warn');
-        }
-        return;
+      // die Fahrt wendet über die nächste Ausfahrt und ihre Rampen (nv.wende gibt es nur, wenn sie zurückführt) – das
+      // muss der Spieler fahren, deshalb als Warnung
+      if (nv.wende) {
+        this.later(1.5, () => this.chat(this.chatLine(CHAT.ortWende)));
+        this.later(3.5, () => nv.target === t && this.ui.toast('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'warn', 'navi'));
       }
-      if (nv.wende) wenden('↩️ Navi: „Bitte wenden“ – auf der Autobahn?', 'info');
     }
   }
 
   /**
-   * Die Ziele, auf die gerade geboten werden kann (je Ziel: name, optional weight, special, note): klassisch die feste
-   * Liste aus data.js, in der XXL-Welt die echten Orte der Karte, die die Fahrt von hier über Straßen erreicht –
-   * gewichtet nach Bekanntheit, Entfernung und Neuheit (WorldNavi.candidates).
+   * Die Ziele, auf die gerade geboten werden kann (je Ziel: name, optional weight, special, note): die echten Orte der
+   * Karte, die die Fahrt von hier über Straßen erreicht – gewichtet nach Bekanntheit, Entfernung und Neuheit
+   * (WorldNavi.candidates).
    */
   bidTargets() {
-    return this.worldNavi ? this.navi.candidates() : NAVI_TARGETS;
+    return this.navi.candidates();
   }
 
   /** Wohin der nächste Bieter will (nie dorthin, wo es ohnehin gerade hingeht). */
   pickBidTarget() {
     return this.eco.pickTarget(this.bidTargets(), this.navi.target);
-  }
-
-  /**
-   * Was die Navi-Tafel einer Schilderbrücke bei sSign zeigt: das Ziel des Navis (gleicher Kurzname wie überall) und
-   * die Entfernung ab dem Schild – oder null, wenn das Ziel schon vor dem Schild liegt (dann stehen dort Orte).
-   */
-  gantryNavi(sSign) {
-    const km = (this.navi.targetS - sSign) / 1000;
-    return km < 0.2 ? null : { target: shortName(this.navi.target), km };
-  }
-
-  /** Zeigt eine Schilderbrücke voraus ein Navi-Ziel oder muss jetzt eins zeigen? (Vorbeigefahrene vergisst sie.) */
-  gantryStale() {
-    const s = this.player.s;
-    let stale = false;
-    for (const [sSign, shown] of this.gantryShown) {
-      if (sSign < s - 60) this.gantryShown.delete(sSign);
-      else if (shown || this.gantryNavi(sSign)) stale = true;
-    }
-    return stale;
   }
 
   onArrive(e) {
@@ -1198,36 +1086,32 @@ export class Game {
     this.say(BOARD.arrived, 'love');
     this.onMood('cheer', 1);
     this.audio.jingle();
-    // klassisches Spiel: an jedem erreichten Navi-Ziel wird ein Karosserie-Punkt repariert (mit Pflaster)
+    // an jedem erreichten Navi-Ziel wird ein Karosserie-Punkt repariert (mit Pflaster)
     if (p.repair(1)) {
       this.ui.damage(p.hits, p.maxHits);
       this.later(2.2, () => this.ui.toast('🩹 ' + damageLine('repair'), 'good'));
     }
     // die Ankunft sagt die Navi-Zeile an („Ziel erreicht: …“)
     this.ui.naviNews();
-    this.burst(this.worldNavi ? CHAT.ortReached : CHAT.naviReached, 4, 3);
-    // Fürs Ankommen selbst gibt es nichts – aber der Chat feiert es mit einem Schwung Ortsspenden (Siegen: doppelt;
-    // am Drive-In ist die erste natürlich für „Pommes ohne Rückfragen“)
+    this.burst(CHAT.ortReached, 4, 3);
+    // Fürs Ankommen selbst gibt es nichts – aber der Chat feiert es mit einem Schwung Ortsspenden (Siegen: doppelt)
     const round = this.eco.round;
     const gifts = this.eco.arrive({ double: t.special === 'siegen' });
-    // Reise: Die Runde wird abgerechnet – ihre Einnahmen (samt dieser Ortsspenden) und die Werkstatt-Rechnung; der Chat
-    // urteilt über die ganze Runde (satisfaction.js arrive) und sagt es, wenn es deutlich war
-    if (this.worldNavi) {
-      this.settleRound(round, gifts);
-      const dz = this.zufrieden.arrive();
-      if (dz >= 9) this.later(2.6, () => this.chat(this.chatLine(CHAT.flott)));
-      else if (dz <= -3) this.later(2.6, () => this.chat(this.chatLine(CHAT.schneller)));
-    }
+    // Die Runde wird abgerechnet – ihre Einnahmen (samt dieser Ortsspenden) und die Werkstatt-Rechnung; der Chat urteilt
+    // über die ganze Runde (satisfaction.js arrive) und sagt es, wenn es deutlich war
+    this.settleRound(round, gifts);
+    const dz = this.zufrieden.arrive();
+    if (dz >= 9) this.later(2.6, () => this.chat(this.chatLine(CHAT.flott)));
+    else if (dz <= -3) this.later(2.6, () => this.chat(this.chatLine(CHAT.schneller)));
     // bis hier steht die letzte Ortsspende spätestens im Chat (ein „5 Cent“-Angebot zum Ziel kommt erst danach)
     this.cent5.arrivedT = this.t + 2.4 + (gifts.length - 1) * 1.1;
     gifts.forEach((v, i) => this.later(1.8 + i * 1.1 + rand(0, 0.6), () => {
       // kurz gehalten, es kommen ja mehrere hintereinander: „Ortsspende von …: 5,00 €“
       const name = viewerName();
-      const what = i === 0 && t.special === 'pommes' ? 'Pommes ohne Rückfragen' : 'Ortsspende';
-      this.donate(name, v, what, { label: 'Ortsspenden', line: `${what} von ${name}: ${fmtCent(v)}` });
+      this.donate(name, v, 'Ortsspende', { label: 'Ortsspenden', line: `Ortsspende von ${name}: ${fmtCent(v)}` });
     }));
     this.later(1.2, () => this.chat(this.chatLine(CHAT.ortsspende)));
-    // danach beginnt eine neue Bieterrunde bei 1 Cent
+    // danach beginnt eine neue Bieterrunde beim ersten Zehner
     this.duel = null;
     this.roundNew = true;
     this.bidPlan = this.eco.nextBid({ bid: 0 });
@@ -1238,39 +1122,18 @@ export class Game {
       this.later(1, () => this.chat('KONFETTI! 🎉'));
     }
     switch (t.special) {
-      case 'charger':
-        p.charge(35);
-        this.ui.toast('🔌 Schnell geladen: +35 % Akku', 'good');
-        this.stats.charges++;
-        break;
       case 'gifhorn':
-        // (im Ort der XXL-Welt fährt kein Verkehr, also auch kein Streifenwagen vor: dort grüßt der Chat)
-        if (this.worldNavi) this.burst(CHAT.gifhornOrt, 3, 2.5);
-        else this.later(1.5, () => this.callPolice('GIFHORN GRÜSST!'));
-        break;
-      case 'brunnen':
-        this.later(1.2, () => this.speech.say('Ein sehr schöner Brunnen. Vielen Dank.', 'schoennbrun'));
-        this.audio.brunnenJingle();
-        this.burst(CHAT.brunnen, 3, 2);
+        // (im Ort fährt kein Verkehr, also auch kein Streifenwagen vor: dort grüßt der Chat)
+        this.burst(CHAT.gifhornOrt, 3, 2.5);
         break;
       case 'elsa':
-        this.burst(this.worldNavi ? CHAT.elsaKassel : CHAT.elsa, 3, 2);
-        break;
-      case 'propper':
-        this.later(4.5, () => this.say('Meister Pünktlich ist leider noch nicht da.', 'worried', { priority: false }));
-        this.later(6, () => this.chat(pick(['Wie immer 😂', 'Er ist bestimmt gleich da', 'Fünf Minuten noch!'])));
+        this.burst(CHAT.elsaKassel, 3, 2);
         break;
       case 'malte':
         this.burst(['Walte Walte Walte Walte', 'WALTE!', 'WaLTE', 'Walte ist eingestiegen ✔️'], 5, 3);
         break;
       case 'siegen':
         this.burst(['SIEGEN!!! Es ist tatsächlich passiert 😱', 'Geschichte wurde geschrieben', 'Doppelte Ortsspenden für Siegen!'], 3, 2);
-        break;
-      case 'sparkasse':
-        this.later(1.5, () => this.ui.chat({ name: 'Wissenschaftlicher Dienst', text: `🔬 Ergebnis: Die Bank am Markt ist ${this.navi.sparkColor}.`, bot: 'claudia', icon: '🔬' }));
-        break;
-      case 'pommes':
-        this.burst(['Pommes ohne Rückfragen 🍟', 'Mit Mayo!', 'Keine Rückfragen!'], 3, 2);
         break;
       case 'bude':
         this.burst(['Diesmal die richtige Bude! 🌭', 'Falsche Bude? 😂', 'Currywurst!'], 3, 2);
@@ -1280,21 +1143,18 @@ export class Game {
     }
   }
 
-  /**
-   * Am Navi-Ziel vorbeigefahren: Das verstimmt den Chat. Klassisch liegt jedes Ziel an der Strecke und kann nicht
-   * verfehlt werden; in der XXL-Welt mit ihren echten Ausfahrten meldet es onTrip.
-   */
+  /** An der Ausfahrt zum Navi-Ziel vorbeigefahren (onTrip): Das verstimmt den Chat. */
   missedTarget() {
     this.eco.cheer('missedTarget');
     this.burst(CHAT.missedTarget, 3, 2.5);
   }
 
   /**
-   * Ereignisse der XXL-Fahrt (trip.js, main.js reicht sie von der Welt durch): Dort liegen Ankunft, Ausfahrten und
+   * Ereignisse der Fahrt (trip.js, main.js reicht sie von der Welt durch): Dort liegen Ankunft, Ausfahrten und
    * Abzweige in der Strecke. Am Zielpunkt des Brunnenplatzes ('arrive') bremst der Wagen zum Halt; erreicht ist das
-   * Navi-Ziel, wenn er am Brunnen steht ('rest') – dann wird gefeiert wie an jedem klassischen Ziel (onArrive jubelt
-   * selbst), und BrunnenTV beginnt. Mini Adams Mimik reagiert auch sonst wie an den klassischen Stellen (neuer Weg:
-   * Blick aufs Navi), und wer an der geplanten Ausfahrt vorbeifährt, verstimmt den Chat.
+   * Navi-Ziel, wenn er am Brunnen steht ('rest') – dann wird gefeiert (onArrive jubelt selbst), und BrunnenTV beginnt.
+   * Mini Adams Mimik reagiert auch sonst (neuer Weg: Blick aufs Navi), und wer an der geplanten Ausfahrt vorbeifährt,
+   * verstimmt den Chat.
    */
   onTrip(e) {
     if (!this.running) return;
@@ -1312,7 +1172,7 @@ export class Game {
       if (e.wrong) this.say(e.stop ? REISE_AKKU.missed : 'Route wird neu berechnet.', 'think', { priority: false });
       if (e.wrong && e.stop) this.batteryWarned = 0;
       // ein Umweg mit Ziel: Der Chat stöhnt, und die Zeit des Umwegs zählt (satisfaction.js)
-      if (e.wrong && this.zufrieden && this.navi.target) this.zufrieden.detour();
+      if (e.wrong && this.navi.target) this.zufrieden.detour();
       if (e.wrong && e.planned === 'exit') {
         this.missedTarget();
         this.onMood('startled', 0.5);
@@ -1340,7 +1200,7 @@ export class Game {
     if (this.halt.still > 0.5) this.arriveAtFountain();
   }
 
-  /** Der Wagen steht am Brunnen des Navi-Ziels: Ankunft feiern (wie klassisch), dann BrunnenTV. */
+  /** Der Wagen steht am Brunnen des Navi-Ziels: Ankunft feiern, dann BrunnenTV. */
   /**
    * Reise: Am Ziel wird die Runde abgerechnet (REPARATUR, data.js). Was sie eingebracht hat (samt der Ortsspenden, die
    * gleich kommen) und was die Werkstatt für ihre Rempler und neuen Kratzspuren bekommt, steht kurz nebeneinander am
@@ -1424,9 +1284,8 @@ export class Game {
     this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town });
   }
 
-  /** Reise: eine Marke auf der Route des Streams (main.js trägt über onRouteMark ihre Lage auf der Karte nach). */
+  /** Eine Marke auf der Route des Streams (main.js trägt über onRouteMark ihre Lage auf der Karte nach). */
   routeMark(type, data) {
-    if (!this.route) return;
     this.onRouteMark(this.route.mark(type, data));
   }
 
@@ -1507,7 +1366,7 @@ export class Game {
       T.durchsage = rand(48, 85);
       const pool = this.weather.level > 0.3 && chance(0.5) ? DURCHSAGEN_REGEN : DURCHSAGEN;
       const d = pick(pool);
-      const text = fillTemplate(this.worldNavi && d.reise ? d.reise : d.text);
+      const text = fillTemplate(d.text);
       const name = viewerName();
       this.donate(name, this.eco.durchsagePrice(), 'Sprachdurchsage', { label: 'Sprachdurchsagen' });
       this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
@@ -1536,11 +1395,9 @@ export class Game {
         this.ui.funkloch(false);
         this.burst(CHAT.funklochBack, 3, 1.5);
         this.later(1.2, () => this.bot('nora', 'Verbindung zum Streaming-Server steht wieder. Weiter geht’s!'));
-        // Reise: und aus dem Chat meldet sich jemand, den man kennt (CREW.back)
-        if (this.crewT) {
-          const who = pick(CREW.back);
-          this.later(1.2 + CREW.backAfter, () => this.chat(pick(CREW_LINES.back), who, this.crewBadge(who)));
-        }
+        // und aus dem Chat meldet sich jemand, den man kennt (CREW.back)
+        const who = pick(CREW.back);
+        this.later(1.2 + CREW.backAfter, () => this.chat(pick(CREW_LINES.back), who, this.crewBadge(who)));
       }
     }
     if (T.funkloch <= 0 && p.s > 1500) {
@@ -1778,42 +1635,18 @@ export class Game {
     const p = this.player;
     const S = this.S;
     const spawn = !this.offAutobahn;
-    // auf der Reise lädt der Akku in den Ladeparks: Lade-Ringe und Bananensaft liegen dort nicht auf der Straße
-    // (REISE.md A5), Koriander schon
-    const loot = spawn && !this.worldNavi;
-    if (p.s > S.charge && loot) {
-      S.charge = p.s + rand(900, 1500);
-      this.pickups.spawnAhead('charge', p.s, this.traffic);
-    }
-    if (p.s > S.banana && loot) {
-      S.banana = p.s + rand(1200, 1900);
-      this.pickups.spawnAhead('banana', p.s, this.traffic);
-    }
+    // der Akku lädt in den Ladeparks, Bananensaft gibt es dort auch (REISE.md A5): Auf der Straße liegt nur Koriander
     if (p.s > S.koriander && spawn) {
       S.koriander = p.s + rand(1300, 2300);
-      this.pickups.spawnAhead('koriander', p.s, this.traffic);
+      this.pickups.spawnAhead(p.s, this.traffic);
     }
-    for (const it of this.pickups.update(dt, this.t, p, camera, spawn)) {
-      if (it.type === 'charge') {
-        p.charge(12);
-        this.stats.charges++;
-        this.audio.chime();
-        this.ui.toast('⚡ Lade-Ring: +12 % Akku', 'good');
-      } else if (it.type === 'banana') {
-        this.stats.bananas++;
-        p.sugar = 6;
-        this.audio.coin();
-        this.thrill('banana', 'Bananensaft');
-        this.ui.toast('🍌 Bananensaft! Zuckerschub', 'good');
-        if (chance(0.7)) this.chat(pick(CHAT.banana));
-      } else {
-        this.stats.koriander++;
-        p.wobble = 2.2;
-        this.audio.bad();
-        this.ui.toast('🌿 Koriander … bäh!', 'bad');
-        this.cockpit.nomi.setMood('dizzy', 2.5);
-        this.burst(CHAT.koriander, 2, 1.5);
-      }
+    for (let n = this.pickups.update(dt, this.t, p, camera, spawn).length; n > 0; n--) {
+      this.stats.koriander++;
+      p.wobble = 2.2;
+      this.audio.bad();
+      this.ui.toast('🌿 Koriander … bäh!', 'bad');
+      this.cockpit.nomi.setMood('dizzy', 2.5);
+      this.burst(CHAT.koriander, 2, 1.5);
     }
   }
 
@@ -1826,7 +1659,7 @@ export class Game {
     const d = this.ecoIn;
     const b = this.blitzer;
     d.kmh = p.kmh;
-    // in der Tempo-120-Zone ist langsam fahren richtig – genauso, wo die Strecke selbst das Tempo begrenzt (XXL-Welt:
+    // in der Tempo-120-Zone ist langsam fahren richtig – genauso, wo die Strecke selbst das Tempo begrenzt (Welt:
     // Rampen, Landstraßen, Orte, der Halt am Ziel)
     d.limit = (!!b && p.s > b.limitS - 200 && p.s < b.endS) || p.limits.vmax < Infinity;
     d.stuck = this.stuck && !d.limit;
@@ -1835,7 +1668,7 @@ export class Game {
     d.inLeft = p.inLeftLane;
     d.funkloch = this.funkloch > 0;
     // Reise: Ein zufriedener Chat gibt mehr und lockt mehr Zuschauer an (satisfaction.js gain, audience)
-    if (this.zufrieden) this.updateZufrieden(dt, d);
+    this.updateZufrieden(dt, d);
     for (const e of this.eco.update(dt, d)) this.onStream(e);
     this.viewers = this.eco.viewers;
     this.peakViewers = Math.max(this.peakViewers, this.viewers);
@@ -1874,7 +1707,7 @@ export class Game {
     this.trafficT -= dt;
     if (this.trafficT > 0) return;
     this.trafficT = 0.25;
-    // abseits der Autobahn (XXL-Welt) fährt deren Verkehr woanders weiter: Dort überholt und bremst ihn niemand
+    // abseits der Autobahn fährt deren Verkehr woanders weiter: Dort überholt und bremst ihn niemand
     if (this.offAutobahn) {
       this.stuck = false;
       return;
@@ -1993,12 +1826,11 @@ export class Game {
   }
 
   /**
-   * Reise: Der Ton des Chats folgt seiner Zufriedenheit – zufrieden klingt er öfter flott, unzufrieden ruft er nach
-   * Tempo (ZUFRIEDEN.happy/grumpy). Klassisch null (und keine Zufallszahl).
+   * Der Ton des Chats folgt seiner Zufriedenheit – zufrieden klingt er öfter flott, unzufrieden ruft er nach Tempo
+   * (ZUFRIEDEN.happy/grumpy).
    */
   zufriedenPool() {
     const Z = this.zufrieden;
-    if (!Z) return null;
     if (Z.value >= ZUFRIEDEN.happy) return chance(ZUFRIEDEN.happyShare) ? CHAT.flott : null;
     if (Z.value <= ZUFRIEDEN.grumpy) return chance(ZUFRIEDEN.grumpyShare) ? CHAT.schneller : null;
     return null;
@@ -2015,7 +1847,7 @@ export class Game {
    */
   updateCrew(dt) {
     const T = this.crewT;
-    if (!T || this.funkloch > 0) return;
+    if (this.funkloch > 0) return;
     const M = (r) => rand(r[0], r[1]) * 60;
     for (const k in T) T[k] -= dt;
     if (T.raid <= 0) {
@@ -2074,7 +1906,7 @@ export class Game {
       const pool = rainy && chance(0.22) ? CHAT.rain
         : lv < 2 && chance(lv === 0 ? 0.65 : 0.4) ? CHAT.restless
           : lv > 2 && chance(lv === 4 ? 0.65 : 0.4) ? CHAT.cheerful
-            : this.zufriedenPool() || (this.worldNavi ? CHAT.ambientReise : CHAT.ambient);
+            : this.zufriedenPool() || CHAT.ambient;
       this.chat(this.chatLine(pool));
     }
   }
@@ -2138,7 +1970,7 @@ export class Game {
     // gerade angekommen: nach Jubel und Ortsspenden, solange noch niemand fürs nächste Ziel bietet
     const since = this.t - this.cent5.arrivedT;
     if (since > 0.6 && since < 20 && this.roundNew) return 'ziel';
-    // Wahrzeichen am Rand und Laster voraus gibt es nur auf der Autobahn (XXL-Welt: abseits ist ihr Verkehr woanders)
+    // Wahrzeichen am Rand und Laster voraus gibt es nur auf der Autobahn (abseits ist ihr Verkehr woanders)
     const lm = this.offAutobahn ? null : this.landmark;
     // Brunnen und Elsa erst, wenn der Jubel über die Sichtung durch ist – sonst rutscht das Angebot gleich wieder weg
     if (lm && lm.seen && this.t - lm.seenT > 2.5) {
@@ -2273,9 +2105,9 @@ export class Game {
     if (!this.allJobsPaid && this.jobs.every((j) => j.done)) {
       this.allJobsPaid = true;
       const A = this.allJobs;
-      // Kam der letzte Job mit einer Ankunft (Navi-Ziel, Supercharger), gehört das Banner erst dem Ziel – die Feier
-      // für alle fünf folgt, wenn es durch ist, statt es gleich wieder zu verdrängen
-      const wait = last && (last.stat === 'naviReached' || last.stat === 'charges') ? 3.6 : 0;
+      // Kam der letzte Job mit einer Ankunft (Navi-Ziel, Ladepark), gehört das Banner erst dem Ziel – die Feier für alle
+      // fünf folgt, wenn es durch ist, statt es gleich wieder zu verdrängen
+      const wait = last && (last.stat === 'naviReached' || last.stat === 'parkCharges') ? 3.6 : 0;
       this.later(wait, () => {
         this.bot('victoria', 'You had 5 Jobs – und alle erledigt! 🏆');
         this.onMood('proud', 1);
@@ -2352,10 +2184,9 @@ export class Game {
     this.over = {
       reason,
       distance: this.odometer,
-      // Reise: die Route des Streams (genommene Abschnitte, Folgen, Ladestopps; die Summe ist der Kilometerzähler)
-      route: this.route ? this.route.finish(this.odometer) : null,
-      travel: this.worldNavi, // Reisekilometer (XXL) statt Meter der Straße
-      air: this.worldNavi ? this.airtime : null,
+      // die Route des Streams (genommene Abschnitte, Folgen, Ladestopps; die Summe ist der Kilometerzähler)
+      route: this.route.finish(this.odometer),
+      air: this.airtime,
       money: Math.max(0, Math.round(this.money * 100) / 100),
       breakdown: { ...this.breakdown },
       jobs: this.jobs.map((j) => ({ text: j.text, done: j.done, pledge: j.pledge, pledger: j.pledger })),
@@ -2363,9 +2194,7 @@ export class Game {
       stats: { ...this.stats },
       peakViewers: Math.round(this.peakViewers),
       beruf: berufFor(km),
-      time: this.t,
       clock: fmtClock(this.clock),
-      naviHistory: this.navi.history.slice(-5),
     };
     this.speech.stopAll();
     if (reason === 'akku') this.say('Akku leer. Die Stream-Technik verabschiedet sich.', 'sleep');
@@ -2384,7 +2213,7 @@ export class Game {
   }
 
   /**
-   * Die Uhr der XXL-Welt ist die Reisezeit, der Zwilling des Kilometerzählers: Je Schritt gewinnt sie dessen Sekunden
+   * Die Uhr ist die Reisezeit, der Zwilling des Kilometerzählers: Je Schritt gewinnt sie dessen Sekunden
    * mal so viele Reisemeter, wie die Fahrt dort je Meter Straße zählt (auf echter Straße und im Stand 1). Mit 130 km/h
    * schafft der Wagen so überall 130 Reisekilometer je Stunde der Uhr, und wer im Tempo des Navis fährt, sieht die
    * Ankunftszeit stillstehen (Uhr + Reisezeit des Rests, trip.reach().clock). Die Fahrt rückt erst nach game.update
@@ -2402,17 +2231,14 @@ export class Game {
     return { secs, m };
   }
 
-  /**
-   * Die gefahrene Strecke auf jedem Schirm (Meter): in der XXL-Welt der Kilometerzähler der Fahrt, sonst die Straße bis
-   * zum weitesten Punkt (rückwärts und wieder vorwärts bis dorthin zählt nichts, siehe revDebt).
-   */
+  /** Die gefahrene Strecke auf jedem Schirm (Meter): der Kilometerzähler der Fahrt (Reisemeter). */
   get odometer() {
-    return this.worldNavi ? this.world.trip().km * 1000 : this.player.s + (this.revDebt || 0);
+    return this.world.trip().km * 1000;
   }
 
-  /** Sendezeit in Sekunden: klassisch die gespielte Zeit, in der XXL-Welt die Reisezeit seit 18 Uhr (start). */
+  /** Sendezeit in Sekunden: die Reisezeit seit 18 Uhr (start). */
   get airtime() {
-    return this.worldNavi ? (this.clock - 18 * 60) * 60 : this.t;
+    return (this.clock - 18 * 60) * 60;
   }
 
   /** Daten für den Mittelbildschirm. */
@@ -2440,4 +2266,3 @@ export class Game {
   }
 }
 
-export { KMH };

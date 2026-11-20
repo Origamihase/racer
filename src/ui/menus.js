@@ -1,7 +1,7 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
 import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate } from '../data.js';
-import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.js';
+import { fmtNum, fmtCent, fmtEuro, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
 import { MapScreen, visitLine } from './mapscreen.js';
@@ -309,8 +309,7 @@ export class Menus {
 
   render_pause(s, g) {
     s.textContent = '';
-    // die Reise hat einen Knopf mehr („⛲ Folgen“): ihre Karte ist breiter, damit alle sechs in einer Zeile stehen
-    const card = el('div', g.worldNavi ? 'card pause-card pause-album' : 'card pause-card', s);
+    const card = el('div', 'card pause-card', s);
     el('h2', '', card, '⏸ Pause');
     el('p', 'sub', card, 'Kappandramäßige Zusammenfassung für alle, die gerade erst reingekommen sind:');
     const grid = el('div', 'summary-grid', card);
@@ -319,13 +318,13 @@ export class Menus {
       el('span', 'k', r, k);
       el('span', 'v', r, v);
     };
-    item('Strecke', g.worldNavi ? fmtOdo(g.odometer / 1000) : fmtKm(g.odometer));
+    item('Strecke', fmtOdo(g.odometer / 1000));
     item('Einnahmen dieser Fahrt', fmtCent(g.money));
-    // XXL-Welt: ein echter Ort – oder, zwischen Ankunft und erstem Gebot der Runde, was gerade gilt (WorldNavi.label)
-    item('Navi-Ziel', g.worldNavi ? g.navi.label : g.navi.target.name);
+    // ein echter Ort – oder, zwischen Ankunft und erstem Gebot der Runde, was gerade gilt (WorldNavi.label)
+    item('Navi-Ziel', g.navi.label);
     item('Navi-Gebote', fmtNum(g.stats.naviChanges));
     item('Zuschauer', fmtNum(Math.round(g.viewers)));
-    item('Sendezeit', g.worldNavi ? fmtSpan(g.airtime) : fmtDuration(g.t));
+    item('Sendezeit', fmtSpan(g.airtime));
     // woher das Geld bisher kam – dieselben Posten wie später in der Abrechnung
     const rows = breakdownRows(g.breakdown);
     if (rows.length) {
@@ -344,7 +343,7 @@ export class Menus {
     button(menu, '▶ Weiterfahren', 'resume', 'primary');
     button(menu, '↻ Neustart', 'restart');
     button(menu, '🗺️ Karte', 'karte');
-    if (g.worldNavi) button(menu, '⛲ Folgen', 'album');
+    button(menu, '⛲ Folgen', 'album');
     button(menu, '⚙️ Einstellungen', 'settings');
     button(menu, '⏹ Stream beenden', 'quit');
   }
@@ -358,7 +357,7 @@ export class Menus {
     el('p', 'sub', card, r.sub);
     const big = el('div', 'over-big', card);
     const dist = el('div', 'over-dist', big);
-    const strecke = (m) => (o.travel ? fmtOdo(m / 1000) : fmtKm(m));
+    const strecke = (m) => fmtOdo(m / 1000);
     el('span', 'num', dist, strecke(o.distance));
     el('span', 'lbl', dist, o.newRecord ? '🏆 Neuer Rekord!' : 'Rekord: ' + strecke(o.best));
     const mon = el('div', 'over-money', big);
@@ -368,9 +367,9 @@ export class Menus {
     button(menu, '↻ Nochmal fahren', 'restart', 'primary');
     button(menu, '🛒 Tesla-Shop', 'shop');
     button(menu, '🏠 Hauptmenü', 'menu');
-    // Reise: die Route des Tages auf der Karte, daneben die Summen
+    // die Route des Tages auf der Karte, daneben die Summen
     this.routeObs?.disconnect();
-    if (o.travel && o.route) this.routeBlock(card, o);
+    if (o.route) this.routeBlock(card, o);
     const cols = el('div', 'over-cols', card);
     const left = el('div', 'over-col', cols);
     el('h3', '', left, 'Abrechnung');
@@ -391,14 +390,14 @@ export class Menus {
     };
     line('Navi-Ziele erreicht', fmtNum(st.naviReached));
     if (st.brunnenTV) line('BrunnenTV-Folgen', fmtNum(st.brunnenTV));
-    line('Navi-Gebote · höchstes', fmtNum(st.naviChanges) + ' · ' + (o.travel ? fmtEuro(st.topBid) : fmtCent(st.topBid)));
+    line('Navi-Gebote · höchstes', fmtNum(st.naviChanges) + ' · ' + fmtEuro(st.topBid));
     line('Spenden · Abos · neue VIPs', fmtNum(st.donations) + ' · ' + fmtNum(st.subs) + ' · ' + fmtNum(st.vips));
     line('Haarscharf überholt', fmtNum(st.nearMisses));
     line('Rempler', fmtNum(st.crashes));
     line('Höchstgeschwindigkeit', fmtNum(Math.round(st.maxSpeedKmh)) + ' km/h');
     line('Zuschauer-Spitze', fmtNum(o.peakViewers));
     line('Wischer: gezuckt / gewischt', fmtNum(st.twitches) + ' / ' + fmtNum(st.wipes));
-    line('Sendezeit', (o.travel ? fmtSpan(o.air) : fmtDuration(o.time)) + ' (bis ' + o.clock + ' Uhr)');
+    line('Sendezeit', fmtSpan(o.air) + ' (bis ' + o.clock + ' Uhr)');
     const beruf = el('div', 'beruf', right);
     el('div', 'beruf-k', beruf, 'Erlogene Berufsbezeichnung des Tages');
     el('div', 'beruf-v', beruf, 'Mini Adam, ' + o.beruf.job);
@@ -421,9 +420,9 @@ export class Menus {
     };
     const crew = el('div', 'crew', card);
     for (const [k, v] of ABSPANN_CREW) credit(crew, k, [v]);
-    // Reise: die Leute des Streams, mit ausgedachten Berufen, und die BrunnenTV-Folgen der Reise
+    // die Leute des Streams, mit ausgedachten Berufen, und die BrunnenTV-Folgen der Reise
     const folgen = st.brunnenTV === 1 ? '1 Folge' : fmtNum(st.brunnenTV || 0) + ' Folgen';
-    if (o.travel) for (const [k, v, wide] of ABSPANN_REISE) if (st.brunnenTV || !v.includes('{folgen}')) credit(crew, k, [fillTemplate(v, { folgen })], wide === 'wide');
+    for (const [k, v, wide] of ABSPANN_REISE) if (st.brunnenTV || !v.includes('{folgen}')) credit(crew, k, [fillTemplate(v, { folgen })], wide === 'wide');
     // Wie im echten Abspann danach die Unterstützenden: größte Spende, Abo-Verschenker (die meisten zuerst), neue VIPs
     const F = o.fans;
     if (F && (F.top || F.gifters.length || F.vips.length)) {
@@ -435,8 +434,8 @@ export class Menus {
       if (F.gifters.length) credit(thanks, 'Abos verschenkt', top3(F.gifters, (x) => `${nameBreak(x.name)} (${x.count})`));
       if (F.vips.length) credit(thanks, 'Neue VIPs', top3(F.vips, nameBreak));
     }
-    // Reise: ganz am Ende, allein und leise
-    if (o.travel) el('p', 'gedenken', card, GEDENKEN);
+    // ganz am Ende, allein und leise
+    el('p', 'gedenken', card, GEDENKEN);
   }
 
   /**

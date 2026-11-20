@@ -139,35 +139,10 @@ export class Trip {
    */
   constructor(opts = {}) {
     this.rng = opts.rng || Math.random;
-    this.endless = !!opts.endless;
     this.reset(opts.start);
   }
 
-  /** Klassischer Modus: eine endlose Autobahn ohne Ausfahrten (ein einziger Abschnitt, ein Rahmen). */
-  resetEndless() {
-    this.frames = new Map();
-    this.links = [];
-    this.s = 0;
-    this.far = 0;
-    this.x = J.L0;
-    this.km = 0;
-    this.target = -1;
-    this.stop = -1;
-    this.policy = null;
-    this.planned = null;
-    this.ghosts = [];
-    this.visited = [];
-    this.events = [];
-    this.version = 0;
-    this.country = 'DE';
-    this.home = -1;
-    const path = new Path(-1000, this.newFrame('ab'));
-    this.cur = path;
-    this.add(path, 'ab', 1e9);
-  }
-
   reset(startNode) {
-    if (this.endless) return this.resetEndless();
     if (startNode === undefined || startNode < 0) startNode = nodes.findIndex((n) => n.id === 'Erlensee');
     this.frames = new Map(); // id → {id, kind, links}
     this.links = []; // {id, type: 'exit'|'merge', a: Autobahnrahmen, b: Rahmen abseits, s}
@@ -523,7 +498,6 @@ export class Trip {
    * Spiel geboten wird, solange die Welt keine Terminals baut; siehe distances).
    */
   setTarget(placeIdx, road = false) {
-    if (this.endless) return;
     this.target = placeIdx;
     const T = placeIdx >= 0 ? routeTo(placeIdx, road) : null;
     this.policy = this.stop >= 0 ? { ...this.stopRoute, then: T } : T;
@@ -536,7 +510,6 @@ export class Trip {
    * vorbeifährt, verliert ihn (Ereignis 'fork' mit stop).
    */
   setStop(pk) {
-    if (this.endless) return;
     const T = this.stop >= 0 && this.policy ? this.policy.then : this.policy;
     this.stop = pk;
     this.stopRoute = pk >= 0 ? routeToPark(pk, true) : null;
@@ -617,12 +590,6 @@ export class Trip {
     // Meter, die der Wagen nach dem Rückwärtsfahren noch einmal fährt
     const far = Math.max(this.s, this.far);
     this.far = Math.max(far, s);
-    if (this.endless) {
-      this.km += Math.max(0, s - far) * J.real;
-      this.s = s;
-      this.x = x;
-      return (this.events = []);
-    }
     const ev = (this.events = []);
     const s0 = this.s;
     let prev = this.cur.at(s0);
@@ -1178,7 +1145,6 @@ export class Trip {
    */
   restsAhead(n = 2, fits = ALL) {
     const found = [];
-    if (this.endless) return found;
     const s = this.s;
     const ex = parkExcursion();
     const add = (pk, m, realM, km, fork = null) => {

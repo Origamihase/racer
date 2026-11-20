@@ -444,25 +444,6 @@ export function liveLogoTexture({ w = 512, h = 512, bg = null, color = '#f4f4f4'
   return t;
 }
 
-// Holz-/Zierleiste im Cockpit (dunkel, offenporig)
-export function woodTexture() {
-  const c = canvas(1024, 64);
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#3b2c22';
-  ctx.fillRect(0, 0, 1024, 64);
-  const rnd = mulberry32(5);
-  for (let i = 0; i < 90; i++) {
-    ctx.strokeStyle = `rgba(${20 + rnd() * 40},${15 + rnd() * 25},${10 + rnd() * 15},${0.3 + rnd() * 0.4})`;
-    ctx.lineWidth = 1 + rnd() * 2;
-    ctx.beginPath();
-    const y = rnd() * 64;
-    ctx.moveTo(0, y);
-    for (let x = 0; x <= 1024; x += 64) ctx.lineTo(x, y + Math.sin(x * 0.01 + i) * 3 + (rnd() - 0.5) * 2);
-    ctx.stroke();
-  }
-  return tex(c, { repeat: true });
-}
-
 // Feine Stoffstruktur (Plüsch / Shirt)
 export function fabricTexture(seed = 1) {
   const S = 128;
@@ -505,64 +486,6 @@ export function aeroWheelTexture() {
   ctx.arc(cx, cx, 20, 0, Math.PI * 2);
   ctx.fill();
   return tex(c);
-}
-
-export function rimTexture() {
-  const S = 128;
-  const c = canvas(S, S);
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#151515';
-  ctx.fillRect(0, 0, S, S);
-  ctx.fillStyle = '#8e9398';
-  ctx.beginPath();
-  ctx.arc(64, 64, 56, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#2b2b2b';
-  for (let i = 0; i < 5; i++) {
-    ctx.save();
-    ctx.translate(64, 64);
-    ctx.rotate((i / 5) * Math.PI * 2);
-    ctx.beginPath();
-    ctx.ellipse(0, 32, 9, 18, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-  ctx.fillStyle = '#555';
-  ctx.beginPath();
-  ctx.arc(64, 64, 10, 0, Math.PI * 2);
-  ctx.fill();
-  return tex(c);
-}
-
-// Weiche Wolke
-export function cloudTexture(seed = 1) {
-  const W = 512;
-  const H = 256;
-  const c = canvas(W, H);
-  const ctx = c.getContext('2d');
-  const rnd = mulberry32(seed);
-  for (let i = 0; i < 26; i++) {
-    const x = W * (0.15 + rnd() * 0.7);
-    const y = H * (0.35 + rnd() * 0.35);
-    const r = 40 + rnd() * 70;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, 'rgba(255,255,255,0.9)');
-    g.addColorStop(0.6, 'rgba(255,255,255,0.45)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Unterseite leicht grau
-  const shade = ctx.createLinearGradient(0, H * 0.4, 0, H);
-  shade.addColorStop(0, 'rgba(180,190,205,0)');
-  shade.addColorStop(1, 'rgba(150,160,175,0.55)');
-  ctx.globalCompositeOperation = 'source-atop';
-  ctx.fillStyle = shade;
-  ctx.fillRect(0, 0, W, H);
-  ctx.globalCompositeOperation = 'source-over';
-  return tex(c, { aniso: false });
 }
 
 // Weicher runder Partikel (Gischt, Rauch)
@@ -675,29 +598,6 @@ export function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// Braunes Touristik-Schild (Unterrichtungstafel)
-export function brownSignTexture(title, sub) {
-  const w = 512;
-  const h = 320;
-  const c = canvas(w, h);
-  const ctx = c.getContext('2d');
-  // ganz füllen (undurchsichtige Tafel: durchsichtige Ecken würden schwarz)
-  ctx.fillStyle = '#6b3d22';
-  ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 6;
-  roundRect(ctx, 10, 10, w - 20, h - 20, 10);
-  ctx.stroke();
-  ctx.fillStyle = '#fff';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = 'bold 44px Arial, sans-serif';
-  fitTextCenter(ctx, title, w / 2, h * 0.42, w - 60);
-  ctx.font = '30px Arial, sans-serif';
-  fitTextCenter(ctx, sub, w / 2, h * 0.72, w - 60);
-  return tex(c);
-}
-
 export function fitTextCenter(ctx, text, x, y, maxW) {
   let size = parseFloat(ctx.font.match(/(\d+(\.\d+)?)px/)[1]);
   while (ctx.measureText(text).width > maxW && size > 12) {
@@ -800,53 +700,4 @@ export function truckRearTexture(text = 'Abstand halten!') {
     ctx.fillRect(x, H - 26, 32, 18);
   }
   return tex(c);
-}
-
-// Normal-Map-Sprite für einen Regentropfen (R/G = Normale, B = Maske)
-export function dropSprite() {
-  const S = 64;
-  const c = canvas(S, S);
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(S, S);
-  for (let y = 0; y < S; y++) {
-    for (let x = 0; x < S; x++) {
-      const dx = (x - S / 2 + 0.5) / (S / 2);
-      const dy = (y - S / 2 + 0.5) / (S / 2);
-      const r2 = dx * dx + dy * dy;
-      const i = (y * S + x) * 4;
-      if (r2 < 1) {
-        const nz = Math.sqrt(1 - r2);
-        img.data[i] = 128 + dx * 127 * (1 - nz * 0.3);
-        img.data[i + 1] = 128 + dy * 127 * (1 - nz * 0.3);
-        img.data[i + 2] = 255 * Math.min(1, nz * 1.6);
-        // weicher Rand
-        img.data[i + 3] = 255 * Math.min(1, (1 - r2) * 4);
-      } else {
-        img.data[i + 3] = 0;
-      }
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  return c;
-}
-
-export function bananaTexture() {
-  const S = 256;
-  const c = canvas(S, S);
-  const ctx = c.getContext('2d');
-  ctx.font = '200px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('🍌', 128, 140);
-  return tex(c, { aniso: false });
-}
-
-export function emojiTexture(emoji, size = 256) {
-  const c = canvas(size, size);
-  const ctx = c.getContext('2d');
-  ctx.font = `${size * 0.8}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(emoji, size / 2, size * 0.55);
-  return tex(c, { aniso: false });
 }

@@ -38,7 +38,7 @@ import { Trip, J, PROFILES } from '../src/game/trip.js';
 import { MapDemo } from './mapdemo.mjs';
 import { Game, TOWN_HOLD } from '../src/game/game.js';
 import { BID_PLACES, OPENING } from '../src/game/navi.js';
-import { INSIDER_ORTE, REISE_JOBS } from '../src/data.js';
+import { INSIDER_ORTE, JOB_TEMPLATES } from '../src/data.js';
 import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { goalName } from '../src/world/kit/layout.js';
@@ -51,6 +51,8 @@ const LOG = process.argv[3] === 'log';
 // so viele erste Runden je Fahrer (Streams von höchstens zehn Minuten, siehe „Die erste Runde“ unten)
 const OPENINGS = process.argv[4] === undefined ? 60 : Number(process.argv[4]);
 const DT = 1 / 30;
+// der Auftrag „50 km Strecke“ in Reisekilometern: wann ihn jeder Fahrer schafft, steht in der Ausgabe
+const DIST_JOB = JOB_TEMPLATES.find((j) => j.id === 'dist50');
 let fails = 0;
 const seen = new Map();
 function ok(cond, msg) {
@@ -452,7 +454,7 @@ function stream(driver, hours, seed, firstRound = false) {
   let pendingCheck = false;
   let warned = 0; // Lader: die Warnstufe NOMIs, auf die er schon einen Stopp eingeplant hat
   let charging = false;
-  const job = { s0: p.s, road: -1, travel: -1 }; // wann 8 km Straße (klassischer Auftrag) und der Auftrag der Reise geschafft sind
+  const job = { travel: -1 }; // wann der Auftrag „50 km Strecke“ geschafft ist
 
   // jedes Gebot läuft über WorldNavi.overbid, jede Einnahme über Game.earn
   const overbid = nv.overbid.bind(nv);
@@ -651,8 +653,7 @@ function stream(driver, hours, seed, firstRound = false) {
       m.akku.standUsed += used;
     }
     if (!driver.stops) p.battery = 100;
-    if (job.road < 0 && p.s - job.s0 >= 8000) job.road = game.t;
-    if (job.travel < 0 && game.stats.distance >= REISE_JOBS.dist8.goal) job.travel = game.t;
+    if (job.travel < 0 && game.stats.distance >= DIST_JOB.goal) job.travel = game.t;
     if (game.over) {
       ok(false, `Der Stream endet von selbst (${game.over.reason || 'ohne Grund'}) bei t=${game.t.toFixed(0)}`);
       break;
@@ -726,9 +727,8 @@ function stream(driver, hours, seed, firstRound = false) {
       pendingCheck = false;
     }
   }
-  // jeder Leser nimmt dieselbe Strecke: Kilometerzähler, Statistik der Aufträge, Abspann; Aufträge in Reisekilometern
+  // jeder Leser nimmt dieselbe Strecke: Kilometerzähler, Statistik der Aufträge, Abspann
   ok(Math.abs(game.odometer - trip.km * 1000) < 1e-6 && game.odometer - game.stats.distance >= 0 && game.odometer - game.stats.distance < 100, `Kilometerzähler ${game.odometer} m, Statistik ${game.stats.distance} m, Fahrt ${trip.km} km`);
-  for (const j of game.jobs) if (REISE_JOBS[j.id]) ok(j.goal === REISE_JOBS[j.id].goal && j.text === REISE_JOBS[j.id].text, `Auftrag ${j.id}: ${j.text} (${j.goal})`);
   m.job = job;
   // Kasse: jedes Gebot genau einmal
   ok(m.earnN === m.bids && m.bids === game.stats.naviChanges && m.bids === nv.changes, `Gebote ${m.bids}, davon verbucht ${m.earnN} (Statistik ${game.stats.naviChanges})`);
@@ -836,7 +836,7 @@ for (const { driver, m } of rows) {
       `\n    Fahrzeit zum Ziel: ~30 km ${legs(18, 45)} · ~100 km ${legs(75, 130)} · ~250 km ${legs(190, 320)}` +
       `\n    Ziele nach Entfernung: <${BID_PLACES.nearKm} km ${fmt((100 * m.bands[0]) / tot, 0)} % · bis ${BID_PLACES.farKm} km ${fmt((100 * m.bands[1]) / tot, 0)} % · bis 500 km ${fmt((100 * m.bands[2]) / tot, 0)} % · weiter ${fmt((100 * m.bands[3]) / tot, 0)} %` +
       ` · zur Wahl standen stets ≥ ${m.minChoice} Orte · in Sperrzonen geboten: ${m.lockFork} vor Gabelungen, ${m.lockNode} vor Knoten · an der Gabelung anders als angesagt ${m.wrong}× (${m.flipped}× kippte ein Gebot den Plan kurz davor) · Einnahmen ${fmt(m.money / h / 60, 2)} €/min` +
-      ` · Auftrag „${REISE_JOBS.dist8.text}“ nach ${fmt(m.job.travel, 0)} s (8 km Straße wie klassisch: ${fmt(m.job.road, 0)} s)` +
+      ` · Auftrag „${DIST_JOB.text}“ nach ${fmt(m.job.travel, 0)} s` +
       `\n    ${akkuLine(m.akku)}` +
       `\n    Navi und Welt: ${m.navi.checks} Ansagen geprüft (${m.navi.exit} Ausfahrten, ${m.navi.far} hinter dem Horizont, ${m.navi.farKept} davon eingelöst, ${m.navi.arrive} Ziel voraus, ${m.navi.wende}× „dann wenden“), ${m.reroutes} Neuberechnungen` +
       `\n    ${numbersLine(m)}`,

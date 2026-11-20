@@ -12,46 +12,9 @@ export const GAME_NAME = `${GAME_TITLE} – ${GAME_SUBTITLE} ${GAME_XXL}`;
 export const TAGLINE = 'Live-Eskalationen immer woanders!';
 
 // ---------------------------------------------------------------------------
-// Navi-Ziele aus echten „Tesla ferngesteuert“-Streams (plus ein paar Insider)
-// km: [min, max] Spiel-Kilometer bis zum Ziel, special: besondere Ankunft
-export const NAVI_TARGETS = [
-  { name: 'Tesla Supercharger Erlensee', short: 'Supercharger Erlensee', note: 'Hier begann am 30.01.2021 das allererste Navi-Experiment.', km: [1.6, 3.2] },
-  { name: 'Hochofenwerk Phoenix West, Dortmund', short: 'Phoenix West', note: 'Ziel des ersten Navi-Streams (429,16 km).', km: [2.2, 4.0] },
-  { name: 'Burg Hauneck, Haunetal', note: 'Das erste Ziel, das 2022 wirklich erreicht wurde.', km: [1.8, 3.4] },
-  { name: 'Megahub Lehrte', note: 'Güterbahnhof. Der Chat war erleichtert.', km: [1.8, 3.6] },
-  { name: 'Arnhem (Niederlande)', note: 'Kurz mal Ausland.', km: [2.5, 4.6] },
-  { name: 'Gifhorn, Supermarkt-Parkplatz', note: 'Historisch bedeutsam. Polizei Gifhorn grüßt.', km: [2.0, 3.8], special: 'gifhorn' },
-  { name: 'Liberec (Tschechien)', note: 'Ziemlich weit. Wird bestimmt gleich überboten.', km: [6.0, 8.5] },
-  { name: 'Wartburg, Eisenach', note: 'Dort gibt es einen Automaten mit 0-Euro-Geldscheinen.', km: [1.8, 3.5] },
-  { name: 'Drive-In: Pommes ohne Rückfragen', note: 'Die legendäre Drive-In-Wette.', km: [1.4, 2.6], special: 'pommes' },
-  { name: 'Walte in Norderstedt abholen', short: 'Walte abholen', note: 'Die Bahn fällt mal wieder aus.', km: [2.6, 4.8], special: 'malte' },
-  { name: 'Burg Ronneburg', note: 'Burgen gehen immer.', km: [1.6, 3.0] },
-  { name: 'Rastplatz Schäferborn Ost', short: 'Schäferborn Ost', note: 'Endstation der dritten Navi-Runde.', km: [1.4, 2.8] },
-  { name: 'Weser-Skywalk, Beverungen', note: 'Aussicht mit Wackelfaktor.', km: [2.0, 3.6] },
-  { name: 'Ladepark Kirchheim', note: 'Strom tanken mit Stil.', km: [1.5, 3.0], special: 'charger' },
-  { name: 'Tesla Supercharger Mogendorf', short: 'Supercharger Mogendorf', note: 'Hier endete die 723-km-Tour 2021.', km: [1.8, 3.2], special: 'charger' },
-  { name: 'Köln', note: 'Wo genau? Egal, Hauptsache Köln.', km: [2.2, 4.0] },
-  { name: 'Siegen', note: 'Wurde schon oft gespendet. Setzt sich fast nie durch.', km: [2.0, 3.5], special: 'siegen', weight: 0.25 },
-  { name: 'Bispingen', note: 'Schnee im Sommer.', km: [2.4, 4.2] },
-  { name: 'Sizilien (wegen Monte)', note: 'Ein ganz normaler Ostersamstag.', km: [8.0, 11.0] },
-  { name: 'Gardasee', note: 'Die Oster-Tour lässt grüßen.', km: [5.0, 7.0] },
-  { name: 'Burg Staufen', note: 'Silvester-Feeling.', km: [2.2, 3.8] },
-  { name: 'Kassel – Elsa besuchen', note: 'Spirit-Animal von SkylineTV LIVE.', km: [2.0, 3.8], special: 'elsa' },
-  { name: 'Fulda', note: 'Startort der VIP-Edition.', km: [1.6, 3.0] },
-  { name: 'Frankfurt am Main – Skyline', note: 'Heimat von SkylineTV.', km: [2.4, 4.4] },
-  { name: 'Bad Soden-Salmünster (Popcorn an der Ladesäule)', note: 'Haushaltsgeräte an der E-Säule testen.', km: [1.6, 3.0], special: 'charger' },
-  { name: 'Bischofsheim in der Rhön (Satelliten-Stream)', note: 'Hier lief der erste IRL-Stream über Satellit.', km: [2.2, 3.8] },
-  { name: 'Dortmund – die richtige Currywurstbude', note: 'Diesmal ganz sicher die richtige.', km: [1.8, 3.2], special: 'bude' },
-  { name: 'Ein sehr schöner Brunnen', note: 'Für eine neue Folge BrunnenTV.', km: [1.4, 2.8], special: 'brunnen' },
-  { name: 'Meister Pünktlich abholen', note: 'Er ist ganz bestimmt gleich da.', km: [1.6, 3.0], special: 'propper' },
-  { name: 'Bank am Markt (Farbe prüfen)', note: 'Der Wissenschaftliche Dienst braucht Daten.', km: [1.4, 2.6], special: 'sparkasse' },
-];
-
-export const BANK_FARBEN = ['rot', 'blau', 'weiß', 'rot (wie immer)', 'überraschend orange'];
-
-// Navi ferngesteuert XXL: Dort wird auf die echten Orte der Karte geboten (src/game/navi.js WorldNavi). Die Insider
-// der Liste oben hängen an ihrem Ort – Schlüssel wie in der Karte (places[].key; tools/journey-test.mjs prüft jeden).
-// special: besondere Ankunft (Game.onArrive) · note: Zeile unter dem Hinweis aufs neue Ziel.
+// Navi-Ziele: Geboten wird auf die echten Orte der Karte (src/game/navi.js WorldNavi). Insider aus echten „Tesla
+// ferngesteuert“-Streams hängen an ihrem Ort – Schlüssel wie in der Karte (places[].key; tools/journey-test.mjs prüft
+// jeden). special: besondere Ankunft (Game.onArrive) · note: Zeile unter dem Hinweis aufs neue Ziel.
 // Nicht dabei, weil die Karte den Ort nicht hat oder die Welt das Ding dort nicht baut: Megahub Lehrte, Liberec,
 // Burg Ronneburg, Schäferborn Ost, der Drive-In und die Farbe der Bank am Markt.
 export const INSIDER_ORTE = {
@@ -217,7 +180,7 @@ export const CHAT = {
     'Erzähl mal die Raab-Story!', 'Das Bild ist so scharf 😍', 'Elsa ❤🐟', 'BrunnenTV wann?', 'Bananensaft-Pause? 🍌',
     'Kappandramäßige Zusammenfassung bitte, bin grad erst rein', 'Wir sind auf der Autobahn und streamen in Full HD! 🎶',
     'Wohin fahren wir eigentlich?', 'Das Navi-Ziel ändert sich eh gleich wieder', 'Grüße ans Sprachstudio!',
-    'Danke an alle Ehrenmenschen 🙏', 'Pfefferminz jemand?', 'Pandamütze aufsetzen!', 'Ich biete 1 Cent mehr 🤑',
+    'Danke an alle Ehrenmenschen 🙏', 'Pfefferminz jemand?', 'Pandamütze aufsetzen!', 'Ich biete 10 € mehr 🤑',
     'Was ist eigentlich im Kofferraum?', 'Grüße an die Polizei Gifhorn 👮', 'Welche Autobahn ist das eigentlich?', 'Schöner Tesla 🖤',
     'Der Wischer ist auch nur ein Mensch', 'Nils weiß bestimmt, wann wir das letzte Mal hier waren',
     'Bester Stream der Woche', 'Die Plüsch-Hände am Lenkrad 😂', 'Gleich kommt bestimmt ein Brunnen',
@@ -227,7 +190,7 @@ export const CHAT = {
     'Meine Oma guckt mit und lässt grüßen', 'Wie lange geht der Stream heute?', 'Hugo, wie spät ist es?',
     'James hat heute viel zu tun', 'Kanalpunkte sind gespart, was gibt es dafür?', 'Das Ziel stabilisiert sich … oder auch nicht',
     'Mini Adam, wink mal! 🧸', 'Die Kappe sitzt heute perfekt', 'Kommt gleich eine Raststätte?', 'Wer ist noch aus Hessen hier?',
-    'erster stream für mich, wie geht das mit dem navi?', 'Einfach 1 Cent mehr bieten, dann gehört das Navi dir 😂',
+    'erster stream für mich, wie geht das mit dem navi?', 'Einfach 10 € mehr bieten, dann gehört das Navi dir 😂',
     'Das Lenkrad ist größer als Mini Adam', 'NOMI guckt so lieb', 'Wann wieder Drohne?', 'Supercharger wann?',
     'Mein Handy-Akku: 4 %. Eurer?', 'Chat, benehmt euch, Gifhorn liest mit', 'Schöne Grüße aus dem Homeoffice',
     'Ich sollte schlafen, aber das hier ist wichtiger', 'Bild und Ton synchron, ich bin beeindruckt',
@@ -281,10 +244,6 @@ export const CHAT = {
   ortsspende: ['Ortsspenden-Zeit! 💶', 'Jetzt klingelt die Kasse', 'Für die schöne Ankunft ❤', 'Ortsspende geht raus!',
     'Dafür hat sich die Fahrt gelohnt', 'Die Ortskasse freut sich', 'Angekommen, jetzt wird gespendet 😂'],
   // Navi-Gebote
-  bidChaos: ['Ich leg einen Cent drauf 🤑', '1 CENT!', 'Und noch ein Cent', 'Cent-Krieg 😂', 'Das Navi dreht durch',
-    'Wohin denn jetzt?!', 'Mein Cent, mein Ziel', 'Überboten in 2 Sekunden lol', 'Bieter-Chaos! 🍿',
-    'Ich komm nicht mehr mit', 'Das Navi braucht Urlaub', 'Jeder Cent zählt 💶', 'Route wird neu berechnet. Schon wieder.',
-    'Schnell ein Screenshot, bevor der nächste Cent kommt 📸', 'Noch ein Cent und wir drehen um 👀'],
   bidDuel: ['DUELL! 🍿', 'Zwei Sturköpfe, ein Navi 😂', 'Die schaukeln sich hoch', 'Wer gibt zuerst auf?',
     'Ich setz auf den Zweiten', 'Das wird teuer 💸', 'Keiner gibt nach!', 'Bitte weiterbieten, ist gut für die Kasse',
     'Wer überbietet, zahlt. Wer überboten wird, auch 😂'],
@@ -293,10 +252,7 @@ export const CHAT = {
   // nach dem Chaos bleibt ein Ziel endlich stehen
   bidCalm: ['Endlich ein Ziel mit Sitzfleisch 🙏', 'Ziel stabil. Vorerst.', 'Bleibt es jetzt dabei?', 'Ruhe im Navi. Verdächtig.',
     'Na also, wir haben ein Ziel'],
-  bidBig: ['WAS?! 😱', 'Da meint es jemand ernst', 'Jetzt traut sich keiner mehr', 'Ansage!',
-    'Das Ziel steht jetzt wohl fest', 'So viel für ein Navi-Ziel 😂', 'Wer legt 100 € drauf? Mehr geht auf einmal ja nicht'],
-  // Reise: Dort wird in Zehnern geboten, bis in die Hunderte (Chaos am Anfang der Runde, großes Gebot; je Zeile wie
-  // bidChaos und bidBig, so zieht der Chat gleich viele Zufallszahlen)
+  // geboten wird in Zehnern, bis in die Hunderte: Chaos am Anfang der Runde, großes Gebot
   zehnerChaos: ['Zehner drauf! 🤑', '+10 €!', 'Und noch ein Zehner', 'Zehner-Krieg 😂', 'Das Navi dreht durch',
     'Wohin denn jetzt?!', 'Mein Zehner, mein Ziel', 'Überboten in 2 Sekunden lol', 'Bieter-Chaos! 🍿',
     'Ich komm nicht mehr mit', 'Das Navi braucht Urlaub', 'Jeder Zehner zählt 💶', 'Route wird neu berechnet. Schon wieder.',
@@ -359,13 +315,8 @@ export const CHAT = {
     'Gleich nochmal freischalten!', 'Dafür spende ich gern'],
   leftLaneIgnored: ['Schade um die schöne Spur 😅', 'Nächstes Mal dann links, ja?', 'Die linke Spur fühlt sich übersehen',
     'Na gut, dann halt rechts', 'Die Minute hätte ich auch gern gehabt'],
-  naviChanged: ['Wer war das? 😂', 'Nicht schon wieder!', 'Überboten! 🤑', 'Navi ferngesteuert 🔥', 'Wendemanöver incoming',
-    'Das Navi weiß auch nicht mehr weiter', 'Kaum gewöhnt man sich an ein Ziel …', 'Klassiker', 'Jetzt aber wirklich!', 'NEIN 😂',
-    'Und das Navi stellt schon wieder um 😂', 'Ziel weg, Geld auch weg. Ich liebe dieses Format',
-    '30 Sekunden hat mein Ziel gehalten. War schön.'],
-  naviReached: ['ANGEKOMMEN! 🎉', 'Geschafft!!!', 'Und jetzt?', 'Gibt es hier einen Brunnen?', 'Wo ist der Guide?', 'Ziel erreicht 🏁'],
-  // Navi ferngesteuert XXL: Ziele sind echte Orte, die Fahrt dorthin dauert Minuten, gewendet wird nur über eine
-  // Ausfahrt, und jede Ankunft endet am Brunnen des Orts
+  // Ziele sind echte Orte: Die Fahrt dorthin dauert Minuten, gewendet wird nur über eine Ausfahrt, und jede Ankunft
+  // endet am Brunnen des Orts
   ortChanged: ['Wer war das? 😂', 'Nicht schon wieder!', 'Überboten! 🤑', 'Navi ferngesteuert 🔥',
     'Das Navi weiß auch nicht mehr weiter', 'Kaum gewöhnt man sich an ein Ziel …', 'Klassiker', 'Jetzt aber wirklich!', 'NEIN 😂',
     'Und das Navi stellt schon wieder um 😂', 'Ziel weg, Geld auch weg. Ich liebe dieses Format',
@@ -422,7 +373,6 @@ export const CHAT = {
   brunnen: ['BRUNNENTV!!!', 'Herr Schönnbrun!', 'Brunnen gesichtet! ⛲', 'Neue Folge BrunnenTV!'],
   elsa: ['ELSA!!! ❤🐟', 'Elsa ❤', 'Spirit-Animal gesichtet!', '👑🐟'],
   record: ['REKORD!!! 🎉', 'Neuer Zuschauerrekord!', 'Diesmal ohne Viewer-Bots 🤖', 'Hype!'],
-  banana: ['🍌🍌🍌', 'Bananensaft-Power!', 'Lecker 🍌'],
   koriander: ['Bäh, Koriander 🤢', 'Nicht der Koriander!', 'Wer hat da Koriander bestellt?'],
   // Reise: Ladestopp im Ladepark (Game.tickCharge), die Popcorn-Maschine an der Säule und die Saftpause
   popcorn: ['Popcorn-Stream! 🍿', '🍿🍿🍿', 'Haushaltsgeräte an der E-Säule testen 😂', 'Die Säule kann auch Popcorn!', 'Popcorn mit Ökostrom 🔌', 'Salzig oder süß? 🍿'],
@@ -463,7 +413,7 @@ export const CHAT = {
     '5 Cent, wenn du der Polizei Gifhorn Kekse anbietest 🍪',
     '5 Cent, wenn du zum Tesla „Braves Auto“ sagst 🖤',
     '5 Cent, wenn du ab jetzt nur noch in Reimen sprichst',
-    '5 Cent, wenn du den nächsten Lade-Ring als Hula-Hoop-Reifen benutzt',
+    '5 Cent, wenn du im nächsten Ladepark einmal ums Auto tanzt 🔌',
     '5 Cent, wenn du eine Zahl ganz ohne Drei in den Chat schreibst 🤓',
     '5 Cent, wenn du den nächsten Rahmen selbst bastelst ✂️',
     '5 Cent, wenn du die Warnweste über die Kappe ziehst 🦺',
@@ -502,13 +452,6 @@ export const CHAT = {
     return n;
   },
 };
-// Reise: dasselbe Geplauder, nur wird dort in Zehnern geboten statt um einen Cent
-const ZEHNER_STATT_CENT = {
-  'Ich biete 1 Cent mehr 🤑': 'Ich biete 10 € mehr 🤑',
-  'Einfach 1 Cent mehr bieten, dann gehört das Navi dir 😂': 'Einfach 10 € mehr bieten, dann gehört das Navi dir 😂',
-};
-CHAT.ambientReise = CHAT.ambient.map((line) => ZEHNER_STATT_CENT[line] ?? line);
-
 function threeNumber() {
   const len = randInt(2, 4);
   let s = '';
@@ -725,7 +668,7 @@ export const DURCHSAGEN = [
   { voice: 'weronika', text: 'Welche Farbe hat die Bank in {city}?' },
   { voice: 'william', text: 'Mini Adam, erzähl doch mal die Raab-Story!' },
   { voice: 'karla', text: 'Wir sind auf der Autobahn und streamen in Full HD!' },
-  { voice: 'william', text: 'Ich biete einen Cent mehr. Neues Ziel: {city}.', reise: 'Ich biete zehn Euro mehr. Neues Ziel: {city}.' },
+  { voice: 'william', text: 'Ich biete zehn Euro mehr. Neues Ziel: {city}.' },
   { voice: 'kassandra', text: 'Bitte rechts fahren. Mit freundlichen Grüßen, die Polizei Gifhorn.' },
   { voice: 'weronika', text: 'Mini Adam, du fährst besser als jedes Navi.' },
   { voice: 'karla', text: 'Hallo Mini Adam! Schreib mal eine Zahl in den Chat. Aber bitte ohne Drei.' },
@@ -757,8 +700,6 @@ export const BOARD = {
     'Das war nicht ich. Das war die Beta-Software.',
   ],
   wiperPhantom: 'Regen erkannt. Ach nein. Doch nicht.',
-  lowBattery: 'Akku schwach. Bitte bald laden.',
-  veryLowBattery: 'Akku fast leer. Die Stream-Technik schaltet gleich ab.',
   elefant: 'Achtung. Elefantenrennen voraus.',
   blitzer: 'Hinweis: Tempolimit. Stationärer Blitzer voraus.',
   shoulder: 'Hinweis: Der Standstreifen ist keine Fahrspur.',
@@ -813,34 +754,22 @@ export function berufFor(km) {
 
 // ---------------------------------------------------------------------------
 // „You had 5 Jobs“ – pro Fahrt fünf kleine Aufgaben. Geld gibt es dafür nur, weil jemand im Chat genau das
-// versprochen hat („Wenn {wenn}, spende ich …“).
+// versprochen hat („Wenn {wenn}, spende ich …“). Strecken zählen Reisekilometer (Game.odometer); geladen wird in den
+// Ladeparks an den Ausfahrten (REISE.md A5).
 export const JOB_TEMPLATES = [
   { id: 'left20', text: '20 Sekunden auf der freigeschalteten linken Spur', goal: 20, stat: 'leftLaneTime', wenn: 'du 20 Sekunden ganz links fährst' },
   { id: 'navi1', text: 'Ein Navi-Ziel erreichen', goal: 1, stat: 'naviReached', wenn: 'du ein Navi-Ziel erreichst' },
   { id: 'near3', text: '3× haarscharf überholen', goal: 3, stat: 'nearMisses', wenn: 'du dreimal haarscharf überholst' },
   { id: 'speed200', text: '200 km/h fahren', goal: 200, stat: 'maxSpeedKmh', wenn: 'du 200 km/h fährst' },
-  { id: 'banana2', text: '2× Bananensaft einsammeln', goal: 2, stat: 'bananas', wenn: 'du zweimal Bananensaft erwischst' },
-  { id: 'clean5', text: '5 km ohne Blechschaden', goal: 5000, stat: 'cleanDistance', wenn: 'du 5 km ohne Blechschaden schaffst' },
+  { id: 'stop1', text: 'Einen Ladestopp einplanen', goal: 1, stat: 'stopsPlanned', wenn: 'du einen Ladestopp einplanst' },
+  { id: 'clean40', text: '40 km ohne Blechschaden', goal: 40000, stat: 'cleanDistance', wenn: 'du 40 km ohne Blechschaden schaffst' },
   { id: 'changes25', text: '25 Navi-Gebote überstehen', goal: 25, stat: 'naviChanges', wenn: 'du 25 Navi-Gebote überstehst' },
   { id: 'viewers1000', text: '1.000 Zuschauer erreichen', goal: 1000, stat: 'maxViewers', wenn: 'hier 1.000 Leute zuschauen' },
-  { id: 'charge2', text: '2 Lade-Ringe einsammeln', goal: 2, stat: 'charges', wenn: 'du zwei Lade-Ringe einsammelst' },
-  { id: 'dist8', text: '8 km Strecke schaffen', goal: 8000, stat: 'distance', wenn: 'du 8 km weit kommst' },
+  { id: 'park1', text: 'Im Ladepark den Akku füllen', goal: 1, stat: 'parkCharges', wenn: 'du im Ladepark den Akku füllst' },
+  { id: 'dist50', text: '50 km Strecke schaffen', goal: 50000, stat: 'distance', wenn: 'du 50 km weit kommst' },
   { id: 'blitzfrei', text: 'An einem Blitzer vorbei, ohne geblitzt zu werden', goal: 1, stat: 'blitzerClean', wenn: 'du brav am Blitzer vorbeikommst' },
-  { id: 'rain1', text: '1 km im Regen fahren', goal: 1000, stat: 'rainDistance', wenn: 'du 1 km im Regen durchhältst' },
+  { id: 'rain8', text: '8 km im Regen fahren', goal: 8000, stat: 'rainDistance', wenn: 'du 8 km im Regen durchhältst' },
 ];
-
-// In der XXL-Welt zählen die Strecken-Aufträge Reisekilometer (Game.odometer): je Auftrag etwa so lange gefahren wie
-// klassisch (tools/journey-test.mjs: rund 7,5 Reisekilometer je Kilometer Straße; die Strecke ab dem Start etwas
-// weniger, weil der Startort echte Straße ist).
-// Lade-Ringe und Bananensaft-Flaschen liegen auf der Reise nicht auf der Straße (REISE.md A5): Geladen wird in den
-// Ladeparks an den Ausfahrten, also gelten dort deren Aufträge.
-export const REISE_JOBS = {
-  clean5: { text: '40 km ohne Blechschaden', goal: 40000, wenn: 'du 40 km ohne Blechschaden schaffst' },
-  dist8: { text: '50 km Strecke schaffen', goal: 50000, wenn: 'du 50 km weit kommst' },
-  rain1: { text: '8 km im Regen fahren', goal: 8000, wenn: 'du 8 km im Regen durchhältst' },
-  banana2: { text: 'Einen Ladestopp einplanen', goal: 1, stat: 'stopsPlanned', wenn: 'du einen Ladestopp einplanst' },
-  charge2: { text: 'Im Ladepark den Akku füllen', goal: 1, stat: 'parkCharges', wenn: 'du im Ladepark den Akku füllst' },
-};
 
 // Reise: NOMIs Akku-Warnungen nennen den nächsten Ladepark auf dem Weg mit Entfernung (trip.js nextRest); Taste L oder
 // der Knopf „Ladestopp einplanen“ machen ihn zum Zwischenziel. Dort parkt der Wagen an der freien Säule ein und lädt im
@@ -927,7 +856,7 @@ export const SHOP = [
   {
     id: 'weste', icon: '🦺', name: 'Warnweste', cat: 'Deko', prices: [90],
     desc: 'Für Mini Adam. Bringt nichts, sieht aber sehr professionell aus.',
-    effect: () => 'Sichtbar beim Kameraschwenk',
+    effect: () => 'Sichtbar auf der Facecam und in der Startszene',
   },
   {
     id: 'konfetti', icon: '🎉', name: 'Konfetti-Kanone', cat: 'Deko', prices: [200],
