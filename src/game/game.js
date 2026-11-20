@@ -14,6 +14,7 @@ import { Vector3 } from 'three';
 import { EYE } from '../cockpit/cockpit.js';
 import { ELSA_STATUE } from '../world/scenery.js';
 import { curvePoint } from '../curve.js';
+import { stopPlan, STOP } from '../world/xxl/charge.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
 // „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
@@ -86,6 +87,8 @@ export class Game {
     this.onMood = () => {};
     // BrunnenTV am Navi-Ziel der XXL-Welt: Hier hängt sich die Szene ein (siehe startBrunnenTV)
     this.onBrunnenTV = () => {};
+    // Ladestopp im Park: Hier hängt sich die Szene ein (siehe startCharge)
+    this.onCharge = () => {};
   }
 
   // ------------------------------------------------------------------------
@@ -142,9 +145,11 @@ export class Game {
     };
     // laufende BrunnenTV-Folge am Navi-Ziel (XXL) oder null
     this.tv = null;
-    // Reise: Laden im Ladepark ({ t0, from, secs, park }) oder null; Verbrauch seit dem letzten Laden (Reisemeter und
-    // Akku, für die Reichweite in NOMIs Warnung) und wann sie wieder rechnet
+    // Reise: Ladestopp im Ladepark ({ t0, from, park, name, sec, plan, … }, startCharge) oder null; Verbrauch seit dem
+    // letzten Laden (Reisemeter und Akku, für die Reichweite in NOMIs Warnung) und wann sie wieder rechnet; sugarDue: der
+    // Zuckerschub des Bananensafts kommt, sobald der Wagen nach dem Stopp wieder auf der Autobahn ist
     this.charging = null;
+    this.sugarDue = false;
     this.akku = { m: 0, b: 100, next: 0 };
     // zwischen Zielpunkt und Halt am Brunnen: { sec: Ortsdurchfahrt, still: so lange steht der Wagen schon }
     this.halt = null;
@@ -500,6 +505,12 @@ export class Game {
     this.updateLeftLane(dt);
     this.updateWeather(dt, ds);
     if (this.charging) this.tickCharge(dt);
+    if (this.sugarDue && !this.offAutobahn) {
+      this.sugarDue = false;
+      p.sugar = 6;
+      this.audio.coin();
+      this.ui.toast('🍌 Bananensaft! Zuckerschub', 'good');
+    }
     if (this.tv) this.tickBrunnenTV(ctl);
     else if (this.navi.stopping) this.tickHalt(dt);
     this.updateNavi(dt);
@@ -624,31 +635,88 @@ export class Game {
   }
 
   /**
-   * Der Wagen steht im Ladepark neben der freien Säule (Ereignis 'charge' der Welt). Platzhalter, bis die Szene mit
-   * Andocken kommt: NOMI sagt es einmal, der Akku füllt sich in höchstens REISE_AKKU.secs Sekunden (eine Funktion der
-   * Zeit, tickCharge), dann rollt der Wagen weiter.
+   * Der Wagen steht im Ladepark in der Spur hinter der freien Heldenbucht (Ereignis 'charge' der Welt): der Ladestopp
+   * beginnt, eine kleine Szene nach dem Fahrplan von xxl/charge.js stopPlan (Sekunden ab jetzt, Spielzeit): einparken,
+   * einstecken, im Zeitraffer laden, Popcorn und Bananensaft, ausstecken, ausparken. Das Spiel führt die Zeit, den Akku,
+   * Chat, NOMI und Spenden; main.js zeigt dazu Wagen, Kabel, Kamera (onCharge) und lässt den Wagen am Ende in die Spur
+   * rollen. Ohne Szene (Node-Tests) läuft derselbe Fahrplan, der Wagen wartet bis zum Ausparken an seinem Halt.
    */
   startCharge(e) {
     const p = this.player;
-    this.charging = { t0: this.t, from: p.battery, secs: Math.max(2.5, (REISE_AKKU.secs * (100 - p.battery)) / 100), park: e.park };
-    this.say(fillTemplate(REISE_AKKU.start, { park: e.name }), 'happy');
-    this.audio.chime();
+    const plan = stopPlan(e.sec, p.s, p.x);
+    this.charging = { t0: this.t, from: p.battery, park: e.park, name: e.name, sec: e.sec, plan, said: 0 };
+    this.onCharge(this.charging);
+  }
+
+  /** Sekunden seit dem Halt im Park (Fahrplan des Ladestopps). */
+  chargeT() {
+    return this.charging ? this.t - this.charging.t0 : 0;
   }
 
   tickCharge() {
     const c = this.charging;
     const p = this.player;
-    const q = clamp((this.t - c.t0) / c.secs, 0, 1);
-    p.battery = c.from + (100 - c.from) * q * q * (3 - 2 * q);
+    const P = c.plan;
+    const t = this.t - c.t0;
+    // übersprungen (skipCharge): gleich so, wie der Stopp sonst endet
+    if (c.skip) {
+      if (!c.rolled) this.world.release();
+      this.finishCharge();
+      return;
+    }
+    // im Zeitraffer, solange der Stecker steckt
+    const q = clamp((t - P.at(STOP.fill[0])) / (STOP.fill[1] - STOP.fill[0]), 0, 1);
+    p.battery = Math.max(p.battery, c.from + (100 - c.from) * q * q * (3 - 2 * q));
     p.empty = false;
-    if (q < 1) return;
+    // die schönen Momente je einmal: NOMI, Popcorn, Bananensaft (eine Spende kommt nach den Regeln der Ökonomie)
+    const moments = [
+      [STOP.nomi, () => {
+        this.say(fillTemplate(REISE_AKKU.start, { park: c.name }), 'happy');
+        this.audio.chime();
+      }],
+      [STOP.pop[0] + 0.6, () => {
+        this.eco.cheer('funny');
+        this.burst(CHAT.popcorn, 3, 2.2);
+      }],
+      [STOP.juice, () => {
+        this.stats.bananas++;
+        c.juice = true;
+        this.thrill('banana', 'Bananensaft-Pause');
+        this.burst(CHAT.saftpause, 2, 1.6);
+      }],
+    ];
+    while (c.said < moments.length && t >= P.at(moments[c.said][0])) moments[c.said++][1]();
+    // ausparken: der Halt ist vorbei (main.js lässt den Wagen aus der Bucht in die Spur rollen)
+    if (t >= P.roll && !c.rolled) {
+      c.rolled = true;
+      this.world.release();
+    }
+    if (t >= P.end) this.finishCharge();
+  }
+
+  /**
+   * Ladestopp überspringen (main.js: jede Taste, wie in der Startszene): Er endet im nächsten Bild so, wie er sonst
+   * enden würde – Akku voll, Stecker im Halter, der Wagen in der Spur; was noch nicht gesagt war, bleibt ungesagt.
+   */
+  skipCharge() {
+    if (this.charging) this.charging.skip = true;
+  }
+
+  finishCharge() {
+    const c = this.charging;
+    const p = this.player;
     this.charging = null;
+    p.battery = 100;
+    p.empty = false;
+    if (!c.juice) this.stats.bananas++;
     this.stats.parkCharges++;
     this.akku.m = this.odometer;
     this.akku.b = p.battery;
     this.batteryWarned = 0;
     this.ui.toast('🔋 Akku voll', 'good');
-    this.world.release();
+    // der Zuckerschub des Bananensafts, sobald der Wagen wieder auf der Autobahn ist (im Park und auf dem Zubringer
+    // gilt ohnehin ein Tempolimit)
+    this.sugarDue = true;
   }
 
   // --- Linke Spur ------------------------------------------------------------

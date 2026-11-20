@@ -25,7 +25,7 @@ export const PARK = {
   // Ausfahrt (J.hide + J.curtainAfter + 60 = 710 m hinter der Gabelung), der Park liegt frei
   len: 250, // Abschnitt 'park': Straße wie im Ort, rechts hinter dem Gehweg der Ladepark
   u: 110, // Mitte des Ladeparks längs des Abschnitts (Meter ab seinem Anfang)
-  halt: 111.45, // Wagenmitte beim Halt: auf Höhe der freien Heldenbucht (xxl/charge.js: u − bay[0] + off)
+  halt: 121.02, // Wagenmitte beim Halt in der Spur, ehe er rückwärts in die freie Heldenbucht setzt (xxl/charge.js dockHalt)
   back: 930, // Zubringer zurück zur Auffahrt hinter einer Ausfahrt: J.ramp + zub + len + back + J.auf = J.hide + J.show
 };
 /** Der Halt liegt so weit hinter dem Haltepunkt spotS (wie am Brunnen: das Ereignis kommt, ehe der Wagen steht). */

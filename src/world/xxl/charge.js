@@ -137,6 +137,119 @@ export function rollPose(u, t, out = {}) {
   return out;
 }
 
+// --- Ladestopp in einem Park (Abschnitt 'park', src/map/parks.js) ---------------------------------------------------
+// Der Wagen hält in der Spur ein Stück hinter der freien Heldenbucht (PARK.halt), legt R ein und setzt rückwärts hinein:
+// derselbe Weg der Hinterachse wie beim Ausparken in Erlensee, nur rückwärts gefahren (die Ladeklappe sitzt links hinten,
+// die Säulen stehen am Kopf der Buchten; so hängt der Stecker wie in Erlensee 0,33 m vom Halter). Am Ende des Stopps
+// parkt er genau so aus wie zu Beginn jeder Fahrt (rollPose).
+/**
+ * Einparken: lead = gerades Stück in der Spur, auf dem schon eingeschlagen wird (im Stand nie), v = Rückwärtstempo
+ * (m/s), up/down = Dauer des Anfahrens und des Bremsens bis zum Stand in der Bucht (s).
+ */
+export const DOCK = { lead: 1.2, v: 3.4, up: 1.0, down: 1.5 };
+
+/**
+ * Wagenmitte beim Halt in der Spur vor dem Einparken (Meter ab Abschnittsbeginn) für einen Park mit Mitte u: Hinterachse
+ * lead hinter dem Bogen, der in die Bucht führt (src/map/parks.js PARK.halt ist diese Zahl für PARK.u).
+ */
+export const dockHalt = (u) => u - CHARGE.bay[0] + CHARGE.off + CHARGE.R + DOCK.lead + CHARGE.rear;
+
+/**
+ * Weg des Einparkens für einen Park mit Mitte u, wenn der Wagen mit seiner Mitte bei u0 und x0 (Ortskoordinaten) steht
+ * (der Begrenzer hält ihn auf einige Zentimeter genau an): das Stück in der Spur wird um den Unterschied länger oder
+ * kürzer, und die seitliche Abweichung von der Spurmitte läuft auf ihm aus. Ergebnis: { T (Sekunden bis zum Stand in der
+ * Bucht), len (Meter der Hinterachse), pose(t, out) } mit pose wie rollPose ({ x, u, yaw, v, steer }; v ist negativ:
+ * rückwärts).
+ */
+export function dockPath(u, u0, x0 = lane) {
+  const yb = u - CHARGE.bay[0] + CHARGE.off;
+  const R = CHARGE.R;
+  const S = Math.atan(CHARGE.wheelbase / R);
+  const lead = Math.max(0, u0 - CHARGE.rear - (yb + R));
+  const turn = Math.max(lead, 0.3);
+  const dx = x0 - lane;
+  const len = lead + SB + SA;
+  const { v, up, down } = DOCK;
+  const T = up + down + (len - (v * (up + down)) / 2) / v;
+  // gefahrene Meter nach t Sekunden: sanft anfahren (wie rollPose), gleichmäßig, sanft bis zum Stand bremsen
+  const along = (t) => {
+    if (t <= 0) return [0, 0];
+    if (t >= T) return [len, 0];
+    if (t < up) {
+      const q = t / up;
+      return [v * up * (q * q * q - (q * q * q * q) / 2), v * q * q * (3 - 2 * q)];
+    }
+    if (t > T - down) {
+      const q = (T - t) / down;
+      return [len - v * down * (q * q * q - (q * q * q * q) / 2), v * q * q * (3 - 2 * q)];
+    }
+    return [(v * up) / 2 + v * (t - up), v];
+  };
+  return {
+    T,
+    len,
+    pose(t, out = {}) {
+      const [d, sp] = along(t);
+      let x;
+      let y;
+      let yaw;
+      let steer;
+      if (d <= lead) {
+        x = lane + dx * (1 - smooth(d / turn));
+        y = yb + R + lead - d;
+        yaw = 0;
+        steer = S * smooth(d / turn);
+      } else if (d <= lead + SB) {
+        const a = Math.PI / 2 - (d - lead) / R;
+        x = XS - R * Math.sin(a);
+        y = yb + R - R * Math.cos(a);
+        yaw = -Math.PI / 2 + a;
+        steer = S * (1 - smooth((d - lead - SB + 1.2) / 1.2));
+      } else {
+        x = XS + d - lead - SB;
+        y = yb;
+        yaw = -Math.PI / 2;
+        steer = 0;
+      }
+      out.x = x + Math.sin(yaw) * CHARGE.rear;
+      out.u = y + Math.cos(yaw) * CHARGE.rear;
+      out.yaw = yaw;
+      out.v = -sp;
+      out.steer = steer;
+      return out;
+    },
+  };
+}
+
+/**
+ * Der Ladestopp im Park (main.js, Spiel: Game.startCharge) in Sekunden ab dem Einparken (Ende von dockPath().T, dock):
+ * Klappe auf (flap), Stecker aus dem Halter in die Buchse (plug: rig.set 1 → 0), Zeitraffer, in dem sich der Akku füllt
+ * (fill) und Mini Adam Popcorn macht (pop) und Bananensaft holt (juice), NOMIs Satz (nomi), dann ab unplug die Startszene
+ * von Erlensee (SCENE, ihr t = 0): Stecker heraus, Klappe zu, Ausparken bis zur Übergabe in der Spur (end). shift: so
+ * lange vor dem Anrollen liegt R schon drin.
+ */
+export const STOP = { shift: 0.4, flap: [0.15, 0.5], plug: [0.45, 1.55], fill: [1.6, 8.2], pop: [2.0, 7.8], juice: 4.6, nomi: 1.9, unplug: 8.4 };
+STOP.roll = STOP.unplug + SCENE.roll;
+STOP.end = STOP.unplug + SCENE.end;
+
+/**
+ * Fahrplan eines Ladestopps (Game.startCharge, main.js): Der Wagen steht in der Spur des Parks sec mit seiner Mitte bei
+ * s (Meter der Fahrt) und x. Ergebnis: { u (Mitte des Parks im Abschnitt), dock (dockPath), d0 (Sekunden bis zum Stand
+ * in der Bucht: R einlegen und einparken), at(k) (Zeitpunkt k aus STOP in Sekunden ab dem Halt), roll, end (Ausparken
+ * und Übergabe in der Spur) }.
+ */
+export function stopPlan(sec, s, x) {
+  const u = chargeOf(sec).u;
+  const dock = dockPath(u, s - sec.s0, x);
+  const d0 = STOP.shift + dock.T;
+  return { u, dock, d0, at: (k) => d0 + k, roll: d0 + STOP.roll, end: d0 + STOP.end };
+}
+
+/** Übergabe am Ende des Stopps (Park mit Mitte u): Wagenmitte (u, x) in der Spur und Tempo, wie rollPose sie verlässt. */
+export function stopEnd(u) {
+  return rollPose(u, ROLL_T, {});
+}
+
 function smooth(k) {
   const q = Math.min(1, Math.max(0, k));
   return q * q * (3 - 2 * q);

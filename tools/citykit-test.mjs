@@ -350,17 +350,18 @@ for (const p of places) {
 }
 
 // Ladeparks hinter den Autobahn-Ausfahrten (src/map/parks.js; layout.js planPark über towns.js parkPlan): der Park
-// steht an der Flucht mit der Mitte bei PARK.u, der Wagen hält in der Spur genau auf Höhe der freien Heldenbucht
-// (PARK.halt), davor ist der Bordstein abgesenkt (charge.js chargeOf). Nichts steht auf Fahrbahn oder Gehweg außer
+// steht an der Flucht mit der Mitte bei PARK.u, der Wagen hält in der Spur ein Stück hinter der freien Heldenbucht
+// (PARK.halt) und setzt rückwärts hinein, vor ihr ist der Bordstein abgesenkt (charge.js chargeOf, dockHalt). Nichts steht auf Fahrbahn oder Gehweg außer
 // den Laternen am Streifen, nichts vor dem Park, kein Baum im Park, im Rasthaus, in der Tafel oder in einem Tisch; die
 // Heldenbucht und ihre Nachbarn bleiben frei, der Popcorn-Stand steht hinter der Heldensäule. Der Ort der Welt
 // (towns.js Towns) baut ihn wie einen Ort, zählt ihn aber nicht zu den Orten (list).
 {
   const { PARKS, PARK } = await import('../src/map/parks.js');
-  const { chargeOf, CHARGE } = await import('../src/world/xxl/charge.js');
+  const { chargeOf, CHARGE, dockHalt } = await import('../src/world/xxl/charge.js');
   const { parkPlan } = await import('../src/world/xxl/towns.js');
   const info = city.info(CHARGE.kind);
-  ok(near(PARK.halt, PARK.u - CHARGE.bay[0] + CHARGE.off, 1e-9), `Ladepark: Halt ${PARK.halt} nicht auf Höhe der Heldenbucht`);
+  ok(near(PARK.halt, dockHalt(PARK.u), 0.005), `Ladepark: Halt ${PARK.halt} nicht dort, wo der Wagen rückwärts in die Heldenbucht setzt`);
+  const bayU = PARK.u - CHARGE.bay[0] + CHARGE.off;
   const S0 = 4000;
   let n = 0;
   for (const pk of PARKS) {
@@ -369,7 +370,7 @@ for (const p of places) {
     const plan = parkPlan(city, sec);
     const c = chargeOf(sec);
     ok(c && !c.start && c.u === PARK.u && plan.charge.u === PARK.u && plan.charge.x === CHARGE.front && plan.charge.kind === CHARGE.kind, `${where}: Park nicht bei PARK.u`);
-    ok(c && c.drive.s0 < sec.s0 + PARK.halt && c.drive.s1 > sec.s0 + PARK.halt, `${where}: kein abgesenkter Bordstein neben dem Halt`);
+    ok(c && c.drive.s0 < sec.s0 + bayU && c.drive.s1 > sec.s0 + bayU, `${where}: kein abgesenkter Bordstein vor der Heldenbucht`);
     const pkBox = [CHARGE.front, CHARGE.front + info.d, -(PARK.u + CHARGE.half), -(PARK.u - CHARGE.half)];
     const front = [L.STREET.curbL, CHARGE.front, -(PARK.u + CHARGE.half + CHARGE.keep), -(PARK.u - CHARGE.half - CHARGE.keep)];
     const solid = plan.items.filter((it) => !OVER.has(city.info(it.name).kind) && it.name !== CHARGE.kind);

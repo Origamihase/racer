@@ -341,6 +341,9 @@ export const CHAT = {
   record: ['REKORD!!! 🎉', 'Neuer Zuschauerrekord!', 'Diesmal ohne Viewer-Bots 🤖', 'Hype!'],
   banana: ['🍌🍌🍌', 'Bananensaft-Power!', 'Lecker 🍌'],
   koriander: ['Bäh, Koriander 🤢', 'Nicht der Koriander!', 'Wer hat da Koriander bestellt?'],
+  // Reise: Ladestopp im Ladepark (Game.tickCharge), die Popcorn-Maschine an der Säule und die Saftpause
+  popcorn: ['Popcorn-Stream! 🍿', '🍿🍿🍿', 'Haushaltsgeräte an der E-Säule testen 😂', 'Die Säule kann auch Popcorn!', 'Popcorn mit Ökostrom 🔌', 'Salzig oder süß? 🍿'],
+  saftpause: ['Bananensaft-Pause! 🍌', 'Prost, Mini Adam! 🍌', 'Zucker tanken 🍌🔋', 'Erst Saft, dann Strom 😄'],
   shoulder: ['Standstreifen?! 😱', 'Polizei Gifhorn!!', 'Das ist keine Fahrspur!'],
   fiveJobs: ['Job erledigt ✅', 'Weiter so!', 'Noch ein Job weniger', 'Versprochen ist versprochen 🤝',
     'Jetzt wird gezahlt 😂', 'Challenge geschafft!'],
@@ -751,14 +754,13 @@ export const REISE_JOBS = {
 };
 
 // Reise: NOMIs Akku-Warnungen nennen den nächsten Ladepark auf dem Weg mit Entfernung (trip.js nextRest); Taste L oder
-// der Knopf „Ladestopp einplanen“ machen ihn zum Zwischenziel. Bis die Szene mit Andocken kommt, lädt ein Platzhalter
-// den Akku neben der freien Säule in wenigen Sekunden voll (Game.startCharge). {pct} Prozent, {park} Name, {km} Weg.
+// der Knopf „Ladestopp einplanen“ machen ihn zum Zwischenziel. Dort parkt der Wagen an der freien Säule ein und lädt im
+// Zeitraffer voll (Game.startCharge, xxl/charge.js STOP). {pct} Prozent, {park} Name, {km} Weg.
 export const REISE_AKKU = {
   warn: [25, 10], // Prozent: NOMI warnt, und noch einmal, wenn es knapp wird
   early: 70, // darunter warnt sie früher, sobald der nächste Park der letzte in Reichweite ist
   reserve: 0.85, // so viel der geschätzten Reichweite gilt als sicher
   kmPerPct: 0.8, // Reisekilometer je Prozent, solange noch nichts gemessen ist (vorsichtig geschätzt)
-  secs: 6, // so lange dauert das Laden von 0 auf 100 % (mindestens 2,5 s)
   low: 'Akku {pct} Prozent. Nächster Ladepark: {park}, in {km}. Ladestopp einplanen?',
   last: 'Akku {pct} Prozent. {park} in {km} liegt noch in Reichweite. Ladestopp einplanen?',
   veryLow: 'Akku nur noch {pct} Prozent! {park} in {km}. Bitte dort laden.',
