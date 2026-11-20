@@ -22,7 +22,7 @@ import { buildHandMegaphone } from './models/megaphone.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
-import { Cockpit } from './cockpit/cockpit.js';
+import { Cockpit, EYE } from './cockpit/cockpit.js';
 import { Facecam } from './cockpit/facecam.js';
 import { Windshield, createCompositeMaterial } from './fx/windshield.js';
 import { Rain } from './fx/rain.js';
@@ -175,6 +175,13 @@ const mirrorRT = new THREE.WebGLRenderTarget(768, 226, { type: THREE.HalfFloatTy
 cockpit.setMirrorTexture(mirrorRT.texture);
 // durch die Heckscheibe der Facecam sieht man, was hinter dem Auto ist
 facecam.setRearView(mirrorRT.texture);
+// … und durchs Seitenfenster, was links neben ihm ist: eine Kamera am Kopf des Fahrers schaut zum Fahrerfenster hinaus
+// (gefilmt nur mit der Facecam, auf „niedrig“ gar nicht: dann zieht dort die gemalte Landschaft vorbei)
+const SIDE = { w: 384, h: 72, hfov: 100 };
+const sideCam = new THREE.PerspectiveCamera((2 * Math.atan(Math.tan((SIDE.hfov * Math.PI) / 360) / (SIDE.w / SIDE.h)) * 180) / Math.PI, SIDE.w / SIDE.h, 0.4, 700);
+const sideRT = new THREE.WebGLRenderTarget(SIDE.w, SIDE.h, { type: THREE.HalfFloatType, depthBuffer: true });
+facecam.setSideView(sideRT.texture);
+const sideOn = () => settings.quality !== 'niedrig';
 const compMat = createCompositeMaterial(worldRT.texture, windshield);
 const compScene = new THREE.Scene();
 const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compMat);
@@ -1660,6 +1667,8 @@ function tvBegin(e) {
   if (!r.prop) {
     r.prop = buildHandMegaphone();
     tesla.adam.holdMegaphone(r.prop);
+    // die Figur der Facecam hält ihr eigenes (gerades) Megafon: Beide zeigen dasselbe
+    facecam.adam.holdMegaphone(buildHandMegaphone({ curved: false }));
   }
   // Mini Adam schaut zum Brunnen (Körperkoordinaten: +x zum Fenster, +z nach vorn)
   adamDo((a) => a.lookAt([-r.f.x, 0.85, -r.f.z], TV.look.off[0]));
@@ -1863,6 +1872,7 @@ function renderFrame(cockpitOn) {
       // (nach einem Zeitsprung – Pause, Test – sofort, damit nie ein altes Bild stehen bleibt)
       const due = !paused && (frameNo % Math.max(2, quality.mirrorEvery) === 0 || Math.abs(simT - facecam.shotT) > 0.3);
       if (!facecam.ready || due) {
+        if (sideOn()) renderSide();
         facecam.render(renderer, fc, settings.quality === 'auto' ? 'hoch' : settings.quality);
         facecam.shotT = simT;
       }
@@ -1870,6 +1880,19 @@ function renderFrame(cockpitOn) {
     }
     renderer.autoClear = true;
   }
+}
+
+/** Seitenfenster der Facecam: die Welt links neben dem Wagen, vom Kopf des Fahrers aus (ohne den eigenen Wagen). */
+function renderSide() {
+  sideCam.position.copy(localToWorld(tmpV2.set(EYE.x, EYE.y, EYE.z)));
+  sideCam.lookAt(localToWorld(tmpV2.set(EYE.x - 30, EYE.y - 1.6, EYE.z)));
+  tesla.root.visible = false;
+  const clear = renderer.autoClear;
+  renderer.autoClear = true;
+  renderer.setRenderTarget(sideRT);
+  renderer.render(scene, sideCam);
+  renderer.setRenderTarget(null);
+  renderer.autoClear = clear;
 }
 
 /** Effekte über Welt und Cockpit zusammen (siehe postMat). */
@@ -2258,7 +2281,7 @@ function step(dt, { render = true } = {}) {
     const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook, megafon: adamMegafon });
     tesla.adam.animate(simT, adamOpts);
     facecam.adam.animate(simT, adamOpts);
-    facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake });
+    facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake, rain: w, world: sideOn() });
     tesla.cabinLight.intensity = cockpitOn ? 0 : stopRun.on || tvRun.on || state === 'title' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
@@ -2291,7 +2314,7 @@ function step(dt, { render = true } = {}) {
     }
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
-      sunDir: sky.sunDir, overcast: cloud, adam: adamOpts,
+      sunDir: sky.sunDir, overcast: cloud, adam: adamOpts, gesture: tesla.adam.pose === 'drive' ? tesla.adam.gestures : null,
       screen: scr, radar: game.radarAlarm, rear: cockpitOn && (p.gear === 'R' || stopRun.rev),
     });
     if (fxState.trunk > 0) {

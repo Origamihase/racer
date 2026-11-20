@@ -1,7 +1,8 @@
 // Facecam: Mini Adam live im Stream-Overlay (unten links in der Cockpit-Ansicht), wie bei einem echten IRL-Stream.
 // Ein eigenes kleines Studio in Adams Körperkoordinaten (Füße y = 0, Blick +z, +x = Fahrertür): Fahrersitz mit
-// Kopfstütze, Beifahrersitz, Rückbank, B-Säule und Seitenfenster der Fahrerseite (im Bild rechts, draußen zieht die
-// Landschaft vorbei), Glasdach und Heckscheibe mit dem Bild der Rückspiegel-Kamera – gefilmt von einer kleinen Kamera
+// Kopfstütze, Beifahrersitz, Rückbank, B-Säule und Seitenfenster der Fahrerseite (im Bild rechts: draußen die echte
+// Welt aus der Seitenkamera, bei Regen mit Tropfen), Glasdach und Heckscheibe mit dem Bild der Rückspiegel-Kamera.
+// Die Figur bekommt dieselben Gesten wie Mini Adam im Auto (auch das Megafon) – gefilmt von einer kleinen Kamera
 // oben am Armaturenbrett. Gerendert wird nur, solange die Facecam zu sehen ist, und nur jedes zweite oder dritte Bild
 // in ein kleines Ziel (wie eine echte Webcam); aufs fertige Bild kommt es nach dem Post-Pass als Rechteck mit runden
 // Ecken – Tonemapping und sRGB wie beim Hauptbild, die Ecken im Shader geglättet, genau passend zum Rahmen aus ui.js.
@@ -282,10 +283,15 @@ export class Facecam {
     // Glasdach: Himmel von unten durch das getönte Glas gesehen (dunkler als das Seitenfenster), zur Mitte hin heller
     this.roofMat = new THREE.MeshBasicMaterial({ map: gradientTexture([[0, '#6f88a3'], [0.5, '#5a7799'], [1, '#4b6990']]), side: THREE.DoubleSide, toneMapped: true });
     scene.add(new THREE.Mesh(pane(vec(-0.31, 1.055, -0.5), vec(0.87, 0, 0), vec(0, 0, -1.08)), this.roofMat));
-    // Seitenfenster vorn und hinten: draußen zieht die Landschaft vorbei (zwei Ebenen, die vordere schneller)
+    // Seitenfenster vorn und hinten: draußen die echte Welt – das Bild der Seitenkamera am Kopf des Fahrers (setSideView:
+    // Autobahn, Ort, Ladepark, Brunnen, dasselbe Wetter); ohne sie (Qualität „niedrig“) zieht eine gemalte Landschaft
+    // vorbei (zwei Ebenen, die vordere schneller). Bei Regen sitzen Tropfen auf dem Glas, und es wird matt.
     const [far, near] = windowTextures();
     this.winMat = new THREE.ShaderMaterial({
-      uniforms: { tFar: { value: far }, tNear: { value: near }, uScroll: { value: new THREE.Vector2() }, uLight: { value: 1 } },
+      uniforms: {
+        tFar: { value: far }, tNear: { value: near }, uScroll: { value: new THREE.Vector2() }, uLight: { value: 1 },
+        tWorld: { value: null }, uWorld: { value: 0 }, uRain: { value: 0 }, uDrift: { value: 0 },
+      },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
         void main() {
@@ -295,14 +301,37 @@ export class Facecam {
       fragmentShader: /* glsl */ `
         uniform sampler2D tFar;
         uniform sampler2D tNear;
+        uniform sampler2D tWorld;
         uniform vec2 uScroll;
         uniform float uLight;
+        uniform float uWorld;
+        uniform float uRain;
+        uniform float uDrift;
         varying vec2 vUv;
+        float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
         void main() {
+          // Tropfen: Zellen auf der Scheibe (Meter: x längs, y hoch), bei Fahrt wandern sie langsam nach hinten; jeder
+          // bricht das Bild dahinter ein wenig, je mehr Regen, desto mehr Zellen tragen einen
+          vec2 g = vec2(-1.2 * vUv.x + uDrift, vUv.y * 0.52) * vec2(24.0, 30.0);
+          vec2 id = floor(g);
+          vec2 dv = (fract(g) - 0.5 - (vec2(hash(id + 3.1), hash(id + 7.7)) - 0.5) * 0.4) * vec2(1.0, 1.3);
+          float r = 0.2 + 0.14 * hash(id + 1.3);
+          float drop = step(1.0 - 0.8 * uRain, hash(id)) * smoothstep(r, r * 0.55, length(dv));
+          vec2 bend = dv * drop * 0.04;
           // u läuft in Fahrtrichtung nach hinten: die Landschaft wandert mit wachsendem uScroll nach hinten
-          vec3 c = texture2D(tFar, vec2(vUv.x * 0.6 - uScroll.x, vUv.y)).rgb;
-          vec4 n = texture2D(tNear, vec2(vUv.x - uScroll.y, vUv.y));
-          gl_FragColor = vec4(mix(c, n.rgb, n.a) * uLight, 1.0);
+          vec3 c = texture2D(tFar, vec2(vUv.x * 0.6 - uScroll.x, vUv.y) + bend).rgb;
+          vec4 n = texture2D(tNear, vec2(vUv.x - uScroll.y, vUv.y) + bend);
+          vec3 col = mix(c, n.rgb, n.a) * uLight;
+          if (uWorld > 0.5) {
+            // die Seitenkamera: links im Bild hinten, rechts vorn; die Scheiben reichen von z = 0,7 (vorn) bis −0,9,
+            // y von 0,76 bis 1,02 – leicht getöntes Glas
+            vec2 w = vec2((0.9 - 1.2 * vUv.x) / 1.6, (vUv.y * 0.52 - 0.26) / 0.26);
+            col = texture2D(tWorld, clamp(w + bend * vec2(0.6, 2.0), 0.0, 1.0)).rgb * 0.9;
+          }
+          // Regen: das Glas wird matt und grauer, die Tropfen dunkeln ab und glänzen am Rand
+          col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))) * 0.92 + 0.02, 0.3 * uRain);
+          col = col * (1.0 - 0.18 * drop) + drop * smoothstep(0.3, 1.0, length(dv) / r) * 0.12;
+          gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,
@@ -447,6 +476,14 @@ export class Facecam {
     this.wheel.scale.setScalar(r / 0.17);
   }
 
+  /**
+   * Seitenfenster: Bild der Seitenkamera am Kopf des Fahrers (Blick zum Fahrerfenster hinaus, links hinten, rechts
+   * vorn) – oder null: dann zieht die gemalte Landschaft vorbei. Gefilmt wird sie nur, wenn update world meldet.
+   */
+  setSideView(tex) {
+    this.winMat.uniforms.tWorld.value = tex;
+  }
+
   /** Heckscheibe: Bild der Rückspiegel-Kamera (oder null: nur getöntes Glas). */
   setRearView(tex) {
     this.rearMat.map = tex;
@@ -456,10 +493,11 @@ export class Facecam {
 
   /**
    * Pro Bild: Lenkrad mitdrehen, Licht ans Wetter anpassen, Landschaft vorbeiziehen lassen, die Kamera zittert kaum
-   * merklich mit der Fahrbahn.
-   * @param {{t:number, dt?:number, steer?:number, overcast?:number, speed?:number, shake?:number}} s speed in m/s
+   * merklich mit der Fahrbahn. rain 0 … 1: Regen auf den Seitenscheiben (dieselbe Stärke wie auf der Frontscheibe);
+   * world: das Seitenfenster zeigt das Bild der Seitenkamera (setSideView), sonst die gemalte Landschaft.
+   * @param {{t:number, dt?:number, steer?:number, overcast?:number, speed?:number, shake?:number, rain?:number, world?:boolean}} s speed in m/s
    */
-  update({ t, dt = 0, steer = 0, overcast = 0, speed = 0, shake = 0 }) {
+  update({ t, dt = 0, steer = 0, overcast = 0, speed = 0, shake = 0, rain = 0, world = false }) {
     // gleiche Drehung wie Adams Griff (handTarget: 0,5 rad bei vollem Einschlag, rechts = im Uhrzeigersinn)
     this.wheel.rotation.z = -steer * 0.5;
     const o = overcast;
@@ -470,7 +508,12 @@ export class Facecam {
     const sky = 1 - o * 0.45;
     this.roofMat.color.setScalar(sky);
     this.linerMat.emissiveIntensity = sky;
-    this.winMat.uniforms.uLight.value = 1.3 * sky;
+    const U = this.winMat.uniforms;
+    U.uLight.value = 1.3 * sky;
+    U.uWorld.value = world && U.tWorld.value ? 1 : 0;
+    U.uRain.value = Math.min(1, Math.max(0, rain));
+    // die Tropfen kriechen im Fahrtwind langsam nach hinten
+    U.uDrift.value = (U.uDrift.value + Math.min(speed, 40) * dt * 0.004) % 100;
     // die Landschaft im Seitenfenster zieht nach hinten: die nahe Ebene etwa eine Kachel (1,2 m Scheibe) je Sekunde
     // bei Autobahntempo, die ferne kaum
     const sc = this.winMat.uniforms.uScroll.value;
