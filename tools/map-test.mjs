@@ -963,7 +963,7 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
   const { loadSave, storeSave } = await import('../src/save.js');
   store.set('mini-adam-tesla-navi-v1', JSON.stringify({ wallet: 12.5, upgrades: { akku: 1 }, stats: { runs: 3, totalKm: 42 } }));
   const old = loadSave();
-  ok(old.wallet === 12.5 && old.stats.totalKm === 42 && old.upgrades.akku === 1, 'alter Spielstand verliert Werte');
+  ok(old.wallet === 12.5 && old.stats.runs === 3 && old.upgrades.akku === 1 && !('totalKm' in old.stats), 'alter Spielstand verliert Werte (oder behält die Kilometer der klassischen Autobahn)');
   ok(old.visits && Object.keys(old.visits).length === 0, 'alter Spielstand: Besuche nicht leer');
   // recordVisit/visitSummary ohne DOM (mapscreen.js braucht für sie nur den Spielstand)
   globalThis.document = undefined;

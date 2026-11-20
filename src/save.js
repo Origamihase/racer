@@ -4,11 +4,9 @@ const KEY = 'mini-adam-tesla-navi-v1';
 export const DEFAULT_SAVE = {
   wallet: 0,
   upgrades: {},
-  best: { distance: 0, earned: 0, viewers: 0, reise: 0 }, // reise: Rekord der XXL-Welt in Reisemetern
-  // (ältere Spielstände tragen noch stats.leftLaneEuro mit sich – das wird einfach nicht mehr benutzt)
-  stats: { runs: 0, totalKm: 0, naviReached: 0, crashes: 0, reiseKm: 0 },
+  best: { earned: 0, viewers: 0, reise: 0 }, // reise: Rekord der Strecke eines Streams in Reisemetern
+  stats: { runs: 0, naviReached: 0, crashes: 0, reiseKm: 0 },
   settings: { sound: true, speech: true, chat: true, facecam: true, quality: 'auto', volume: 0.8 },
-  seenIntro: false,
   // besuchte Orte der großen Karte: Wiki-Name → Zahl der Besuche
   visits: {},
   // das gekaufte Megafon ist erstattet (refundMegafon): so viele Euro, einmal; 0: nichts erstattet
@@ -23,14 +21,23 @@ export const DEFAULT_SAVE = {
 /** Ein gespeicherter Teil-Spielstand (best, stats, …) – oder nichts, wenn dort etwas anderes steht als ein Objekt. */
 const part = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
 
+/**
+ * Felder aus der Zeit der klassischen Autobahn, die niemand mehr liest: der gewählte Modus, ob der Kameraschwenk
+ * zum Start schon lief, Rekord und Kilometer der endlosen Strecke (best.distance, stats.totalKm) und die alten
+ * Spur-Euro. Sie fallen beim Laden still weg (beim nächsten Speichern sind sie fort); Guthaben, Käufe, Album,
+ * besuchte Orte, Einstellungen und die übrigen Rekorde bleiben.
+ */
+const RETIRED = { top: ['mode', 'seenIntro'], best: ['distance'], stats: ['totalKm', 'leftLaneEuro'] };
+
 export function loadSave() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return structuredClone(DEFAULT_SAVE);
     // Ältere Spielstände kennen manche Felder noch nicht (visits, best.reise, album): Sie bekommen den Standard. Felder,
-    // die dieser Stand nicht kennt (ein neuerer hat sie geschrieben), bleiben erhalten und werden wieder mitgespeichert.
+    // die dieser Stand nicht kennt (ein neuerer hat sie geschrieben), bleiben erhalten und werden wieder mitgespeichert
+    // – nur die der klassischen Autobahn nicht (RETIRED).
     const data = part(JSON.parse(raw));
-    return {
+    const save = {
       ...structuredClone(DEFAULT_SAVE),
       ...data,
       // (das Guthaben wird addiert: Steht dort keine Zahl, begänne die Kasse lieber bei null als bei „12,5“ + 3)
@@ -42,6 +49,10 @@ export function loadSave() {
       visits: { ...part(data.visits) },
       album: cleanAlbum(data.album),
     };
+    for (const k of RETIRED.top) delete save[k];
+    for (const k of RETIRED.best) delete save.best[k];
+    for (const k of RETIRED.stats) delete save.stats[k];
+    return save;
   } catch (e) {
     return structuredClone(DEFAULT_SAVE);
   }

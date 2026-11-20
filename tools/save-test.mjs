@@ -1,7 +1,9 @@
 // Prüft ohne Browser, was beim Laden der Seite als Erstes entschieden wird:
 // - Spielstand (src/save.js gegen einen Ersatz für localStorage): Alte Stände laden – einer vom Stand „main“ (ohne
-//   visits, best.reise), einer dieses Zweigs vor der Reise als einzigem Spiel, einer mit Feldern, die niemand kennt
-//   (was sie enthalten, übersteht Laden und Speichern), kaputte und ein gesperrter Speicher.
+//   visits, best.reise), einer dieses Zweigs aus der Zeit mit zwei Modi (klassische Autobahn und Reise, mit Album),
+//   einer mit Feldern, die niemand kennt (was sie enthalten, übersteht Laden und Speichern), kaputte und ein
+//   gesperrter Speicher. Von der klassischen Autobahn bleibt nichts: Ihre Rekorde und Felder fallen still weg,
+//   Guthaben, Käufe, Album, besuchte Orte und Einstellungen bleiben.
 // - Kartendaten (src/map/credits.js): Die Hinweise der Höhenquellen passen zu den Ländern, die die Karte berührt.
 // node tools/save-test.mjs
 let fails = 0;
@@ -34,13 +36,17 @@ globalThis.localStorage = {
 };
 const { DEFAULT_SAVE, loadSave, storeSave, resetSave } = await import('../src/save.js');
 const put = (v) => box.set(KEY, typeof v === 'string' ? v : JSON.stringify(v));
-/** Hat der Stand alles, was das Spiel ohne Nachfragen liest? */
+/** Felder der klassischen Autobahn, die kein geladener Stand mehr trägt (save.js RETIRED). */
+const RETIRED = { top: ['mode', 'seenIntro'], best: ['distance'], stats: ['totalKm', 'leftLaneEuro'] };
+const retired = (s) => [...RETIRED.top.filter((k) => k in s), ...RETIRED.best.filter((k) => k in s.best).map((k) => 'best.' + k), ...RETIRED.stats.filter((k) => k in s.stats).map((k) => 'stats.' + k)];
+/** Hat der Stand alles, was das Spiel ohne Nachfragen liest – und nichts mehr von der klassischen Autobahn? */
 function whole(s, what) {
   ok(typeof s.wallet === 'number' && isFinite(s.wallet), `${what}: Guthaben ${s.wallet}`);
   for (const k of ['upgrades', 'best', 'stats', 'settings', 'visits']) ok(s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]), `${what}: ${k} fehlt oder ist kein Objekt`);
   for (const [k, v] of Object.entries(DEFAULT_SAVE.best)) ok(typeof s.best[k] === typeof v, `${what}: best.${k}`);
   for (const [k, v] of Object.entries(DEFAULT_SAVE.stats)) ok(typeof s.stats[k] === typeof v, `${what}: stats.${k}`);
   for (const [k, v] of Object.entries(DEFAULT_SAVE.settings)) ok(typeof s.settings[k] === typeof v, `${what}: settings.${k}`);
+  ok(!retired(s).length, `${what}: trägt noch ${retired(s).join(', ')}`);
 }
 
 // --- Spielstand ----------------------------------------------------------------------------------------------------------
@@ -48,11 +54,12 @@ function whole(s, what) {
 {
   const a = loadSave();
   ok(same(a, DEFAULT_SAVE), 'Ohne Spielstand kommt nicht der Standard');
-  a.best.distance = 5;
+  a.best.reise = 5;
   a.visits.Hanau = 1;
-  ok(DEFAULT_SAVE.best.distance === 0 && !('Hanau' in DEFAULT_SAVE.visits) && loadSave().best.distance === 0, 'Der Standard-Spielstand wird geteilt statt kopiert');
+  ok(DEFAULT_SAVE.best.reise === 0 && !('Hanau' in DEFAULT_SAVE.visits) && loadSave().best.reise === 0, 'Der Standard-Spielstand wird geteilt statt kopiert');
 }
-// Stand „main“: ohne visits, best.reise, stats.reiseKm, settings.facecam – dafür mit dem alten stats.leftLaneEuro
+// Stand „main“ (nur die klassische Autobahn): ohne visits, best.reise, stats.reiseKm, settings.facecam – dafür mit
+// Rekord und Kilometern der endlosen Strecke, dem alten stats.leftLaneEuro und seenIntro
 const MAIN = {
   wallet: 137.42, upgrades: { starlink: 1, wischer: 2 }, best: { distance: 48211.5, earned: 96.3, viewers: 1804 },
   stats: { runs: 12, totalKm: 301.7, naviReached: 31, crashes: 9, leftLaneEuro: 12.5 },
@@ -62,22 +69,27 @@ const MAIN = {
   put(MAIN);
   const s = loadSave();
   whole(s, 'Stand von main');
-  ok(s.wallet === 137.42 && same(s.upgrades, MAIN.upgrades) && s.best.distance === 48211.5 && s.best.earned === 96.3 && s.best.viewers === 1804, 'Stand von main: Guthaben, Upgrades oder Rekorde gingen verloren');
-  ok(s.stats.runs === 12 && s.stats.totalKm === 301.7 && s.stats.naviReached === 31 && s.stats.crashes === 9 && s.stats.leftLaneEuro === 12.5, 'Stand von main: Statistik ging verloren');
-  ok(s.settings.sound === false && s.settings.quality === 'mittel' && s.settings.volume === 0.35 && s.settings.facecam === true && s.seenIntro === true, 'Stand von main: Einstellungen gingen verloren');
-  ok(s.best.reise === 0 && s.stats.reiseKm === 0 && same(s.visits, {}), 'Stand von main: Die neuen Felder haben nicht ihren Standard');
+  ok(s.wallet === 137.42 && same(s.upgrades, MAIN.upgrades) && s.best.earned === 96.3 && s.best.viewers === 1804, 'Stand von main: Guthaben, Upgrades oder Rekorde gingen verloren');
+  ok(s.stats.runs === 12 && s.stats.naviReached === 31 && s.stats.crashes === 9, 'Stand von main: Statistik ging verloren');
+  ok(s.settings.sound === false && s.settings.quality === 'mittel' && s.settings.volume === 0.35 && s.settings.facecam === true, 'Stand von main: Einstellungen gingen verloren');
+  ok(s.best.reise === 0 && s.stats.reiseKm === 0 && same(s.visits, {}) && same(s.album, DEFAULT_SAVE.album), 'Stand von main: Die neuen Felder haben nicht ihren Standard');
+  ok(storeSave(s) && retired(JSON.parse(box.get(KEY))).length === 0, 'Stand von main: Nach dem Speichern stehen die klassischen Felder noch im Speicher');
 }
-// Stand dieses Zweigs mit beiden Modi: mit Reise-Rekord, Reisekilometern und besuchten Orten
+// Stand dieses Zweigs aus der Zeit mit zwei Modi (zuletzt klassisch gespielt): klassischer Rekord und Kilometer neben
+// Reise-Rekord, Reisekilometern, besuchten Orten, Album und dem erstatteten Megafon
+const ALBUM = { n: 3, list: [{ n: 1, p: 'Hanau', k: 'fountainBowls', t: 1763650000000, u: 1104 }, { n: 3, p: 'Würzburg', k: 'fountainGrand', t: 1763660000000, u: 1180, d: 'kiliani' }] };
 const AUSBAU = {
-  ...MAIN, best: { ...MAIN.best, reise: 187400 }, stats: { runs: 14, totalKm: 301.7, naviReached: 35, crashes: 9, reiseKm: 412.6 },
-  settings: { ...MAIN.settings, facecam: false }, visits: { Hanau: 3, 'Frankfurt am Main': 1 },
+  ...MAIN, mode: 'klassik', best: { ...MAIN.best, reise: 187400 }, stats: { runs: 14, totalKm: 301.7, naviReached: 35, crashes: 9, reiseKm: 412.6 },
+  settings: { ...MAIN.settings, facecam: false }, visits: { Hanau: 3, 'Frankfurt am Main': 1 }, album: ALBUM, megafonRefund: 450,
 };
 {
   put(AUSBAU);
   const s = loadSave();
   whole(s, 'Stand des Zweigs');
-  ok(s.best.reise === 187400 && s.stats.reiseKm === 412.6 && same(s.visits, AUSBAU.visits) && s.settings.facecam === false, 'Stand des Zweigs: Reise-Rekord, Kilometer, Orte oder Facecam gingen verloren');
+  ok(s.wallet === 137.42 && same(s.upgrades, MAIN.upgrades) && same(s.album, ALBUM) && s.megafonRefund === 450, 'Stand des Zweigs: Guthaben, Käufe, Album oder die Erstattung gingen verloren');
+  ok(s.best.reise === 187400 && s.best.earned === 96.3 && s.best.viewers === 1804 && s.stats.reiseKm === 412.6 && s.stats.runs === 14 && same(s.visits, AUSBAU.visits) && s.settings.facecam === false && s.settings.volume === 0.35, 'Stand des Zweigs: Rekorde, Kilometer, Orte oder Einstellungen gingen verloren');
   ok(storeSave(s) && same(loadSave(), s), 'Gespeichert und geladen ist nicht mehr derselbe Stand');
+  ok(retired(JSON.parse(box.get(KEY))).length === 0, 'Stand des Zweigs: Nach dem Speichern stehen die klassischen Felder noch im Speicher');
 }
 // Felder, die niemand kennt: oben, in den Teilen und geschachtelt – ihr Inhalt übersteht Laden und Speichern
 {
@@ -107,7 +119,7 @@ for (const [what, raw] of [
 {
   put(JSON.stringify({ ...MAIN, wallet: 'viel' }));
   const s = loadSave();
-  ok(s.wallet === 0 && s.best.distance === MAIN.best.distance, 'Ein Guthaben, das keine Zahl ist, wird nicht zu 0 – oder reißt den Rest mit');
+  ok(s.wallet === 0 && s.best.earned === MAIN.best.earned, 'Ein Guthaben, das keine Zahl ist, wird nicht zu 0 – oder reißt den Rest mit');
 }
 // gesperrter Speicher: Standard laden, Speichern meldet false, nichts wirft
 {
