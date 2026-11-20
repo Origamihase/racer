@@ -116,8 +116,7 @@ export const waveSide = (wheel) => (wheel ? 1 : -1);
 
 // Megafon (BrunnenTV, nur im Auto): Die Fensterhand holt es neben dem Sitz unter der Gürtellinie hervor (LOW, ab
 // MEGA.show ist es zu sehen) und hält es vor den Mund, der Trichter zeigt durchs offene Fenster schräg nach vorn zum
-// Brunnen und gut 10° nach oben (MEGA.dir: so reicht sein Rand nicht unter die Fensterleiste, die sonst im Fensterbild
-// quer über ihn liefe); der Kopf ist dabei zum Fenster gedreht (look, Gierwinkel bis 0,75). Lage in Körperkoordinaten,
+// Brunnen (MEGA.dir); der Kopf ist dabei zum Fenster gedreht (look, Gierwinkel bis 0,75). Lage in Körperkoordinaten,
 // Megafon-Rahmen wie cockpit/props.js megaphone: Achse +y zur Öffnung, Pistolengriff nach −x, Maßstab MEGA.s.
 export const MEGA = {
   show: 0.4,
@@ -125,7 +124,7 @@ export const MEGA = {
   low: new THREE.Vector3(0.17, 0.36, 0.17),
   via: new THREE.Vector3(0.25, 0.47, 0.23),
   at: new THREE.Vector3(0.131, 0.602, 0.12),
-  dir: new THREE.Vector3(0.82, 0.22, 0.57).normalize(),
+  dir: new THREE.Vector3(0.82, -0.06, 0.57).normalize(),
   carry: new THREE.Vector3(0.15, 0.25, 0.96).normalize(),
   grip: new THREE.Vector3(-0.0553, -0.0055, 0),
   pole: new THREE.Vector3(0.75, -0.6, -0.2).normalize(),

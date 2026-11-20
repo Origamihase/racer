@@ -74,9 +74,9 @@ export function tvShots(f, r) {
   // Totale: auf einen Punkt zwischen Fenster und Brunnen, näher am Fenster (der Wagen steht groß rechts im Bild)
   const totale = [-2.6 - 0.12 * r, 2.3 + 0.05 * r, 5.6 + 0.25 * r];
   const tLook = [WINDOW[0] + (f.x - WINDOW[0]) * 0.4, 0.95 + 0.03 * r, WINDOW[2] + (f.z - WINDOW[2]) * 0.4];
-  // Fenster: 0,1 m höher als zuerst gebaut. Die Leiste unter dem Fenster liegt nur gut 10 cm vor dem Trichter; dass
-  // sie unter ihm durchläuft statt quer darüber, macht erst das leicht nach oben gekippte Megafon (miniAdam.js
-  // MEGA.dir) – allein mit der Kamera ginge es erst bei knapp 2 m, und ab 1,4 m verdeckt die A-Säule Mini Adams Auge.
+  // Fenster: 0,1 m höher als zuerst gebaut, damit die Leiste unter dem Fenster den Trichter weiter unten quert. Ganz
+  // darunter läuft sie aus keiner Kamerahöhe: Sie liegt nur gut 10 cm vor dem Trichter, dessen Rand unter ihre Höhe
+  // reicht; frei wäre er erst bei knapp 2 m, und schon ab 1,4 m schiebt sich die A-Säule vor Mini Adams Auge.
   const fenster = [MOUTH[0] - 1.3, MOUTH[1] + 0.3, MOUTH[2] - 1.0];
   const brunnen = [f.x * 0.4 - 0.6, 3.6 + 0.25 * r, f.z - 7.5 - 0.6 * r];
   return {
