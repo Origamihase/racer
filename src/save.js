@@ -15,6 +15,8 @@ export const DEFAULT_SAVE = {
   mode: null,
   // das gekaufte Megafon ist erstattet (refundMegafon): so viele Euro, einmal; 0: nichts erstattet
   megafonRefund: 0,
+  // so viele erstattete Euro sagt der Titel noch an, bis zum ersten Besuch im Shop (megafonNoteSeen); 0: nichts
+  megafonNote: 0,
 };
 
 /** Ein gespeicherter Teil-Spielstand (best, stats, …) – oder nichts, wenn dort etwas anderes steht als ein Objekt. */
@@ -53,7 +55,15 @@ export function refundMegafon(save) {
   delete save.upgrades.megafon;
   save.wallet = Math.round((save.wallet + MEGAFON_PRICE) * 100) / 100;
   save.megafonRefund = MEGAFON_PRICE;
+  save.megafonNote = MEGAFON_PRICE;
   return MEGAFON_PRICE;
+}
+
+/** Erster Besuch im Shop: die Zeile zur Erstattung verschwindet vom Titel. Ergebnis die Euro, die sie nannte, sonst 0. */
+export function megafonNoteSeen(save) {
+  const euro = save.megafonNote || 0;
+  save.megafonNote = 0;
+  return euro;
 }
 
 export function storeSave(save) {

@@ -35,7 +35,7 @@ import { showDriveHint, driveHintTick } from './ui/drive-hint.js';
 import { Jolt } from './fx/jolt.js';
 import { TeslaDamage } from './models/damage-fx.js';
 import { CabinDamage } from './cockpit/damage-cabin.js';
-import { loadSave, storeSave, resetSave, refundMegafon } from './save.js';
+import { loadSave, storeSave, resetSave, refundMegafon, megafonNoteSeen } from './save.js';
 import { modeFor, otherMode, modeSearch } from './mode.js';
 import { Game } from './game/game.js';
 import { Pickups } from './game/pickups.js';
@@ -56,10 +56,11 @@ const QUALITY = {
 };
 const DEBUG = /[?&]debug/.test(location.search);
 const save = loadSave();
-// Das Megafon gehört jetzt zur Ausstattung: Wer es gekauft hatte, bekommt den Preis einmal zurück (save.js), und Titel
-// und Shop sagen es in dieser Sitzung (Menus h.refund)
+// Das Megafon gehört jetzt zur Ausstattung: Wer es gekauft hatte, bekommt den Preis einmal zurück (save.js); der Titel
+// sagt es bis zum ersten Besuch im Shop (save.megafonNote), der Shop dann in dieser Sitzung (shopRefund)
 const megafonBack = refundMegafon(save);
 if (megafonBack) storeSave(save);
+let shopRefund = 0;
 // Der Modus dieses Seitenaufrufs (src/mode.js): ein Schalter in der Adresse (?xxl, ?klassik), sonst die Wahl vom
 // Titelbildschirm (save.mode), sonst der Standard. XXL ist die neue Welt mit Ausfahrten, Rampen, Landstraßen und Orten
 // (src/world/xxl); sie wird beim Laden gebaut, darum lädt der Wechsel des Modus die Seite neu (switchMode).
@@ -557,9 +558,12 @@ const menus = new Menus(app, {
   back: () => {},
   mode: MODE, // der Titel nennt seinen Modus und bietet den anderen an
   travel: !!xxl, // XXL-Welt: Rekord und Summe auf dem Titel in Reisekilometern
-  refund: megafonBack, // erstattetes Megafon (Euro): eine Zeile auf dem Titel und im Shop
   dataFor: (name, data) => {
-    if (name === 'shop') return { wallet: save.wallet, upgrades: save.upgrades };
+    if (name === 'shop' && save.megafonNote) {
+      shopRefund = megafonNoteSeen(save);
+      storeSave(save);
+    }
+    if (name === 'shop') return { wallet: save.wallet, upgrades: save.upgrades, refund: shopRefund };
     if (name === 'settings') return { ...settings, speechSupported: speech.supported };
     if (name === 'title') return save;
     if (name === 'pause') return game;
@@ -593,7 +597,7 @@ const menus = new Menus(app, {
   resetSave: () => {
     // (die Wahl des Modus ist kein Spielstand: Wer die Reise gewählt hat, bleibt auch nach dem Löschen dort; die Zeile
     // zum erstatteten Megafon gilt dem gelöschten Guthaben und verschwindet mit ihm)
-    menus.h.refund = 0;
+    shopRefund = 0;
     const fresh = { ...resetSave(), mode: save.mode };
     for (const k of Object.keys(save)) delete save[k];
     Object.assign(save, fresh);

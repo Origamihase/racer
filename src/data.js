@@ -978,6 +978,7 @@ export const ABSPANN_CREW = [
 /**
  * Abspann der Reise: die Leute des Streams, mit ausgedachten Berufen (nach ABSPANN_CREW, vor „Danke an“). Ein drittes
  * Feld 'wide' gibt einer langen Zeile die ganze Breite; sie steht darum am Schluss, damit das Raster keine Lücke hat.
+ * {folgen}: die BrunnenTV-Folgen dieser Reise (Game.stats.brunnenTV, „1 Folge“, „3 Folgen“); ohne Folge fehlt die Zeile.
  */
 export const ABSPANN_REISE = [
   ['Musik', 'Elti und IceBonbon'],
@@ -987,6 +988,7 @@ export const ABSPANN_REISE = [
   ['Großbieter vom Dienst', 'BontanaBack'],
   ['Raid-Kommando', 'König Knolli'],
   ['Moderation', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'wide'],
+  ['BrunnenTV', '{folgen} mit Mini Adam am Megafon', 'wide'],
 ];
 /** Ganz am Ende des Abspanns der Reise, allein und leise (Wortlaut des Eigentümers, unverändert). */
 export const GEDENKEN = 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte';

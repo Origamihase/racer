@@ -6,7 +6,8 @@
 //   keine Folge mehr, Bauchbinde weg, der Wagen genau einmal freigegeben – und danach beginnt die nächste Bieterrunde
 //   (das erste Gebot frühestens TV.pause Sekunden nach der Freigabe).
 // - Megafon als Ausstattung: kein Shop-Artikel, Taste H und Megafon-Wunsch ohne Upgrade in beiden Spielarten, ein
-//   gekauftes gibt es genau einmal zurück (save.js refundMegafon).
+//   gekauftes gibt es genau einmal zurück (save.js refundMegafon); der Titel sagt es bis zum ersten Besuch im Shop, auch
+//   nach dem Neuladen (save.megafonNote). Der Abspann der Reise zählt die Folgen (ABSPANN_REISE).
 // - Der Name „Mini Adam – Navi ferngesteuert BrunnenTV XXL“ steht überall gleich: Seitentitel, Ladekarte, README,
 //   INSIDER, package.json, Über das Spiel; der Titelbildschirm setzt ihn aus denselben Teilen zusammen.
 // - Kameras: Für jeden Ort der Karte (Insel und Haltepunkt wie plan.js squareOf) stehen die drei Kameras außerhalb des
@@ -20,9 +21,9 @@ import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor 
 import { squareOf } from '../src/world/xxl/plan.js';
 import { FOUNTAIN_R, goalKind, goalName, sightBlockers } from '../src/world/kit/layout.js';
 import { MEGA } from '../src/models/miniAdam.js';
-import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, MODE_TEXT, BOARD, BRUNNEN_NOMI, fillTemplate } from '../src/data.js';
+import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, MODE_TEXT, BOARD, BRUNNEN_NOMI, ABSPANN_REISE, fillTemplate } from '../src/data.js';
 import { readFileSync } from 'node:fs';
-import { loadSave, storeSave, refundMegafon, MEGAFON_PRICE, DEFAULT_SAVE } from '../src/save.js';
+import { loadSave, storeSave, refundMegafon, megafonNoteSeen, MEGAFON_PRICE, DEFAULT_SAVE } from '../src/save.js';
 
 let fails = 0;
 let checks = 0;
@@ -329,9 +330,20 @@ const mega = { says: [], toasts: [] };
   ok(a.megafonRefund === 0, 'Ein alter Spielstand trägt schon eine Erstattung');
   const back = refundMegafon(a);
   ok(back === MEGAFON_PRICE && MEGAFON_PRICE === 450 && a.wallet === 462.5 && !('megafon' in a.upgrades) && a.upgrades.radar === 1 && a.upgrades.boost === 2 && a.megafonRefund === 450, `Erstattung: ${back} €, Guthaben ${a.wallet}, ${JSON.stringify(a.upgrades)}`);
+  ok(a.megafonNote === 450, 'Der Titel sagt die Erstattung nicht an');
   storeSave(a);
   const b = loadSave();
   ok(refundMegafon(b) === 0 && b.wallet === 462.5 && b.megafonRefund === 450, 'Nach dem Neuladen gibt es das Geld ein zweites Mal');
+  // die Zeile auf dem Titel bleibt über das Neuladen, bis der Shop zum ersten Mal offen ist (main.js dataFor('shop'))
+  ok(b.megafonNote === 450 && megafonNoteSeen(b) === 450 && b.megafonNote === 0 && megafonNoteSeen(b) === 0, `Zeile zur Erstattung: ${b.megafonNote}`);
+  storeSave(b);
+  ok(loadSave().megafonNote === 0 && refundMegafon(loadSave()) === 0, 'Nach dem Shop steht die Erstattung wieder auf dem Titel');
+  const src = ['src/main.js', 'src/ui/menus.js'].map((f) => readFileSync(new URL('../' + f, import.meta.url), 'utf8')).join('\n');
+  ok(src.includes('shopRefund = megafonNoteSeen(save)') && src.includes('if (d.megafonNote)') && src.includes('if (d.refund)'), 'Titel oder Shop lesen die Zeile zur Erstattung nicht aus dem Spielstand');
+  // der Abspann der Reise: die letzte Zeile zählt die Folgen (menus.js setzt {folgen} ein; ohne Folge fehlt sie)
+  const row = ABSPANN_REISE[ABSPANN_REISE.length - 1];
+  ok(row[0] === 'BrunnenTV' && row[2] === 'wide' && fillTemplate(row[1], { folgen: '3 Folgen' }) === '3 Folgen mit Mini Adam am Megafon' && ABSPANN_REISE.filter((r) => r[1].includes('{folgen}')).length === 1, `Abspann: ${row.join(' | ')}`);
+  ok(src.includes("st.brunnenTV === 1 ? '1 Folge'") && src.includes("fillTemplate(v, { folgen })"), 'Der Abspann zählt die Folgen nicht');
   // ein später noch einmal gekauftes Megafon (ein alter Stand in einem anderen Fenster): kein zweites Geld
   b.upgrades.megafon = 1;
   ok(refundMegafon(b) === 0 && b.wallet === 462.5, 'Ein zweites gekauftes Megafon wird noch einmal erstattet');
@@ -361,6 +373,6 @@ const tl = (r) => `Ende ${r.endT.toFixed(2)} s, nächstes Gebot ${(r.bidT - r.re
 console.log(`BrunnenTV-Fahrplan: Bauchbinde ${TV.card} s, Megafon ${TV.line} s, Chat ${TV.chat} s, NOMI ${TV.nomi} s, Ende ${TV.end} s; Fenster offen ${TV.window.down.join('–')} s, Megafon in der Hand ab ${MEGA.show * 100} % gehoben`);
 console.log(`Überspringen: ohne (${tl(runs.none)}) · früh bei ${(TV.skip + 0.05).toFixed(2)} s (${tl(runs.early)}) · spät bei ${(TV.nomi + 1.5).toFixed(1)} s (${tl(runs.late)}) – derselbe Endzustand`);
 console.log(`Kameras an ${cams.places} Orten: mindestens ${cams.minFountain.toFixed(2)} m vom Becken, Fenster und Brunnen höchstens ${cams.maxAngle.toFixed(0)}° neben der Blickrichtung (hochkant zurückgefahren ${cams.maxPortrait.toFixed(0)}° von ${portraitHalf.toFixed(0)}°), ${cams.lines} Sichtlinien zu Fenster und Brunnen frei von Häusern, Bäumen und Laternen`);
-console.log(`Megafon: kein Shop-Artikel, Taste H ohne Upgrade klassisch und in der Reise (${mega.toasts.join(' / ')}), ein gekauftes einmal erstattet (${MEGAFON_PRICE} €)`);
+console.log(`Megafon: kein Shop-Artikel, Taste H ohne Upgrade klassisch und in der Reise (${mega.toasts.join(' / ')}), ein gekauftes einmal erstattet (${MEGAFON_PRICE} €, auf dem Titel bis zum ersten Besuch im Shop); Abspann der Reise mit „${ABSPANN_REISE.at(-1)[0]}: ${fillTemplate(ABSPANN_REISE.at(-1)[1], { folgen: '1 Folge' })}“`);
 console.log(fails ? `${fails} Fehler (${checks} Prüfungen)` : `brunnen-test: alles grün (${checks} Prüfungen)`);
 process.exit(fails ? 1 : 0);

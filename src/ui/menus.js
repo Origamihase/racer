@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Tesla-Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, MODE_TEXT, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, MODE_TEXT, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate } from '../data.js';
 import { fmtNum, fmtCent, fmtKm, fmtEuro, fmtDuration, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -305,8 +305,8 @@ export class Menus {
     el('span', '', stats, '🛣️ ' + (travel ? fmtOdo(d.stats.reiseKm || 0) : fmtKm((d.stats.totalKm || 0) * 1000, 1)) + ' gesamt');
     // die Reise zählt dazu ihre Orte, dieselbe Zahl wie auf der großen Karte
     if (mode === 'xxl') el('span', '', stats, '❤️ ' + visitLine(d.visits));
-    // das gekaufte Megafon ist eben erstattet worden (main.js, save.js refundMegafon)
-    if (this.h.refund) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(this.h.refund)));
+    // das gekaufte Megafon ist erstattet worden (save.js refundMegafon): die Zeile steht bis zum ersten Besuch im Shop
+    if (d.megafonNote) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.megafonNote)));
     el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause');
   }
 
@@ -419,8 +419,9 @@ export class Menus {
     };
     const crew = el('div', 'crew', card);
     for (const [k, v] of ABSPANN_CREW) credit(crew, k, [v]);
-    // Reise: die Leute des Streams, mit ausgedachten Berufen
-    if (o.travel) for (const [k, v, wide] of ABSPANN_REISE) credit(crew, k, [v], wide === 'wide');
+    // Reise: die Leute des Streams, mit ausgedachten Berufen, und die BrunnenTV-Folgen der Reise
+    const folgen = st.brunnenTV === 1 ? '1 Folge' : fmtNum(st.brunnenTV || 0) + ' Folgen';
+    if (o.travel) for (const [k, v, wide] of ABSPANN_REISE) if (st.brunnenTV || !v.includes('{folgen}')) credit(crew, k, [fillTemplate(v, { folgen })], wide === 'wide');
     // Wie im echten Abspann danach die Unterstützenden: größte Spende, Abo-Verschenker (die meisten zuerst), neue VIPs
     const F = o.fans;
     if (F && (F.top || F.gifters.length || F.vips.length)) {
@@ -443,7 +444,7 @@ export class Menus {
     el('h2', '', head, '🛒 Tesla-Shop');
     el('div', 'wallet', head, '💶 ' + fmtCent(d.wallet));
     el('p', 'sub', card, 'Upgrades für den schwarzen Model 3 Long Range AWD. Bezahlt wird mit den Stream-Einnahmen: Spenden, Abos, Navi-Gebote.');
-    if (this.h.refund) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(this.h.refund)));
+    if (d.refund) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.refund)));
     const grid = el('div', 'shop-grid', card);
     for (const it of SHOP) {
       const lvl = d.upgrades[it.id] || 0;
