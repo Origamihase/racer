@@ -4,7 +4,7 @@
 import {
   CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
-  BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN,
+  BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, PARTYPEOPLE,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
 import { Player } from './player.js';
@@ -258,8 +258,9 @@ export class Game {
     this.ui.reset?.();
     this.ui.jobs(this.jobs);
     this.bot('hugo', 'Der Stream läuft! Viel Spaß beim Zuschauen.');
-    this.later(1.2, () => this.chat('Hallo Mini Adam ❤'));
-    this.later(2.0, () => this.chat('Wohin fahren wir heute?'));
+    // Mini Adam hat zu Beginn „Hallo, Partypeople!“ gesagt (Startszene, main.js): Der Chat grüßt zurück
+    shuffle(PARTYPEOPLE.chat).slice(0, 4).forEach((line, i) => this.later(0.6 + i * 0.6 + rand(0, 0.3), () => this.chat(line)));
+    this.later(3.4, () => this.chat('Wohin fahren wir heute?'));
     // das erste Ziel sucht der Chat erst aus
     this.later(3.2, () => this.bot('james', 'Die Gebote sind eröffnet: Wohin soll die Reise gehen? Ab 10 € seid ihr dabei.'));
     // die Challenges des Abends: Wer was verspricht, steht im Chat
@@ -1823,9 +1824,13 @@ export class Game {
     const Z = this.zufrieden;
     const nv = this.navi;
     const counted = !!nv.target && !nv.stopping && !this.tv && !this.charging && !this.world.stopping();
-    Z.update(dt, { secs: counted ? nv.driveSecs() : Infinity, counted, kmh: this.player.kmh });
+    const secs = counted ? nv.driveSecs() : Infinity;
+    Z.update(dt, { secs, counted, kmh: this.player.kmh });
     d.gain = Z.gain;
     d.audience = Z.audience;
+    // der Fortschritt zum Ziel bewegt auch die heimliche Stimmung (economy.js PROGRESS) – solange gezählt wird
+    d.pace = counted && Number.isFinite(secs) ? Z.pace : undefined;
+    d.near = secs;
   }
 
   /**

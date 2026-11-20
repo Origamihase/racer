@@ -639,6 +639,8 @@ function stream(driver, hours, seed, firstRound = false) {
         if (trip.stop < 0 && !game.charging) {
           const r = trip.nextRest((q) => game.reachable(q));
           game.planStop();
+          // (der Weg führt jetzt über den Park: Was das Navi hinter dem Horizont versprach, galt dem alten Weg)
+          promised.clear();
           if (r && trip.stop === r.park) {
             m.planned++;
             m.parkKm.push(r.km);
@@ -650,6 +652,7 @@ function stream(driver, hours, seed, firstRound = false) {
     const tvBefore = game.tv;
     game.update(DT, ctl, camera);
     if (charging && !game.charging) {
+      promised.clear();
       m.full += p.battery > 99.9 ? 1 : 0;
       ok(p.battery > 99.9 && !arrival.held, `Ladestopp vorbei mit ${p.battery.toFixed(1)} % Akku${arrival.held ? ', der Wagen wird noch gehalten' : ''}`);
     }
@@ -865,10 +868,11 @@ for (const { driver, m } of rows) {
 // Härtetest: Bieterduell auf den letzten Metern
 {
   if (LOG) console.log(DUELLIST.name + ':');
-  // (Startwert so gewählt, dass der Stream alles Verlangte enthält: 20 Duelle, 8 Ankünfte, 3× vorbeigerollt, 1× knapp
+  // (Startwert so gewählt, dass der Stream alles Verlangte enthält: 17 Duelle, 7 Ankünfte, 1× vorbeigerollt, 1× knapp
   // hinter dem Haltepunkt – wer an den Bieterregeln dreht oder an den Listen, aus denen das Spiel würfelt (zuletzt der
-  // Ruf „Schöner Brunnen!“ samt Echo auch in übersprungenen Folgen), verschiebt den Zufall und sucht hier notfalls neu)
-  const m = stream(DUELLIST, HOURS, 842);
+  // Ruf „Schöner Brunnen!“ samt Echo auch in übersprungenen Folgen, dann der Gruß des Chats zum Streamstart),
+  // verschiebt den Zufall und sucht hier notfalls neu)
+  const m = stream(DUELLIST, HOURS, 843);
   console.log(
     `${DUELLIST.name}: ${fmt(m.hours)} h, ${m.duels} Duelle auf den letzten 150 m, ${m.bids} Gebote · danach ${m.arrivals}× am Brunnen gestanden (BrunnenTV;` +
       ` ${m.late2}× knapp hinter dem Haltepunkt), ${m.rolled}× vorbeigerollt, ${m.duels - m.spots}× war das Ziel am Brunnen gerade ein anderes` +

@@ -44,7 +44,7 @@ import { UI } from './ui/ui.js';
 import * as sicht from './ui/sicht.js';
 import { Menus } from './ui/menus.js';
 import { bindFullscreenKey } from './ui/fullscreen.js';
-import { SHOP, UPGRADE_LIMITS } from './data.js';
+import { SHOP, UPGRADE_LIMITS, PARTYPEOPLE } from './data.js';
 import { NavModel } from './map/navroute.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
@@ -642,6 +642,7 @@ function startRun() {
   cockpit.shake = 0;
   chassis.reset();
   // jede Fahrt beginnt mit der Startszene am Supercharger in Erlensee (ohne Ladepark gleich am Steuer)
+  Object.assign(chargeRun, { hello: false, liveT: Infinity, greetT: Infinity });
   state = 'charge';
   if (!chargeBegin()) toDrive();
   // die Taste, die „Losfahren“ ausgelöst hat, soll die Startszene nicht gleich überspringen
@@ -1207,6 +1208,7 @@ function toDrive() {
   state = 'drive';
   stateT = 0;
   ui.show(true);
+  if (!chargeRun.hello) streamHello();
   // die Facecam geht an: Mini Adam schaut hinein und winkt
   adamMood('wave');
   // die Tipps der ersten Minuten zählen ab hier (first-tips.js); keiner steht noch vom letzten Stream
@@ -1237,7 +1239,8 @@ const CHARGE_LINES = { live: 'Wir sind live.', greet: 'Hallo Mini Adam! Akku vol
 // town: der Startort (Towns.of: plan, group, charge), port: Ladeklappe des Wagens, keep: Spieler vor der Szene,
 // skipT: wann übersprungen wurde (dann erst abblenden), greetT: wann NOMI grüßt (Spielzeit simT)
 // parked: der Titel der Reise zeigt den Wagen am Supercharger (xxlStart)
-const chargeRun = { town: null, port: null, pose: {}, keep: null, parked: false, chimed: false, said: false, skipT: -1, greetT: Infinity };
+// hello: Mini Adams „Hallo, Partypeople!“ ist gesagt, liveT: wann das Sprachstudio „Wir sind live.“ sagt (Spielzeit simT)
+const chargeRun = { town: null, port: null, pose: {}, keep: null, parked: false, chimed: false, hello: false, skipT: -1, liveT: Infinity, greetT: Infinity };
 const chargeM = new THREE.Matrix4();
 
 /** Wagen in die Bucht des Startorts, Stecker in die Buchse, Ring grün. false, wenn der Startort keinen Ladepark hat. */
@@ -1262,7 +1265,7 @@ function chargePlug() {
 function chargeBegin() {
   if (!chargePlug()) return false;
   const p = game.player;
-  Object.assign(chargeRun, { chimed: false, said: false, unplugged: false, shifted: false, skipT: -1, greetT: Infinity });
+  Object.assign(chargeRun, { chimed: false, unplugged: false, shifted: false, skipT: -1 });
   chargeRun.keep = { speed: p.speed, wheel: p.wheel, throttle: p.throttle, braking: p.braking };
   ui.show(false, true);
   return true;
@@ -1326,12 +1329,7 @@ function chargeStep(dt) {
     run.chimed = true;
     audio.nomiChime();
   }
-  if (t >= S.live && !run.said) {
-    run.said = true;
-    const d = speech.say(CHARGE_LINES.live, 'sprachstudio');
-    ui.studio(CHARGE_LINES.live, d + 0.8);
-    run.greetT = simT + d + 1.1;
-  }
+  if (t >= S.hallo && !run.hello) streamHello();
   const where = placeScene(dt, CHARGE_KEYS, t, S.inside, S.end);
   const sw = S.inside;
   const fade = t < 0.6 ? 1 - t / 0.6 : t > sw - 0.25 && t < sw ? (t - (sw - 0.25)) / 0.25 : t >= sw && t < sw + 0.35 ? 1 - (t - sw) / 0.35 : 0;
@@ -1347,6 +1345,26 @@ function chargeStep(dt) {
     wave: smoothstep(S.wave[0], S.wave[0] + 0.4, t) * (1 - smoothstep(S.wave[1] - 0.5, S.wave[1], t)),
     look: smoothstep(S.wave[0], S.wave[0] + 0.8, t) * (1 - smoothstep(S.wave[1], S.inside, t)),
   };
+}
+
+/**
+ * Jeder Stream beginnt mit Mini Adams Gruß (data.js PARTYPEOPLE): in der Startszene, während er winkt, sonst (ohne
+ * Ladepark, übersprungen vor dem Gruß) beim Losfahren. Mit seiner tiefen Stimme und Vorrang, damit nichts ihn
+ * verschluckt; danach das Sprachstudio „Wir sind live.“ und OMIs Gruß.
+ */
+function streamHello() {
+  chargeRun.hello = true;
+  const d = speech.say(PARTYPEOPLE.say, 'adam', { priority: true });
+  ui.adam(PARTYPEOPLE.say, d + 0.8);
+  chargeRun.liveT = simT + Math.max(d + 0.35, SCENE.live - SCENE.hallo);
+}
+
+/** Das Sprachstudio meldet: Wir sind live (nach Mini Adams Gruß). */
+function chargeLive() {
+  chargeRun.liveT = Infinity;
+  const d = speech.say(CHARGE_LINES.live, 'sprachstudio');
+  ui.studio(CHARGE_LINES.live, d + 0.8);
+  chargeRun.greetT = simT + d + 1.1;
 }
 
 /** NOMI grüßt (wie Game.say, aber ohne die Spielzeit: die steht in der Szene still). */
@@ -1995,7 +2013,8 @@ function step(dt, { render = true } = {}) {
   let adamWave = 0;
   let adamLook = 0;
   let adamMegafon = 0;
-  // NOMIs Gruß aus der Startszene kommt, wenn das Sprachstudio ausgeredet hat (auch erst nach der Übergabe)
+  // „Wir sind live.“ nach Mini Adams Gruß, NOMIs Gruß, wenn das Sprachstudio ausgeredet hat (auch erst nach der Übergabe)
+  if (simT >= chargeRun.liveT) chargeLive();
   if (simT >= chargeRun.greetT) chargeGreet();
 
   if (input.take('mute')) {

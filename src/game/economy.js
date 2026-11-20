@@ -20,6 +20,16 @@ const LEVEL_HOLD = 4;
 // neutral: Dorthin findet die Stimmung von selbst zurück, mit dieser Zeitkonstante in Sekunden
 const NEUTRAL = 0.5;
 const DRIFT = 150;
+// Der Eigentümer: „Die Chatstimmung ist bei Streamstart immer gut.“ So beginnt jeder Stream (Stufe 3, gut drauf).
+export const MOOD_START = 0.68;
+/**
+ * Fortschritt zum Navi-Ziel (satisfaction.js pace: faire Sekunden je Sekunde, gegen das Tempo des Navis – auf jeder
+ * Straße, auch im Ort und auf der Landstraße mit ihren Limits): Ab fair hebt er die Stimmung (up je Sekunde und
+ * Einheit über fair, höchstens bis max darüber), darunter senkt er sie (down, höchstens bis min darunter). Wer im Tempo
+ * des Navis fährt (p = 1), hält sie gegen das Zurücksinken zur Mitte; wer zügig ist, hebt sie deutlich (Zahlen in
+ * NOTES des Ansagen-Schritts). Auf den letzten near Sekunden zum Ziel fiebert der Chat mit (nearSway je Sekunde).
+ */
+export const PROGRESS = { fair: 0.9, up: 0.03, down: 0.02, max: 0.5, min: -0.4, near: 90, nearSway: 0.0015 };
 // So stark hängt die Spendierlaune an der Stimmung: Faktor e^(GAIN · (Stimmung − 0,5)),
 // also etwa ×0,46 bei 0,2 · ×1 bei 0,5 · ×2,2 bei 0,8
 const MOOD_GAIN = 2.6;
@@ -203,9 +213,10 @@ export class Economy {
   reset(upgrades = {}) {
     this.up = upgrades;
     this.t = 0;
-    this.#mood = NEUTRAL;
-    this.#slow = NEUTRAL;
-    this.level = 2;
+    this.#mood = MOOD_START;
+    this.#slow = MOOD_START;
+    this.level = 2; // levelOf geht von der Stufe aus, die gerade gilt
+    this.level = this.levelOf(MOOD_START);
     this.levelT = 0;
     this.hype = 0;
     // Raid (Reise, König Knolli): Leute, die eine Weile bleiben und langsam wieder gehen (raidIn)
@@ -304,7 +315,8 @@ export class Economy {
    * @param {number} dt
    * @param {{kmh:number, limit:boolean, stuck:boolean, leftOpen:boolean, inLeft:boolean, funkloch:boolean}} d
    *   kmh Tempo · limit Tempolimit-Zone (da ist langsam fahren richtig) · stuck hinter jemandem her · leftOpen/inLeft
-   *   freigeschaltete linke Spur und ob Mini Adam sie nutzt · funkloch Stream gerade weg
+   *   freigeschaltete linke Spur und ob Mini Adam sie nutzt · funkloch Stream gerade weg · pace Fortschritt zum Ziel
+   *   (satisfaction.js; ohne Ziel undefined) und near Sekunden Fahrt bis dorthin (PROGRESS)
    * @returns {object[]} was in diesem Schritt passiert ist: donation, sub, vip, sammel (jeweils mit amount), clean
    *   (volle Minute ohne Kratzer; amount > 0, wenn jemand dafür spendet) und level (Stimmungsstufe hat gewechselt).
    *   Das Feld wird beim nächsten Aufruf wiederverwendet.
@@ -324,6 +336,14 @@ export class Economy {
       const slow = clamp((PACE.slowBelow - d.kmh) / 50, 0, 1);
       if (fast) this.sway(fast * PACE.fast * dt, 'tempo');
       if (slow) this.sway(-slow * PACE.slow * dt, 'langsam');
+    }
+    // Fortschritt zum Ziel (nur, solange ein Ziel gilt und gezählt wird; pace aus satisfaction.js)
+    if (Number.isFinite(d.pace)) {
+      const P = PROGRESS;
+      const q = clamp(d.pace - P.fair, P.min, P.max);
+      if (q > 0) this.sway(q * P.up * dt, 'tempo');
+      else if (q < 0) this.sway(q * P.down * dt, 'langsam');
+      if (d.near < P.near && q >= 0) this.sway(P.nearSway * dt, 'nah');
     }
     if (d.stuck) {
       this.stuckT += dt;
@@ -417,7 +437,7 @@ export class Economy {
   /**
    * Woran liegt die Laune gerade? Das Stichwort eines Anlasses, der die Stimmung zuletzt spürbar gehoben ('up') oder
    * gedrückt ('down') hat – gewürfelt nach Gewicht, damit bei mehreren Anlässen nicht immer derselbe genannt wird.
-   * Stichworte nach oben: manoever, tempo, ziel, gruss, sauber, blitzer, spur, gebot, spass, regen, rekord, job ·
+   * Stichworte nach oben: manoever, tempo, ziel, nah, gruss, sauber, blitzer, spur, gebot, spass, regen, rekord, job ·
    * nach unten: blech, langsam, stau, spur, funkloch, verpasst, strafe.
    * @param {'up'|'down'} dir
    * @param {string} [avoid] zuletzt genanntes Stichwort (kommt nur dran, wenn es das einzige ist)

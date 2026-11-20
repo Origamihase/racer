@@ -146,6 +146,13 @@ export const SCHOENER_BRUNNEN = {
   say: 'Schöner Brunnen!',
   chat: ['SCHÖÖÖNER BRUNNEN!', 'SCHÖÖÖÖNER BRUNNEN!!! ⛲', 'Schöner Brunnen! 😍', 'SCHÖÖÖNER BRUNNEN 💦', 'schöööööner brunnen', 'SCHÖNER BRUNNEN! 🔊', 'SCHÖÖÖNER BRUNNEN! 👏'],
 };
+// Jeder Stream beginnt mit Mini Adams Gruß (der Eigentümer: „Hallo, Partypeople“): in der Startszene mit seiner tiefen
+// Stimme (VOICES.adam) und als Untertitel; sobald der Chat zu sehen ist, grüßt er zurück.
+export const PARTYPEOPLE = {
+  say: 'Hallo, Partypeople!',
+  chat: ['Hallo Partypeople! 🎉', 'HALLO ADAM! 👋', 'Partypeople am Start 🥳', 'Hallo zurück! ❤', 'Hallo Mini Adam! 🎉', 'Partypeople melden sich zum Dienst 🫡',
+    'Hallöchen aus dem Chat 👋', 'Endlich live! ❤', 'Haaallo Partypeople 🎊', 'Die Party kann beginnen 🎉'],
+};
 export const BRUNNEN_NOMI = [
   'Folge {n} ist im Kasten. Ich finde, das Becken hat heute besonders geglänzt.',
   'Ich habe den Brunnen geprüft: Das Wasser läuft, die Tauben sind zufrieden.',
@@ -616,6 +623,7 @@ export const STUDIO = {
       manoever: ['Die Überholmanöver kommen bestens an.', 'So knapp überholt, das lieben sie.', 'Jedes Überholen wird mitgezählt.'],
       tempo: ['Das Tempo gefällt ihnen.', 'Sie mögen es, wenn der Tacho arbeitet.', 'So flott waren sie lange nicht unterwegs.'],
       ziel: ['Die Ankunft wird noch gefeiert.', 'Ein erreichtes Ziel vergessen sie nicht so schnell.'],
+      nah: ['Das Ziel ist ganz nah, alle sind gespannt.', 'Gleich sind wir da, der Chat zählt schon mit.', 'Kurz vor dem Ziel, da fiebern alle mit.'],
       gruss: ['Der Gruß mit der Hupe kam gut an.', 'So ein Hupgruß geht ihnen ans Herz.'],
       sauber: ['Sie loben die saubere Fahrt.', 'Kein Kratzer, das fällt ihnen auf.'],
       blitzer: ['Das Blitzerfoto macht gerade die Runde.', 'Das Blitzerfoto bekommt gerade viele Herzen.'],

@@ -164,6 +164,7 @@ export class UI {
     el('span', 'sub-sign studio-icon', this.subEl, '🎧');
     el('span', 'sub-sign durchsage-icon', this.subEl, '🎙️');
     el('span', 'sub-sign megafon-icon', this.subEl, '📢');
+    el('span', 'sub-sign adam-icon', this.subEl, '🎤');
     const words = el('span', 'sub-words', this.subEl);
     this.subLabel = el('span', 'sub-label', words, '');
     this.subText = el('span', 'sub-text', words, '');
@@ -574,6 +575,11 @@ export class UI {
 
   nomi(text, dur = 3) {
     this.speak('nomi', text, Math.max(2.2, dur));
+  }
+
+  /** Mini Adam sagt selbst etwas, ohne Megafon (der Gruß zu Beginn jedes Streams): Mikrofon und sein Name. */
+  adam(text, dur = 3) {
+    this.speak('adam', '»' + text + '«', Math.max(2.2, dur), 'Mini Adam');
   }
 
   /** Das Sprachstudio spricht: derselbe Untertitel-Platz wie bei NOMI, aber klar als Sprachstudio erkennbar. */

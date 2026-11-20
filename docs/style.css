@@ -161,12 +161,13 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   font-size: 16px; line-height: 1.3; font-weight: 600; box-shadow: 0 0 20px rgba(80,130,255,0.25); animation: subin 0.25s; }
 @keyframes subin { from { opacity: 0; transform: translateY(8px); } }
 .sub-sign { display: none; flex: none; width: 34px; height: 34px; border-radius: 50%; align-items: center; justify-content: center; font-size: 19px; line-height: 1; }
-.sub-nomi > .nomi-eyes, .sub-studio > .studio-icon, .sub-durchsage > .durchsage-icon, .sub-megafon > .megafon-icon { display: inline-flex; }
+.sub-nomi > .nomi-eyes, .sub-studio > .studio-icon, .sub-durchsage > .durchsage-icon, .sub-megafon > .megafon-icon, .sub-adam > .adam-icon { display: inline-flex; }
 .nomi-eyes { gap: 4px; background: radial-gradient(circle at 35% 30%, #3b3d44, #070708 70%); }
 .nomi-eyes i { width: 7px; height: 10px; border: 2px solid #fff; border-radius: 3px; animation: blink 2.6s infinite; }
 .studio-icon { background: radial-gradient(circle at 35% 30%, #54401f, #17110a 70%); }
 .durchsage-icon { background: radial-gradient(circle at 35% 30%, #6a3a9c, #1d0c2e 70%); }
 .megafon-icon { background: radial-gradient(circle at 35% 30%, #a35a14, #2b1503 70%); }
+.adam-icon { background: radial-gradient(circle at 35% 30%, #2f6a4a, #0a1d13 70%); }
 .sub-words { min-width: 0; }
 .sub-label { display: block; font-size: 11px; font-weight: 700; line-height: 1.3; text-transform: uppercase; letter-spacing: 0.08em; }
 .sub-label:empty { display: none; }
@@ -178,6 +179,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .sub-durchsage .sub-text, .sub-megafon .sub-text { font-style: italic; }
 .sub-megafon { background: rgba(52, 26, 4, 0.94); border-color: rgba(255, 170, 80, 0.55); box-shadow: 0 0 20px rgba(255, 150, 60, 0.25); }
 .sub-megafon .sub-label { color: #ffc78a; font-size: 12px; text-transform: none; letter-spacing: 0.01em; }
+/* Mini Adam selbst (sein Gruß zu Beginn): grün wie das LIVE-Gefühl des Streams, kursiv wie jedes Zitat */
+.sub-adam { border-color: rgba(120, 230, 160, 0.5); box-shadow: 0 0 20px rgba(90, 210, 140, 0.25); }
+.sub-adam .sub-label { color: #9ff0bf; }
+.sub-adam .sub-text { font-style: italic; }
 /* BrunnenTV am Navi-Ziel (XXL): die Bauchbinde der Folge, wie eine Sendung ihren Titel einblendet – der Brunnen in
    der Bildmitte bleibt zu sehen. Wer spricht, hat den Streifen: Die Bauchbinde wartet so lange. Nur in breiten
    Fenstern bleibt sie neben einem kurzen Satz stehen („Sie haben Ihr Ziel erreicht.“; ui.js setzt .short). */
