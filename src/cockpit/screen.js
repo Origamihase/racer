@@ -388,7 +388,7 @@ export class CenterScreen {
   /**
    * Akku-Karte (game.js AKKU_CARD; b: screenState lowBattery): rot über der Spuransicht – „Akku fast leer“ bei 10 %,
    * „Akku kritisch“ bei 5 %, „Akku leer“, bis der Wagen steht; mit dem Rest im Batteriesymbol, den Prozent, was zu tun
-   * ist, und dem nächsten Ladepark. Gleitet herein und hinaus, ab „kritisch“ pulsiert der Rand.
+   * ist, und dem Ladepark, den NOMI nennt. Gleitet herein und hinaus, ab „kritisch“ pulsiert der Rand.
    */
   drawLowBattery(ctx, b) {
     const x = 14;
@@ -438,11 +438,11 @@ export class CenterScreen {
     ctx.fillText(pct, x + 20, y + 98);
     const tx = x + 34 + ctx.measureText(pct).width;
     ctx.font = '600 22px "Helvetica Neue", Arial, sans-serif';
-    fitText(ctx, ['', 'Bitte bald laden', 'Jetzt laden!', 'Der Wagen rollt aus'][b.lvl], tx, y + 100, x + w - 18 - tx);
-    // der nächste Ladepark (leer: nichts mehr zu planen)
+    fitText(ctx, ['', b.planned ? 'Ladestopp geplant' : 'Bitte bald laden', 'Jetzt laden!', 'Der Wagen rollt aus'][b.lvl], tx, y + 100, x + w - 18 - tx);
+    // der Ladepark, den NOMI nennt – sein Name sagt schon „Ladepark …“ (leer: nichts mehr zu planen)
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.font = '500 20px "Helvetica Neue", Arial, sans-serif';
-    const park = b.park ? (b.planned ? 'Ladestopp: ' : 'Nächster Ladepark: ') + b.park + ' · ' + fmtKm(b.km) : 'Nächsten Ladepark ansteuern';
+    const park = b.park ? b.park + ' · ' + fmtKm(b.km) : 'Nächsten Ladepark ansteuern';
     fitText(ctx, b.lvl === 3 ? 'Kein Strom mehr für den Antrieb' : park, x + 20, y + 146, w - 40);
     ctx.restore();
   }

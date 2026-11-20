@@ -625,15 +625,16 @@ export class Game {
     }
     a.s = p.s;
     a.b = p.battery;
+    // die Akku-Karte nennt denselben Ladepark wie NOMI: den nächsten in Reichweite, sonst den Abstecher dorthin
+    const fits = (q) => this.reachable(q);
     if (p.battery <= AKKU_CARD.at[0] + 1) {
-      const [q] = trip.restsAhead(1);
+      const [q] = trip.restsAhead(1, fits);
       a.park = q ? { name: q.name, at: trip.km + q.km, planned: q.planned } : null;
     }
     if (p.battery > A.early + 5) this.batteryWarned = 0;
     const lvl = p.battery < A.warn[1] ? 3 : p.battery < A.warn[0] ? 2 : 0;
     if (lvl && lvl <= this.batteryWarned) return;
     if (!lvl && (this.batteryWarned || p.battery > A.early)) return;
-    const fits = (q) => this.reachable(q);
     const [r, r2] = trip.restsAhead(2, fits);
     // früh nur, wenn hinter dem nächsten Park weder der übernächste in Reichweite liegt noch das Ziel und von dort ein Park
     const beyond = () => (r2 && fits(r2)) || fits(trip.pastTarget() ?? NOWHERE);
@@ -663,7 +664,7 @@ export class Game {
 
   /**
    * Die Akku-Karte für den Mittelbildschirm (null: keine): Stufe (akkuLevel), Prozent, Deckkraft beim Ein- und
-   * Ausblenden und der nächste Ladepark (Name, Reisekilometer bis dorthin, eingeplant?).
+   * Ausblenden und der Ladepark, den NOMI nennt (Name, Reisekilometer bis dorthin, eingeplant?).
    */
   lowBatteryCard() {
     const c = this.lowBat;

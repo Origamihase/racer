@@ -11,6 +11,7 @@ import { PARK, PARKS, parkAt } from '../src/map/parks.js';
 import { STREET } from '../src/world/kit/layout.js';
 import { TESLA } from '../src/models/tesla.js';
 import { Trip, J } from '../src/game/trip.js';
+import { findPlace } from '../src/map/graph.js';
 import { Arrival, limitsFor, AUTO } from '../src/world/xxl/plan.js';
 import { Game, AKKU_CARD, akkuLevel } from '../src/game/game.js';
 import { DRIVE_DEFAULTS } from '../src/game/player.js';
@@ -330,33 +331,36 @@ for (const [name, r] of runs) {
 // fast leer“ mit dem nächsten Ladepark, bei 5 % „Akku kritisch“ (je AKKU_CARD.show Sekunden), leer „Akku leer“ bis
 // zum Ende, und das HUD sagt es einmal; leer hält der Tempomat nichts mehr, der Wagen rollt aus, und im Stand endet
 // die Fahrt mit „akku“.
-function emptyRun() {
+function emptyRun({ target = null, battery = 10.6, reach = null, secs = 600 } = {}) {
   Math.random = mulberry32(5);
   const trip = new Trip({ rng: Math.random });
   const arrival = new Arrival();
   const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 3000);
-  const out = { cards: [], toasts: [], emptyAt: null, stopT: null, faster: 0, reason: null, vEmpty: 0 };
+  const out = { cards: [], toasts: [], said: [], emptyAt: null, stopT: null, faster: 0, reason: null, vEmpty: 0, onRoute: null };
   let ids = 0;
   const game = new Game({
     traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
     scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
     road: loose(), sky: loose(), rain: loose(), windshield: loose({ firmware: 0, manual: () => 'wipe' }),
     cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
-    ui: loose({ toast: (text, kind, key) => out.toasts.push({ text, kind, key }) }), fx: loose(), pickups: loose({ update: () => NONE }),
+    ui: loose({ toast: (text, kind, key) => out.toasts.push({ text, kind, key }), nomi: (text) => out.said.push(text) }), fx: loose(), pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });
   game.start({ upgrades: {}, best: {} });
+  if (target) trip.setTarget(findPlace(target));
+  // Reichweite vorgegeben (reach: Reisekilometer), statt sie aus dem gemessenen Verbrauch zu schätzen
+  if (reach !== null) game.reachable = (q) => q.km < reach;
   const p = game.player;
   p.configure({ ...DRIVE_DEFAULTS, cruise: true });
   p.s = trip.s;
   p.x = trip.x;
   p.speed = 130 / 3.6;
   p.cruiseSet = p.speed;
-  p.battery = 10.6;
+  p.battery = battery;
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
   const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
   let last = null;
-  for (let i = 0; i < 600 / DT; i++) {
+  for (let i = 0; i < secs / DT; i++) {
     game.T.bid = Math.max(game.T.bid, 60);
     limitsFor(trip, lim, arrival.stop(trip));
     p.setLimits(lim);
@@ -378,6 +382,7 @@ function emptyRun() {
     } else if (out.emptyAt !== null && p.speed > v0 + 1e-9) out.faster++;
     if (game.over) break;
     const c = game.screenState().lowBattery;
+    if (c && !last) out.onRoute = (trip.restsAhead(1)[0] || { name: '' }).name;
     if (c && (!last || c.lvl !== last.lvl)) out.cards.push({ lvl: c.lvl, t: game.t, pct: p.battery, park: c.park, km: c.km, alpha: c.alpha });
     if (!c && last) out.cards[out.cards.length - 1].gone = game.t;
     if (c) out.cards[out.cards.length - 1].alphaMax = Math.max(out.cards[out.cards.length - 1].alphaMax || 0, c.alpha);
@@ -402,6 +407,12 @@ if (c1 && c2 && c3) {
 ok(E.toasts.filter((t) => t.key === 'akku').length === 1, `HUD meldet den leeren Akku ${E.toasts.filter((t) => t.key === 'akku').length}×`);
 ok(E.emptyAt !== null && E.vEmpty > 30 && E.faster === 0, `leer bei ${E.vEmpty.toFixed(1)} m/s, danach ${E.faster}× schneller geworden (Tempomat)`);
 ok(E.reason === 'akku' && E.stopT - E.emptyAt < 40, `leer: Ende ${E.reason} nach ${E.stopT !== null ? (E.stopT - E.emptyAt).toFixed(1) : '–'} s Ausrollen`);
+// mit Ziel liegt der erste Ladepark auf dem Weg außer Reichweite: Die Karte nennt wie NOMI den Abstecher in Reichweite
+const K = emptyRun({ target: 'München', battery: 10.05, reach: 32, secs: 4 });
+const k1 = K.cards[0];
+const told = K.said.filter((t) => t.includes('Ladepark')).pop() || '';
+ok(k1 && k1.lvl === 1 && k1.park !== '' && told.includes(k1.park + ' in ') && K.onRoute && k1.park !== K.onRoute,
+  `Ladepark der Karte ${k1 ? k1.park : '–'}, NOMI: „${told}“, erster auf dem Weg: ${K.onRoute}`);
 
 console.log(
   `Akku leer: Karten bei ${E.cards.map((c) => c.pct.toFixed(1) + ' %').join(' / ')} (${c1 ? c1.park + ', ' + c1.km.toFixed(1) + ' km' : '–'}), ausgerollt aus ${(E.vEmpty * 3.6).toFixed(0)} km/h in ${E.stopT !== null ? (E.stopT - E.emptyAt).toFixed(1) : '–'} s`,
