@@ -1750,9 +1750,10 @@ function sceneSkip(r, t, skip) {
   if (r.skipT < 0 && t > skip && (input.anyKey || input.take('confirm'))) r.skipT = t;
 }
 // Auf dem Handy zählt dafür auch ein Tipp aufs Bild, in jeder Touch-Bedienung (in „Wischen“ meldet ihn schon die
-// Lenkfläche); die Knöpfe liegen darüber und fangen ihren Druck selbst
+// Lenkfläche); die Knöpfe liegen darüber und fangen ihren Druck selbst. Ebenso in der Startszene (chargeStep), wo die
+// Touch-Bedienung noch gar nicht zu sehen ist
 renderer.domElement.addEventListener('pointerdown', () => {
-  if (stopRun.on || tvRun.on) input.anyKey = true;
+  if (stopRun.on || tvRun.on || state === 'charge') input.anyKey = true;
 });
 
 /** Game.onBrunnenTV: Der Wagen steht am Brunnen. Ohne Brunnen der Welt (Prüfstand) läuft der Fahrplan ohne Bild. */
