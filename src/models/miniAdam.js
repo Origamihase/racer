@@ -7,7 +7,7 @@ import { W } from '../curve.js';
 import { liveLogoTexture } from '../textures.js';
 import { plush, eyeMaterial } from './plushMaterial.js';
 import { buildAdamGeometry, FABRIC, NECK, HEAD_C, EYE_C, EYE_R, BROW_C, JAW_C, STACHE_SMILE, STACHE_POUT, SHOULDER, UPPER_ARM, FORE_ARM, HIP } from './adamSculpt.js';
-import { Mimic } from './adamMimic.js';
+import { Mimic, GESTURES } from './adamMimic.js';
 
 export { plush };
 
@@ -210,6 +210,24 @@ export function handTarget(side, wheel, { wave = 0, cheer = 0, steer = 0, t = 0 
 }
 
 /**
+ * Bananensaft für die Hand (wie im Becherhalter, ohne Schrift): gelbe Flasche, helles Etikett, grüner Deckel; Boden
+ * im Ursprung, Hals nach +y.
+ */
+function buildBottle(curved) {
+  const g = new THREE.Group();
+  g.name = 'bananensaft';
+  const add = (geo, color, roughness) => {
+    const params = { color, roughness };
+    g.add(new THREE.Mesh(geo, curved ? W.std(params) : new THREE.MeshStandardMaterial(params)));
+  };
+  const lathe = (pts) => new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 16);
+  add(lathe([[0, 0], [0.023, 0], [0.03, 0.005], [0.0318, 0.026], [0.0318, 0.116], [0.0296, 0.131], [0.019, 0.153], [0.0122, 0.163], [0.0122, 0.1745], [0, 0.1745]]), 0xf3c53a, 0.3);
+  add(new THREE.CylinderGeometry(0.0324, 0.0324, 0.074, 16, 1, true).translate(0, 0.071, 0), 0xfaf6e8, 0.6);
+  add(lathe([[0, 0.1735], [0.0152, 0.1735], [0.0152, 0.1905], [0, 0.1915]]), 0x2f9e44, 0.5);
+  return g;
+}
+
+/**
  * Baut Mini Adam. Höhe stehend ≈ 0,95 Einheiten (wird vom Aufrufer skaliert).
  * @param {{curved?: boolean, seed?: number}} opts curved: Material für die gebogene Welt (siehe curve.js);
  *   seed: Startwert der Mimik (gleicher Wert und gleiche Aufrufe → gleiche Mimik, etwa im Auto und in der Facecam)
@@ -281,6 +299,10 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
   mesh(G.micFoam, mic, 'micFoam');
   mesh(G.micBody, mic, 'micBody', mMic);
   armR.userData.hand.add(mic);
+  // Bananensaft in der Fensterhand (raiseBottle): erst beim ersten Prost gebaut, zu sehen nur, solange die Hand dabei
+  // oben ist
+  let bottle = null;
+  let bottleUntil = -1;
 
   // --- Kopf ---------------------------------------------------------------
   const head = new THREE.Group();
@@ -429,6 +451,20 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
     gesture(name) {
       mimic.gesture(name);
     },
+    /** Prost mit Bananensaft (Ladestopp): jubelt wie 'cheer', die Flasche in der Fensterhand. */
+    raiseBottle() {
+      if (!bottle) {
+        bottle = buildBottle(curved);
+        // Boden vorn in der Faust, Bauch mit Etikett und Hals ragen über die Fingerspitzen hinaus
+        bottle.rotation.z = Math.PI;
+        bottle.position.set(0, -0.03, 0.006);
+        bottle.scale.setScalar(1);
+        bottle.visible = false;
+        armR.userData.hand.add(bottle);
+      }
+      bottleUntil = gest.t + GESTURES.cheer;
+      mimic.gesture('cheer');
+    },
     /** Blick für seconds Sekunden auf ein Ziel ('camera', 'screen', 'mirror', 'nomi', 'wiper' … oder [x, y, z]) */
     lookAt(target, seconds) {
       mimic.lookAt(target, seconds);
@@ -462,6 +498,7 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
       gest.cheer = f.cheer;
       gest.t = t;
       gest.megafon = s.megafon || 0;
+      if (bottle) bottle.visible = t < bottleUntil && f.cheer > 0.25;
       poseArms();
     },
   };

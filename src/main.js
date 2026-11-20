@@ -1656,8 +1656,8 @@ function stopTick() {
     r.port.set(1 - smoothstep(S.flap[0], S.flap[1], te), 1 - smoothstep(S.plug[0], S.plug[0] + 0.15, te));
   }
   if (r.pop) r.pop.update(t - P.at(STOP.pop[0]), t >= P.at(STOP.pop[0]) && t < P.at(STOP.pop[1]));
-  // Klick, wenn der Stecker sitzt und wenn er sich löst, der Zirper von P nach D beim Anrollen; Mini Adam jubelt beim
-  // Bananensaft (nicht nachgeholt)
+  // Klick, wenn der Stecker sitzt und wenn er sich löst, der Zirper von P nach D beim Anrollen; Mini Adam hebt beim
+  // Bananensaft die Flasche (nicht nachgeholt)
   const once = (k, at, fn) => {
     if (t < at || r.done[k]) return;
     r.done[k] = true;
@@ -1665,7 +1665,7 @@ function stopTick() {
   };
   once('in', P.at(STOP.plug[1]), () => audio.unplug());
   once('juice', P.at(STOP.juice), () => adamDo((a) => {
-    a.gesture('cheer');
+    a.raiseBottle();
     a.setMood('happy', 3);
   }));
   once('out', P.at(STOP.unplug + S.plug[0]), () => audio.unplug());
