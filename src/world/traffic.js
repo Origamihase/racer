@@ -18,6 +18,26 @@ const KMH = 1 / 3.6;
 // und bremst dafür sanft (m/s²). Lkw kriechen an langen Steigungen etwas (km/h weniger je Prozent über 2 %).
 const CURVE = { car: { lat: 2.5, dec: 1.2 }, truck: { lat: 1.8, dec: 0.8 }, look: 250, climb: 4.5 };
 /**
+ * Elefantenrennen, wie es auf der Straße zu sehen ist: zwei Lkw auf benachbarten Spuren unserer Richtung (nicht auf
+ * dem Verzögerungsstreifen), höchstens side Meter gegeneinander versetzt, beide zwischen near und far Metern vor dem
+ * Wagen und fast gleich schnell (höchstens dv m/s Unterschied, sie überholen sich also kaum).
+ */
+export const ELEPHANTS = { side: 14, near: 25, far: 320, dv: 2.5 };
+/** Fahren gerade zwei Lkw nebeneinander vor dem Wagen (ELEPHANTS)? Liefert das Paar oder null. cars: {truck, lane, s, speed}. */
+export function elephantPair(cars, sPlayer) {
+  const E = ELEPHANTS;
+  for (const a of cars) {
+    const da = a.s - sPlayer;
+    if (!a.truck || a.lane > 3 || da < E.near || da > E.far) continue;
+    for (const b of cars) {
+      if (b === a || !b.truck || b.lane !== a.lane + 1 || b.lane > 3) continue;
+      const db = b.s - sPlayer;
+      if (db >= E.near && db <= E.far && Math.abs(a.s - b.s) <= E.side && Math.abs(a.speed - b.speed) <= E.dv) return [a, b];
+    }
+  }
+  return null;
+}
+/**
  * Bremslicht wie bei echten Fahrern: an, sobald der Wagen spürbar verzögert (on, m/s²), vor einer Kurve bremst oder
  * fast steht; aus erst, wenn er wieder rollt oder Gas gibt (über off) und das Licht mindestens hold Sekunden an war –
  * so flackert es nicht bei jedem kleinen Lupfen im Kolonnenverkehr.

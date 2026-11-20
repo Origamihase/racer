@@ -688,7 +688,6 @@ export const DURCHSAGEN_REGEN = [
 // Boardcomputer-Sätze
 export const BOARD = {
   leftLane: 'Die linke Fahrspur ist freigeschaltet.',
-  leftLaneEnd: 'Die linke Fahrspur ist wieder gesperrt. Bitte rechts fahren.',
   naviChanged: 'Das Navi-Ziel wurde geändert.',
   // die nächste Ausfahrt am ersten Vorwegweiser (game.js exitLine): {name} wie auf dem Schild, {d} „1000 Metern“
   exit: {

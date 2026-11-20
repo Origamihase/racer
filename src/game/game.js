@@ -16,6 +16,7 @@ import { WorldNavi } from './navi.js';
 import { Economy, BONTANA } from './economy.js';
 import { Satisfaction, ZUFRIEDEN } from './satisfaction.js';
 import { Vector3 } from 'three';
+import { elephantPair } from '../world/traffic.js';
 import { EYE } from '../cockpit/cockpit.js';
 import { ELSA_STATUE } from '../world/scenery.js';
 import { curvePoint } from '../curve.js';
@@ -51,6 +52,12 @@ function kmWords(km) {
   }
   return Math.round(km) + ' Kilometern';
 }
+/**
+ * Elefantenrennen (zwei Lkw nebeneinander): bestellt wird es frühestens first, dann alle every Meter Straße (bei Tempo
+ * 130 gut vier bis sechs Minuten), nur mit room Metern Autobahn ohne Ausfahrt voraus; NOMI sagt es höchstens alle
+ * cool Sekunden an, und nur, wenn es wirklich vor dem Wagen fährt (traffic.js elephantPair).
+ */
+export const ELEFANT = { first: [6000, 9000], every: [9000, 14000], room: 1500, cool: 240 };
 /**
  * NOMI und die nächste Ausfahrt (Game.exitCall): Sie nennt sie ab at Metern Straße vor der Gabelung (dem ersten
  * Vorwegweiser, signplan.js BOARD_D), bis late Meter davor; eine Ausfahrt, an der die Route vorbeiführt, höchstens alle
@@ -206,7 +213,8 @@ export class Game {
     // „5 Cent, wenn du …“: welche Angebote in diesem Stream schon kamen (keins doppelt), wer zuletzt geboten hat, wie
     // lange die Straße schon geradeaus läuft (Meter) und wann zuletzt ein Ziel erreicht wurde (für Angebote zur Lage)
     this.cent5 = { used: new Set(), name: '', straightS: 0, arrivedT: -99, lage: chance(LAGE_SHARE) };
-    this.S = { blitzer: rand(3000, 3800), elefant: rand(3200, 4200), landmark: rand(1400, 2000), koriander: rand(2200, 2800) };
+    this.S = { blitzer: rand(3000, 3800), elefant: rand(ELEFANT.first[0], ELEFANT.first[1]), landmark: rand(1400, 2000), koriander: rand(2200, 2800) };
+    this.elefantT = 0;
     this.blitzer = null;
     this.landmark = null;
     this.funkloch = 0;
@@ -835,7 +843,7 @@ export class Game {
     const { used, wait } = this.eco.laneClosed(L.freq);
     L.next = wait;
     L.grace = 5;
-    this.say(BOARD.leftLaneEnd, 'idle');
+    // (ohne Durchsage: Das Ende zeigen Balken und Spuransicht, der Chat sagt den Rest)
     this.burst(used >= 0.6 ? CHAT.leftLaneUsed : used < 0.2 ? CHAT.leftLaneIgnored : CHAT.leftLaneEnd, 2, 2.5);
   }
 
@@ -1569,10 +1577,17 @@ export class Game {
       }
     }
 
-    // Elefantenrennen
-    if (p.s > this.S.elefant && !this.offAutobahn) {
-      this.S.elefant = p.s + rand(3200, 5200);
+    // Elefantenrennen: selten und nur auf der Autobahn mit Platz voraus (keine Ausfahrt in Sicht, die der Wagen nehmen
+    // könnte). Angesagt wird es nur, wenn zwei Lkw wirklich nebeneinander vor dem Wagen fahren – ob bestellt oder von
+    // selbst entstanden – und höchstens alle ELEFANT.cool Sekunden
+    const nx = this.offAutobahn ? null : this.world.trip().nextExit();
+    const ab = !this.offAutobahn && this.world.trip().section.kind === 'ab' && (!nx || nx.dist > ELEFANT.room);
+    if (ab && p.s > this.S.elefant) {
+      this.S.elefant = p.s + rand(ELEFANT.every[0], ELEFANT.every[1]);
       this.traffic.elefantenrennen(p.s);
+    }
+    if (ab && this.t >= this.elefantT && elephantPair(this.traffic.cars, p.s)) {
+      this.elefantT = this.t + ELEFANT.cool;
       this.say(BOARD.elefant, 'worried', { priority: false });
       this.later(3, () => this.burst(CHAT.elefant, 3, 3));
     }
