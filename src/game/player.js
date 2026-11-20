@@ -27,6 +27,16 @@ const G = 9.81;
 export const DRIVE_DEFAULTS = { tip: false, laneAssist: 'sanft', curveAssist: 'sanft', sens: 1, cruise: false };
 
 /**
+ * Bremse bei vollem Pedal: Verzögerung a (m/s²), je Stufe Sportbremsen per mehr; Nässe kostet den Anteil wet davon,
+ * mit Sportbremsen je Stufe wetPer weniger (griffigere Beläge, größere Scheiben). Bremsweg ∝ 1 / Verzögerung.
+ */
+export const BRAKES = { a: 9.5, per: 0.08, wet: 0.18, wetPer: 0.25 };
+/** Verzögerung bei vollem Pedal (m/s²): level Sportbremsen (0 … 2), wet 0 … 1. */
+export function brakeDecel(level, wet) {
+  return BRAKES.a * (1 + BRAKES.per * level) * (1 - wet * BRAKES.wet * (1 - BRAKES.wetPer * level));
+}
+
+/**
  * Rückwärtsgang wie im Tesla: Wer im Stand die Bremse ganz (ab press) hold Sekunden hält, legt R ein; dann fährt die
  * Bremse sanft rückwärts (acc m/s², höchstens vmax ≈ 15 km/h), Strom bremst (brake), und im Stand legt Strom wieder D
  * ein. Ohne Pedal rollt er mit coast aus. still: darunter steht der Wagen (m/s). Zurück geht es höchstens back Meter
@@ -59,6 +69,7 @@ export class Player {
     this.wetGrip = 0.66 + 0.13 * l('reifen');
     this.gripMul = 1 + 0.12 * l('reifen');
     this.firm = l('fahrwerk');
+    this.brakeLevel = l('bremse');
     this.maxHits = 3 + l('polster');
     // Zustand des Wagens (Zonen, Schrammen, Pflaster); hits zählt mit
     this.damage = new Damage(this.maxHits);
@@ -379,7 +390,7 @@ export class Player {
       if (throttle > 0.02 && v < top) {
         acc += throttle * 5.4 * this.accelMul * Math.max(0.12, 1 - Math.pow(clamp(v / vmax, 0, 1), 2.6));
       }
-      if (brake > 0.02) acc -= brake * 9.5 * (1 - wet * 0.18);
+      if (brake > 0.02) acc -= brake * brakeDecel(this.brakeLevel, wet);
       if (throttle <= 0.02 && brake <= 0.02) acc -= drag + (this.empty ? 1.4 : 0);
       acc -= slope;
       // über der Obergrenze sanft herunter (Software-Drossel, Tempolimit der Welt)

@@ -4,13 +4,14 @@
 // und das Schadensmodell. Alles reines Node, ohne Browser.
 //
 //   node tools/steer-test.mjs [--verbose]
-import { Player, KMH } from '../src/game/player.js';
+import { Player, KMH, BRAKES } from '../src/game/player.js';
 import { STEER, TIP, CURVE_ASSIST, LANE_ASSIST, softclip, steerParams } from '../src/game/steering.js';
 import { SteerKeys, stickCurve } from '../src/input.js';
 import { dragToAnalog, swipeDir, TOUCH_DEAD } from '../src/ui/touch-model.js';
 import { Damage, ZONES, damageLine } from '../src/game/damage.js';
 import { Chassis, CHASSIS } from '../src/game/chassis.js';
 import { ROAD } from '../src/textures.js';
+import { SHOP } from '../src/data.js';
 
 const VERBOSE = process.argv.includes('--verbose');
 let checks = 0;
@@ -686,6 +687,42 @@ section('Fahrwerk: straff, ohne Schaukeln (src/game/chassis.js)');
   const vk = (130 * KMH) ** 2 / 800;
   check('Kurvendrift freihändig = (1 − Hilfe)·v²κ/μ (Serie μ 2,6/s: 0,31 m/s statt 0,43 m/s)', Math.abs(d0 - (0.5 * vk) / STEER.mu) < 0.01, `${f3(d0)} m/s`);
   check('Sportfahrwerk 2: Kurvendrift −29 %', Math.abs(drift(2) / d0 - 1 / 1.4) < 0.01, `${f3(drift(2))} gegen ${f3(d0)} m/s`);
+}
+
+// --- Bremsen (Testlauf 20.11.: Sportbremsen im Shop) ------------------------------------------------------------------
+section('Bremsen: Bremsweg aus 130 km/h, Serie und Sportbremsen (src/game/player.js BRAKES)');
+{
+  // Vollbremsung aus 130 km/h bis zum Stand (Tempomat an, wie meist im Spiel), gemessen ab dem Tritt aufs Pedal
+  const stop = (level, wet, fps = 60) => {
+    const p = new Player();
+    p.configure({ cruise: true, laneAssist: 'aus', curveAssist: 'aus' });
+    p.reset(level ? { bremse: level } : {});
+    p.setLimits(WIDE);
+    p.speed = 130 * KMH;
+    p.cruiseSet = p.speed;
+    const s0 = p.s;
+    let t = 0;
+    while (p.speed > 0 && t < 20) {
+      p.update(1 / fps, { steer: 0, steerKey: 0, steerLog: [], analog: 0, throttle: 0, brake: 1 }, { wet });
+      t += 1 / fps;
+    }
+    return { d: p.s - s0, t };
+  };
+  const v = 130 * KMH;
+  const dry = [0, 1, 2].map((l) => stop(l, 0));
+  const wet = [0, 1, 2].map((l) => stop(l, 1));
+  const m = (r) => r.map((q) => q.d.toFixed(1).replace('.', ',')).join(' / ');
+  check('Serie trocken: Bremsweg = v²/2a mit a 9,5 m/s² (68,6 m)', Math.abs(dry[0].d / ((v * v) / (2 * BRAKES.a)) - 1) < 0.01, `${f3(dry[0].d)} m in ${f3(dry[0].t)} s`);
+  check('Sportbremsen: jede Stufe kürzer, trocken und nass', dry[1].d < dry[0].d && dry[2].d < dry[1].d && wet[1].d < wet[0].d && wet[2].d < wet[1].d, `trocken ${m(dry)} m, nass ${m(wet)} m`);
+  check('Nässe kostet mit Sportbremsen weniger (Mehrweg nass 22 → 16 → 10 %)', wet[0].d / dry[0].d > wet[1].d / dry[1].d && wet[1].d / dry[1].d > wet[2].d / dry[2].d, [0, 1, 2].map((l) => `${((wet[l].d / dry[l].d - 1) * 100).toFixed(0)} %`).join(' / '));
+  // der Shop verspricht, was die Physik hält: Prozente im Text = gemessene Verkürzung
+  const art = SHOP.find((a) => a.id === 'bremse');
+  for (const l of [1, 2]) {
+    const want = `Bremsweg −${Math.round((1 - dry[l].d / dry[0].d) * 100)}\u00a0%, bei Nässe −${Math.round((1 - wet[l].d / wet[0].d) * 100)}\u00a0%`;
+    check(`Shop „Sportbremsen“ Stufe ${l}: Text = Messung`, art.effect(l) === want, `${art.effect(l)} | gemessen: ${want}`);
+  }
+  const at = (fps) => stop(0, 0, fps).d;
+  check('Bremsweg bildratenfest (30/60/144 fps auf 1 % gleich)', Math.abs(at(30) / at(144) - 1) < 0.01 && Math.abs(at(60) / at(144) - 1) < 0.01, `${f3(at(30))} / ${f3(at(60))} / ${f3(at(144))} m`);
 }
 
 // --- 10. Rechenzeit -----------------------------------------------------------------------------------------------------

@@ -852,6 +852,12 @@ export const SHOP = [
     effect: () => 'NOMI warnt vor jedem Blitzer',
   },
   {
+    // wirkt in src/game/player.js (BRAKES, brakeDecel): mehr Verzögerung, bei Nässe weniger Verlust; Bremsweg ∝ 1 / a
+    id: 'bremse', icon: '🛑', name: 'Sportbremsen', cat: 'Fahrwerk', prices: [400, 950],
+    desc: 'Größere Scheiben und griffigere Beläge: Der Wagen steht früher, auch wenn die Straße nass ist.',
+    effect: (l) => `Bremsweg −${Math.round((1 - 1 / (1 + 0.08 * l)) * 100)}\u00a0%, bei Nässe −${Math.round((1 - 0.82 / ((1 + 0.08 * l) * (1 - 0.18 * (1 - 0.25 * l)))) * 100)}\u00a0%`,
+  },
+  {
     id: 'starlink', icon: '🛰️', name: 'Satelliten-Schüssel', cat: 'Spaß', prices: [1100],
     desc: 'Wie beim ersten IRL-Stream über Satellit: keine Funklöcher, mehr Zuschauer, mehr Spenden.',
     effect: () => 'Keine Funklöcher, +25\u00a0% Zuschauer, +20\u00a0% Spenden',
