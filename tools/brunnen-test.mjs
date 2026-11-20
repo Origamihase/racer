@@ -10,14 +10,15 @@
 // - Der Name „Mini Adam – Navi ferngesteuert BrunnenTV XXL“ steht überall gleich: Seitentitel, Ladekarte, README,
 //   INSIDER, package.json, Über das Spiel; der Titelbildschirm setzt ihn aus denselben Teilen zusammen.
 // - Kameras: Für jeden Ort der Karte (Insel und Haltepunkt wie plan.js squareOf) stehen die drei Kameras außerhalb des
-//   Wagens und nie im Brunnen, und Totale und Brunnen-Kamera haben Fenster und Brunnen im Bild.
+//   Wagens und nie im Brunnen, und Totale und Brunnen-Kamera haben Fenster und Brunnen im Bild. Nichts im Ort (Häuser,
+//   Bäume, Laternen; der Plan wie towns.js townPlan) verstellt einer Kamera die Sicht auf Fenster und Brunnen.
 import { PerspectiveCamera } from 'three';
 import { places, townLen } from '../src/map/graph.js';
 import { Trip, J } from '../src/game/trip.js';
 import { Game } from '../src/game/game.js';
 import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor } from '../src/world/xxl/brunnentv.js';
 import { squareOf } from '../src/world/xxl/plan.js';
-import { FOUNTAIN_R, goalKind, goalName } from '../src/world/kit/layout.js';
+import { FOUNTAIN_R, goalKind, goalName, sightBlockers } from '../src/world/kit/layout.js';
 import { MEGA } from '../src/models/miniAdam.js';
 import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, MODE_TEXT, BOARD, BRUNNEN_NOMI, fillTemplate } from '../src/data.js';
 import { readFileSync } from 'node:fs';
@@ -66,7 +67,48 @@ const loose = (base = {}) => new Proxy(base, { get: (t, k) => (k in t ? t[k] : n
   ok(shotAt(0) === 'totale' && shotAt(TV.line) === 'fenster' && shotAt(TV.nomi) === 'brunnen' && shotAt(TV.back[0] + 0.01) === 'zurueck', 'Kameras: Totale, Fenster, Brunnen, zurück');
 }
 // Kameras für jeden Ort: Brunnen (Mitte, Radius des Hauptbrunnens) im Rahmen des haltenden Wagens
-const cams = { places: 0, minFountain: Infinity, maxAngle: 0, maxPortrait: 0 };
+const cams = { places: 0, minFountain: Infinity, maxAngle: 0, maxPortrait: 0, lines: 0 };
+// Der Ort wie in der Welt (towns.js townPlan mit dem Baukasten der Stadt; ihre Schilder malen auf Canvas, hier ohne Bild)
+const canvas = new Proxy({}, { get: (t, k) => (k === 'measureText' ? (x) => ({ width: String(x).length * 10 }) : k === 'getImageData' ? (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }) : k.startsWith?.('create') ? () => ({ addColorStop() {} }) : k in t ? t[k] : noop), set: (t, k, v) => ((t[k] = v), true) });
+globalThis.document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => canvas, style: {} }) };
+const { W } = await import('../src/curve.js');
+const { createCityKit } = await import('../src/world/kit/city.js');
+const { townPlan } = await import('../src/world/xxl/towns.js');
+const city = createCityKit(W);
+/**
+ * Was die Sicht von a nach b (Punkte im Plan, [x, y, z]) verstellt: wie am Halt (citykit-test) alles Hohe im Grundriss,
+ * Bäume und Laternen dort mit Stamm und Mast – und wo die Linie höher als 2 m ist, auch mit Krone und Arm (ganzer
+ * Grundriss). Über das Becken des Zielbrunnens f schaut sie hinweg (over): unter seiner Höhe bleibt sie aus seiner Mitte.
+ */
+function sightOf(plan, f, fr, a, b, over = true) {
+  const target = { x: b[0], z: b[2], r: 0, id: -1 };
+  const out = sightBlockers(plan, target, [[a[0], a[2]]]).filter((i) => plan.items[i].fountain !== f.id).map((i) => plan.items[i].name);
+  const dx = b[0] - a[0];
+  const dz = b[2] - a[2];
+  for (const it of plan.items) {
+    const fp = it.fp;
+    if (it.fountain === f.id) {
+      if (!over) continue;
+      const u = Math.max(0, Math.min(1, ((f.x - a[0]) * dx + (f.z - a[2]) * dz) / (dx * dx + dz * dz)));
+      const low = a[1] + (b[1] - a[1]) * u < (f.y || 0) + fp.h;
+      if (low && Math.hypot(a[0] + dx * u - f.x, a[2] + dz * u - f.z) < 0.8 * fr) out.push(it.name + ' (Mitte)');
+      continue;
+    }
+    if (!fp.thin || fp.h <= 2) continue;
+    const c = Math.cos(fp.ang);
+    const s = Math.sin(fp.ang);
+    for (let q = 0; q <= 1; q += 0.02) {
+      const y = a[1] + (b[1] - a[1]) * q;
+      const lx = a[0] + dx * q - fp.cx;
+      const lz = a[2] + dz * q - fp.cz;
+      if (y > 2 && y < fp.h && Math.abs(lx * c - lz * s) < fp.hw && Math.abs(lx * s + lz * c) < fp.hd) {
+        out.push(it.name + ' (oben)');
+        break;
+      }
+    }
+  }
+  return out;
+}
 // Handy hochkant (390 × 844): halbe Bildbreite in Grad bei 78° senkrecht, so weit fahren die Kameras zurück (dollyFor)
 const PORTRAIT = 390 / 844;
 const portraitHalf = (Math.atan(Math.tan((78 * Math.PI) / 360) * PORTRAIT) * 180) / Math.PI;
@@ -88,6 +130,10 @@ const portraitHalf = (Math.atan(Math.tan((78 * Math.PI) / 360) * PORTRAIT) * 180
     const fr = FOUNTAIN_R[goalKind(p)];
     const S = tvShots(f, sq.r);
     cams.places++;
+    const plan = townPlan(city, sec);
+    const main = plan.fountains[0];
+    // Rahmen des Wagens → Plan: x ab der Spur, z ab dem Anfang des Abschnitts
+    const toPlan = (q) => [q[0] + J.L0, q[1], q[2] - (sq.stop - sec.s0)];
     for (const [name, s] of Object.entries(S)) {
       const dolly = dollyFor(PORTRAIT, s.dolly);
       ok(dollyFor(16 / 9, s.dolly) === 1 && dolly >= 1 && dolly <= s.dolly && (s.dolly === 1 || dolly > 1), `${name}: zurückfahren quer ${dollyFor(16 / 9, s.dolly)}, hochkant ${dolly}`);
@@ -102,6 +148,12 @@ const portraitHalf = (Math.atan(Math.tan((78 * Math.PI) / 360) * PORTRAIT) * 180
           cams.minFountain = Math.min(cams.minFountain, dF);
           ok(dF > 0.3, `${p.name}: Kamera ${name} (${fmt}) steht im Brunnen (${dF.toFixed(2)} m vom Becken)`);
           ok(Math.hypot(look[0] - pos[0], look[1] - pos[1], look[2] - pos[2]) > 0.5, `${p.name}: Kamera ${name} ohne Blickrichtung`);
+          for (const [what, q] of [['Fenster', toPlan(WINDOW)], ['Brunnen', [main.x, (main.y || 0) + 0.5, main.z]]]) {
+            const hit = sightOf(plan, main, fr, toPlan(pos), q, what === 'Fenster');
+            if (what === 'Brunnen') hit.push(...sightBlockers(plan, main, [[toPlan(pos)[0], toPlan(pos)[2]]]).map((i) => plan.items[i].name));
+            cams.lines++;
+            ok(hit.length === 0, `${p.name}: Kamera ${name} (${fmt}) sieht ${what} nicht (${[...new Set(hit)].join(', ')})`);
+          }
           if (name === 'fenster') continue;
           // Fenster und Mitte des Brunnens im Bild: quer gut 86° breit, hochkant nur so breit wie portraitHalf
           const aw = angle(pos, look, WINDOW);
@@ -308,7 +360,7 @@ const mega = { says: [], toasts: [] };
 const tl = (r) => `Ende ${r.endT.toFixed(2)} s, nächstes Gebot ${(r.bidT - r.releaseT).toFixed(1)} s danach`;
 console.log(`BrunnenTV-Fahrplan: Bauchbinde ${TV.card} s, Megafon ${TV.line} s, Chat ${TV.chat} s, NOMI ${TV.nomi} s, Ende ${TV.end} s; Fenster offen ${TV.window.down.join('–')} s, Megafon in der Hand ab ${MEGA.show * 100} % gehoben`);
 console.log(`Überspringen: ohne (${tl(runs.none)}) · früh bei ${(TV.skip + 0.05).toFixed(2)} s (${tl(runs.early)}) · spät bei ${(TV.nomi + 1.5).toFixed(1)} s (${tl(runs.late)}) – derselbe Endzustand`);
-console.log(`Kameras an ${cams.places} Orten: mindestens ${cams.minFountain.toFixed(2)} m vom Becken, Fenster und Brunnen höchstens ${cams.maxAngle.toFixed(0)}° neben der Blickrichtung (hochkant zurückgefahren ${cams.maxPortrait.toFixed(0)}° von ${portraitHalf.toFixed(0)}°)`);
+console.log(`Kameras an ${cams.places} Orten: mindestens ${cams.minFountain.toFixed(2)} m vom Becken, Fenster und Brunnen höchstens ${cams.maxAngle.toFixed(0)}° neben der Blickrichtung (hochkant zurückgefahren ${cams.maxPortrait.toFixed(0)}° von ${portraitHalf.toFixed(0)}°), ${cams.lines} Sichtlinien zu Fenster und Brunnen frei von Häusern, Bäumen und Laternen`);
 console.log(`Megafon: kein Shop-Artikel, Taste H ohne Upgrade klassisch und in der Reise (${mega.toasts.join(' / ')}), ein gekauftes einmal erstattet (${MEGAFON_PRICE} €)`);
 console.log(fails ? `${fails} Fehler (${checks} Prüfungen)` : `brunnen-test: alles grün (${checks} Prüfungen)`);
 process.exit(fails ? 1 : 0);

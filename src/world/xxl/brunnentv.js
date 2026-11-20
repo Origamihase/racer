@@ -74,7 +74,8 @@ export function tvShots(f, r) {
   // Totale: auf einen Punkt zwischen Fenster und Brunnen, näher am Fenster (der Wagen steht groß rechts im Bild)
   const totale = [-2.6 - 0.12 * r, 2.3 + 0.05 * r, 5.6 + 0.25 * r];
   const tLook = [WINDOW[0] + (f.x - WINDOW[0]) * 0.4, 0.95 + 0.03 * r, WINDOW[2] + (f.z - WINDOW[2]) * 0.4];
-  const fenster = [MOUTH[0] - 1.3, MOUTH[1] + 0.2, MOUTH[2] - 1.0];
+  // Fenster: so hoch, dass die Leiste unter dem Fenster unter dem Megafon durchläuft (nicht quer darüber)
+  const fenster = [MOUTH[0] - 1.3, MOUTH[1] + 0.3, MOUTH[2] - 1.0];
   const brunnen = [f.x * 0.4 - 0.6, 3.6 + 0.25 * r, f.z - 7.5 - 0.6 * r];
   return {
     totale: { t: [0, TV.cams.fenster], a: totale, b: [totale[0] + 0.35, totale[1] - 0.12, totale[2] - 0.8], look: tLook, fov: 50, dolly: 1.8 },
