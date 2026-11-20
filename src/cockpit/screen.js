@@ -77,6 +77,7 @@ export class CenterScreen {
     // rechts die Karte mit Navi (src/map/navview.js)
     (this.navi || (this.navi = new NaviScreen())).draw(ctx, SPLIT, 0, CW - SPLIT, CH - 64, st, this.step);
     this.drawCarPanel(ctx, st, T);
+    if (st.trunk > 0) this.drawTrunkCam(ctx);
     // in R: über der Karte ein ruhiges Feld bis zur Unterkante des Kamerabilds (auch unter der halb durchsichtigen
     // oberen Leiste), damit neben dem Bild kein Rest der Route und der Straßen blitzt
     if (st.gear === 'R') {
@@ -96,6 +97,65 @@ export class CenterScreen {
       ctx.font = '24px Arial, sans-serif';
       ctx.fillText('Mobilfunk wird neu gebündelt …', SPLIT + (CW - SPLIT) / 2, 340);
     }
+    ctx.restore();
+  }
+
+  /**
+   * Bitspende „Kofferraum öffnen“ (st.trunk: Sekunden, die sie noch läuft): An der Stelle der Spuransicht zeigt der
+   * Bildschirm die Kofferraum-Kamera – was hinten mitfährt, mit REC-Punkt wie jedes Kamerabild des Wagens. Der
+   * Innenspiegel bleibt dabei ein Spiegel.
+   */
+  drawTrunkCam(ctx) {
+    const x = 14;
+    const y = 262;
+    const w = SPLIT - 28;
+    const h = CH - 84 - y;
+    ctx.save();
+    roundRect(ctx, x, y, w, h, 14);
+    ctx.clip();
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#2a2c30');
+    g.addColorStop(1, '#141517');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    // der Kofferraum von oben-hinten: Kisten, Kabel, die Stream-Technik (Zeichnung 512 × 160, auf die Breite gesetzt)
+    const k = w / 512;
+    ctx.translate(x, y + 44 + (h - 44 - 160 * k) / 2);
+    ctx.scale(k, k);
+    const box = (bx, by, bw, bh, col, label) => {
+      ctx.fillStyle = col;
+      roundRect(ctx, bx, by, bw, bh, 8);
+      ctx.fill();
+      ctx.fillStyle = '#e8e8e8';
+      ctx.font = 'bold 17px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, bx + bw / 2, by + bh / 2 + 6);
+    };
+    box(24, 38, 120, 84, '#3b3f46', 'Akku-Pack');
+    box(160, 60, 96, 62, '#20242a', 'Router');
+    box(272, 28, 92, 94, '#5a2a2a', 'KONFETTI');
+    box(380, 52, 110, 70, '#1e3550', 'LTE ×3');
+    ctx.strokeStyle = '#d4a21a';
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(140 + i * 8, 88);
+      ctx.bezierCurveTo(180, 143 - i * 6, 330, 146, 380, 88 + i * 6);
+      ctx.stroke();
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Kopfzeile des Kamerabilds
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(x, y, w, 40);
+    ctx.fillStyle = Math.sin(this.spin * 5) > -0.2 ? '#ff4d4d' : '#7a2a2a';
+    ctx.beginPath();
+    ctx.arc(x + 22, y + 20, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '600 20px "Helvetica Neue", Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Kofferraum-Kamera', x + 38, y + 21);
     ctx.restore();
   }
 

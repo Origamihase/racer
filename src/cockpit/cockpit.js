@@ -98,6 +98,39 @@ const ENV = 0.5;
 // Plüschhände aus. Die Formen tragen dafür aufgemalte Schatten (Vertexfarben) und weicher Glanz.
 const LIGHT = { hemi: 2.45, sun: 1.8, back: 1.0 };
 
+/**
+ * Spiegelglas: das Bild der Rückspiegel-Kamera, wie ein Spiegel es zurückwirft – etwas dunkler als die Welt (die
+ * Silberschicht hinter dem Glas wirft gut vier Fünftel zurück), zum Rand hin dunkler (die geschliffene Kante), mit
+ * einem schwachen Schimmer des Himmels schräg über dem Glas. Kein Bildschirm: kein eigenes Leuchten, keine Anzeige.
+ * Lage im Glas aus der UV: fx = (1 − u) · sx, fy = (v − oy) · sy (beide 0 … 1 über das Glas).
+ */
+function mirrorGlass(sx, oy, sy) {
+  return new THREE.ShaderMaterial({
+    uniforms: { map: { value: null }, uFit: { value: new THREE.Vector3(sx, oy, sy) } },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D map;
+      uniform vec3 uFit;
+      varying vec2 vUv;
+      void main() {
+        vec2 f = vec2((1.0 - vUv.x) * uFit.x, (vUv.y - uFit.y) * uFit.z);
+        float e = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+        vec3 c = texture2D(map, vUv).rgb * 0.8 * mix(0.7, 1.0, smoothstep(0.0, 0.08, e));
+        // Schimmer: ein breites, sehr schwaches Band schräg über das Glas, oben etwas heller
+        float band = f.x * 0.55 + f.y - 0.95;
+        c += vec3(0.055, 0.06, 0.07) * (exp(-band * band * 18.0) + 0.35 * f.y);
+        gl_FragColor = vec4(c, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+}
+
 /** Rahmen fürs Innenspiegelbild: Dachhimmel, C-Säulen, Hutablage und drei Kopfstützen (wie im Spiegel gesehen). */
 function rearWindowTexture() {
   const c = document.createElement('canvas');
@@ -578,7 +611,7 @@ export class Cockpit {
     const uv = glassGeo.attributes.uv;
     const pos = glassGeo.attributes.position;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, 1 - (pos.getX(i) / mw + 0.5), pos.getY(i) / mh + 0.5);
-    this.mirrorMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.mirrorMat = mirrorGlass(1, 0, 1);
     const mirror = new THREE.Group();
     // hängt knapp hinter der Scheibe (die Scheibe ist sehr flach, deshalb etwas tiefer als früher)
     mirror.position.set(-0.08, 1.235, -0.225);
@@ -599,7 +632,8 @@ export class Cockpit {
     const maskGeo = glassGeo.clone();
     const mUv = maskGeo.attributes.uv;
     for (let i = 0; i < mUv.count; i++) mUv.setXY(i, pos.getX(i) / mw + 0.5, pos.getY(i) / mh + 0.5);
-    this.mirrorFrame = new THREE.Mesh(maskGeo, new THREE.MeshBasicMaterial({ map: rearWindowTexture(), transparent: true, depthWrite: false }));
+    // (auch er liegt hinter dem Glas: so dunkel wie das Spiegelbild)
+    this.mirrorFrame = new THREE.Mesh(maskGeo, new THREE.MeshBasicMaterial({ map: rearWindowTexture(), color: 0xcccccc, transparent: true, depthWrite: false }));
     this.mirrorFrame.position.z = 0.021;
     mirror.add(glass, this.mirrorFrame);
     this.root.add(mirror);
@@ -653,7 +687,7 @@ export class Cockpit {
       const fy = (sPos.getY(i) - bb.min.y) / (bb.max.y - bb.min.y);
       sUv.setXY(i, 1 - fx * 0.34, 0.03 + fy * 0.6);
     }
-    this.sideMirrorMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.sideMirrorMat = mirrorGlass(1 / 0.34, 0.03, 1 / 0.6);
     const sGlass = new THREE.Mesh(sGeo, this.sideMirrorMat);
     sGlass.position.z = 0.002;
     side.add(sGlass);
@@ -662,12 +696,10 @@ export class Cockpit {
     this.root.add(side);
   }
 
+  /** Innen- und Außenspiegel zeigen das Bild der Rückspiegel-Kamera (gespiegelt, siehe UV von buildMirrors). */
   setMirrorTexture(tex) {
-    this.mirrorMat.map = tex;
-    this.mirrorMat.needsUpdate = true;
-    this.sideMirrorMat.map = tex;
-    this.sideMirrorMat.needsUpdate = true;
-    this.mirrorFrame.visible = true;
+    this.mirrorMat.uniforms.map.value = tex;
+    this.sideMirrorMat.uniforms.map.value = tex;
   }
 
   /** Das Live-Display der Action-Cam zeigt das Weltbild (main.js reicht die Textur des Welt-Renderziels herein). */
@@ -675,13 +707,6 @@ export class Cockpit {
     const u = this.liveDisplay.material.uniforms;
     u.tLive.value = tex;
     u.uOn.value = tex ? 1 : 0;
-  }
-
-  /** Innenspiegel zeigt die Kofferraum-Kamera (ohne Heckfenster-Rahmen), der Außenspiegel bleibt. */
-  setTrunkView(tex) {
-    this.mirrorMat.map = tex;
-    this.mirrorMat.needsUpdate = true;
-    this.mirrorFrame.visible = false;
   }
 
   buildWipers() {

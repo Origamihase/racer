@@ -6,7 +6,7 @@ import { W, curveTable, curveAt, curveOffset } from './curve.js';
 import { Course, MapPlanner, PROBE_MARKS } from './game/course.js';
 import * as mapGraph from './map/graph.js';
 import * as mapShapes from './map/shapes.js';
-import { setMaxAnisotropy, ROAD, roundRect } from './textures.js';
+import { setMaxAnisotropy, ROAD } from './textures.js';
 import { Road } from './world/road.js';
 import { XxlWorld, ROAD_OPTS, autoTarget, autoDrive, AUTO } from './world/xxl/world.js';
 import { installDebug } from './world/xxl/debug.js';
@@ -255,50 +255,6 @@ const postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMat);
 postQuad.frustumCulled = false;
 postScene.add(postQuad);
 
-// Kofferraum-Ansicht für den Innenspiegel (Bitspende „Kofferraum öffnen“)
-const trunkTex = (() => {
-  const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 192;
-  const ctx = c.getContext('2d');
-  const g = ctx.createLinearGradient(0, 0, 0, 192);
-  g.addColorStop(0, '#2a2c30');
-  g.addColorStop(1, '#141517');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 512, 192);
-  ctx.fillStyle = '#0c0c0d';
-  ctx.fillRect(0, 0, 512, 34);
-  const box = (x, y, w, h, col, label) => {
-    ctx.fillStyle = col;
-    roundRect(ctx, x, y, w, h, 8);
-    ctx.fill();
-    ctx.fillStyle = '#e8e8e8';
-    ctx.font = 'bold 15px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, x + w / 2, y + h / 2 + 5);
-  };
-  box(24, 70, 120, 84, '#3b3f46', 'Akku-Pack');
-  box(160, 92, 96, 62, '#20242a', 'Router');
-  box(272, 60, 92, 94, '#5a2a2a', 'KONFETTI');
-  box(380, 84, 110, 70, '#1e3550', 'LTE ×3');
-  ctx.strokeStyle = '#d4a21a';
-  ctx.lineWidth = 3;
-  for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
-    ctx.moveTo(140 + i * 8, 120);
-    ctx.bezierCurveTo(180, 175 - i * 6, 330, 178, 380, 120 + i * 6);
-    ctx.stroke();
-  }
-  ctx.fillStyle = '#ff4d4d';
-  ctx.font = 'bold 18px Arial, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('● REC  Kofferraum offen', 18, 24);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.repeat.x = -1;
-  t.offset.x = 1;
-  return t;
-})();
 
 // Blitzerfoto
 const photoCanvas = document.createElement('canvas');
@@ -370,10 +326,9 @@ const fx = {
       input.rumble(0.9, 220);
     }
   },
+  // Bitspende „Kofferraum öffnen“: Der Mittelbildschirm zeigt die Kofferraum-Kamera (der Innenspiegel bleibt ein Spiegel)
   trunk: (dur) => {
     fxState.trunk = dur;
-    cockpit.setTrunkView(trunkTex);
-    cockpit.mirrorMat.needsUpdate = true;
   },
 };
 const uiFacade = {
@@ -1827,7 +1782,7 @@ function renderWorld(cam, { cockpitOn, drops }) {
 
 function renderFrame(cockpitOn) {
   frameNo++;
-  // Während der Kofferraum-Einlage zeigt nur der Innenspiegel das Bild, der Außenspiegel läuft weiter
+  // Innen- und Außenspiegel: immer das Spiegelbild der Straße (die Kofferraum-Kamera zeigt der Mittelbildschirm)
   if (cockpitOn && frameNo % quality.mirrorEvery === 0) {
     // Rückspiegel: Blick nach hinten
     rearCam.position.copy(localToWorld(tmpV2.set(0, 1.32, 0.9)));
@@ -2289,6 +2244,7 @@ function step(dt, { render = true } = {}) {
     // Ladestopp: das Display zeigt den Gang des Wagens der Szene (in R mit dem Bild der Rückfahrkamera)
     if (scr && stopRun.on) scr.gear = stopRun.gear;
     if (scr && tvRun.on) scr.gear = 'P';
+    if (scr) scr.trunk = fxState.trunk;
     if (scr) {
       // Karte, Route, Ansage und Ziel des Mittelbildschirms kommen aus der Fahrt der Welt (COMMON.md §9)
       xxlScreenNav.model = xxlNav;
@@ -2317,10 +2273,7 @@ function step(dt, { render = true } = {}) {
       sunDir: sky.sunDir, overcast: cloud, adam: adamOpts, gesture: tesla.adam.pose === 'drive' ? tesla.adam.gestures : null,
       screen: scr, radar: game.radarAlarm, rear: cockpitOn && (p.gear === 'R' || stopRun.rev),
     });
-    if (fxState.trunk > 0) {
-      fxState.trunk -= dt;
-      if (fxState.trunk <= 0) cockpit.setMirrorTexture(mirrorRT.texture);
-    }
+    if (fxState.trunk > 0) fxState.trunk = Math.max(0, fxState.trunk - dt);
   }
   sky.update(frozen ? 0 : dt, camera, s, simT, skyView);
   audio.update(dt, {
