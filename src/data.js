@@ -160,6 +160,28 @@ export const MEGAFON_WUENSCHE = [
   'Achtung! Hier fährt ein Plüschtier. Bitte nicht streicheln!',
 ];
 
+// BrunnenTV am Navi-Ziel der Reise: Mini Adam spricht durchs offene Fenster mit dem Megafon zum Brunnen (Stimme wie
+// bei der Taste H), {ort} = der Ort – kurz wie die Megafon-Wünsche (mit einem Ortsnamen von 20 Zeichen nicht länger
+// als der längste von ihnen, tools/sicht-test.mjs); danach sagt NOMI etwas dazu ({n} = Folge)
+export const BRUNNEN_MEGAFON = [
+  'Achtung, Achtung! BrunnenTV live aus {ort}!',
+  'Hallo {ort}! Hier ist BrunnenTV!',
+  'Achtung! Dieser Brunnen ist jetzt auf Sendung!',
+  'Liebe Leute in {ort}: Was für ein Brunnen!',
+  'Durchsage an den Brunnen: Der Chat hat dich lieb!',
+  'Achtung! Wasser läuft, Kamera läuft. BrunnenTV!',
+  'Hier spricht BrunnenTV. Bitte kräftig sprudeln!',
+  'Fünf von fünf Tropfen für {ort}!',
+  'Bitte weiterplätschern! Hier ist BrunnenTV!',
+];
+export const BRUNNEN_NOMI = [
+  'Folge {n} ist im Kasten. Ich finde, das Becken hat heute besonders geglänzt.',
+  'Ich habe den Brunnen geprüft: Das Wasser läuft, die Tauben sind zufrieden.',
+  'BrunnenTV, Folge {n}: gesendet. Ich speichere diesen Brunnen unter Favoriten.',
+  'Laut meinen Daten ist das ein ausgezeichneter Brunnen. Meine Daten irren sich nie.',
+  'Das Plätschern liegt bei hervorragenden Werten. Ich bin beeindruckt.',
+];
+
 // Sammelaktionen: Der Chat legt zusammen, bis das Ziel erreicht ist – dann passiert es
 export const SAMMELAKTIONEN = [
   { id: 'konfetti', name: 'Konfetti-Regen im Tesla' },
@@ -344,7 +366,9 @@ export const CHAT = {
     'Knapp daneben ist auch vorbei', 'Der Chat hat sich mal wieder nicht entscheiden können 😇'],
   brunnenTV: ['BRUNNENTV!!! ⛲', 'BrunnenTV! BrunnenTV!', 'Neue Folge BrunnenTV!', 'Herr Schönnbrun, übernehmen Sie!', '⛲⛲⛲',
     'Endlich wieder BrunnenTV ❤', 'Darauf hat der Chat gewartet', 'Was für ein Brunnen!', 'Die Folge speichere ich mir',
-    '#BrunnenTV', 'Brunnen gesichtet, Ziel erreicht, alles richtig gemacht'],
+    '#BrunnenTV', 'Brunnen gesichtet, Ziel erreicht, alles richtig gemacht', '💦', '💦💦💦', 'Megafon-Folge! 📢⛲',
+    'Fenster runter, Megafon raus 📢', 'Der Brunnen hat es gehört 💦', 'Lauter, Mini Adam! 📢', 'Ich höre es bis hierher plätschern 💦',
+    'Grüße an den Brunnen!'],
   elsaKassel: ['ELSA!!! ❤🐟', 'Elsa ❤', 'Kassel ist Elsa-Stadt 👑🐟', 'Grüß Elsa von uns!'],
   gifhornOrt: ['Gifhorn! Historisch bedeutsam 😂', 'Polizei Gifhorn grüßt bestimmt gleich 👮', 'Wo ist der Supermarkt-Parkplatz?'],
   crash: ['Rezeption!', 'Uff 🙈', 'Das gibt Ärger', 'Polizei Gifhorn ist unterwegs 🚓', 'Blechschaden!', 'Hoffentlich hat das keiner gesehen',

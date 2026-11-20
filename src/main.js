@@ -17,6 +17,8 @@ import { createNatureKit } from './world/kit/nature.js';
 import { cityKit, naviLayout } from './world/xxl/towns.js';
 import { SCENE, ROLL_T, STOP, DOCK, CHARGE, rollPose, groundAt, chargeOf } from './world/xxl/charge.js';
 import { buildPopping, POPPING_AT } from './world/xxl/popping.js';
+import { TV, tvShots, shotPose, dollyFor, shotAt, windowAt, megaphoneAt, lookAt as tvLookAt } from './world/xxl/brunnentv.js';
+import { buildHandMegaphone } from './models/megaphone.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
@@ -379,7 +381,7 @@ const uiFacade = {
   studio: (t, d) => ui.studio(t, d),
   money: (a, l) => ui.money(a, l),
   durchsage: (l, t, d, b) => ui.durchsage(l, t, d, b),
-  megafon: (t, d, b) => ui.megafon(t, d, b),
+  megafon: (t, d, b, l) => ui.megafon(t, d, b, l),
   rahmen: (r, b) => ui.rahmen(r, b),
   funkloch: (on) => ui.funkloch(on),
   damage: (h, m) => ui.damage(h, m),
@@ -1714,6 +1716,133 @@ function stopPlace(dt) {
   };
 }
 
+// --- BrunnenTV am Navi-Ziel (world/xxl/brunnentv.js TV, Game.startBrunnenTV) ----------------------------------------
+// Der Wagen steht neben dem Brunnen, das Spiel läuft weiter und führt die Zeit der Folge (Sätze, Chat, NOMI). Hier
+// gehen das Fahrerfenster herunter und wieder hoch, Mini Adam hebt das Megafon (das vom Beifahrersitz, gebaut bei der
+// ersten Folge) an den Mund und schaut zum Brunnen, und drei Kameras im Rahmen des Wagens zeigen die Folge (tvShots):
+// „Totale“, „Fenster“, „Brunnen“. Von der Drohne gleitet die Kamera in die Totale, aus dem Cockpit wird kurz
+// abgeblendet; zurück zur Kamera des Spielers geht es am Ende mit kurzem Abblenden. Überspringen wie beim Ladestopp
+// (sceneSkip): jede Taste ab TV.skip, kurz abblenden, dann beendet das Spiel die Folge, und der Spieler fährt los, wo
+// er steht (Fenster zu, Megafon zurück).
+// tv: game.tv, f: Mitte des Brunnens im Rahmen des Wagens, shots: die drei Kameras, prop: das Megafon in der Hand,
+// inside: Kamera im Cockpit, skipT / fadeT: wie beim Ladestopp, from / fromLook: Kamera beim Halt
+const tvRun = {
+  on: false, tv: null, f: new THREE.Vector3(), shots: null, prop: null, inside: false, skipT: -1, fadeT: 0,
+  from: new THREE.Vector3(), fromLook: new THREE.Vector3(), pose: { pos: [0, 0, 0], look: [0, 0, 0] },
+};
+const tvM = new THREE.Matrix4();
+game.onBrunnenTV = (e) => tvBegin(e);
+
+/** Überspringen einer Szene (Ladestopp, BrunnenTV): jede Taste oder Bestätigung, sobald skip Sekunden vorbei sind. */
+function sceneSkip(r, t, skip) {
+  if (r.skipT < 0 && t > skip && (input.anyKey || input.take('confirm'))) r.skipT = t;
+}
+
+/** Game.onBrunnenTV: Der Wagen steht am Brunnen. Ohne Brunnen der Welt (Prüfstand) läuft der Fahrplan ohne Bild. */
+function tvBegin(e) {
+  const q = e.fountain;
+  if (!q || !q.world) return;
+  const r = tvRun;
+  updateCarMatrix();
+  // Mitte des Brunnens im Rahmen des haltenden Wagens (er steht still, also bleibt sie dort)
+  r.f.set(q.world.x, 0, q.world.z).applyMatrix4(tvM.copy(carMatrix).invert());
+  r.shots = tvShots({ x: r.f.x, z: r.f.z }, q.r);
+  Object.assign(r, { on: true, tv: e, inside: view === 'cockpit', skipT: -1, fadeT: 0 });
+  r.from.copy(camera.position);
+  camera.getWorldDirection(r.fromLook).multiplyScalar(20).add(camera.position);
+  if (!r.prop) {
+    r.prop = buildHandMegaphone();
+    tesla.adam.holdMegaphone(r.prop);
+  }
+  // Mini Adam schaut zum Brunnen (Körperkoordinaten: +x zum Fenster, +z nach vorn)
+  adamDo((a) => a.lookAt([-r.f.x, 0.85, -r.f.z], TV.look.off[0]));
+}
+
+/** Nach game.update: Ist die Folge vorbei (Fahrplan zu Ende oder übersprungen), übernimmt der Spieler, wo er steht. */
+function tvTick() {
+  const r = tvRun;
+  if (game.tv && game.running && !game.over) {
+    if (r.skipT >= 0 && game.brunnenT() - r.skipT >= TV.fade) game.skipBrunnenTV();
+    return;
+  }
+  tvStop();
+  if (r.skipT >= 0) {
+    r.fadeT = STOP_FADE;
+    fxState.fade = 1;
+    drone.init = false;
+  }
+}
+
+/** Fenster zu, Megafon zurück auf den Sitz, Szene aus (auch bei einer neuen Fahrt). */
+function tvStop() {
+  tvRun.on = false;
+  tesla.setWindow(0);
+  tesla.seatMegaphone(true);
+  if (tvRun.prop) tvRun.prop.visible = false;
+}
+
+/** Nach der Welt: Fenster, Megafon und Kamera dieses Bilds. Ergebnis: { inside, look, megafon } für Mini Adam. */
+function tvPlace(dt) {
+  const r = tvRun;
+  const t = game.brunnenT();
+  updateCarMatrix();
+  tesla.setWindow(windowAt(t));
+  const mk = megaphoneAt(t);
+  const ck = view === 'cockpit';
+  let fade = 0;
+  let inside = false;
+  const shot = shotAt(t);
+  const S = r.shots;
+  // hochkant fährt jede Kamera etwas zurück, damit Wagen und Brunnen ins schmale Bild passen (dollyFor)
+  const aspect = window.innerWidth / window.innerHeight;
+  if (shot === 'totale' && ck && t < TV.fade) {
+    // aus dem Cockpit: erst abblenden, dann steht die Totale da
+    cockpit.placeCamera(camera, carMatrix, simT, 0, 0, dt);
+    setFov(58);
+    inside = true;
+    fade = t / TV.fade;
+  } else if (shot !== 'zurueck') {
+    const s = S[shot];
+    shotPose(s, t, r.pose, dollyFor(aspect, s.dolly));
+    tmpV.fromArray(r.pose.pos).applyMatrix4(carMatrix);
+    tmpV2.fromArray(r.pose.look).applyMatrix4(carMatrix);
+    if (shot === 'totale' && !ck) {
+      // von der Drohne gleitet die Kamera in die Totale
+      const k = smoothstep(0, TV.card, t);
+      tmpV.lerpVectors(r.from, tmpV, k);
+      tmpV2.lerpVectors(r.fromLook, tmpV2, k);
+    }
+    camera.position.copy(tmpV);
+    camera.lookAt(tmpV2);
+    setFov(s.fov);
+    if (shot === 'totale' && ck) fade = 1 - (t - TV.fade) / TV.fade;
+  } else {
+    // zurück zur Kamera des Spielers: kurz abblenden, dann steht seine Kamera da (Cockpit oder Drohne hinter dem
+    // Wagen) und blendet auf – ein Gleiten von der Brunnen-Kamera vorn zur Drohne hinten führte quer über den Wagen
+    const sw = TV.back[0] + TV.fade;
+    if (t < sw) {
+      shotPose(S.brunnen, TV.back[0], r.pose, dollyFor(aspect, S.brunnen.dolly));
+      camera.position.fromArray(r.pose.pos).applyMatrix4(carMatrix);
+      camera.lookAt(tmpV2.fromArray(r.pose.look).applyMatrix4(carMatrix));
+      setFov(S.brunnen.fov);
+      fade = (t - TV.back[0]) / TV.fade;
+      drone.init = false;
+    } else {
+      if (ck) {
+        cockpit.placeCamera(camera, carMatrix, simT, 0, 0, dt);
+        setFov(58);
+        inside = true;
+      } else placeDrone(dt, 'follow');
+      fade = 1 - (t - sw) / (TV.back[1] - sw);
+    }
+  }
+  fxState.fade = Math.max(clamp(fade, 0, 1), r.skipT >= 0 ? (t - r.skipT) / TV.fade : 0);
+  r.inside = inside;
+  // das Megafon vom Beifahrersitz ist in seiner Hand
+  tesla.seatMegaphone(!tesla.adam.megaphoneShown);
+  return { inside, look: tvLookAt(t), megafon: mk };
+}
+
 // --- Fenstergröße & Auflösung -----------------------------------------------------
 function onResize() {
   renderer.setPixelRatio(pixelRatio);
@@ -1923,6 +2052,7 @@ function step(dt, { render = true } = {}) {
   let cockpitOn = false;
   let adamWave = 0;
   let adamLook = 0;
+  let adamMegafon = 0;
   // NOMIs Gruß aus der Startszene kommt, wenn das Sprachstudio ausgeredet hat (auch erst nach der Übergabe)
   if (simT >= chargeRun.greetT) chargeGreet();
 
@@ -1995,6 +2125,12 @@ function step(dt, { render = true } = {}) {
           cockpitOn = stopRun.inside;
           break;
         }
+        // in der BrunnenTV-Folge ebenso (die Kamera steht, wo sie war)
+        if (tvRun.on) {
+          updateCarMatrix();
+          cockpitOn = tvRun.inside;
+          break;
+        }
         updateCarMatrix();
         if (view === 'cockpit') cockpit.placeCamera(camera, carMatrix, simT, 0, 0, 0);
         cockpitOn = view === 'cockpit';
@@ -2004,16 +2140,16 @@ function step(dt, { render = true } = {}) {
         pause();
         break;
       }
-      if (stopRun.fadeT > 0) {
-        // nach dem Überspringen des Ladestopps blendet das Bild in der Spur wieder auf
-        stopRun.fadeT = Math.max(0, stopRun.fadeT - dt);
-        fxState.fade = stopRun.fadeT / STOP_FADE;
+      for (const r of [stopRun, tvRun]) {
+        if (r.fadeT <= 0) continue;
+        // nach dem Überspringen des Ladestopps oder der BrunnenTV-Folge blendet das Bild wieder auf
+        r.fadeT = Math.max(0, r.fadeT - dt);
+        fxState.fade = r.fadeT / STOP_FADE;
       }
       if (stopRun.on) {
         // Ladestopp: jede Taste überspringt ihn (wie die Startszene); das Spiel läuft weiter, der Spieler steht an
         // seinem Halt (Wagen und Kamera stellt stopPlace nach der Welt)
-        const t = game.chargeT();
-        if (stopRun.skipT < 0 && t > SCENE.skip && (input.anyKey || input.take('confirm'))) stopRun.skipT = t;
+        sceneSkip(stopRun, game.chargeT(), SCENE.skip);
         STOP_CTL.device = input.lastDevice;
         p.speed = 0;
         game.update(dt, STOP_CTL, camera);
@@ -2023,6 +2159,24 @@ function step(dt, { render = true } = {}) {
         updateCarMatrix();
         if (view === 'cockpit') {
           cockpit.placeCamera(camera, carMatrix, simT, p.speed, 0, dt);
+          setFov(58);
+          cockpitOn = true;
+        } else placeDrone(dt, 'follow');
+        break;
+      }
+      if (tvRun.on) {
+        // BrunnenTV: Der Wagen steht am Brunnen, jede Taste überspringt die Folge (wie den Ladestopp); Fenster, Megafon
+        // und Kamera stellt tvPlace nach der Welt
+        sceneSkip(tvRun, game.brunnenT(), TV.skip);
+        STOP_CTL.device = input.lastDevice;
+        p.speed = 0;
+        game.update(dt, STOP_CTL, camera);
+        tvTick();
+        if (tvRun.on) break;
+        // vorbei: ab dem nächsten Bild fährt der Spieler, die Kamera ist schon seine
+        updateCarMatrix();
+        if (view === 'cockpit') {
+          cockpit.placeCamera(camera, carMatrix, simT, 0, 0, dt);
           setFov(58);
           cockpitOn = true;
         } else placeDrone(dt, 'follow');
@@ -2121,6 +2275,13 @@ function step(dt, { render = true } = {}) {
       adamWave = a.wave;
       adamLook = a.look;
     }
+    // BrunnenTV: Fenster, Megafon und Kamera der Folge
+    if (tvRun.on) {
+      const a = tvPlace(dt);
+      cockpitOn = a.inside;
+      adamLook = a.look;
+      adamMegafon = a.megafon;
+    }
     // Verlauf der Straße in die Tabelle des Shaders; Prüfstand (?debug): flache Welt, damit Bausteine unverzerrt
     // begutachtet werden können
     if (DEBUG && window.__MA && window.__MA.flat) {
@@ -2154,16 +2315,17 @@ function step(dt, { render = true } = {}) {
     // leuchtet es, solange er in R wartet und wenn er vor der Bucht anhält)
     tesla.setBrake(stopRun.on ? stopRun.brake : state !== 'charge' && !(state === 'title' && chargeRun.parked) && (p.braking > 0.1 || p.speed < 1));
     tesla.setReverse(p.gear === 'R' || stopRun.rev);
-    const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook });
+    const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook, megafon: adamMegafon });
     tesla.adam.animate(simT, adamOpts);
     facecam.adam.animate(simT, adamOpts);
     facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake });
-    tesla.cabinLight.intensity = cockpitOn ? 0 : stopRun.on || state === 'title' || state === 'intro' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
+    tesla.cabinLight.intensity = cockpitOn ? 0 : stopRun.on || tvRun.on || state === 'title' || state === 'intro' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     const scr = game.screenState ? safeScreen() : null;
     // Ladestopp: das Display zeigt den Gang des Wagens der Szene (in R mit dem Bild der Rückfahrkamera)
     if (scr && stopRun.on) scr.gear = stopRun.gear;
+    if (scr && tvRun.on) scr.gear = 'P';
     if (mapDemo && scr) {
       const visits = mapDemo.takeVisits();
       for (const i of visits) recordVisit(save, i);
@@ -2219,7 +2381,7 @@ function step(dt, { render = true } = {}) {
   U.uFlash.value = fxState.flash;
   U.uGlitch.value = fxState.glitch > 0 ? 0.6 + 0.4 * Math.sin(simT * 40) : 0;
   U.uGreen.value = fxState.green > 0 ? (Math.sin(simT * 26) > 0.2 ? 1 : 0.15) : 0;
-  U.uFade.value = state === 'intro' || state === 'charge' || stopRun.on || stopRun.fadeT > 0 ? clamp(fxState.fade, 0, 1) : 0;
+  U.uFade.value = state === 'intro' || state === 'charge' || stopRun.on || stopRun.fadeT > 0 || tvRun.on || tvRun.fadeT > 0 ? clamp(fxState.fade, 0, 1) : 0;
   U.uSat.value = 1.08 - cloud * 0.25;
 
   if (DEBUG && window.__MA && window.__MA.camHook) window.__MA.camHook(camera, carMatrix);
@@ -2287,6 +2449,8 @@ function xxlStart(title) {
   chargeRun.parked = false;
   stopRun.on = false;
   stopRun.fadeT = 0;
+  tvStop();
+  tvRun.fadeT = 0;
   if (title && !atCharger) {
     xxl.advance(p, 1300);
     p.x = 1.875;
@@ -2390,6 +2554,11 @@ if (DEBUG) {
     // der Ladestopp im Park (stopBegin … stopTick): on, c (game.charging), q (Lage des Wagens), skipT
     get stop() {
       return stopRun;
+    },
+    /** BrunnenTV-Folge: Szene (tvRun) und Zustand für Prüfbilder: Zeit, Kamera, Fenster, Megafon. */
+    get tv() {
+      const t = game.brunnenT();
+      return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t) : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, skipT: tvRun.skipT, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl || !xxl.arrival.held };
     },
     set view(v) {
       view = v;

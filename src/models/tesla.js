@@ -186,15 +186,8 @@ export function buildTesla() {
     clearcoatRoughness: 0.12,
     envMapIntensity: 1.25,
   });
-  const glass = W.phys({
-    color: 0x05080c,
-    metalness: 0.25,
-    roughness: 0.04,
-    transparent: true,
-    opacity: 0.62,
-    envMapIntensity: 2.6,
-    depthWrite: false,
-  });
+  const GLASS_MAT = { color: 0x05080c, metalness: 0.25, roughness: 0.04, transparent: true, opacity: 0.62, envMapIntensity: 2.6, depthWrite: false };
+  const glass = W.phys(GLASS_MAT);
   const dark = W.std({ color: 0x0b0b0c, roughness: 0.8, side: THREE.DoubleSide });
   const plastic = W.std({ color: 0x141516, roughness: 0.55 });
   const pianoBlack = W.phys({ color: 0x030304, metalness: 0.3, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08, side: THREE.DoubleSide });
@@ -590,6 +583,37 @@ export function buildTesla() {
     return m;
   }
 
+  // Fahrerfenster (BrunnenTV): Das Glas ist eine Kuppel aus einem Stück, also „fährt“ die Scheibe herunter, indem ein
+  // eigenes Material (erst bei der ersten Folge gebaut) ihren Teil oberhalb der Oberkante y verwirft – zwischen
+  // A-Säule (Mitte ihrer Leiste) und B-Säule, von der Fensterleiste bis zum Dach. Die Leisten liegen darüber.
+  let winMat = null;
+  const WIN = (() => {
+    const p = new THREE.Vector3();
+    const a0 = glassPoint(1.55, sidePhi(-1, -0.74), p).clone();
+    const a1 = glassPoint(2.305, sidePhi(-1, ROOF_PHI + 0.04), p).clone();
+    const bottom = glassPoint(2.5, sidePhi(-1, -0.7), p).y;
+    const top = glassPoint(2.5, sidePhi(-1, ROOF_PHI), p).y;
+    return { a0, a1, bottom, top, zB: uToZ(2.82) };
+  })();
+  function windowGlass() {
+    const m = W.phys(GLASS_MAT);
+    const curved = m.onBeforeCompile;
+    const u = { uWinA: { value: new THREE.Vector4(WIN.top, WIN.top, WIN.zB, -0.3) }, uWinB: { value: new THREE.Vector4(WIN.a0.y, WIN.a0.z, WIN.a1.y, WIN.a1.z) } };
+    m.userData.win = u;
+    m.onBeforeCompile = (shader) => {
+      curved(shader);
+      Object.assign(shader.uniforms, u);
+      shader.vertexShader = 'varying vec3 vWinP;\n' + shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWinP = position;');
+      shader.fragmentShader = 'uniform vec4 uWinA;\nuniform vec4 uWinB;\nvarying vec3 vWinP;\n' + shader.fragmentShader.replace(
+        'void main() {',
+        'void main() {\n  float winZ = mix(uWinB.y, uWinB.w, clamp((vWinP.y - uWinB.x) / (uWinB.z - uWinB.x), 0.0, 1.0));\n' +
+          '  if (vWinP.x < uWinA.w && vWinP.y > uWinA.x && vWinP.y < uWinA.y && vWinP.z < uWinA.z && vWinP.z > winZ) discard;',
+      );
+    };
+    m.customProgramCacheKey = () => 'curved-world-window';
+    return m;
+  }
+
   let wheelAngle = 0;
   let brake = false;
   let reverse = false;
@@ -617,6 +641,16 @@ export function buildTesla() {
     },
     setVest(v) {
       adam.setVest(v);
+    },
+    /** Fahrerfenster: 0 zu … 1 ganz offen (BrunnenTV; das Material dafür entsteht beim ersten Öffnen). */
+    setWindow(k) {
+      if (k > 0 && !winMat) winMat = windowGlass();
+      glassMesh.material = k > 0 ? winMat : glass;
+      if (winMat) winMat.userData.win.uWinA.value.x = lerp(WIN.top, WIN.bottom, Math.min(1, Math.max(0, k)));
+    },
+    /** Megafon auf dem Beifahrersitz zeigen (false, solange Mini Adam es in der Hand hat). */
+    seatMegaphone(show) {
+      cabin.seatMegaphone(show);
     },
     /** Armwinkel der beiden Scheibenwischer (rad, wie windshield.angles). */
     setWipers(a0, a1) {

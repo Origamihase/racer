@@ -4,6 +4,7 @@
 import {
   CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_JOBS, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, NAVI_TARGETS, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
+  BRUNNEN_MEGAFON, BRUNNEN_NOMI,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
 import { Player, KMH } from './player.js';
@@ -19,6 +20,7 @@ import { EYE } from '../cockpit/cockpit.js';
 import { ELSA_STATUE } from '../world/scenery.js';
 import { curvePoint } from '../curve.js';
 import { stopPlan, STOP } from '../world/xxl/charge.js';
+import { TV } from '../world/xxl/brunnentv.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
 // „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
@@ -38,10 +40,8 @@ const ELSA_VIEW = (16 * Math.PI) / 180;
 const elsaTmp = new Vector3();
 // Wie flott der Chat schreibt, je nach Stufe der heimlichen Chat-Stimmung (0 im Keller … 4 bester Laune)
 const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
-// BrunnenTV am Navi-Ziel (XXL, bis die Szene gebaut ist: Titelkarte und Jubel): so viele Sekunden steht der Wagen am
-// Brunnen (hold); wer neu Gas gibt, bremst, lenkt oder hupt, fährt sofort weiter, sobald die Karte kurz zu sehen
-// war (guard); das erste Gebot der nächsten Runde kommt frühestens pause Sekunden, nachdem der Wagen fahren darf.
-const BRUNNEN_TV = { hold: 6, guard: 0.6, pause: 1.5 };
+// BrunnenTV am Navi-Ziel (Reise): Fahrplan der Folge in world/xxl/brunnentv.js (TV); das erste Gebot der nächsten
+// Runde kommt frühestens TV.pause Sekunden, nachdem der Wagen fahren darf.
 /** Entfernung für NOMIs Ansage: „39 Kilometern“, unter 10 km mit einer Nachkommastelle („4,5 Kilometern“). */
 function kmWords(km) {
   if (km < 10) {
@@ -553,7 +553,7 @@ export class Game {
       this.audio.coin();
       this.ui.toast('🍌 Bananensaft! Zuckerschub', 'good');
     }
-    if (this.tv) this.tickBrunnenTV(ctl);
+    if (this.tv) this.tickBrunnenTV();
     else if (this.navi.stopping) this.tickHalt(dt);
     this.updateNavi(dt);
     this.updateEvents(dt, camera);
@@ -1274,7 +1274,7 @@ export class Game {
    * Ankunft, der Chat neckt, und die Runde läuft mit dem nächsten Gebot weiter (ohne neuen Start bei 1 Cent).
    */
   tickHalt(dt) {
-    this.T.bid = Math.max(this.T.bid, BRUNNEN_TV.pause);
+    this.T.bid = Math.max(this.T.bid, TV.pause);
     if (!this.world.stopping()) {
       this.halt = null;
       this.navi.miss();
@@ -1353,36 +1353,71 @@ export class Game {
    * wurde, gibt es am Ziel BrunnenTV.“ Eine Ankunft gibt es nur am Brunnenplatz des aktuellen Ziels – steht der
    * Wagen dort, wurde es vor der nächsten Änderung erreicht: Jede Ankunft ist eine Folge. Weg nimmt sie nur ein
    * Gebot, das das Ziel ändert, bevor der Wagen am Brunnen steht (siehe changeNavi, snatched, und tickHalt).
-   * Bis die Szene gebaut ist (REISE Stufe B), steht hier ihr Platzhalter: Die Folge wird gezählt, eine Titelkarte
-   * „BrunnenTV · Folge N“ erscheint, der Chat jubelt, und der Wagen bleibt kurz am Brunnen stehen. Die Szene hängt
-   * sich an onBrunnenTV({ n, place, name, sec, fountain, town }): Folge, Ort (Index und Name), Abschnitt der Fahrt,
-   * Brunnenplatz der Welt (XxlWorld.square: Lage, Haltepunkt, Brunnen) und der Ort aus dem Stadtbaukasten
-   * (XxlWorld.town: plan.fountains, plan.layout).
+   * Und seit dem 19.11.: „Wenn das Ziel erreicht wird, macht Mini Adam dort BrunnenTV aus dem Auto mit dem Megafon.“
+   * Die Folge läuft nach dem Fahrplan TV (world/xxl/brunnentv.js, Sekunden ab dem Halt): Bauchbinde „BrunnenTV · Folge
+   * N“, Mini Adam durchs Megafon zum Brunnen, der Chat jubelt, NOMI sagt etwas, dann darf der Wagen weiter. main.js
+   * zeigt dazu Fenster, Megafon und Kameras (onBrunnenTV({ n, place, name, goal, sec, fountain, town }): Folge, Ort,
+   * Name des Ziels, Abschnitt, Brunnenplatz der Welt mit Lage und Haltepunkt, der Ort aus dem Stadtbaukasten); ohne
+   * Szene (Node-Tests) läuft derselbe Fahrplan, der Wagen wartet an seinem Halt.
    */
   startBrunnenTV(t, sec) {
     const n = ++this.stats.brunnenTV;
-    this.tv = { n, place: t.place, t0: this.t, until: this.t + BRUNNEN_TV.hold, busy: true };
-    this.ui.brunnenTV(n, t.name);
-    this.audio.brunnenJingle();
-    this.burst(CHAT.brunnenTV, 5, 3);
-    this.onBrunnenTV({ n, place: t.place, name: t.name, sec, fountain: this.world.square(sec), town: this.world.town(sec) });
+    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, skip: false };
+    this.onBrunnenTV({ n, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town: this.world.town(sec) });
+  }
+
+  /** Sekunden seit dem Halt am Brunnen (Fahrplan der Folge). */
+  brunnenT() {
+    return this.tv ? this.t - this.tv.t0 : 0;
   }
 
   /**
-   * Solange die Folge läuft: Die nächste Bieterrunde wartet, und die Zeit oder eine neue Eingabe beendet den Halt.
-   * Neu heißt: Wer beim Anhalten noch auf dem Gas steht, muss es erst loslassen (busy) – sonst wäre die Folge für
-   * jeden, der einfach durchfährt, sofort vorbei.
+   * Solange die Folge läuft, wartet die nächste Bieterrunde; ihre Momente kommen je einmal zu ihrer Zeit. Übersprungen
+   * (skipBrunnenTV) endet sie im nächsten Bild so, wie sie sonst endet; was noch nicht gesagt war, bleibt ungesagt.
    */
-  tickBrunnenTV(ctl) {
+  tickBrunnenTV() {
     const tv = this.tv;
-    this.T.bid = Math.max(this.T.bid, BRUNNEN_TV.pause);
-    const busy = ctl.throttle > 0.1 || ctl.brake > 0.1 || !!ctl.steer || Math.abs(ctl.analog || 0) > 0.2 || !!ctl.horn || !!ctl.megafon;
-    const fresh = busy && !tv.busy;
-    tv.busy = busy;
-    if (this.t >= tv.until || (fresh && this.t - tv.t0 > BRUNNEN_TV.guard)) this.endBrunnenTV();
+    this.T.bid = Math.max(this.T.bid, TV.pause);
+    if (tv.skip) {
+      this.endBrunnenTV();
+      return;
+    }
+    const t = this.t - tv.t0;
+    const moments = [
+      [TV.card, () => {
+        this.ui.brunnenTV(tv.n, tv.name);
+        this.audio.brunnenJingle();
+      }],
+      [TV.line, () => this.brunnenMegafon(tv)],
+      [TV.chat, () => {
+        this.chat('BRUNNENTV! 💦');
+        this.burst(CHAT.brunnenTV, 4, 3);
+      }],
+      [TV.nomi, () => this.say(fillTemplate(pick(BRUNNEN_NOMI), { n: fmtNum(tv.n) }), 'love', { priority: false })],
+    ];
+    while (tv.said < moments.length && t >= moments[tv.said][0]) moments[tv.said++][1]();
+    if (t >= TV.end) this.endBrunnenTV();
   }
 
-  /** Die Folge ist vorbei (oder übersprungen): Karte weg, der Wagen darf weiter – durch den Ort hinaus zur nächsten Straße. */
+  /**
+   * Mini Adam spricht durchs Megafon zum Brunnen: mit der Stimme der Taste H (Brüll-William), der Satz steht unten im
+   * Bild wie ein Megafon-Wunsch, nur mit der Folge statt eines Käufers.
+   */
+  brunnenMegafon(tv) {
+    const text = fillTemplate(pick(BRUNNEN_MEGAFON), { ort: tv.name });
+    this.audio.megafon();
+    const dur = this.speech.say(text, 'william');
+    this.ui.megafon(text, dur + 1, '', `📢 BrunnenTV · Folge ${fmtNum(tv.n)}`);
+    this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
+    this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.line));
+  }
+
+  /** Folge überspringen (main.js: jede Taste ab TV.skip, wie beim Ladestopp): Sie endet im nächsten Bild. */
+  skipBrunnenTV() {
+    if (this.tv) this.tv.skip = true;
+  }
+
+  /** Die Folge ist vorbei (oder übersprungen): Bauchbinde weg, der Wagen darf weiter – durch den Ort zur nächsten Straße. */
   endBrunnenTV() {
     this.tv = null;
     this.ui.brunnenTV(0);

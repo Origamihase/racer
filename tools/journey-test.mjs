@@ -42,6 +42,7 @@ import { INSIDER_ORTE, REISE_JOBS } from '../src/data.js';
 import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { goalName } from '../src/world/kit/layout.js';
+import { TV } from '../src/world/xxl/brunnentv.js';
 import { signsAlong, BOARD_D } from '../src/world/xxl/signplan.js';
 import { parkBoard, PARK_STOP_AFTER, PARKS } from '../src/map/parks.js';
 
@@ -589,8 +590,8 @@ function stream(driver, hours, seed, firstRound = false) {
     const v = Math.min(lim.vmax, driver.cruise / 3.6);
     ctl.throttle = p.speed < v - 0.5 ? 1 : 0;
     ctl.brake = p.speed > v + 3 ? 0.4 : 0;
-    // am Brunnen: Der Ungeduldige lässt das Gas kurz los und gibt neu Gas – das beendet die Folge sofort
-    if (game.tv && driver.skip) ctl.throttle = game.t - tvT0 < 0.9 ? 0 : 1;
+    // am Brunnen: Der Ungeduldige überspringt die Folge, sobald ihre Bauchbinde da ist (in main.js mit einer Taste)
+    if (game.tv && driver.skip && game.t - tvT0 >= TV.card + 0.1) game.skipBrunnenTV();
     // der Parker hält in der ersten Runde gleich am Ortseingang des Ziels und wartet
     const parked = driver.park && nv.opening && nv.inTown;
     if (parked) Object.assign(ctl, { throttle: 0, brake: 1 });
@@ -732,7 +733,9 @@ function stream(driver, hours, seed, firstRound = false) {
   // Kasse: jedes Gebot genau einmal
   ok(m.earnN === m.bids && m.bids === game.stats.naviChanges && m.bids === nv.changes, `Gebote ${m.bids}, davon verbucht ${m.earnN} (Statistik ${game.stats.naviChanges})`);
   ok(Math.abs(m.earnSum - m.bidSum) < 0.005 && Math.abs((game.breakdown['Navi-Gebote'] || 0) - m.bidSum) < 0.005, `Summe der Gebote ${m.bidSum.toFixed(2)} €, verbucht ${m.earnSum.toFixed(2)} €`);
-  ok(game.stats.naviReached === m.arrivals && game.stats.brunnenTV === m.arrivals && tvCards.filter((c) => c.n > 0).length === m.arrivals, `Ankünfte ${m.arrivals}, gezählt ${game.stats.naviReached}; Folgen gezählt ${game.stats.brunnenTV}`);
+  // (die Bauchbinde kommt TV.card nach dem Halt: endet der Stream gleich nach einer Ankunft, fehlt die letzte)
+  const cardDue = m.arrivals - (game.tv && game.brunnenT() < TV.card ? 1 : 0);
+  ok(game.stats.naviReached === m.arrivals && game.stats.brunnenTV === m.arrivals && tvCards.filter((c) => c.n > 0).length === cardDue, `Ankünfte ${m.arrivals}, gezählt ${game.stats.naviReached}; Folgen gezählt ${game.stats.brunnenTV}, Bauchbinden ${tvCards.filter((c) => c.n > 0).length}`);
   ok(m.arrivals === m.rests + m.late2, `${m.arrivals} Ankünfte, aber ${m.rests} Halte der Welt und ${m.late2} knapp dahinter`);
   ok(m.spots - m.arrivals - m.rolled >= 0 && m.spots - m.arrivals - m.rolled <= 1, `${m.spots} Zielpunkte, aber ${m.arrivals} Ankünfte und ${m.rolled}× vorbeigerollt`);
   ok(m.tvEnds >= m.arrivals - 1, `${m.arrivals} Folgen begonnen, ${m.tvEnds} beendet`);

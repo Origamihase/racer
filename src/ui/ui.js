@@ -617,9 +617,12 @@ export class UI {
     this.speak('durchsage', '»' + text + '«', clamp(dur, 3, 14), `${voiceLabel} · Sprachdurchsage von ${buyer}`);
   }
 
-  /** Ein Wunsch fürs Megafon, den der Wagen gerade ausruft: auch das ist gesprochen und steht deshalb hier. */
-  megafon(text, dur, buyer) {
-    this.speak('megafon', '»' + text + '«', clamp(dur, 3, 14), 'Megafon-Wunsch von ' + buyer);
+  /**
+   * Durchsage durchs Megafon: ein Wunsch, den der Wagen gerade ausruft (buyer), oder mit label Mini Adam selbst
+   * (BrunnenTV) – auch das ist gesprochen und steht deshalb hier.
+   */
+  megafon(text, dur, buyer, label = 'Megafon-Wunsch von ' + buyer) {
+    this.speak('megafon', '»' + text + '«', clamp(dur, 3, 14), label);
   }
 
   /**

@@ -310,7 +310,9 @@ console.log('Werkstatt-Rechnung (Reise):');
       if (r === 1 && t > 40) once('r1a', () => bump(game));
       if (r === 1 && t > 43) once('r1b', () => bump(game));
       if (r === 1 && t > 45) once('r1c', () => game.player.damage.scrape('left'));
-      if (r === 3 && game.navi.target && !game.tv) once('r3', () => bump(game));
+      // (erst wieder in Fahrt: Gleich nach der BrunnenTV-Folge rollt der Wagen am Brunnen erst an, und ein Stoß dort
+      // schob ihn an den Rand – das gab eine Kratzspur dazu)
+      if (r === 3 && game.navi.target && !game.tv && game.player.speed > 15) once('r3', () => bump(game));
     },
     bill(game, b) {
       if (b.n === 3) game.money = 40.5;
