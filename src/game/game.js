@@ -72,6 +72,7 @@ export class Game {
    *   town(sec): Brunnenplatz und Ort einer Ortsdurchfahrt für die BrunnenTV-Szene }. Dann wird
    *   auf echte Orte geboten (WorldNavi): Jedes Gebot setzt das Ziel der Fahrt, das Navi im Auto zeigt sie
    *   (src/map), und die Ankunft meldet onTrip am Brunnenplatz. worldNavi sagt der Anzeige, welches Navi führt.
+   *   touchUI: Das Bild zeigt Touch-Knöpfe (Handy, Tablet), der Hinweis zum Ladestopp nennt dann den Knopf.
    */
   constructor(ctx) {
     Object.assign(this, ctx);
@@ -172,6 +173,8 @@ export class Game {
     this.charging = null;
     this.sugarDue = false;
     this.akku = meterAkku();
+    // was NOMI in einer Szene sagen wollte und erst danach sagt ([Satz, Stimmung], say)
+    this.heldSay = [];
     // zwischen Zielpunkt und Halt am Brunnen: { sec: Ortsdurchfahrt, still: so lange steht der Wagen schon }
     this.halt = null;
     // Für jeden der fünf Jobs hat jemand im Chat eine Spende versprochen – und einer für alle zusammen
@@ -344,7 +347,13 @@ export class Game {
   }
 
   /** NOMI spricht (mit Gong, Untertitel und Augen-Animation). */
-  say(text, mood = 'talk', { priority = true } = {}) {
+  say(text, mood = 'talk', { priority = true, scene = false } = {}) {
+    // eine Szene (Ladestopp, BrunnenTV) hat genau einen Satz NOMIs, ihren eigenen (scene): Zufälliges Geplauder
+    // (priority false) entfällt dort, Wichtiges wartet bis zum Ende der Szene (sayHeld)
+    if (!scene && (this.charging || this.tv)) {
+      if (priority && !this.heldSay.some((h) => h[0] === text)) this.heldSay.push([text, mood]);
+      return;
+    }
     this.audio.nomiChime();
     const nomi = this.cockpit.nomi;
     nomi.setMood(mood, 3.2);
@@ -364,6 +373,12 @@ export class Game {
     }
     if (this.running) this.later(0.35, go);
     else go();
+  }
+
+  /** Nach einer Szene: was NOMI darin Wichtiges sagen wollte (say hielt es zurück), der Reihe nach. */
+  sayHeld() {
+    this.heldSay.forEach(([text, mood], i) => this.later(0.5 + 3.5 * i, () => this.say(text, mood)));
+    this.heldSay.length = 0;
   }
 
   /**
@@ -646,7 +661,7 @@ export class Game {
     const vars = { pct: Math.round(p.battery), park: r ? r.name : '', km: r ? kmWords(r.km) : '' };
     const text = !r ? A.none : r.planned ? A.planned : lvl === 3 ? A.veryLow : lvl || !fits(r) ? A.low : A.last;
     this.say(fillTemplate(text, vars), 'worried');
-    if (r && !r.planned) this.ui.toast(this.device === 'touch' ? '🔌 Ladestopp einplanen: Knopf unten' : '🔌 Ladestopp einplanen: Taste L', 'info', 'ladestopp');
+    if (r && !r.planned) this.ui.toast(this.touchUI ? '🔌 Ladestopp einplanen: Knopf unten' : '🔌 Ladestopp einplanen: Taste L', 'info', 'ladestopp');
     this.chat(pick(['Akku! 🔋', 'Ab in den Ladepark!', 'Popcorn-Pause? 🍿', 'Lade-Pause!']));
   }
 
@@ -741,7 +756,7 @@ export class Game {
     // die schönen Momente je einmal: NOMI, Popcorn, Bananensaft (eine Spende kommt nach den Regeln der Ökonomie)
     const moments = [
       [STOP.nomi, () => {
-        this.say(fillTemplate(REISE_AKKU.start, { park: c.name }), 'happy');
+        this.say(fillTemplate(REISE_AKKU.start, { park: c.name }), 'happy', { scene: true });
         this.audio.chime();
       }],
       [STOP.pop[0] + 0.6, () => {
@@ -783,6 +798,7 @@ export class Game {
     this.akku = meterAkku();
     this.batteryWarned = 0;
     this.ui.toast('🔋 Akku voll', 'good');
+    this.sayHeld();
     // der Zuckerschub des Bananensafts, sobald der Wagen wieder auf der Autobahn ist (im Park und auf dem Zubringer
     // gilt ohnehin ein Tempolimit)
     this.sugarDue = true;
@@ -1420,7 +1436,7 @@ export class Game {
         this.chat('BRUNNENTV! 💦');
         this.burst(CHAT.brunnenTV, 4, 3);
       }],
-      [TV.nomi, () => this.say(fillTemplate(pick(BRUNNEN_NOMI), { n: fmtNum(tv.n) }), 'love', { priority: false })],
+      [TV.nomi, () => this.say(fillTemplate(pick(BRUNNEN_NOMI), { n: fmtNum(tv.n) }), 'love', { priority: false, scene: true })],
     ];
     while (tv.said < moments.length && t >= moments[tv.said][0]) moments[tv.said++][1]();
     if (t >= TV.end) this.endBrunnenTV();
@@ -1449,6 +1465,7 @@ export class Game {
     this.tv = null;
     this.ui.brunnenTV(0);
     this.world.release();
+    this.sayHeld();
   }
 
   // --- Ereignisse ------------------------------------------------------------------

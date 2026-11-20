@@ -30,7 +30,7 @@ import { Audio } from './audio.js';
 import { Speech } from './speech.js';
 import { Input } from './input.js';
 import { TouchControls } from './ui/touch.js';
-import { driveSettings, playerOptions } from './ui/drive-settings.js';
+import { driveSettings, playerOptions, IS_TOUCH } from './ui/drive-settings.js';
 import { showDriveHint, driveHintTick } from './ui/drive-hint.js';
 import { Jolt } from './fx/jolt.js';
 import { TeslaDamage } from './models/damage-fx.js';
@@ -403,7 +403,8 @@ const uiFacade = {
 const gameWorld = xxl
   ? { trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec) }
   : null;
-const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld });
+// (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
+const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
 // XXL: Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht,
 // BrunnenTV, Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
 if (xxl) xxl.on((e) => {
@@ -1744,6 +1745,11 @@ game.onBrunnenTV = (e) => tvBegin(e);
 function sceneSkip(r, t, skip) {
   if (r.skipT < 0 && t > skip && (input.anyKey || input.take('confirm'))) r.skipT = t;
 }
+// Auf dem Handy zählt dafür auch ein Tipp aufs Bild, in jeder Touch-Bedienung (in „Wischen“ meldet ihn schon die
+// Lenkfläche); die Knöpfe liegen darüber und fangen ihren Druck selbst
+renderer.domElement.addEventListener('pointerdown', () => {
+  if (stopRun.on || tvRun.on) input.anyKey = true;
+});
 
 /** Game.onBrunnenTV: Der Wagen steht am Brunnen. Ohne Brunnen der Welt (Prüfstand) läuft der Fahrplan ohne Bild. */
 function tvBegin(e) {

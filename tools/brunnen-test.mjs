@@ -19,7 +19,7 @@ import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor 
 import { squareOf } from '../src/world/xxl/plan.js';
 import { FOUNTAIN_R, goalKind, goalName } from '../src/world/kit/layout.js';
 import { MEGA } from '../src/models/miniAdam.js';
-import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, MODE_TEXT } from '../src/data.js';
+import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, MODE_TEXT, BOARD, BRUNNEN_NOMI, fillTemplate } from '../src/data.js';
 import { readFileSync } from 'node:fs';
 import { loadSave, storeSave, refundMegafon, MEGAFON_PRICE, DEFAULT_SAVE } from '../src/save.js';
 
@@ -118,7 +118,7 @@ const portraitHalf = (Math.atan(Math.tan((78 * Math.PI) / 360) * PORTRAIT) * 180
 
 // --- Fahrplan im Spiel: Momente, Überspringen, nächste Runde ---------------------------------------------------------
 const DT = 1 / 30;
-function episode(skipAt, seed) {
+function episode(skipAt, seed, during = null) {
   Math.random = mulberry32(seed);
   const trip = new Trip({ rng: Math.random });
   const log = [];
@@ -139,7 +139,7 @@ function episode(skipAt, seed) {
       brunnenTV: (n, name) => log.push({ k: 'card', n, name, t: at() }),
       megafon: (text, dur, buyer, label) => log.push({ k: 'sub', text, label, t: at() }),
       chat: (m) => log.push({ k: 'chat', text: m.text, t: at() }),
-      nomi: (text) => log.push({ k: 'nomi', text, t: at() }),
+      nomi: (text) => log.push({ k: 'nomi', text, t: at(), tv: !!game.tv }),
     }),
     fx: loose(),
     pickups: loose({ update: () => NONE }),
@@ -165,6 +165,10 @@ function episode(skipAt, seed) {
   let bidT = -1;
   for (let i = 0; i < 40 * 30; i++) {
     if (game.tv && skipAt !== null && game.brunnenT() >= skipAt && !game.tv.skip) game.skipBrunnenTV();
+    if (during && game.tv && game.brunnenT() >= during.t && !during.done) {
+      during.done = true;
+      during.fn(game);
+    }
     const before = !!game.tv;
     const tb = game.brunnenT();
     game.update(DT, ctl, camera);
@@ -211,6 +215,20 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
     ok(william[0].text === subs[0].text && !/\{|\}/.test(subs[0].text), `${name}: Megafon-Satz „${subs[0].text}“`);
   }
   if (end > TV.chat) ok(r.log.filter((e) => e.k === 'chat' && e.t >= TV.chat && e.t < TV.chat + 3.5).length >= 3, `${name}: der Chat jubelt kaum`);
+}
+// Eine Folge hat genau einen Satz NOMIs: Geplauder mittendrin (der Fehlalarm des Wischers) entfällt, Wichtiges kommt
+// gleich nach der Folge
+{
+  const chatter = (g) => {
+    g.say(BOARD.wiperPhantom, 'think', { priority: false });
+    g.say('Prüfsatz nach der Folge.', 'think');
+  };
+  const r = episode(null, 4711, { t: 3, fn: chatter });
+  const said = r.log.filter((e) => e.k === 'nomi');
+  // („Sie haben Ihr Ziel erreicht“ sagt sie beim Halt, bevor die Folge beginnt)
+  const inTv = said.filter((e) => e.tv && e.text !== BOARD.arrived);
+  ok(inTv.length === 1 && BRUNNEN_NOMI.some((l) => fillTemplate(l, { n: '1' }) === inTv[0].text), `Folge: NOMI ${inTv.length}× (${inTv.map((e) => e.text).join(' | ')})`);
+  ok(!said.some((e) => e.text === BOARD.wiperPhantom) && said.filter((e) => !e.tv && e.text === 'Prüfsatz nach der Folge.').length === 1, `Folge: zurückgehalten ${said.map((e) => e.text).join(' | ')}`);
 }
 
 // --- Megafon als Ausstattung ----------------------------------------------------------------------------------------

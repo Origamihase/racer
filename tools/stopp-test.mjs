@@ -13,6 +13,7 @@ import { TESLA } from '../src/models/tesla.js';
 import { Trip, J } from '../src/game/trip.js';
 import { Arrival, limitsFor, AUTO } from '../src/world/xxl/plan.js';
 import { Game } from '../src/game/game.js';
+import { BOARD, REISE_AKKU, fillTemplate } from '../src/data.js';
 
 let fails = 0;
 const kinds = new Map();
@@ -221,7 +222,7 @@ function stream(skip, plan = true) {
     scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
     road: loose(), sky: loose(), rain: loose(), windshield: loose({ firmware: 0, manual: () => 'wipe' }),
     cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
-    ui: loose(), fx: loose(), pickups: loose({ update: () => NONE }),
+    ui: loose({ nomi: (text) => out.nomi.push({ text, during: !!game.charging }) }), fx: loose(), pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });
   game.start({ upgrades: {}, best: {} });
@@ -230,9 +231,10 @@ function stream(skip, plan = true) {
   p.x = trip.x;
   p.speed = 40 / 3.6;
   p.battery = 80;
+  let chatter = false;
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
   const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
-  const out = { charged: null, after: null, wende: 0, wrong: 0, sugar: false, events: [] };
+  const out = { charged: null, after: null, wende: 0, wrong: 0, sugar: false, events: [], nomi: [] };
   let planned = false;
   let halt = null;
   let leftPark = false;
@@ -264,6 +266,12 @@ function stream(skip, plan = true) {
     ctl.brake = p.speed > v + 3 ? 0.4 : 0;
     const was = !!game.charging;
     if (game.charging && skip !== null && game.chargeT() >= skip) game.skipCharge();
+    // Geplauder mitten im Stopp (der Fehlalarm des Wischers) und etwas Wichtiges: NOMI sagt dort nur ihren Satz
+    if (game.charging && !chatter && game.chargeT() >= 0.3) {
+      chatter = true;
+      game.say(BOARD.wiperPhantom, 'think', { priority: false });
+      game.say('Prüfsatz nach dem Stopp.', 'think');
+    }
     game.offAutobahn = trip.section.kind !== 'ab';
     game.update(DT, ctl, camera);
     if (was && !game.charging) {
@@ -309,6 +317,11 @@ for (const [name, r] of runs) {
   ok(c && c.battery === 100 && c.charges === 1 && c.bananas === 1 && !c.held && c.sugarDue && c.stop < 0, `${name}: Zustand nach dem Stopp ${JSON.stringify(c)}`);
   ok(r.after && r.after.same && r.after.sugar > 5.8, `${name}: nicht auf derselben Autobahn geradeaus weiter oder ohne Zuckerschub ${JSON.stringify(r.after)}`);
   ok(r.wende === 0 && r.wrong === 0, `${name}: ${r.wende}× „wenden“, ${r.wrong} falsche Abzweige nach dem Stopp`);
+  // im Stopp genau ein Satz NOMIs (ihrer, wenn er vor dem Überspringen lag), das Wichtige danach, das Geplauder nie
+  const during = r.nomi.filter((e) => e.during).map((e) => e.text);
+  const own = r.halt ? fillTemplate(REISE_AKKU.start, { park: PARKS[r.halt.sec.park].name }) : '';
+  ok(during.length === (name === 'früh übersprungen' ? 0 : 1) && during.every((t) => t === own), `${name}: NOMI im Stopp ${during.join(' | ') || '–'}`);
+  ok(!r.nomi.some((e) => e.text === BOARD.wiperPhantom) && r.nomi.filter((e) => !e.during && e.text === 'Prüfsatz nach dem Stopp.').length === 1, `${name}: zurückgehalten ${r.nomi.map((e) => e.text).join(' | ')}`);
 }
 
 console.log(
