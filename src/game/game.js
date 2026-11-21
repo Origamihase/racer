@@ -1430,7 +1430,7 @@ export class Game {
     this.audio.jingle();
     // an jedem erreichten Navi-Ziel wird ein Karosserie-Punkt repariert (mit Pflaster)
     if (p.repair(1)) {
-      this.ui.damage(p.hits, p.maxHits);
+      this.ui.damage();
       this.later(2.2, () => this.ui.toast('🩹 ' + damageLine('repair'), 'good'));
     }
     // die Ankunft sagt die Navi-Zeile an („Ziel erreicht: …“)
@@ -2637,7 +2637,7 @@ export class Game {
     this.onMood('ouch', 1);
     this.cockpit.nomi.setMood('dizzy', 3);
     const left = p.maxHits - p.hits;
-    this.ui.damage(p.hits, p.maxHits);
+    this.ui.damage();
     // OMI tröstet (nie über Verletzungen): erster Rempler, weitere, der letzte Punkt
     if (left > 0) this.later(0.6, () => this.say(damageLine(left === 1 ? 'last' : p.hits === 1 ? 'first' : 'more', e.zone), left === 1 ? 'worried' : 'talk', { priority: false }));
     if (e.car.behavior === 'polizei') this.chat('Ausgerechnet die Polizei Gifhorn 😱');

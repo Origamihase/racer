@@ -460,10 +460,10 @@ export function signTexture(lines, { w = 512, h = 256, bg = '#1452a8', fg = '#ff
     ctx.font = `bold ${size}px "DIN Alternate", "Arial Narrow", Arial, sans-serif`;
     if (typeof ln === 'string') {
       ctx.textAlign = 'left';
-      fitText(ctx, ln, 34, y, w - 68);
+      fitTextCenter(ctx, ln, 34, y, w - 68);
     } else {
       ctx.textAlign = 'left';
-      fitText(ctx, ln.left, 34, y, w * 0.68);
+      fitTextCenter(ctx, ln.left, 34, y, w * 0.68);
       if (ln.right) {
         ctx.textAlign = 'right';
         ctx.fillText(ln.right, w - 34, y);
@@ -487,15 +487,6 @@ export function signTexture(lines, { w = 512, h = 256, bg = '#1452a8', fg = '#ff
     });
   }
   return tex(c);
-}
-
-function fitText(ctx, text, x, y, maxW) {
-  let size = parseFloat(ctx.font.match(/(\d+(\.\d+)?)px/)[1]);
-  while (ctx.measureText(text).width > maxW && size > 12) {
-    size -= 2;
-    ctx.font = ctx.font.replace(/\d+(\.\d+)?px/, size + 'px');
-  }
-  ctx.fillText(text, x, y);
 }
 
 export function roundRect(ctx, x, y, w, h, r) {

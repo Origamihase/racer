@@ -141,7 +141,9 @@ export class Menus {
     if (this.current !== name) return;
     const s = this.screens[name];
     const a = document.activeElement;
-    const sel = a && s.contains(a) && a.dataset ? (a.dataset.key ? `[data-key="${a.dataset.key}"]` : a.dataset.value ? `[data-value="${a.dataset.value}"]` : null) : null;
+    // (die Knöpfe einer Auswahl tragen beide: dann genau dieser, nicht der erste der Reihe)
+    const d = a && s.contains(a) && a.dataset;
+    const sel = d && (d.key || d.value) ? (d.key ? `[data-key="${d.key}"]` : '') + (d.value ? `[data-value="${d.value}"]` : '') : null;
     const st = s.querySelector('.card')?.scrollTop || 0;
     this['render_' + name](s, this.h.dataFor ? this.h.dataFor(name, this.data) : this.data);
     const card = s.querySelector('.card');
@@ -159,6 +161,9 @@ export class Menus {
    */
   watchScroll(s) {
     this.scrollObs?.disconnect();
+    // (dieselbe Karte bekommt sonst bei jedem Aufruf einen Zuhörer mehr, etwa beim Auf- und Zuklappen der Hinweise)
+    this.scrollCard?.removeEventListener('scroll', this.scrollFn);
+    this.scrollCard = null;
     const card = s.querySelector('.card');
     if (!card) return;
     const more = () => {
@@ -166,6 +171,8 @@ export class Menus {
       card.classList.toggle('less', card.scrollTop > 4);
     };
     card.addEventListener('scroll', more, { passive: true });
+    this.scrollCard = card;
+    this.scrollFn = more;
     this.scrollObs = new ResizeObserver(more);
     this.scrollObs.observe(card);
   }
@@ -689,7 +696,7 @@ export class Menus {
     for (const t of [
       'Geld gibt es nur vom Publikum: Spenden, Abos, Navi-Gebote. Fürs Fahren selbst zahlt niemand – aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.',
       'Wenn OMI sagt „Die linke Fahrspur ist freigeschaltet.“, hat jemand dafür gespendet: Eine Minute lang darfst du ganz links fahren. Nutzt du sie, freut sich der Chat. Danach gilt wieder das Rechtsfahrgebot, sonst kommt die Polizei Gifhorn.',
-      'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Zehner drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV. Dort rechnet auch die Werkstatt die Rempler der Runde ab, und je zügiger du von Ziel zu Ziel kommst, desto zufriedener ist der Chat (das Gesicht oben im Chat) – und desto lieber gibt er.',
+      'Das Navi-Ziel ist ein echter Ort – jeder Bieter legt mindestens einen Zehner drauf und schickt dich woandershin. Stehst du am Brunnen des Ziels, bevor wieder jemand überbietet, läuft dort eine Folge BrunnenTV. Dort rechnet auch die Werkstatt die Rempler der Runde ab, und je zügiger du von Ziel zu Ziel kommst, desto zufriedener ist der Chat – und desto lieber gibt er.',
       'Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.',
       'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',

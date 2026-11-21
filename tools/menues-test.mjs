@@ -312,5 +312,43 @@ let credits = '';
   credits = `Danke an aus ${fmtNum(g.t / 60)} min Stream: ${groups.map((x) => `${x.title} ${x.names.length}`).join(', ')}`;
 }
 
+// ---------- Kleinigkeiten der Menüs und der Anzeige ----------
+{
+  const { Menus } = await import('../src/ui/menus.js');
+  const { UI } = await import('../src/ui/ui.js');
+  // Tipp der Steuerung: Die Stimmung des Chats steht nirgends (kein Gesicht oben im Chat)
+  ok(!/Gesicht oben im Chat/.test(src('src/ui/menus.js')), 'Tipp nennt das Gesicht oben im Chat, das es nicht mehr gibt');
+  // M oder C in den Einstellungen: Der Fokus bleibt auf genau dem Knopf einer Auswahl, nicht auf dem ersten der Reihe
+  const asked = [];
+  const screen = { contains: () => true, querySelector: (q) => (asked.push(q), q === '.card' ? null : { focus() {} }) };
+  const keep = globalThis.document;
+  globalThis.document = { activeElement: { dataset: { key: 'kurve', value: 'stark' } } };
+  Menus.prototype.refresh.call({ current: 'settings', screens: { settings: screen }, data: {}, h: {}, render_settings() {}, watchScroll() {} }, 'settings');
+  ok(asked.includes('[data-key="kurve"][data-value="stark"]'), `Fokus nach refresh: ${asked.join(' ')}`);
+  globalThis.document = keep;
+  // derselbe Bildschirm zweimal beobachtet (Hinweise der Höhendaten auf und zu): ein Zuhörer, nicht zwei
+  const RO = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    observe() {}
+    disconnect() {}
+  };
+  const fns = new Set();
+  const card = { addEventListener: (k, f) => fns.add(f), removeEventListener: (k, f) => fns.delete(f), classList: { toggle() {} } };
+  const about = { querySelector: () => card };
+  const m = {};
+  for (let i = 0; i < 3; i++) Menus.prototype.watchScroll.call(m, about);
+  ok(fns.size === 1, `Über das Spiel: ${fns.size} Scroll-Zuhörer auf derselben Karte`);
+  globalThis.ResizeObserver = RO;
+  // Blitzerfotos: der Abspann zeigt drei, mehr hebt die Anzeige nicht auf
+  const node = () => ({ classList: { add() {}, remove() {} }, appendChild() {}, set textContent(v) {} });
+  globalThis.document = { createElement: node };
+  const u = { photos: [], photoEl: node() };
+  for (let i = 0; i < 8; i++) UI.prototype.photo.call(u, 'data:image/jpeg;base64,' + i, 130 + i, '18:0' + i);
+  ok(u.photos.length === 3 && u.photos[2].kmh === 137, `Blitzerfotos aufgehoben: ${u.photos.length}`);
+  globalThis.document = keep;
+  // die Karte öffnet ohne Schwung, Flug oder Doppeltipp vom letzten Mal
+  ok(/mount\(s, d\) \{[^}]*this\.vel = \[0, 0\];\s*this\.fly = null;\s*this\.zoom = null;\s*this\.lastTap = null;/.test(src('src/ui/mapscreen.js')), 'Karte: mount setzt Schwung und Flug nicht zurück');
+}
+
 console.log(fails ? `menues-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `menues-test: alles grün (${checks} Prüfungen: Steuerung aus ${rows.length} Zeilen, jede Belegung genannt; Feedback als Link zu GitHub; ${credits})`);
 process.exit(fails ? 1 : 0);

@@ -195,7 +195,6 @@ export class UI {
     this.photoT = 0;
     this.rahmenList = [];
     this.photos = [];
-    this.moneyShown = 0;
 
     // Der obere Streifen liegt zwischen den Feldern links und rechts. Ist dort kein Platz (Handy hochkant), steht er
     // unter den Feldern, statt sie zu überdecken.
@@ -547,8 +546,8 @@ export class UI {
 
   tickNotices(dt) {
     for (const n of this.notices) n.wait += dt;
-    // ein wartender Tipp, der zu alt geworden ist, entfällt
-    this.notices = this.notices.filter((n) => urgent(n) || n.wait < NOTICE.stale || ((n.gone = true), false));
+    // ein wartender Tipp, der zu alt geworden ist, entfällt (meist wartet keiner: dann keine neue Liste je Bild)
+    if (this.notices.length) this.notices = this.notices.filter((n) => urgent(n) || n.wait < NOTICE.stale || ((n.gone = true), false));
     const n = this.notice;
     if (!n) return;
     n.age += dt;
@@ -689,7 +688,7 @@ export class UI {
     else this.dropKey('funk');
   }
 
-  damage(hits, max) {
+  damage() {
     this.damageEl.parentNode.classList.remove('shake');
     void this.damageEl.offsetWidth;
     this.damageEl.parentNode.classList.add('shake');
@@ -776,7 +775,9 @@ export class UI {
       const img = el('img', '', this.photoEl);
       img.src = dataUrl;
       img.alt = 'Blitzerfoto';
+      // der Abspann zeigt die letzten drei; ältere Fotos (je 30–40 KB) nicht den ganzen Stream lang aufheben
       this.photos.push({ url: dataUrl, kmh, clock });
+      if (this.photos.length > 3) this.photos.shift();
     }
     el('div', 'photo-cap', this.photoEl, `📸 ${kmh} km/h · ${clock} Uhr`);
     el('div', 'photo-sub', this.photoEl, 'Das Foto kommt in einen Rahmen.');
@@ -822,7 +823,7 @@ export class UI {
       if (r.t < 0.6) r.el.classList.add('out');
       if (r.t <= 0) r.el.remove();
     }
-    this.rahmenList = this.rahmenList.filter((r) => r.t > 0);
+    if (this.rahmenList.length) this.rahmenList = this.rahmenList.filter((r) => r.t > 0);
 
     // Die Uhr der Reise neben LIVE: dieselbe wie auf dem Mittelbildschirm (Game.clock) – an ihr hängen die Ankunftszeit und „Sendezeit … (bis … Uhr)“ am Ende. Sie springt in jedem Bild
     // mit um, nicht erst mit den übrigen Zahlen: Auf geraffter Straße läuft sie schnell, und zwei Uhren, die eine

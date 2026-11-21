@@ -1,7 +1,7 @@
 // Der große Mittelbildschirm (wie im Model 3): links die Fahrzeugansicht mit Spuren und
 // Verkehr, rechts die Navi-Karte mit Route – ferngesteuert von den Zuschauern.
 import * as THREE from 'three';
-import { clamp, lerp, fmtNum, tachoKmh } from '../util.js';
+import { clamp, lerp, tachoKmh } from '../util.js';
 import { roundRect } from '../textures.js';
 import { drawDamageCar, damageBand } from './screen-damage.js';
 import { NaviScreen } from '../map/navview.js';
@@ -456,11 +456,6 @@ export class CenterScreen {
  */
 function pill(ctx, x, y, w, h, r) {
   roundRect(ctx, x, y, w, h, Math.max(0, Math.min(r, w / 2, h / 2)));
-}
-
-function fmtDist(m) {
-  if (m >= 1000) return fmtNum(m / 1000, m >= 10000 ? 0 : 1) + ' km';
-  return Math.max(0, Math.round(m / 10) * 10) + ' m';
 }
 
 function fitText(ctx, text, x, y, maxW, minSize = 14) {

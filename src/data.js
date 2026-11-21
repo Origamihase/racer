@@ -527,7 +527,7 @@ export function fillTemplate(text, vars = {}) {
   return text.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : pick(CHAT_CITIES)));
 }
 
-export const CHAT_CITIES = ['Fulda', 'Kassel', 'Gifhorn', 'Mainz', 'Köln', 'Siegen', 'Hanau', 'Darmstadt', 'Bielefeld',
+const CHAT_CITIES = ['Fulda', 'Kassel', 'Gifhorn', 'Mainz', 'Köln', 'Siegen', 'Hanau', 'Darmstadt', 'Bielefeld',
   'Buxtehude', 'Konstanz', 'Augsburg', 'Bremen', 'Nürnberg', 'Hamburg', 'Lübeck', 'Trier', 'Erlensee'];
 
 /** Ein Betrag, wie ihn der Chat schreibt: runde ohne Nachkommastellen („25 €“), krumme mit („33,33 €“). */
@@ -807,7 +807,7 @@ export const RAHMEN = [
 
 // ---------------------------------------------------------------------------
 // Erlogene Berufsbezeichnungen (aus dem Wiki) für den Abspann
-export const BERUFE = [
+const BERUFE = [
   { km: 0, job: 'Brownietester', src: '19.03.2020, Ersatzstream im Homeoffice' },
   { km: 1, job: 'Briefmarkenautomatenbefüller', src: '26.03.2020, Ersatzstream im Homeoffice' },
   { km: 2, job: 'Plumpsklo-Ingenieur', src: '20.09.2018, Münster' },

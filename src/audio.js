@@ -16,7 +16,6 @@ export class Audio {
     this.enabled = true;
     this.volume = 0.8;
     this.ready = false;
-    this.duck = 1;
     // kurz leiser (duckFor): bis duckUntil (Zeit des Audio-Kontexts) tragen Motor, Abrollen und Wind nur duckTo
     this.duckUntil = 0;
     this.duckTo = 1;
@@ -138,7 +137,7 @@ export class Audio {
     const t = this.ctx.currentTime;
     const v = paused ? 0 : speed;
     const cab = inCabin ? 1 : 0.7;
-    const duck = this.duck * (t < this.duckUntil ? this.duckTo : 1);
+    const duck = t < this.duckUntil ? this.duckTo : 1;
     this.oscA.frequency.setTargetAtTime(60 + v * 7.5, t, 0.05);
     this.oscB.frequency.setTargetAtTime(120 + v * 15, t, 0.05);
     this.motorFilter.frequency.setTargetAtTime(300 + v * 30, t, 0.05);

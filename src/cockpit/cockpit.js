@@ -823,12 +823,12 @@ export class Cockpit {
     const tilt = sway ? sway.tilt : 0;
     const ox = this.headOffset.x + (Math.sin(t * 37) * 0.5 + Math.sin(t * 23) * 0.5) * vib;
     const oy = (Math.sin(t * 29) + Math.sin(t * 13.3)) * 0.5 * vib + Math.sin(t * 1.4) * 0.003;
-    const eye = EYE.clone().add(new THREE.Vector3(ox, oy, 0));
-    eye.applyMatrix4(carMatrix);
-    camera.position.copy(eye);
-    const q = new THREE.Quaternion().setFromRotationMatrix(carMatrix);
-    const e = new THREE.Euler(PITCH + oy * 2, this.headOffset.x * 0.6 + gaze + Math.sin(t * 0.31) * 0.004, tilt + ox * 0.8, 'YXZ');
-    camera.quaternion.copy(q).multiply(new THREE.Quaternion().setFromEuler(e));
+    // (läuft in jedem Bild: Hilfsobjekte statt neuer)
+    const C = this.camTmp || (this.camTmp = { q: new THREE.Quaternion(), q2: new THREE.Quaternion(), e: new THREE.Euler() });
+    camera.position.set(EYE.x + ox, EYE.y + oy, EYE.z).applyMatrix4(carMatrix);
+    C.q.setFromRotationMatrix(carMatrix);
+    C.e.set(PITCH + oy * 2, this.headOffset.x * 0.6 + gaze + Math.sin(t * 0.31) * 0.004, tilt + ox * 0.8, 'YXZ');
+    camera.quaternion.copy(C.q).multiply(C.q2.setFromEuler(C.e));
   }
 
   /**
