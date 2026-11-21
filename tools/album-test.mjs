@@ -296,6 +296,58 @@ const pic = (n, len) => 'data:image/webp;base64,' + String(n % 10).repeat(len - 
   ok(names > 100, `Routenkarten mit zusammen nur ${names} Namen`);
 }
 
+// --- Gezeichnete Karte einer Folge ohne Standbild (src/ui/fountaincard.js) und Name ihres Brunnens ---------------------
+// Jede Hauptbrunnen-Art hat ihre eigene Gestalt; zwei Karten gleichen sich nur bei gleicher Art, gleichem Ort und
+// gleicher Nummer; auf der Karte stehen der Ort (notfalls gekürzt) und die Nummer. Der Name einer Folge ist der ihres
+// Brunnens („Gänselieselbrunnen“), solange der Ort ihn noch hat.
+{
+  const { drawFountainCard, cardShape, CARD } = await import('../src/ui/fountaincard.js');
+  const L = await import('../src/world/kit/layout.js');
+  const { episodeTitle } = await import('../src/game/album.js');
+  const record = () => {
+    const log = [];
+    const ctx = new Proxy({ font: '10px x' }, {
+      get: (t, k) => {
+        if (k in t) return t[k];
+        if (k === 'measureText') return (x) => ({ width: String(x).length * parseFloat(/([\d.]+)px/.exec(t.font)[1]) * 0.6 });
+        if (k === 'createLinearGradient') return (...a) => ({ addColorStop: (o, c) => log.push('stop ' + o + ' ' + c) });
+        return (...a) => void log.push(String(k) + ' ' + a.map((v) => (typeof v === 'number' ? v.toFixed(1) : String(v))).join(' '));
+      },
+      set: (t, k, v) => {
+        t[k] = v;
+        log.push(String(k) + '=' + v);
+        return true;
+      },
+    });
+    const canvas = { width: 0, height: 0, getContext: () => ctx };
+    return { canvas, log };
+  };
+  const card = (o) => {
+    const r = record();
+    drawFountainCard(r.canvas, o);
+    ok(r.canvas.width === CARD.w && r.canvas.height === CARD.h, 'Karte: Größe');
+    return r.log;
+  };
+  const goalKinds = Object.keys(L.FOUNTAIN_R);
+  const shapes = new Set(goalKinds.map((k) => cardShape(k)));
+  ok(shapes.size === goalKinds.length, `Karte: ${goalKinds.length} Hauptbrunnen-Arten, aber nur ${shapes.size} Gestalten`);
+  const seenCards = new Set();
+  for (const k of goalKinds) {
+    const log = card({ kind: k, place: 'Würzburg', n: 7 });
+    const text = log.filter((x) => x.startsWith('fillText '));
+    ok(text.some((x) => x.startsWith('fillText Würzburg')) && text.some((x) => x.startsWith('fillText #7')), `Karte ${k}: Ort oder Nummer fehlt`);
+    seenCards.add(log.join('|'));
+  }
+  ok(seenCards.size === goalKinds.length, 'Karte: zwei Arten zeichnen dasselbe Bild');
+  const a = card({ kind: 'fountainGoose', place: 'Göttingen', n: 1 }).join('|');
+  ok(a !== card({ kind: 'fountainGoose', place: 'Hanau', n: 1 }).join('|') && a === card({ kind: 'fountainGoose', place: 'Göttingen', n: 1 }).join('|'), 'Karte: derselbe Brunnen in zwei Orten sieht gleich aus (oder dieselbe Karte zweimal anders)');
+  const long = card({ kind: 'fountainLion', place: 'Krausnick (Tropical Islands) an der langen Straße', n: 12 }).filter((x) => x.startsWith('fillText '));
+  ok(long.some((x) => x.startsWith('fillText Krausnick') && x.includes('…')), 'Karte: ein langer Ortsname wird nicht gekürzt');
+  // Name der Folge: der Brunnen des Orts, für alte Folgen einer anderen Art der Name der Art
+  const pl = places.find((p) => p.name === 'Würzburg');
+  ok(episodeTitle({ p: pl.key, k: L.goalKind(pl) }) === L.fountainName(pl) && episodeTitle({ p: pl.key, k: 'fountainGrand' === L.goalKind(pl) ? 'fountainTrough' : 'fountainGrand' }) !== L.fountainName(pl), 'Name der Folge: nicht der Brunnen des Orts');
+}
+
 console.log(`Album und Route: ${checks} Prüfungen`);
 if (fails) {
   console.log(`${fails} Fehler`);

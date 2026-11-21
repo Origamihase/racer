@@ -7,6 +7,9 @@ import { renderDriveSettings, driveSettings } from './drive-settings.js';
 import { MapScreen, visitLine } from './mapscreen.js';
 import { renderAlbum } from './album.js';
 import { drawRouteMap } from './routemap.js';
+import { fountainCard } from './fountaincard.js';
+import { places } from '../map/graph.js';
+import { goalKind, fountainName } from '../world/kit/layout.js';
 import { drawQuote } from './quotechart.js';
 import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
 import { canFullscreen, fullscreenLabel, toggleFullscreen, onFullscreenChange, homeScreenHint } from './fullscreen.js';
@@ -388,6 +391,7 @@ export class Menus {
     this.routeObs?.disconnect();
     this.quoteObs?.disconnect();
     if (o.route) this.routeBlock(card, o);
+    if (o.route) this.episodesBlock(card, o);
     if (o.quote && o.quote.v.length > 1) this.quoteBlock(card, o.quote);
     const cols = el('div', 'over-cols', card);
     const left = el('div', 'over-col', cols);
@@ -505,6 +509,34 @@ export class Menus {
     };
     this.routeObs = new ResizeObserver(draw);
     this.routeObs.observe(wrap);
+  }
+
+  /**
+   * Abspann der Reise: die Folgen dieses Streams als Bilderleiste – je Folge ihr Standbild (o.pics: Nummer → Bild,
+   * save.js loadPictures) oder die gezeichnete Karte ihres Brunnens (fountaincard.js), darunter Nummer, Ort und Brunnen.
+   */
+  episodesBlock(card, o) {
+    const eps = o.route.marks.filter((m) => m.type === 'brunnen' && places[m.place]);
+    if (!eps.length) return;
+    const box = el('section', 'over-route over-eps', card);
+    el('h3', '', box, eps.length === 1 ? 'Die Folge dieses Streams' : 'Folgen dieses Streams');
+    const grid = el('div', 'eps-grid', box);
+    for (const m of eps) {
+      const p = places[m.place];
+      const fig = el('figure', 'eps-tile', grid);
+      const pic = o.pics && o.pics.get(m.n);
+      const frame = el('div', 'eps-pic', fig);
+      if (pic) {
+        const img = el('img', '', frame);
+        img.alt = `BrunnenTV Folge ${m.n} in ${p.name}`;
+        img.decoding = 'async';
+        img.src = pic;
+      } else frame.append(fountainCard({ kind: goalKind(p), place: p.name, n: m.n }));
+      const cap = el('figcaption', '', fig);
+      el('span', 'eps-n', cap, `Folge ${fmtNum(m.n)}`);
+      el('span', 'eps-place', cap, p.name);
+      el('span', 'eps-kind', cap, fountainName(p));
+    }
   }
 
   /**

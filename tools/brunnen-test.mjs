@@ -20,7 +20,7 @@ import { PerspectiveCamera } from 'three';
 import { places, townLen } from '../src/map/graph.js';
 import { Trip, J } from '../src/game/trip.js';
 import { Game, AUKTION } from '../src/game/game.js';
-import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor } from '../src/world/xxl/brunnentv.js';
+import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor, stillShot, stillKind, STILL } from '../src/world/xxl/brunnentv.js';
 import { squareOf } from '../src/world/xxl/plan.js';
 import { FOUNTAIN_R, goalKind, goalName, sightBlockers } from '../src/world/kit/layout.js';
 import { MEGA } from '../src/models/miniAdam.js';
@@ -169,6 +169,54 @@ const portraitHalf = (Math.atan(Math.tan((78 * Math.PI) / 360) * PORTRAIT) * 180
           ok(aw < lim && af < lim, `${p.name}: Kamera ${name} (${fmt}) hat Fenster (${aw.toFixed(0)}°) oder Brunnen (${af.toFixed(0)}°) nicht im Bild`);
         }
       }
+    }
+  }
+}
+
+// Standbilder fürs Album (stillShot): reihum vorn, dreiviertel, tief, vom Auto. An jedem Ort jeder Blickwinkel
+// außerhalb von Wagen und Becken über dem Boden, die Mitte des Brunnens im Bild (16:9, waagrecht und senkrecht), frei
+// zu sehen (wie die Kameras der Folge), vom Auto aus auch das Fenster; der tiefe neben dem Becken, wo der Garten einer
+// größeren Insel Platz lässt
+const stills = { places: 0, kinds: {}, minFountain: Infinity, maxAngle: 0, lines: 0 };
+{
+  const CAR = { half: 0.95, front: 2.4, roof: 1.5 };
+  const WINDOW = [-0.86, 1.12, 0.05];
+  const yaw = (pos, p) => Math.atan2(p[0] - pos[0], -(p[2] - pos[2]));
+  const pitch = (pos, p) => Math.atan2(p[1] - pos[1], Math.hypot(p[0] - pos[0], p[2] - pos[2]));
+  const deg = (a) => Math.abs((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI) * 180 / Math.PI;
+  ok(['vorn', 'dreiviertel', 'tief', 'auto', 'vorn', 'dreiviertel'].every((k, i) => stillKind(i + 1) === k) && STILL.t > TV.call && STILL.t < TV.nomi, 'Standbilder: Blickwinkel nicht reihum oder Zeitpunkt außerhalb des Rufs');
+  for (const p of places) {
+    const len = townLen(p.pop);
+    const sec = { kind: 'stadt', place: p.i, s0: 1000, s1: 1000 + len, spotS: 1000 + Math.round(len * 0.6) };
+    const sq = squareOf(sec);
+    const f = { x: sq.x - J.L0, z: -(sq.s - sq.stop) };
+    const info = city.info(goalKind(p));
+    const fr = info.r;
+    const plan = townPlan(city, sec);
+    const main = plan.fountains[0];
+    const toPlan = (q) => [q[0] + J.L0, q[1], q[2] - (sq.stop - sec.s0)];
+    stills.places++;
+    for (let n = 1; n <= 4; n++) {
+      const st = stillShot(f, sq.r, { r: info.r, h: info.h }, n);
+      const { pos, look } = st;
+      stills.kinds[st.kind] = (stills.kinds[st.kind] ?? 0) + 1;
+      const inCar = Math.abs(pos[0]) < CAR.half && Math.abs(pos[2]) < CAR.front && pos[1] < CAR.roof;
+      ok(!inCar && pos[1] > 0.3 && st.fov >= 30 && st.fov <= 65, `${p.name}: Standbild ${st.kind} im Wagen, am Boden oder mit ${st.fov}°`);
+      const dF = Math.hypot(pos[0] - f.x, pos[2] - f.z) - fr;
+      stills.minFountain = Math.min(stills.minFountain, dF);
+      ok(dF > 0.3, `${p.name}: Standbild ${st.kind} steht im Brunnen (${dF.toFixed(2)} m vom Becken)`);
+      // die Mitte des Brunnens (halbe Höhe, beim hohen Endgegner sein Becken) im Bild: waagrecht und senkrecht mit Rand
+      const half = (Math.atan(Math.tan((st.fov * Math.PI) / 360) * (16 / 9)) * 180) / Math.PI;
+      const mid = [f.x, Math.min(0.5 * info.h, 1.6), f.z];
+      const ah = deg(yaw(pos, mid) - yaw(pos, look));
+      const av = deg(pitch(pos, mid) - pitch(pos, look));
+      stills.maxAngle = Math.max(stills.maxAngle, ah);
+      ok(ah < half - 6 && av < st.fov / 2 - 3, `${p.name}: Standbild ${st.kind} hat den Brunnen nicht im Bild (${ah.toFixed(0)}° quer, ${av.toFixed(0)}° hoch)`);
+      if (st.kind === 'auto') ok(deg(yaw(pos, WINDOW) - yaw(pos, look)) < half - 4, `${p.name}: Standbild vom Auto ohne Fenster`);
+      const hit = sightOf(plan, main, fr, toPlan(pos), [main.x, (main.y || 0) + 0.5, main.z], false);
+      hit.push(...sightBlockers(plan, main, [[toPlan(pos)[0], toPlan(pos)[2]]]).map((i) => plan.items[i].name));
+      stills.lines++;
+      ok(hit.length === 0, `${p.name}: Standbild ${st.kind} sieht den Brunnen nicht (${[...new Set(hit)].join(', ')})`);
     }
   }
 }
@@ -408,6 +456,7 @@ const mega = { says: [], toasts: [] };
 const tl = (r) => `Ende ${r.endT.toFixed(2)} s, nächstes Gebot ${(r.bidT - r.releaseT).toFixed(1)} s danach`;
 console.log(`BrunnenTV-Fahrplan: Bauchbinde ${TV.card} s, Gruß ${TV.line} s, Chat ${TV.chat} s, „Schöner Brunnen!“ ${TV.call} s, NOMI ${TV.nomi} s, Ende ${TV.end} s; Fenster offen ${TV.window.down.join('–')} s, Megafon in der Hand ab ${MEGA.show * 100} % gehoben`);
 console.log(`Überspringen: ohne (${tl(runs.none)}) · früh bei ${(TV.skip + 0.05).toFixed(2)} s (${tl(runs.early)}) · spät bei ${(TV.nomi + 1.5).toFixed(1)} s (${tl(runs.late)}) – derselbe Endzustand, der Ruf jedes Mal genau einmal`);
+console.log(`Standbilder an ${stills.places} Orten: ${Object.entries(stills.kinds).map(([k, v]) => `${k} ${v}`).join(', ')}; mindestens ${stills.minFountain.toFixed(2)} m vom Becken, Brunnen höchstens ${stills.maxAngle.toFixed(0)}° neben der Bildmitte, ${stills.lines} Sichtlinien frei`);
 console.log(`Kameras an ${cams.places} Orten: mindestens ${cams.minFountain.toFixed(2)} m vom Becken, Fenster und Brunnen höchstens ${cams.maxAngle.toFixed(0)}° neben der Blickrichtung (hochkant zurückgefahren ${cams.maxPortrait.toFixed(0)}° von ${portraitHalf.toFixed(0)}°), ${cams.lines} Sichtlinien zu Fenster und Brunnen frei von Häusern, Bäumen und Laternen`);
 console.log(`Megafon: kein Shop-Artikel, Taste H ohne Upgrade (${mega.toasts.join(' / ')}), ein gekauftes einmal erstattet (${MEGAFON_PRICE} €, auf dem Titel bis zum ersten Besuch im Shop); Abspann der Reise mit „${ABSPANN_REISE.at(-1)[0]}: ${fillTemplate(ABSPANN_REISE.at(-1)[1], { folgen: '1 Folge' })}“`);
 console.log(fails ? `${fails} Fehler (${checks} Prüfungen)` : `brunnen-test: alles grün (${checks} Prüfungen)`);

@@ -94,6 +94,10 @@ const KINDS = {
 };
 // Insel des Zielbrunnens im Straßenbau: Bordstein und ein schmaler Pflasterring um das Becken, höchstens 8 m Radius
 export const ISLAND = { kerb: 0.45, ring: 0.35, max: 8 };
+// Tiefes Standbild einer Folge (world/xxl/brunnentv.js stillShot): die Kamera steht neben dem Becken, um a (Bogenmaß)
+// von der Vorderseite des Brunnens gedreht, d Meter außerhalb seines Radius, y über dem Boden; der Garten einer
+// größeren Insel (kit/fountains.js) lässt die Stelle frei
+export const STILL_LOW = { a: 0.9, d: 1.05, y: 0.5 };
 
 // Häuser je Größe: Rand (außen) und Mitte; gap = Abstand zwischen zwei Häusern [min, max]
 const ROWS = {

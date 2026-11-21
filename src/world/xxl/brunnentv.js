@@ -6,6 +6,8 @@
 // Megafon und Kameras. Überspringen geht wie beim Ladestopp ab skip (jede Taste, kurz abblenden); dann endet die Folge
 // so, wie sie sonst endet: Fenster zu, Megafon zurück auf dem Beifahrersitz, der Wagen darf weiter.
 
+import { STILL_LOW } from '../kit/layout.js';
+
 /**
  * card: Bauchbinde „BrunnenTV · Folge N“ und Jingle · line: Mini Adam grüßt durchs Megafon · chat: der Chat jubelt ·
  * call: Mini Adams Ruf „Schöner Brunnen!“ – in jeder Folge, in der Einstellung „Brunnen“, solange das Megafon oben
@@ -109,4 +111,63 @@ export function shotPose(s, t, out = { pos: [0, 0, 0], look: [0, 0, 0] }, dolly 
     out.pos[i] = s.look[i] + (p - s.look[i]) * dolly;
   }
   return out;
+}
+
+/**
+ * Standbild einer Folge fürs Album und den Abspann (main.js takeAlbumShot, zur Sekunde t der Folge): reihum nach der
+ * Nummer der Folge einer von vier Blickwinkeln, damit die Bilder nicht alle gleich aussehen – vorn (auf Augenhöhe
+ * gerade vor dem Brunnen), dreiviertel (die Brunnen-Kamera der Folge: Brunnen, Wagen und Mini Adam am Fenster), tief
+ * (neben dem Becken zur Figur hinauf) und vom Auto (hinter dem offenen Fenster über die Flanke zum Brunnen).
+ */
+export const STILL = { t: TV.cams.brunnen + 1, kinds: ['vorn', 'dreiviertel', 'tief', 'auto'] };
+
+/** Blickwinkel des Standbilds der Folge n (1, 2, …): 'vorn', 'dreiviertel', 'tief' oder 'auto'. */
+export function stillKind(n) {
+  const k = STILL.kinds;
+  return k[(((Math.round(n) - 1) % k.length) + k.length) % k.length];
+}
+
+/**
+ * Kamera des Standbilds der Folge n im Rahmen des haltenden Wagens (wie tvShots): f = Mitte des Brunnens ({x, z}), r =
+ * Radius seiner Insel, fi = Maße des Brunnens ({ r, h } seines Bausteins; ohne sie aus der Insel geschätzt). Ergebnis
+ * { kind, pos, look, fov } mit fov senkrecht in Grad für ein Bild in 16:9. Die Kameras stehen außerhalb von Wagen und
+ * Becken und sehen den Brunnen frei (tools/brunnen-test.mjs prüft das an allen Orten).
+ */
+export function stillShot(f, r, fi, n) {
+  const kind = stillKind(n);
+  const fr = fi && fi.r > 0 ? fi.r : Math.max(1.5, r - 0.8);
+  // (beim hohen Endgegner zählt, was bis 4,6 m reicht: Becken und Figuren, nicht die Spitze)
+  const h = Math.min(4.6, fi && fi.h > 0 ? fi.h : 2.5);
+  const d = Math.hypot(f.x, f.z) || 1;
+  // Koordinaten des Brunnens (+z: seine Vorderseite, zum Wagen) → Rahmen des Wagens
+  const sn = -f.x / d;
+  const cs = -f.z / d;
+  const at = (x, y, z) => [f.x + x * cs + z * sn, y, f.z - x * sn + z * cs];
+  if (kind === 'dreiviertel') {
+    const s = tvShots(f, r).brunnen;
+    const p = shotPose(s, STILL.t);
+    return { kind, pos: p.pos, look: p.look, fov: s.fov };
+  }
+  if (kind === 'vorn') {
+    // so weit vor dem Brunnen, dass er ganz ins Bild passt, aber nie näher als 2,4 m an der Mitte des Wagens
+    const D = Math.max(fr + 0.9, Math.min(fr + 2.6, d - 2.4));
+    const wide = Math.atan((fr * 1.2) / D / (16 / 9));
+    const tall = Math.atan((0.6 * h) / D);
+    const fov = Math.min(62, Math.max(34, (2 * Math.max(wide, tall) * 180) / Math.PI));
+    return { kind, pos: at(0.35, 1.45, D), look: at(0, 0.42 * h, 0), fov };
+  }
+  if (kind === 'tief') {
+    const D = fr + STILL_LOW.d;
+    return { kind, pos: at(Math.sin(STILL_LOW.a) * D, STILL_LOW.y, Math.cos(STILL_LOW.a) * D), look: at(0, 0.7 * h, 0), fov: 62 };
+  }
+  // vom Auto: links hinter dem Wagen in Augenhöhe, an der Flanke entlang über das offene Fenster (Mini Adam mit dem
+  // Megafon) zum Brunnen; die Kamera schaut zwischen beide und ist so weit, dass beide ins Bild passen
+  const pos = [-1.55, 1.7, 2.75];
+  const aw = Math.atan2(WINDOW[0] - pos[0], pos[2] - WINDOW[2]);
+  const af = Math.atan2(f.x - pos[0], pos[2] - f.z);
+  const a = (aw + af) / 2;
+  const far = Math.hypot(f.x - pos[0], f.z - pos[2]) * 0.7;
+  const half = Math.abs(aw - af) / 2 + (9 * Math.PI) / 180;
+  const fov = Math.min(62, Math.max(40, (2 * Math.atan(Math.tan(half) / (16 / 9)) * 180) / Math.PI));
+  return { kind, pos, look: [pos[0] + Math.sin(a) * far, 0.95 + 0.1 * h, pos[2] - Math.cos(a) * far], fov };
 }

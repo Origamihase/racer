@@ -881,7 +881,7 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 .album-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
   background: rgba(95, 208, 255, 0.12); border: 1px solid rgba(95, 208, 255, 0.38); color: #e2f6ff; }
 .album-chip.miss { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.16); color: #e1e4ea; }
-.album-chip-icon, .ep-drawn-icon, .ep-intl, .ep-chat-k { font-family: var(--font), var(--emoji); }
+.album-chip-icon, .ep-intl, .ep-chat-k { font-family: var(--font), var(--emoji); }
 .album-tabs { justify-content: flex-start; margin: 0 0 14px; }
 .album-tabs .btn { font-size: 15px; padding: 8px 14px; }
 .album-tabs .btn.on { background: rgba(95, 208, 255, 0.22); border-color: rgba(95, 208, 255, 0.7); }
@@ -892,13 +892,8 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 8px; }
 .ep-pic { width: 144px; height: 81px; border-radius: 9px; overflow: hidden; background: #1d2a38; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) inset; }
 .ep-pic img { width: 100%; height: 100%; display: block; object-fit: cover; }
-/* ohne Bild: eine gezeichnete Karte – Himmel, Wiese, der Brunnen und die Nummer der Folge */
-.ep-drawn { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse 46% 22% at 50% 76%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 70%),
-    linear-gradient(180deg, #8fd2ff 0%, #d8f1ff 62%, #b9e2ae 62%, #93cf86 100%); }
-.ep-drawn-icon { font-size: 46px; line-height: 1; filter: drop-shadow(0 2px 3px rgba(10, 50, 90, 0.28)); }
-.ep-drawn-n { position: absolute; right: 6px; bottom: 5px; font-size: 12px; font-weight: 800; line-height: 1.35; color: #0e3a63;
-  background: rgba(255, 255, 255, 0.82); border-radius: 6px; padding: 0 5px; }
+/* ohne Bild: eine gezeichnete Karte (src/ui/fountaincard.js, 288 × 162 wie ein Standbild) */
+.ep-card { width: 100%; height: 100%; display: block; }
 .ep-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ep-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
 .ep-n { font-size: 14px; font-weight: 800; color: #5fd0ff; white-space: nowrap; }
@@ -919,7 +914,6 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 @media (max-width: 480px) {
   .ep { grid-template-columns: 128px minmax(0, 1fr); gap: 6px 10px; }
   .ep-pic { width: 128px; height: 72px; }
-  .ep-drawn-icon { font-size: 40px; }
   .ep-place { font-size: 16px; }
 }
 /* Abspann der Reise: die Route des Tages (src/ui/routemap.js), daneben die Summen; schmal untereinander */
@@ -947,6 +941,15 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 .akku-mini-icon i { position: absolute; left: 1px; top: 1px; bottom: 1px; max-width: calc(100% - 2px); background: #fff; border-radius: 1px; }
 .akku-mini-title { flex: none; white-space: nowrap; }
 .akku-mini-park { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.92; }
+/* Folgen dieses Streams: Standbild oder gezeichnete Karte je Folge, darunter Nummer, Ort und Brunnen */
+.eps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.eps-tile { margin: 0; min-width: 0; background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 6px; }
+.eps-pic { aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; background: #1d2a38; }
+.eps-pic img, .eps-pic canvas { width: 100%; height: 100%; display: block; object-fit: cover; }
+.eps-tile figcaption { display: flex; flex-direction: column; gap: 1px; margin-top: 5px; min-width: 0; }
+.eps-n { font-size: 12px; font-weight: 800; color: #5fd0ff; }
+.eps-place { font-size: 14px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+.eps-kind { font-size: 12px; color: #cfd5e2; }
 /* Einschaltquote (src/ui/quotechart.js): niedriger als die Karte, die Linie wie die Route */
 .quote-wrap { height: 170px; background: #ebe8e1; }
 .lg-quote { width: 18px !important; height: 5px !important; border-radius: 3px !important; background: #2f6fe4; box-shadow: 0 0 0 1.5px #1e4fb0; }

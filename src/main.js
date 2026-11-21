@@ -17,7 +17,7 @@ import { createNatureKit } from './world/kit/nature.js';
 import { cityKit, naviLayout } from './world/xxl/towns.js';
 import { SCENE, ROLL_T, STOP, DOCK, CHARGE, rollPose, groundAt, chargeOf } from './world/xxl/charge.js';
 import { buildPopping, POPPING_AT } from './world/xxl/popping.js';
-import { TV, tvShots, shotPose, dollyFor, shotAt, windowAt, megaphoneAt, lookAt as tvLookAt } from './world/xxl/brunnentv.js';
+import { TV, tvShots, shotPose, dollyFor, shotAt, windowAt, megaphoneAt, lookAt as tvLookAt, stillShot, STILL } from './world/xxl/brunnentv.js';
 import { buildHandMegaphone } from './models/megaphone.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
@@ -261,12 +261,13 @@ const photoCanvas = document.createElement('canvas');
 photoCanvas.width = 360;
 photoCanvas.height = 270;
 const photoCtx = photoCanvas.getContext('2d');
-// BrunnenTV-Album: ein Standbild jeder Folge aus der Brunnen-Kamera (takeAlbumShot, 16:9, angezeigt halb so groß);
-// Kamera und Leinwand entstehen erst bei der ersten Folge der Reise. t: Sekunde der Folge, q: Güte der Kodierung
-const ALBUM_PIC = { w: 288, h: 162, t: TV.cams.brunnen + 1, q: [0.72, 0.5] };
+// BrunnenTV-Album: ein Standbild jeder Folge (takeAlbumShot, 16:9, angezeigt halb so groß), reihum aus vier
+// Blickwinkeln (brunnentv.js stillShot); Kamera und Leinwand entstehen erst bei der ersten Folge der Reise. t: Sekunde
+// der Folge, q: Güte der Kodierung
+const ALBUM_PIC = { w: 288, h: 162, t: STILL.t, q: [0.72, 0.5] };
 let albumCam = null;
 let albumCanvas = null;
-let albumLast = null; // zuletzt aufgenommen (Prüfbilder, __MA.album): { n, chars, type, stored, ms }
+let albumLast = null; // zuletzt aufgenommen (Prüfbilder, __MA.album): { n, pose (Blickwinkel), chars, type, stored, ms }
 
 // --- Ton, Sprache, Eingabe, Oberfläche ---------------------------------------------
 const audio = new Audio();
@@ -523,7 +524,7 @@ const menus = new Menus(app, {
     // BrunnenTV-Album: Folgen aus dem Spielstand, Bilder unter ihrem eigenen Schlüssel (frisch gelesen)
     if (name === 'album') return { save, pics: loadPictures(), tab: 'folgen' };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
-    if (name === 'over') return lastOver ? { ...lastOver, wallet: save.wallet } : data;
+    if (name === 'over') return lastOver ? { ...lastOver, wallet: save.wallet, pics: loadPictures() } : data;
     return data;
   },
   buy: (id) => {
@@ -1634,7 +1635,8 @@ function tvBegin(e) {
   // Mitte des Brunnens im Rahmen des haltenden Wagens (er steht still, also bleibt sie dort)
   r.f.set(q.world.x, 0, q.world.z).applyMatrix4(tvM.copy(carMatrix).invert());
   r.shots = tvShots({ x: r.f.x, z: r.f.z }, q.r);
-  Object.assign(r, { on: true, tv: e, inside: view === 'cockpit', skipT: -1, fadeT: 0, picDone: false });
+  // fürs Standbild: Radius der Insel und Maße des Brunnens (r, h seines Bausteins)
+  Object.assign(r, { on: true, tv: e, inside: view === 'cockpit', skipT: -1, fadeT: 0, picDone: false, isl: q.r, fi: q.object ? q.object.userData.info : null });
   r.from.copy(camera.position);
   camera.getWorldDirection(r.fromLook).multiplyScalar(20).add(camera.position);
   if (!r.prop) {
@@ -1918,8 +1920,9 @@ function takePhoto({ kmh, clock }) {
 }
 
 /**
- * Standbild einer BrunnenTV-Folge fürs Album: die Brunnen-Kamera der Folge (Brunnen, Wagen, Mini Adam am Fenster) zur
- * Sekunde ALBUM_PIC.t, immer 16:9 (wie beim Blitzerfoto verzerrt gerendert und beim Verkleinern entzerrt), ohne
+ * Standbild einer BrunnenTV-Folge fürs Album: reihum nach der Nummer der Folge von vorn, dreiviertel (die Brunnen-Kamera
+ * der Folge mit Wagen und Mini Adam am Fenster), tief oder vom Auto aus (brunnentv.js stillShot) zur Sekunde
+ * ALBUM_PIC.t, immer 16:9 (wie beim Blitzerfoto verzerrt gerendert und beim Verkleinern entzerrt), ohne
  * Abblenden; als WebP (sonst JPEG) unter eigenem Schlüssel gespeichert (save.js storePicture). Passt es nicht, zeigt
  * das Album für diese Folge eine gezeichnete Karte.
  */
@@ -1932,9 +1935,8 @@ function takeAlbumShot(r) {
     albumCanvas.width = P.w;
     albumCanvas.height = P.h;
   }
-  const s = r.shots.brunnen;
-  const pose = shotPose(s, P.t, { pos: [0, 0, 0], look: [0, 0, 0] }, 1);
-  albumCam.fov = s.fov;
+  const pose = stillShot({ x: r.f.x, z: r.f.z }, r.isl, r.fi, r.tv.n);
+  albumCam.fov = pose.fov;
   albumCam.updateProjectionMatrix();
   albumCam.position.fromArray(pose.pos).applyMatrix4(carMatrix);
   albumCam.lookAt(tmpV2.fromArray(pose.look).applyMatrix4(carMatrix));
@@ -1956,7 +1958,7 @@ function takeAlbumShot(r) {
     url = null;
   }
   // gespeichert wird, sobald der Browser Luft hat (alle Bilder lesen und schreiben kostet ein paar ms); bis dahin null
-  const shot = { n: r.tv.n, chars: url ? url.length : 0, type: url ? url.slice(5, url.indexOf(';')) : null, stored: url ? null : false, ms: Math.round(performance.now() - t0) };
+  const shot = { n: r.tv.n, pose: pose.kind, chars: url ? url.length : 0, type: url ? url.slice(5, url.indexOf(';')) : null, stored: url ? null : false, ms: Math.round(performance.now() - t0) };
   albumLast = shot;
   if (!url) return;
   const keep = () => (shot.stored = storePicture(shot.n, url));
@@ -2188,7 +2190,7 @@ function step(dt, { render = true } = {}) {
       if (state === 'ending' && stateT > 2.6) {
         state = 'over';
         ui.show(false);
-        menus.show('over', lastOver);
+        menus.show('over', { ...lastOver, pics: loadPictures() });
       }
       break;
     }

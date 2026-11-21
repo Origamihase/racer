@@ -7,6 +7,7 @@
 // Jede info trägt cam = { pos, look }: die Nahaufnahme aus 2–4 m in 1,2 m Höhe (Mini Adams Selfie-Kamera).
 import { PAL, CITY, mix, rng, makeKit, compose, Bau, textPanel, fitFont, FONT } from './citycore.js';
 import { tub, moss, pigeon, duck, blossom, bench, flowerBed, BLOOM } from './parts.js';
+import { STILL_LOW } from './layout.js';
 
 const TAU = Math.PI * 2;
 const SURF = 0x7cc8ec; // Wasserfläche
@@ -1084,8 +1085,10 @@ function islandGarden(b, ri, ro, cam, seed) {
   const rm = (a + c) / 2;
   const rb = Math.min(0.85, (c - a) / 2 - 0.22);
   const n = Math.max(4, Math.floor((TAU * rm) / (2 * rb + 1.0)));
-  // frei bleibt die Stelle der Nahaufnahme (info.cam)
-  const spots = cam ? [[cam.pos[0], cam.pos[2]]] : [];
+  // frei bleiben die Stelle der Nahaufnahme (info.cam) und die des tiefen Standbilds einer Folge (layout.js STILL_LOW)
+  const low = ri + STILL_LOW.d;
+  const spots = [[Math.sin(STILL_LOW.a) * low, Math.cos(STILL_LOW.a) * low]];
+  if (cam) spots.push([cam.pos[0], cam.pos[2]]);
   const free = (x, z, r) => spots.every(([sx, sz]) => Math.hypot(x - sx, z - sz) > r + 0.45);
   const seats = c - a >= GARDEN.bench;
   for (let i = 0; i < n; i++) {
