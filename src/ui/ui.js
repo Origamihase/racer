@@ -611,7 +611,14 @@ export class UI {
   }
 
   showLine() {
-    const l = this.lines[this.lines.length - 1];
+    // der jüngste Satz – außer einer mit top (der Ruf einer Folge BrunnenTV) lebt noch: der bleibt oben
+    let l = this.lines[this.lines.length - 1];
+    for (let i = this.lines.length - 1; i >= 0; i--) {
+      if (this.lines[i].top) {
+        l = this.lines[i];
+        break;
+      }
+    }
     this.subEl.classList.toggle('hidden', !l);
     if (!l || l === this.line) return;
     this.line = l;

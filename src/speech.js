@@ -23,6 +23,8 @@ const DEEP_MALE = [
 const FEMALE = [/Katja/i, /Amala/i, /Seraphina/i, /Petra/i, /Marlene/i, /Vicki/i, /Hedda/i, /Helena/i, /Anna/i, /Google Deutsch/i, /\bfemale\b/i, /weiblich/i];
 const MALE = [/Killian/i, /Florian/i, /Conrad/i, /Stefan/i, /Markus/i, /Yannick/i, /Bernd/i, /Ralf/i, /Klaus/i, /Christoph/i, /Viktor/i, /Kasper/i, /Jonas/i, /\bmale\b/i, /männlich/i];
 const isMale = (v) => MALE.some((re) => re.test(v.name));
+/** So viele Millisekunden nach cancel() wartet der nächste Satz (Chrome verschluckt sonst sein speak()). */
+const CANCEL_GAP = 60;
 /** Tonhöhe der Studio-Stimmen, wenn das Gerät für eine von beiden keine passende Stimme hat: deutlich höher und tiefer. */
 export const STUDIO_PITCH = { f: 1.0, m: 0.7 };
 
@@ -36,6 +38,9 @@ export class Speech {
     this.current = null;
     // angehalten (Pause): Sicherheitsnetz des laufenden Satzes steht, der nächste wartet (pause)
     this.paused = false;
+    // wann (Date.now) zuletzt ein Satz abgebrochen wurde: Chrome verschluckt ein speak() gleich nach cancel() (pump)
+    this.cancelAt = -Infinity;
+    this.deferred = false;
     if (this.supported) {
       const load = () => {
         const all = window.speechSynthesis.getVoices();
@@ -118,15 +123,20 @@ export class Speech {
   }
 
   /**
-   * Text sprechen. opts: { priority, onStart, onEnd, onDrop }
+   * Text sprechen. opts: { priority, cut, onStart, onEnd, onDrop }
    * Gibt die geschätzte Dauer zurück, 0, wenn der Satz gar nicht erst in die Warteschlange kommt. onDrop: ein Satz
-   * mit Vorrang hat ihn aus der Warteschlange geworfen, er wird nie gesprochen.
+   * mit Vorrang hat ihn aus der Warteschlange geworfen, er wird nie gesprochen. cut (mit priority): sofort, vor allem
+   * anderen – was gerade spricht, endet, auch mit Vorrang, und die Warteschlange wartet dahinter (der Ruf jeder Folge
+   * BrunnenTV, „Schöner Brunnen!“: er kommt genau zu seiner Einstellung, nie zu spät).
    */
   say(text, voiceKey = 'board', opts = {}) {
     const v = VOICES[voiceKey] || VOICES.board;
     const dur = estimateSpeech(text, v.rate);
     const item = { text, voiceKey, opts, dur };
-    if (opts.priority) {
+    if (opts.cut) {
+      this.queue.unshift(item);
+      if (this.current) this.cancelCurrent();
+    } else if (opts.priority) {
       // OMI drängelt sich vor (laufende Zuschauer-Durchsage wird abgebrochen)
       // (unter sich in der Reihenfolge, in der sie kamen – wie ihre Untertitel)
       for (const q of this.queue) if (!q.opts.priority) q.opts.onDrop?.();
@@ -145,6 +155,7 @@ export class Speech {
     if (this.supported) {
       try {
         window.speechSynthesis.cancel();
+        this.cancelAt = Date.now();
       } catch (e) {
         /* egal */
       }
@@ -157,7 +168,16 @@ export class Speech {
   }
 
   pump() {
-    if (this.busy || this.paused || !this.queue.length) return;
+    if (this.busy || this.paused || !this.queue.length || this.deferred) return;
+    // gleich nach cancel() verschluckt Chrome den nächsten Satz (kein Ton, oft auch kein onend): einen Augenblick warten
+    if (this.supported && this.enabled && Date.now() - this.cancelAt < CANCEL_GAP) {
+      this.deferred = true;
+      setTimeout(() => {
+        this.deferred = false;
+        this.pump();
+      }, CANCEL_GAP);
+      return;
+    }
     const item = this.queue.shift();
     this.busy = true;
     this.current = item;
@@ -182,6 +202,9 @@ export class Speech {
         u.volume = 1;
         u.onend = done;
         u.onerror = done;
+        // festhalten, bis er fertig ist: Sammelt Chrome den Satz vorher ein, kommt sein onend nie, und die Warteschlange
+        // stünde bis zum Sicherheitsnetz (geschätzte Dauer + 4 s) – der nächste Satz käme Sekunden zu spät
+        item.u = u;
         window.speechSynthesis.speak(u);
         // Sicherheitsnetz, falls onend nie kommt
         this.arm(item, done, item.dur + 4);

@@ -31,6 +31,9 @@ import { WaveRule, WAVE, chatGap } from './wave.js';
 import { StreamGags } from './gags.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
+// So viel langsamer als geschätzt (estimateSpeech) sprechen echte Stimmen höchstens: Der Gruß einer Folge BrunnenTV muss
+// auch dann vor ihrem Ruf zu Ende sein
+const SPEECH_SLACK = 1.35;
 // „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
 // aus dem großen Vorrat – sonst gäbe es fast nur Regen- und Brunnen-Angebote, denn eins von beiden ist fast immer.
 // Passt eins zur Lage, darf es kommen, sobald die Uhr weniger als so viele Sekunden zeigt: Ein Ziel, ein Brunnen
@@ -1757,9 +1760,11 @@ export class Game {
    * Gruß, der vor seinem Ruf (TV.call) zu Ende ist: Mit langem Ortsnamen bleiben die kürzeren.
    */
   brunnenMegafon(tv) {
-    const room = TV.call - TV.line - 0.3;
-    const fits = BRUNNEN_MEGAFON.map((l) => fillTemplate(l, { ort: tv.name })).filter((l) => estimateSpeech(l, VOICES.adam.rate) <= room);
-    const text = pick(fits);
+    // (echte Stimmen sprechen oft langsamer als geschätzt: Der Gruß lässt dem Ruf Luft; passt keiner, der kürzeste)
+    const room = (TV.call - TV.line - 0.3) / SPEECH_SLACK;
+    const all = BRUNNEN_MEGAFON.map((l) => fillTemplate(l, { ort: tv.name }));
+    const fits = all.filter((l) => estimateSpeech(l, VOICES.adam.rate) <= room);
+    const text = fits.length ? pick(fits) : all.reduce((a, b) => (b.length < a.length ? b : a));
     this.audio.megafon();
     // (mit Vorrang: Eine Durchsage, die noch läuft, endet hier – die Folge gehört Mini Adam)
     const dur = this.speech.say(text, 'adam', { priority: true });
@@ -1776,8 +1781,11 @@ export class Game {
     const S = SCHOENER_BRUNNEN;
     if (this.tv) this.tv.called = true;
     this.audio.megafon();
-    const dur = this.speech.say(S.say, 'brunnen', { priority: true });
-    this.ui.megafon(S.text, dur + 1.2, '', SCHOENNBRUN.label);
+    // sofort und vor allem anderen (cut): Ein Gruß, der noch spricht, endet hier, alles andere wartet dahinter; sein
+    // Untertitel bleibt oben, bis er abläuft (top), auch wenn derweil ein anderer Satz kommt
+    const dur = this.speech.say(S.say, 'brunnen', { priority: true, cut: true });
+    const line = this.ui.megafon(S.text, dur + 1.2, '', SCHOENNBRUN.label);
+    if (line && typeof line === 'object') line.top = true;
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.call));
     this.later(0.6, () => {
@@ -1895,6 +1903,8 @@ export class Game {
         const text = pick(MEGAFON_WUENSCHE);
         this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
         this.later(1, () => {
+          // hat inzwischen eine Szene begonnen (Folge, Ladestopp), entfällt er: Dort spricht nur die Szene
+          if (this.tv || this.charging) return;
           this.audio.megafon();
           // Mini Adam ruft den Wunsch durchs Megafon – mit seiner Stimme
           let line = null;
