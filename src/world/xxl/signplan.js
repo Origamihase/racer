@@ -63,7 +63,8 @@ const FAR_KM = 450;
 // --- Vorwegweiser -------------------------------------------------------------------------------------------------
 /**
  * Inhalt eines Vorwegweisers aus trip.signs(fork): Kopf (Name der Ausfahrt bzw. des Kreuzes, „Autobahnende“), Bild
- * ('ausfahrt' | 'kreuz' | 'ende'), bis zu vier Zeilen (Straße und Richtung der abgehenden Straßen, dann die Orte der
+ * ('ausfahrt' | 'kreuz' | 'ende'), no (Nummer der Anschlussstelle im Kästchen neben dem Bild, 0 = keine), bis zu vier
+ * Zeilen (Straße und Richtung der abgehenden Straßen, dann die Orte der
  * Ausfahrt; liegt dort ein Ladepark, ist die letzte Zeile seine, mit Stecker: kind 'park') und die Entfernung. texts:
  * dieselben Angaben als Zeilen (für das Schilder-Log und die Prüfung).
  */
@@ -93,7 +94,7 @@ export function boardOf(sg, d) {
   if (sg.park) rows.push({ road: null, kind: 'park', text: sg.park });
   const dist = d + ' m';
   const texts = [sg.title, ...rows.map((r) => (r.road ? r.road + ' ' : '') + r.text), dist];
-  return { head, pict, rows, dist, title: sg.title, texts };
+  return { head, pict, no: sg.no || 0, rows, dist, title: sg.title, texts };
 }
 
 // --- Entfernungstafeln --------------------------------------------------------------------------------------------
@@ -227,7 +228,7 @@ function sectionSigns0(trip, secs, sec, out, opts) {
       const fk = 'f' + f.de + '@' + Math.round(f.s);
       for (const d of BOARD_D) {
         const b = boardOf(sg, d);
-        push('vorweg', f.s - d, AB_SIGN_X, 1, b.texts, { keyPart: fk, fork: f.id, node: f.node, dist: d, title: b.title, board: b });
+        push('vorweg', f.s - d, AB_SIGN_X, 1, b.texts, { keyPart: fk, fork: f.id, node: f.node, dist: d, title: b.title, no: b.no, board: b });
       }
       const pb = parkBoard(f);
       if (pb) push('ladepark', f.s - pb, AB_SIGN_X, 1, [sg.park, pb + ' m'], { keyPart: fk, fork: f.id, node: f.node, dist: pb, name: sg.park });

@@ -346,11 +346,14 @@ function capOver(sections, s, out) {
 
 /**
  * Grenzen, Spuren und Tempo für die nächste Bewegung des Spielers (trip.profile an seiner jetzigen Stelle, also vor der
- * Bewegung, mit Vorausschau). out: {left, right, shoulder, lanes, extraLane, vmax, decel, slack, closing}.
+ * Bewegung, mit Vorausschau). out: {left, right, shoulder, lanes, extraLane, vmax, decel, hold, holdDecel, posted,
+ * slack, closing}.
  * - Verzögerungs-/Beschleunigungsstreifen zählen als Spur bei J.L0 (kein Standstreifen).
  * - Tempo: Limit hier und jedes Limit voraus mit BRAKE_PLAN erreichbar; wer auf dem Verzögerungsstreifen ist (oder an
  *   einem Autobahnende), plant schon mit der Rampe. decel: BRAKE_PLAN, solange vmax deshalb gerade fällt, sonst 0.
- * - Halt am Navi-Ziel: stop = {s} (Arrival.stop), dann fällt das Tempo bis dorthin auf 0.
+ *   Das gilt für Tempomat, Autopilot und brave Fahrer (Player.lawful); posted: das Limit hier in km/h (0 = keins).
+ * - Halt am Navi-Ziel: stop = {s} (Arrival.stop), dann fällt das Tempo bis dorthin auf 0 – in vmax und für jeden
+ *   Fahrer in hold (holdDecel wie decel): Schneller als erlaubt darf der Spieler überall fahren, am Halt hält er.
  * - slack: die Grenzen wandern mit der Strecke (Verengung, Brunneninsel) und schieben den quer ruhenden Wagen nur mit.
  */
 export function limitsFor(trip, out, stop = null) {
@@ -363,6 +366,9 @@ export function limitsFor(trip, out, stop = null) {
   out.shoulder = P.kind === 'ab' && !P.decel && !P.accel ? 7.9 : Infinity;
   out.vmax = P.limit > 0 ? P.limit / 3.6 : Infinity;
   out.decel = 0;
+  out.posted = P.limit > 0 ? P.limit : 0;
+  out.hold = Infinity;
+  out.holdDecel = 0;
   out.slack = LIMIT_SLACK;
   // rückwärts höchstens bis an den Anfang des eigenen Abschnitts: Gabelung, Einfädeln, Ortsmitte und Überfahrt dahinter
   // sind entschieden und gezählt (trip.update meldet sie nur vorwärts, und nur einmal)
@@ -371,7 +377,12 @@ export function limitsFor(trip, out, stop = null) {
   const f = P.sec.fork;
   if (f && !f.taken && f.branch && (f.forced || (P.decel && trip.x > J.laneEdge))) capOver(f.branch.sections, s, out);
   // Halt: geplant 0,3 m vor dem Haltepunkt (der Begrenzer läuft ein wenig nach)
-  if (stop) capTo(out, 0, stop.s - 0.3 - s);
+  if (stop) {
+    const d = stop.s - 0.3 - s;
+    capTo(out, 0, d);
+    out.hold = d > 0 ? Math.sqrt(2 * BRAKE_PLAN * d) : 0;
+    out.holdDecel = d > 0 ? BRAKE_PLAN : 0;
+  }
   // Brunneninsel: die Gegenspur ist dort gesperrt, unsere Spur bleibt frei
   if (P.kind === 'stadt') out.left = squareXmin(squareOf(P.sec), s, out.left);
   out.closing = P.closing;

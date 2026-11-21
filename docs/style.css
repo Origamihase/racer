@@ -273,6 +273,19 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .funkloch-icon { flex: none; font-size: 26px; font-family: var(--emoji); animation: lowbat 0.6s infinite; }
 .chat.funk { border-color: rgba(255, 90, 79, 0.55); }
 .chat.funk .chat-list { display: none; }
+/* Tacho und Navi-Karte der Drohnenansicht (src/ui/drone-hud.js, Lage aus sicht.js droneHud): ein Kärtchen in der Spalte
+   des Chats, darunter (hochkant darüber, der Chat rückt so weit nach unten und wird kürzer) – zu sehen nur in der
+   Drohnenansicht während der Fahrt; die beiden Bilder sind Ausschnitte des Mittelbildschirms */
+.drone-hud { position: absolute; display: none; box-sizing: border-box; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px; background: rgba(10, 10, 13, 0.6); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(4px); z-index: 3; }
+.drone-hud.side { flex-direction: row; }
+.drone-hud canvas { display: block; flex: none; border-radius: 8px; }
+body.drone .drone-hud.on { display: flex; }
+body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top); max-height: var(--dh-chat-max); }
+/* Touch: Liegt die Hinweiskarte oben rechts (auf dem Chat), tritt das Kärtchen wie der Chat so lange zurück */
+@media (pointer: coarse) {
+  .hud:has(> .hint-card:not(.hidden)) > .drone-hud { visibility: hidden; }
+}
 
 /* Blitzerfoto: unten rechts in der Ecke, unter dem Mittelbildschirm des Cockpits. Die Unterzeile richtet ihre
    Schriftgröße nach der Breite des Fotos selbst (cqw), damit sie bei jeder Fensterbreite ganz auf dem Rand steht */
@@ -732,6 +745,11 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 .navi-next.on { display: inline-flex; }
 .navi-next i { flex: none; font-style: normal; font-size: 0.8em; opacity: 0.85; white-space: nowrap; }
 .navi-next b { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.navi-next-d { flex: none; font-weight: 700; white-space: nowrap; }
+/* Nummer der Ausfahrt im weiß umrandeten Kästchen wie auf den Tafeln am Rand (ui.js setTurn) */
+.exit-no { flex: none; align-self: center; padding: 0 5px; border: 1.5px solid #ffffff; border-radius: 4px; font-weight: 700;
+  font-size: 0.86em; line-height: 1.25; color: #ffffff; }
+.exit-no:empty { display: none; }
 
 /* --- Große Karte (src/ui/mapscreen.js) ------------------------------------------------- */
 .screen-karte { padding: 0; display: block; overflow: hidden; background: #a9d3ec; }

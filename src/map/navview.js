@@ -58,6 +58,26 @@ const XS = {
 const SIGN = '#2a5bb8';
 /** Kopfzeile des Schilds der nächsten Ausfahrt (drawNext) je Art (trip.nextExit). */
 const NEXT_HEAD = { ausfahrt: 'Nächste Ausfahrt', kreuz: 'Nächstes Kreuz', ende: 'Gleich' };
+/**
+ * Nummer der Anschlussstelle im weiß umrandeten Kästchen wie auf den Tafeln (trip.signs no), linke Kante x, Mitte y,
+ * Höhe h. Liefert die Breite samt Abstand dahinter (0 ohne Nummer).
+ */
+function numBox(ctx, no, x, y, h) {
+  if (!no) return 0;
+  ctx.save();
+  ctx.font = `700 ${Math.round(h * 0.72)}px ${FONT}`;
+  const w = Math.max(h, ctx.measureText(String(no)).width + h * 0.55);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2.2;
+  rrect(ctx, x + 1, y - h / 2, w, h, h * 0.2);
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(no), x + 1 + w / 2, y + 1);
+  ctx.restore();
+  return w + 10;
+}
 /** Name einer Ausfahrt für ihr Schild am Knopf: ohne das Wort „Ausfahrt“, das der Pfeil schon sagt. */
 const tagOf = (title) => (title ? title.replace(/^Ausfahrt /, '') : '');
 
@@ -873,12 +893,18 @@ export class NaviScreen {
     let lanesW = 0;
     if (ins.lanes && !hop) lanesW = this.drawLanes(ctx, ins.lanes, right, y + 61);
     ctx.fillStyle = '#ffffff';
+    // eine Ausfahrt mit Nummer: das Kästchen der Tafeln vor dem Namen
+    const no = ins.turn === 'exit' && !hop ? ins.no : 0;
     if (dist) {
       ctx.font = `700 40px ${FONT}`;
       ctx.fillText(dist, tx, y + 48);
-      const dx = tx + ctx.measureText(dist).width + 16;
+      let dx = tx + ctx.measureText(dist).width + 16;
+      dx += numBox(ctx, no, dx, y + 38, 30);
       ctx.fillText(shrink(ctx, prefer(ctx, head, ins.short, right - dx, 600, 21), right - dx, 600, 27, 21), dx, y + 47);
-    } else ctx.fillText(shrink(ctx, prefer(ctx, head, ins.short, right - tx, 700, 22), right - tx, 700, 30, 22), tx, y + 47);
+    } else {
+      const nx = tx + numBox(ctx, no, tx, y + 37, 32);
+      ctx.fillText(shrink(ctx, prefer(ctx, head, ins.short, right - nx, 700, 22), right - nx, 700, 30, 22), nx, y + 47);
+    }
     ctx.fillStyle = '#c9d6ff';
     ctx.fillText(shrink(ctx, sub || '', right - lanesW - tx, 500, 22, 18), tx, y + 84);
   }
@@ -933,7 +959,9 @@ export class NaviScreen {
     ctx.fillStyle = 'rgba(255,255,255,0.82)';
     ctx.fillText(fit(ctx, NEXT_HEAD[nx.kind] + (nx.exit ? ' · hier fährt die Route ab' : ''), room), tx, y + 16);
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(shrink(ctx, nx.name, room, 700, 23, 17), tx, y + 36);
+    // die Nummer im Kästchen vor dem Namen, wie auf den Tafeln am Rand
+    const bx = numBox(ctx, nx.no, tx, y + 36, 22);
+    ctx.fillText(shrink(ctx, nx.name, room - bx, 700, 23, 17), tx + bx, y + 36);
   }
 
   /**

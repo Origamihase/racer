@@ -4,10 +4,10 @@
 //   „SCHÖÖÖÖÖÖÖNER BRUNNEN!!!!!“, der Chat ruft es nach – in der Einstellung „Brunnen“, solange das Megafon oben ist,
 //   nach dem Gruß), OMI, Ende – jeder Moment genau einmal, zu seiner Zeit; Fenster, Megafon und Kopf laufen in der richtigen Reihenfolge
 //   (das Megafon ist erst zu sehen, wenn das Fenster offen ist, und weg, bevor es wieder hochgeht).
-// - Überspringen früh (gleich nach TV.skip), spät (kurz vor dem Ende) und gar nicht: jedes Mal derselbe Endzustand –
-//   keine Folge mehr, Bauchbinde weg, der Wagen genau einmal freigegeben – und danach beginnt die nächste Bieterrunde
-//   (das erste Gebot frühestens TV.pause Sekunden nach der Freigabe, spätestens zum Ende des Bieterfensters). Den Ruf gibt es jedes Mal genau einmal:
-//   übersprungen vor ihm kommt er beim Losfahren, mit dem Echo im Chat.
+// - Überspringen gibt es nicht (Besitzer, 21.11.2026; tools/testlauf3-test.mjs prüft, dass kein Weg dahin führt): Die
+//   Folge endet bei TV.end im Endzustand – keine Folge mehr, Bauchbinde weg, der Wagen genau einmal freigegeben – und
+//   danach beginnt die nächste Bieterrunde (das erste Gebot frühestens TV.pause Sekunden nach der Freigabe, spätestens
+//   zum Ende des Bieterfensters). Den Ruf gibt es genau einmal, mit dem Echo im Chat.
 // - Megafon als Ausstattung: kein Shop-Artikel, Taste H und Megafon-Wunsch ohne Upgrade in beiden Spielarten, ein
 //   gekauftes gibt es genau einmal zurück (save.js refundMegafon); der Titel sagt es bis zum ersten Besuch im Shop, auch
 //   nach dem Neuladen (save.megafonNote). Der Abspann der Reise zählt die Folgen (ABSPANN_REISE).
@@ -70,7 +70,7 @@ const loose = (base = {}) => new Proxy(base, { get: (t, k) => (k in t ? t[k] : n
   ok(firstVis > TV.window.down[1] - 0.2 && firstVis < TV.cams.fenster && lastVis < TV.window.up[0], `Megafon zu sehen von ${firstVis.toFixed(2)} bis ${lastVis.toFixed(2)} s`);
   ok(megaphoneAt(TV.line) > 0.999 && megaphoneAt(TV.nomi) > 0.999 && lookAt(TV.line) > 0.999, 'Beim Megafon-Satz ist das Megafon nicht am Mund oder der Kopf nicht am Fenster');
   ok(windowAt(0) === 0 && windowAt(TV.end) === 0 && megaphoneAt(TV.end) === 0 && lookAt(TV.end) === 0, 'Am Ende der Folge ist das Fenster offen oder das Megafon oben');
-  ok(TV.card < TV.line && TV.line < TV.chat && TV.chat < TV.nomi && TV.nomi < TV.back[0] && TV.back[1] <= TV.end && TV.skip < TV.card, 'Reihenfolge der Momente');
+  ok(TV.card < TV.line && TV.line < TV.chat && TV.chat < TV.nomi && TV.nomi < TV.back[0] && TV.back[1] <= TV.end, 'Reihenfolge der Momente');
   ok(shotAt(0) === 'totale' && shotAt(TV.line) === 'fenster' && shotAt(TV.nomi) === 'brunnen' && shotAt(TV.back[0] + 0.01) === 'zurueck', 'Kameras: Totale, Fenster, Brunnen, zurück');
 }
 // Kameras für jeden Ort: Brunnen (Mitte, Radius des Hauptbrunnens) im Rahmen des haltenden Wagens
@@ -223,9 +223,9 @@ const stills = { places: 0, kinds: {}, minFountain: Infinity, maxAngle: 0, lines
   }
 }
 
-// --- Fahrplan im Spiel: Momente, Überspringen, nächste Runde ---------------------------------------------------------
+// --- Fahrplan im Spiel: Momente, Ende, nächste Runde ------------------------------------------------------------------
 const DT = 1 / 30;
-function episode(skipAt, seed, during = null) {
+function episode(seed, during = null) {
   Math.random = mulberry32(seed);
   const trip = new Trip({ rng: Math.random });
   const log = [];
@@ -273,7 +273,6 @@ function episode(skipAt, seed, during = null) {
   let releaseT = -1;
   let bidT = -1;
   for (let i = 0; i < 40 * 30; i++) {
-    if (game.tv && skipAt !== null && game.brunnenT() >= skipAt && !game.tv.skip) game.skipBrunnenTV();
     if (during && game.tv && game.brunnenT() >= during.t && !during.done) {
       during.done = true;
       during.fn(game);
@@ -293,9 +292,9 @@ function episode(skipAt, seed, during = null) {
   return { log, released, endT, releaseT, bidT, game, nv };
 }
 
-const runs = { none: null, early: null, late: null };
-for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late', TV.nomi + 1.5]]) {
-  const r = episode(skipAt, 4711);
+const runs = { none: null };
+for (const [name, skipAt] of [['none', null]]) {
+  const r = episode(4711);
   runs[name] = r;
   const card = r.log.filter((e) => e.k === 'card');
   const S = SCHOENER_BRUNNEN;
@@ -363,7 +362,7 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
     g.say(BOARD.wiperPhantom, 'think', { priority: false });
     g.say('Prüfsatz nach der Folge.', 'think');
   };
-  const r = episode(null, 4711, { t: 3, fn: chatter });
+  const r = episode(4711, { t: 3, fn: chatter });
   const said = r.log.filter((e) => e.k === 'nomi');
   // (beim Halt sagt sie nichts: Die Folge hat genau ihren einen Satz)
   const inTv = said.filter((e) => e.tv);
@@ -585,7 +584,7 @@ const mega = { says: [], toasts: [] };
 // --- Ausgabe ---------------------------------------------------------------------------------------------------------
 const tl = (r) => `Ende ${r.endT.toFixed(2)} s, nächstes Gebot ${(r.bidT - r.releaseT).toFixed(1)} s danach`;
 console.log(`BrunnenTV-Fahrplan: Bauchbinde ${TV.card} s, Gruß ${TV.line} s, Chat ${TV.chat} s, „Schöner Brunnen!“ ${TV.call} s, OMI ${TV.nomi} s, Ende ${TV.end} s; Fenster offen ${TV.window.down.join('–')} s, Megafon in der Hand ab ${MEGA.show * 100} % gehoben`);
-console.log(`Überspringen: ohne (${tl(runs.none)}) · früh bei ${(TV.skip + 0.05).toFixed(2)} s (${tl(runs.early)}) · spät bei ${(TV.nomi + 1.5).toFixed(1)} s (${tl(runs.late)}) – derselbe Endzustand, der Ruf jedes Mal genau einmal`);
+console.log(`Folge ohne Überspringen: ${tl(runs.none)}, der Ruf genau einmal`);
 console.log(`Standbilder an ${stills.places} Orten: ${Object.entries(stills.kinds).map(([k, v]) => `${k} ${v}`).join(', ')}; mindestens ${stills.minFountain.toFixed(2)} m vom Becken, Brunnen höchstens ${stills.maxAngle.toFixed(0)}° neben der Bildmitte, ${stills.lines} Sichtlinien frei`);
 console.log(`Kameras an ${cams.places} Orten: mindestens ${cams.minFountain.toFixed(2)} m vom Becken, Fenster und Brunnen höchstens ${cams.maxAngle.toFixed(0)}° neben der Blickrichtung (hochkant zurückgefahren ${cams.maxPortrait.toFixed(0)}° von ${portraitHalf.toFixed(0)}°), ${cams.lines} Sichtlinien zu Fenster und Brunnen frei von Häusern, Bäumen und Laternen`);
 console.log(`Unterwegs: Folge in ${way.place} (nicht das Ziel), angeboten ${WAY.before} m vor bis ${WAY.after} m hinter dem Halt, ${way.offers}× Hinweis „Taste B“; Brunnenspenden ${way.gifts.join(' + ')} € (im Schnitt ${way.wayMean.toFixed(2)} € gegen ${way.arrive.toFixed(2)} € Ortsspenden am Ziel), Runde und Ziel unverändert`);

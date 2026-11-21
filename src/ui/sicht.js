@@ -26,6 +26,8 @@ export const HOMES = {
   steuerung: 'Ecke unten links, wo sonst die Facecam steht (Touch: auf dem Chat-Feld)',
   foto: 'Ecke unten rechts unter dem Mittelbildschirm (Touch: auf dem Chat-Feld)',
   rahmen: 'Rand unten rechts: wer den Rahmen gekauft hat',
+  tacho: 'nur Drohnenansicht, rechte Spalte unter dem Chat (hochkant: über dem Chat): Tacho des Mittelbildschirms',
+  karte: 'nur Drohnenansicht, neben oder unter dem Tacho: Navi-Karte des Mittelbildschirms (Route, Ausfahrt, Ziel)',
 };
 
 // Maße des HUD, wie style.css sie setzt (ändert sich dort eines, ändert es sich hier – die Browser-Prüfung merkt es)
@@ -146,6 +148,42 @@ export function cockpitParts(W, H) {
 /** Das eigene Auto der Drohnenansicht (CSS-Pixel). */
 export function droneCar(W, H) {
   return tanRect(W, H, camScale(W, H, 50), CAR);
+}
+
+/**
+ * Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js, Besitzer 21.11.2026: „Tacho und Navi-Karte in die
+ * Drohnenansicht.“) – ein Kärtchen in der Spalte des Chats, nie in der freien Sicht (CSS-Pixel):
+ * breit (Desktop, Tablet quer): unter dem Chat, der Tacho über der Karte (side: false), höchstens bis floor – über dem
+ * Blitzerfoto und dem Rahmen-Schildchen unten rechts bzw. über den Touch-Knöpfen;
+ * kompakt (Handy quer): zwischen Chat und Touch-Knöpfen, der Tacho neben der Karte (side: true);
+ * schmal (hochkant): oben in der Spalte des Chats, der Chat rückt darunter und wird so viel kürzer (chatTop).
+ * Ergebnis: { left, top, width, height, side, chatTop, chatMax } (chatTop und die Höchsthöhe des Chats chatMax nur
+ * hochkant, sonst null).
+ */
+export function droneHud(W, H, { touch = false, narrow = isNarrow(W, H) } = {}) {
+  const cw = chatWidth(W, H);
+  const left = Math.round(W - PAD - cw);
+  if (narrow) {
+    const height = Math.round(Math.min(0.5 * cw, 0.45 * (chatBottom(H) - PAD)));
+    const chatTop = PAD + height + 8;
+    return { left, top: PAD, width: Math.round(cw), height, side: true, chatTop, chatMax: Math.floor(chatBottom(H) - chatTop) };
+  }
+  const top = Math.ceil(chatBottom(H) + 10);
+  const floor = touch ? H - touchTop(W, H) - 8 : photoTop(W, H) - 10;
+  if (isCompact(W, H)) return { left, top, width: Math.round(cw), height: Math.max(0, Math.floor(Math.min(120, floor - top))), side: true, chatTop: null, chatMax: null };
+  // Tacho 64 px hoch, darunter die Karte im Seitenverhältnis des Mittelbildschirms (652 × 532), samt Rand
+  const height = Math.max(0, Math.floor(Math.min(64 + 6 + cw * (532 / 652) + 12, floor - top)));
+  return { left, top, width: Math.round(cw), height, side: false, chatTop: null, chatMax: null };
+}
+
+/**
+ * Oberkante des Blitzerfotos unten rechts ohne Touch (style.css .photo: Breite clamp(176px, 13vw, 240px), Bild 4:3 mit
+ * Rand und zwei Zeilen, um 3° gedreht; 8 px über dem Rand) – das Kärtchen der Drohnenansicht endet darüber.
+ */
+export function photoTop(W, H) {
+  const w = Math.min(240, Math.max(176, 0.13 * W));
+  const h = 0.75 * (w - 16) + 56;
+  return H - 8 - h / 2 - (h * Math.cos(3 * DEG) + w * Math.sin(3 * DEG)) / 2;
 }
 
 /** Überschneiden sich zwei Rechtecke (mit Abstand pad)? */

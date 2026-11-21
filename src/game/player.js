@@ -54,6 +54,9 @@ export class Player {
     this.env = { v: 0, kappa: 0, assist: 0 };
     this.pq = { v: 0, wet: 0, latMul: 1, sens: 1, wetGrip: 0.66, grip: 1, firm: 0 };
     this.copt = { tip: false, lanes: LANES, assist: null, vk: 0, h: H };
+    // brav: Auch das Strompedal hält das Tempolimit der Welt (Autopilot, Prüffahrer). Der Spieler ist es nicht – er
+    // darf auf jeder Straße schneller fahren als erlaubt (Besitzer, 21.11.2026); der Tempomat hält es immer
+    this.lawful = false;
     this.reset({});
   }
 
@@ -126,7 +129,7 @@ export class Player {
     this.kS = null;
     this.ctrl.reset();
     // Grenzen der Welt: bis die Welt sie setzt (jedes Bild, setLimits), die vier Spuren der Autobahn
-    this.limits = { left: LEFT_LIMIT, right: RIGHT_LIMIT, shoulder: SHOULDER_X, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, back: 0 };
+    this.limits = { left: LEFT_LIMIT, right: RIGHT_LIMIT, shoulder: SHOULDER_X, lanes: null, extraLane: null, vmax: Infinity, decel: 0, hold: Infinity, holdDecel: 0, posted: 0, slack: 0, back: 0 };
     this.lanes = [];
     this.laneKey = null;
     this.setLimits(this.limits);
@@ -143,9 +146,12 @@ export class Player {
    * Grenzen der Welt an der aktuellen Stelle; nicht angegebene Werte bleiben. left/right: Grenzen für die Wagenmitte
    * (Leitplanken, m), shoulder: ab hier zählt der Standstreifen (Infinity = keiner), lanes: Spuren wie in
    * trip.profile() ([{ x, dir, closed }], auch bloße Zahlen; null = die vier der Autobahn), extraLane: zusätzliche
-   * Spur bei x (Ein- und Ausfädelstreifen, null = keine), vmax: Tempo-Obergrenze in m/s (Infinity = keine, 0 = Halt),
-   * decel: Verzögerung in m/s², mit der vmax gerade planmäßig fällt (die XXL-Welt bremst so vor einem Tempolimit und
-   * vor dem Halt am Ziel; 0 = fester Wert): Drossel und Tempomat bremsen dann mit, statt der Grenze nachzulaufen.
+   * Spur bei x (Ein- und Ausfädelstreifen, null = keine), vmax: Tempolimit samt Halt in m/s (Infinity = keins, 0 = Halt;
+   * es gilt für den Tempomaten und den braven Fahrer, lawful), decel: Verzögerung in m/s², mit der vmax gerade
+   * planmäßig fällt (die XXL-Welt bremst so vor einem Tempolimit und vor dem Halt am Ziel; 0 = fester Wert): Drossel
+   * und Tempomat bremsen dann mit, statt der Grenze nachzulaufen. hold, holdDecel: dasselbe nur für einen Halt (am
+   * Ziel, an der Ladesäule) – die einzige Obergrenze, die auch das Strompedal des Spielers kennt. posted: das
+   * Tempolimit an dieser Stelle in km/h, wie es das Schild zeigt (0 = keins; Anzeige und Stream-Kasse).
    * slack: Querbewegung nach außen in m/s, bis zu der eine Grenze den Wagen nur mitschiebt (siehe rails; 0 = feste
    * Leitplanke, die XXL-Welt gibt ihren wandernden Grenzen dieses Spiel). back: bis hierher (Meter der Straße) darf
    * der Rückwärtsgang zurück (die XXL-Welt setzt den Anfang ihres Abschnitts).
@@ -159,6 +165,9 @@ export class Player {
     if (l.extraLane !== undefined) L.extraLane = l.extraLane;
     if (l.vmax !== undefined) L.vmax = l.vmax >= 0 ? l.vmax : Infinity;
     if (l.decel !== undefined) L.decel = l.decel > 0 ? l.decel : 0;
+    if (l.hold !== undefined) L.hold = l.hold >= 0 ? l.hold : Infinity;
+    if (l.holdDecel !== undefined) L.holdDecel = l.holdDecel > 0 ? l.holdDecel : 0;
+    if (l.posted !== undefined) L.posted = l.posted > 0 ? l.posted : 0;
     if (l.slack !== undefined) L.slack = l.slack > 0 ? l.slack : 0;
     if (l.back !== undefined) L.back = l.back;
     // befahrbare Spuren (unsere Richtung, nicht gesperrt, innerhalb der Grenzen) für den Spurhalteassistenten und den
@@ -372,16 +381,22 @@ export class Player {
     const v = this.speed;
     // steil bergauf etwas weniger Höchsttempo (bei 6 % gut 3 %, bei 8 % 6 %)
     const vmax = this.vmax * (1 - 1.2 * Math.max(0, grade - 0.03));
-    const top = Math.min(vmax, this.limits.vmax);
-    // fällt die Obergrenze der Welt gerade planmäßig, bremst der Wagen mit ihr mit (sonst liefe er ihr hinterher)
-    const fall = this.limits.vmax < vmax ? this.limits.decel : 0;
     const slope = G * grade * 0.55; // Hangabtrieb, bewusst gedämpft
     const drag = 0.12 + 0.00011 * v * v;
     // die Bremse gewinnt immer: wer beide Pedale tritt, bremst
     let throttle = brake > 0.02 ? 0 : throttleIn;
     let acc = 0;
     // mit leerem Akku hält der Tempomat nichts mehr: Der Wagen rollt aus wie ohne Pedal (das Tempo folgt ihm)
-    if (this.cruiseSet !== null && !this.empty && brake <= 0.02 && throttle <= 0.02) {
+    const cruise = this.cruiseSet !== null && !this.empty && brake <= 0.02 && throttle <= 0.02;
+    // Obergrenze: Tempomat und brave Fahrer halten das Tempolimit (vmax), das Pedal des Spielers kennt nur den Halt
+    // (hold) und das Höchsttempo des Wagens – Blitzer und Radarwarner bleiben, wie sie sind
+    const L = this.limits;
+    const law = cruise || this.lawful;
+    const cap = law ? L.vmax : L.hold;
+    const top = Math.min(vmax, cap);
+    // fällt die Obergrenze der Welt gerade planmäßig, bremst der Wagen mit ihr mit (sonst liefe er ihr hinterher)
+    const fall = cap < vmax ? (law ? L.decel : L.holdDecel) : 0;
+    if (cruise) {
       // Tempomat: hält das gesetzte Tempo, auch am Berg; Obergrenzen der Welt übernimmt er ruckfrei
       const want = clamp((Math.min(this.cruiseSet, top) - v) * 0.9, -2.2, 1.6) - (top < this.cruiseSet ? fall : 0);
       this.aAuto += clamp(want - this.aAuto, -5 * H, 5 * H);
@@ -394,7 +409,7 @@ export class Player {
       if (brake > 0.02) acc -= brake * brakeDecel(this.brakeLevel, wet);
       if (throttle <= 0.02 && brake <= 0.02) acc -= drag + (this.empty ? 1.4 : 0);
       acc -= slope;
-      // über der Obergrenze sanft herunter (Software-Drossel, Tempolimit der Welt)
+      // über der Obergrenze sanft herunter (Software-Drossel: Höchsttempo, Halt, beim braven Fahrer das Tempolimit)
       if (v > top) acc = Math.min(acc, -fall - clamp((v - top) * 0.8, 0.3, v > vmax ? 1.5 : 2.5));
       this.aAuto = acc;
       // Strom und Bremse verstellen das Tempo des Tempomaten

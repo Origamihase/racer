@@ -84,13 +84,13 @@ const loose = (base = {}) => new Proxy(base, { get: (t, k) => (k in t ? t[k] : n
 
 /**
  * Drei Fahrer. cruise: Wunschtempo auf freier Strecke (km/h; Limits und Kurven der Strecke hält der Begrenzer ein),
- * miss: Anteil der angesagten Ausfahrten, an denen er vorbeifährt, skip: fährt nach dem Halt am Brunnen sofort weiter
- * (gibt neu Gas) statt die Folge abzuwarten.
+ * miss: Anteil der angesagten Ausfahrten, an denen er vorbeifährt (die BrunnenTV-Folge wartet jeder ganz ab: sie lässt
+ * sich nicht überspringen).
  */
 const DRIVERS = [
-  { name: 'zügig', cruise: 185, miss: 0, skip: true },
-  { name: 'mittel', cruise: 145, miss: 0.06, skip: false },
-  { name: 'gemütlich', cruise: 110, miss: 0.15, skip: false },
+  { name: 'zügig', cruise: 185, miss: 0 },
+  { name: 'mittel', cruise: 145, miss: 0.06 },
+  { name: 'gemütlich', cruise: 110, miss: 0.15 },
 ];
 /**
  * Härtetest für den Zuschlag (game.js AUKTION, 5 km vor dem Brunnen): Auf den letzten 150 m im Zielort soll jedes Mal
@@ -98,13 +98,13 @@ const DRIVERS = [
  * am Brunnen (BrunnenTV) und rollt nie vorbei. Dazu fällt an jeder zehnten Gabelung ein Gebot mitten in ihre
  * Sperrzone (J.lock): Der Zweig dort bleibt, wie er gebaut ist, und Ansage und Zahlen müssen trotzdem stimmen.
  */
-const DUELLIST = { name: 'zügig, Duell im Zielort', cruise: 185, miss: 0, skip: true, duel: true };
+const DUELLIST = { name: 'zügig, Duell im Zielort', cruise: 185, miss: 0, duel: true };
 /**
  * Ladestopps (REISE.md A5): Dieser Fahrer lädt nur an Ladesäulen (in den Ladeparks und an der Säule eines Orts auf dem
  * Weg). Er folgt dem Navi und plant bei jeder Warnung OMIs den Ladestopp ein, den sie nennt (Game.planStop, wie Taste
  * L); sein Akku wird nicht aufgefüllt. In LADE_MIN Minuten Stream läuft er nie leer, und jeder Halt lädt den Akku ganz.
  */
-const LADER = { name: 'Lader (plant Ladestopps)', cruise: 150, miss: 0, skip: true, stops: true };
+const LADER = { name: 'Lader (plant Ladestopps)', cruise: 150, miss: 0, stops: true };
 const LADE_MIN = 30;
 
 /** Liegt die Fahrt in einer Sperrzone, in der ein neues Ziel schon Geplantes nicht mehr ändert? */
@@ -433,8 +433,9 @@ function stream(driver, hours, seed, firstRound = false) {
   p.speed = 40 / 3.6;
   const nv = game.navi;
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+  p.lawful = true; // ein braver Fahrer: auch sein Pedal hält die Tempolimits (Player.lawful)
   const m = {
-    bids: 0, bidSum: 0, earnN: 0, earnSum: 0, chaos: 0, calm: 0, late: 0, snatched: 0, spots: 0, rolled: 0, arrivals: 0, rests: 0, late2: 0, tvEnds: 0, calls: 0, skipCalls: 0, duels: 0,
+    bids: 0, bidSum: 0, earnN: 0, earnSum: 0, chaos: 0, calm: 0, late: 0, snatched: 0, spots: 0, rolled: 0, arrivals: 0, rests: 0, late2: 0, tvEnds: 0, calls: 0, duels: 0,
     lockFork: 0, lockNode: 0, wrong: 0, wende: 0, first1: 0, firstN: 0, firstWait: [], maxGap: 0, maxTv: 0, minTv: Infinity, passed: 0,
     bands: [0, 0, 0, 0], legs: [], navi: { checks: 0, exit: 0, far: 0, farKept: 0, arrive: 0, stop: 0, wende: 0 }, reroutes: 0, standing: 0, ratio: 0, stand: [], flipped: 0, minChoice: Infinity,
     // Ladeparks: Halte und Ladestopps; beim Lader dazu Warnungen, eingeplante Stopps, kleinster Akku und Ladestand danach
@@ -619,7 +620,6 @@ function stream(driver, hours, seed, firstRound = false) {
     ctl.throttle = p.speed < v - 0.5 ? 1 : 0;
     ctl.brake = p.speed > v + 3 ? 0.4 : 0;
     // am Brunnen: Der Ungeduldige überspringt die Folge, sobald ihre Bauchbinde da ist (in main.js mit einer Taste)
-    if (game.tv && driver.skip && game.t - tvT0 >= TV.card + 0.1) game.skipBrunnenTV();
     // der Parker hält in der ersten Runde gleich am Ortseingang des Ziels und wartet
     const parked = driver.park && nv.opening && nv.inTown;
     if (parked) Object.assign(ctl, { throttle: 0, brake: 1 });
@@ -694,11 +694,11 @@ function stream(driver, hours, seed, firstRound = false) {
       m.minTv = Math.min(m.minTv, dur);
       tvEndT = game.t;
       ok(!arrival.held, 'Die Folge ist vorbei, aber der Wagen wird noch gehalten');
-      // jede Folge hat seinen Ruf genau einmal: zu seiner Zeit oder, übersprungen vorher, beim Losfahren
+      // jede Folge läuft ganz (überspringen lässt sie sich nicht) und hat ihren Ruf genau einmal, zu seiner Zeit
       const said = calls.filter((c) => c.t >= tvT0 && c.t <= game.t);
       ok(said.length === 1 && said.every((c) => c.text === SCHOENER_BRUNNEN.say), `Folge von ${dur.toFixed(1)} s: ${said.length}× „Schöner Brunnen!“`);
+      ok(Math.abs(dur - TV.end) < 2.5 * DT, `Folge von ${dur.toFixed(2)} s statt ${TV.end} s`);
       if (said.length) m.calls++;
-      if (said.length && dur < TV.call) m.skipCalls++;
     }
     const sBefore = trip.s;
     const evs = trip.update(p.s, p.x);
@@ -778,6 +778,8 @@ function stream(driver, hours, seed, firstRound = false) {
   ok(firstRound || m.minChoice >= 100, `Nur ${m.minChoice} Orte standen bei einem Gebot zur Wahl`);
   ok(m.open.minChoice >= OPENING.min, `Erste Runde: nur ${m.open.minChoice} Orte standen zur Wahl`);
   ok(nv.opening === !m.open.end, `Erste Runde ${m.open.end ? 'vorbei (' + m.open.end + ')' : 'offen'}, das Navi sagt ${nv.opening ? 'offen' : 'vorbei'}`);
+  // (endet der Stream mitten im letzten Duell, bevor der Wagen den Brunnen erreicht, ist dort nichts zu prüfen)
+  m.duelCut = duelSec && !duelSec.spotDone && nv.target && nv.target.place === duelSec.place ? 1 : 0;
   // Route des Abspanns (routelog.js): Die genommenen Abschnitte zählen zusammen den Kilometerzähler, jede Folge und
   // jeder Ladestopp hat seine Marke in der Reihenfolge der Fahrt; das BrunnenTV-Album (album.js) hat jede Folge
   const odo = game.odometer;
@@ -888,11 +890,12 @@ for (const { driver, m } of rows) {
   const m = stream(DUELLIST, HOURS, 843);
   console.log(
     `${DUELLIST.name}: ${fmt(m.hours)} h, ${m.duels} Duelle auf den letzten 150 m, ${m.bids} Gebote · danach ${m.arrivals}× am Brunnen gestanden (BrunnenTV;` +
-      ` ${m.late2}× knapp hinter dem Haltepunkt), ${m.rolled}× vorbeigerollt, ${m.duels - m.spots}× war das Ziel am Brunnen gerade ein anderes` +
+      ` ${m.late2}× knapp hinter dem Haltepunkt), ${m.rolled}× vorbeigerollt, ${m.duels - m.duelCut - m.spots}× war das Ziel am Brunnen gerade ein anderes` +
+      `${m.duelCut ? ' (das letzte Duell lief noch, als der Stream endete)' : ''}` +
       ` · in Sperrzonen geboten: ${m.lockFork} vor Gabelungen, ${m.lockNode} vor Knoten · an der Gabelung anders als angesagt ${m.wrong}× (${m.flipped}× kippte ein Gebot den Plan kurz davor)` +
       `\n    ${numbersLine(m)}`,
   );
-  ok(m.rolled === 0 && m.duels <= m.spots, `Duell im Zielort nach dem Zuschlag: ${m.rolled}× vorbeigerollt, ${m.duels - m.spots}× war das Ziel am Brunnen ein anderes`);
+  ok(m.rolled === 0 && m.duels - m.duelCut <= m.spots, `Duell im Zielort nach dem Zuschlag: ${m.rolled}× vorbeigerollt, ${m.duels - m.duelCut - m.spots}× war das Ziel am Brunnen ein anderes`);
   if (HOURS >= 3) ok(m.duels >= 10 && m.arrivals >= 3, `Duell im Zielort: zu wenig geprüft (${m.duels} Duelle, ${m.arrivals} Ankünfte, ${m.late2} knapp dahinter)`);
   rows.push({ driver: DUELLIST, m });
 }
@@ -1035,7 +1038,7 @@ if (OPENINGS > 0) {
   // Wer im Zielort parkt, statt zum Brunnen zu fahren: Liegt der Brunnen keine AUKTION.lock km mehr entfernt, ist der
   // Zuschlag gefallen – kein Gebot nimmt ihm das Ziel weg. Nur weiter draußen hält er die Bieter höchstens TOWN_HOLD
   // Sekunden auf.
-  const parker = { name: 'Parker', cruise: 145, miss: 0, skip: false, park: true };
+  const parker = { name: 'Parker', cruise: 145, miss: 0, park: true };
   const waits = [];
   let fixed = 0;
   for (let r = 0; r < 10; r++) {
@@ -1062,11 +1065,11 @@ if (HOURS >= 3) {
   ok(sum((m) => m.arrivals) >= 30, `zu wenige Ankünfte: ${sum((m) => m.arrivals)}`);
   ok(sum((m) => m.lockFork) >= 10 && sum((m) => m.lockNode) >= 20, `zu wenige Gebote in Sperrzonen: ${sum((m) => m.lockFork)} / ${sum((m) => m.lockNode)}`);
   ok(sum((m) => m.navi.exit) > 2000 && sum((m) => m.navi.arrive) > 300, 'Navi und Welt: zu wenig geprüft');
-  ok(sum((m) => m.calls) >= 15 && sum((m) => m.skipCalls) >= 3, `„Schöner Brunnen!“ nur in ${sum((m) => m.calls)} Folgen geprüft (${sum((m) => m.skipCalls)} übersprungen)`);
+  ok(sum((m) => m.calls) >= 15, `„Schöner Brunnen!“ nur in ${sum((m) => m.calls)} Folgen geprüft`);
   ok(sum((m) => m.num.nextBoards) >= 200, `Vorwegweiser und nächste Ausfahrt im Navi: zu wenig geprüft (${sum((m) => m.num.nextBoards)})`);
   ok(sum((m) => m.num.kmReal) >= 500 && sum((m) => m.num.units) >= 20, `Anzeige auf echter Straße über ${BOARD_M} m und ihr Wechsel zu Metern: zu wenig geprüft (${sum((m) => m.num.kmReal)} Schritte, ${sum((m) => m.num.units)} Wechsel)`);
 }
-console.log(`Reise: ${rows.length} Streams zu je ${HOURS} h in ${((Date.now() - t0) / 1000).toFixed(0)} s · „Schöner Brunnen!“ in jeder der ${sum((m) => m.calls)} Folgen (${sum((m) => m.skipCalls)} übersprungen, dann beim Losfahren)`);
+console.log(`Reise: ${rows.length} Streams zu je ${HOURS} h in ${((Date.now() - t0) / 1000).toFixed(0)} s · „Schöner Brunnen!“ in jeder der ${sum((m) => m.calls)} Folgen, jede ganz (${TV.end} s)`);
 if (fails) {
   console.error(`${fails} Fehler`);
   process.exit(1);

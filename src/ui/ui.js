@@ -6,7 +6,8 @@ import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
 import { fmtOdo, fmtKm } from '../map/navroute.js';
-import { NARROW_MID, infoWidth, overlap, cockpitParts, portraitNarrow } from './sicht.js';
+import { NARROW_MID, infoWidth, overlap, cockpitParts, portraitNarrow, droneHud } from './sicht.js';
+import { DroneHud } from './drone-hud.js';
 
 /** Zufriedenheit des Chats sichtbar im Chat-Kopf? Nein: Die Chat-Stimmung gehört nicht ins HUD (Besitzer, 17.11.). */
 
@@ -115,11 +116,16 @@ export class UI {
     this.turnIcon = el('canvas', 'navi-turn-icon', this.turnEl);
     this.turnIcon.width = this.turnIcon.height = 56;
     this.turnDist = el('b', 'navi-turn-dist', this.turnEl, '');
+    // die Nummer der Ausfahrt im Kästchen wie auf den Tafeln (leer: keine)
+    this.turnNo = el('span', 'exit-no', this.turnEl, '');
     this.turnText = el('span', 'navi-turn-text', this.turnEl, '');
     // die nächste Ausfahrt, auch wenn die Route geradeaus bleibt: ein blaues Schild wie am Straßenrand (ins.next)
     this.turnNext = el('span', 'navi-next', this.turnEl);
     el('i', '', this.turnNext, 'Nächste Ausfahrt');
+    this.turnNextNo = el('span', 'exit-no', this.turnNext, '');
     this.turnNextText = el('b', '', this.turnNext, '');
+    // (die Entfernung für sich: wird es eng, kürzt sich der Name, die Meter bleiben stehen)
+    this.turnNextDist = el('span', 'navi-next-d', this.turnNext, '');
     this.leftLaneEl = el('div', 'leftlane hidden', second);
     this.leftLaneText = el('div', 'leftlane-text', this.leftLaneEl, '');
     const bar = el('div', 'leftlane-bar', this.leftLaneEl);
@@ -139,6 +145,8 @@ export class UI {
     const head = el('div', 'chat-head', this.chatEl);
     el('span', '', head, 'Live-Chat');
     this.chatList = el('div', 'chat-list', this.chatEl);
+    // Tacho und Navi-Karte der Drohnenansicht, in der Spalte des Chats (ui/drone-hud.js; main.js schaltet es ein)
+    this.droneHud = new DroneHud(this.hud);
 
     // Funkloch: Der Stream ist weg – das steht dort, wo er fehlt, im Chat-Feld an Stelle der Nachrichten
     this.funklochEl = el('div', 'funkloch hidden', this.chatEl);
@@ -238,6 +246,7 @@ export class UI {
     st.setProperty('--mid', Math.round(mid) + 'px');
     st.setProperty('--top', Math.round(top) + 'px');
     this.hud.classList.toggle('hud-narrow', narrow);
+    this.droneHud.place(droneHud(W, window.innerHeight, { touch: COARSE.matches, narrow }), window.devicePixelRatio || 1);
     // ragt der Mittelbildschirm rechts aus dem Bild? (sicht.js cockpitParts; Handy hochkant) – dann die Akku-Kopie
     this.hud.classList.toggle('screen-cut', cockpitParts(W, window.innerHeight).screen.right > W);
     this.naviMax = Math.min(760, mid);
@@ -279,14 +288,20 @@ export class UI {
     // hinter dem Namen – die Zahl vorn gehört den Metern, die ab dem ersten Vorwegweiser herunterzählen
     const dist = ins.dist > 0 && ins.turn !== 'straight' && ins.turn !== 'merge' && !ins.calm ? ins.say : '';
     const text = ins.calm && ins.say ? ins.head + ' · in ' + ins.say : ins.head;
+    const no = ins.turn === 'exit' && ins.no ? String(ins.no) : '';
     if (this.turnDist.textContent !== dist) this.turnDist.textContent = dist;
+    if (this.turnNo.textContent !== no) this.turnNo.textContent = no;
     if (this.turnText.textContent !== text) this.turnText.textContent = text;
     // die nächste Ausfahrt – nicht, solange die Ansage selbst sie nennt
     const nx = ins.next && ins.next.fork !== ins.fork ? ins.next : null;
-    const next = nx ? nx.name + ' · ' + nx.say : '';
+    const next = nx ? nx.name : '';
+    const nextDist = nx ? '· ' + nx.say : '';
     this.turnNext.classList.toggle('on', !!nx);
     this.turnNext.firstChild.textContent = nx && nx.kind === 'kreuz' ? 'Nächstes Kreuz' : 'Nächste Ausfahrt';
+    const nextNo = nx && nx.no ? String(nx.no) : '';
+    if (this.turnNextNo.textContent !== nextNo) this.turnNextNo.textContent = nextNo;
     if (this.turnNextText.textContent !== next) this.turnNextText.textContent = next;
+    if (this.turnNextDist.textContent !== nextDist) this.turnNextDist.textContent = nextDist;
   }
 
   /** v: HUD an oder aus; subs (bei v = false): von allem nur der Untertitel-Streifen (Startszene der Reise). */

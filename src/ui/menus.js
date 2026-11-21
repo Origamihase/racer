@@ -54,7 +54,7 @@ const REASONS = {
   werkstatt: { title: 'Ab in die Werkstatt', sub: 'Zu viele Rempler – der Tesla braucht eine kleine Pause. Mini Adam winkt trotzdem in die Kamera.' },
   quit: { title: 'Stream beendet', sub: 'Mini Adam hat den Stream vorzeitig beendet.' },
   // niemand hat nach einer Folge geboten (game.js streamOver)
-  stream: { title: 'Keine Gebote mehr', sub: 'Nach der letzten Folge wollte niemand mehr bieten – der Chat sagt Gute Nacht. Mini Adam winkt trotzdem in die Kamera.' },
+  stream: { title: 'Keine Gebote mehr', sub: 'Nach der letzten Folge wollte niemand mehr bieten – der Chat sagt Gute Nacht.' },
 };
 
 // Zeilen der Abrechnung: erst alles, was das Publikum gegeben hat (Reihenfolge wie in INCOME), ganz unten die Abzüge

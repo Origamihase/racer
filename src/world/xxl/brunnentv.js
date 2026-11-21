@@ -3,8 +3,9 @@
 // Fenster und Brunnen, der Chat jubelt, OMI sagt etwas dazu – dann geht das Fenster wieder hoch, und die Fahrt geht
 // weiter. Hier steht der Fahrplan der Folge (Sekunden ab dem Halt) mit allem, was sich daraus ohne Grafik rechnen
 // lässt: Das Spiel (Game.startBrunnenTV) führt die Zeit, die Sätze, den Chat und OMI, main.js zeigt Fenster,
-// Megafon und Kameras. Überspringen geht wie beim Ladestopp ab skip (jede Taste, kurz abblenden); dann endet die Folge
-// so, wie sie sonst endet: Fenster zu, Megafon zurück auf dem Beifahrersitz, der Wagen darf weiter.
+// Megafon und Kameras. Überspringen lässt sie sich nicht (Besitzer, 21.11.2026: „BrunnenTV soll sich nicht skippen
+// lassen.“) – weder am Ziel noch unterwegs: keine Taste, kein Tipp aufs Bild, kein Knopf am Gamepad; sie dauert end
+// Sekunden und endet immer gleich: Fenster zu, Megafon zurück auf dem Beifahrersitz, der Wagen darf weiter.
 
 import { STILL_LOW } from '../kit/layout.js';
 
@@ -12,19 +13,20 @@ import { STILL_LOW } from '../kit/layout.js';
  * card: Bauchbinde „BrunnenTV · Folge N“ und Jingle · line: Mini Adam grüßt durchs Megafon · chat: der Chat jubelt ·
  * call: Mini Adams Ruf „Schöner Brunnen!“ – in jeder Folge, in der Einstellung „Brunnen“, solange das Megafon oben
  * ist · nomi: OMI sagt etwas zum Brunnen · end: die Folge ist vorbei (der Wagen darf weiter; das erste Gebot der
- * nächsten Runde kommt frühestens pause Sekunden später) · skip: ab hier lässt sie sich überspringen.
+ * nächsten Runde kommt frühestens pause Sekunden später; 12 s, seit sie sich nicht mehr überspringen lässt: die
+ * Einstellung „Brunnen“ bleibt nach dem Ruf länger stehen).
  * window: Fenster herunter [von, bis] und wieder hoch · lift: Megafon an den Mund und wieder hinunter (ab show ist es
  * in der Hand zu sehen, darunter liegt die Hand unter der Gürtellinie) · look: Kopf zum Fenster · cams: Schnitte auf
  * die Kameras „Fenster“ und „Brunnen“ · back: zurück zur Kamera des Spielers · fade: Abblenden, wo die Kamera ins
  * Cockpit springt.
  */
 export const TV = {
-  card: 1.0, line: 2.3, chat: 2.6, call: 6.0, nomi: 8.2, end: 10.2, skip: 0.3, pause: 1.5,
-  window: { down: [0.4, 1.4], up: [8.8, 9.8] },
-  lift: { up: [1.2, 2.0], down: [8.4, 9.0], show: 0.4 },
-  look: { on: [1.0, 1.6], off: [8.4, 9.2] },
+  card: 1.0, line: 2.3, chat: 2.6, call: 6.0, nomi: 10.0, end: 12.0, pause: 1.5,
+  window: { down: [0.4, 1.4], up: [10.6, 11.6] },
+  lift: { up: [1.2, 2.0], down: [10.2, 10.8], show: 0.4 },
+  look: { on: [1.0, 1.6], off: [10.2, 11.0] },
   cams: { fenster: 2.2, brunnen: 5.6 },
-  back: [9.4, 10.2],
+  back: [11.2, 12.0],
   fade: 0.25,
 };
 

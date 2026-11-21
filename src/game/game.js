@@ -3,7 +3,7 @@
 // Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
 import {
   CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
-  MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
+  MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, viewerName, viewerNameAt, fillTemplate, alterReaction, berufFor, fmtBetrag,
   BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, PARTYPEOPLE,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
@@ -27,6 +27,7 @@ import { places } from '../map/graph.js';
 import { goalName } from '../world/kit/layout.js';
 import { RouteLog } from './routelog.js';
 import { estimateSpeech } from '../speech.js';
+import { WaveRule, WAVE, chatGap } from './wave.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
 // „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
@@ -78,7 +79,8 @@ export const EXIT_CALL = { at: 1000, late: 700, gap: 90 };
 export function exitLine(nx) {
   const L = BOARD.exit;
   const d = Math.max(50, Math.round(nx.dist / 50) * 50) + ' Metern';
-  const head = fillTemplate(L[nx.kind], { name: nx.name, d });
+  // die Nummer der Ausfahrt wie im Kästchen der Tafel vor dem Namen („Nächste Ausfahrt: 6 Hanau in 1000 Metern.“)
+  const head = fillTemplate(L[nx.kind], { name: nx.kind === 'ausfahrt' && nx.no ? nx.no + ' ' + nx.name : nx.name, d });
   if (nx.plan === 'exit' && nx.kind !== 'ende') return head + ' ' + L.take;
   return nx.plan === 'stay' ? head + ' ' + fillTemplate(L.stay, { road: nx.road }) : head;
 }
@@ -203,6 +205,8 @@ export class Game {
     this.offAutobahn = false;
     // Mini Adams Mimik (main.js hängt sich ein): onMood(name, Stärke 0 … 1) bei Spenden, Schreck, Rempler, Ziel …
     this.onMood = () => {};
+    // wann Mini Adam winkt (wave.js): Intro, Fußgänger am Gehweg, „Wink mal!“ im Chat, nach einem Rempler
+    this.waves = new WaveRule();
     // BrunnenTV am Navi-Ziel: Hier hängt sich die Szene ein (siehe startBrunnenTV)
     this.onBrunnenTV = () => {};
     // Ladestopp im Park: Hier hängt sich die Szene ein (siehe startCharge)
@@ -248,6 +252,9 @@ export class Game {
     this.megafonCd = 0;
     this.chatT = 1.5;
     this.chatSeen = [];
+    this.waves.reset();
+    this.waveChatN = 0;
+    this.waveChatT = chatGap(0);
     // wann zuletzt eine Gutschrift aufgeblitzt ist, die Leitplanke gekratzt hat, OMI das Navi angesagt hat
     this.popT = -9;
     this.scrapeT = -9;
@@ -265,7 +272,7 @@ export class Game {
     // Sprachstudio: wann es zuletzt gesprochen und zuletzt die Stimmung angesagt hat, wohin sie gerade gekippt ist
     // (trend), der zuletzt genannte Anlass (why), was es sonst noch loswerden will (extra), wen es gleich begrüßt
     // (greet), die nächste runde Summe für den Kassensturz (mark) und welche Sätze gerade erst dran waren (used)
-    this.studio = { last: -99, moodT: -99, trend: null, why: null, extra: null, extraT: -99, greet: null, mark: 500, used: {} };
+    this.studio = { last: -99, moodT: -99, trend: null, why: null, extra: null, extraT: -99, greet: null, mark: 500, used: {}, voices: 0 };
     this.sammel = null;
     this.duel = null;
     // für den Abspann: die größte Spende, wer wie viel gespendet und geboten hat (Summe und Anzahl je Name), wer wie
@@ -397,6 +404,16 @@ export class Game {
     if (this.ui.chat) this.ui.chat({ name, text: fillTemplate(text), ...opts });
   }
 
+  /**
+   * Mini Adam winkt – nur aus einem Anlass der Regel (wave.js WAVE.why). o.look: Blickziel (zum Gehweg hin).
+   * Ergebnis: Stärke des Grußes, 0 wenn er jetzt nicht winkt.
+   */
+  waveAt(why, o = null) {
+    const k = this.waves.ask(why, this.t);
+    if (k > 0) this.onMood('wave', k, o);
+    return k;
+  }
+
   bot(key, text) {
     const b = BOTS[key];
     this.ui.chat({ name: b.name, text, bot: key, icon: b.icon });
@@ -498,7 +515,7 @@ export class Game {
     this.voiceUntil = Math.max(this.voiceUntil, this.t + 1.2);
     if (this.t < this.studioUntil) {
       this.studioUntil = this.t;
-      if (this.speech.current?.voiceKey === 'sprachstudio') this.speech.cancelCurrent();
+      if (/^sprachstudio/.test(this.speech.current?.voiceKey || '')) this.speech.cancelCurrent();
     }
     if (this.running) this.later(0.35, go);
     else go();
@@ -1629,7 +1646,7 @@ export class Game {
     const kinds = town && town.plan && Array.isArray(town.plan.fountains) ? town.plan.fountains.map((f) => f.kind) : [];
     const entry = addEpisode(this.save, { place: t.place, t: this.streamT, clock: this.clock, kinds, way });
     const n = entry.n;
-    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, skip: false, called: false, debate: entry.d || null, way };
+    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, called: false, debate: entry.d || null, way };
     this.quote.tv.push({ t: this.t, n });
     this.routeMark('brunnen', way ? { n, place: t.place, way: true } : { n, place: t.place });
     this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town, way });
@@ -1687,18 +1704,12 @@ export class Game {
   }
 
   /**
-   * Solange die Folge läuft, wartet die nächste Bieterrunde; ihre Momente kommen je einmal zu ihrer Zeit. Übersprungen
-   * (skipBrunnenTV) endet sie im nächsten Bild so, wie sie sonst endet; was noch nicht gesagt war, bleibt ungesagt –
-   * bis auf den Ruf: „Schöner Brunnen!“ kommt in jeder Folge (der Eigentümer), übersprungen eben beim Losfahren.
+   * Solange die Folge läuft, wartet die nächste Bieterrunde; ihre Momente kommen je einmal zu ihrer Zeit, und sie endet
+   * erst bei TV.end – überspringen lässt sie sich nicht (brunnentv.js), der Ruf „Schöner Brunnen!“ kommt in jeder Folge.
    */
   tickBrunnenTV() {
     const tv = this.tv;
     this.T.bid = Math.max(this.T.bid, TV.pause);
-    if (tv.skip) {
-      if (!tv.called) this.brunnenCall();
-      this.endBrunnenTV();
-      return;
-    }
     const t = this.t - tv.t0;
     const moments = [
       [TV.card, () => {
@@ -1754,12 +1765,7 @@ export class Game {
     });
   }
 
-  /** Folge überspringen (main.js: jede Taste ab TV.skip, wie beim Ladestopp): Sie endet im nächsten Bild. */
-  skipBrunnenTV() {
-    if (this.tv) this.tv.skip = true;
-  }
-
-  /** Die Folge ist vorbei (oder übersprungen): Bauchbinde weg, der Wagen darf weiter – durch den Ort zur nächsten Straße. */
+  /** Die Folge ist vorbei: Bauchbinde weg, der Wagen darf weiter – durch den Ort zur nächsten Straße. */
   endBrunnenTV() {
     const way = this.tv && this.tv.way;
     this.tv = null;
@@ -2387,6 +2393,19 @@ export class Game {
               : this.zufriedenPool() || CHAT.ambient;
       this.chat(this.chatLine(pool) || this.chatLine(CHAT.ambient));
     }
+    // ab und zu will jemand einen Gruß: „Wink mal!“, kurz danach winkt er (wave.js; nicht in einer Szene am Brunnen
+    // oder an der Ladesäule – dort hat er anderes zu tun, der Wunsch kommt dann etwas später)
+    this.waveChatT -= dt;
+    if (this.waveChatT <= 0) {
+      if (this.tv || this.charging) this.waveChatT = 10;
+      else {
+        // (ohne Zufall: Satz, Name und Abstand folgen dem Zähler – der Gruß ändert nichts am übrigen Stream)
+        const n = this.waveChatN++;
+        this.waveChatT = chatGap(n + 1);
+        this.chat(CHAT.winkMal[n % CHAT.winkMal.length], viewerNameAt(n));
+        this.later(WAVE.chatDelay, () => this.waveAt('chat'));
+      }
+    }
   }
 
   // --- „5 Cent, wenn du …“ ------------------------------------------------------------------
@@ -2538,10 +2557,20 @@ export class Game {
     // ein leiser Zweiklang, damit man hört, dass jetzt nicht OMI spricht
     this.audio.tone(659.25, 0.16, 'sine', 0.05);
     this.audio.tone(523.25, 0.24, 'sine', 0.05, 0.13);
-    const dur = this.speech.say(text.replace(/_/g, ' '), 'sprachstudio');
+    const dur = this.speech.say(text.replace(/_/g, ' '), this.studioVoice());
     this.ui.studio(text, dur + 0.8);
     S.last = this.t;
     this.studioUntil = this.t + dur + 0.8;
+  }
+
+  /**
+   * Die Stimme des nächsten Studio-Satzes: abwechselnd die Frau (sprachstudio) und der Mann (sprachstudioM) – so hört
+   * man beide (speech.js studioVoices). „Wir sind live.“ zu Beginn (main.js) spricht die Frau, danach der Mann.
+   */
+  studioVoice() {
+    const key = this.studio.voices % 2 ? 'sprachstudioM' : 'sprachstudio';
+    this.studio.voices++;
+    return key;
   }
 
   /** Ein Satz aus der Liste, aber keiner der beiden zuletzt gesagten (key: je Liste ein Gedächtnis). */
@@ -2643,9 +2672,12 @@ export class Game {
     if (e.car.behavior === 'polizei') this.chat('Ausgerechnet die Polizei Gifhorn 😱');
     this.burst(CHAT.crash, 3, 2);
     if (left <= 0) {
+      // (den verlegenen Gruß nach dem letzten Rempler gibt es im Abspann: main.js)
       this.end('werkstatt');
       return;
     }
+    // nach dem Schreck ein kleiner, verlegener Gruß in die Kamera (wave.js)
+    this.later(WAVE.afterCrash, () => this.waveAt('unfall'));
     this.ui.toast(left === 1 ? '🧸 Rempler! Nur noch ein Karosserie-Punkt!' : `🧸 Rempler! Noch ${left} Karosserie-Punkte`, 'bad');
   }
 
@@ -2740,7 +2772,8 @@ export class Game {
   screenState() {
     const p = this.player;
     const W = this.weather;
-    const limit = this.blitzer && p.s > this.blitzer.limitS && p.s < this.blitzer.endS ? 120 : null;
+    // das Tempolimit, das hier gilt: in der Blitzer-Zone 120, sonst das der Straße (Ort 50, Rampe 80, Landstraße 100)
+    const limit = this.blitzer && p.s > this.blitzer.limitS && p.s < this.blitzer.endS ? 120 : p.limits.posted || null;
     return {
       dark: W.level > 0.45,
       battery: p.battery,

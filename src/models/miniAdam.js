@@ -447,9 +447,9 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
     setMood(name, seconds, strength = 1) {
       mimic.setMood(name, seconds, strength);
     },
-    /** Geste der Fensterhand: 'wave' (winken) oder 'cheer' (jubeln) */
-    gesture(name) {
-      mimic.gesture(name);
+    /** Geste der Fensterhand: 'wave' (winken) oder 'cheer' (jubeln), Stärke k (1 = ganz, kleiner: verlegen) */
+    gesture(name, k = 1) {
+      mimic.gesture(name, undefined, k);
     },
     /** Prost mit Bananensaft (Ladestopp): jubelt wie 'cheer', die Flasche in der Fensterhand. */
     raiseBottle() {

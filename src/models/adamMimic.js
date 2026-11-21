@@ -108,18 +108,20 @@ export class Mimic {
     this.moods.push({ name, m, start: t, t0: t, end: t + dur, k: strength, from: 0 });
   }
 
-  gesture(name, t = this.lastT ?? 0) {
+  /** Geste name zur Zeit t, Stärke k (1 = ganz; der verlegene Gruß nach einem Rempler winkt kleiner, game/wave.js) */
+  gesture(name, t = this.lastT ?? 0, k = 1) {
     if (!GESTURES[name]) return;
     // läuft dieselbe Geste noch, geht sie von ihrer jetzigen Lage aus weiter (die Hand springt nicht zurück)
     const old = this.gestures.find((g) => g.name === name);
     const from = old ? this.gestureWeight(old, t) : 0;
     this.gestures = this.gestures.filter((g) => g !== old);
-    this.gestures.push({ name, start: t, end: t + GESTURES[name], from });
+    this.gestures.push({ name, start: t, end: t + GESTURES[name], from, k });
   }
 
-  /** Gewicht einer Geste: hoch in 0,55 s (ab from), zum Schluss in 0,6 s zurück ans Lenkrad */
+  /** Gewicht einer Geste: hoch in 0,55 s (ab from bis zu ihrer Stärke k), zum Schluss in 0,6 s zurück ans Lenkrad */
   gestureWeight(g, t) {
-    return (g.from + (1 - g.from) * sstep(g.start, g.start + 0.55, t)) * (1 - sstep(g.end - 0.6, g.end, t));
+    const k = g.k ?? 1;
+    return (g.from + (k - g.from) * sstep(g.start, g.start + 0.55, t)) * (1 - sstep(g.end - 0.6, g.end, t));
   }
 
   /** Blick für sec Sekunden auf ein Ziel aus GAZE (oder [x, y, z] in Körperkoordinaten) */
