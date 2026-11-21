@@ -107,7 +107,7 @@ function postRun({ plan, brakeAt, key }) {
     traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
     scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
     road: loose(), sky: loose(), rain: loose(), windshield: loose({ firmware: 0, manual: () => 'wipe' }),
-    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: (t, v, o) => (o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose(), fx: loose(), pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.release(), square: () => null, town: () => null, hold: (sec) => (arrival.held = { s: trip.s + 0.3, sec, place: sec.place, park: -1 }), chargeSpot: (v) => arrival.chargeSpot(trip, v), charge: (v) => arrival.charge(trip, v) },
   });
@@ -360,7 +360,8 @@ console.log('2. Schöner Brunnen in jeder Folge:');
     const call = engine.log.filter((e) => e.text === SCHOENER_BRUNNEN.say && e.start >= t0 && e.start < t0 + TV.end);
     const lost = engine.log.filter((e) => e.lost && e.start >= t0 - 8 && e.start < t0 + TV.end);
     const c = call[0];
-    ok(call.length === 1 && c && !c.lost && !c.cut && c.done && c.start - t0 >= TV.call - 1e-6 && c.start - t0 <= TV.call + 0.3, `${name}: Ruf ${c ? `ab ${(c.start - t0).toFixed(2)} s${c.cut ? ', abgebrochen' : ''}${c.done ? '' : ', nicht zu Ende'}` : 'nie gesprochen'} (soll ${TV.call} s)`);
+    // (die Uhr der Seite geht hier einen Schritt nach: Was im Schritt gesprochen wird, beginnt 1/30 s vor der Spielzeit)
+    ok(call.length === 1 && c && !c.lost && !c.cut && c.done && c.start - t0 >= TV.call - 1 / 30 - 1e-6 && c.start - t0 <= TV.call + 0.3, `${name}: Ruf ${c ? `ab ${(c.start - t0).toFixed(2)} s${c.cut ? ', abgebrochen' : ''}${c.done ? '' : ', nicht zu Ende'}` : 'nie gesprochen'} (soll ${TV.call} s)`);
     ok(c && /Stefan/.test(c.voice) && c.pitch === VOICES.brunnen.pitch, `${name}: Ruf mit ${c && c.voice}, Tonhöhe ${c && c.pitch}`);
     ok(!lost.length, `${name}: ${lost.length} Sätze verschluckt (${lost.map((e) => e.text.slice(0, 30)).join(' | ')})`);
     for (const m of [0.1, 1.0, 2.0]) {

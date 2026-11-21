@@ -56,7 +56,7 @@ function run({ target, park = -1, planPost = false, at, crawl = 0, key, secs = 9
     traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
     scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
     road: loose(), sky: loose(), rain: loose(), windshield: loose({ firmware: 0, manual: () => 'wipe' }),
-    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: (t, v, o) => (o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose({ toast: (text, kind, key) => toasts.push({ text, key, t: game.t }), dropKey: (key) => dropped.push({ key, t: game.t }) }),
     fx: loose(), pickups: loose({ update: () => NONE }),
     world: {
@@ -212,7 +212,8 @@ console.log(`  a: stand bei u ${a.stood && a.stood.u} m, Hinweis „${(a.toasts.
 // zwischen ihr und dem Betrachter, was ihren Kopf mit dem Stecker verdeckt – gerechnet in 3D gegen jeden Baustein
 // (Bäume mit der Krone, alles andere mit Grundriss und Höhe; der Mast einer Laterne verdeckt nur einen Streifen). Ein Ort hat seinen
 // Plan unabhängig von der Seite, von der man kommt (er liegt immer in Fahrtrichtung): an anderer Stelle des Wegs und
-// über einen anderen Knoten derselbe Park, dieselbe Stele. Am Start (Erlensee) steht der Wagen schon im Park: dort keine.
+// über einen anderen Knoten derselbe Park, dieselbe Stele; als Navi-Ziel dieselben Tafeln und das Ziel dazu. Am Start
+// (Erlensee) steht der Wagen schon im Park: dort keine.
 console.log('2. Eine Ladesäule in jedem Ort, von weitem zu sehen:');
 {
   // Minimaler DOM-Ersatz wie in tools/citykit-test.mjs: der Baukasten malt Schilder auf Canvas (hier ohne Bild)
@@ -291,6 +292,10 @@ console.log('2. Eine Ladesäule in jedem Ort, von weitem zu sehen:');
     const stele = signs.find((e) => e.kind === 'ladestele');
     ok(board && near(board.s, sec.s0 + POST.u - POST_SIGN_D, 1e-6) && board.texts[0] === 'Ladesäule', `2: ${where}: keine Tafel „Ladesäule ${POST_SIGN_D} m“`);
     ok(stele && near(stele.s, sec.s0 + st.u, 1e-6) && stele.x === st.x && stele.texts[0] === 'Ladesäule', `2: ${where}: keine Stele unter den Schildern`);
+    // als Navi-Ziel (mit dem Zielbrunnen am Ende der Fahrt) dieselben Tafeln, dazu das Ziel
+    const goal = [];
+    sectionSigns(null, [sec], sec, goal, { tables: false, target: p.i });
+    ok(goal.some((e) => e.kind === 'ziel') && goal.filter((e) => e.kind === 'ladestele' || e.kind === 'ladesaeule').length === 2, `2: ${where}: als Ziel ohne Stele oder Tafel`);
     // nichts auf ihrem Platz, nichts in der Sichtlinie (die Regel des Plans und, unabhängig davon, in 3D)
     ok(L.steleBlockers(plan, st, city.info).length === 0, `2: ${where}: Plan lässt ${L.steleBlockers(plan, st, city.info).map((i) => plan.items[i].name)} an der Stele`);
     let free = 0;
@@ -323,6 +328,204 @@ console.log('2. Eine Ladesäule in jedem Ort, von weitem zu sehen:');
   ok(list.length === places.length && list.length > 400 && free150 === places.length, `2: ${list.length} Orte, ${free150} davon bis 150 m frei`);
   if (process.env.LADEN2_LIST) (await import('node:fs')).writeFileSync(process.env.LADEN2_LIST, 'Ort\tGröße\tStele frei bis (m)\n' + list.join('\n') + '\n');
   console.log(`  ${list.length} Orte: ` + [...bySize].map(([k, v]) => `${k} ${v.towns} (frei bis ${v.free} m)`).join(', ') + ` · Stele ${ST.w} × ${ST.h} m ab ${ST.y} m, ${ST.d} m vor der Mitte des Parks, Tafel ${POST_SIGN_D} m davor`);
+}
+
+// --- 3. Eine Warteschlange, BrunnenTV zuerst ----------------------------------------------------------------------
+// „Wenn eine Folge beginnt, soll sie sofort beginnen und alles andere warten.“ Der echte Stream (stream-sim) mit der
+// echten Sprachausgabe über einer nachgebauten Web-Speech-API (wie tools/testlauf4-test.mjs 2: Uhr der Seite in
+// Spielzeit, Stimmen 35 % langsamer als geschätzt, speak() gleich nach cancel() verschluckt): Eine Folge unterwegs
+// beginnt mitten in einer langen Sprachdurchsage bzw. mitten in einem langen Satz OMIs. Binnen 0,5 s ist es still (der
+// Satz endet höflich, sein Untertitel geht mit), die Hymne (TV.card) spielt in die Stille, Gruß, Ruf und OMIs Satz der
+// Folge beginnen zu ihrer Zeit, der Reihe nach, ganz gesprochen, mit ihrem Untertitel; was derweil sprechen wollte
+// (OMI, ein Megafon-Wunsch), wartet und spricht danach, Veraltetes entfällt.
+console.log('3. Eine Warteschlange, BrunnenTV zuerst:');
+{
+  const { makeStream, DRIVERS } = await import('./stream-sim.mjs');
+  const { Speech, estimateSpeech, EPISODE } = await import('../src/speech.js');
+  const { UI } = await import('../src/ui/ui.js');
+  const { TV } = await import('../src/world/xxl/brunnentv.js');
+  const { SCHOENER_BRUNNEN } = await import('../src/data.js');
+  const { places } = await import('../src/map/graph.js');
+  const clock = { t: 1000, timers: [], id: 0 };
+  const saved = { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout, now: Date.now, window: globalThis.window, utt: globalThis.SpeechSynthesisUtterance };
+  globalThis.setTimeout = (fn, ms = 0) => {
+    const id = ++clock.id;
+    clock.timers.push({ id, at: clock.t + ms / 1000, fn });
+    return id;
+  };
+  globalThis.clearTimeout = (id) => {
+    clock.timers = clock.timers.filter((x) => x.id !== id);
+  };
+  Date.now = () => Math.round(clock.t * 1000);
+  const runTimers = () => {
+    for (let guard = 0; guard < 1000; guard++) {
+      let k = -1;
+      for (let i = 0; i < clock.timers.length; i++) if (clock.timers[i].at <= clock.t + 1e-9 && (k < 0 || clock.timers[i].at < clock.timers[k].at)) k = i;
+      if (k < 0) return;
+      const [x] = clock.timers.splice(k, 1);
+      x.fn();
+    }
+  };
+  const SLOW = 1.35;
+  const engine = {
+    speaking: null,
+    log: [],
+    lastCancel: -1,
+    getVoices: () => [{ name: 'Microsoft Katja - German (Germany)', lang: 'de-DE' }, { name: 'Microsoft Stefan - German (Germany)', lang: 'de-DE' }, { name: 'Google Deutsch', lang: 'de-DE' }],
+    pause() {},
+    resume() {},
+    speak(u) {
+      if (clock.t - this.lastCancel < 0.001) {
+        this.log.push({ text: u.text, lost: true, start: clock.t });
+        return;
+      }
+      const e = { u, text: u.text, start: clock.t, end: clock.t + estimateSpeech(u.text, u.rate) * SLOW };
+      this.speaking = e;
+      this.log.push(e);
+      clock.timers.push({ id: ++clock.id, at: e.end, fn: () => {
+        if (this.speaking !== e) return;
+        this.speaking = null;
+        e.done = true;
+        if (u.onend) u.onend();
+      } });
+    },
+    cancel() {
+      this.lastCancel = clock.t;
+      const e = this.speaking;
+      if (!e) return;
+      e.cut = clock.t;
+      this.speaking = null;
+      if (e.u.onerror) e.u.onerror({ error: 'interrupted' });
+    },
+  };
+  globalThis.window = { speechSynthesis: engine };
+  globalThis.SpeechSynthesisUtterance = class {
+    constructor(text) {
+      this.text = text;
+    }
+  };
+  const cls = { toggle() {}, add() {}, remove() {} };
+  const LONG = {
+    durchsage: 'Hallo Mini Adam, hier spricht der Chat mit einer sehr langen Sprachdurchsage, die einfach nicht aufhören will, weil wir dich so gern haben!',
+    omi: 'Ich habe die Wasserqualität aller Brunnen auf dem Weg vorsorglich geprüft und für sehr gut befunden, das wollte ich nur einmal sagen.',
+  };
+  const runs = [];
+  for (const what of ['durchsage', 'omi']) {
+    clock.timers = [];
+    const sub = { lines: [], line: null, subEl: { classList: cls, className: '' }, subLabel: { textContent: '' }, subText: { textContent: '' } };
+    for (const m of ['speak', 'showLine', 'megafon', 'nomi', 'studio', 'adam', 'durchsage']) sub[m] = UI.prototype[m];
+    const S = makeStream({ driver: DRIVERS.zuegig, seed: 5, endless: true });
+    const g = S.game;
+    const speech = new Speech();
+    g.speech = speech;
+    for (const m of ['megafon', 'nomi', 'studio', 'durchsage', 'adam']) g.ui[m] = (...a) => sub[m](...a);
+    const offset = clock.t - g.t;
+    const R = { what, trigger: null, t0: null, quiet: null, subGone: null, cut: null, waited: [], marks: {} };
+    let line = null;
+    let stage = 0;
+    for (let i = 0; i < 200 * 30; i++) {
+      // nach einer halben Minute Fahrt: der lange Satz beginnt; 1,5 s später die Folge (Taste B), in ihr will OMI etwas
+      // sagen, und Mini Adam ruft durchs Megafon
+      if (stage === 0 && g.t > 30 && !g.tv && !g.charging && !speech.current && !speech.queue.length) {
+        stage = 1;
+        if (what === 'durchsage') speech.say(LONG.durchsage, 'karla', { onStart: (d) => (line = sub.durchsage('Karla', LONG.durchsage, d + 1, 'Testerin')), onDrop: () => line && (line.t = 0) });
+        else g.say(LONG.omi, 'talk');
+        R.lineAt = g.t;
+      }
+      if (stage === 1 && g.t > R.lineAt + 1.5 && speech.current) {
+        stage = 2;
+        R.trigger = g.t;
+        R.text = speech.current.text;
+        const place = places.findIndex((q) => q.name === 'Erlensee');
+        g.startBrunnenTV({ place, name: 'Erlensee', goal: 'Erlensee' }, S.trip.section, { way: true });
+        R.t0 = g.tv.t0;
+      }
+      if (stage === 2 && g.tv && g.t > R.t0 + TV.line + 1 && !R.omiAsked) {
+        R.omiAsked = true;
+        // OMI will mitten in der Folge etwas Wichtiges sagen (am Spiel vorbei direkt in die Sprachausgabe)
+        speech.say('Achtung, gleich wird es eng.', 'board', { priority: true });
+      }
+      if (stage === 2 && g.tv && g.t > R.t0 + TV.call + 1 && !R.wish) {
+        R.wish = true;
+        // und Mini Adam ruft durchs Megafon (Taste H)
+        speech.say('Achtung, Achtung! Bitte machen Sie die Spur frei!', 'adam');
+      }
+      S.step(1 / 30);
+      clock.t += 1 / 30;
+      runTimers();
+      for (const l of sub.lines) l.t -= 1 / 30;
+      sub.lines = sub.lines.filter((l) => l.t > 0);
+      sub.showLine();
+      if (stage === 2) {
+        const dt = g.t - R.t0;
+        if (R.quiet === null && !engine.speaking) R.quiet = dt;
+        if (R.subGone === null && !sub.lines.some((l) => l.text.includes(what === 'durchsage' ? 'Sprachdurchsage' : 'Wasserqualität') || (what === 'omi' && l.text === LONG.omi))) R.subGone = dt;
+        for (const [k, at] of [['card', TV.card + 0.05], ['line', TV.line + 0.1], ['call', TV.call + 0.1], ['nomi', TV.nomi + 0.5]]) {
+          if (!R.marks[k] && dt >= at) R.marks[k] = { text: sub.subText.textContent, speaking: engine.speaking ? engine.speaking.text : null };
+        }
+        if (!g.tv && dt > TV.end + 12) break;
+      }
+    }
+    const t0 = R.t0 + offset;
+    const lineOf = (text) => engine.log.find((e) => e.text === text && e.start >= t0);
+    const ep = engine.log.filter((e) => e.start >= t0 && e.start < t0 + TV.end + 4);
+    const first = engine.log.find((e) => e.text === R.text);
+    R.cut = first && first.cut !== undefined ? first.cut - t0 : null;
+    R.ep = ep.map((e) => ({ text: e.text.slice(0, 28), at: +(e.start - t0).toFixed(2), len: +(e.end - e.start).toFixed(2), cut: e.cut !== undefined, done: !!e.done, lost: !!e.lost }));
+    const call = lineOf(SCHOENER_BRUNNEN.say);
+    const before = ep.filter((e) => call && e.start < call.start);
+    const greet = before.find((e) => e.start - t0 >= TV.line - 1e-6);
+    const after = engine.log.filter((e) => e.start >= t0 + TV.end - 1);
+    const name = `3 ${what}`;
+    ok(R.trigger !== null && R.quiet !== null && R.quiet <= EPISODE.polite + 0.1 && R.quiet < 0.5 && R.quiet < TV.card, `${name}: still erst ${R.quiet} s nach dem Beginn der Folge`);
+    ok(R.subGone !== null && R.subGone <= 0.5, `${name}: Untertitel des abgebrochenen Satzes noch ${R.subGone} s`);
+    ok(greet && near(greet.start - t0, TV.line, 0.1) && greet.done && greet.cut === undefined, `${name}: Gruß ${greet ? `ab ${(greet.start - t0).toFixed(2)} s, ${greet.done ? 'ganz' : 'abgebrochen'}` : 'fehlt'}`);
+    ok(call && near(call.start - t0, TV.call, 0.3) && call.done && call.cut === undefined, `${name}: Ruf ${call ? `ab ${(call.start - t0).toFixed(2)} s` : 'fehlt'}`);
+    const nomi = ep.find((e) => e.start - t0 >= TV.nomi - 1e-6 && e.start - t0 < TV.nomi + 1);
+    ok(nomi && nomi.done && nomi.cut === undefined, `${name}: OMIs Satz der Folge ${nomi ? `ab ${(nomi.start - t0).toFixed(2)} s` : 'fehlt'}`);
+    // zwischen Beginn und Ende der Folge spricht nur sie: kein fremder Satz, nichts abgebrochen, nichts verschluckt
+    const during = engine.log.filter((e) => e.start >= t0 && e.start < (nomi ? nomi.end : t0 + TV.end));
+    ok(during.length === 3 && during.every((e) => !e.lost && e.cut === undefined), `${name}: in der Folge ${JSON.stringify(R.ep)}`);
+    ok(R.marks.line && R.marks.line.text.includes(greet ? greet.text.slice(0, 12) : '?') && R.marks.call && R.marks.call.text === '»' + SCHOENER_BRUNNEN.text + '«', `${name}: Untertitel ${JSON.stringify(R.marks)}`);
+    // danach: was gewartet hat, spricht (OMIs Wichtiges, Mini Adams Megafon) – der abgebrochene Satz kommt nicht wieder
+    ok(after.some((e) => e.text === 'Achtung, gleich wird es eng.') && after.some((e) => /Achtung, Achtung/.test(e.text)) && !after.some((e) => e.text === R.text), `${name}: nach der Folge ${JSON.stringify(after.map((e) => e.text.slice(0, 24)))}`);
+    runs.push(R);
+  }
+  // veraltet: was länger als EPISODE.stale wartete, entfällt am Ende der Folge (onDrop), Frisches bleibt
+  {
+    const sp = new Speech();
+    const dropped = [];
+    sp.say('Erster Satz, der gerade spricht.', 'board', { priority: true });
+    sp.episode(true);
+    sp.say('Alt', 'karla', { onDrop: () => dropped.push('Alt') });
+    clock.t += EPISODE.stale + 1;
+    runTimers();
+    sp.say('Frisch', 'karla', { onDrop: () => dropped.push('Frisch') });
+    sp.episode(false);
+    ok(dropped.join() === 'Alt' && sp.current && sp.current.text === 'Frisch', `3: veraltet ${dropped}, spricht ${sp.current && sp.current.text}`);
+    sp.stopAll();
+    // höflich: Ein Satz, der laut Schätzung gleich fertig ist, darf ausreden – spricht er länger (die Stimme ist
+    // langsamer als geschätzt), endet er spätestens nach EPISODE.polite
+    clock.t += 1;
+    runTimers();
+    const gone = [];
+    sp.say('Gleich fertig.', 'board', { priority: true, onDrop: () => gone.push(clock.t) });
+    const e0 = engine.speaking;
+    clock.t += estimateSpeech('Gleich fertig.', 1) - 0.25;
+    runTimers();
+    const t1 = clock.t;
+    sp.episode(true);
+    const still = engine.speaking === e0;
+    for (let i = 0; i < 30; i++) {
+      clock.t += 1 / 30;
+      runTimers();
+    }
+    ok(still && e0.cut !== undefined && e0.cut - t1 <= EPISODE.polite + 1e-6 && gone.length === 1, `3: höflich ${still ? 'ausreden lassen' : 'sofort abgebrochen'}, Ende ${e0.cut === undefined ? '–' : (e0.cut - t1).toFixed(2) + ' s'} nach Beginn der Folge`);
+    sp.stopAll();
+  }
+  Object.assign(globalThis, { setTimeout: saved.setTimeout, clearTimeout: saved.clearTimeout, window: saved.window, SpeechSynthesisUtterance: saved.utt });
+  Date.now = saved.now;
+  console.log('  ' + runs.map((R) => `${R.what}: still nach ${R.quiet && R.quiet.toFixed(2)} s (Satz bis ${R.cut === null ? '–' : R.cut.toFixed(2) + ' s'}), Folge ${R.ep.map((e) => `${e.text.slice(0, 14)}… ${e.at}–${(e.at + e.len).toFixed(1)} s${e.cut ? ' ABGEBROCHEN' : ''}`).join(', ')}`).join(' · '));
 }
 
 console.log(fails ? `laden2-test: ${fails} Fehler (${checks} Prüfungen)` : `laden2-test: alles gut (${checks} Prüfungen)`);

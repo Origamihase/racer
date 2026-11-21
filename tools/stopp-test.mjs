@@ -222,7 +222,7 @@ function stream(skip, plan = true) {
     traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
     scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
     road: loose(), sky: loose(), rain: loose(), windshield: loose({ firmware: 0, manual: () => 'wipe' }),
-    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: (t, v, o) => (o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose({ nomi: (text) => out.nomi.push({ text, during: !!game.charging }) }), fx: loose(), pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });
@@ -344,7 +344,7 @@ function postStream() {
     traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
     scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
     road: loose(), sky: loose(), rain: loose(), windshield: loose({ firmware: 0, manual: () => 'wipe' }),
-    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: (t, v, o) => (o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose({ nomi: (text) => out.said.push({ text, during: !!game.charging }) }), fx: loose(), pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });
@@ -454,7 +454,7 @@ function emptyRun({ target = null, battery = 10.6, reach = null, secs = 600 } = 
     traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
     scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
     road: loose(), sky: loose(), rain: loose(), windshield: loose({ firmware: 0, manual: () => 'wipe' }),
-    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: (t, v, o) => (o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose({ toast: (text, kind, key) => out.toasts.push({ text, kind, key }), nomi: (text) => out.said.push(text) }), fx: loose(), pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });

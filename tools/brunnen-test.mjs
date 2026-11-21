@@ -241,7 +241,7 @@ function episode(seed, during = null) {
     windshield: loose({ firmware: 0, manual: () => 'wipe' }),
     cockpit: loose({ nomi: loose() }),
     audio: loose({ megafon: () => log.push({ k: 'horn', t: at() }), brunnenJingle: () => log.push({ k: 'jingle', t: at() }) }),
-    speech: loose({ say: (text, voice) => (log.push({ k: 'say', voice, text, t: at(), g: game.t }), 2.5), busy: false, queue: NONE, current: null }),
+    speech: loose({ say: (text, voice, o) => (log.push({ k: 'say', voice, text, t: at(), g: game.t }), o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose({
       brunnenTV: (n, name) => log.push({ k: 'card', n, name, t: at() }),
       megafon: (text, dur, buyer, label) => log.push({ k: 'sub', text, label, t: at() }),
@@ -398,7 +398,7 @@ const way = { offers: 0, place: '', gifts: [], arrive: 0, wayMean: 0 };
     windshield: loose({ firmware: 0, manual: () => 'wipe' }),
     cockpit: loose({ nomi: loose() }),
     audio: loose(),
-    speech: loose({ say: (text, voice) => (log.push({ k: 'say', voice, text, t: at() }), 2.5), busy: false, queue: NONE, current: null }),
+    speech: loose({ say: (text, voice, o) => (log.push({ k: 'say', voice, text, t: at() }), o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose({
       toast: (text, kind, key) => log.push({ k: 'toast', text, key, g: game.t }),
       dropKey: (key) => log.push({ k: 'drop', key, g: game.t }),
@@ -520,7 +520,7 @@ const mega = { says: [], toasts: [] };
       windshield: loose({ firmware: 0, manual: () => 'wipe' }),
       cockpit: loose({ nomi: loose() }),
       audio: loose(),
-      speech: loose({ say: (text, voice) => (says.push({ text, voice }), 2.5), busy: false, queue: NONE, current: null }),
+      speech: loose({ say: (text, voice, o) => (says.push({ text, voice }), o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
       ui: loose({ toast: (text) => toasts.push(text) }),
       fx: loose(),
       pickups: loose({ update: () => NONE }),

@@ -93,7 +93,7 @@ function journey(driver, minutes, seed, hook = null) {
     windshield: loose({ firmware: 0, manual: () => 'wipe' }),
     cockpit: loose({ nomi: loose() }),
     audio: loose(),
-    speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    speech: loose({ say: (t, v, o) => (o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose({ chat: (m) => chat.push({ t: game.t, ...m }), toast: (text, kind, key, parts) => toasts.push({ t: game.t, text, kind, key, parts }) }),
     fx: loose(),
     pickups: loose({ update: () => NONE }),

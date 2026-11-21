@@ -1495,8 +1495,15 @@ function chargeGreet() {
   chargeRun.greetT = Infinity;
   audio.nomiChime();
   cockpit.nomi.setMood('happy', 3.2);
-  const d = speech.say(CHARGE_LINES.greet, 'board', { priority: true, onStart: (x) => cockpit.nomi.speak(x) });
-  ui.nomi(CHARGE_LINES.greet, d + 0.8);
+  let line = null;
+  speech.say(CHARGE_LINES.greet, 'board', {
+    priority: true,
+    onStart: (x) => {
+      cockpit.nomi.speak(x);
+      line = ui.nomi(CHARGE_LINES.greet, x + 0.8);
+    },
+    onDrop: () => line && (line.t = 0),
+  });
 }
 
 // --- Ladestopp im Park (world/xxl/charge.js STOP, Game.startCharge) -------------------------------------------------

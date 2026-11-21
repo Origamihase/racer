@@ -543,11 +543,18 @@ export class Game {
     const nomi = this.cockpit.nomi;
     nomi.setMood(mood, 3.2);
     const go = () => {
+      // ihr Satz in einer Folge BrunnenTV gehört zur Folge (episode: der Reihe nach, nie unterbrochen); ihr Untertitel
+      // steht, sobald sie wirklich spricht, und geht mit, wenn der Satz entfällt
+      let line = null;
       const dur = this.speech.say(text, 'board', {
         priority,
-        onStart: (d) => nomi.speak(d),
+        episode: scene && !!this.tv,
+        onStart: (d) => {
+          nomi.speak(d);
+          line = this.ui.nomi(text, d + 0.8);
+        },
+        onDrop: () => line && (line.t = 0),
       });
-      this.ui.nomi(text, dur + 0.8);
       this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.8);
     };
     // OMI hat das Wort: Das Sprachstudio verstummt mitten im Satz und wartet, bis sie fertig ist
@@ -1738,6 +1745,8 @@ export class Game {
     const entry = addEpisode(this.save, { place: t.place, t: this.streamT, clock: this.clock, kinds, way });
     const n = entry.n;
     this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, called: false, debate: entry.d || null, way };
+    // ab jetzt gehört die Sprachausgabe der Folge: Was spricht, endet höflich, alles andere wartet dahinter (speech.js)
+    this.speech.episode?.(true);
     this.quote.tv.push({ t: this.t, n });
     this.routeMark('brunnen', way ? { n, place: t.place, way: true } : { n, place: t.place });
     this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town, way });
@@ -1836,9 +1845,8 @@ export class Game {
     const fits = all.filter((l) => estimateSpeech(l, VOICES.adam.rate) <= room);
     const text = fits.length ? pick(fits) : all.reduce((a, b) => (b.length < a.length ? b : a));
     this.audio.megafon();
-    // (mit Vorrang: Eine Durchsage, die noch läuft, endet hier – die Folge gehört Mini Adam)
-    const dur = this.speech.say(text, 'adam', { priority: true });
-    this.ui.megafon(text, dur + 1, '', SCHOENNBRUN.label);
+    // ein Satz der Folge (episode): Was sonst noch reden wollte, wartet dahinter; sein Untertitel kommt mit ihm
+    const dur = this.speech.say(text, 'adam', { episode: true, onStart: (d) => this.ui.megafon(text, d + 1, '', SCHOENNBRUN.label) });
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.line));
   }
@@ -1851,11 +1859,17 @@ export class Game {
     const S = SCHOENER_BRUNNEN;
     if (this.tv) this.tv.called = true;
     this.audio.megafon();
-    // sofort und vor allem anderen (cut): Ein Gruß, der noch spricht, endet hier, alles andere wartet dahinter; sein
-    // Untertitel bleibt oben, bis er abläuft (top), auch wenn derweil ein anderer Satz kommt
-    const dur = this.speech.say(S.say, 'brunnen', { priority: true, cut: true });
-    const line = this.ui.megafon(S.text, dur + 1.2, '', SCHOENNBRUN.label);
-    if (line && typeof line === 'object') line.top = true;
+    // ein Satz der Folge (episode) und sofort (cut): vor allem, was sonst wartet; der Gruß davor redet aus (die Folge
+    // wird nie unterbrochen – brunnenMegafon wählt ihn so kurz, dass er vorher endet). Sein Untertitel kommt mit ihm
+    // und bleibt oben, bis er abläuft (top), auch wenn derweil ein anderer Satz kommt
+    const dur = this.speech.say(S.say, 'brunnen', {
+      episode: true,
+      cut: true,
+      onStart: (d) => {
+        const line = this.ui.megafon(S.text, d + 1.2, '', SCHOENNBRUN.label);
+        if (line && typeof line === 'object') line.top = true;
+      },
+    });
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.call));
     // die Zuschauer sind begeistert (CHEER.brunnenTV: Stimmung und ein Schub Zuschauer, ZUFRIEDEN.tv), oben links
@@ -1878,6 +1892,8 @@ export class Game {
     const gain = this.tv && this.tv.viewers !== undefined ? Math.round(this.viewers - this.tv.viewers) : 0;
     if (gain >= 20) this.ui.toast(`📈 BrunnenTV: +${fmtNum(gain)} Zuschauer`, 'good', 'zuschauer');
     this.tv = null;
+    // was hinter der Folge gewartet hat, spricht jetzt (Veraltetes entfällt)
+    this.speech.episode?.(false);
     this.ui.brunnenTV(0);
     this.world.release();
     // (unterwegs läuft die Runde weiter: kein Bieterfenster)
@@ -1908,12 +1924,15 @@ export class Game {
       this.later(1.2, () => {
         // hat inzwischen eine Szene begonnen (Folge, Ladestopp), entfällt sie: dort spricht keine Durchsage
         if (this.tv || this.charging) return;
-        // die Karte nur zu einer Durchsage, die auch zu hören ist (OMI kann sie aus der Warteschlange drängen)
+        // die Karte nur zu einer Durchsage, die auch zu hören ist: Sie kommt, wenn sie spricht, und geht, wenn OMI oder
+        // eine Folge BrunnenTV sie aus der Warteschlange drängt oder abbricht
         let line = null;
-        const dur = this.speech.say(text, d.voice, { onDrop: () => line && (line.t = 0) });
+        const dur = this.speech.say(text, d.voice, {
+          onStart: (dd) => (line = this.ui.durchsage(VOICES[d.voice].label, text, dd + 1, name)),
+          onDrop: () => line && (line.t = 0),
+        });
         if (!dur) return;
         this.said = { t: this.t, voice: d.voice };
-        line = this.ui.durchsage(VOICES[d.voice].label, text, dur + 1, name);
         this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 1);
       });
     }
@@ -1988,9 +2007,8 @@ export class Game {
           this.audio.megafon();
           // Mini Adam ruft den Wunsch durchs Megafon – mit seiner Stimme
           let line = null;
-          const dur = this.speech.say(text, 'adam', { onDrop: () => line && (line.t = 0) });
+          const dur = this.speech.say(text, 'adam', { onStart: (dd) => (line = this.ui.megafon(text, dd + 1, name)), onDrop: () => line && (line.t = 0) });
           if (!dur) return;
-          line = this.ui.megafon(text, dur + 1, name);
           this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
         });
       }
@@ -2673,8 +2691,8 @@ export class Game {
     // ein leiser Zweiklang, damit man hört, dass jetzt nicht OMI spricht
     this.audio.tone(659.25, 0.16, 'sine', 0.05);
     this.audio.tone(523.25, 0.24, 'sine', 0.05, 0.13);
-    const dur = this.speech.say(text.replace(/_/g, ' '), this.studioVoice());
-    this.ui.studio(text, dur + 0.8);
+    let line = null;
+    const dur = this.speech.say(text.replace(/_/g, ' '), this.studioVoice(), { onStart: (d) => (line = this.ui.studio(text, d + 0.8)), onDrop: () => line && (line.t = 0) });
     S.last = this.t;
     this.studioUntil = this.t + dur + 0.8;
   }

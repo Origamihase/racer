@@ -1,4 +1,5 @@
-// Sprachausgabe (Web Speech API, deutsche Stimme). OMI hat Vorrang vor den
+// Sprachausgabe (Web Speech API, deutsche Stimme): eine Warteschlange für alle Stimmen – OMI, Sprachstudio,
+// Sprachdurchsagen, Mini Adam, Herr Schönnbrun. Eine Folge BrunnenTV hat Vorrang vor allem (episode), OMI vor den
 // Sprachdurchsagen der Zuschauer und vor dem Sprachstudio. Ohne Sprachausgabe läuft alles mit geschätzter Dauer weiter.
 import { VOICES } from './data.js';
 
@@ -25,6 +26,13 @@ const MALE = [/Killian/i, /Florian/i, /Conrad/i, /Stefan/i, /Markus/i, /Yannick/
 const isMale = (v) => MALE.some((re) => re.test(v.name));
 /** So viele Millisekunden nach cancel() wartet der nächste Satz (Chrome verschluckt sonst sein speak()). */
 const CANCEL_GAP = 60;
+/**
+ * Eine Folge BrunnenTV gehört der Sprachausgabe allein (Besitzer, 21.11.2026: Sie beginnt sofort, ihre Sätze kommen der
+ * Reihe nach und ohne Unterbrechung, alles andere wartet dahinter). polite: so viele Sekunden darf ein Satz, der beim
+ * Beginn einer Folge spricht, noch zu Ende sprechen – dann endet er; stale: wer so lange (Sekunden seit say) hinter
+ * einer Folge gewartet hat, ist veraltet und entfällt an ihrem Ende (opts.stale je Satz).
+ */
+export const EPISODE = { polite: 0.4, stale: 15 };
 /** Tonhöhe der Studio-Stimmen, wenn das Gerät für eine von beiden keine passende Stimme hat: deutlich höher und tiefer. */
 export const STUDIO_PITCH = { f: 1.0, m: 0.7 };
 
@@ -41,6 +49,9 @@ export class Speech {
     // wann (Date.now) zuletzt ein Satz abgebrochen wurde: Chrome verschluckt ein speak() gleich nach cancel() (pump)
     this.cancelAt = -Infinity;
     this.deferred = false;
+    // eine Folge BrunnenTV läuft (episode): nur ihre Sätze sprechen, alles andere wartet
+    this.inEpisode = false;
+    this.politeTimer = null;
     if (this.supported) {
       const load = () => {
         const all = window.speechSynthesis.getVoices();
@@ -123,25 +134,34 @@ export class Speech {
   }
 
   /**
-   * Text sprechen. opts: { priority, cut, onStart, onEnd, onDrop }
-   * Gibt die geschätzte Dauer zurück, 0, wenn der Satz gar nicht erst in die Warteschlange kommt. onDrop: ein Satz
-   * mit Vorrang hat ihn aus der Warteschlange geworfen, er wird nie gesprochen. cut (mit priority): sofort, vor allem
-   * anderen – was gerade spricht, endet, auch mit Vorrang, und die Warteschlange wartet dahinter (der Ruf jeder Folge
-   * BrunnenTV, „Schöner Brunnen!“: er kommt genau zu seiner Einstellung, nie zu spät).
+   * Text sprechen. opts: { episode, priority, cut, stale, onStart, onEnd, onDrop }
+   * Gibt die geschätzte Dauer zurück, 0, wenn der Satz gar nicht erst in die Warteschlange kommt. Untertitel zeigt der
+   * Aufrufer mit onStart (dann spricht der Satz wirklich) und nimmt sie mit onDrop wieder weg: Der Satz wird nie oder
+   * nicht zu Ende gesprochen (aus der Warteschlange geworfen, veraltet, beim Beginn einer Folge abgebrochen).
+   * episode: ein Satz der laufenden Folge BrunnenTV (episode(true)) – vor allen anderen, unter sich der Reihe nach, nie
+   * abgebrochen. priority: OMI drängelt sich vor die Zuschauer und das Studio. cut: sofort – was gerade spricht, endet
+   * (nur kein Satz der Folge), die Warteschlange wartet dahinter.
    */
   say(text, voiceKey = 'board', opts = {}) {
     const v = VOICES[voiceKey] || VOICES.board;
     const dur = estimateSpeech(text, v.rate);
-    const item = { text, voiceKey, opts, dur };
-    if (opts.cut) {
-      this.queue.unshift(item);
-      if (this.current) this.cancelCurrent();
+    const item = { text, voiceKey, opts, dur, at: Date.now() };
+    const cur = this.current;
+    // hinter die Sätze der Folge, die schon warten (ihre Reihenfolge bleibt)
+    const front = () => {
+      let i = 0;
+      while (i < this.queue.length && this.queue[i].opts.episode) i++;
+      return i;
+    };
+    if (opts.episode || opts.cut) {
+      this.queue.splice(opts.episode || this.inEpisode ? front() : 0, 0, item);
+      if (cur && !cur.opts.episode) this.cancelCurrent(true);
     } else if (opts.priority) {
       // OMI drängelt sich vor (laufende Zuschauer-Durchsage wird abgebrochen)
-      // (unter sich in der Reihenfolge, in der sie kamen – wie ihre Untertitel)
-      for (const q of this.queue) if (!q.opts.priority) q.opts.onDrop?.();
-      this.queue = this.queue.filter((q) => q.opts.priority);
-      if (this.current && !this.current.opts.priority) this.cancelCurrent();
+      // (unter sich in der Reihenfolge, in der sie kamen – wie ihre Untertitel; die Folge bleibt vorn)
+      for (const q of this.queue) if (!q.opts.priority && !q.opts.episode) q.opts.onDrop?.();
+      this.queue = this.queue.filter((q) => q.opts.priority || q.opts.episode);
+      if (cur && !cur.opts.priority && !cur.opts.episode) this.cancelCurrent(true);
       this.queue.push(item);
     } else {
       if (this.queue.length > 2) return 0;
@@ -151,7 +171,46 @@ export class Speech {
     return dur;
   }
 
-  cancelCurrent() {
+  /**
+   * Eine Folge BrunnenTV beginnt (on) oder endet. Beginn: Was gerade spricht und kein Satz der Folge ist, endet höflich
+   * – ist es in EPISODE.polite Sekunden fertig, darf es ausreden, sonst (und spätestens dann) endet es; was wartet,
+   * bleibt hinten stehen. Ende: Veraltetes (EPISODE.stale) entfällt, der Rest kommt der Reihe nach.
+   */
+  episode(on) {
+    if (!!on === this.inEpisode) return;
+    this.inEpisode = !!on;
+    clearTimeout(this.politeTimer);
+    this.politeTimer = null;
+    if (on) {
+      const c = this.current;
+      if (!c || c.opts.episode) return;
+      const left = (c.start ?? Date.now()) + c.dur * 1000 - Date.now();
+      if (left > EPISODE.polite * 1000) this.cancelCurrent(true);
+      else {
+        this.politeTimer = setTimeout(() => {
+          this.politeTimer = null;
+          if (this.current === c) this.cancelCurrent(true);
+        }, Math.max(0, left));
+      }
+      return;
+    }
+    const now = Date.now();
+    this.queue = this.queue.filter((q) => {
+      const fresh = q.opts.episode || now - q.at <= (q.opts.stale ?? EPISODE.stale) * 1000;
+      if (!fresh) q.opts.onDrop?.();
+      return fresh;
+    });
+    this.pump();
+  }
+
+  /** Der laufende Satz endet jetzt (dropped: nicht zu Ende gesprochen – sein Untertitel geht mit, onDrop). */
+  cancelCurrent(dropped = false) {
+    // erst loslassen, dann abbrechen: Meldet die Sprachausgabe den Abbruch gleich (onerror), findet er den Satz nicht
+    // mehr – sonst endete er dort ein zweites Mal und ginge an onDrop vorbei
+    const c = this.current;
+    if (c?.timer) clearTimeout(c.timer);
+    this.current = null;
+    this.busy = false;
     if (this.supported) {
       try {
         window.speechSynthesis.cancel();
@@ -160,15 +219,15 @@ export class Speech {
         /* egal */
       }
     }
-    if (this.current?.timer) clearTimeout(this.current.timer);
-    const c = this.current;
-    this.current = null;
-    this.busy = false;
+    if (dropped) c?.opts.onDrop?.();
     c?.opts.onEnd?.();
+    this.pump();
   }
 
   pump() {
     if (this.busy || this.paused || !this.queue.length || this.deferred) return;
+    // während einer Folge spricht nur sie: alles andere wartet hinter ihr (episode)
+    if (this.inEpisode && !this.queue[0].opts.episode) return;
     // gleich nach cancel() verschluckt Chrome den nächsten Satz (kein Ton, oft auch kein onend): einen Augenblick warten
     if (this.supported && this.enabled && Date.now() - this.cancelAt < CANCEL_GAP) {
       this.deferred = true;
@@ -181,6 +240,7 @@ export class Speech {
     const item = this.queue.shift();
     this.busy = true;
     this.current = item;
+    item.start = Date.now();
     const v = VOICES[item.voiceKey] || VOICES.board;
     item.opts.onStart?.(item.dur);
     const done = () => {
@@ -189,7 +249,9 @@ export class Speech {
       this.current = null;
       this.busy = false;
       item.opts.onEnd?.();
-      setTimeout(() => this.pump(), 250);
+      // eine kleine Pause zwischen zwei Sätzen – in einer Folge kommt ihr nächster Satz gleich (der Ruf, wenn der Gruß
+      // etwas länger brauchte als geschätzt)
+      setTimeout(() => this.pump(), this.queue[0]?.opts.episode ? 0 : 250);
     };
     if (this.supported && this.enabled && this.voices.length) {
       try {
@@ -225,6 +287,9 @@ export class Speech {
 
   stopAll() {
     this.queue = [];
+    this.inEpisode = false;
+    clearTimeout(this.politeTimer);
+    this.politeTimer = null;
     // Neustart oder Ende aus der Pause: cancel() hebt die Pause der Sprachausgabe nicht auf, sonst bliebe sie stumm
     if (this.paused) this.pause(false);
     this.cancelCurrent();

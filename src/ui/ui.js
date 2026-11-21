@@ -628,17 +628,17 @@ export class UI {
   }
 
   nomi(text, dur = 3) {
-    this.speak('nomi', text, Math.max(2.2, dur));
+    return this.speak('nomi', text, Math.max(2.2, dur));
   }
 
   /** Mini Adam sagt selbst etwas, ohne Megafon (der Gruß zu Beginn jedes Streams): Mikrofon und sein Name. */
   adam(text, dur = 3) {
-    this.speak('adam', '»' + text + '«', Math.max(2.2, dur), 'Mini Adam');
+    return this.speak('adam', '»' + text + '«', Math.max(2.2, dur), 'Mini Adam');
   }
 
   /** Das Sprachstudio spricht: derselbe Untertitel-Platz wie bei OMI, aber klar als Sprachstudio erkennbar. */
   studio(text, dur = 3) {
-    this.speak('studio', text, Math.max(2.2, dur), 'Sprachstudio');
+    return this.speak('studio', text, Math.max(2.2, dur), 'Sprachstudio');
   }
 
   money(amount, label) {
