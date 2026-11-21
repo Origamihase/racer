@@ -172,8 +172,8 @@ const MEME_SHARE = 0.18;
 /** Der Satz ohne seine Stichworte: „[ab] Wir sind …“ → „Wir sind …“. */
 export const untag = (line) => (line.charCodeAt(0) === 91 ? line.slice(line.indexOf(']') + 2) : line);
 // Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
-// Kästchen, lead Sekunden später folgen NOMIs Gong und ihre Ansage
-const RADAR = { ahead: 180, lead: 0.45 };
+// Kästchen (audio.js RADAR_BEEP, gut 0,6 s), lead Sekunden später – wenn es fertig ist – folgen OMIs Gong und ihre Ansage
+export const RADAR = { ahead: 180, lead: 0.7 };
 
 export class Game {
   /**
