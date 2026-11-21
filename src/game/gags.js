@@ -9,6 +9,7 @@ import { BOTS, SCHOENNBRUN, GAGS, viewerNameAt, fillTemplate } from '../data.js'
 import { fmtCent, fmtNum } from '../util.js';
 import { schrankeOf } from '../world/xxl/schranke.js';
 import { places } from '../map/graph.js';
+import { STREET } from '../world/kit/layout.js';
 
 /**
  * Die Bezahlschranke (world/xxl/schranke.js): Erst nach first Sekunden Stream, danach frühestens gap Sekunden nach der
@@ -52,6 +53,13 @@ export const PAKET = { first: [300, 540], step: [120, 240], wait: 5, keep: 900, 
  */
 export const SCHADE = { chance: 0.6, gap: 25, delay: [1.4, 2.8] };
 
+/**
+ * Mitleidskauf (GAGS.mitleid): Steht der Wagen in einem Ort ohne Szene stand Sekunden lang (unter kmh), und liegt rechts
+ * ein kleiner Laden (GAGS.mitleid.laeden) höchstens reach Meter vor oder hinter ihm, kauft Mini Adam dort ein – in
+ * jedem Ort einmal, höchstens alle gap Sekunden, nur mit genug Geld in der Kasse. Rechts: hinter side (x der Straße).
+ */
+export const MITLEID = { stand: 1.5, kmh: 1, reach: 9, gap: 45, side: STREET.curbR + STREET.pave - 0.5 };
+
 /** Kleiner, schneller Zufall mit Saat (wie in tools/stream-sim.mjs). */
 export function mulberry32(a) {
   return () => {
@@ -90,22 +98,26 @@ export class StreamGags {
     this.paket = { step: 0, due: this.between(...PAKET.first), pack: null, picked: false, n: 0 };
     this.lastTown = null;
     this.schadeT = 0;
+    // Mitleidskäufe: Anzahl, Summe, wie lange der Wagen schon steht, die Orte mit Kauf, wann wieder
+    this.mitleid = { n: 0, sum: 0, still: 0, towns: new Set(), next: 0 };
   }
 
-  /** Was Abrechnung und Abspann von den Gags wissen (Game.end): { verein: { name, members } | null }. */
+  /** Was Abrechnung und Abspann von den Gags wissen (Game.end): { verein: { name, members } | null, mitleid: { n, sum } }. */
   report() {
     const V = this.verein;
-    return { verein: V.founded ? { name: GAGS.verein.name, members: V.members.slice() } : null };
+    const M = this.mitleid;
+    return { verein: V.founded ? { name: GAGS.verein.name, members: V.members.slice() } : null, mitleid: { n: M.n, sum: Math.round(M.sum * 100) / 100 } };
   }
 
-  /** Einmal je Bild (Game.update). */
-  update() {
+  /** Einmal je Bild (Game.update), dt: Sekunden seit dem letzten. */
+  update(dt) {
     if (!this.on) return;
     if (this.g.world.gate) this.updateGate();
     this.updateVerein();
     this.updateCode();
     this.updateTracker();
     this.updatePaket();
+    if (this.g.world.town) this.updateMitleid(dt);
   }
 
   /** Eine Zeile eines Vorrats, die gerade stimmt (FACTS über Game.fits), ohne Stichwort; '' wenn keine passt. */
@@ -377,5 +389,50 @@ export class StreamGags {
     const text = this.pick(GAGS.schade);
     const name = this.name();
     this.later(this.between(...SCHADE.delay), () => this.say(text, name));
+  }
+
+  // --- 8. Mitleidskauf -----------------------------------------------------------------------------------------------
+  /** Der kleine Laden rechts neben dem Wagen in der Ortsdurchfahrt sec (Plan des Orts, x wie die Straße, z = −u) oder null. */
+  shopAt(sec, u) {
+    const town = this.g.world.town(sec);
+    if (!town || !town.plan) return null;
+    return town.plan.items.find((it) => GAGS.mitleid.laeden[it.name] && it.x > MITLEID.side && Math.abs(-it.z - u) <= MITLEID.reach) || null;
+  }
+
+  updateMitleid(dt) {
+    const g = this.g;
+    const M = this.mitleid;
+    if (g.player.kmh >= MITLEID.kmh || g.tv || g.charging || g.halt || g.navi.stopping || g.world.stopping()) {
+      M.still = 0;
+      return;
+    }
+    M.still += dt;
+    if (M.still < MITLEID.stand || g.t < M.next) return;
+    const sec = g.world.trip().section;
+    const key = sec.place + '@' + Math.round(sec.s0);
+    if (sec.kind !== 'stadt' || M.towns.has(key)) return;
+    const shop = this.shopAt(sec, g.player.s - sec.s0);
+    if (!shop) return;
+    const [where, things, [lo, hi]] = GAGS.mitleid.laeden[shop.name];
+    const what = this.pick(things);
+    const amount = Math.round(this.between(lo, hi) * 10) / 10;
+    M.towns.add(key);
+    M.next = g.t + MITLEID.gap;
+    if (g.money < amount) return;
+    // bezahlt aus der Kasse des Streams: eine Zeile der Abrechnung (bei den Abzügen), die Stimmung steigt
+    g.money -= amount;
+    g.breakdown['Mitleidskäufe'] = (g.breakdown['Mitleidskäufe'] || 0) - amount;
+    M.n++;
+    M.sum += amount;
+    g.ui.money(-amount, 'Mitleidskauf');
+    g.ui.toast(`🛍️ Mitleidskauf ${where}: ${what} · −${fmtCent(amount)}`, 'good', 'mitleid');
+    g.audio.coin();
+    g.eco.cheer('mitleid');
+    const lines = GAGS.mitleid.chat.slice();
+    for (let i = 0, n = this.chance(0.5) ? 2 : 1; i < n; i++) {
+      const text = lines.splice(Math.floor(this.rnd() * lines.length), 1)[0];
+      const name = this.name();
+      this.later(this.between(0.8, 1.6) + i * this.between(0.8, 1.4), () => this.say(text, name));
+    }
   }
 }

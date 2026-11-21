@@ -2,12 +2,12 @@
 // Herr Schönnbrun moderiert BrunnenTV (Bauchbinde, Logo, Hymne, Gruß im Chat, Album, Abspann). Dazu die Grundregel
 // aller Gags: Sie würfeln mit eigenem Zufall – ein Stream verläuft mit ihnen genauso wie ohne sie.
 import { readFileSync } from 'node:fs';
-import { fmtNum } from '../src/util.js';
+import { fmtNum, fmtCent } from '../src/util.js';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
 import { SCHOENNBRUN, ABSPANN_REISE, GAGS, SHOP, shopPrice } from '../src/data.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
 import { drawSchoennbrunLogo } from '../src/ui/schoennbrun.js';
-import { StreamGags, GATE, VEREIN, CODE, TRACKER, PAKET, SCHADE } from '../src/game/gags.js';
+import { StreamGags, GATE, VEREIN, CODE, TRACKER, PAKET, SCHADE, MITLEID } from '../src/game/gags.js';
 import { FACTS } from '../src/game/game.js';
 import { thanksGroups } from '../src/ui/abspann.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from '../src/world/xxl/schranke.js';
@@ -24,6 +24,10 @@ const ok = (cond, msg) => {
   }
 };
 const read = (f) => readFileSync(new URL('../' + f, import.meta.url), 'utf8');
+// der längste Hinweis am Rand, den die Prüfung der freien Sicht im Browser misst (tools/sicht-check.js): Kein Hinweis
+// der Gags ist länger (in Zeichen), so bleibt auch er oben am Rand
+const LONGEST_NOTICE = /der längste Hinweis des Spiels[^\n]*\n\s*clear\(\);\n\s*ui\.toast\('([^']+)'/.exec(read('tools/sicht-check.js'))[1];
+const chars = (t) => [...t].length;
 
 /** Fährt einen Stream, bis n Folgen BrunnenTV vorbei sind (höchstens secs Sekunden); liefert die Folgen [{ t0, t1 }]. */
 function episodes(sim, n, secs = 1800) {
@@ -465,6 +469,73 @@ function fakeGame(secs, { gate = true } = {}) {
 }
 
 // --- 7 Ende
+
+// --- 8. Mitleidskauf: im Ort vor einem kleinen Laden stehen bleiben ---------------------------------------------
+{
+  // ein Ort mit Plan: rechts eine Bäckerei bei u 200, eine Bank bei u 260 (kein Mitleidskauf), links ein Kiosk bei u 300
+  const mk = () => {
+    const town = { kind: 'stadt', place: 165, s0: 1000, s1: 1800 };
+    const g = fakeGame([town]);
+    const items = [{ name: 'shopBakery', x: 16, z: -200 }, { name: 'shopBank', x: 16, z: -260 }, { name: 'shopKiosk', x: -9, z: -300 }, { name: 'shopBooks', x: 16, z: -500 }];
+    Object.assign(g, { money: 100, breakdown: {}, halt: null, navi: { stopping: null }, eco: { n: 0, cheer: (k) => k === 'mitleid' && g.eco.n++ }, toasts: [], pops: [] });
+    Object.assign(g.world, { town: (sec) => (sec === town ? { plan: { items } } : null), stopping: () => false, trip: () => ({ cur: { sections: [town] }, section: g.player.s >= town.s0 && g.player.s < town.s1 ? town : { kind: 'zub' } }) });
+    g.audio.coin = () => {};
+    g.ui.money = (v, label) => g.pops.push({ v, label });
+    g.ui.toast = (text) => g.toasts.push(text);
+    return { g, town };
+  };
+  const standAt = (g, s, secs) => {
+    g.player.s = s;
+    g.player.speed = 0;
+    g.player.kmh = 0;
+    for (let i = 0; i < Math.round(secs * 10); i++) g.step(0.1);
+  };
+  {
+    const { g, town } = mk();
+    g.t = 100;
+    standAt(g, town.s0 + 207, 1.3);
+    ok(g.gags.mitleid.n === 0, 'Mitleidskauf schon nach 1,3 s');
+    standAt(g, town.s0 + 207, 0.5);
+    ok(g.gags.mitleid.n === 1, 'Kein Mitleidskauf vor der Bäckerei');
+    const m = g.gags.mitleid;
+    const toast = g.toasts[0] || '';
+    const [where, things] = GAGS.mitleid.laeden.shopBakery;
+    ok(where === 'in der Bäckerei' && things.some((w) => new RegExp(`^🛍️ Mitleidskauf ${where}: ${w} · −\\d+,\\d0\\s€$`).test(toast)), `Mitleidskauf: ${toast}`);
+    ok(m.sum >= 2 && m.sum <= 5 && Math.abs(g.money - (100 - m.sum)) < 1e-9 && Math.abs(g.breakdown['Mitleidskäufe'] + m.sum) < 1e-9 && g.pops[0].v === -m.sum && g.eco.n === 1, `Mitleidskauf: ${m.sum} €, Kasse ${g.money}, Abrechnung ${g.breakdown['Mitleidskäufe']}`);
+    standAt(g, town.s0 + 207, 3);
+    const chat = g.chat.filter((x) => GAGS.mitleid.chat.includes(x.text));
+    ok(chat.length >= 1 && chat.length <= 2 && chat.every((x) => x.gag), `Mitleidskauf: ${chat.length} Zeilen im Chat`);
+    // einmal je Ort: auch vor dem Buchladen weiter hinten nicht noch einmal
+    g.t += MITLEID.gap;
+    standAt(g, town.s0 + 500, 3);
+    ok(g.gags.mitleid.n === 1, 'Zwei Mitleidskäufe in einem Ort');
+    ok(g.gags.report().mitleid.n === 1 && g.gags.report().mitleid.sum === m.sum, 'Abrechnung: Mitleidskäufe fehlen');
+  }
+  for (const [u, why] of [[255, 'vor der Bank'], [300, 'vor dem Kiosk links'], [222, '13 m neben der Bäckerei'], [-50, 'vor dem Ort']]) {
+    const { g, town } = mk();
+    g.t = 100;
+    standAt(g, town.s0 + u, 4);
+    ok(g.gags.mitleid.n === 0, `Mitleidskauf ${why}`);
+  }
+  for (const [what, set] of [['in einer Folge', (g) => (g.tv = { place: 165 })], ['beim Laden', (g) => (g.charging = {})], ['am Haltepunkt', (g) => (g.halt = {})], ['ohne Geld', (g) => (g.money = 1)], ['im Rollen', (g) => (g.player.speed = 0.6)]]) {
+    const { g, town } = mk();
+    g.t = 100;
+    g.player.s = town.s0 + 205;
+    set(g);
+    for (let i = 0; i < 40; i++) g.step(0.1);
+    ok(g.gags.mitleid.n === 0, `Mitleidskauf ${what}`);
+  }
+  ok(/if \(o\.gags\?\.mitleid\.n\) line\('Mitleidskäufe', fmtNum\(o\.gags\.mitleid\.n\) \+ ' · ' \+ fmtCent\(o\.gags\.mitleid\.sum\)\)/.test(read('src/ui/menus.js')), 'menus.js: die Statistik zählt die Mitleidskäufe nicht');
+  ok(read('src/data.js').includes("export const FINES = ['Bußgeld', 'Verwarngeld', 'Reparaturen', 'Mitleidskäufe'];"), 'data.js: Mitleidskäufe nicht bei den Abzügen');
+  // ohne Plan des Orts (die Prüfstände) gibt es keine
+  const sim = makeStream({ driver: DRIVERS.troedler, seed: 4, endless: true });
+  sim.step(600);
+  ok(sim.game.gags.mitleid.n === 0 && !('Mitleidskäufe' in sim.game.breakdown), 'Mitleidskauf ohne Ort');
+  // kurz wie jeder Hinweis am Rand (jeder Laden, jeder Kauf, der höchste Preis)
+  const longest = Object.values(GAGS.mitleid.laeden).flatMap(([where, things, [, hi]]) => things.map((what) => `🛍️ Mitleidskauf ${where}: ${what} · −${fmtCent(hi)}`)).sort((a, b) => chars(b) - chars(a))[0];
+  ok(chars(longest) <= chars(LONGEST_NOTICE), `Mitleidskauf: „${longest}“ ist länger als der längste Hinweis „${LONGEST_NOTICE}“`);
+  console.log(`  Mitleidskauf: nach ${MITLEID.stand} s Stand vor einem kleinen Laden rechts (±${MITLEID.reach} m), einmal je Ort; nicht vor Bank, links, in Szenen, ohne Geld`);
+}
 
 // --- Grundregel: mit und ohne Gags derselbe Stream -----------------------------------------------------------------
 {

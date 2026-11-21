@@ -689,8 +689,8 @@ export class Game {
     // die Uhr ist die Reisezeit
     this.clock += go.secs / 60;
     this.megafonCd = Math.max(0, this.megafonCd - dt);
-    // die Running Gags (gags.js) mit eigenem Zufall: Bezahlschranke …
-    this.gags.update();
+    // die Running Gags (gags.js) mit eigenem Zufall: Bezahlschranke, Verein, Paketsuche, Mitleidskauf …
+    this.gags.update(dt);
 
     // --- Eingaben ------------------------------------------------------------
     if (ctl.device) this.device = ctl.device;

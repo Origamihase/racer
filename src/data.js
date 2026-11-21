@@ -92,7 +92,7 @@ export const INCOME = {
   Challenges: 'Challenge',
 };
 // Abzüge stehen in der Abrechnung ganz unten
-export const FINES = ['Bußgeld', 'Verwarngeld', 'Reparaturen'];
+export const FINES = ['Bußgeld', 'Verwarngeld', 'Reparaturen', 'Mitleidskäufe'];
 
 /**
  * Reise: An jedem erreichten Ziel kommt die Werkstatt-Rechnung der Runde (game.js settleRound). bump: Euro je
@@ -213,6 +213,26 @@ export const GAGS = {
   },
   // „Schade Schokolade“: so tröstet der Chat, wenn etwas schiefgeht (Ausfahrt verpasst, niemand bietet, Rempler, Blitzer)
   schade: ['Schade Schokolade 🍫', 'Schade Schokolade!', 'schade schokolade 😅', 'Tja. Schade Schokolade 🍫', 'Schade Schokolade, Mini Adam 🍫'],
+  // „Mitleidskauf“: Hält Mini Adam im Ort vor einem kleinen Laden, kauft er dort eine Kleinigkeit. laeden: je Laden
+  // des Baukastens [wo, was (eines davon), Preis von … bis (Euro)] – kurz, der Hinweis am Rand nennt beides
+  // (streamgags-test: nie länger als der längste Hinweis, den die Prüfung der freien Sicht misst); chat freut sich
+  mitleid: {
+    laeden: {
+      shopBakery: ['in der Bäckerei', ['eine Brezel', 'zwei Schnecken', 'ein Laugenbrötchen'], [2, 5]],
+      shopIce: ['in der Eisdiele', ['eine Kugel Vanille', 'ein Spaghetti-Eis', 'zwei Kugeln Schoko'], [2, 6]],
+      shopCafe: ['im Café', ['einen Kaffee', 'ein Stück Apfelkuchen'], [3, 6]],
+      shopKiosk: ['am Kiosk', ['saure Schnüre', 'eine Zeitung', 'eine Tüte Gummibärchen'], [2, 5]],
+      shopBooks: ['im Buchladen', ['ein Rätselheft', 'eine Brunnen-Postkarte'], [2, 7]],
+      shopFlowers: ['im Blumenladen', ['einen kleinen Kaktus', 'drei Tulpen'], [3, 7]],
+      shopToys: ['im Spielzeugladen', ['einen Flummi', 'ein Mini-Auto', 'Seifenblasen'], [2, 7]],
+      shopVeg: ['im Gemüseladen', ['zwei Bananen', 'einen Apfel', 'eine Gurke'], [2, 4]],
+      shopDoner: ['beim Imbiss', ['eine Portion Pommes', 'ein Ayran'], [3, 7]],
+      shopPizza: ['in der Pizzeria', ['ein Stück Pizza', 'eine Pizzaschnecke'], [3, 6]],
+      shopElectro: ['im Elektroladen', ['ein Ladekabel', 'zwei Batterien'], [4, 7]],
+    },
+    chat: ['Mitleidskauf! 🛍️', 'Adam unterstützt die kleinen Läden ❤', 'Der Laden freut sich 😊', 'Ehrenmann, kauft im Ort ein 🛍️',
+      'Mitleidskauf, wie im Stream 😂', 'Lokal einkaufen, Herr Adam 👏'],
+  },
 };
 /**
  * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des
