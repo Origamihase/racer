@@ -8,7 +8,7 @@
 
 export const ZONES = ['front', 'rear', 'left', 'right'];
 
-/** Namen und Zustandswörter für Mittelbildschirm und NOMI („Stoßfänger vorn: verbeult“). */
+/** Namen und Zustandswörter für Mittelbildschirm und OMI („Stoßfänger vorn: verbeult“). */
 export const ZONE_INFO = {
   front: { name: 'Stoßfänger vorn', wo: 'vorn', teil: 'der Stoßfänger vorn', steps: ['wie neu', 'verschrammt', 'verbeult', 'hängt schief'] },
   rear: { name: 'Heck', wo: 'hinten', teil: 'das Heck', steps: ['wie neu', 'verschrammt', 'verbeult', 'Klappe klemmt'] },
@@ -16,7 +16,7 @@ export const ZONE_INFO = {
   right: { name: 'Seite rechts', wo: 'rechts', teil: 'die rechte Seite', steps: ['wie neu', 'verschrammt', 'eingedellt', 'Spiegel hängt'] },
 };
 
-/** NOMI und Chat: freundlich, nie über Verletzungen. {wo} („vorn“) und {teil} („der Stoßfänger vorn“) werden ersetzt. */
+/** OMI und Chat: freundlich, nie über Verletzungen. {wo} („vorn“) und {teil} („der Stoßfänger vorn“) werden ersetzt. */
 export const DAMAGE_LINES = {
   first: ['Kleine Delle, großes Herz. Weiter geht’s!', 'Huch! Nur eine Schramme {wo}. Ich puste mal.', 'Das war ein Küsschen, kein Unfall.'],
   more: ['Der Tesla sammelt Andenken, jetzt auch {wo}.', 'Ich notiere: {teil} braucht später eine Umarmung.', 'Kurz durchatmen. Wir fahren ganz entspannt weiter.'],

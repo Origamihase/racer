@@ -22,6 +22,11 @@ const FORMATS = [
   ['Handy quer', 844, 390, true, false],
   ['Handy quer', 667, 375, true, false],
   ['Handy hochkant', 390, 844, true, true],
+  // Tablets hochkant: Zwischen Info-Feld und Chat bliebe nur eine Säule von gut 200 px – der Streifen steht darunter
+  ['Tablet hochkant', 768, 1024, true, true],
+  ['Tablet hochkant', 820, 1180, true, true],
+  ['Tablet hochkant', 834, 1194, true, true],
+  ['Tablet hochkant', 1024, 1366, true, false],
 ];
 
 console.log('Freie Sicht: Rechteck, Streifen und Instrumente je Format');
@@ -97,6 +102,56 @@ const spoken = {
 };
 for (const [who, lists] of Object.entries(spoken)) check(maxLen(lists) <= LONG[who].length, `${who}: längster Satz ${maxLen(lists)} Zeichen, gemessen wird mit ${LONG[who].length}`);
 check(all.includes(browser.match(/const BREIT = '([^']+)';/)[1]), 'die Sprachdurchsage mit den meisten Zeilen (BREIT) steht so in den Daten');
+
+// Elsa am rechten Rand (scenery.js ELSA_STATUE, 4,3 m × Maßstab mit Krone) ist aus Mini Adams Sicht zu sehen, bis sie
+// ELSA_VIEW rechts der Blickrichtung steht (game.js elsaView; danach verdeckt sie der Innenspiegel) – die Action-Cam an
+// der Scheibe (rig.js) liegt auf keinem Strahl vom Auge zu ihrer Figur, aus keiner Spur und in keinem Abstand.
+{
+  const { ACTION_CAM: C, CAM_HULL } = await import('../src/cockpit/rig.js');
+  const { EYE } = await import('../src/cockpit/cockpit.js');
+  const { ELSA_STATUE } = await import('../src/world/scenery.js');
+  const { ROAD } = await import('../src/textures.js');
+  const view = +readFileSync(new URL('../src/game/game.js', import.meta.url), 'utf8').match(/const ELSA_VIEW = \((\d+) \* Math\.PI\) \/ 180;/)[1];
+  const boxes = CAM_HULL.map((b) => [C.x + b[0], C.y + b[1], C.z + b[2], C.x + b[3], C.y + b[4], C.z + b[5]]);
+  // Strahl o + t·d (t von 0 bis 1) gegen einen Kasten (Slab-Verfahren)
+  const hits = (o, d, b) => {
+    let t0 = 0;
+    let t1 = 1;
+    for (let k = 0; k < 3; k++) {
+      const [ok, dk] = [[o.x, d.x], [o.y, d.y], [o.z, d.z]][k];
+      if (Math.abs(dk) < 1e-12) {
+        if (ok < b[k] || ok > b[k + 3]) return false;
+        continue;
+      }
+      const u = (b[k] - ok) / dk;
+      const v = (b[k + 3] - ok) / dk;
+      t0 = Math.max(t0, Math.min(u, v));
+      t1 = Math.min(t1, Math.max(u, v));
+      if (t0 > t1) return false;
+    }
+    return true;
+  };
+  const top = 4.3 * ELSA_STATUE.scale;
+  let seen = 0;
+  for (let lane = 0; lane < ROAD.lanes; lane++) {
+    const x = ROAD.laneCenter(lane);
+    const hidden = [];
+    for (let d = 150; d >= 1; d -= 0.5) {
+      const side = ELSA_STATUE.x - (x + EYE.x);
+      if (Math.atan2(side, d + EYE.z) >= (view * Math.PI) / 180) continue;
+      seen++;
+      for (const dx of [-0.5, 0, 0.5]) {
+        for (const y of [0.3, 1.5, 3, 4.5, top - 0.6, top]) {
+          const d3 = { x: ELSA_STATUE.x - x + dx - EYE.x, y: y - EYE.y, z: -d - EYE.z };
+          if (boxes.some((b) => hits(EYE, d3, b))) hidden.push(d);
+        }
+      }
+    }
+    const at = [...new Set(hidden)];
+    check(!at.length, `Spur ${lane + 1}: Elsa am Rand frei von der Action-Cam` + (at.length ? ` – verdeckt in ${at[0]} bis ${at[at.length - 1]} m Abstand` : ''));
+  }
+  check(seen > 200, `Elsa am Rand: ${seen} Stellungen geprüft`);
+}
 
 if (fails) {
   console.error(`sicht-test: ${fails} FEHLER`);

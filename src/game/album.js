@@ -6,15 +6,14 @@
 //
 // Eintrag: { n: Folge (fortlaufend über alle Streams), p: Ortsschlüssel (places[i].key), k: Art des Hauptbrunnens
 // (layout.js goalKind), t: Beginn des Streams (ms seit 1970, zugleich seine Kennung), u: Uhr der Reise in Minuten,
-// d: eine Streitfrage des Wikis, die zu dieser Folge passt (optional, BRUNNEN_DEBATTE in data.js) }.
+// d: eine Streitfrage des Wikis, die zu dieser Folge passt (optional, BRUNNEN_DEBATTE in data.js), w: 1 für eine
+// Folge an einem Brunnen unterwegs, nicht am Navi-Ziel (optional) }.
 import { places } from '../map/graph.js';
-import { goalKind, FOUNTAIN_TITLE } from '../world/kit/layout.js';
+import { goalKind, fountainName, FOUNTAIN_TITLE } from '../world/kit/layout.js';
 import { ALBUM_MAX, cleanAlbum } from '../save.js';
 
 export { ALBUM_MAX };
 
-/** Die Streitfragen des Wikis, die zu einer Folge passen können. */
-export const DEBATES = ['trink', 'kanal', 'alster'];
 /** So oft kommt die Trinkbrunnenproblematik auf, wenn im Ort ein Trinkbrunnen steht (sonst stünde sie fast überall). */
 const TRINK_CHANCE = 0.3;
 
@@ -43,12 +42,13 @@ export function debateFor(key, kinds = [], roll = Math.random()) {
  * Eine neue Folge ins Album: place = Ortsindex der Karte, t = Beginn des Streams, clock = Uhr der Reise (Minuten),
  * kinds = Arten der Brunnen im Ort (für die Streitfrage). Ergebnis: der Eintrag (seine Nummer n ist die Folge).
  */
-export function addEpisode(save, { place, t, clock, kinds = [], roll = Math.random() }) {
+export function addEpisode(save, { place, t, clock, kinds = [], roll = Math.random(), way = false }) {
   const a = albumOf(save);
   const p = places[place];
   const e = { n: a.n + 1, p: p.key, k: goalKind(p), t: Math.round(t), u: Math.round(clock) };
   const d = debateFor(p.key, kinds, roll);
   if (d) e.d = d;
+  if (way) e.w = 1;
   a.n = e.n;
   a.list.push(e);
   if (a.list.length > ALBUM_MAX) a.list.splice(0, a.list.length - ALBUM_MAX);
@@ -57,6 +57,15 @@ export function addEpisode(save, { place, t, clock, kinds = [], roll = Math.rand
 
 /** Name der Brunnenart (FOUNTAIN_TITLE), „Brunnen“ für eine unbekannte. */
 export const kindTitle = (k) => FOUNTAIN_TITLE[k] ?? 'Brunnen';
+
+/**
+ * Name des Brunnens einer Folge: sein eigener (layout.js fountainName, „Gänselieselbrunnen“), solange der Ort ihn noch
+ * hat; eine Folge aus der Zeit vor der zweiten Brunnenfamilie (andere Art) heißt nach ihrer Art.
+ */
+export function episodeTitle(e) {
+  const p = placeOf(e.p);
+  return p && goalKind(p) === e.k ? fountainName(p) : kindTitle(e.k);
+}
 
 /** Datum des Streams wie „20.11.2026“. */
 export function fmtStreamDate(t) {

@@ -54,24 +54,54 @@ const XS = {
   stadt: { a: -3.475, b: 3.625, gaps: [], lines: [[0, 0.12, 3, 9]] },
 };
 
-/** Weißer Knopf mit dem Ausfahrtpfeil: die nächste Handlung auf der Route (k = Größe, 1 am Auto). */
-function exitButton(ctx, x, y, T, k = 1) {
+/** Blau der Wegweiser an der Autobahn (wie drawShield): Schilder der Ausfahrten im Navi, weiß beschriftet. */
+const SIGN = '#2a5bb8';
+/** Kopfzeile des Schilds der nächsten Ausfahrt (drawNext) je Art (trip.nextExit). */
+const NEXT_HEAD = { ausfahrt: 'Nächste Ausfahrt', kreuz: 'Nächstes Kreuz', ende: 'Gleich' };
+/** Name einer Ausfahrt für ihr Schild am Knopf: ohne das Wort „Ausfahrt“, das der Pfeil schon sagt. */
+const tagOf = (title) => (title ? title.replace(/^Ausfahrt /, '') : '');
+
+/**
+ * Knopf mit dem Ausfahrtpfeil (k = Größe, 1 am Auto): weiß mit dem Rand der Route für die nächste Handlung, blau wie
+ * die Wegweiser für die nächste Ausfahrt, an der die Route vorbeiführt (pass). name: ein blaues Schild rechts daneben.
+ * Liefert das belegte Rechteck [x0, y0, x1, y1] (die Namen der Karte weichen ihm aus).
+ */
+function exitButton(ctx, x, y, T, k = 1, name = '', pass = false) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(k, k);
-  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.beginPath();
-  ctx.ellipse(0, 15, 9, 3, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 19, 12, 4, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.strokeStyle = T.routeCase;
-  ctx.lineWidth = 3;
+  ctx.fillStyle = pass ? SIGN : '#ffffff';
+  ctx.strokeStyle = pass ? '#ffffff' : T.routeCase;
+  ctx.lineWidth = 3.5;
   ctx.beginPath();
-  ctx.arc(0, 0, 13, 0, Math.PI * 2);
+  ctx.arc(0, 0, 17, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
-  drawTurnIcon(ctx, 'exit', 0, 0, 20, T.routeCase);
+  drawTurnIcon(ctx, 'exit', 0, 0, 27, pass ? '#ffffff' : T.routeCase);
+  let x1 = 19;
+  if (name) {
+    ctx.font = `700 19px ${FONT}`;
+    const text = fit(ctx, name, 230);
+    const tw = ctx.measureText(text).width;
+    ctx.fillStyle = SIGN;
+    rrect(ctx, 24, -15, tw + 20, 30, 7);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.6;
+    rrect(ctx, 26.5, -12.5, tw + 15, 25, 5);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 34, 1);
+    x1 = 46 + tw;
+  }
   ctx.restore();
+  return [x - 19 * k, y - 19 * k, x + x1 * k, y + 22 * k];
 }
 /** Die Zielfahne hüpft kurz, wenn ein neues Ziel kommt. */
 function flagPop(m) {
@@ -182,6 +212,8 @@ export class NaviScreen {
     this.closeW = 0; // 0 = Karte, 1 = Nahansicht (dazwischen blenden beide über)
     this.closeOn = false;
     this.prev = new Map(); // Lage der Namen vom letzten Bild
+    this.tags = []; // Rechtecke der Ausfahrt-Knöpfe auf der Karte (die Namen weichen ihnen aus)
+    this.top = 168; // bis hierher (Bildzeile) reichen Ansage und Schild der nächsten Ausfahrt
     this.progress = { target: -1, km: 0 }; // Kilometer zum Ziel, als es kam (Streifen unten)
     this.arrival = { target: -1, min: 0 }; // die angezeigte Minute der Ankunft (arrivalMinute)
     this.t = 0;
@@ -263,7 +295,10 @@ export class NaviScreen {
     const kmPerM = onRoad ? sec.kmPerM : 0;
     const ox = w / 2;
     const oy = h * CAR_Y;
-    // schräg nur mit WebGL (die Karte braucht es); sonst alles flach wie von oben
+    // schräg nur mit WebGL (die Karte braucht es); sonst alles flach wie von oben – und wieder schräg, sobald ein
+    // verlorenes WebGL zurück ist
+    const wp = this.painter.warp;
+    if (this.tilt === false && wp && wp.ready && wp.gen !== this.tiltGen) this.tilt = undefined;
     if (this.tilt === undefined) this.tilt = this.painter.canTilt();
     const cam = this.cam.set(ox, oy, this.tilt ? TILT : 0, FOCAL);
 
@@ -328,6 +363,12 @@ export class NaviScreen {
       ctx.globalAlpha = 1;
     }
     if (!flat) this.drawFog(ctx, w, theme);
+    // die nächste Ausfahrt als Schild unter der Ansage – nicht, solange die Ansage selbst sie nennt (unter dem Hinweis
+    // auf eine neue Route, solange er steht); darunter beginnen die Namen der Karte
+    const nx = !hop && ins.next && ins.next.fork !== ins.fork ? ins.next : null;
+    const rerouting = m.trip.target >= 0 && m.reroute < REROUTE_NOTE;
+    const nextY = rerouting ? 216 : 170;
+    this.top = nx ? nextY + 60 : 168;
     // aufrecht auf dem Boden: Namen, Schilder, Knopf der Handlung, Fahne (je Ansicht mit ihrem Anteil)
     if (cw < 1) {
       ctx.globalAlpha = 1 - cw;
@@ -352,7 +393,8 @@ export class NaviScreen {
     } else drawGroundCar(ctx, ox, oy, 40, cam.c, theme === 'dark' ? 'rgba(76,141,255,0.24)' : 'rgba(47,111,228,0.17)');
 
     this.drawBanner(ctx, ins, w, theme, hop);
-    if (m.trip.target >= 0 && m.reroute < REROUTE_NOTE) this.drawReroute(ctx, w, theme, m.reroute);
+    if (rerouting) this.drawReroute(ctx, w, theme, m.reroute);
+    if (nx) this.drawNext(ctx, nx, w, nextY);
     this.drawBottom(ctx, m, ins, nav, w, h, theme);
     ctx.restore();
 
@@ -380,10 +422,14 @@ export class NaviScreen {
     ctx.fillRect(0, FOG_Y[0], w, FOG_Y[1] - FOG_Y[0]);
   }
 
-  /** Kartenlinie (Kartenkoordinaten) → Boden (Bezugs-Bildpunkte vor dem Auto). */
-  ground(P) {
+  /**
+   * Kartenlinie (Kartenkoordinaten) → Boden (Bezugs-Bildpunkte vor dem Auto). trail: in den eigenen Puffer des
+   * gefahrenen Wegs (bis zu Tausende Punkte in jedem Bild; gilt bis zum nächsten Aufruf mit trail).
+   */
+  ground(P, trail = false) {
     const n = P.length / 2;
-    const G = new Float64Array(n * 2);
+    if (trail && !(this.trailG && this.trailG.length >= n * 2)) this.trailG = new Float64Array(Math.ceil(n * 1.25) * 2);
+    const G = trail ? this.trailG.subarray(0, n * 2) : new Float64Array(n * 2);
     const o = [0, 0];
     for (let i = 0; i < n; i++) {
       if (Number.isNaN(P[i * 2])) {
@@ -408,13 +454,17 @@ export class NaviScreen {
     if (this.tilt) {
       const [r, g, b] = FOG[theme];
       ok = this.painter.drawTilted(ctx, this.tv, { fog: [r / 255, g / 255, b / 255], yTop: FOG_Y[0] - 4, reserve, budget: this.budget });
-      // WebGL verloren: ab dem nächsten Bild flach (dieses noch mit der flachen Karte unter schrägen Linien)
-      if (!ok) this.tilt = false;
+      // WebGL verloren: ab dem nächsten Bild flach (dieses noch mit der flachen Karte unter schrägen Linien), bis es
+      // wiederhergestellt ist
+      if (!ok) {
+        this.tilt = false;
+        this.tiltGen = this.painter.warp?.gen;
+      }
     }
     if (!ok) this.painter.drawRotated(ctx, this.view, 1);
     // gefahrener Weg (hinter dem Auto), dann die Route nach vorn
     if (m.trail.length >= 4) {
-      const G = this.ground(m.trail);
+      const G = this.ground(m.trail, true);
       this.band(ctx, G, 4.5, T.drivenCase);
       this.band(ctx, G, 3, T.driven);
     }
@@ -425,14 +475,19 @@ export class NaviScreen {
   drawMapMarks(ctx, m, ins, T, theme, w, h, hop, nav) {
     const tv = this.tv;
     const o = [0, 0, 0];
-    let markAt = null;
-    if (ins.turn === 'exit' && ins.node >= 0 && !hop) {
-      const p = m.nodeXY(ins.node);
+    const tags = this.tags;
+    tags.length = 0;
+    // ein Knopf nur ganz unter Ansage und Schild der nächsten Ausfahrt (this.top), nie halb von ihnen verdeckt
+    const top = Math.max(FOG_Y[1] - 20, this.top + 19);
+    const seen = (p) => {
       tv.toScreen(p.x, p.y, o);
-      if (o[2] > 0 && o[0] > -20 && o[0] < w + 20 && o[1] > FOG_Y[1] - 20 && o[1] < h + 20) {
-        markAt = [o[0], o[1], upright(o[2])];
-        exitButton(ctx, o[0], o[1], T, markAt[2]);
-      }
+      return o[2] > 0 && o[0] > -20 && o[0] < w + 20 && o[1] > top && o[1] < h + 20;
+    };
+    if (ins.turn === 'exit' && ins.node >= 0 && !hop && seen(m.nodeXY(ins.node))) tags.push(exitButton(ctx, o[0], o[1], T, upright(o[2]), tagOf(ins.head)));
+    // die nächste Ausfahrt, an der die Route vorbeiführt: blauer Knopf mit ihrem Namen
+    const nx = ins.next;
+    if (nx && !hop && nx.fork !== ins.fork && nx.fork.node !== ins.node && seen(m.nodeXY(nx.fork.node))) {
+      tags.push(exitButton(ctx, o[0], o[1], T, upright(o[2]) * 0.9, nx.name, true));
     }
     let flagAt = null;
     if (m.route && m.trip.target >= 0) {
@@ -440,7 +495,7 @@ export class NaviScreen {
       tv.toScreen(P.x, P.y, o);
       if (o[2] > 0 && o[0] > -40 && o[0] < w + 40 && o[1] > FOG_Y[1] - 10 && o[1] < h + 50) flagAt = [o[0], o[1], upright(o[2])];
     }
-    this.drawLabels(ctx, m, T, w, h, flagAt, markAt, nav.visited);
+    this.drawLabels(ctx, m, T, w, h, flagAt, tags, nav.visited);
     if (flagAt) drawFlag(ctx, flagAt[0], flagAt[1], flagPop(m) * flagAt[2], theme === 'dark' ? '#e6e8eb' : '#1d1f22');
   }
 
@@ -638,7 +693,7 @@ export class NaviScreen {
         ctx.stroke();
         drawTurnIcon(ctx, 'stop', 0, 0, 26, '#ffffff');
         ctx.restore();
-      } else if (mk.type === 'exit') exitButton(ctx, o[0], o[1], T, k);
+      } else if (mk.type === 'exit') exitButton(ctx, o[0], o[1], T, k, tagOf(mk.name));
       else if (mk.type === 'pin') drawFlag(ctx, o[0], o[1], flagPop(m) * k, theme === 'dark' ? '#e6e8eb' : '#1d1f22');
     }
     ctx.textAlign = 'left';
@@ -706,7 +761,7 @@ export class NaviScreen {
   }
 
   /** Ortsnamen und Autobahnschilder, ohne dass sich etwas überdeckt; Karten, Auto, Fahne und Handlungsknopf bleiben frei. */
-  drawLabels(ctx, m, T, w, h, flagAt, markAt, visited) {
+  drawLabels(ctx, m, T, w, h, flagAt, tags, visited) {
     const tv = this.tv;
     const v = this.view;
     const b = bucketOf(v.scale);
@@ -751,9 +806,9 @@ export class NaviScreen {
     }
     const all = cands.concat(shields).sort((a, c) => c.imp - a.imp);
     // frei bleiben: Dunst und Ansage oben, Karten unten, Auto, Fahne
-    const avoid = [[0, 0, w, Math.max(168, yTop)], [0, h - 168, w, h], [w / 2 - 34, h * CAR_Y - 30, w / 2 + 34, h * CAR_Y + 26]];
+    const avoid = [[0, 0, w, Math.max(this.top, yTop)], [0, h - 168, w, h], [w / 2 - 34, h * CAR_Y - 30, w / 2 + 34, h * CAR_Y + 26]];
     if (flagAt) avoid.push([flagAt[0] - 6 * flagAt[2], flagAt[1] - 40 * flagAt[2], flagAt[0] + 26 * flagAt[2], flagAt[1] + 4]);
-    if (markAt) avoid.push([markAt[0] - 16, markAt[1] - 16, markAt[0] + 16, markAt[1] + 16]);
+    for (const r of tags) avoid.push(r);
     const placed = placeLabels(tv, all, { dots, avoid, pad: 6, gap: 4, prev: this.prev });
     const prev = new Map();
     for (const L of placed) {
@@ -846,6 +901,39 @@ export class NaviScreen {
     ctx.textBaseline = 'middle';
     ctx.fillText(text, w / 2, y + 20);
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * Die nächste Ausfahrt (ins.next) unter der Ansage, wie ein Wegweiser: blau mit weißem Rand, links der Pfeil, oben
+   * klein „Nächste Ausfahrt“, darunter groß ihr Name, rechts die Entfernung in den Worten der Ansage. Führt die Route
+   * dort hinaus, sagt es die Kopfzeile. y: Oberkante.
+   */
+  drawNext(ctx, nx, w, y) {
+    const x = 14;
+    const bw = w - 28;
+    const bh = 54;
+    ctx.fillStyle = SIGN;
+    rrect(ctx, x, y, bw, bh, 12);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.lineWidth = 2;
+    rrect(ctx, x + 4, y + 4, bw - 8, bh - 8, 9);
+    ctx.stroke();
+    drawTurnIcon(ctx, 'exit', x + 33, y + bh / 2, 36, '#ffffff');
+    const right = x + bw - 18;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 26px ${FONT}`;
+    ctx.fillText(nx.say, right, y + bh / 2 + 1);
+    const tx = x + 62;
+    const room = right - ctx.measureText(nx.say).width - 18 - tx;
+    ctx.textAlign = 'left';
+    ctx.font = `600 14px ${FONT}`;
+    ctx.fillStyle = 'rgba(255,255,255,0.82)';
+    ctx.fillText(fit(ctx, NEXT_HEAD[nx.kind] + (nx.exit ? ' · hier fährt die Route ab' : ''), room), tx, y + 16);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(shrink(ctx, nx.name, room, 700, 23, 17), tx, y + 36);
   }
 
   /**

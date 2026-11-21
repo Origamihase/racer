@@ -224,7 +224,7 @@ export function curve(material) {
 
 // --- dasselbe auf der CPU (gleiche Formeln wie im Shader, z. B. für Kamera, Schilder, Raycasts) ----------------
 /** Bahn an der Stelle d (Meter voraus): x, z der Linie x = 0, Kurs th, Höhe y, Krümmung k, dk, Bezugslinie xr, Steigung g. */
-export const curveFrame = { x: 0, z: 0, th: 0, y: 0, k: 0, dk: 0, xr: 0, g: 0 };
+const curveFrame = { x: 0, z: 0, th: 0, y: 0, k: 0, dk: 0, xr: 0, g: 0 };
 export function curveAt(d, out = curveFrame) {
   const u = (d - CURVE_D0) / CURVE_DS;
   const j = Math.min(Math.max(Math.floor(u), 0), CURVE_N - 2);
@@ -275,7 +275,7 @@ export function curveShrink(x, k, xr) {
 }
 
 /** Wie tief ein Punkt d Meter voraus, der bei (x, z) erscheint, unter den Boden sinkt (Rückfaltung, siehe FOLD). */
-export function curveSink(d, x, z) {
+function curveSink(d, x, z) {
   if (d < FOLD.d) return 0;
   const t = Math.min(Math.max((Math.hypot(x, z) - FOLD.lo * d) / ((FOLD.hi - FOLD.lo) * d), 0), 1);
   return FOLD.sink * (1 - t * t * (3 - 2 * t));

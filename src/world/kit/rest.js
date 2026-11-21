@@ -668,9 +668,9 @@ defs.popcorn_eimer = {
   },
 };
 
-// Für die Ladepause an der Heldensäule: eine kleine Popcorn-Maschine im Kinostil auf einem Klapptisch hinter der Säule,
-// ihr Kabel steckt in einer Steckdose an der Rückwand der Säule (der Klassiker „Haushaltsgeräte an der E-Säule testen“);
-// dazu eine Flasche Bananensaft und eine Popcorn-Tüte, die es auch einzeln gibt (für Mini Adams Hand). Alles ohne Marke.
+// Für die Ladepause an der Heldensäule: eine kleine Popcorn-Maschine im Kinostil oben auf der Säule, ihr Kabel steckt in
+// einer Steckdose an der Rückwand der Säule (der Klassiker „Haushaltsgeräte an der E-Säule testen“); dazu eine Flasche
+// Bananensaft und eine Popcorn-Tüte für Mini Adams Hand. Alles ohne Marke.
 const POP = { kernel: 0xfff3c2, toasted: 0xf7dc8a, red: 0xe5483a, redDark: 0xb83a30, glass: 0xd3e8ee, shine: 0xf4fbfc, paper: 0xf6efe2 };
 
 /**
@@ -856,65 +856,48 @@ function popcornBag(b, x, y, z, near) {
   });
 }
 
-// Lage des Tischs im Rahmen der Heldensäule (Mitte der Säule, +z ihre Vorderseite): hinter der Säule, zur Seite der
-// freien Nachbarbucht (dort steht die Kamera der Nahaufnahme), frei von den Säulen des Ladedachs (1,25 / −1,1);
-// machine: Mitte der Maschine auf der Platte (dort springt beim Ladestopp das Popcorn, xxl/popping.js)
-export const STAND = { at: [0.48, -0.78], top: 0.6, w: 0.58, d: 0.44, machine: [0.04, -0.04] };
-defs.popcorn_stand = {
+// Die Maschine auf dem Deckel der Heldensäule (Rahmen der Säule: Mitte ihres Fußes, +z ihre Vorderseite; top: Höhe
+// des Deckels, chargePost DC): um yaw gedreht, so dass die offene Tür schräg nach vorn zur Heldenbucht zeigt – zum
+// Fahrerfenster des Autos, das dort rückwärts eingeparkt lädt (dorthin fliegt beim Ladestopp das Popcorn,
+// xxl/popping.js). socket: Steckdose an der Rückwand (x, y), in der das Kabel der Maschine steckt.
+export const POST_POP = { top: 0.12 + 1.86 + 0.07, yaw: -0.33, socket: [-0.12, 1.62] };
+defs.popcorn_post = {
   kind: 'rest', far: true,
   make(b) {
     const { F } = b;
     const near = !b.lod;
-    const { top, w, d } = STAND;
-    // Klapptisch aus Holz: Platte, Zarge, vier leicht gespreizte Beine mit Querstreben
-    F.rbox(0, top - 0.03, 0, w, 0.03, d, 0.04, C.timber, { seg: near ? 2 : 1, bottom: true });
-    F.rbox(0, top - 0.07, 0, w - 0.08, 0.04, d - 0.08, 0.02, C.timberDark, { seg: 1, top: false, bottom: true });
-    const legs = [];
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      const t = [sx * (w / 2 - 0.06), top - 0.06, sz * (d / 2 - 0.06)];
-      const f = [sx * (w / 2 - 0.035), 0.012, sz * (d / 2 - 0.035)];
-      F.rod(t, f, 0.016, C.timberDark, { seg: near ? 8 : 5 });
-      F.ball(f[0], f[1], f[2], 0.017, C.timberDark, { ws: 6, hs: 4 });
-      legs.push([t, f]);
-    }
-    if (near) for (const sx of [-1, 1]) {
-      const at = (leg, k) => leg[0].map((v, i) => v + (leg[1][i] - v) * k);
-      const a = legs[sx < 0 ? 0 : 2];
-      const c = legs[sx < 0 ? 1 : 3];
-      F.rod(at(a, 0.62), at(c, 0.62), 0.011, C.timberDark, { seg: 6 });
-    }
-    // Maschine rechts der Mitte, Tüte vorn rechts, Flasche hinten rechts; links bleibt Platz für das Kabel
-    const [mx, mz] = STAND.machine;
-    b.at(mx, top, mz, 0, () => popcornMachine(b, near));
-    popcornBag(b, 0.235, top, 0.155, near);
-    juiceBottle(b, 0.255, top, -0.15, near);
-    // Steckdose an der Rückwand der Säule (Säule: Mitte bei −at, 0,4 m tief, flach bis ±0,155 um ihre Mitte), Stecker
-    // darin, Kabel im Bogen über die vordere Tischkante, auf der Platte entlang und von links in die Tülle der Maschine
-    const sx = -STAND.at[0] + 0.08;
-    const back = -STAND.at[1] - 0.2;
-    F.rbox(sx, 0.86, back - 0.015, 0.11, 0.13, 0.04, 0.015, C.cream, { seg: 1 });
-    if (near) F.rbox(sx, 0.95, back - 0.036, 0.07, 0.012, 0.006, 0.003, C.teal, { seg: 1 });
-    F.rbox(sx, 0.89, back - 0.06, 0.05, 0.06, 0.06, 0.012, C.plug, { seg: 1 });
-    const g = [mx + MACHINE.gland[0], top + MACHINE.gland[1], mz + MACHINE.gland[2]];
+    const { top, yaw } = POST_POP;
+    b.at(0, top, 0, yaw, () => popcornMachine(b, near));
+    // Steckdose an der Rückwand der Säule (0,4 m tief, Rückwand bei z −0,2), Stecker darin; das Kabel läuft an der
+    // Rückwand hinauf, über die hintere Kante des Deckels und auf ihm entlang von links in die Tülle der Maschine
+    const [sx, sy] = POST_POP.socket;
+    const back = -0.2;
+    F.rbox(sx, sy, back - 0.015, 0.11, 0.13, 0.04, 0.015, C.cream, { seg: 1 });
+    if (near) F.rbox(sx, sy + 0.09, back - 0.036, 0.07, 0.012, 0.006, 0.003, C.teal, { seg: 1 });
+    F.rbox(sx, sy + 0.03, back - 0.06, 0.05, 0.06, 0.06, 0.012, C.plug, { seg: 1 });
+    // Tülle (links am Sockel der Maschine) und die Richtung, aus der das Kabel in sie hineinführt (−x der Maschine)
+    const c = Math.cos(yaw);
+    const sn = Math.sin(yaw);
+    const rot = (x, z) => [x * c + z * sn, -x * sn + z * c];
+    const [gx, gz] = rot(MACHINE.gland[0], MACHINE.gland[2]);
+    const [ox, oz] = rot(-1, 0);
+    const gy = top + MACHINE.gland[1];
     const lie = top + 0.0085;
     const cable = [
-      [sx, 0.92, back - 0.08],
-      [sx, 0.917, back - 0.13],
-      [sx + 0.015, 0.86, back - 0.2],
-      [sx + 0.05, 0.75, back - 0.29],
-      [-0.27, 0.66, 0.215],
-      [-0.255, 0.622, 0.165],
-      [-0.245, lie, 0.12],
-      [-0.232, lie, 0.05],
-      [-0.212, lie, -0.03],
-      [-0.192, lie + 0.007, -0.075],
-      [g[0] - 0.045, g[1] - 0.03, g[2]],
-      [g[0] - 0.024, g[1] - 0.004, g[2]],
-      [g[0] - 0.008, g[1], g[2]],
+      [sx, sy + 0.06, back - 0.09],
+      [sx, sy + 0.1, back - 0.105],
+      [sx, sy + 0.2, back - 0.05],
+      [sx, top - 0.12, back - 0.04],
+      [sx + 0.005, top - 0.01, back - 0.035],
+      [sx + 0.01, lie + 0.004, back + 0.01],
+      [gx + ox * 0.09, lie, gz + oz * 0.09 - 0.02],
+      [gx + ox * 0.045, gy - 0.035, gz + oz * 0.045],
+      [gx + ox * 0.022, gy - 0.006, gz + oz * 0.022],
+      [gx + ox * 0.006, gy, gz + oz * 0.006],
     ];
-    cord(F, cable, 0.0075, C.cable, near ? 40 : 16, near ? 8 : 5);
-    // w, d: der Tisch; Steckdose und Kabel reichen bis an die Säule (post). h: Kugel auf dem Dach der Maschine (1,19 m)
-    return { w: w + 0.04, d: d + 0.04, h: 1.2, centre: true, post: [-STAND.at[0], -STAND.at[1]] };
+    cord(F, cable, 0.0075, C.cable, near ? 36 : 14, near ? 8 : 5);
+    // (Maße: der Deckel der Säule; h: Kugel auf dem Dach der Maschine)
+    return { w: 0.5, d: 0.45, h: top + 0.6, centre: true };
   },
 };
 defs.bananensaft_flasche = {

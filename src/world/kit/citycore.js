@@ -515,7 +515,6 @@ export function atlasAspect(key) {
   const c = cells.get(key);
   return c.w / c.h;
 }
-export const atlasKeys = () => [...cells.keys()];
 const WHITE = cells.get('y:white');
 const WHITE_U = (WHITE.x + WHITE.w / 2) / ATLAS;
 const WHITE_V = 1 - (WHITE.y + WHITE.h / 2) / ATLAS;
@@ -702,7 +701,8 @@ export function cityCore(F) {
 
 /**
  * Material mit frei gewähltem Text (Ortsschild, Wegweiser, Banner …): draw(ctx, w, h) malt einmal, danach liegt
- * das Material unter key im Cache.
+ * das Material unter key im Cache. Jeder Aufruf zählt einen Nutzer; gibt release() den letzten frei, gehen Material,
+ * Textur und Leinwand (die Schilder jedes Orts, an dem der Stream vorbeikommt, blieben sonst bis zum Ende im Speicher).
  */
 export function textMaterial(core, key, w, h, draw, { side = THREE.FrontSide } = {}) {
   let m = core.textMats.get(key);
@@ -715,8 +715,10 @@ export function textMaterial(core, key, w, h, draw, { side = THREE.FrontSide } =
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 8;
     m = soften(core.F.lambert({ map: t, side, ...FRONT }));
+    Object.assign(m.userData, { textKey: key, textMats: core.textMats, users: 0 });
     core.textMats.set(key, m);
   }
+  m.userData.users++;
   return m;
 }
 const panelGeos = new Map();
@@ -1875,11 +1877,19 @@ export function compose(core, items, { shadows = true } = {}) {
 
 /**
  * Gibt frei, was compose() für ein Objekt eigens verschmolzen hat. Geteilte Geometrien (Bausteine, Texttafeln),
- * Materialien und Texturen bleiben: sie gehören dem Baukasten.
+ * Materialien und Texturen bleiben: sie gehören dem Baukasten – nur ein Textmaterial (textMaterial), das kein
+ * anderes Objekt mehr nutzt, geht mit.
  */
 export function release(obj) {
   obj.traverse((o) => {
     if (o.geometry && o.geometry.userData.merged) o.geometry.dispose();
+    const m = o.material;
+    if (!m || !m.userData || !m.userData.textMats || o.userData.textFreed) return;
+    o.userData.textFreed = true;
+    if (--m.userData.users > 0) return;
+    if (m.userData.textMats.get(m.userData.textKey) === m) m.userData.textMats.delete(m.userData.textKey);
+    m.map.dispose();
+    m.dispose();
   });
 }
 

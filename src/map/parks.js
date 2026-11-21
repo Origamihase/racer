@@ -30,6 +30,18 @@ export const PARK = {
 };
 /** Der Halt liegt so weit hinter dem Haltepunkt spotS (wie am Brunnen: das Ereignis kommt, ehe der Wagen steht). */
 export const PARK_STOP_AFTER = 2;
+/**
+ * Ladesäule in jedem Ort auf dem Weg (Ortsdurchfahrten, nicht der Start): derselbe kleine Park wie in Erlensee am
+ * Ortsanfang rechts, Mitte u Meter hinter der Ortstafel (xxl/charge.js CHARGE.pass), Halt in der Spur wie im Park
+ * (halt: xxl/charge.js dockHalt(u)); der Brunnen liegt weiter hinten im Ort (graph.js spotIn: 0,6 der Länge). near:
+ * so weit voraus (m) muss die Säule mindestens liegen, damit die Fahrt sie anbietet (trip.js restsAhead) – der Wagen
+ * hält dann noch vor ihr, auch mit 100 km/h von der Landstraße.
+ */
+export const POST = { u: 70, halt: 81.02, near: 200 };
+/** So nennen Navi, OMI und Akku-Karte die Ladesäule des Orts place (Index in places). */
+export function postName(place) {
+  return `Ladesäule in ${places[place].name}`;
+}
 
 /** Ausfahrt, an der jede ankommende Autobahn weitergeht? (Kandidat für einen Ladepark) */
 export function parkCandidate(nd) {

@@ -1,25 +1,27 @@
 // Prüft den Radarwarner ohne Grafik: das echte Spiel (Game) mit Mitspielern, die mitschreiben; die Fahrt steht dabei
 // am Start (die Blitzer stellt das Spiel an die Stelle p.s der Straße).
-// Die Regel: Einen Blitzer kündigt niemand an – außer dem Radarwarner aus dem Tesla-Shop. Blitz, Bußgeld, Foto,
+// Die Regel: Einen Blitzer kündigt niemand an – außer dem Radarwarner aus dem Shop. Blitz, Bußgeld, Foto,
 // Statistik und Stream-Kasse sind mit ihm und ohne ihn dieselben.
 // node tools/radar-test.mjs
 // - Ohne Radarwarner, zu schnell: Bis zum Blitzer fällt nirgends ein Wort über ihn (Sprache, Untertitel, Hinweise,
 //   Chat, Navi), kein Piepen, kein Lämpchen – und dann blitzt es wie immer: Foto, 15 € Bußgeld, Statistik, Chat.
 // - Ohne Radarwarner, brav: keine Ansage; „Nicht geblitzt“ zählt und wird gelobt.
 // - Mit Radarwarner: genau eine Ansage je Blitzer, vor dem Tempo-120-Schild – erst piept das Kästchen, dann kommen
-//   NOMIs Gong und ihr Satz; das Lämpchen blinkt vom Piepen bis zum Blitzer; wer zu schnell ist, wird trotzdem
+//   OMIs Gong und ihr Satz; das Lämpchen blinkt vom Piepen bis zum Blitzer; wer zu schnell ist, wird trotzdem
 //   geblitzt. Zwei Blitzer: zwei Ansagen.
 // - Nach einem Blitz stichelt der Chat in etwa jedem zweiten Stream: ohne Radarwarner mit einem Wink zum Shop, mit
 //   ihm erst recht – höchstens eine Zeile je Blitz, nie vor dem Foto, nie nach einer braven Vorbeifahrt.
 // - Derselbe Stream mit und ohne Radarwarner: Kasse, Abrechnung und Statistik stimmen auf den Cent überein.
 // - Der Artikel: steht im Shop, hat eine Stufe, übersteht Speichern und Laden; alte Spielstände laden unverändert.
+// - Der Piepser (src/audio.js, mit einem mitschreibenden Audio-Kontext): hoch, lang genug und stark genug, um bei
+//   130 km/h über Motor, Abrollen und Wind zu liegen, die er kurz leiser macht; OMIs Gong kommt danach.
 import { Game } from '../src/game/game.js';
 import { Trip } from '../src/game/trip.js';
 import { BOARD, CHAT, SHOP, UPGRADE_LIMITS } from '../src/data.js';
 import { loadSave, storeSave } from '../src/save.js';
 
 const DT = 1 / 30;
-// so viele Meter vor dem Tempo-120-Schild schlägt der Radarwarner an (wie NOMIs Hinweis bisher)
+// so viele Meter vor dem Tempo-120-Schild schlägt der Radarwarner an (wie OMIs Hinweis bisher)
 const AHEAD = 180;
 let fails = 0;
 let checks = 0;
@@ -160,7 +162,7 @@ function world(r, what) {
 
 /** Niemand kündigt den Blitzer an: kein Wort, kein Ton, kein Lämpchen – bis er hinter dem Wagen liegt. */
 function unannounced(r, what) {
-  ok(spoken(r).length === 0 && subtitled(r).length === 0, `${what}: NOMI sagt den Blitzer an`);
+  ok(spoken(r).length === 0 && subtitled(r).length === 0, `${what}: OMI sagt den Blitzer an`);
   ok(calls(r, 'audio', 'radar').length === 0, `${what}: Es piept`);
   ok(r.lamp.length === 0, `${what}: Das Lämpchen geht an`);
   for (const z of r.zones) {
@@ -207,7 +209,7 @@ function clean(r, what) {
 }
 
 /**
- * Der Radarwarner sagt jeden Blitzer genau einmal an, vor dem Schild: Das Kästchen piept, dann kommen NOMIs Gong und
+ * Der Radarwarner sagt jeden Blitzer genau einmal an, vor dem Schild: Das Kästchen piept, dann kommen OMIs Gong und
  * ihr Satz; sein Lämpchen blinkt vom Piepen bis zum Blitzer.
  */
 function announced(r, what) {
@@ -225,7 +227,7 @@ function announced(r, what) {
     ok(e && e.args[1] === 'board' && e.s > from && e.s < z.limitS, `${what}: Ansage ${i + 1} nicht zwischen ${from} und dem Schild bei ${z.limitS} (${e ? e.s.toFixed(1) : 'fehlt'})`);
     const beep = beeps[i];
     ok(beep && beep.s > from && beep.s <= from + r.step + 1e-6, `${what}: Das Piepen kommt nicht ${AHEAD} m vor dem Schild (${beep ? beep.s.toFixed(1) : 'fehlt'} statt ${from})`);
-    // die Reihenfolge fürs Ohr: Piepen, dann NOMIs Gong, dann ihr Satz – alles binnen gut einer Sekunde
+    // die Reihenfolge fürs Ohr: Piepen, dann OMIs Gong, dann ihr Satz – alles binnen gut einer Sekunde
     const gong = beep && e && gongs.find((x) => x.t > beep.t && x.t < e.t);
     ok(!!gong && gong.t - beep.t >= 0.4 && e.t - beep.t < 1.2, `${what}: Piepen, Gong und Satz kommen nicht in dieser Reihenfolge`);
     const l = r.lamp[i];
@@ -260,12 +262,15 @@ ok(flashes(stream({ radar: 1, kmh: 125 })) === 0 && flashes(stream({ kmh: 125 })
 ok(flashes(stream({ radar: 1, kmh: 128 })) === 1 && flashes(stream({ kmh: 128 })) === 1, 'Mit 128 km/h wird nicht geblitzt');
 
 // --- 4. Zwei Blitzer in einem Stream ----------------------------------------------------------------------------------------
-const twoRadar = stream({ radar: 1, kmh: 150, cameras: 2 });
+// (Startwert 10: Wann das Sprachstudio spricht, hängt an OMIs Sätzen – auch an der Warnung des Radarwarners. Fällt
+// ein Satz des Studios genau in die Warnung, würfelt es später und der Zufall läuft auseinander; wer an Stimmung oder
+// Ansagen dreht, sucht hier notfalls neu)
+const twoRadar = stream({ radar: 1, kmh: 150, cameras: 2, seed: 10 });
 ok(twoRadar.zones.length === 2 && twoRadar.zones[1].bornS > twoRadar.zones[0].endS, 'Der zweite Blitzer kommt nicht');
 world(twoRadar, 'mit, zwei Blitzer');
 announced(twoRadar, 'mit, zwei Blitzer');
 flashed(twoRadar, 'mit, zwei Blitzer', 150);
-const twoPlain = stream({ kmh: 150, cameras: 2 });
+const twoPlain = stream({ kmh: 150, cameras: 2, seed: 10 });
 unannounced(twoPlain, 'ohne, zwei Blitzer');
 flashed(twoPlain, 'ohne, zwei Blitzer', 150);
 
@@ -347,8 +352,135 @@ ok(slowPlain.game.stats.blitzerClean === 1 && slowRadar.game.stats.blitzerClean 
   ok(five.game.hasRadar === true && spoken(five).length === 1 && same(five.game.stats, fastRadar.game.stats) && five.game.money === fastRadar.game.money, 'Stufe 5 verhält sich anders als Stufe 1');
 }
 
+// ---------- der Piepser selbst (src/audio.js) ----------
+// Ein Audio-Kontext zum Mitschreiben: jeder Knoten merkt sich seine Verbindungen und Zeitverläufe. Gerechnet wird mit
+// der Stärke am Ausgang (Lautstärke mal Effektivwert der Wellenform) bei 130 km/h und halbem Strom: Der Piepser liegt
+// über 2 kHz, weit über Abrollen und Wind (bei gut 1 kHz); jeder Ton hält seine volle Stärke mindestens 50 ms; er ist
+// mindestens so stark wie alle Fahrgeräusche zusammen, die er dabei auf weniger als die Hälfte drückt, und danach
+// klingen sie wieder wie vorher; OMIs Gong kommt erst, wenn er fertig ist.
+let beepInfo = '';
+{
+  const { Audio, RADAR_BEEP } = await import('../src/audio.js');
+  const RMS = { sine: Math.SQRT1_2, square: 1, triangle: 1 / Math.sqrt(3), sawtooth: 1 / Math.sqrt(3) };
+  class Param {
+    constructor(v = 0) {
+      this.value = v;
+      this.ev = [];
+    }
+    setValueAtTime(v, t) {
+      this.ev.push(['set', v, t]);
+      return this;
+    }
+    linearRampToValueAtTime(v, t) {
+      this.ev.push(['lin', v, t]);
+      return this;
+    }
+    exponentialRampToValueAtTime(v, t) {
+      this.ev.push(['exp', v, t]);
+      return this;
+    }
+    setTargetAtTime(v, t, tc) {
+      this.ev.push(['target', v, t, tc]);
+      return this;
+    }
+    /** Wert zur Zeit t (Rampen zwischen den Punkten; setTarget zählt ab seiner Startzeit als erreicht). */
+    at(t) {
+      let v = this.value;
+      let tv = -Infinity;
+      for (const [k, x, te] of this.ev) {
+        if (te > t) {
+          if (k === 'lin') return v + ((x - v) * (t - tv)) / (te - tv);
+          if (k === 'exp') return v * (x / v) ** ((t - tv) / (te - tv));
+          return v;
+        }
+        v = x;
+        tv = te;
+      }
+      return v;
+    }
+  }
+  const made = [];
+  const node = (kind, extra = {}) => {
+    const n = { kind, out: [], t0: 0, t1: Infinity, connect(o) { this.out.push(o); return o; }, start(t = 0) { this.t0 = t; }, stop(t) { this.t1 = t; }, ...extra };
+    made.push(n);
+    return n;
+  };
+  class Ctx {
+    constructor() {
+      this.currentTime = 0;
+      this.sampleRate = 8000;
+      this.destination = node('dest');
+      this.state = 'running';
+    }
+    createGain() { return node('gain', { gain: new Param(1) }); }
+    createDynamicsCompressor() { return node('comp', { threshold: new Param(), ratio: new Param() }); }
+    createBuffer(ch, len) { return { getChannelData: () => new Float32Array(len) }; }
+    createBufferSource() { return node('noise'); }
+    createOscillator() { return node('osc', { type: 'sine', frequency: new Param(440) }); }
+    createBiquadFilter() { return node('filter', { type: 'lowpass', frequency: new Param(350), Q: new Param(1) }); }
+  }
+  globalThis.window = { AudioContext: Ctx };
+  const au = new Audio();
+  au.init();
+  ok(au.ready, 'Audio: startet nicht');
+  const ctx = au.ctx;
+  const v = 130 / 3.6;
+  const drive = (t) => {
+    ctx.currentTime = t;
+    au.update(1 / 60, { speed: v, throttle: 0.5, rain: 0, sirenLevel: 0 });
+  };
+  // die Fahrgeräusche (Stärke am Ausgang, ihr Ziel zur Zeit t); Rauschen hat den Effektivwert eines Sinus
+  const amb = (t) => au.motor.gain.at(t) * RMS.sawtooth + au.whineGain.gain.at(t) * RMS.sine + au.roadGain.gain.at(t) * RMS.sine + au.windGain.gain.at(t) * RMS.sine;
+  drive(10);
+  const before = amb(10);
+  const n0 = made.length;
+  au.radar();
+  const beeps = made.slice(n0).filter((n) => n.kind === 'osc').map((o) => ({ o, g: o.out[0] }));
+  for (let t = 10; t <= 10.7; t += 1 / 60) drive(t);
+  const during = amb(10.3);
+  for (let t = 10.7; t <= 12; t += 1 / 60) drive(t);
+  const after = amb(12);
+  const B = RADAR_BEEP;
+  ok(beeps.length === B.n * B.freq.length, `Radarwarner: ${beeps.length} Töne`);
+  let first = Infinity;
+  let last = 0;
+  let minHold = Infinity;
+  let peak = 0;
+  for (const { o, g } of beeps) {
+    const f = o.frequency.at(o.t0);
+    ok(f >= 2000 && f >= 2 * (200 + v * 22) && f >= 2 * (500 + v * 14), `Radarwarner: Ton bei ${f} Hz geht in Abrollen und Wind unter`);
+    ok(g.out[0] === au.sfx, 'Radarwarner: Ton nicht über die Geräusche (sfx)');
+    // wie lange steht der Ton auf mindestens 90 % seiner Spitze?
+    let top = 0;
+    let hold = 0;
+    let t0 = Infinity;
+    // (zu hören nur, solange der Ton läuft: von start bis stop)
+    for (let t = o.t0; t < o.t1; t += 0.0005) {
+      const x = g.gain.at(t);
+      top = Math.max(top, x);
+      if (x > 1e-4) {
+        t0 = Math.min(t0, t);
+        last = Math.max(last, t);
+      }
+    }
+    for (let t = o.t0; t < o.t1; t += 0.0005) if (g.gain.at(t) >= 0.9 * top) hold += 0.0005;
+    first = Math.min(first, t0);
+    minHold = Math.min(minHold, hold);
+    peak = Math.max(peak, top * RMS[o.type]);
+  }
+  ok(minHold >= 0.05, `Radarwarner: ein Ton hält seine Stärke nur ${(minHold * 1000).toFixed(0)} ms`);
+  ok(peak >= during && peak >= 0.05, `Radarwarner: Stärke ${peak.toFixed(3)} gegen Fahrgeräusche ${during.toFixed(3)}`);
+  ok(during <= 0.5 * before, `Radarwarner: Die Fahrgeräusche werden nicht leiser (${during.toFixed(3)} statt ${before.toFixed(3)})`);
+  ok(Math.abs(after - before) < 1e-3 * before, `Radarwarner: Die Fahrgeräusche kommen nicht zurück (${after.toFixed(3)} statt ${before.toFixed(3)})`);
+  ok(peak <= 0.12, `Radarwarner: zu laut (${peak.toFixed(3)}, die Hupe hat rund 0,08)`);
+  const { RADAR } = await import('../src/game/game.js');
+  ok(RADAR && RADAR.lead >= last - first + 0.05, `Radarwarner: OMIs Gong (nach ${RADAR && RADAR.lead} s) fällt in den Piepser (${(last - first).toFixed(2)} s)`);
+  beepInfo = `; Piepser ${B.n}×${B.freq.length} Töne ${B.freq.join('/')} Hz, je ${(minHold * 1000).toFixed(0)} ms voll, Stärke ${peak.toFixed(3)} über Fahrgeräuschen ${during.toFixed(3)} (sonst ${before.toFixed(3)})`;
+  delete globalThis.window;
+}
+
 if (fails) {
   console.error(`radar-test: ${fails} von ${checks} Prüfungen fehlgeschlagen`);
   process.exit(1);
 }
-console.log(`radar-test: ok (${checks} Prüfungen: ohne Radarwarner keine Vorwarnung, mit ihm eine je Blitzer; Blitz, Bußgeld, Foto und Kasse wie immer)`);
+console.log(`radar-test: ok (${checks} Prüfungen: ohne Radarwarner keine Vorwarnung, mit ihm eine je Blitzer; Blitz, Bußgeld, Foto und Kasse wie immer${beepInfo})`);

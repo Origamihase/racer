@@ -44,7 +44,7 @@ export const MOODS = {
 
 /**
  * Blickziele (Körperkoordinaten der Figur: Füße y = 0, Blick +z, +x = Fensterseite): Straße, Innenspiegel,
- * Navi-Bildschirm, NOMI, Facecam (oben am Armaturenbrett), Handy mit dem Chat (an der Mittelkonsole), Seitenfenster,
+ * Navi-Bildschirm, OMI, Facecam (oben am Armaturenbrett), Handy mit dem Chat (an der Mittelkonsole), Seitenfenster,
  * Wischer – passend zum Fahrerplatz im Tesla und im Facecam-Studio.
  */
 export const GAZE = {

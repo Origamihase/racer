@@ -9,7 +9,7 @@
 // die Säule 1 an seiner linken hinteren Ecke, wo die Ladeklappe sitzt.
 import { STREET } from '../kit/layout.js';
 import { places } from '../../map/graph.js';
-import { PARK } from '../../map/parks.js';
+import { PARK, POST } from '../../map/parks.js';
 
 export const CHARGE = {
   place: 'Erlensee',
@@ -26,7 +26,7 @@ export const CHARGE = {
   v1: 5, // Tempo im Bogen (18 km/h)
   vEnd: 40 / 3.6, // so rollt jede Fahrt los (main.js xxlStart): die Übergabe an das Spiel
   acc: 5, // höchste Beschleunigung in der Spur
-  pass: 70, // Mitte des Parks in Orten, durch die eine Fahrt nur führt (am Ortsanfang, fern vom Brunnenplatz)
+  pass: POST.u, // Mitte des Parks in jedem Ort auf dem Weg (am Ortsanfang, fern vom Brunnenplatz: die Ladesäule des Orts)
   drop: 0.04, // Höhe des abgesenkten Bordsteins an der Einfahrt
   ramp: 1, // Übergang des Bordsteins auf beiden Seiten der Einfahrt
   keep: 1, // so weit über den Park hinaus bleiben Streifen und Gehweg leer
@@ -54,11 +54,12 @@ export const ROLL_T = TA + TB + TC;
 /**
  * Die Startszene der Reise (main.js, Zustand 'charge') in Sekunden ab ihrem Beginn: Der Stecker verlässt die Buchse und
  * kehrt in seinen Halter zurück (plug), die Klappe schließt (flap), der Wagen rollt an (roll, ROLL_T später ist er dem
- * Spiel übergeben: end), NOMI gongt und Mini Adam winkt, sobald der Stecker hängt (chime, wave), das Sprachstudio
- * meldet sich (live; NOMI grüßt, wenn es ausgeredet hat), und die Kamera geht ins Cockpit (inside, 1,45 s vor dem
+ * Spiel übergeben: end), OMI gongt und Mini Adam winkt, sobald der Stecker hängt (chime, wave), das Sprachstudio
+ * meldet sich (live; OMI grüßt, wenn es ausgeredet hat), und die Kamera geht ins Cockpit (inside, 1,45 s vor dem
  * Ende). Überspringen geht ab skip.
  */
-export const SCENE = { plug: [0.9, 2], flap: [1.25, 1.6], roll: 1.6, chime: 2, wave: [2, 3.3], live: 2.5, skip: 0.3 };
+// hallo: Mini Adam winkt und sagt „Hallo, Partypeople!“ (data.js PARTYPEOPLE), danach das Sprachstudio „Wir sind live.“
+export const SCENE = { plug: [0.9, 2], flap: [1.25, 1.6], roll: 1.6, chime: 2, wave: [2, 3.3], hallo: 2.05, live: 3.5, skip: 0.3 };
 SCENE.end = SCENE.roll + ROLL_T;
 SCENE.inside = SCENE.end - 1.45;
 
@@ -68,15 +69,16 @@ export function groundAt(x) {
 }
 
 /**
- * Ladepark eines Abschnitts oder null: Ortsdurchfahrten von Erlensee und die Abschnitte 'park' hinter den Ausfahrten
- * (src/map/parks.js, Mitte bei PARK.u). u = Mitte des Parks (Ortskoordinaten), am Start so weit vor dem Startpunkt,
+ * Ladepark eines Abschnitts oder null: jede Ortsdurchfahrt (die Ladesäule des Orts, Mitte bei POST.u; in Erlensee,
+ * wo die Fahrt beginnt, auch der Start), die Abschnitte 'park' hinter den Ausfahrten (src/map/parks.js, Mitte bei
+ * PARK.u). u = Mitte des Parks (Ortskoordinaten), am Start so weit vor dem Startpunkt,
  * dass das Ausparken genau dort in der Spur endet; drive = abgesenkter Bordstein (s0 … s1 in Metern der Fahrt, voll
  * abgesenkt; ramp davor und dahinter), start: der Abschnitt, in dem die Fahrt beginnt.
  */
 export function chargeOf(sec) {
   if (!sec) return null;
   const park = sec.kind === 'park';
-  if (!park && (sec.kind !== 'stadt' || !places[sec.place] || places[sec.place].key !== CHARGE.place)) return null;
+  if (!park && (sec.kind !== 'stadt' || !places[sec.place] || (sec.start && places[sec.place].key !== CHARGE.place))) return null;
   const u = park ? PARK.u : sec.start ? -sec.s0 + PARK_FROM_START : CHARGE.pass;
   // Einfahrt: über die Räder hinaus, die den Bordstein beim Ausparken kreuzen (Bucht bis Ende des Bogens, je 1,2 m Rand)
   const y = u - CHARGE.bay[0] + CHARGE.off;
@@ -224,7 +226,7 @@ export function dockPath(u, u0, x0 = lane) {
 /**
  * Der Ladestopp im Park (main.js, Spiel: Game.startCharge) in Sekunden ab dem Einparken (Ende von dockPath().T, dock):
  * Klappe auf (flap), Stecker aus dem Halter in die Buchse (plug: rig.set 1 → 0), Zeitraffer, in dem sich der Akku füllt
- * (fill) und Mini Adam Popcorn macht (pop) und Bananensaft holt (juice), NOMIs Satz (nomi), dann ab unplug die Startszene
+ * (fill) und Mini Adam Popcorn macht (pop) und Bananensaft holt (juice), OMIs Satz (nomi), dann ab unplug die Startszene
  * von Erlensee (SCENE, ihr t = 0): Stecker heraus, Klappe zu, Ausparken bis zur Übergabe in der Spur (end). shift: so
  * lange vor dem Anrollen liegt R schon drin.
  */

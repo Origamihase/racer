@@ -3,8 +3,9 @@
 // Standbild der Brunnen-Kamera (oder einer gezeichneten Karte, wo keins gespeichert ist); dazu die Zahl der Folgen und,
 // im zweiten Reiter, die Orte, deren Brunnen noch fehlt. Die große Karte zeigt dieselbe Sammlung als Abzeichen
 // (albumBadges, Ringe an Orten mit Folge). Daten: src/game/album.js, Bilder: src/save.js loadPictures.
-import { albumOf, albumCounts, missingPlaces, missingLine, kindTitle, fmtStreamDate, placeOf, episodesByPlace } from '../game/album.js';
+import { albumOf, albumCounts, missingPlaces, missingLine, episodeTitle, fmtStreamDate, placeOf, episodesByPlace } from '../game/album.js';
 import { BRUNNEN_DEBATTE } from '../data.js';
+import { fountainCard } from './fountaincard.js';
 import { fmtNum, fmtClock } from '../util.js';
 import { addBadges, countryName } from '../map/mapview.js';
 import { places } from '../map/graph.js';
@@ -83,20 +84,16 @@ function episodeCard(grid, e, pic) {
     img.loading = 'lazy';
     img.src = pic;
   } else {
-    // gezeichnete Karte: Himmel, Wiese, der Brunnen und die Nummer der Folge
-    const drawn = el('div', 'ep-drawn', fig);
-    drawn.setAttribute('role', 'img');
-    drawn.setAttribute('aria-label', `BrunnenTV Folge ${e.n} in ${name} (gezeichnet)`);
-    el('span', 'ep-drawn-icon', drawn, '⛲');
-    el('span', 'ep-drawn-n', drawn, '#' + fmtNum(e.n));
+    // gezeichnete Karte: der Brunnen dieser Folge in Gestalt und Stein seiner Art, der Ort, die Nummer
+    fig.append(fountainCard({ kind: e.k, place: name, n: e.n }));
   }
   const tx = el('div', 'ep-text', art);
   const top = el('div', 'ep-top', tx);
-  el('span', 'ep-n', top, `Folge ${fmtNum(e.n)}`);
+  el('span', 'ep-n', top, `Folge ${fmtNum(e.n)}` + (e.w ? ' · unterwegs' : ''));
   const when = [fmtStreamDate(e.t), Number.isFinite(e.u) ? fmtClock(e.u) + ' Uhr' : ''].filter(Boolean).join(' · ');
   if (when) el('span', 'ep-when', top, when);
   el('div', name.length > 18 ? 'ep-place long' : 'ep-place', tx, name);
-  const kind = el('div', 'ep-kind', tx, kindTitle(e.k));
+  const kind = el('div', 'ep-kind', tx, episodeTitle(e));
   // im Ausland schreibt der Chat „BrunnenTV international“
   if (p && p.cc !== 'DE') el('span', 'ep-intl', kind, '🌍 international');
   const lines = e.d ? BRUNNEN_DEBATTE[e.d] : null;

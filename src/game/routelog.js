@@ -24,7 +24,10 @@ export class RouteLog {
     }
   }
 
-  /** Eine Marke auf der Route (type 'brunnen' mit n und place, 'laden' mit park), beim aktuellen Zählerstand. */
+  /**
+   * Eine Marke auf der Route (type 'brunnen' mit n und place, 'laden' mit park oder post – dem Ort der Ladesäule), beim
+   * aktuellen Zählerstand.
+   */
   mark(type, data = {}) {
     const mk = { type, ...data, km: this.m / 1000 };
     this.marks.push(mk);

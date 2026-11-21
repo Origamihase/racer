@@ -1,6 +1,6 @@
 // Kleine HUD-Anzeigen der Fahrt: der Wagen von oben mit farbigen Zonen und den übrigen Karosserie-Punkten (ersetzt die
 // bloßen Herzen) und das Tempomat-Schild neben dem Tempo. Beide fassen das DOM nur an, wenn sich etwas geändert hat.
-import { ZONES, ZONE_INFO } from '../game/damage.js';
+import { ZONES } from '../game/damage.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 /** Farben je Stufe: heil, verschrammt, verbeult, hängt schief */
@@ -105,11 +105,3 @@ export class CruiseBadge {
     this.el.textContent = text;
   }
 }
-
-/** Kurzer Zustandssatz für Bildschirm und Hinweise, z. B. „Stoßfänger vorn: verbeult“ (null, wenn alles heil ist). */
-export function damageWord(d) {
-  const z = d && d.worstZone();
-  return z ? d.word(z) : null;
-}
-
-export { ZONE_INFO };

@@ -126,6 +126,11 @@ export class MapScreen {
     this.save = d.save;
     this.nav = d.nav || null;
     this.dist = null; // Straßenkilometer ab hier: beim nächsten Antippen neu
+    // kein Schwung, kein Flug und kein halber Doppeltipp vom letzten Öffnen
+    this.vel = [0, 0];
+    this.fly = null;
+    this.zoom = null;
+    this.lastTap = null;
     const sum = visitSummary(this.save.visits);
     this.visited = sum.idx;
     s.textContent = '';

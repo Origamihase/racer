@@ -439,9 +439,10 @@ export class Scenery {
       this.clearPlants((x, z) => x > -74 && x < 56 && Math.abs(z - (z0 - 50)) < 24, slotIdx, ['house', 'roof']);
     }
 
-    // Angefragte Orte; auch der Platz für Orte aus Nachbarsegmenten bleibt frei von Bäumen
+    // Angefragte Orte (auch schon einmal gebaute: invalidate baut ihren Abschnitt neu, und der Abbau oben hat sie
+    // weggeräumt); auch der Platz für Orte aus Nachbarsegmenten bleibt frei von Bäumen
     for (const r of this.requests) {
-      if (!r.built && r.s >= s0 && r.s < s0 + SEG) this.placeRequest(slot, r);
+      if (r.s >= s0 && r.s < s0 + SEG) this.placeRequest(slot, r);
       // (die Grundflächen reichen keine 30 m weit, siehe plantFree)
       const near = Math.abs(r.s - s0 - SEG / 2) < 400;
       const free = near && this.plantFree(r);
@@ -1089,8 +1090,8 @@ export class Scenery {
   /** Lärmschutzwand eines Segments; die Form kommt erst mit userData.shape (Lücken, Endpfosten). */
   makeNoiseWall() {
     if (!this.mats.noiseWall) {
-      // ein Wandfeld (5 m) pro Texturkachel, links der Pfosten-Streifen
-      const tex = this.canvasTexFrom('noisewall', () => {
+      // ein Wandfeld (5 m) pro Texturkachel, links der Pfosten-Streifen; einmal gemalt, alle Wände teilen das Material
+      const tex = (() => {
         const c = document.createElement('canvas');
         c.width = 512;
         c.height = 256;
@@ -1140,7 +1141,7 @@ export class Scenery {
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
         t.anisotropy = 4;
         return t;
-      });
+      })();
       this.mats.noiseWall = W.std({ map: tex, roughness: 0.8 });
       this.mats.wallPost = W.std({ color: 0x74838a, metalness: 0.4, roughness: 0.55 });
       this.wallPostGeo = new THREE.BoxGeometry(0.42, 4.45, 0.24);

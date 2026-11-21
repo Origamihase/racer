@@ -1,10 +1,11 @@
 // Der große Mittelbildschirm (wie im Model 3): links die Fahrzeugansicht mit Spuren und
 // Verkehr, rechts die Navi-Karte mit Route – ferngesteuert von den Zuschauern.
 import * as THREE from 'three';
-import { clamp, lerp, fmtNum, tachoKmh } from '../util.js';
+import { clamp, lerp, tachoKmh } from '../util.js';
 import { roundRect } from '../textures.js';
 import { drawDamageCar, damageBand } from './screen-damage.js';
 import { NaviScreen } from '../map/navview.js';
+import { fmtKm } from '../map/navroute.js';
 
 const CW = 1024;
 const CH = 640;
@@ -77,6 +78,7 @@ export class CenterScreen {
     // rechts die Karte mit Navi (src/map/navview.js)
     (this.navi || (this.navi = new NaviScreen())).draw(ctx, SPLIT, 0, CW - SPLIT, CH - 64, st, this.step);
     this.drawCarPanel(ctx, st, T);
+    if (st.trunk > 0) this.drawTrunkCam(ctx);
     // in R: über der Karte ein ruhiges Feld bis zur Unterkante des Kamerabilds (auch unter der halb durchsichtigen
     // oberen Leiste), damit neben dem Bild kein Rest der Route und der Straßen blitzt
     if (st.gear === 'R') {
@@ -86,6 +88,7 @@ export class CenterScreen {
     this.drawTopBar(ctx, st, T);
     if (st.gear === 'R') this.drawRearFrame(ctx);
     this.drawDock(ctx, st, T);
+    if (st.lowBattery) this.drawLowBattery(ctx, st.lowBattery);
     if (st.funkloch > 0) {
       ctx.fillStyle = `rgba(120,120,120,${0.35 * st.funkloch})`;
       ctx.fillRect(SPLIT, 0, CW - SPLIT, CH - 64);
@@ -96,6 +99,65 @@ export class CenterScreen {
       ctx.font = '24px Arial, sans-serif';
       ctx.fillText('Mobilfunk wird neu gebündelt …', SPLIT + (CW - SPLIT) / 2, 340);
     }
+    ctx.restore();
+  }
+
+  /**
+   * Bitspende „Kofferraum öffnen“ (st.trunk: Sekunden, die sie noch läuft): An der Stelle der Spuransicht zeigt der
+   * Bildschirm die Kofferraum-Kamera – was hinten mitfährt, mit REC-Punkt wie jedes Kamerabild des Wagens. Der
+   * Innenspiegel bleibt dabei ein Spiegel.
+   */
+  drawTrunkCam(ctx) {
+    const x = 14;
+    const y = 262;
+    const w = SPLIT - 28;
+    const h = CH - 84 - y;
+    ctx.save();
+    roundRect(ctx, x, y, w, h, 14);
+    ctx.clip();
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#2a2c30');
+    g.addColorStop(1, '#141517');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    // der Kofferraum von oben-hinten: Kisten, Kabel, die Stream-Technik (Zeichnung 512 × 160, auf die Breite gesetzt)
+    const k = w / 512;
+    ctx.translate(x, y + 44 + (h - 44 - 160 * k) / 2);
+    ctx.scale(k, k);
+    const box = (bx, by, bw, bh, col, label) => {
+      ctx.fillStyle = col;
+      roundRect(ctx, bx, by, bw, bh, 8);
+      ctx.fill();
+      ctx.fillStyle = '#e8e8e8';
+      ctx.font = 'bold 17px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, bx + bw / 2, by + bh / 2 + 6);
+    };
+    box(24, 38, 120, 84, '#3b3f46', 'Akku-Pack');
+    box(160, 60, 96, 62, '#20242a', 'Router');
+    box(272, 28, 92, 94, '#5a2a2a', 'KONFETTI');
+    box(380, 52, 110, 70, '#1e3550', 'LTE ×3');
+    ctx.strokeStyle = '#d4a21a';
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(140 + i * 8, 88);
+      ctx.bezierCurveTo(180, 143 - i * 6, 330, 146, 380, 88 + i * 6);
+      ctx.stroke();
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Kopfzeile des Kamerabilds
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(x, y, w, 40);
+    ctx.fillStyle = Math.sin(this.spin * 5) > -0.2 ? '#ff4d4d' : '#7a2a2a';
+    ctx.beginPath();
+    ctx.arc(x + 22, y + 20, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '600 20px "Helvetica Neue", Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Kofferraum-Kamera', x + 38, y + 21);
     ctx.restore();
   }
 
@@ -322,6 +384,69 @@ export class CenterScreen {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
   }
+
+  /**
+   * Akku-Karte (game.js AKKU_CARD; b: screenState lowBattery): rot über der Spuransicht – „Akku fast leer“ bei 10 %,
+   * „Akku kritisch“ bei 5 %, „Akku leer“, bis der Wagen steht; mit dem Rest im Batteriesymbol, den Prozent, was zu tun
+   * ist, und dem Ladepark, den OMI nennt. Gleitet herein und hinaus, ab „kritisch“ pulsiert der Rand.
+   */
+  drawLowBattery(ctx, b) {
+    const x = 14;
+    const w = SPLIT - 28;
+    const h = 176;
+    const y = 270 + (1 - b.alpha) * 18;
+    ctx.save();
+    ctx.globalAlpha = b.alpha;
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 5;
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, b.lvl > 1 ? '#e0281e' : '#e4502f');
+    g.addColorStop(1, b.lvl > 1 ? '#a3101a' : '#b8291c');
+    ctx.fillStyle = g;
+    roundRect(ctx, x, y, w, h, 16);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    if (b.lvl > 1) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.5 + 0.35 * Math.sin(this.spin * 6)})`;
+      ctx.lineWidth = 3;
+      roundRect(ctx, x + 1.5, y + 1.5, w - 3, h - 3, 15);
+      ctx.stroke();
+    }
+    // Batteriesymbol mit dem Rest; leer ein Ausrufezeichen
+    const ix = x + 20;
+    const iy = y + 22;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3.5;
+    roundRect(ctx, ix, iy, 56, 28, 6);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(ix + 58, iy + 9, 5, 10);
+    ctx.textBaseline = 'middle';
+    if (b.lvl < 3) ctx.fillRect(ix + 5, iy + 5, Math.max(4, 46 * clamp(b.pct / 100, 0, 1)), 18);
+    else {
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 22px Arial, sans-serif';
+      ctx.fillText('!', ix + 28, iy + 15);
+    }
+    // Titel, Prozent und was zu tun ist
+    ctx.textAlign = 'left';
+    ctx.font = '700 28px "Helvetica Neue", Arial, sans-serif';
+    fitText(ctx, ['', 'Akku fast leer', 'Akku kritisch', 'Akku leer'][b.lvl], ix + 80, iy + 15, x + w - 98 - ix);
+    ctx.font = '700 46px "Helvetica Neue", Arial, sans-serif';
+    const pct = Math.round(clamp(b.pct, 0, 100)) + ' %';
+    ctx.fillText(pct, x + 20, y + 98);
+    const tx = x + 34 + ctx.measureText(pct).width;
+    ctx.font = '600 22px "Helvetica Neue", Arial, sans-serif';
+    fitText(ctx, ['', b.planned ? 'Ladestopp geplant' : 'Bitte bald laden', 'Jetzt laden!', 'Der Wagen rollt aus'][b.lvl], tx, y + 100, x + w - 18 - tx);
+    // der Ladeplatz, den OMI nennt – sein Name sagt schon „Ladepark …“ bzw. „Ladesäule in …“ (leer: nichts mehr zu
+    // planen)
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = '500 20px "Helvetica Neue", Arial, sans-serif';
+    const park = b.park ? b.park + ' · ' + fmtKm(b.km) : 'Nächste Ladesäule ansteuern';
+    fitText(ctx, b.lvl === 3 ? 'Kein Strom mehr für den Antrieb' : park, x + 20, y + 146, w - 40);
+    ctx.restore();
+  }
 }
 
 /**
@@ -331,11 +456,6 @@ export class CenterScreen {
  */
 function pill(ctx, x, y, w, h, r) {
   roundRect(ctx, x, y, w, h, Math.max(0, Math.min(r, w / 2, h / 2)));
-}
-
-function fmtDist(m) {
-  if (m >= 1000) return fmtNum(m / 1000, m >= 10000 ? 0 : 1) + ' km';
-  return Math.max(0, Math.round(m / 10) * 10) + ' m';
 }
 
 function fitText(ctx, text, x, y, maxW, minSize = 14) {

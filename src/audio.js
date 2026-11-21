@@ -1,7 +1,14 @@
 // Alle Geräusche werden mit der Web-Audio-API erzeugt (keine Audiodateien):
 // E-Motor-Surren, Abrollgeräusch, Fahrtwind, Regen, Wischer-Motor, Blinker, Hupe,
-// Martinshorn, Spenden-Pling, NOMI-Gong, Crash und kleine Jingles.
+// Martinshorn, Spenden-Pling, OMI-Gong, Crash und kleine Jingles.
 import { clamp } from './util.js';
+
+/**
+ * Der Piepser des Radarwarners: n Doppeltöne (freq, je dur Sekunden, der zweite gap später), alle every Sekunden, ab
+ * start; die Fahrgeräusche tragen so lange duck[1] (für duck[0] Sekunden). tools/radar-test.mjs prüft, dass er über
+ * Motor, Abrollen und Wind bei 130 km/h zu hören ist.
+ */
+export const RADAR_BEEP = { freq: [2637, 3136], dur: 0.075, gap: 0.085, every: 0.2, n: 3, start: 0.05, vol: 0.07, duck: [0.75, 0.4] };
 
 export class Audio {
   constructor() {
@@ -9,7 +16,9 @@ export class Audio {
     this.enabled = true;
     this.volume = 0.8;
     this.ready = false;
-    this.duck = 1;
+    // kurz leiser (duckFor): bis duckUntil (Zeit des Audio-Kontexts) tragen Motor, Abrollen und Wind nur duckTo
+    this.duckUntil = 0;
+    this.duckTo = 1;
   }
 
   /** Ton anhalten (z. B. wenn der Tab in den Hintergrund geht). */
@@ -128,7 +137,7 @@ export class Audio {
     const t = this.ctx.currentTime;
     const v = paused ? 0 : speed;
     const cab = inCabin ? 1 : 0.7;
-    const duck = this.duck;
+    const duck = t < this.duckUntil ? this.duckTo : 1;
     this.oscA.frequency.setTargetAtTime(60 + v * 7.5, t, 0.05);
     this.oscB.frequency.setTargetAtTime(120 + v * 15, t, 0.05);
     this.motorFilter.frequency.setTargetAtTime(300 + v * 30, t, 0.05);
@@ -349,9 +358,43 @@ export class Audio {
     this.tone(900, 0.4, 'square', 0.04, 0, 1300);
   }
 
-  /** Radarwarner: drei kurze, helle Piepser eines kleinen Kästchens – leiser als NOMIs Gong, der gleich darauf folgt. */
+  /**
+   * Ein Piepton mit flachem Dach: in 6 ms an, gleich laut gehalten, in 12 ms aus. Ein abklingender Ton (tone) hat seine
+   * Kraft in den ersten 20 ms – so einer geht bei 130 km/h unter Abrollen und Wind unter.
+   */
+  beep(freq, dur, vol, when = 0, type = 'square') {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime + when;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t0);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.006);
+    g.gain.setValueAtTime(vol, t0 + dur - 0.012);
+    g.gain.linearRampToValueAtTime(0, t0 + dur);
+    o.connect(g).connect(this.sfx);
+    o.start(t0);
+    o.stop(t0 + dur + 0.02);
+  }
+
+  /** Motor, Abrollen und Wind für secs Sekunden auf den Anteil to (update führt es aus, sanft wie jede Änderung). */
+  duckFor(secs, to) {
+    if (!this.ready) return;
+    this.duckUntil = this.ctx.currentTime + secs;
+    this.duckTo = to;
+  }
+
+  /**
+   * Radarwarner: drei Doppelpiepser des kleinen Kästchens, hoch und höher (RADAR_BEEP) – über 2 kHz, wo das Ohr am
+   * besten hört und Abrollen und Fahrtwind kaum noch Kraft haben; solange er piept, sind die Fahrgeräusche leiser.
+   * OMIs Gong folgt, wenn er fertig ist (game.js RADAR.lead).
+   */
   radar() {
-    for (let i = 0; i < 3; i++) this.tone(1865, 0.09, 'triangle', 0.05, i * 0.13, 2093);
+    const B = RADAR_BEEP;
+    this.duckFor(B.duck[0], B.duck[1]);
+    for (let i = 0; i < B.n; i++) B.freq.forEach((f, k) => this.beep(f, B.dur, B.vol, B.start + i * B.every + k * B.gap));
   }
 
   /** Gang gewechselt: R zwei kurze steigende Zirper (wie der Radarwarner, nur leiser), D einer. */
@@ -374,6 +417,14 @@ export class Audio {
   jingle() {
     const notes = [523.25, 659.25, 783.99, 1046.5, 987.77, 1046.5];
     notes.forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.06, i * 0.12));
+  }
+
+  /** Zuschlag der Auktion: ein Hammerschlag, dann eine kurze Fanfare. */
+  zuschlag() {
+    this.noiseBurst(0.08, 0.12, { type: 'lowpass', freq: 900 });
+    [392, 523.25, 659.25].forEach((f, i) => this.tone(f, 0.11, 'square', 0.035, 0.12 + i * 0.1));
+    this.tone(783.99, 0.5, 'triangle', 0.07, 0.42);
+    this.tone(1046.5, 0.45, 'sine', 0.03, 0.44);
   }
 
   brunnenJingle() {

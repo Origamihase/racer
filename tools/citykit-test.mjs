@@ -215,6 +215,26 @@ for (const row of PLACES) {
   ok((city.info(kind).special === 'ursprung') === (place.name === 'Augsburg') && (city.info(kind).special === 'endgegner') === (place.name === 'Nürnberg'), `${place.name}: Sonderbrunnen ${kind}`);
   ok(ri >= 2.5 && ri <= L.ISLAND.max && L.FOUNTAIN_R[kind] + L.ISLAND.kerb <= ri + 1e-9, `${place.name}: ${kind} passt nicht auf die Insel (${ri} m)`);
   ok(L.goalKind(place) === kind, `${place.name}: Hauptbrunnen nicht reproduzierbar`);
+  // der Name sagt die Art (Gänseliesel → Figur, Markt → Säule, Löwe → Löwen …)
+  ok(L.kindOfName(L.fountainName(place)) === kind && L.goalName(place) === `${L.fountainName(place)}, ${place.name}`, `${place.name}: Name „${L.fountainName(place)}“ passt nicht zur Art ${kind}`);
+}
+// Abwechslung: viele Arten, und benachbarte Orte sehen selten gleich aus (die drei nächsten Orte jedes Orts)
+{
+  const all = PLACES.map((row) => ({ key: row[0], name: row[1], lat: row[2], lon: row[3], pop: row[6] }));
+  const kinds = all.map((p) => L.goalKind(p));
+  const dist = (a, b) => Math.hypot(a.lat - b.lat, (a.lon - b.lon) * Math.cos((a.lat * Math.PI) / 180));
+  let same = 0;
+  let pairs = 0;
+  all.forEach((p, i) => {
+    const nb = all.map((q, j) => [dist(p, q), j]).filter(([, j]) => j !== i).sort((a, b) => a[0] - b[0]).slice(0, 3);
+    for (const [, j] of nb) {
+      pairs++;
+      if (kinds[j] === kinds[i]) same++;
+    }
+  });
+  const used = new Set(kinds).size;
+  ok(used >= 12 && same / pairs < 0.15, `Brunnen zu gleichförmig: ${used} Arten, ${(100 * same / pairs).toFixed(1)} % gleiche Nachbarn`);
+  console.log(`Hauptbrunnen: ${used} Arten, ${new Set(all.map((p) => L.fountainName(p))).size} Namen; gleiche Art bei den drei nächsten Orten: ${(100 * same / pairs).toFixed(1)} %`);
 }
 
 // Orte in der XXL-Welt (src/world/xxl/towns.js): der Straßenbau baut Fahrbahn, Bordstein, Gehweg und die Insel des
@@ -224,12 +244,18 @@ for (const row of PLACES) {
 // auf jeden Brunnen, Licht am Zielbrunnen, keine eigenen Gehwegkacheln und Ortsschilder, der Name wie auf der Karte.
 // Dazu der Ort, in dem eine Fahrt beginnt: sein Brunnenplatz liegt kurz vor dem Startpunkt. Und was das Navi vom Ort
 // zeigt (naviLayout): die Stecknadel steckt im Zielbrunnen des Lageplans, der Platz liegt um ihn und reicht bis an den
-// Bordstein der geweiteten Fahrbahn; am Start liegt er rechts neben der Straße um den Brunnen des Plans.
+// Bordstein der geweiteten Fahrbahn; am Start liegt er rechts neben der Straße um den Brunnen des Plans. Jeder Ort hat
+// seine Ladesäule (xxl/charge.js chargeOf, parks.js POST): rechts an der Flucht am Ortsanfang, kein Haus und kein Platz
+// auf ihr, Streifen und Gehweg davor leer, die Popcorn-Maschine oben auf der Heldensäule und der Eimer auf ihrem Poller;
+// wer dort hält, setzt rückwärts in die Bucht (POST.halt = dockHalt), und die Insel des Brunnens beginnt erst hinter dem
+// Park. Am Start (nur Erlensee hat dort den Supercharger) steht keine Popcorn-Maschine.
 const { places, townLen } = await import('../src/map/graph.js');
 const { townPlan, islandOf, naviLayout } = await import('../src/world/xxl/towns.js');
 const { squareOf, SIDE_VIEW } = await import('../src/world/xxl/plan.js');
 const { J } = await import('../src/game/trip.js');
-const xxl = { towns: 0, houses: 0, fountains: 0, side: [90, 0] };
+const { POST } = await import('../src/map/parks.js');
+const CK = await import('../src/world/xxl/charge.js');
+const xxl = { towns: 0, houses: 0, fountains: 0, side: [90, 0], posts: 0 };
 for (const p of places) {
   const len = townLen(p.pop);
   const sec = { kind: 'stadt', place: p.i, s0: 1000, s1: 1000 + len, spotS: 1000 + Math.round(len * 0.6) };
@@ -254,7 +280,7 @@ for (const p of places) {
   ok(side > 55 && side < 75 && main.x + isl.r < J.L0 - 1.2, `${where}: am Halt nicht im Seitenfenster (${side.toFixed(0)}°)`);
   const halt = L.sightBlockers(plan, main, [eye]);
   ok(halt.length === 0, `${where}: am Halt verstellt ${halt.map((i) => plan.items[i].name).join(', ')} den Brunnen`);
-  ok(L.goalName(p) === `${city.info(main.kind).title}, ${p.name}`, `${where}: Navi-Ziel „${L.goalName(p)}“ ist nicht der Brunnen`);
+  ok(L.goalName(p) === `${L.fountainName(p)}, ${p.name}` && L.kindOfName(L.fountainName(p)) === main.kind, `${where}: Navi-Ziel „${L.goalName(p)}“ ist nicht der Brunnen`);
   ok(plan.fountains.slice(1).every((f) => Math.abs(f.u - isl.u) >= 40 && !f.special), `${where}: zweiter Brunnen neben dem Zielbrunnen`);
   const lay = plan.layout;
   ok(lay.goal && near(lay.goal.x, isl.x) && near(lay.goal.z, -isl.u) && lay.squares[lay.goal.square].kind === 'island' && lay.squares[lay.goal.square].fountain === 0, `${where}: Lageplan zeigt nicht auf die Insel`);
@@ -267,7 +293,9 @@ for (const p of places) {
   for (const f of plan.fountains) {
     const blockers = L.sightBlockers(plan, f);
     ok(blockers.length === 0, `${where}: Sicht auf ${f.kind} verstellt von ${blockers.map((i) => plan.items[i].name).join(', ')}`);
-    ok(plan.items.some((it) => it.name.startsWith('lamp') && Math.hypot(it.x - f.x, it.z - f.z) <= f.r + 6), `${where}: keine Laterne am Brunnen ${f.kind}`);
+    // (das Licht am Zielbrunnen steht um die Insel, die sich nach dem Platz des Brunnens richtet, nicht nach ihm)
+    const lit = f.island ? Math.max(f.r, isl.r - L.ISLAND.kerb - L.ISLAND.ring) : f.r;
+    ok(plan.items.some((it) => it.name.startsWith('lamp') && Math.hypot(it.x - f.x, it.z - f.z) <= lit + 6), `${where}: keine Laterne am Brunnen ${f.kind}`);
     const fb = box(plan.items.find((it) => it.fountain === f.id).fp);
     for (const it of plan.items) if (it.fountain !== f.id && !GROUND.has(it.name)) ok(!overlap(fb, box(it.fp), 0.05), `${where}: ${it.name} steht im Brunnen ${f.kind}`);
   }
@@ -291,16 +319,42 @@ for (const p of places) {
     }
   }
   ok(JSON.stringify(townPlan(city, sec)) === JSON.stringify(plan), `${where}: Plan nicht reproduzierbar`);
+  // die Ladesäule des Orts
+  {
+    const C = CK.CHARGE;
+    const c = CK.chargeOf(sec);
+    const pi = city.info(C.kind);
+    ok(c && !c.start && c.u === POST.u && plan.charge && plan.charge.u === POST.u && plan.charge.x === C.front && plan.charge.kind === C.kindStart, `${where}: keine Ladesäule bei POST.u`);
+    if (c && plan.charge) {
+      xxl.posts++;
+      const pk = [C.front, C.front + pi.d, -(c.u + C.half), -(c.u - C.half)];
+      const u0 = c.u - C.half - C.keep;
+      const u1 = c.u + C.half + C.keep;
+      for (const it of plan.items) {
+        if (it.name === plan.charge.kind || it.external) continue;
+        const b = baseBox(it);
+        if (isHouse(it.name)) ok(!overlap(b, pk, 0.05), `${where}: ${it.name} steht in der Ladesäule`);
+        ok(!overlap(b, [L.STREET.curbR, C.front, -u1, -u0], 0.01), `${where}: ${it.name} steht vor der Ladesäule (u ${Math.round(-it.z)})`);
+      }
+      for (const q of plan.squares) ok(q.side < 0 || q.u1 < u0 || q.u0 > u1, `${where}: Platz an der Ladesäule`);
+      const pop = plan.items.filter((it) => it.name === 'popcorn_post');
+      const top = [C.front - C.post[1], -(c.u - C.post[0])];
+      ok(pop.length === 1 && Math.hypot(pop[0].x - top[0], pop[0].z - top[1]) < 0.005 && plan.items.filter((it) => it.name === 'popcorn_eimer').length === 1, `${where}: Popcorn-Maschine nicht oben auf der Heldensäule`);
+      ok(near(POST.halt, CK.dockHalt(c.u), 0.005) && sq.s - sq.r - 22 > sec.s0 + u1, `${where}: Halt an der Ladesäule (${POST.halt}) oder Insel ab ${(sq.s - sq.r - 22 - sec.s0).toFixed(0)} m zu nah`);
+    }
+  }
   // Start der Fahrt mitten im Ort (trip.js: der Abschnitt beginnt 300 m vor dem Startpunkt)
   const first = { kind: 'stadt', place: p.i, s0: -300, s1: -300 + Math.max(len, 500), start: true, spotS: 0 };
   const sp = townPlan(city, first);
   const sm = sp.fountains[0];
+  ok(!sp.items.some((it) => it.name === 'popcorn_post'), `${where}: am Start eine Popcorn-Maschine`);
   ok(sm && sm.goal && !sm.island && sm.kind === L.goalKind(p) && sm.x > L.STREET.curbR + L.STREET.pave && sm.u > 300 + 10 && sm.u < 300 + 80, `${where}: am Start kein Brunnen kurz voraus (u ${sm && sm.u})`);
   ok(L.sightBlockers(sp, sm, [[L.STREET.eye, -300]]).length === 0, `${where}: am Start ist der Brunnen verstellt`);
   const ns = naviLayout(first, { plan: sp });
   ok(naviLayout(first) === null && ns && near(ns.fountain.s, first.s0 + sm.u) && near(ns.fountain.x, sm.x), `${where}: am Start zeigt das Navi den Brunnen woanders`);
   ok(ns && ns.square.x - ns.square.r >= L.STREET.curbR - 0.01 && Math.hypot(ns.fountain.s - ns.square.s, ns.fountain.x - ns.square.x) + sm.r <= ns.square.r + 0.01, `${where}: am Start liegt der Platz des Navis nicht um den Brunnen rechts der Straße`);
 }
+ok(xxl.posts === xxl.towns && xxl.posts > 400, `Ladesäulen: ${xxl.posts} in ${xxl.towns} Orten`);
 
 // Der Ladepark in Erlensee (xxl/charge.js), am Start und auf der Durchfahrt: er steht, wo der Weg des Wagens ihn
 // erwartet (Heldenbucht und Säule wie im Baustein), kein Haus und kein Platz liegt auf ihm, Streifen und Gehweg vor ihm
@@ -323,7 +377,7 @@ for (const p of places) {
     const where = `Ladepark ${p.name} (${sec.start ? 'Start' : 'Durchfahrt'})`;
     const c = chargeOf(sec);
     const plan = townPlan(city, sec);
-    ok(c && plan.charge && near(plan.charge.u, c.u) && plan.charge.x === CHARGE.front && plan.charge.kind === (sec.start ? CHARGE.kindStart : CHARGE.kind), `${where}: nicht geplant`);
+    ok(c && plan.charge && near(plan.charge.u, c.u) && plan.charge.x === CHARGE.front && plan.charge.kind === CHARGE.kindStart, `${where}: nicht geplant`);
     if (!c || !plan.charge) continue;
     const pk = [CHARGE.front, CHARGE.front + info.d, -(c.u + CHARGE.half), -(c.u - CHARGE.half)];
     const u0 = c.u - CHARGE.half - CHARGE.keep;
@@ -370,7 +424,7 @@ for (const p of places) {
 // steht an der Flucht mit der Mitte bei PARK.u, der Wagen hält in der Spur ein Stück hinter der freien Heldenbucht
 // (PARK.halt) und setzt rückwärts hinein, vor ihr ist der Bordstein abgesenkt (charge.js chargeOf, dockHalt). Nichts steht auf Fahrbahn oder Gehweg außer
 // den Laternen am Streifen, nichts vor dem Park, kein Baum im Park, im Rasthaus, in der Tafel oder in einem Tisch; die
-// Heldenbucht und ihre Nachbarn bleiben frei, der Popcorn-Stand steht hinter der Heldensäule. Der Ort der Welt
+// Heldenbucht und ihre Nachbarn bleiben frei, die Popcorn-Maschine steht oben auf der Heldensäule. Der Ort der Welt
 // (towns.js Towns) baut ihn wie einen Ort, zählt ihn aber nicht zu den Orten (list).
 {
   const { PARKS, PARK } = await import('../src/map/parks.js');
@@ -409,9 +463,9 @@ for (const p of places) {
       const bay = [CHARGE.front - bz - 1, CHARGE.front - bz + 1, -(PARK.u - bx) - 1.2, -(PARK.u - bx) + 1.2];
       ok(!cars.some((b) => overlap(b, bay, 0.05)), `${where}: Bucht ${i} belegt`);
     }
-    const stand = plan.items.find((it) => it.name === 'popcorn_stand');
+    const pop = plan.items.filter((it) => it.name === 'popcorn_post');
     const post = [CHARGE.front - CHARGE.post[1], -(PARK.u - CHARGE.post[0])];
-    ok(stand && Math.hypot(stand.x - post[0], stand.z - post[1]) < 1.2 && stand.x > post[0], `${where}: Popcorn-Stand nicht hinter der Heldensäule`);
+    ok(pop.length === 1 && Math.hypot(pop[0].x - post[0], pop[0].z - post[1]) < 0.005 && !plan.items.some((it) => it.name === 'popcorn_stand'), `${where}: Popcorn-Maschine nicht oben auf der Heldensäule`);
     const sign = plan.items.find((it) => it.name === 'autobahn_schild');
     ok(sign && sign.extras && sign.extras.title === pk.name && sign.extras.icons.includes('plug'), `${where}: Tafel ohne Namen`);
     n++;
@@ -471,6 +525,8 @@ const { Towns } = await import('../src/world/xxl/towns.js');
   const p = places.find((q) => q.name === 'Frankfurt am Main') ?? places[0];
   const len = townLen(p.pop);
   const S0 = 5000;
+  // Schilder mit Text (textMaterial): so viele hält der Baukasten, bevor der Ort entsteht
+  const texts0 = towns.kit.core.textMats.size;
   const sec = { kind: 'stadt', place: p.i, s0: S0, s1: S0 + len, spotS: S0 + Math.round(len * 0.6), frame: 7 };
   towns.begin();
   towns.need(sec, null);
@@ -525,8 +581,11 @@ const { Towns } = await import('../src/world/xxl/towns.js');
   towns.update(S0 + 300, new Map([[7, { a: 0, b: 0 }]]), 0, 0);
   const u = towns.of(sec);
   ok(u && u.group.visible && u.group.pending === 0, 'XXL-Ort: mitten im Ort nicht sofort fertig');
+  const textsBuilt = towns.kit.core.textMats.size;
   towns.reset();
   ok(towns.items.size === 0 && root.children.length === 0, 'XXL-Ort: nach reset nicht leer');
+  // abgeräumt gehen auch seine Schilder (Ortstafel, Wegweiser …), die niemand sonst nutzt
+  ok(textsBuilt > texts0 && towns.kit.core.textMats.size === texts0, `XXL-Ort: Textmaterialien vor dem Ort ${texts0}, gebaut ${textsBuilt}, abgeräumt ${towns.kit.core.textMats.size}`);
   xxl.parts = total;
 }
 
@@ -641,10 +700,12 @@ for (const [name, seed] of [['Kirchheim', undefined], ['Gründau', 3], ['Hannove
   const dCam = Math.hypot(cam.pos[0] - post.x, cam.pos[2] - post.z);
   ok(dCam >= 2 && dCam <= 4 && cam.pos[1] - stop.y > 1.1 && cam.pos[1] - stop.y < 1.35, `${where}: Kamera ${dCam.toFixed(2)} m vor der Säule, ${(cam.pos[1] - stop.y).toFixed(2)} m hoch`);
   for (const it of plan.items) {
-    if (it.name === 'ladepark' || it.name === 'popcorn_eimer' || city.info(it.name).kind === 'ground') continue;
+    if (it.name === 'ladepark' || it.name === 'popcorn_eimer' || it.name === 'popcorn_post' || city.info(it.name).kind === 'ground') continue;
     ok(!L.segHitsBox(cam.pos[0], cam.pos[2], post.x, post.z, it.fp, 0.1), `${where}: ${it.name} verstellt die Nahaufnahme`);
   }
   ok(Math.hypot(plan.park.popcorn[0] - post.x, plan.park.popcorn[2] - post.z) < 1.2, `${where}: Popcorn-Eimer nicht an der Säule`);
+  const pm = plan.items.filter((it) => it.name === 'popcorn_post');
+  ok(pm.length === 1 && Math.hypot(pm[0].x - post.x, pm[0].z - post.z) < 0.005, `${where}: Popcorn-Maschine nicht oben auf der Heldensäule`);
   // Tür am Gehweg
   const [dx, dz] = Lr.shop.door;
   ok(Lr.paved.some((p) => p.kind === 'walk' && near(p.x1, dx, 0.05) && dz > p.z0 && dz < p.z1), `${where}: Tür ${dx}, ${dz} liegt nicht am Gehweg`);
@@ -739,7 +800,7 @@ console.log('Lageplan gegen Meshes:', meshChecks.join(' · '));
 console.log('Rastanlagen:', restChecks.join(' · '));
 console.log(`Bausteine: ${blocks} Fassungen, Geometrie im Rahmen von info (Ursprung, w, d, h); ${terrainEdges.length} Gelände ohne offene Ränder`);
 console.log('Zielbrunnen-Arten:', Object.entries(goalKinds).map(([k, v]) => `${k} ${v}`).join(', '));
-console.log(`Orte in der XXL-Welt: ${xxl.towns} mit Insel und als Startort, ${xxl.houses} Häuser, ${xxl.fountains} Brunnen, je einer davon das Ziel auf der Insel, am Halt im Seitenfenster bei ${xxl.side.map((d) => d.toFixed(1)).join('–')}°; Lebenslauf: ${xxl.parts} Teile in Schritten gebaut, starr im gescherten Rahmen; Plan in Raten: ${xxl.calls} Aufrufe für Hanau, derselbe Plan`);
+console.log(`Orte in der XXL-Welt: ${xxl.towns} mit Insel und als Startort, ${xxl.houses} Häuser, ${xxl.fountains} Brunnen, je einer davon das Ziel auf der Insel, ${xxl.posts} Ladesäulen mit Popcorn-Maschine, am Halt im Seitenfenster bei ${xxl.side.map((d) => d.toFixed(1)).join('–')}°; Lebenslauf: ${xxl.parts} Teile in Schritten gebaut, starr im gescherten Rahmen; Plan in Raten: ${xxl.calls} Aufrufe für Hanau, derselbe Plan`);
 console.log('Hauptbrunnen der Orte (auf der Insel am Ziel):', Object.entries(islands).map(([k, v]) => `${k} ${v}`).join(', '));
 console.log(fails ? `${fails} FEHLER` : 'Alles in Ordnung: jeder Ort hat mindestens einen Brunnen, frei sichtbar und beleuchtet.');
 process.exit(fails ? 1 : 0);

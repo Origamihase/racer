@@ -3,7 +3,7 @@
 // Weg des Navis), der Start in Erlensee, jede BrunnenTV-Folge mit ihrer Nummer, jeder Ladestopp mit dem Stecker wie im
 // Navi und das Auto am Ende. Der Ausschnitt passt sich der Route an, in einer Maßstabsstufe der großen Karte (gleiche
 // Punkte, gleiche Namen wie dort).
-import { MapPainter, THEMES, bucketScale, project, spotBox, dotRadius, PLACE_BY_INDEX, menuLayoutOf } from '../map/mapview.js';
+import { MapPainter, THEMES, bucketScale, project, spotBox, dotRadius, PLACE_BY_INDEX, menuLayoutOf, isCity } from '../map/mapview.js';
 import { drawCar, drawTurnIcon, FONT } from '../map/symbols.js';
 
 const PAD = 30; // Rand um die Route (CSS-Bildpunkte): Platz für Marken und Auto
@@ -59,7 +59,7 @@ function ends(L) {
  * Maßstabsstufe b, Maßstab s (CSS-Bildpunkte je Einheit), linke obere Ecke (wx, wy), X/Y (Karte → Bild), die Marken
  * (items: Start, Ladestopps, Folgen mit Lage x, y, ihrer Stelle x0, y0 und Halbmesser r), das Auto (car, Richtung a).
  */
-export function routeView(route, w, h) {
+export function routeView(route, w, h, { turn = 0 } = {}) {
   const L = route.line || [];
   const box = bounds(route) || [START.x, START.y, START.x, START.y];
   const bw = Math.max(box[2] - box[0], 1e-4);
@@ -84,7 +84,7 @@ export function routeView(route, w, h) {
     let px = x;
     let py = y;
     for (let k = 0; k < 12 && placed.some((q) => Math.hypot(q[0] - px, q[1] - py) < 22); k++) {
-      const a = -Math.PI / 4 + k * 1.1;
+      const a = -Math.PI / 4 + (k + turn) * 1.1;
       px = x + Math.cos(a) * 21 * (1 + k * 0.15);
       py = y + Math.sin(a) * 21 * (1 + k * 0.15);
     }
@@ -144,7 +144,9 @@ export function routeLabels(v, layout) {
     return R;
   };
   const out = new Map();
-  for (const l of layout.labels) {
+  // Großstädte (isCity) zuerst: Ihr Name hält Weg und Gegend lesbar, ein kleinerer Ort nimmt ihm keinen Platz
+  const city = (l) => l.kind === 'place' && isCity(PLACE_BY_INDEX[l.i]);
+  for (const l of [...layout.labels.filter(city), ...layout.labels.filter((q) => !city(q))]) {
     const x0 = X(l.x) + l.dx;
     const y0 = Y(l.y) + l.dy;
     if (x0 > w || y0 > h || x0 + l.w < 0 || y0 + l.h < 0) continue;
@@ -159,6 +161,17 @@ export function routeLabels(v, layout) {
         const [cx, cy] = spotBox(X(l.x), Y(l.y), R, 3, l.w, l.h, k);
         for (let d = 6; d <= l.w / 2 - R; d += 6) tries.push([cx - d, cy], [cx + d, cy]);
       }
+      // eine Großstadt sucht weiter, bevor sie ohne Namen bleibt: über und unter dem Punkt mit mehr Abstand, ebenso
+      // seitlich verschoben (Frankfurt am Main zwischen Startmarke, Hanaus Marke und den Punkten der Nachbarorte)
+      if (city(l)) {
+        for (const gap of [7, 11]) {
+          for (const k of [2, 3]) {
+            const [cx, cy] = spotBox(X(l.x), Y(l.y), R, gap, l.w, l.h, k);
+            tries.push([cx, cy]);
+            for (let d = 6; d <= l.w / 2 - R; d += 6) tries.push([cx - d, cy], [cx + d, cy]);
+          }
+        }
+      }
     }
     for (const [bx, by] of tries) {
       if (!inside(bx, by, bx + l.w, by + l.h) || !free(bx, by, bx + l.w, by + l.h, own)) continue;
@@ -170,6 +183,31 @@ export function routeLabels(v, layout) {
   return out;
 }
 
+// Richtungen, in die verschobene Marken zuerst ausweichen (routePlan): 0 wie bisher, dann je zwei Schritte weiter
+const TURNS = [0, 2, 4, 6, 8, 10];
+
+/**
+ * Ausschnitt und Namen zusammen (drawRouteMap): Bleibt eine Großstadt im Bild ohne Namen, weil eine verschobene Marke
+ * auf ihren Plätzen liegt (Hanaus Folge unter Frankfurt am Main), weichen die Marken in eine andere Richtung aus.
+ * Gewählt wird, was die wenigsten Großstädte ohne Namen lässt, bei Gleichstand das mit den meisten Namen. layoutOf:
+ * Stufe → menuLayout (unter Node mit eigener Textmessung). Ergebnis: { v, names, lost: Großstädte im Bild ohne Namen }.
+ */
+export function routePlan(route, w, h, layoutOf = menuLayoutOf) {
+  let best = null;
+  for (const turn of TURNS) {
+    const v = routeView(route, w, h, { turn });
+    const layout = layoutOf(v.b);
+    const names = routeLabels(v, layout);
+    const shown = new Set([...names.keys()].filter((l) => l.kind === 'place').map((l) => l.i));
+    const seen = (l) => v.X(l.x) > 0 && v.Y(l.y) > 0 && v.X(l.x) < w && v.Y(l.y) < h;
+    const lost = layout.labels.filter((l) => l.kind === 'place' && isCity(PLACE_BY_INDEX[l.i]) && seen(l) && !shown.has(l.i)).length;
+    if (!best || lost < best.lost || (lost === best.lost && names.size > best.names.size)) best = { v, names, lost };
+    // ohne verschobene Marke ändert eine andere Richtung nichts
+    if (!lost || v.items.every((it) => it.x === it.x0 && it.y === it.y0)) break;
+  }
+  return best;
+}
+
 /**
  * Die Route auf die Leinwand zeichnen: w × h CSS-Bildpunkte, ps Bildpunkte der Leinwand je CSS-Bildpunkt, route wie
  * bei routeView. Ergebnis: Lage der Marken im Bild (CSS-Bildpunkte) für Prüfungen: [{ type, n, x, y, moved }].
@@ -177,9 +215,8 @@ export function routeLabels(v, layout) {
 export function drawRouteMap(canvas, route, w, h, ps) {
   painter = painter || new MapPainter({ theme: 'light', look: 'menu', labels: false });
   const T = THEMES.light;
-  const v = routeView(route, w, h);
+  const { v, names } = routePlan(route, w, h);
   const { X, Y } = v;
-  const names = routeLabels(v, menuLayoutOf(v.b));
   canvas.width = Math.max(1, Math.round(w * ps));
   canvas.height = Math.max(1, Math.round(h * ps));
   const ctx = canvas.getContext('2d');

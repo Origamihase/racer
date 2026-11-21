@@ -65,8 +65,9 @@ export function townPlan(K, sec, budget = Infinity) {
   return K.planTown(p, {
     budget, len: sec.s1 - sec.s0, mainKind: goalKind(p), pavement: false, signs: false, signName: p.name,
     ...(island ? { island } : sec.start ? { goal: START_GOAL - sec.s0 } : {}),
-    // Erlensee: der Supercharger, an dem jede Fahrt beginnt (charge.js)
-    ...(charge ? { charge: { u: charge.u, kind: charge.start ? CHARGE.kindStart : CHARGE.kind } } : {}),
+    // die Ladesäule des Orts (charge.js; in Erlensee am Start der Supercharger, an dem jede Fahrt beginnt): Stecker und
+    // Kabel bringt der Ort mit (Towns.lay, chargerig.js), auf der Ortsdurchfahrt steht die Popcorn-Maschine auf der Säule
+    ...(charge ? { charge: { u: charge.u, kind: CHARGE.kindStart, stop: !charge.start } } : {}),
   });
 }
 
@@ -128,7 +129,8 @@ export class Towns {
     let kind = p ? goalKind(p) : BY_SIZE[0];
     // die Insel richtet sich nach dem Brunnen (plan.js FOUNTAIN.radius); passt er trotzdem nicht, der größte, der passt
     if (FOUNTAIN_R[kind] > r + 1e-6) kind = BY_SIZE.filter((k) => !K.info(k).special && FOUNTAIN_R[k] <= r + 1e-6).pop() ?? BY_SIZE[0];
-    const obj = K.fountains.build(kind);
+    // (ein kleinerer Brunnen bekommt auf seiner Insel einen Garten, fountains.js GARDEN)
+    const obj = K.fountains.onIsland(kind, r);
     obj.userData.dispose = () => K.release(obj);
     return obj;
   }
@@ -169,8 +171,8 @@ export class Towns {
     this.root.add(group);
     it.plan = plan;
     it.group = group;
-    // im Startort und in den Ladeparks: Stecker und Kabel an der Heldensäule (die Startszene zieht sie aus dem Wagen,
-    // der Ladestopp steckt sie hinein und wieder zurück)
+    // an jeder Ladesäule (Startort, Orte auf dem Weg, Ladeparks): Stecker und Kabel an der Heldensäule (die Startszene
+    // zieht sie aus dem Wagen, der Ladestopp steckt sie hinein und wieder zurück)
     if (plan.charge?.kind === CHARGE.kindStart) {
       it.charge = buildChargeRig();
       it.charge.group.position.set(plan.charge.x - CHARGE.post[1], this.kit.info(plan.charge.kind).ground, -(plan.charge.u - CHARGE.post[0]));

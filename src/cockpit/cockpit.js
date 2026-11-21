@@ -1,6 +1,6 @@
 // Das Cockpit des Model 3 aus Mini Adams Sicht – wie ein Spielzeugmacher es für einen Plüschfahrer bauen würde:
 // gepolsterte Kabine (cabin.js), Lenkrad mit LIVE-Logo (wheel.js), Mini Adams Plüschhände (hands.js), großer
-// Mittelbildschirm, Innen- und Außenspiegel (echte Rückansicht), NOMI, Stream-Technik (rig.js), Mitbringsel
+// Mittelbildschirm, Innen- und Außenspiegel (echte Rückansicht), OMI, Stream-Technik (rig.js), Mitbringsel
 // (props.js) und die Scheibenwischer.
 import * as THREE from 'three';
 import { liveLogoTexture, softDotTexture } from '../textures.js';
@@ -11,7 +11,7 @@ import { buildWipers } from './wipers.js';
 import { buildElsa, animateElsa } from '../models/elsa.js';
 import { damp, clamp, smoothstep, lerp } from '../util.js';
 import { mirrorShape, mirrorHousingGeometry } from '../models/loft.js';
-import { plush, COLORS, buildMiniAdam, ADAM_DIM } from '../models/miniAdam.js';
+import { plush, COLORS, buildMiniAdam, buildBottle, ADAM_DIM } from '../models/miniAdam.js';
 import { prep, meshOf, rbox, sweep, ring, place, roundedRect, warp, pillow, lathe } from './parts.js';
 import { buildCabin, buildHood, roofGlassGeometry, blob, dashTopY, pillarPoint, PAL, SEAT } from './cabin.js';
 import { WHEEL, buildWheelParts, buildColumn } from './wheel.js';
@@ -62,7 +62,7 @@ export const WIPERS = (() => {
 const HOUSING = { x: -0.08, hb: 0.038, hw: 0.045, v0: 0.695, v1: 0.795, t0: 0.011, t1: 0.022 };
 
 // Griffwinkel der Hände ab 12 Uhr (Bogenmaß): quer gut „Viertel vor drei“ (knapp über den Speichen, mit Abstand
-// zu NOMI), hochkant auf halb elf und halb zwei – mit Abstand zum Bildrand und zu den Touch-Knöpfen
+// zu OMI), hochkant auf halb elf und halb zwei – mit Abstand zum Bildrand und zu den Touch-Knöpfen
 const GRIP_WIDE = 1.2;
 const GRIP_TALL = 0.8;
 // Arme: Schulter–Handgelenk sind 0,59–0,73 m (je nach Griff und Lenkeinschlag) – länger als Mini Adams eigene
@@ -77,11 +77,59 @@ const ELBOW = { at: 0.45, down: 0.06, out: 0.035 };
 // die freie Kameras zu sehen bekommen, siehe showDriver)
 const SHOULDER = { dx: 0.165, y: 0.93, z: 0.36 };
 const UP = new THREE.Vector3(0, 1, 0);
+const FWD = new THREE.Vector3(0, 0, 1);
+const ONE = new THREE.Vector3(1, 1, 1);
+/**
+ * Die Fensterhand bei einer Geste (Rahmen des Cockpits, Hand-Koordinaten wie mittenGeometry: x entlang des Griffs,
+ * y nach außen, z zum Fahrer): winken vor dem Seitenfenster knapp unter Augenhöhe, gut im Bild; jubeln höher und
+ * weiter vorn; via: Umweg auf halber Strecke (die Hand hebt sich vom Kranz zum Fahrer hin, nicht durch ihn).
+ * qWave: Finger nach oben, etwas nach außen gekippt; qCheer: Faust um einen senkrechten Griff (die Flasche).
+ */
+const GESTURE = {
+  wave: new THREE.Vector3(-0.64, 1.13, -0.11),
+  cheer: new THREE.Vector3(-0.58, 1.27, -0.2),
+  via: new THREE.Vector3(-0.06, 0.04, 0.12),
+  qWave: new THREE.Quaternion().setFromAxisAngle(FWD, 0.3),
+  qCheer: new THREE.Quaternion().setFromAxisAngle(FWD, Math.PI / 2 + 0.15),
+};
 // Stärke des Himmels (Umgebungstextur) in der Kabine; Lack, Klavierlack und Satin spiegeln ihn ungedämpft
 const ENV = 0.5;
 // Kabinenlicht bei Sonne: so viel, dass Anthrazit lesbar bleibt, aber nicht mehr – sonst brennen die hellen
 // Plüschhände aus. Die Formen tragen dafür aufgemalte Schatten (Vertexfarben) und weicher Glanz.
 const LIGHT = { hemi: 2.45, sun: 1.8, back: 1.0 };
+
+/**
+ * Spiegelglas: das Bild der Rückspiegel-Kamera, wie ein Spiegel es zurückwirft – etwas dunkler als die Welt (die
+ * Silberschicht hinter dem Glas wirft gut vier Fünftel zurück), zum Rand hin dunkler (die geschliffene Kante), mit
+ * einem schwachen Schimmer des Himmels schräg über dem Glas. Kein Bildschirm: kein eigenes Leuchten, keine Anzeige.
+ * Lage im Glas aus der UV: fx = (1 − u) · sx, fy = (v − oy) · sy (beide 0 … 1 über das Glas).
+ */
+function mirrorGlass(sx, oy, sy) {
+  return new THREE.ShaderMaterial({
+    uniforms: { map: { value: null }, uFit: { value: new THREE.Vector3(sx, oy, sy) } },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D map;
+      uniform vec3 uFit;
+      varying vec2 vUv;
+      void main() {
+        vec2 f = vec2((1.0 - vUv.x) * uFit.x, (vUv.y - uFit.y) * uFit.z);
+        float e = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+        vec3 c = texture2D(map, vUv).rgb * 0.8 * mix(0.7, 1.0, smoothstep(0.0, 0.08, e));
+        // Schimmer: ein breites, sehr schwaches Band schräg über das Glas, oben etwas heller
+        float band = f.x * 0.55 + f.y - 0.95;
+        c += vec3(0.055, 0.06, 0.07) * (exp(-band * band * 18.0) + 0.35 * f.y);
+        gl_FragColor = vec4(c, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+}
 
 /** Rahmen fürs Innenspiegelbild: Dachhimmel, C-Säulen, Hutablage und drei Kopfstützen (wie im Spiegel gesehen). */
 function rearWindowTexture() {
@@ -309,7 +357,7 @@ export class Cockpit {
     this.flush();
 
     this.nomi = new Nomi();
-    // ganz innerhalb der Scheibe (mit etwas Abstand), damit die Wischer hinter NOMI vorbeistreichen
+    // ganz innerhalb der Scheibe (mit etwas Abstand), damit die Wischer hinter OMI vorbeistreichen
     this.nomi.group.position.set(-0.27, 0.911, -0.53);
     this.nomi.group.scale.setScalar(1.1);
     this.root.add(this.nomi.group);
@@ -321,6 +369,8 @@ export class Cockpit {
     this.headOffset = new THREE.Vector3();
     this.shake = 0;
     this.tmp = { m: new THREE.Matrix4(), w: new THREE.Vector3(), e: new THREE.Vector3() };
+    // Geste der Fensterhand (placeGesture): Zwischenwerte und die Flasche Bananensaft, wenn sie eine hält
+    this.gest = { on: false, G: new THREE.Matrix4(), T: new THREE.Matrix4(), p0: new THREE.Vector3(), p1: new THREE.Vector3(), c: new THREE.Vector3(), q0: new THREE.Quaternion(), q1: new THREE.Quaternion(), qw: new THREE.Quaternion(), s: new THREE.Vector3(), bottle: null };
     this.placeArms();
     this.driver = null;
     this.eyeWorld = new THREE.Vector3();
@@ -399,7 +449,7 @@ export class Cockpit {
     buildColumn(S);
 
     // Mini Adams Plüschhände. Wo sie am Kranz greifen, hängt vom Bildformat ab (setAspect):
-    // quer gut „Viertel vor drei“, damit NOMI frei bleibt, hochkant höher, sonst landen sie
+    // quer gut „Viertel vor drei“, damit OMI frei bleibt, hochkant höher, sonst landen sie
     // am Bildrand unter den Touch-Knöpfen.
     const rt = (WHEEL.tr + WHEEL.td) / 2;
     this.hands = [-1, 1].map((s) => {
@@ -436,8 +486,61 @@ export class Cockpit {
     for (const hand of this.hands) {
       const a = hand.userData.side * this.grip;
       hand.position.set(Math.sin(a) * R, Math.cos(a) * R, 0);
-      hand.rotation.z = -a;
+      hand.rotation.set(0, 0, -a);
     }
+  }
+
+  /**
+   * Die Fensterhand (links) macht, was Mini Adam in Facecam und Außenansicht gerade macht (g: gestures der Figur im
+   * Auto): Sie löst sich vom Kranz und winkt vor dem Seitenfenster, reckt sich zum Jubeln hoch oder stößt mit dem
+   * Bananensaft an – so zeigen Ich-Perspektive und Facecam denselben Augenblick. Ohne Geste greift sie den Kranz
+   * (placeHands). Läuft vor placeArms: Der Arm folgt der Hand.
+   */
+  placeGesture(g) {
+    const G = this.gest;
+    const up = g ? Math.max(g.wave, g.cheer) : 0;
+    const hand = this.hands[0];
+    if (G.bottle) G.bottle.visible = up > 0.25 && !!g.bottle;
+    if (up < 0.002) {
+      if (G.on) {
+        G.on = false;
+        this.placeHands();
+      }
+      return;
+    }
+    if (g.bottle && !G.bottle) {
+      G.bottle = buildBottle(false);
+      // die Flasche liegt im Fäustling wie der Kranz: Achse entlang x, gegriffen in der Mitte
+      G.bottle.rotation.z = -Math.PI / 2;
+      G.bottle.position.set(-0.1, 0, 0);
+      G.bottle.scale.setScalar(1.15);
+      hand.add(G.bottle);
+      G.bottle.visible = true;
+    }
+    G.on = true;
+    // Griff am Kranz im Rahmen des Cockpits (so, wie placeHands die Hand setzt, mit der Drehung des Lenkrads)
+    this.wheel.updateMatrix();
+    G.G.multiplyMatrices(this.wheelPivot.matrix, this.wheel.matrix);
+    const a = -this.grip;
+    G.q0.setFromAxisAngle(FWD, -a);
+    G.T.compose(G.p0.set(Math.sin(a) * WHEEL.R, Math.cos(a) * WHEEL.R, 0), G.q0, ONE).premultiply(G.G);
+    G.T.decompose(G.p0, G.q0, G.s);
+    // oben: winken vor dem Seitenfenster (Finger nach oben, leicht nach außen), jubeln höher und weiter vorn (die Faust
+    // um die Flasche, Hals nach oben); die Hand pendelt bzw. wippt erst, wenn sie oben ist
+    const kc = g.cheer / Math.max(1e-6, g.wave + g.cheer);
+    const wig = smoothstep(0.7, 1, up);
+    G.p1.lerpVectors(GESTURE.wave, GESTURE.cheer, kc);
+    G.p1.x += Math.sin(g.t * 9) * 0.035 * wig * (1 - kc);
+    G.p1.y += Math.abs(Math.sin(g.t * 7.5)) * 0.04 * wig * kc;
+    G.c.lerpVectors(G.p0, G.p1, 0.5).add(GESTURE.via);
+    const u = up;
+    G.p0.multiplyScalar((1 - u) * (1 - u)).addScaledVector(G.c, 2 * u * (1 - u)).addScaledVector(G.p1, u * u);
+    G.q1.slerpQuaternions(GESTURE.qWave, GESTURE.qCheer, kc);
+    G.q1.multiply(G.qw.setFromAxisAngle(FWD, Math.sin(g.t * 9 - 0.6) * 0.35 * wig * (1 - kc)));
+    G.q0.slerp(G.q1, smoothstep(0.05, 0.8, u));
+    // zurück in den Rahmen des Lenkrads, an dem die Hand hängt
+    G.T.compose(G.p0, G.q0, ONE).premultiply(G.G.invert());
+    G.T.decompose(hand.position, hand.quaternion, G.s);
   }
 
   /** Ärmel und Oberarm ab der Schulter, Unterarm ab dem Handgelenk ausrichten; beide treffen sich im Ellbogen. */
@@ -508,7 +611,7 @@ export class Cockpit {
     const uv = glassGeo.attributes.uv;
     const pos = glassGeo.attributes.position;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, 1 - (pos.getX(i) / mw + 0.5), pos.getY(i) / mh + 0.5);
-    this.mirrorMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.mirrorMat = mirrorGlass(1, 0, 1);
     const mirror = new THREE.Group();
     // hängt knapp hinter der Scheibe (die Scheibe ist sehr flach, deshalb etwas tiefer als früher)
     mirror.position.set(-0.08, 1.235, -0.225);
@@ -529,7 +632,8 @@ export class Cockpit {
     const maskGeo = glassGeo.clone();
     const mUv = maskGeo.attributes.uv;
     for (let i = 0; i < mUv.count; i++) mUv.setXY(i, pos.getX(i) / mw + 0.5, pos.getY(i) / mh + 0.5);
-    this.mirrorFrame = new THREE.Mesh(maskGeo, new THREE.MeshBasicMaterial({ map: rearWindowTexture(), transparent: true, depthWrite: false }));
+    // (auch er liegt hinter dem Glas: so dunkel wie das Spiegelbild)
+    this.mirrorFrame = new THREE.Mesh(maskGeo, new THREE.MeshBasicMaterial({ map: rearWindowTexture(), color: 0xcccccc, transparent: true, depthWrite: false }));
     this.mirrorFrame.position.z = 0.021;
     mirror.add(glass, this.mirrorFrame);
     this.root.add(mirror);
@@ -583,7 +687,7 @@ export class Cockpit {
       const fy = (sPos.getY(i) - bb.min.y) / (bb.max.y - bb.min.y);
       sUv.setXY(i, 1 - fx * 0.34, 0.03 + fy * 0.6);
     }
-    this.sideMirrorMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.sideMirrorMat = mirrorGlass(1 / 0.34, 0.03, 1 / 0.6);
     const sGlass = new THREE.Mesh(sGeo, this.sideMirrorMat);
     sGlass.position.z = 0.002;
     side.add(sGlass);
@@ -592,12 +696,10 @@ export class Cockpit {
     this.root.add(side);
   }
 
+  /** Innen- und Außenspiegel zeigen das Bild der Rückspiegel-Kamera (gespiegelt, siehe UV von buildMirrors). */
   setMirrorTexture(tex) {
-    this.mirrorMat.map = tex;
-    this.mirrorMat.needsUpdate = true;
-    this.sideMirrorMat.map = tex;
-    this.sideMirrorMat.needsUpdate = true;
-    this.mirrorFrame.visible = true;
+    this.mirrorMat.uniforms.map.value = tex;
+    this.sideMirrorMat.uniforms.map.value = tex;
   }
 
   /** Das Live-Display der Action-Cam zeigt das Weltbild (main.js reicht die Textur des Welt-Renderziels herein). */
@@ -605,13 +707,6 @@ export class Cockpit {
     const u = this.liveDisplay.material.uniforms;
     u.tLive.value = tex;
     u.uOn.value = tex ? 1 : 0;
-  }
-
-  /** Innenspiegel zeigt die Kofferraum-Kamera (ohne Heckfenster-Rahmen), der Außenspiegel bleibt. */
-  setTrunkView(tex) {
-    this.mirrorMat.map = tex;
-    this.mirrorMat.needsUpdate = true;
-    this.mirrorFrame.visible = false;
   }
 
   buildWipers() {
@@ -631,7 +726,7 @@ export class Cockpit {
     this.root.add(rig.led, rig.display);
     // Mitbringsel: Bananensaft und Dampfcola in den Becherhaltern, Megafon und Pandamütze auf dem Beifahrersitz
     buildProps(S, { x: 0.37, y: SEAT.y + SEAT.h / 2 + SEAT.puff, z: SEAT.z, tilt: SEAT.tilt });
-    // NOMI steht auf dem Armaturenbrett
+    // OMI steht auf dem Armaturenbrett
     blob(S, -0.27, dashTopY(-0.27, -0.53), -0.53, 0.058, 0.05);
 
     // Wackel-Elsa (Shop): die Figur kommt fertig verschmolzen (fünf Zeichenaufrufe, die Arme bleiben beweglich)
@@ -714,24 +809,32 @@ export class Cockpit {
     this.radar.group.visible = !!v;
   }
 
-  /** Kamera-Pose (Weltkoordinaten) aus Fahrzeug-Transformation + Kopfbewegung. */
-  placeCamera(camera, carMatrix, t, speed, latAcc, dt) {
+  /**
+   * Kamera-Pose (Weltkoordinaten) aus Fahrzeug-Transformation + Kopfbewegung. sway: das Fahrwerk (src/game/chassis.js:
+   * head, tilt) oder 0 in den Szenen (dann kehrt der Kopf in die Mitte zurück); gaze: so weit nehmen die Augen die
+   * Gier des Wagens zurück (rad), der Blick bleibt auf der Straße.
+   */
+  placeCamera(camera, carMatrix, t, speed, sway, dt, gaze = 0) {
     // das Abklingen von shake passiert einmal pro Bild im Hauptprogramm (auch in Drohne, Pause, Abspann)
     const vib = Math.min(1, speed / 60) * 0.0025 + this.shake * 0.03;
-    this.headOffset.x = damp(this.headOffset.x, clamp(-latAcc * 0.006, -0.05, 0.05), 4, dt);
+    // der Kopf hängt straff am Fahrwerk (dessen Feder ist schon kritisch gedämpft): hier nur gegen Sprünge beim Wechsel
+    // zwischen Fahrt und Szene
+    this.headOffset.x = damp(this.headOffset.x, sway ? sway.head : 0, 20, dt);
+    const tilt = sway ? sway.tilt : 0;
     const ox = this.headOffset.x + (Math.sin(t * 37) * 0.5 + Math.sin(t * 23) * 0.5) * vib;
     const oy = (Math.sin(t * 29) + Math.sin(t * 13.3)) * 0.5 * vib + Math.sin(t * 1.4) * 0.003;
-    const eye = EYE.clone().add(new THREE.Vector3(ox, oy, 0));
-    eye.applyMatrix4(carMatrix);
-    camera.position.copy(eye);
-    const q = new THREE.Quaternion().setFromRotationMatrix(carMatrix);
-    const e = new THREE.Euler(PITCH + oy * 2, this.headOffset.x * 0.6 + Math.sin(t * 0.31) * 0.004, -latAcc * 0.0025 + ox * 2, 'YXZ');
-    camera.quaternion.copy(q).multiply(new THREE.Quaternion().setFromEuler(e));
+    // (läuft in jedem Bild: Hilfsobjekte statt neuer)
+    const C = this.camTmp || (this.camTmp = { q: new THREE.Quaternion(), q2: new THREE.Quaternion(), e: new THREE.Euler() });
+    camera.position.set(EYE.x + ox, EYE.y + oy, EYE.z).applyMatrix4(carMatrix);
+    C.q.setFromRotationMatrix(carMatrix);
+    C.e.set(PITCH + oy * 2, this.headOffset.x * 0.6 + gaze + Math.sin(t * 0.31) * 0.004, tilt + ox * 0.8, 'YXZ');
+    camera.quaternion.copy(C.q).multiply(C.q2.setFromEuler(C.e));
   }
 
   /**
    * @param {object} st steer (-1..1), speed (m/s), latAcc, t, dt, wiperAngles [a, b], sunDir, overcast,
-   *   adam (Animationswerte der Figur, wie sie main.js für Mini Adam im Auto und in der Facecam rechnet),
+   *   adam (Animationswerte der Figur, wie sie main.js für Mini Adam im Auto und in der Facecam rechnet), gesture (was
+   *   die Hände der Figur im Auto gerade tun, miniAdam gestures: die Fensterhand macht es nach, placeGesture),
    *   radar (warnt der Radarwarner gerade? Dann blinkt sein Lämpchen), rear (R eingelegt und das Cockpit zu sehen? Dann
    *   zeigt der Mittelbildschirm die Rückfahrkamera)
    */
@@ -745,6 +848,7 @@ export class Cockpit {
       this.grip = Math.abs(this.grip - this.gripTarget) < 0.002 ? this.gripTarget : damp(this.grip, this.gripTarget, 5, dt);
       this.placeHands();
     }
+    this.placeGesture(st.gesture);
     this.placeArms();
     // Wischer
     if (st.wiperAngles) this.wipers.set(st.wiperAngles, st.wiperFlex, 1 - 0.35 * (st.overcast || 0));

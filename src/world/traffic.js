@@ -1,7 +1,7 @@
 // Verkehr: Autos und Lkw mit Abstandsregelung (IDM), Spurwechseln mit Blinker,
 // Rechtsfahrgebot, Lkw nur rechts, Elefantenrennen, Polizei Gifhorn und Gegenverkehr.
 import * as THREE from 'three';
-import { Vehicle, randomKind, setVehicleEnvIntensity } from '../models/vehicles.js';
+import { Vehicle, randomKind, setVehicleLights } from '../models/vehicles.js';
 import { ROAD } from '../textures.js';
 import { ONCOMING } from './road.js';
 import { curveAt } from '../curve.js';
@@ -17,6 +17,38 @@ const KMH = 1 / 3.6;
 // Vor Kurven nimmt der Verkehr Gas weg, wo die Querbeschleunigung sonst über diesen Komfortwert stiege (m/s²),
 // und bremst dafür sanft (m/s²). Lkw kriechen an langen Steigungen etwas (km/h weniger je Prozent über 2 %).
 const CURVE = { car: { lat: 2.5, dec: 1.2 }, truck: { lat: 1.8, dec: 0.8 }, look: 250, climb: 4.5 };
+/**
+ * Elefantenrennen, wie es auf der Straße zu sehen ist: zwei Lkw auf benachbarten Spuren unserer Richtung (nicht auf
+ * dem Verzögerungsstreifen), höchstens side Meter gegeneinander versetzt, beide zwischen near und far Metern vor dem
+ * Wagen und fast gleich schnell (höchstens dv m/s Unterschied, sie überholen sich also kaum).
+ */
+export const ELEPHANTS = { side: 14, near: 25, far: 320, dv: 2.5 };
+/** Fahren gerade zwei Lkw nebeneinander vor dem Wagen (ELEPHANTS)? Liefert das Paar oder null. cars: {truck, lane, s, speed}. */
+export function elephantPair(cars, sPlayer) {
+  const E = ELEPHANTS;
+  for (const a of cars) {
+    const da = a.s - sPlayer;
+    if (!a.truck || a.lane > 3 || da < E.near || da > E.far) continue;
+    for (const b of cars) {
+      if (b === a || !b.truck || b.lane !== a.lane + 1 || b.lane > 3) continue;
+      const db = b.s - sPlayer;
+      if (db >= E.near && db <= E.far && Math.abs(a.s - b.s) <= E.side && Math.abs(a.speed - b.speed) <= E.dv) return [a, b];
+    }
+  }
+  return null;
+}
+/**
+ * Bremslicht wie bei echten Fahrern: an, sobald der Wagen spürbar verzögert (on, m/s²), vor einer Kurve bremst oder
+ * fast steht; aus erst, wenn er wieder rollt oder Gas gibt (über off) und das Licht mindestens hold Sekunden an war –
+ * so flackert es nicht bei jedem kleinen Lupfen im Kolonnenverkehr.
+ */
+export const BRAKE = { on: -0.9, off: -0.3, hold: 0.6, stand: 3 };
+/** Ein Schritt des Bremslichts (BRAKE): c.brakeT zählt die Haltezeit herunter. Liefert, ob es leuchtet. */
+export function brakeLight(c, acc, dt, hard = false) {
+  if (hard || acc < BRAKE.on || c.speed < BRAKE.stand) c.brakeT = BRAKE.hold;
+  else if (acc > BRAKE.off) c.brakeT = Math.max(0, c.brakeT - dt);
+  return c.brakeT > 0;
+}
 const _cf = { x: 0, z: 0, th: 0, y: 0, k: 0, dk: 0, xr: 0, g: 0 };
 
 let nextId = 1;
@@ -59,12 +91,12 @@ export class Traffic {
     this.begin = null;
   }
 
-  acquire(kind, opts) {
+  acquire(kind) {
     const list = this.pool.get(kind) || [];
     this.pool.set(kind, list);
-    let v = list.find((x) => !x.inUse && !opts);
+    let v = list.find((x) => !x.inUse);
     if (!v) {
-      v = new Vehicle(kind, opts);
+      v = new Vehicle(kind);
       list.push(v);
       this.group.add(v.group);
     }
@@ -98,11 +130,11 @@ export class Traffic {
   }
 
   /** Neues Fahrzeug einsetzen. */
-  spawn(s, lane, { kind, speed, behavior = 'normal', opts } = {}) {
+  spawn(s, lane, { kind, speed, behavior = 'normal' } = {}) {
     const k = kind || randomKind(lane >= 2, lane === 3 ? 0.3 : 0.22);
     const truck = k === 'lkw';
     if (truck && lane < 2) lane = 2 + Math.round(Math.random());
-    const v = this.acquire(k, opts);
+    const v = this.acquire(k);
     const car = {
       id: nextId++,
       v,
@@ -118,6 +150,7 @@ export class Traffic {
       change: null,
       decideIn: rand(0.5, 2.5),
       brake: false,
+      brakeT: 0,
       passed: false,
       behavior,
       sirens: behavior === 'polizei',
@@ -206,7 +239,7 @@ export class Traffic {
     this.difficulty = env.difficulty;
     this.leftOpen = env.leftOpen;
     const rainy = env.rain > 0.3;
-    setVehicleEnvIntensity(rainy);
+    setVehicleLights(Math.max(env.rain, env.dim || 0), rainy);
 
     const target = Math.round(lerp(15, 32, this.difficulty));
     // Fahrzeuge vorne nachliefern
@@ -230,6 +263,10 @@ export class Traffic {
     const P = { s: player.s, x: player.x, speed: player.v ?? player.speed, len: player.len, w: player.w, isPlayer: true };
 
     for (const c of objs) {
+      if (c.elefantUntil !== undefined && this.t >= c.elefantUntil) {
+        c.behavior = 'normal';
+        c.elefantUntil = undefined;
+      }
       // Spurwechsel-Entscheidungen
       c.decideIn -= dt;
       if (!c.change && c.decideIn <= 0) {
@@ -279,8 +316,8 @@ export class Traffic {
       if (c.closed) acc = Math.min(acc, -4);
       acc = clamp(acc, -10, aMax);
       c.speed = Math.max(0, c.speed + acc * dt);
-      c.brake = acc < -1.2 || curveBrake;
-      c.v.setBrake(c.brake || (c.speed < 3));
+      c.brake = brakeLight(c, acc, dt, curveBrake);
+      c.v.setBrake(c.brake);
       c.s += c.speed * dt;
     }
 
@@ -374,18 +411,21 @@ export class Traffic {
   leader(c, objs, P) {
     let best = null;
     let bestDs = Infinity;
-    const lanes = c.change && c.change.t >= c.change.delay ? [c.change.from, c.change.to] : [c.lane];
+    // die Spur, beim Wechsel beide (zwei Zahlen statt einer Liste: das läuft je Wagen und Bild)
+    const both = c.change && c.change.t >= c.change.delay;
+    const l0 = both ? c.change.from : c.lane;
+    const l1 = both ? c.change.to : c.lane;
     for (const o of objs) {
       if (o === c) continue;
       const ds = o.s - c.s;
       if (ds <= 0 || ds > 220 || ds >= bestDs) continue;
-      if (lanes.some((l) => laneOverlap(o, l))) {
+      if (laneOverlap(o, l0) || laneOverlap(o, l1)) {
         best = o;
         bestDs = ds;
       }
     }
     const ds = P.s - c.s;
-    if (ds > 0 && ds < bestDs && lanes.some((l) => laneOverlap(P, l))) best = P;
+    if (ds > 0 && ds < bestDs && (laneOverlap(P, l0) || laneOverlap(P, l1))) best = P;
     return best;
   }
 
@@ -404,7 +444,7 @@ export class Traffic {
       }
     }
     // Rechtsfahrgebot
-    if (c.lane < 3 && !(c.truck && c.lane >= 3)) {
+    if (c.lane < 3) {
       const eager = c.behavior === 'schleicher' ? 0.02 : 0.25;
       if (chance(eager)) {
         const to = c.lane + 1;
@@ -503,9 +543,8 @@ export class Traffic {
     this.cars = this.cars.filter((c) => c.s > -1e8);
     const a = this.spawn(s, 3, { kind: 'lkw', speed: 84 * KMH, behavior: 'elefant' });
     const b = this.spawn(s + 6, 2, { kind: 'lkw', speed: 84.6 * KMH, behavior: 'elefant' });
-    setTimeout(() => {
-      if (b) b.behavior = 'normal';
-    }, 26000);
+    // nach 26 s Spielzeit (die Pause und Szenen halten sie an) fahren beide wieder wie alle (update)
+    a.elefantUntil = b.elefantUntil = this.t + 26;
     return [a, b];
   }
 
@@ -514,7 +553,11 @@ export class Traffic {
     this.policeText = text;
     // einzige Rücksicht auf die freigeschaltete Spur: Dort säße sie Mini Adam sonst im Nacken
     const lane = this.leftOpen ? 1 : 0;
-    const car = this.spawn(sPlayer - 170, lane, { kind: 'polizei', speed: 185 * KMH, behavior: 'polizei' });
+    // nicht vor dem Beginn dieser Autobahn (dort ist keine Straße): bis 40 m dahinter, und reicht das nicht für einen
+    // Anlauf von hinten, kommt sie diesmal nicht
+    const s = this.begin !== null ? Math.max(sPlayer - 170, this.begin + 40) : sPlayer - 170;
+    if (s > sPlayer - 60) return null;
+    const car = this.spawn(s, lane, { kind: 'polizei', speed: 185 * KMH, behavior: 'polizei' });
     car.v0 = 185 * KMH;
     car.passed = true; // kommt von hinten – erst wenn sie vorbei ist, kann man sie überholen
     return car;

@@ -10,7 +10,7 @@
 // Alle Maße hier sind Abschnittskoordinaten (x wie in trip.js, unsere Spur bei J.L0 = 9).
 import * as THREE from 'three';
 import { W } from '../../curve.js';
-import { Trip, J, BETA, R as rampR, taperLen } from '../../game/trip.js';
+import { J, BETA, R as rampR, taperLen } from '../../game/trip.js';
 import { GRASS_RGB, ROAD, asphaltBase, guardrailTexture } from '../../textures.js';
 import { mulberry32 } from '../../util.js';
 import { ASPHALT, wetAsphalt } from '../road.js';
@@ -88,15 +88,6 @@ export function stubOf(sec, prev, next) {
 /** Zahlen klein halten (float32 in der Grafikkarte): Bezug für Texturkoordinaten, ein Vielfaches der Kachel. */
 const uvBase = (s, tile) => Math.floor(s / (tile * 1000)) * tile * 1000;
 const sstep = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
-
-/**
- * Bogen eines Knotenpunkts: u Meter nach der Gabelung (Rampe) bzw. vor dem Einfädelpunkt (Auffahrt), sonst −1.
- */
-export function curveU(sec, s) {
-  const l = sec.link;
-  if (!l || !Trip.inCurve(l, s)) return -1;
-  return l.type === 'exit' ? s - l.s : l.s - s;
-}
 
 /**
  * Grenze der Territorien im Keil zwischen Autobahn und Rampe (Winkelhalbierende zwischen den Asphalträndern), als

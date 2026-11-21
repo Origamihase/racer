@@ -27,6 +27,16 @@ const G = 9.81;
 export const DRIVE_DEFAULTS = { tip: false, laneAssist: 'sanft', curveAssist: 'sanft', sens: 1, cruise: false };
 
 /**
+ * Bremse bei vollem Pedal: Verzögerung a (m/s²), je Stufe Sportbremsen per mehr; Nässe kostet den Anteil wet davon,
+ * mit Sportbremsen je Stufe wetPer weniger (griffigere Beläge, größere Scheiben). Bremsweg ∝ 1 / Verzögerung.
+ */
+export const BRAKES = { a: 9.5, per: 0.08, wet: 0.18, wetPer: 0.25 };
+/** Verzögerung bei vollem Pedal (m/s²): level Sportbremsen (0 … 2), wet 0 … 1. */
+export function brakeDecel(level, wet) {
+  return BRAKES.a * (1 + BRAKES.per * level) * (1 - wet * BRAKES.wet * (1 - BRAKES.wetPer * level));
+}
+
+/**
  * Rückwärtsgang wie im Tesla: Wer im Stand die Bremse ganz (ab press) hold Sekunden hält, legt R ein; dann fährt die
  * Bremse sanft rückwärts (acc m/s², höchstens vmax ≈ 15 km/h), Strom bremst (brake), und im Stand legt Strom wieder D
  * ein. Ohne Pedal rollt er mit coast aus. still: darunter steht der Wagen (m/s). Zurück geht es höchstens back Meter
@@ -42,7 +52,7 @@ export class Player {
     // wiederverwendete Objekte für die Teilschritte (keine Speicheranforderung pro Bild)
     this.P = {};
     this.env = { v: 0, kappa: 0, assist: 0 };
-    this.pq = { v: 0, wet: 0, latMul: 1, sens: 1, wetGrip: 0.66 };
+    this.pq = { v: 0, wet: 0, latMul: 1, sens: 1, wetGrip: 0.66, grip: 1, firm: 0 };
     this.copt = { tip: false, lanes: LANES, assist: null, vk: 0, h: H };
     this.reset({});
   }
@@ -57,6 +67,9 @@ export class Player {
     this.streamDrain = 0.1 * (1 - 0.15 * l('encoder'));
     this.latMul = 1 + 0.12 * l('reifen');
     this.wetGrip = 0.66 + 0.13 * l('reifen');
+    this.gripMul = 1 + 0.12 * l('reifen');
+    this.firm = l('fahrwerk');
+    this.brakeLevel = l('bremse');
     this.maxHits = 3 + l('polster');
     // Zustand des Wagens (Zonen, Schrammen, Pflaster); hits zählt mit
     this.damage = new Damage(this.maxHits);
@@ -84,7 +97,7 @@ export class Player {
     this.yaw = 0;
     this.psi = 0;
     this.latAcc = 0;
-    this.latAccSm = 0; // geglättet, nur für Kamera und Wankbewegung
+    this.latAccSm = 0; // geglättet, für die Wackel-Elsa (Wanken und Kameras: src/game/chassis.js)
     this.steer = 0;
     this.wheel = 0;
     this.understeer = 0;
@@ -260,6 +273,8 @@ export class Player {
     pq.latMul = this.latMul;
     pq.sens = o.sens;
     pq.wetGrip = this.wetGrip;
+    pq.grip = this.gripMul;
+    pq.firm = this.firm;
 
     // --- Teilschritte -------------------------------------------------------------------------
     // Das Bild wird an den Tastenkanten geteilt und jedes Stück in gleiche Schritte von höchstens STEER.h zerlegt:
@@ -318,7 +333,7 @@ export class Player {
     if (log && log.length && C.key !== keyNow) C.setKey(keyNow, t1, this, copt);
     this.clock = t1;
     if (this.s > this.sFar) this.sFar = this.s;
-    // am Ende des Rückwegs angekommen, die Bremse noch gehalten: einmal melden (NOMI sagt es)
+    // am Ende des Rückwegs angekommen, die Bremse noch gehalten: einmal melden (OMI sagt es)
     if (this.gear === 'R' && !this.revEnd && brake > 0.5 && this.s - this.revFloor < 0.3) {
       this.revEnd = true;
       this.events.push({ type: 'reverseEnd' });
@@ -365,7 +380,8 @@ export class Player {
     // die Bremse gewinnt immer: wer beide Pedale tritt, bremst
     let throttle = brake > 0.02 ? 0 : throttleIn;
     let acc = 0;
-    if (this.cruiseSet !== null && brake <= 0.02 && throttle <= 0.02) {
+    // mit leerem Akku hält der Tempomat nichts mehr: Der Wagen rollt aus wie ohne Pedal (das Tempo folgt ihm)
+    if (this.cruiseSet !== null && !this.empty && brake <= 0.02 && throttle <= 0.02) {
       // Tempomat: hält das gesetzte Tempo, auch am Berg; Obergrenzen der Welt übernimmt er ruckfrei
       const want = clamp((Math.min(this.cruiseSet, top) - v) * 0.9, -2.2, 1.6) - (top < this.cruiseSet ? fall : 0);
       this.aAuto += clamp(want - this.aAuto, -5 * H, 5 * H);
@@ -375,7 +391,7 @@ export class Player {
       if (throttle > 0.02 && v < top) {
         acc += throttle * 5.4 * this.accelMul * Math.max(0.12, 1 - Math.pow(clamp(v / vmax, 0, 1), 2.6));
       }
-      if (brake > 0.02) acc -= brake * 9.5 * (1 - wet * 0.18);
+      if (brake > 0.02) acc -= brake * brakeDecel(this.brakeLevel, wet);
       if (throttle <= 0.02 && brake <= 0.02) acc -= drag + (this.empty ? 1.4 : 0);
       acc -= slope;
       // über der Obergrenze sanft herunter (Software-Drossel, Tempolimit der Welt)

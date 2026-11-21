@@ -161,8 +161,6 @@ export function straight(de) {
 //           2E + n   = am Knoten n abseits der Autobahn (Ausfahrt genommen, im Ort, am Terminal): freie Wahl.
 const NE = edges.length * 2;
 export const stateOfNode = (n) => NE + n;
-export const isNodeState = (st) => st >= NE;
-export const nodeOfState = (st) => st - NE;
 
 /**
  * Die Route rechnet wie ein echtes Navi in Kartenkilometern (Landstraße zählt anderthalbfach, Abfahren und

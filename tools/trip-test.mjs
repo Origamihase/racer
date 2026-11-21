@@ -272,6 +272,17 @@ function drive(trip, metres, decide, opts = {}) {
     },
   });
   ok(m.missed === 1 && trip.stop === -1 && m.wende === 0 && Math.abs(m.arrive - r0.km) < 0.01, `Stopp verpasst: ${JSON.stringify(m)}`);
+  // die Ladesäule im Zielort zählt mit; in der Sperrzone vor der Ausfahrt nach Würzburg führt der Zweig schon in den Ort:
+  // der Park an dieser Ausfahrt liegt dann nicht mehr am Weg, die Ladesäule im Ort schon
+  trip = start();
+  const names0 = trip.restsAhead(3).map((r) => r.name);
+  let locked = null;
+  for (let i = 0; i < 400 && !locked; i++) {
+    drive(trip, 200, (f, t) => t.planFor(f) === 'exit', { step: 2 });
+    const f = trip.cur.sections.map((c) => c.fork).find((q) => q && !q.taken && q.branch && q.s > trip.s && q.s - trip.s < J.lock && parkAt(q.node) >= 0 && q.branch.sections.some((c) => c.kind === 'stadt'));
+    if (f) locked = { park: PARKS[parkAt(f.node)].name, names: trip.restsAhead(3).map((r) => r.name) };
+  }
+  ok(names0.join() === 'Ladepark Aschaffenburg,Ladesäule in Würzburg,Ladepark Würzburg' && locked && locked.park === 'Ladepark Würzburg' && !locked.names.includes(locked.park) && locked.names[0] === 'Ladesäule in Würzburg', `Ladeplätze nach Würzburg ${JSON.stringify(names0)}, in der Sperrzone ${JSON.stringify(locked)}`);
   console.log(`Ladestopp Erlensee → Würzburg: ${nr.name} nach ${pm.toFixed(2)} km (${(nr.m / 1000).toFixed(2)} km Straße), Würzburg ${r0.km.toFixed(2)} km ohne, ${r1.km.toFixed(2)} km mit Stopp`);
 }
 

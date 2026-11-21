@@ -21,9 +21,10 @@ import { PerspectiveCamera } from 'three';
 import { Trip, J } from '../src/game/trip.js';
 import { Game } from '../src/game/game.js';
 import { Economy, BONTANA } from '../src/game/economy.js';
-import { Satisfaction, ZUFRIEDEN, moodEmoji } from '../src/game/satisfaction.js';
+import { Satisfaction, ZUFRIEDEN } from '../src/game/satisfaction.js';
+import { clamp } from '../src/util.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
-import { CHAT, REPARATUR, CREW, CREW_LINES, ABSPANN_REISE, GEDENKEN } from '../src/data.js';
+import { CHAT, REPARATUR, CREW, CREW_LINES, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN } from '../src/data.js';
 
 const STREAMS = Number(process.argv[2]) || 4;
 const MINUTES = Number(process.argv[3]) || 30;
@@ -97,6 +98,8 @@ function journey(driver, minutes, seed, hook = null) {
     pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });
+  // (die Streams laufen hier ihre volle Länge: Ob nach einer Folge noch jemand bietet, prüft ansagen-test)
+  game.endless = true;
   game.start({ upgrades: {}, best: {} });
   const p = game.player;
   p.s = trip.s;
@@ -260,15 +263,15 @@ console.log('BontanaBack (Reise):');
   ok(Math.abs(share - T.chance) < 0.05, `Kasse: BontanaBack in ${fmt(100 * share)} % der möglichen Runden (soll ${fmt(100 * T.chance)} %)`);
   console.log(`  Kasse allein, 400 Streams zu 12 Runden: in ${fmt(100 * share, 1)} % der möglichen Runden, je Stream 0/1/2-mal: ${per.join(' / ')} · Endstand Median ${q(finals, 0.5)} €, 9. Dezil ${q(finals, 0.9)} €, höchstens ${Math.max(...finals)} €`);
   // im echten Spiel: alle Streams von oben, dazu lange Streams des zügigen Fahrers (viele Runden) – mindestens drei
-  // und so viele mehr, bis drei Eskalationen ganz geprüft sind (höchstens acht): Ob BontanaBack vor der Ankunft
-  // zum Zug kommt, hängt am Zufall jedes Streams
+  // und so viele mehr, bis drei Eskalationen ganz geprüft sind (höchstens zwölf): Ob BontanaBack vor der Ankunft
+  // zum Zug kommt, hängt am Zufall jedes Streams (und seit dem Zuschlag 5 km vor dem Brunnen auch am Weg dorthin)
   let shown = 0;
   let complete = 0;
   let count = 0;
   let long = 0;
   const tops = [];
   const streams = [...runs.values()].flat();
-  for (let i = 0; i < streams.length || (long < 8 && (long < 3 || complete < 3)); i++) {
+  for (let i = 0; i < streams.length || (long < 12 && (long < 3 || complete < 3)); i++) {
     const r = i < streams.length ? streams[i] : journey(DRIVERS[0], 90, 4304 + 62 * long++);
     const where = `Spiel, Stream ${i}`;
     const esc = r.rounds.map((x) => x.filter((b) => b.kind === 'bontana')).filter((x) => x.length);
@@ -369,7 +372,9 @@ console.log('Zufriedenheit des Chats (Reise):');
   const e125 = eq(1.25);
   const e100 = eq(1);
   const e085 = eq(0.85);
-  ok(Math.abs(e125 - (Z.home + Z.rate * Z.homeTau * 0.25)) < 1.5 && Math.abs(e100 - Z.home) < 1.5 && Math.abs(e085 - (Z.home - Z.rate * Z.homeTau * 0.15)) < 1.5, `Gleichgewicht ${fmt(e125, 1)} / ${fmt(e100, 1)} / ${fmt(e085, 1)}`);
+  // (neutral ist das Tempo fair, knapp unter dem des Navis: Gleichgewicht home + rate · homeTau · (p − fair), in 0 … 100)
+  const want = (p) => clamp(Z.home + Z.rate * Z.homeTau * clamp(p - Z.fair, Z.lo, Z.hi), 0, 100);
+  ok(Math.abs(e125 - want(1.25)) < 1.5 && Math.abs(e100 - want(1)) < 1.5 && Math.abs(e085 - want(0.85)) < 1.5 && e125 > e100 && e100 > e085, `Gleichgewicht ${fmt(e125, 1)} / ${fmt(e100, 1)} / ${fmt(e085, 1)}`);
   const st = new Satisfaction();
   drive(st, 0, 60, 0);
   const standDrop = Z.start - st.value;
@@ -394,20 +399,23 @@ console.log('Zufriedenheit des Chats (Reise):');
   const dSlow = slow.arrive();
   ok(Math.abs(dFast - (Math.min(Z.arrive.hi, Z.arrive.k * 0.3) + Z.arrive.bonus)) < 0.6 && Math.abs(dSlow - (Z.arrive.bonus - Z.arrive.k * 0.3)) < 0.6, `am Ziel: zügig ${fmt(dFast, 1)}, langsam ${fmt(dSlow, 1)}`);
   const at = (v) => Object.assign(new Satisfaction(), { value: v });
-  ok(at(0).gain === 0.6 && at(50).gain === 1 && Math.abs(at(100).gain - 1.4) < 1e-12 && at(50).audience === 1 && moodEmoji(10) === '😤' && moodEmoji(90) === '🤩', 'Faktoren oder Gesichter falsch');
+  ok(at(0).gain === 0.6 && at(50).gain === 1 && Math.abs(at(100).gain - 1.4) < 1e-12 && at(50).audience === 1, 'Faktoren falsch');
   console.log(`  Formel: Gleichgewicht bei p 1,25 / 1 / 0,85: ${fmt(e125, 1)} / ${fmt(e100, 1)} / ${fmt(e085, 1)} · eine Minute Stehen −${fmt(standDrop, 1)} · am Ziel zügig (q 1,3) ${fmt(dFast, 1)}, langsam (q 0,7) ${fmt(dSlow, 1)}`);
   // im Spiel: die Fahrer von oben, Mittel über ihre Streams
   const mean = (name) => runs.get(name).reduce((a, r) => a + r.zSum, 0) / runs.get(name).reduce((a, r) => a + r.zN, 0);
   const [mz, mm, mg] = DRIVERS.map((d) => mean(d.name));
   ok(mz > mm + 3 && mm > mg + 3, `im Spiel nicht geordnet: zügig ${fmt(mz, 1)}, mittel ${fmt(mm, 1)}, gemütlich ${fmt(mg, 1)}`);
   // Wirkung: derselbe Stream mit festgehaltener Zufriedenheit 90 und 10
-  const held = (v) => journey(DRIVERS[1], 30, 77, { frame: (game) => (game.zufrieden.value = v) });
+  // (drei Streams je Wert: Eine einzelne große Spende soll den Vergleich nicht kippen)
+  const held = (v) => [77, 78, 79].map((seed) => journey(DRIVERS[1], 30, seed, { frame: (game) => (game.zufrieden.value = v) }));
   const hi = held(90);
   const lo = held(10);
-  const gifts = (r) => ['Spenden', 'Abos', 'VIP-Abos'].reduce((a, k) => a + (r.game.breakdown[k] || 0), 0);
-  const tone = (r, pool) => r.chat.filter((m) => pool.includes(m.text)).length;
+  const gifts = (rs) => rs.reduce((a, r) => a + ['Spenden', 'Abos', 'VIP-Abos'].reduce((b, k) => b + (r.game.breakdown[k] || 0), 0), 0);
+  const plain = (pool) => pool.map((l) => l.replace(/^\[[a-z0-9 ]+\] /, ''));
+  const tone = (rs, pool) => rs.reduce((a, r) => a + r.chat.filter((m) => plain(pool).includes(m.text)).length, 0);
+  const views = (rs) => rs.reduce((a, r) => a + r.viewSum, 0) / rs.reduce((a, r) => a + r.zN, 0);
   const gr = gifts(hi) / gifts(lo);
-  const vr = hi.viewSum / hi.zN / (lo.viewSum / lo.zN);
+  const vr = views(hi) / views(lo);
   ok(gr > 1.5 && vr > 1.15 && tone(hi, CHAT.flott) >= 3 && tone(lo, CHAT.schneller) >= 3 && !tone(hi, CHAT.schneller) && !tone(lo, CHAT.flott), `Wirkung: Spenden/Abos/VIP ×${fmt(gr, 2)}, Zuschauer ×${fmt(vr, 2)}, Ton ${tone(hi, CHAT.flott)}/${tone(lo, CHAT.schneller)}`);
   console.log(`  im Spiel (Mittel je Fahrer): zügig ${fmt(mz, 1)}, mittel ${fmt(mm, 1)}, gemütlich ${fmt(mg, 1)} · bei 90 statt 10: Spenden, Abos, VIP ×${fmt(gr, 2)} (${fmt(gifts(hi))} € statt ${fmt(gifts(lo))} €), Zuschauer ×${fmt(vr, 2)}, flotte Zeilen ${tone(hi, CHAT.flott)}, ungeduldige ${tone(lo, CHAT.schneller)}`);
 }
@@ -450,6 +458,8 @@ console.log('Die Leute des Streams (Reise):');
     const backs = by(r, (m) => m.name === 'Nora' && m.text.startsWith('Verbindung zum Streaming-Server steht wieder'));
     n.funkloch += backs.length;
     for (const x of backs) {
+      // (wer sich meldet, tut es CREW.backAfter s danach: Kam das Bild erst kurz vor dem Ende zurück, ist der Stream vorher aus)
+      if (x.t + CREW.backAfter > r.game.t) continue;
       const who = by(r, (m) => CREW.back.includes(m.name) && CREW_LINES.back.includes(m.text) && Math.abs(m.t - x.t - CREW.backAfter) < 0.1);
       n.back += who.length;
       ok(who.length === 1 && (who[0].badge === 'MOD') === CREW.mods.includes(who[0].name), `${where}: nach dem Funkloch bei ${fmt(x.t)} s meldet sich ${who.length}× jemand`);
@@ -460,10 +470,13 @@ console.log('Die Leute des Streams (Reise):');
   console.log(`  ${all.length} Streams, ${fmt(n.minutes / 60, 1)} h: je Stunde Raids ${per('raid')}, Knolli danach ${per('knolli')}, Mod-Zeilen ${per('mod')}, Discord ${per('discord')}, Herzen ${per('heart')} · nach ${n.funkloch} Funklöchern ${n.back}× „läuft wieder“`);
   // der Abspann der Reise: die Leute mit ihren Berufen, und am Ende die Zeile des Gedenkens im Wortlaut
   const names = ABSPANN_REISE.map(([, v]) => v).join(' | ');
-  const want = ['Elti und IceBonbon', '?CF und IceDrache', 'Arno Nühm', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'Wils und DomZe', 'BontanaBack', 'König Knolli'];
+  const want = ['Elti und IceBonbon', 'Arno Nühm', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'Wils und DomZe', 'BontanaBack', 'König Knolli'];
   ok(want.every((w) => ABSPANN_REISE.some(([, v]) => v === w)), `Abspann: ${names}`);
+  // das Sprachstudio steht genau einmal im Abspann, mit seinen beiden Leuten (Wunsch des Eigentümers)
+  const studio = [...ABSPANN_CREW, ...ABSPANN_REISE].filter(([k, v]) => /Sprachstudio/.test(k + v));
+  ok(studio.length === 1 && studio[0][0] === 'Sprachstudio' && studio[0][1] === '?CF und IceBonbon', `Sprachstudio im Abspann: ${studio.map((r) => r.join(': ')).join(' | ')}`);
   ok(GEDENKEN === 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte', `Gedenken nicht im Wortlaut: ${GEDENKEN}`);
-  console.log(`  Abspann: ${ABSPANN_REISE.map(([k, v]) => `${k}: ${v}`).join(' · ')} · am Ende: „${GEDENKEN}“`);
+  console.log(`  Abspann: ${[...ABSPANN_CREW, ...ABSPANN_REISE].map(([k, v]) => `${k}: ${v}`).join(' · ')} · am Ende: „${GEDENKEN}“`);
 }
 
 console.log(fails ? `geld-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `geld-test: alles grün (${checks} Prüfungen)`);

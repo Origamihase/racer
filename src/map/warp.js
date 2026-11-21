@@ -66,6 +66,7 @@ export class Warp {
     this.tex = [null, null];
     this.size = [0, 0]; // Größe je Ausschnitt (0 = leer)
     this.lost = false;
+    this.gen = 0; // wie oft WebGL wiederhergestellt wurde (danach sind die Texturen leer)
     if (canvas.addEventListener) {
       canvas.addEventListener('webglcontextlost', (e) => {
         e.preventDefault();
@@ -73,6 +74,7 @@ export class Warp {
       });
       canvas.addEventListener('webglcontextrestored', () => {
         this.lost = false;
+        this.gen++;
         this.init();
       });
     }

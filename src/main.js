@@ -6,7 +6,7 @@ import { W, curveTable, curveAt, curveOffset } from './curve.js';
 import { Course, MapPlanner, PROBE_MARKS } from './game/course.js';
 import * as mapGraph from './map/graph.js';
 import * as mapShapes from './map/shapes.js';
-import { setMaxAnisotropy, ROAD, roundRect } from './textures.js';
+import { setMaxAnisotropy, ROAD } from './textures.js';
 import { Road } from './world/road.js';
 import { XxlWorld, ROAD_OPTS, autoTarget, autoDrive, AUTO } from './world/xxl/world.js';
 import { installDebug } from './world/xxl/debug.js';
@@ -16,20 +16,20 @@ import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
 import { createNatureKit } from './world/kit/nature.js';
 import { cityKit, naviLayout } from './world/xxl/towns.js';
 import { SCENE, ROLL_T, STOP, DOCK, CHARGE, rollPose, groundAt, chargeOf } from './world/xxl/charge.js';
-import { buildPopping, POPPING_AT } from './world/xxl/popping.js';
-import { TV, tvShots, shotPose, dollyFor, shotAt, windowAt, megaphoneAt, lookAt as tvLookAt } from './world/xxl/brunnentv.js';
+import { buildPopping, POPPING_AT, POPPING_YAW, windowAim } from './world/xxl/popping.js';
+import { TV, tvShots, shotPose, dollyFor, shotAt, windowAt, megaphoneAt, lookAt as tvLookAt, stillShot, STILL } from './world/xxl/brunnentv.js';
 import { buildHandMegaphone } from './models/megaphone.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
-import { Cockpit } from './cockpit/cockpit.js';
+import { Cockpit, EYE } from './cockpit/cockpit.js';
 import { Facecam } from './cockpit/facecam.js';
 import { Windshield, createCompositeMaterial } from './fx/windshield.js';
 import { Rain } from './fx/rain.js';
 import { Audio } from './audio.js';
 import { Speech } from './speech.js';
 import { Input } from './input.js';
-import { TouchControls } from './ui/touch.js';
+import { TouchControls, TOUCH_BUTTONS } from './ui/touch.js';
 import { driveSettings, playerOptions, IS_TOUCH } from './ui/drive-settings.js';
 import { showDriveHint, driveHintTick, driveHintBusy, showTip } from './ui/drive-hint.js';
 import { FirstTips, loadTips, storeTips } from './ui/first-tips.js';
@@ -38,12 +38,13 @@ import { TeslaDamage } from './models/damage-fx.js';
 import { CabinDamage } from './cockpit/damage-cabin.js';
 import { loadSave, storeSave, resetSave, refundMegafon, megafonNoteSeen, storePicture, loadPictures, PIC_MAX } from './save.js';
 import { Game } from './game/game.js';
+import { Chassis, CHASSIS } from './game/chassis.js';
 import { Pickups } from './game/pickups.js';
 import { UI } from './ui/ui.js';
 import * as sicht from './ui/sicht.js';
 import { Menus } from './ui/menus.js';
-import { bindFullscreenKey } from './ui/fullscreen.js';
-import { SHOP, UPGRADE_LIMITS } from './data.js';
+import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
+import { SHOP, UPGRADE_LIMITS, PARTYPEOPLE } from './data.js';
 import { NavModel } from './map/navroute.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
@@ -174,6 +175,13 @@ const mirrorRT = new THREE.WebGLRenderTarget(768, 226, { type: THREE.HalfFloatTy
 cockpit.setMirrorTexture(mirrorRT.texture);
 // durch die Heckscheibe der Facecam sieht man, was hinter dem Auto ist
 facecam.setRearView(mirrorRT.texture);
+// … und durchs Seitenfenster, was links neben ihm ist: eine Kamera am Kopf des Fahrers schaut zum Fahrerfenster hinaus
+// (gefilmt nur mit der Facecam, auf „niedrig“ gar nicht: dann zieht dort die gemalte Landschaft vorbei)
+const SIDE = { w: 384, h: 72, hfov: 100 };
+const sideCam = new THREE.PerspectiveCamera((2 * Math.atan(Math.tan((SIDE.hfov * Math.PI) / 360) / (SIDE.w / SIDE.h)) * 180) / Math.PI, SIDE.w / SIDE.h, 0.4, 700);
+const sideRT = new THREE.WebGLRenderTarget(SIDE.w, SIDE.h, { type: THREE.HalfFloatType, depthBuffer: true });
+facecam.setSideView(sideRT.texture);
+const sideOn = () => settings.quality !== 'niedrig';
 const compMat = createCompositeMaterial(worldRT.texture, windshield);
 const compScene = new THREE.Scene();
 const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compMat);
@@ -247,62 +255,19 @@ const postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMat);
 postQuad.frustumCulled = false;
 postScene.add(postQuad);
 
-// Kofferraum-Ansicht für den Innenspiegel (Bitspende „Kofferraum öffnen“)
-const trunkTex = (() => {
-  const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 192;
-  const ctx = c.getContext('2d');
-  const g = ctx.createLinearGradient(0, 0, 0, 192);
-  g.addColorStop(0, '#2a2c30');
-  g.addColorStop(1, '#141517');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 512, 192);
-  ctx.fillStyle = '#0c0c0d';
-  ctx.fillRect(0, 0, 512, 34);
-  const box = (x, y, w, h, col, label) => {
-    ctx.fillStyle = col;
-    roundRect(ctx, x, y, w, h, 8);
-    ctx.fill();
-    ctx.fillStyle = '#e8e8e8';
-    ctx.font = 'bold 15px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, x + w / 2, y + h / 2 + 5);
-  };
-  box(24, 70, 120, 84, '#3b3f46', 'Akku-Pack');
-  box(160, 92, 96, 62, '#20242a', 'Router');
-  box(272, 60, 92, 94, '#5a2a2a', 'KONFETTI');
-  box(380, 84, 110, 70, '#1e3550', 'LTE ×3');
-  ctx.strokeStyle = '#d4a21a';
-  ctx.lineWidth = 3;
-  for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
-    ctx.moveTo(140 + i * 8, 120);
-    ctx.bezierCurveTo(180, 175 - i * 6, 330, 178, 380, 120 + i * 6);
-    ctx.stroke();
-  }
-  ctx.fillStyle = '#ff4d4d';
-  ctx.font = 'bold 18px Arial, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('● REC  Kofferraum offen', 18, 24);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.repeat.x = -1;
-  t.offset.x = 1;
-  return t;
-})();
 
 // Blitzerfoto
 const photoCanvas = document.createElement('canvas');
 photoCanvas.width = 360;
 photoCanvas.height = 270;
 const photoCtx = photoCanvas.getContext('2d');
-// BrunnenTV-Album: ein Standbild jeder Folge aus der Brunnen-Kamera (takeAlbumShot, 16:9, angezeigt halb so groß);
-// Kamera und Leinwand entstehen erst bei der ersten Folge der Reise. t: Sekunde der Folge, q: Güte der Kodierung
-const ALBUM_PIC = { w: 288, h: 162, t: TV.cams.brunnen + 1, q: [0.72, 0.5] };
+// BrunnenTV-Album: ein Standbild jeder Folge (takeAlbumShot, 16:9, angezeigt halb so groß), reihum aus vier
+// Blickwinkeln (brunnentv.js stillShot); Kamera und Leinwand entstehen erst bei der ersten Folge der Reise. t: Sekunde
+// der Folge, q: Güte der Kodierung
+const ALBUM_PIC = { w: 288, h: 162, t: STILL.t, q: [0.72, 0.5] };
 let albumCam = null;
 let albumCanvas = null;
-let albumLast = null; // zuletzt aufgenommen (Prüfbilder, __MA.album): { n, chars, type, stored, ms }
+let albumLast = null; // zuletzt aufgenommen (Prüfbilder, __MA.album): { n, pose (Blickwinkel), chars, type, stored, ms }
 
 // --- Ton, Sprache, Eingabe, Oberfläche ---------------------------------------------
 const audio = new Audio();
@@ -318,26 +283,24 @@ ui.setFacecam(settings.facecam !== false);
 // Touch-Knöpfe (nur auf Geräten mit Touchscreen sichtbar)
 const touchEl = document.createElement('div');
 touchEl.className = 'touch';
-// Lenken, Bremse und Strom kommen aus src/ui/touch.js (Daumen-Zug oder Lenkknöpfe)
-for (const [action, label, cls] of [
-  ['horn', '📯', 't-small t-horn'], ['wiper', '🌧️', 't-small t-wiper'], ['megafon', '📢', 't-small t-megafon'],
-  ['camera', '🎥', 't-small t-camera'], ['pause', '⏸', 't-small t-pause'],
-]) {
+// Lenken, Bremse und Strom kommen aus src/ui/touch.js (Daumen-Zug oder Lenkknöpfe), die Knöpfe am Rand aus dessen
+// Liste TOUCH_BUTTONS: „Ladestopp einplanen“ (wie Taste L) ist zu sehen, wenn der Akku halb leer ist oder OMI gewarnt
+// hat, „BrunnenTV hier“ (wie Taste B), solange der Wagen neben einem Brunnen auf dem Weg steht (Game.wayOffer)
+const touchBtn = {};
+for (const t of TOUCH_BUTTONS) {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = cls;
-  b.textContent = label;
+  b.className = t.cls;
+  if (t.icon) {
+    b.setAttribute('aria-label', t.label);
+    b.append(Object.assign(document.createElement('span'), { textContent: t.icon }), ' ' + t.label);
+  } else b.textContent = t.label;
   touchEl.appendChild(b);
-  input.bindTouch(b, action);
+  input.bindTouch(b, t.action);
+  touchBtn[t.action] = b;
 }
-// „Ladestopp einplanen“ (wie Taste L), zu sehen, wenn der Akku halb leer ist oder NOMI gewarnt hat
-const stopBtn = document.createElement('button');
-stopBtn.type = 'button';
-stopBtn.className = 't-stop';
-stopBtn.setAttribute('aria-label', 'Ladestopp einplanen');
-stopBtn.innerHTML = '<span>🔌</span> Ladestopp einplanen';
-touchEl.appendChild(stopBtn);
-input.bindTouch(stopBtn, 'ladestopp');
+const stopBtn = touchBtn.ladestopp;
+const wayBtn = touchBtn.brunnen;
 app.appendChild(touchEl);
 const touch = new TouchControls(touchEl, input);
 const jolt = new Jolt();
@@ -362,10 +325,9 @@ const fx = {
       input.rumble(0.9, 220);
     }
   },
+  // Bitspende „Kofferraum öffnen“: Der Mittelbildschirm zeigt die Kofferraum-Kamera (der Innenspiegel bleibt ein Spiegel)
   trunk: (dur) => {
     fxState.trunk = dur;
-    cockpit.setTrunkView(trunkTex);
-    cockpit.mirrorMat.needsUpdate = true;
   },
 };
 const uiFacade = {
@@ -382,7 +344,7 @@ const uiFacade = {
   megafon: (t, d, b, l) => ui.megafon(t, d, b, l),
   rahmen: (r, b) => ui.rahmen(r, b),
   funkloch: (on) => ui.funkloch(on),
-  damage: (h, m) => ui.damage(h, m),
+  damage: () => ui.damage(),
   jobs: (j) => ui.jobs(j),
   jobDone: (text) => ui.jobDone(text),
   photo: (kmh, clock) => {
@@ -394,9 +356,13 @@ const uiFacade = {
 // Das Spiel bietet auf echte Orte und braucht dafür die Fahrt der Welt (jedes Gebot setzt ihr Ziel), den Halt am
 // Brunnen (stopping: der Wagen bremst gerade dorthin · release: weiterfahren, auch wenn er knapp hinter dem
 // Haltepunkt zum Stehen kam) sowie Brunnenplatz und Ort für die BrunnenTV-Szene
-const gameWorld = { trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec) };
+const gameWorld = {
+  trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec),
+  // BrunnenTV unterwegs: der Wagen bleibt stehen, wo er steht, bis release()
+  hold: (sec) => (xxl.arrival.held = { s: xxl.trip.s + 0.3, sec, place: sec.place, park: -1 }),
+};
 // (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
-const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
+const game = new Game({ traffic, scenery, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
 // Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht, BrunnenTV,
 // Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
 xxl.on((e) => {
@@ -415,7 +381,7 @@ const courseEnv = { kappa: 0, grade: 0 };
 // --- Mini Adams Mimik ------------------------------------------------------------------
 // Spielereignisse kommen über game.onMood und werden zu Stimmung, Geste und Blick – für beide Figuren gleich: die im
 // Auto (Drohne, Titel, Abspann) und die in der Facecam. Eine Stimme hat Adam nicht: er „redet“ in kurzen Stücken mit
-// dem Chat (Mund im Silbentakt, Blick in die Kamera) und hört zu, solange NOMI oder eine Sprachdurchsage spricht.
+// dem Chat (Mund im Silbentakt, Blick in die Kamera) und hört zu, solange OMI oder eine Sprachdurchsage spricht.
 const adams = [tesla.adam, facecam.adam];
 const adamCtl = { talkFrom: 0, talkUntil: 0, talk: 0, chatK: 0, nextChat: 14, megafon: -1, voice: null, camUntil: 0, quiet: 0, doze: 0, wiperT: 0 };
 const hash01 = (k) => {
@@ -427,7 +393,7 @@ function adamDo(fn) {
   // dazu die Figur, die freie Kameras im Cockpit sehen (baut das Cockpit erst beim ersten Blick von außen)
   if (cockpit.driver) fn(cockpit.driver);
 }
-/** In die Kamera schauen; so lange zieht ihn auch NOMI nicht weg. */
+/** In die Kamera schauen; so lange zieht ihn auch OMI nicht weg. */
 function adamToCamera(sec) {
   adamDo((a) => a.lookAt('camera', sec));
   adamCtl.camUntil = Math.max(adamCtl.camUntil, simT + sec);
@@ -532,6 +498,11 @@ let lastOver = null;
 
 // Vollbild mit F, überall (Knöpfe in Titel und Pause: menus.js)
 bindFullscreenKey();
+// Vollbild beendet ohne Knopf und F (Esc, Zurück-Geste, Leiste des Browsers): Mitten in der Fahrt hält das Spiel an –
+// Esc ist hier die Pause-Taste, und das Bild springt gerade in seine neue Größe. Knopf und F wechseln ohne Pause.
+onFullscreenChange(({ on, own }) => {
+  if (!on && !own) pause();
+});
 const menus = new Menus(app, {
   click: () => {
     audio.init();
@@ -560,7 +531,7 @@ const menus = new Menus(app, {
     // BrunnenTV-Album: Folgen aus dem Spielstand, Bilder unter ihrem eigenen Schlüssel (frisch gelesen)
     if (name === 'album') return { save, pics: loadPictures(), tab: 'folgen' };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
-    if (name === 'over') return lastOver ? { ...lastOver, wallet: save.wallet } : data;
+    if (name === 'over') return lastOver ? { ...lastOver, wallet: save.wallet, pics: loadPictures() } : data;
     return data;
   },
   buy: (id) => {
@@ -654,6 +625,7 @@ function toTitle() {
   state = 'title';
   stateT = 0;
   paused = false;
+  liveOff();
   cockpit.shake = 0;
   view = 'cockpit';
   ui.show(false);
@@ -677,7 +649,9 @@ function startRun() {
   ui.show(false);
   fxState.fade = 1;
   cockpit.shake = 0;
+  chassis.reset();
   // jede Fahrt beginnt mit der Startszene am Supercharger in Erlensee (ohne Ladepark gleich am Steuer)
+  Object.assign(chargeRun, { hello: false, liveT: Infinity, greetT: Infinity });
   state = 'charge';
   if (!chargeBegin()) toDrive();
   // die Taste, die „Losfahren“ ausgelöst hat, soll die Startszene nicht gleich überspringen
@@ -733,10 +707,18 @@ const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const drone = { pos: new THREE.Vector3(0, 4, 10), look: new THREE.Vector3(0, 1, -10), init: false };
 
+// Fahrwerk (src/game/chassis.js): Wanken, Kopf, Neigung der Cockpitkamera, Verfolgerkamera – straff, ohne Schaukeln
+const chassis = new Chassis();
+const droneQuat = new THREE.Quaternion();
+// Ziel und Blickpunkt der Drohne in diesem Bild (placeDrone) und die Kamera einer Szene (lerpKeys): ohne neue Vektoren je Bild
+const droneAim = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
+const keyCam = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
+const droneMatrix = new THREE.Matrix4();
+
 function updateCarMatrix() {
   const p = game.player;
   carPos.set(p.x, 0, 0);
-  carEuler.set(0, -p.yaw, clamp(p.latAccSm * 0.0025, -0.03, 0.03), 'YXZ');
+  carEuler.set(0, -p.yaw, chassis.roll, 'YXZ');
   carQuat.setFromEuler(carEuler);
   carMatrix.compose(carPos, carQuat, ONE);
   tesla.root.position.copy(carPos);
@@ -1096,16 +1078,20 @@ function placeDrone(dt, mode) {
   let look;
   if (mode === 'orbit') {
     pos = orbitTarget(p, dt);
-    look = new THREE.Vector3(0, 0.9, 0).applyMatrix4(carMatrix);
+    look = droneAim.look.set(0, 0.9, 0).applyMatrix4(carMatrix);
   } else {
-    pos = new THREE.Vector3(-p.vx * 0.25, 3.3, 9.2).applyMatrix4(carMatrix);
-    look = new THREE.Vector3(0, 1.0, -14).applyMatrix4(carMatrix);
+    // hinter dem Wagen, mit dem halben Gierwinkel geschwenkt und kaum versetzt: Sie bleibt eng am Wagen, statt ihn bei
+    // jedem Spurwechsel quer durchs Bild gleiten zu lassen (Fahrwerk)
+    droneQuat.setFromAxisAngle(UP_AXIS, -p.yaw * CHASSIS.droneYaw);
+    droneMatrix.compose(carPos, droneQuat, ONE);
+    pos = droneAim.pos.set(-p.vx * CHASSIS.lag, 3.3, 9.2).applyMatrix4(droneMatrix);
+    look = droneAim.look.set(0, 1.0, -14).applyMatrix4(droneMatrix);
     // in die Kurve schauen (um die Kamera gedreht) und mit der Straße etwas hoch oder runter
     look.sub(pos).applyAxisAngle(UP_AXIS, lookAhead.yaw * 0.6);
     look.y += Math.tan(lookAhead.pitch * 0.6) * 23;
     look.add(pos);
   }
-  const k = 1 - Math.exp(-dt * (mode === 'orbit' ? 3 : 6));
+  const k = 1 - Math.exp(-dt * (mode === 'orbit' ? 3 : chassis.follow));
   if (mode === 'orbit') {
     // geglättet um das Auto herum (Winkel, Abstand, Höhe): wechselt es die Spur, fährt die Kamera mit, statt
     // hinterherzuschwenken, und ihr Blick dreht sich nie schneller als ORBIT.wMax. Muss sie an der Seite stehen
@@ -1161,12 +1147,16 @@ function lerpKeys(t, keys) {
       break;
     }
   }
-  if (t > b.t) return { pos: new THREE.Vector3(...b.pos), look: new THREE.Vector3(...b.look) };
+  // (die Vektoren gelten bis zum nächsten Aufruf)
+  if (t > b.t) {
+    keyCam.pos.fromArray(b.pos);
+    keyCam.look.fromArray(b.look);
+    return keyCam;
+  }
   const k = easeInOut(clamp((t - a.t) / (b.t - a.t), 0, 1));
-  return {
-    pos: new THREE.Vector3().fromArray(a.pos).lerp(new THREE.Vector3().fromArray(b.pos), k),
-    look: new THREE.Vector3().fromArray(a.look).lerp(new THREE.Vector3().fromArray(b.look), k),
-  };
+  keyCam.pos.fromArray(a.pos).lerp(tmpV2.fromArray(b.pos), k);
+  keyCam.look.fromArray(a.look).lerp(tmpV2.fromArray(b.look), k);
+  return keyCam;
 }
 
 /** Kamera einer Szene: Schlüssel im Rahmen des Wagens bis inside, danach im Cockpit (Kopf dreht nach vorne bis end). */
@@ -1234,6 +1224,7 @@ function toDrive() {
   state = 'drive';
   stateT = 0;
   ui.show(true);
+  if (!chargeRun.hello) streamHello();
   // die Facecam geht an: Mini Adam schaut hinein und winkt
   adamMood('wave');
   // die Tipps der ersten Minuten zählen ab hier (first-tips.js); keiner steht noch vom letzten Stream
@@ -1262,9 +1253,10 @@ const CHARGE_KEYS = [
 const CHARGE_TITLE = { pos: [-2.8, 2.6, -4.6], look: [-0.25, 0.85, 0.9] };
 const CHARGE_LINES = { live: 'Wir sind live.', greet: 'Hallo Mini Adam! Akku voll, gute Fahrt!' };
 // town: der Startort (Towns.of: plan, group, charge), port: Ladeklappe des Wagens, keep: Spieler vor der Szene,
-// skipT: wann übersprungen wurde (dann erst abblenden), greetT: wann NOMI grüßt (Spielzeit simT)
+// skipT: wann übersprungen wurde (dann erst abblenden), greetT: wann OMI grüßt (Spielzeit simT)
 // parked: der Titel der Reise zeigt den Wagen am Supercharger (xxlStart)
-const chargeRun = { town: null, port: null, pose: {}, keep: null, parked: false, chimed: false, said: false, skipT: -1, greetT: Infinity };
+// hello: Mini Adams „Hallo, Partypeople!“ ist gesagt, liveT: wann das Sprachstudio „Wir sind live.“ sagt (Spielzeit simT)
+const chargeRun = { town: null, port: null, pose: {}, keep: null, parked: false, chimed: false, hello: false, skipT: -1, liveT: Infinity, greetT: Infinity };
 const chargeM = new THREE.Matrix4();
 
 /** Wagen in die Bucht des Startorts, Stecker in die Buchse, Ring grün. false, wenn der Startort keinen Ladepark hat. */
@@ -1289,7 +1281,7 @@ function chargePlug() {
 function chargeBegin() {
   if (!chargePlug()) return false;
   const p = game.player;
-  Object.assign(chargeRun, { chimed: false, said: false, unplugged: false, shifted: false, skipT: -1, greetT: Infinity });
+  Object.assign(chargeRun, { chimed: false, unplugged: false, shifted: false, skipT: -1 });
   chargeRun.keep = { speed: p.speed, wheel: p.wheel, throttle: p.throttle, braking: p.braking };
   ui.show(false, true);
   return true;
@@ -1353,12 +1345,7 @@ function chargeStep(dt) {
     run.chimed = true;
     audio.nomiChime();
   }
-  if (t >= S.live && !run.said) {
-    run.said = true;
-    const d = speech.say(CHARGE_LINES.live, 'sprachstudio');
-    ui.studio(CHARGE_LINES.live, d + 0.8);
-    run.greetT = simT + d + 1.1;
-  }
+  if (t >= S.hallo && !run.hello) streamHello();
   const where = placeScene(dt, CHARGE_KEYS, t, S.inside, S.end);
   const sw = S.inside;
   const fade = t < 0.6 ? 1 - t / 0.6 : t > sw - 0.25 && t < sw ? (t - (sw - 0.25)) / 0.25 : t >= sw && t < sw + 0.35 ? 1 - (t - sw) / 0.35 : 0;
@@ -1376,7 +1363,32 @@ function chargeStep(dt) {
   };
 }
 
-/** NOMI grüßt (wie Game.say, aber ohne die Spielzeit: die steht in der Szene still). */
+/**
+ * Jeder Stream beginnt mit Mini Adams Gruß (data.js PARTYPEOPLE): in der Startszene, während er winkt, sonst (ohne
+ * Ladepark, übersprungen vor dem Gruß) beim Losfahren. Mit seiner tiefen Stimme und Vorrang, damit nichts ihn
+ * verschluckt; danach das Sprachstudio „Wir sind live.“ und OMIs Gruß.
+ */
+function streamHello() {
+  chargeRun.hello = true;
+  const d = speech.say(PARTYPEOPLE.say, 'adam', { priority: true });
+  ui.adam(PARTYPEOPLE.say, d + 0.8);
+  chargeRun.liveT = simT + Math.max(d + 0.35, SCENE.live - SCENE.hallo);
+}
+
+/** Der Stream ist aus: kein „Wir sind live.“ und kein Gruß OMIs mehr, die noch geplant waren. */
+function liveOff() {
+  chargeRun.liveT = chargeRun.greetT = Infinity;
+}
+
+/** Das Sprachstudio meldet: Wir sind live (nach Mini Adams Gruß). */
+function chargeLive() {
+  chargeRun.liveT = Infinity;
+  const d = speech.say(CHARGE_LINES.live, 'sprachstudio');
+  ui.studio(CHARGE_LINES.live, d + 0.8);
+  chargeRun.greetT = simT + d + 1.1;
+}
+
+/** OMI grüßt (wie Game.say, aber ohne die Spielzeit: die steht in der Szene still). */
 function chargeGreet() {
   chargeRun.greetT = Infinity;
   audio.nomiChime();
@@ -1390,16 +1402,16 @@ function chargeGreet() {
 // Spur, während der Wagen der Szene rückwärts in die freie Heldenbucht setzt, lädt und ausparkt (die Wege rechnet
 // charge.js im Rahmen des Parks). Passiert der ausparkende Wagen den Halt, folgt ihm der Spieler: Die Übergabe am Ende
 // ist ohne Sprung. Kamera: beim Einparken die des Spielers (im Cockpit bleibt sie dort, die Drohne steigt über die
-// Gegenspur und schaut zu), in der Bucht nah an Buchse, Säule und Popcorn-Stand (Schlüssel im Rahmen des Wagens wie in
-// Erlensee), beim Ausparken die Startszene (CHARGE_KEYS) zurück ins Cockpit bzw. hinter den Wagen wie die Drohne.
-// (über den Eimer hinweg auf Buchse, Stecker und Säule – der Eimer bleibt unter dem Bild –, dann zum Tisch hinter der
-// Säule, wo das Popcorn springt und der Bananensaft steht, zum Bananensaft schräg von vorn aufs Fahrerfenster mit dem
-// Tisch am Rand, zuletzt Erlensees erster Schlüssel fürs Ausstecken)
+// Gegenspur und schaut zu), in der Bucht nah an Buchse, Säule und Popcorn-Maschine (Schlüssel im Rahmen des Wagens wie
+// in Erlensee), beim Ausparken die Startszene (CHARGE_KEYS) zurück ins Cockpit bzw. hinter den Wagen wie die Drohne.
+// (über den Eimer hinweg auf Buchse, Stecker und Säule – der Eimer bleibt unter dem Bild –, dann von links auf die
+// Maschine oben auf der Säule und das offene Fahrerfenster, in das das Popcorn fliegt, zum Bananensaft schräg von vorn
+// aufs Fahrerfenster, zuletzt Erlensees erster Schlüssel fürs Ausstecken)
 const STOP_KEYS = [
   { t: 0, pos: [-1.7, 1.95, -1.3], look: [-0.95, 0.85, 1.95] },
   { t: STOP.plug[1] + 0.15, pos: [-1.5, 1.8, 1.0], look: [-1.25, 1.2, 1.88] },
-  { t: STOP.pop[0] + 1.0, pos: [-3.0, 1.75, 0.9], look: [-1.9, 0.95, 2.7] },
-  { t: STOP.juice - 1.0, pos: [-2.85, 1.6, 1.2], look: [-1.85, 0.95, 2.75] },
+  { t: STOP.pop[0] + 0.8, pos: [-3.4, 1.9, -0.3], look: [-1.1, 1.75, 1.15] },
+  { t: STOP.juice - 1.0, pos: [-3.15, 1.8, -0.7], look: [-1.0, 1.6, 0.95] },
   { t: STOP.juice - 0.2, pos: [-2.6, 1.45, -1.6], look: [-0.92, 0.95, 0.89] },
   { t: STOP.unplug - 1.4, pos: [-2.5, 1.5, -1.45], look: [-0.9, 0.95, 0.9] },
   { t: STOP.unplug, pos: CHARGE_KEYS[0].pos, look: CHARGE_KEYS[0].look },
@@ -1416,8 +1428,10 @@ const STOP_FADE = 0.35; // Aufblenden in der Spur nach dem Überspringen
 // Rückfahr- und Bremslicht, gear: Gang fürs Display, inside: Kamera im Cockpit (für die Pause), skipT: übersprungen bei
 // (Zeit der Szene), fadeT: Aufblenden danach, from / fromLook: Kamera beim Halt, cam / look: die der Drohne beim
 // Einparken, done: Klänge und Gesten, die schon kamen
+// aim / along: Stelle im offenen Fahrerfenster, durch die das Popcorn fliegt, und die Richtung längs des Wagens dort,
+// im Rahmen der Maschine
 const stopRun = {
-  on: false, c: null, town: null, rig: null, port: null, pop: null, q: {}, v: 0, rev: false, brake: false, gear: 'D', inside: false, skipT: -1, fadeT: 0,
+  on: false, c: null, town: null, rig: null, port: null, pop: null, aim: new THREE.Vector3(), along: new THREE.Vector3(), q: {}, v: 0, rev: false, brake: false, gear: 'D', inside: false, skipT: -1, fadeT: 0,
   from: new THREE.Vector3(), fromLook: new THREE.Vector3(), cam: new THREE.Vector3(), look: new THREE.Vector3(), done: {},
 };
 game.onCharge = (c) => stopBegin(c);
@@ -1438,15 +1452,19 @@ function stopBegin(c) {
   r.rig.plug(pos, normal);
   r.rig.set(1);
   r.port.set(0, 0);
-  stopPose(c.plan.dock.pose(0, r.q));
-  // Popcorn springt in der Maschine auf dem Tisch hinter der Säule
-  const st = town.plan.items.find((it) => it.name === 'popcorn_stand');
+  // Popcorn springt in der Maschine oben auf der Säule – und bei offenem Fenster hinüber ins Auto: durch das Fenster des
+  // Wagens in der Bucht (dort steht er beim Popcorn still), im Rahmen der Maschine
+  const st = town.plan.items.find((it) => it.name === 'popcorn_post');
   if (st) {
     r.pop = r.pop || buildPopping();
     r.pop.group.position.fromArray(POPPING_AT).applyAxisAngle(UP_AXIS, st.ry).add(tmpV.set(st.x, st.y, st.z));
-    r.pop.group.rotation.y = st.ry;
+    r.pop.group.rotation.y = st.ry + POPPING_YAW;
     town.group.add(r.pop.group);
+    r.pop.group.updateWorldMatrix(true, false);
+    windowAim(tesla.windowOpening(), r.aim).applyMatrix4(tesla.root.matrixWorld).applyMatrix4(chargeM.copy(r.pop.group.matrixWorld).invert());
+    r.along.set(0, 0, 1).transformDirection(tesla.root.matrixWorld).transformDirection(chargeM);
   }
+  stopPose(c.plan.dock.pose(0, r.q));
   // die Drohne fliegt von dort los, wo sie gerade ist
   r.from.copy(camera.position);
   camera.getWorldDirection(r.fromLook).multiplyScalar(20).add(camera.position);
@@ -1477,12 +1495,15 @@ function stopTick() {
   const p = game.player;
   const c = r.c;
   const P = c.plan;
-  if (!game.charging) {
+  // endet der Stream mitten im Stopp (Stream beenden, keine Gebote mehr), kommt der Abspann gleich: Sonst stünde die
+  // Szene still, denn game.update läuft nicht mehr, und game.charging bliebe gesetzt
+  if (!game.charging || game.over) {
     // Übergabe: der Wagen steht da, wo das Ausparken endet, mit dessen Tempo; Stecker im Halter, Klappe zu
     const e = rollPose(P.u, ROLL_T, r.q);
     Object.assign(p, { s: c.sec.s0 + e.u, x: e.x, speed: e.v, wheel: 0, throttle: 0, braking: 0, yaw: 0, vx: 0 });
     r.rig.set(1);
     r.port.set(0, 0);
+    tesla.setWindow(0);
     if (r.pop) {
       r.pop.update(0, false);
       r.pop.group.removeFromParent();
@@ -1523,7 +1544,10 @@ function stopTick() {
     r.rig.set((te - S.plug[0]) / (S.plug[1] - S.plug[0]));
     r.port.set(1 - smoothstep(S.flap[0], S.flap[1], te), 1 - smoothstep(S.plug[0], S.plug[0] + 0.15, te));
   }
-  if (r.pop) r.pop.update(t - P.at(STOP.pop[0]), t >= P.at(STOP.pop[0]) && t < P.at(STOP.pop[1]));
+  // Fürs Popcorn geht das Fahrerfenster herunter (und danach wieder hoch); ist es offen, fliegen Körner hinein
+  const win = smoothstep(P.at(STOP.pop[0]) - 0.5, P.at(STOP.pop[0]) + 0.2, t) * (1 - smoothstep(P.at(STOP.pop[1]), P.at(STOP.pop[1]) + 0.6, t));
+  tesla.setWindow(win);
+  if (r.pop) r.pop.update(t - P.at(STOP.pop[0]), t >= P.at(STOP.pop[0]) && t < P.at(STOP.pop[1]), win > 0.95 ? r.aim : null, r.along);
   // Klick, wenn der Stecker sitzt und wenn er sich löst, der Zirper von P nach D beim Anrollen; Mini Adam hebt beim
   // Bananensaft die Flasche (nicht nachgeholt)
   const once = (k, at, fn) => {
@@ -1597,7 +1621,7 @@ function stopPlace(dt) {
 }
 
 // --- BrunnenTV am Navi-Ziel (world/xxl/brunnentv.js TV, Game.startBrunnenTV) ----------------------------------------
-// Der Wagen steht neben dem Brunnen, das Spiel läuft weiter und führt die Zeit der Folge (Sätze, Chat, NOMI). Hier
+// Der Wagen steht neben dem Brunnen, das Spiel läuft weiter und führt die Zeit der Folge (Sätze, Chat, OMI). Hier
 // gehen das Fahrerfenster herunter und wieder hoch, Mini Adam hebt das Megafon (das vom Beifahrersitz, gebaut bei der
 // ersten Folge) an den Mund und schaut zum Brunnen, und drei Kameras im Rahmen des Wagens zeigen die Folge (tvShots):
 // „Totale“, „Fenster“, „Brunnen“. Von der Drohne gleitet die Kamera in die Totale, aus dem Cockpit wird kurz
@@ -1643,12 +1667,15 @@ function tvBegin(e) {
   // Mitte des Brunnens im Rahmen des haltenden Wagens (er steht still, also bleibt sie dort)
   r.f.set(q.world.x, 0, q.world.z).applyMatrix4(tvM.copy(carMatrix).invert());
   r.shots = tvShots({ x: r.f.x, z: r.f.z }, q.r);
-  Object.assign(r, { on: true, tv: e, inside: view === 'cockpit', skipT: -1, fadeT: 0, picDone: false });
+  // fürs Standbild: Radius der Insel und Maße des Brunnens (r, h seines Bausteins)
+  Object.assign(r, { on: true, tv: e, inside: view === 'cockpit', skipT: -1, fadeT: 0, picDone: false, isl: q.r, fi: q.object ? q.object.userData.info : null });
   r.from.copy(camera.position);
   camera.getWorldDirection(r.fromLook).multiplyScalar(20).add(camera.position);
   if (!r.prop) {
     r.prop = buildHandMegaphone();
     tesla.adam.holdMegaphone(r.prop);
+    // die Figur der Facecam hält ihr eigenes (gerades) Megafon: Beide zeigen dasselbe
+    facecam.adam.holdMegaphone(buildHandMegaphone({ curved: false }));
   }
   // Mini Adam schaut zum Brunnen (Körperkoordinaten: +x zum Fenster, +z nach vorn)
   adamDo((a) => a.lookAt([-r.f.x, 0.85, -r.f.z], TV.look.off[0]));
@@ -1807,7 +1834,7 @@ function renderWorld(cam, { cockpitOn, drops }) {
 
 function renderFrame(cockpitOn) {
   frameNo++;
-  // Während der Kofferraum-Einlage zeigt nur der Innenspiegel das Bild, der Außenspiegel läuft weiter
+  // Innen- und Außenspiegel: immer das Spiegelbild der Straße (die Kofferraum-Kamera zeigt der Mittelbildschirm)
   if (cockpitOn && frameNo % quality.mirrorEvery === 0) {
     // Rückspiegel: Blick nach hinten
     rearCam.position.copy(localToWorld(tmpV2.set(0, 1.32, 0.9)));
@@ -1852,6 +1879,7 @@ function renderFrame(cockpitOn) {
       // (nach einem Zeitsprung – Pause, Test – sofort, damit nie ein altes Bild stehen bleibt)
       const due = !paused && (frameNo % Math.max(2, quality.mirrorEvery) === 0 || Math.abs(simT - facecam.shotT) > 0.3);
       if (!facecam.ready || due) {
+        if (sideOn()) renderSide();
         facecam.render(renderer, fc, settings.quality === 'auto' ? 'hoch' : settings.quality);
         facecam.shotT = simT;
       }
@@ -1859,6 +1887,19 @@ function renderFrame(cockpitOn) {
     }
     renderer.autoClear = true;
   }
+}
+
+/** Seitenfenster der Facecam: die Welt links neben dem Wagen, vom Kopf des Fahrers aus (ohne den eigenen Wagen). */
+function renderSide() {
+  sideCam.position.copy(localToWorld(tmpV2.set(EYE.x, EYE.y, EYE.z)));
+  sideCam.lookAt(localToWorld(tmpV2.set(EYE.x - 30, EYE.y - 1.6, EYE.z)));
+  tesla.root.visible = false;
+  const clear = renderer.autoClear;
+  renderer.autoClear = true;
+  renderer.setRenderTarget(sideRT);
+  renderer.render(scene, sideCam);
+  renderer.setRenderTarget(null);
+  renderer.autoClear = clear;
 }
 
 /** Effekte über Welt und Cockpit zusammen (siehe postMat). */
@@ -1911,8 +1952,9 @@ function takePhoto({ kmh, clock }) {
 }
 
 /**
- * Standbild einer BrunnenTV-Folge fürs Album: die Brunnen-Kamera der Folge (Brunnen, Wagen, Mini Adam am Fenster) zur
- * Sekunde ALBUM_PIC.t, immer 16:9 (wie beim Blitzerfoto verzerrt gerendert und beim Verkleinern entzerrt), ohne
+ * Standbild einer BrunnenTV-Folge fürs Album: reihum nach der Nummer der Folge von vorn, dreiviertel (die Brunnen-Kamera
+ * der Folge mit Wagen und Mini Adam am Fenster), tief oder vom Auto aus (brunnentv.js stillShot) zur Sekunde
+ * ALBUM_PIC.t, immer 16:9 (wie beim Blitzerfoto verzerrt gerendert und beim Verkleinern entzerrt), ohne
  * Abblenden; als WebP (sonst JPEG) unter eigenem Schlüssel gespeichert (save.js storePicture). Passt es nicht, zeigt
  * das Album für diese Folge eine gezeichnete Karte.
  */
@@ -1925,9 +1967,8 @@ function takeAlbumShot(r) {
     albumCanvas.width = P.w;
     albumCanvas.height = P.h;
   }
-  const s = r.shots.brunnen;
-  const pose = shotPose(s, P.t, { pos: [0, 0, 0], look: [0, 0, 0] }, 1);
-  albumCam.fov = s.fov;
+  const pose = stillShot({ x: r.f.x, z: r.f.z }, r.isl, r.fi, r.tv.n);
+  albumCam.fov = pose.fov;
   albumCam.updateProjectionMatrix();
   albumCam.position.fromArray(pose.pos).applyMatrix4(carMatrix);
   albumCam.lookAt(tmpV2.fromArray(pose.look).applyMatrix4(carMatrix));
@@ -1949,7 +1990,7 @@ function takeAlbumShot(r) {
     url = null;
   }
   // gespeichert wird, sobald der Browser Luft hat (alle Bilder lesen und schreiben kostet ein paar ms); bis dahin null
-  const shot = { n: r.tv.n, chars: url ? url.length : 0, type: url ? url.slice(5, url.indexOf(';')) : null, stored: url ? null : false, ms: Math.round(performance.now() - t0) };
+  const shot = { n: r.tv.n, pose: pose.kind, chars: url ? url.length : 0, type: url ? url.slice(5, url.indexOf(';')) : null, stored: url ? null : false, ms: Math.round(performance.now() - t0) };
   albumLast = shot;
   if (!url) return;
   const keep = () => (shot.stored = storePicture(shot.n, url));
@@ -1978,6 +2019,9 @@ function pollMenuPad(active) {
     if (active && (dir || edge('a') || edge('b') || edge('start'))) {
       menus.pad(dir, edge('a') || (edge('start') && menus.current !== 'pause'), edge('b') || (edge('start') && menus.current === 'pause'));
     }
+    // der rechte Stick scrollt lange Karten (der Abspann dankt jedem mit Namen)
+    const ry = pd.axes[3] || 0;
+    if (active && Math.abs(ry) > 0.25) menus.scroll(Math.sign(ry) * (Math.abs(ry) - 0.25) * 24);
     menuPad.prev = now;
     return;
   }
@@ -2006,7 +2050,8 @@ function step(dt, { render = true } = {}) {
   let adamWave = 0;
   let adamLook = 0;
   let adamMegafon = 0;
-  // NOMIs Gruß aus der Startszene kommt, wenn das Sprachstudio ausgeredet hat (auch erst nach der Übergabe)
+  // „Wir sind live.“ nach Mini Adams Gruß, OMIs Gruß, wenn das Sprachstudio ausgeredet hat (auch erst nach der Übergabe)
+  if (simT >= chargeRun.liveT) chargeLive();
   if (simT >= chargeRun.greetT) chargeGreet();
 
   if (input.take('mute')) {
@@ -2128,6 +2173,7 @@ function step(dt, { render = true } = {}) {
         wiper: input.take('wiper'),
         megafon: input.take('megafon'),
         ladestopp: input.take('ladestopp'),
+        brunnen: input.take('brunnen'),
         device: input.lastDevice,
         // Krümmung und Steigung unter dem Wagen aus dem Kurs (courseEnv); auf dem Prüfstand (?debug) lässt sich
         // stattdessen eine Probe einhängen: __MA.kappaProbe(s), __MA.gradeProbe(s)
@@ -2137,6 +2183,7 @@ function step(dt, { render = true } = {}) {
       if (DEBUG && window.__MA.xxl && window.__MA.xxl.auto) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
       if (stopBtn) stopBtn.classList.toggle('show', game.stopOffer());
+      wayBtn.classList.toggle('show', game.wayHint);
       driveHintTick(dt, ctl);
       tipsTick(dt, ctl, camKey);
       // Leitplanke: der Kopf ruckt zur Planke hin, Gamepad und Handy rütteln kurz
@@ -2145,11 +2192,12 @@ function step(dt, { render = true } = {}) {
         jolt.hit(e.side < 0 ? 'left' : 'right', e.hard ? 0.5 : 0.3);
         input.rumble(e.hard ? 0.6 : 0.3, e.hard ? 140 : 80);
       }
+      chassis.update(dt, p.latAcc, p.firm);
       updateCarMatrix();
       updateLookAhead(dt, p);
       jolt.update(dt);
       if (view === 'cockpit') {
-        cockpit.placeCamera(camera, carMatrix, simT, p.speed, p.latAccSm, dt);
+        cockpit.placeCamera(camera, carMatrix, simT, p.speed, chassis, dt, p.yaw * CHASSIS.gaze);
         camera.rotateOnWorldAxis(UP_AXIS, lookAhead.yaw * 0.5);
         camera.rotateOnAxis(RIGHT_AXIS, lookAhead.pitch * 0.45);
         jolt.apply(camera, carMatrix);
@@ -2159,6 +2207,7 @@ function step(dt, { render = true } = {}) {
       if (game.over) {
         state = 'ending';
         stateT = 0;
+        liveOff();
         drone.init = false;
         finishRun();
       }
@@ -2171,6 +2220,7 @@ function step(dt, { render = true } = {}) {
       traffic.update(dt, simT, p, { difficulty: 0.2, leftOpen: false, rain: game.weather.level });
       // Sammelsachen bleiben an ihrem Platz auf der Straße (eingesammelt wird nichts mehr)
       pickups.update(dt, simT, p, camera, false);
+      chassis.update(dt, p.latAcc, p.firm);
       updateCarMatrix();
       placeDrone(dt, 'orbit');
       adamWave = smoothstep(0.9, 1.5, stateT);
@@ -2178,7 +2228,7 @@ function step(dt, { render = true } = {}) {
       if (state === 'ending' && stateT > 2.6) {
         state = 'over';
         ui.show(false);
-        menus.show('over', lastOver);
+        menus.show('over', { ...lastOver, pics: loadPictures() });
       }
       break;
     }
@@ -2245,7 +2295,7 @@ function step(dt, { render = true } = {}) {
     const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook, megafon: adamMegafon });
     tesla.adam.animate(simT, adamOpts);
     facecam.adam.animate(simT, adamOpts);
-    facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake });
+    facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake, rain: w, world: sideOn() });
     tesla.cabinLight.intensity = cockpitOn ? 0 : stopRun.on || tvRun.on || state === 'title' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
@@ -2253,6 +2303,7 @@ function step(dt, { render = true } = {}) {
     // Ladestopp: das Display zeigt den Gang des Wagens der Szene (in R mit dem Bild der Rückfahrkamera)
     if (scr && stopRun.on) scr.gear = stopRun.gear;
     if (scr && tvRun.on) scr.gear = 'P';
+    if (scr) scr.trunk = fxState.trunk;
     if (scr) {
       // Karte, Route, Ansage und Ziel des Mittelbildschirms kommen aus der Fahrt der Welt (COMMON.md §9)
       xxlScreenNav.model = xxlNav;
@@ -2278,13 +2329,10 @@ function step(dt, { render = true } = {}) {
     }
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
-      sunDir: sky.sunDir, overcast: cloud, adam: adamOpts,
+      sunDir: sky.sunDir, overcast: cloud, adam: adamOpts, gesture: tesla.adam.pose === 'drive' ? tesla.adam.gestures : null,
       screen: scr, radar: game.radarAlarm, rear: cockpitOn && (p.gear === 'R' || stopRun.rev),
     });
-    if (fxState.trunk > 0) {
-      fxState.trunk -= dt;
-      if (fxState.trunk <= 0) cockpit.setMirrorTexture(mirrorRT.texture);
-    }
+    if (fxState.trunk > 0) fxState.trunk = Math.max(0, fxState.trunk - dt);
   }
   sky.update(frozen ? 0 : dt, camera, s, simT, skyView);
   audio.update(dt, {
