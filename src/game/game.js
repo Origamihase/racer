@@ -920,6 +920,7 @@ export class Game {
    * rollen. Ohne Szene (Node-Tests) läuft derselbe Fahrplan, der Wagen wartet bis zum Ausparken an seinem Halt.
    */
   startCharge(e) {
+    if (this.charging) return;
     const p = this.player;
     const plan = stopPlan(e.sec, p.s, p.x);
     this.charging = { t0: this.t, from: p.battery, park: e.park, post: e.post ?? -1, name: e.name, sec: e.sec, plan, said: 0 };

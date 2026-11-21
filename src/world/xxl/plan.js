@@ -4,7 +4,7 @@
 import { J, PROFILES } from '../../game/trip.js';
 import { places } from '../../map/graph.js';
 import { islandRadius } from '../kit/layout.js';
-import { PARKS, PARK_STOP_AFTER, postName } from '../../map/parks.js';
+import { PARKS, PARK_STOP_AFTER, POST, postName } from '../../map/parks.js';
 
 /** So weit hinter dem Spieler gibt es Welt (Boden, Straßen, Autobahn); dahinter beginnt der Himmel wie bisher. */
 export const XXL_BEHIND = 300;
@@ -230,7 +230,9 @@ export function squareWeight(sq, s) {
  * Ebenso im Ladepark (geplanter Ladestopp oder rechts hinein, ohne Plan): Halt PARK_STOP_AFTER hinter dem Haltepunkt,
  * neben der freien Heldenbucht, dann {type: 'charge', park, post: −1, name, sec}. Einen Park hat der eigene Weg erst,
  * wenn der Wagen an seiner Ausfahrt abgefahren ist. Und an der Ladesäule eines Orts, wenn dort ein Stopp geplant ist
- * (trip.post): Halt hinter ihrem Haltepunkt postS, dann {type: 'charge', park: −1, post: Ort, name, sec}.
+ * (trip.post): Halt hinter ihrem Haltepunkt postS, dann {type: 'charge', park: −1, post: Ort, name, sec}. Geplant oder
+ * nicht: Wer an der Säule eines Orts anhält (POST_ZONE), lädt dort genauso (Besitzer, 21.11.2026: „An der Tanke in der
+ * Stadt kann nicht geladen werden“).
  */
 export class Arrival {
   constructor() {
@@ -238,10 +240,12 @@ export class Arrival {
     this.stopOut = { s: 0, sec: null, place: -1, park: -1 };
     this.hold = false; // true: nach dem Halt stehen bleiben, bis release() (z. B. während der Brunnen-Szene)
     this.held = null;
+    this.stillT = null; // seit wann (Spielzeit) der Wagen in der Zone einer Ladesäule steht
   }
   reset() {
     this.pending = null;
     this.held = null;
+    this.stillT = null;
   }
   /** Gehaltenen Wagen weiterfahren lassen. */
   release() {
@@ -277,8 +281,11 @@ export class Arrival {
     }
     return null;
   }
-  /** Nach trip.update: Ereignisse dieses Bilds und Tempo des Wagens. Gibt das Ereignis 'rest' zurück oder null. */
-  update(trip, events, speed) {
+  /**
+   * Nach trip.update: Ereignisse dieses Bilds, Tempo des Wagens und Spielzeit t (ohne t keine Ladesäule ohne Plan).
+   * Gibt das Ereignis 'rest' bzw. 'charge' zurück oder null.
+   */
+  update(trip, events, speed, t) {
     for (let i = 0; i < events.length; i++) {
       const e = events[i];
       if (e.type === 'arrive' && !e.sec.start) this.pending = { s: e.sec.spotS + STOP_AFTER_SPOT, sec: e.sec, place: e.place, park: -1, square: squareOf(e.sec) };
@@ -286,18 +293,52 @@ export class Arrival {
       if (e.type === 'post') this.pending = { s: e.sec.postS + PARK_STOP_AFTER, sec: e.sec, place: -1, park: -1, post: e.place, square: null };
     }
     const p = this.pending;
-    if (!p) return null;
+    if (!p) return this.atPost(trip, speed, t);
     if (speed < 0.15 && Math.abs(trip.s - p.s) < 2) {
       this.pending = null;
       if (this.hold) this.held = { s: trip.s + 0.3, sec: p.sec, place: p.place, park: p.park };
       if (p.park >= 0) return { type: 'charge', park: p.park, post: -1, name: PARKS[p.park].name, sec: p.sec };
-      if (p.post >= 0) return { type: 'charge', park: -1, post: p.post, name: postName(p.post), sec: p.sec };
+      if (p.post >= 0) {
+        p.sec.charged = true;
+        return { type: 'charge', park: -1, post: p.post, name: postName(p.post), sec: p.sec };
+      }
       return { type: 'rest', place: p.place, sec: p.sec, square: p.square };
     }
     if (trip.s > p.s + 5 || trip.section !== p.sec) this.pending = null;
     return null;
   }
+
+  /**
+   * An der Ladesäule eines Orts, ob geplant oder nicht: Steht der Wagen POST_ZONE.still Sekunden in ihrer Zone (in der
+   * eigenen Spur neben der Bucht bis kurz hinter den Haltepunkt), beginnt der Ladestopp – einmal je Durchfahrt
+   * (sec.charged). Ein anderswo geplanter Stopp ist damit erledigt; der Wagen setzt von hier in die Bucht (charge.js
+   * stopPlan rollt ihn dafür erst vor bis an den Haltepunkt).
+   */
+  atPost(trip, speed, t) {
+    const c = trip.section;
+    const Z = POST_ZONE;
+    const u = c ? trip.s - c.s0 : 0;
+    if (t === undefined || this.held || !c || c.kind !== 'stadt' || c.start || c.postS === undefined || c.charged || speed >= 0.15 || u < POST.u - Z.back || u > POST.halt + Z.ahead || trip.x < Z.x) {
+      this.stillT = null;
+      return null;
+    }
+    if (this.stillT === null) this.stillT = t;
+    if (t - this.stillT < Z.still) return null;
+    this.stillT = null;
+    c.charged = true;
+    c.postDone = true;
+    if (trip.post >= 0) trip.setPost(-1);
+    if (trip.stop >= 0) trip.setStop(-1);
+    if (this.hold) this.held = { s: trip.s + 0.3, sec: c, place: -1, park: -1 };
+    return { type: 'charge', park: -1, post: c.place, name: postName(c.place), sec: c };
+  }
 }
+
+/**
+ * Zone der Ladesäule eines Orts (Meter ab Abschnittsbeginn, POST): von back Metern vor der Mitte des Parks bis ahead
+ * Meter hinter den Haltepunkt, in der eigenen Spur (Wagenmitte rechts von x); wer dort still Sekunden steht, lädt.
+ */
+export const POST_ZONE = { back: 12, ahead: 15, x: 7.6, still: 0.6 };
 
 /**
  * Linke Grenze der Wagenmitte neben der Brunneninsel (base: die Grenze des Profils): auf 20 m vor der Insel schiebt sie

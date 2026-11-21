@@ -1470,7 +1470,9 @@ function stopBegin(c) {
   const town = xxl.town(c.sec);
   if (!town || !town.charge) return;
   const r = stopRun;
-  Object.assign(r, { on: true, c, town, rig: town.charge, port: tesla.port(), v: 0, rev: true, brake: true, gear: 'R', skipT: -1, fadeT: 0, done: {} });
+  // (rollt er erst vor bis an den Haltepunkt, legt er R danach ein: stopTick)
+  const creep = c.plan.creep;
+  Object.assign(r, { on: true, c, town, rig: town.charge, port: tesla.port(), v: 0, rev: !creep, brake: !creep, gear: creep ? 'D' : 'R', skipT: -1, fadeT: 0, done: {} });
   // die Buchse des Wagens in der Bucht im Rahmen der Säule (wie chargePlug): dorthin führt der Stecker
   stopPose(rollPose(c.plan.u, 0, r.q));
   tesla.root.updateWorldMatrix(true, false);
@@ -1493,13 +1495,13 @@ function stopBegin(c) {
     windowAim(tesla.windowOpening(), r.aim).applyMatrix4(tesla.root.matrixWorld).applyMatrix4(chargeM.copy(r.pop.group.matrixWorld).invert());
     r.along.set(0, 0, 1).transformDirection(tesla.root.matrixWorld).transformDirection(chargeM);
   }
-  stopPose(c.plan.dock.pose(0, r.q));
+  stopPose(creep ? creep.pose(0, r.q) : c.plan.dock.pose(0, r.q));
   // die Drohne fliegt von dort los, wo sie gerade ist
   r.from.copy(camera.position);
   camera.getWorldDirection(r.fromLook).multiplyScalar(20).add(camera.position);
   r.look.copy(r.fromLook);
   if (stopBtn) stopBtn.classList.remove('show');
-  audio.gear('R');
+  if (!creep) audio.gear('R');
 }
 
 /** Wagen der Szene an die Lage q (Ortskoordinaten des Parks): über die Matrix des Parks in die Welt (wie chargePose). */
@@ -1551,12 +1553,13 @@ function stopTick() {
   }
   const t = game.chargeT();
   const te = t - P.at(STOP.unplug);
-  const q = t < P.d0 ? P.dock.pose(t - STOP.shift, r.q) : rollPose(P.u, clamp(te - SCENE.roll, 0, ROLL_T), r.q);
+  // (an der Säule eines Orts vor dem Haltepunkt angehalten: erst vorrollen, P.creep, dann R)
+  const q = t < P.c ? P.creep.pose(t, r.q) : t < P.d0 ? P.dock.pose(t - P.c - STOP.shift, r.q) : rollPose(P.u, clamp(te - SCENE.roll, 0, ROLL_T), r.q);
   r.v = q.v;
-  r.rev = t < P.d0;
-  r.gear = r.rev ? 'R' : t < P.roll ? 'P' : 'D';
+  r.rev = t >= P.c && t < P.d0;
+  r.gear = t < P.c ? 'D' : r.rev ? 'R' : t < P.roll ? 'P' : 'D';
   // Bremslicht, solange er in R wartet und wenn er vor der Bucht anhält
-  r.brake = t < STOP.shift + 0.15 || (t < P.d0 && t > P.d0 - DOCK.down);
+  r.brake = (t > P.c - 0.5 && t < P.c + STOP.shift + 0.15) || (t < P.d0 && t > P.d0 - DOCK.down);
   // so zeigen Tacho, Räder, Lenkrad und Motor den Wagen der Szene (vor dem nächsten game.update steht der Spieler wieder)
   p.speed = Math.abs(q.v);
   p.wheel = q.steer / 0.35;
@@ -1584,6 +1587,7 @@ function stopTick() {
     r.done[k] = true;
     if (t < at + 0.3) fn();
   };
+  if (P.c) once('r', P.c, () => audio.gear('R'));
   once('in', P.at(STOP.plug[1]), () => audio.unplug());
   once('juice', P.at(STOP.juice), () => adamDo((a) => {
     a.raiseBottle();
