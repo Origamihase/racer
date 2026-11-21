@@ -3,7 +3,7 @@
 // Standbild der Brunnen-Kamera (oder einer gezeichneten Karte, wo keins gespeichert ist); dazu die Zahl der Folgen und,
 // im zweiten Reiter, die Orte, deren Brunnen noch fehlt. Die große Karte zeigt dieselbe Sammlung als Abzeichen
 // (albumBadges, Ringe an Orten mit Folge). Daten: src/game/album.js, Bilder: src/save.js loadPictures.
-import { albumOf, albumCounts, missingPlaces, missingLine, kindTitle, fmtStreamDate, placeOf, episodesByPlace } from '../game/album.js';
+import { albumOf, albumCounts, missingPlaces, missingLine, episodeTitle, fmtStreamDate, placeOf, episodesByPlace } from '../game/album.js';
 import { BRUNNEN_DEBATTE } from '../data.js';
 import { fmtNum, fmtClock } from '../util.js';
 import { addBadges, countryName } from '../map/mapview.js';
@@ -96,7 +96,7 @@ function episodeCard(grid, e, pic) {
   const when = [fmtStreamDate(e.t), Number.isFinite(e.u) ? fmtClock(e.u) + ' Uhr' : ''].filter(Boolean).join(' · ');
   if (when) el('span', 'ep-when', top, when);
   el('div', name.length > 18 ? 'ep-place long' : 'ep-place', tx, name);
-  const kind = el('div', 'ep-kind', tx, kindTitle(e.k));
+  const kind = el('div', 'ep-kind', tx, episodeTitle(e));
   // im Ausland schreibt der Chat „BrunnenTV international“
   if (p && p.cc !== 'DE') el('span', 'ep-intl', kind, '🌍 international');
   const lines = e.d ? BRUNNEN_DEBATTE[e.d] : null;

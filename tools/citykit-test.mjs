@@ -215,6 +215,26 @@ for (const row of PLACES) {
   ok((city.info(kind).special === 'ursprung') === (place.name === 'Augsburg') && (city.info(kind).special === 'endgegner') === (place.name === 'Nürnberg'), `${place.name}: Sonderbrunnen ${kind}`);
   ok(ri >= 2.5 && ri <= L.ISLAND.max && L.FOUNTAIN_R[kind] + L.ISLAND.kerb <= ri + 1e-9, `${place.name}: ${kind} passt nicht auf die Insel (${ri} m)`);
   ok(L.goalKind(place) === kind, `${place.name}: Hauptbrunnen nicht reproduzierbar`);
+  // der Name sagt die Art (Gänseliesel → Figur, Markt → Säule, Löwe → Löwen …)
+  ok(L.kindOfName(L.fountainName(place)) === kind && L.goalName(place) === `${L.fountainName(place)}, ${place.name}`, `${place.name}: Name „${L.fountainName(place)}“ passt nicht zur Art ${kind}`);
+}
+// Abwechslung: viele Arten, und benachbarte Orte sehen selten gleich aus (die drei nächsten Orte jedes Orts)
+{
+  const all = PLACES.map((row) => ({ key: row[0], name: row[1], lat: row[2], lon: row[3], pop: row[6] }));
+  const kinds = all.map((p) => L.goalKind(p));
+  const dist = (a, b) => Math.hypot(a.lat - b.lat, (a.lon - b.lon) * Math.cos((a.lat * Math.PI) / 180));
+  let same = 0;
+  let pairs = 0;
+  all.forEach((p, i) => {
+    const nb = all.map((q, j) => [dist(p, q), j]).filter(([, j]) => j !== i).sort((a, b) => a[0] - b[0]).slice(0, 3);
+    for (const [, j] of nb) {
+      pairs++;
+      if (kinds[j] === kinds[i]) same++;
+    }
+  });
+  const used = new Set(kinds).size;
+  ok(used >= 12 && same / pairs < 0.15, `Brunnen zu gleichförmig: ${used} Arten, ${(100 * same / pairs).toFixed(1)} % gleiche Nachbarn`);
+  console.log(`Hauptbrunnen: ${used} Arten, ${new Set(all.map((p) => L.fountainName(p))).size} Namen; gleiche Art bei den drei nächsten Orten: ${(100 * same / pairs).toFixed(1)} %`);
 }
 
 // Orte in der XXL-Welt (src/world/xxl/towns.js): der Straßenbau baut Fahrbahn, Bordstein, Gehweg und die Insel des
@@ -254,7 +274,7 @@ for (const p of places) {
   ok(side > 55 && side < 75 && main.x + isl.r < J.L0 - 1.2, `${where}: am Halt nicht im Seitenfenster (${side.toFixed(0)}°)`);
   const halt = L.sightBlockers(plan, main, [eye]);
   ok(halt.length === 0, `${where}: am Halt verstellt ${halt.map((i) => plan.items[i].name).join(', ')} den Brunnen`);
-  ok(L.goalName(p) === `${city.info(main.kind).title}, ${p.name}`, `${where}: Navi-Ziel „${L.goalName(p)}“ ist nicht der Brunnen`);
+  ok(L.goalName(p) === `${L.fountainName(p)}, ${p.name}` && L.kindOfName(L.fountainName(p)) === main.kind, `${where}: Navi-Ziel „${L.goalName(p)}“ ist nicht der Brunnen`);
   ok(plan.fountains.slice(1).every((f) => Math.abs(f.u - isl.u) >= 40 && !f.special), `${where}: zweiter Brunnen neben dem Zielbrunnen`);
   const lay = plan.layout;
   ok(lay.goal && near(lay.goal.x, isl.x) && near(lay.goal.z, -isl.u) && lay.squares[lay.goal.square].kind === 'island' && lay.squares[lay.goal.square].fountain === 0, `${where}: Lageplan zeigt nicht auf die Insel`);
@@ -267,7 +287,9 @@ for (const p of places) {
   for (const f of plan.fountains) {
     const blockers = L.sightBlockers(plan, f);
     ok(blockers.length === 0, `${where}: Sicht auf ${f.kind} verstellt von ${blockers.map((i) => plan.items[i].name).join(', ')}`);
-    ok(plan.items.some((it) => it.name.startsWith('lamp') && Math.hypot(it.x - f.x, it.z - f.z) <= f.r + 6), `${where}: keine Laterne am Brunnen ${f.kind}`);
+    // (das Licht am Zielbrunnen steht um die Insel, die sich nach dem Platz des Brunnens richtet, nicht nach ihm)
+    const lit = f.island ? Math.max(f.r, isl.r - L.ISLAND.kerb - L.ISLAND.ring) : f.r;
+    ok(plan.items.some((it) => it.name.startsWith('lamp') && Math.hypot(it.x - f.x, it.z - f.z) <= lit + 6), `${where}: keine Laterne am Brunnen ${f.kind}`);
     const fb = box(plan.items.find((it) => it.fountain === f.id).fp);
     for (const it of plan.items) if (it.fountain !== f.id && !GROUND.has(it.name)) ok(!overlap(fb, box(it.fp), 0.05), `${where}: ${it.name} steht im Brunnen ${f.kind}`);
   }

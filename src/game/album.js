@@ -8,7 +8,7 @@
 // (layout.js goalKind), t: Beginn des Streams (ms seit 1970, zugleich seine Kennung), u: Uhr der Reise in Minuten,
 // d: eine Streitfrage des Wikis, die zu dieser Folge passt (optional, BRUNNEN_DEBATTE in data.js) }.
 import { places } from '../map/graph.js';
-import { goalKind, FOUNTAIN_TITLE } from '../world/kit/layout.js';
+import { goalKind, fountainName, FOUNTAIN_TITLE } from '../world/kit/layout.js';
 import { ALBUM_MAX, cleanAlbum } from '../save.js';
 
 export { ALBUM_MAX };
@@ -57,6 +57,15 @@ export function addEpisode(save, { place, t, clock, kinds = [], roll = Math.rand
 
 /** Name der Brunnenart (FOUNTAIN_TITLE), „Brunnen“ für eine unbekannte. */
 export const kindTitle = (k) => FOUNTAIN_TITLE[k] ?? 'Brunnen';
+
+/**
+ * Name des Brunnens einer Folge: sein eigener (layout.js fountainName, „Gänselieselbrunnen“), solange der Ort ihn noch
+ * hat; eine Folge aus der Zeit vor der zweiten Brunnenfamilie (andere Art) heißt nach ihrer Art.
+ */
+export function episodeTitle(e) {
+  const p = placeOf(e.p);
+  return p && goalKind(p) === e.k ? fountainName(p) : kindTitle(e.k);
+}
 
 /** Datum des Streams wie „20.11.2026“. */
 export function fmtStreamDate(t) {

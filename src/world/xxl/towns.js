@@ -128,7 +128,8 @@ export class Towns {
     let kind = p ? goalKind(p) : BY_SIZE[0];
     // die Insel richtet sich nach dem Brunnen (plan.js FOUNTAIN.radius); passt er trotzdem nicht, der größte, der passt
     if (FOUNTAIN_R[kind] > r + 1e-6) kind = BY_SIZE.filter((k) => !K.info(k).special && FOUNTAIN_R[k] <= r + 1e-6).pop() ?? BY_SIZE[0];
-    const obj = K.fountains.build(kind);
+    // (ein kleinerer Brunnen bekommt auf seiner Insel einen Garten, fountains.js GARDEN)
+    const obj = K.fountains.onIsland(kind, r);
     obj.userData.dispose = () => K.release(obj);
     return obj;
   }

@@ -57,9 +57,41 @@ const EXTRA = { dorf: [], klein: ['fountainDrink'], stadt: ['fountainPond', 'fou
 const SPECIAL = { Augsburg: 'fountainOrigin', 'Nürnberg': 'fountainBoss' };
 // Radius der Brunnen, die Hauptbrunnen eines Orts sein können (info.r aus fountains.js; tools/citykit-test.mjs prüft,
 // dass beide übereinstimmen): damit lässt sich die Insel eines Zielbrunnens ohne Grafik planen
-export const FOUNTAIN_R = { fountainTrough: 2.8, fountainMarket: 4.2, fountainBowls: 4.3, fountainJets: 4.6, fountainGrand: 7.5, fountainOrigin: 4.5, fountainBoss: 7.3 };
-// Namen derselben Brunnen (info.title, ebenso geprüft): so heißt das Navi-Ziel, ohne dass ein Brunnen gebaut wird
-export const FOUNTAIN_TITLE = { fountainTrough: 'Dorfbrunnen', fountainMarket: 'Marktbrunnen', fountainBowls: 'Schalenbrunnen', fountainJets: 'Wasserspiel', fountainGrand: 'Prachtbrunnen', fountainOrigin: 'Der Ursprung', fountainBoss: 'Der Endgegner' };
+export const FOUNTAIN_R = {
+  fountainTrough: 2.8, fountainMarket: 4.2, fountainBowls: 4.3, fountainJets: 4.6, fountainGrand: 7.5, fountainOrigin: 4.5, fountainBoss: 7.3,
+  fountainPond: 5.6, fountainWell: 2.4, fountainFrog: 2.7, fountainGoose: 2.8, fountainFish: 2.8, fountainLion: 2.8, fountainCube: 2.8, fountainRing: 4.1,
+};
+// Namen derselben Brunnen (info.title, ebenso geprüft): so heißt die Art im Album
+export const FOUNTAIN_TITLE = {
+  fountainTrough: 'Dorfbrunnen', fountainMarket: 'Marktbrunnen', fountainBowls: 'Schalenbrunnen', fountainJets: 'Wasserspiel', fountainGrand: 'Prachtbrunnen', fountainOrigin: 'Der Ursprung', fountainBoss: 'Der Endgegner',
+  fountainPond: 'Fontäne im Teich', fountainWell: 'Ziehbrunnen', fountainFrog: 'Froschbrunnen', fountainGoose: 'Gänselieselbrunnen', fountainFish: 'Fischbrunnen', fountainLion: 'Löwenbrunnen', fountainCube: 'Wassertisch', fountainRing: 'Rundbecken',
+};
+// Die Namen, die ein Hauptbrunnen tragen kann, je Art: Jeder Brunnen bekommt aus seiner Kennung (dem Ort) einen Namen,
+// und der Name bestimmt, wie er aussieht – ein Gänselieselbrunnen hat seine Figur, ein Marktbrunnen die Säule, ein
+// Löwenbrunnen die Löwen. So sehen die Brunnen benachbarter Orte selten gleich aus (der Eigentümer am 20.11.: „Auf den
+// Screenshots der BrunnenTV-Folgen sehe ich oft das gleiche Bild“).
+export const FOUNTAIN_NAMES = {
+  fountainTrough: ['Dorfbrunnen', 'Röhrbrunnen', 'Pumpenbrunnen'],
+  fountainWell: ['Ziehbrunnen', 'Eimerbrunnen', 'Schöpfbrunnen'],
+  fountainFrog: ['Froschbrunnen', 'Unkenbrunnen', 'Krötenbrunnen'],
+  fountainGoose: ['Gänselieselbrunnen', 'Gänsebrunnen', 'Gänseliesel'],
+  fountainFish: ['Fischbrunnen', 'Karpfenbrunnen', 'Fischerbrunnen'],
+  fountainLion: ['Löwenbrunnen', 'Wappenbrunnen', 'Leuenbrunnen'],
+  fountainMarket: ['Marktbrunnen', 'Bärenbrunnen', 'Säulenbrunnen'],
+  fountainCube: ['Wassertisch', 'Quellstein', 'Tischbrunnen'],
+  fountainBowls: ['Schalenbrunnen', 'Kaskadenbrunnen', 'Etagenbrunnen'],
+  fountainRing: ['Rundbecken', 'Strahlenbrunnen', 'Fontänenrund'],
+  fountainJets: ['Wasserspiel', 'Fontänenfeld', 'Sprudelplatz'],
+  fountainPond: ['Fontäne im Teich', 'Teichfontäne', 'Parkfontäne'],
+  fountainGrand: ['Prachtbrunnen', 'Schlossbrunnen', 'Kurbrunnen'],
+};
+// Welche Arten zur Größe eines Orts passen (gewählt wird nur, was auch auf die Insel seines Platzes passt, slotKind)
+const KINDS = {
+  dorf: ['fountainTrough', 'fountainWell', 'fountainFrog', 'fountainGoose', 'fountainFish', 'fountainLion', 'fountainMarket'],
+  klein: ['fountainMarket', 'fountainBowls', 'fountainGoose', 'fountainFish', 'fountainLion', 'fountainFrog', 'fountainWell', 'fountainCube', 'fountainRing', 'fountainTrough'],
+  stadt: ['fountainBowls', 'fountainJets', 'fountainMarket', 'fountainRing', 'fountainCube', 'fountainLion', 'fountainGoose', 'fountainFish', 'fountainFrog'],
+  gross: ['fountainGrand', 'fountainBowls', 'fountainJets', 'fountainRing', 'fountainPond', 'fountainCube', 'fountainLion', 'fountainGoose', 'fountainFish', 'fountainMarket'],
+};
 // Insel des Zielbrunnens im Straßenbau: Bordstein und ein schmaler Pflasterring um das Becken, höchstens 8 m Radius
 export const ISLAND = { kerb: 0.45, ring: 0.35, max: 8 };
 
@@ -88,27 +120,53 @@ const LOW = 0.95;
 const CENTRE_R = 2;
 
 /**
- * Art des Hauptbrunnens eines Orts, an dem auch jede Fahrt dorthin endet: die beiden Sonderbrunnen in Augsburg und
- * Nürnberg, sonst nach der Größe des Orts. Für denselben Ort immer dieselbe, unabhängig vom übrigen Plan.
+ * Platz des Hauptbrunnens eines Orts: die Art, nach der seine Insel bemessen ist (die beiden Sonderbrunnen, sonst nach
+ * der Größe des Orts). Die Insel und damit der Halt jeder Fahrt bleiben so, wie sie vor der zweiten Brunnenfamilie waren.
  */
-export function goalKind(place, size = sizeOf(place.pop ?? 0)) {
+function slotKind(place, size) {
   const special = SPECIAL[place.key] ?? SPECIAL[place.name];
   if (special) return special;
   const list = MAIN[size];
   return list[hashKey('Brunnen ' + (place.key ?? place.name)) % list.length];
 }
-/** Radius der Insel, auf der der Zielbrunnen eines Orts mitten im Brunnenplatz der Straße steht. */
-export function islandRadius(place) {
-  return Math.min(ISLAND.max, FOUNTAIN_R[goalKind(place)] + ISLAND.kerb + ISLAND.ring);
+
+/**
+ * Name des Hauptbrunnens eines Orts: aus seiner Kennung (dem Ort) gezogen unter den Namen der Arten, die zur Größe des
+ * Orts passen und auf die Insel seines Platzes passen; der Ursprung und der Endgegner heißen, wie sie heißen.
+ */
+export function fountainName(place, size = sizeOf(place.pop ?? 0)) {
+  const special = SPECIAL[place.key] ?? SPECIAL[place.name];
+  if (special) return FOUNTAIN_TITLE[special];
+  const slot = FOUNTAIN_R[slotKind(place, size)];
+  const names = KINDS[size].filter((k) => FOUNTAIN_R[k] <= slot).flatMap((k) => FOUNTAIN_NAMES[k]);
+  return names[hashKey('Brunnenname ' + (place.key ?? place.name)) % names.length];
+}
+
+/** Art eines Brunnens nach seinem Namen (FOUNTAIN_NAMES, Sonderbrunnen nach ihrem Titel) oder null. */
+export function kindOfName(name) {
+  for (const [k, list] of Object.entries(FOUNTAIN_NAMES)) if (list.includes(name)) return k;
+  for (const k of Object.values(SPECIAL)) if (FOUNTAIN_TITLE[k] === name) return k;
+  return null;
 }
 
 /**
- * Name des Navi-Ziels in einem Ort: sein Hauptbrunnen und der Ort, „Marktbrunnen, Würzburg“; ohne bekannten Namen
- * „Brunnen in Würzburg“. name: der Ort, wie das Navi ihn schreibt (Standard: place.name).
+ * Art des Hauptbrunnens eines Orts, an dem auch jede Fahrt dorthin endet: die beiden Sonderbrunnen in Augsburg und
+ * Nürnberg, sonst die Art, die sein Name sagt (fountainName). Für denselben Ort immer dieselbe, unabhängig vom übrigen Plan.
+ */
+export function goalKind(place, size = sizeOf(place.pop ?? 0)) {
+  return kindOfName(fountainName(place, size));
+}
+/** Radius der Insel, auf der der Zielbrunnen eines Orts mitten im Brunnenplatz der Straße steht. */
+export function islandRadius(place) {
+  return Math.min(ISLAND.max, FOUNTAIN_R[slotKind(place, sizeOf(place.pop ?? 0))] + ISLAND.kerb + ISLAND.ring);
+}
+
+/**
+ * Name des Navi-Ziels in einem Ort: sein Hauptbrunnen und der Ort, „Gänselieselbrunnen, Würzburg“.
+ * name: der Ort, wie das Navi ihn schreibt (Standard: place.name).
  */
 export function goalName(place, name = place.name) {
-  const title = FOUNTAIN_TITLE[goalKind(place)];
-  return title ? `${title}, ${name}` : `Brunnen in ${name}`;
+  return `${fountainName(place)}, ${name}`;
 }
 
 /** Kurzer Name für Ortsschilder des Stadtbaukastens: Zusätze in Klammern, nach Komma oder Strich fallen weg. */
