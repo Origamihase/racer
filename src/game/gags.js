@@ -65,6 +65,7 @@ export const MITLEID = { stand: 1.5, kmh: 1, reach: 9, gap: 45, side: STREET.cur
  * Sekunden später, steht oben am Rand gerade ein Hinweis, retry Sekunden später: Sie kommt sofort dorthin; James nennt
  * den Schenker im Chat). Am Rand oben wackelt sie shake Sekunden und springt dann auf (style.css .mystery-*); der
  * Hinweis steht show Sekunden – wartet ein anderer, bleibt das Ausgepackte noch read Sekunden zu lesen (ui.js hold).
+ * Löst Dringendes sie vor dem Aufspringen ab, kommt dieselbe Box noch einmal.
  */
 export const MYSTERY = { first: [240, 420], every: [480, 840], wait: 10, retry: 1, shake: 1.6, read: 2.4, show: 5.5 };
 
@@ -108,9 +109,10 @@ export class StreamGags {
     this.schadeT = 0;
     // Mitleidskäufe: Anzahl, Summe, wie lange der Wagen schon steht, die Orte mit Kauf, wann wieder
     this.mitleid = { n: 0, sum: 0, still: 0, towns: new Set(), next: 0 };
-    // Mysteryboxen: wann die nächste kommt, wie viele es gab
+    // Mysteryboxen: wann die nächste kommt, wie viele es gab, eine noch ungeöffnete (unbox)
     this.boxT = this.between(...MYSTERY.first);
     this.boxes = 0;
+    this.unopened = null;
   }
 
   /** Was Abrechnung und Abspann von den Gags wissen (Game.end): { verein: { name, members } | null, mitleid: { n, sum } }. */
@@ -461,15 +463,35 @@ export class StreamGags {
       this.boxT = g.t + MYSTERY.retry;
       return;
     }
+    // eine Box, die Dringendes vor dem Aufspringen abgelöst hat: dieselbe noch einmal (geschenkt ist sie schon)
+    if (this.unopened) {
+      const b = this.unopened;
+      this.unopened = null;
+      this.boxT = b.nextT;
+      this.unbox(b);
+      return;
+    }
     this.boxT = g.t + this.between(...MYSTERY.every);
     this.boxes++;
     const M = GAGS.mystery;
     const name = this.name();
     const [kind, what] = this.pick(M.inhalt);
-    // wer sie schenkt, sagt James im Chat; am Rand oben wackelt die Box, springt auf, dann steht da, was drin war (die
-    // Teile: style.css .mystery-*)
+    // wer sie schenkt, sagt James im Chat, und der Chat fiebert mit; dann wird ausgepackt
     this.james(fillTemplate(M.james, { name }));
-    const n = g.ui.toast(`🎁 Mysterybox: ${what}`, 'good', 'mystery', [['🎁', 'mystery-box'], [' Mysterybox: '], [what, 'mystery-what']]);
+    const hype = this.pick(M.chat);
+    const hypeName = this.name();
+    this.later(this.between(0.3, 0.9), () => this.say(hype, hypeName));
+    this.unbox({ name, kind, what, after: this.pick(M.danach), afterName: this.name(), afterT: this.between(1, 2) });
+  }
+
+  /**
+   * Die Box b ({ name: wer sie schenkt, kind, what, after, afterName, afterT }) am Rand oben: Sie wackelt, springt mit
+   * einem Pling auf, dann steht da, was drin war (die Teile: style.css .mystery-*), und der Chat reagiert. Löst
+   * Dringendes sie vor dem Aufspringen ab, plingt nichts, und dieselbe Box kommt wieder, sobald der Rand frei ist.
+   */
+  unbox(b) {
+    const g = this.g;
+    const n = g.ui.toast(`🎁 Mysterybox: ${b.what}`, 'good', 'mystery', [['🎁', 'mystery-box'], [' Mysterybox: '], [b.what, 'mystery-what']]);
     // (ui.js toast gibt den Hinweis zurück: Er steht länger als andere, und was danach kommt, wartet, bis das
     // Ausgepackte zu lesen war – nur Dringendes nicht)
     const box = n && typeof n === 'object' ? n : null;
@@ -477,20 +499,26 @@ export class StreamGags {
       box.t = MYSTERY.show;
       box.hold = MYSTERY.shake + MYSTERY.read;
     }
-    const hype = this.pick(M.chat);
-    const hypeName = this.name();
-    this.later(this.between(0.3, 0.9), () => this.say(hype, hypeName));
-    const after = this.pick(M.danach);
-    const afterName = this.name();
+    let open = !box;
     this.later(MYSTERY.shake, () => {
-      // (hat Dringendes sie schon abgelöst, springt am Rand nichts mehr auf)
-      if (box && box.gone) return;
+      if (box && box.gone) {
+        this.unopened = { ...b, nextT: this.boxT };
+        this.boxT = g.t + MYSTERY.retry;
+        return;
+      }
+      open = true;
       g.audio.pling();
-      if (kind === 'sound') this.later(0.35, () => g.audio.pling());
-      if (kind === 'konfetti') g.cockpit.addConfetti?.(30);
+      if (b.kind === 'sound') this.later(0.35, () => g.audio.pling());
+      if (b.kind === 'konfetti') g.cockpit.addConfetti?.(30);
     });
-    // der Witz selbst: vom Schenker, gleich nach dem Auspacken
-    if (kind === 'witz') this.later(MYSTERY.shake + 0.6, () => this.say(M.witz, name));
-    this.later(MYSTERY.shake + this.between(1, 2), () => this.say(after, afterName));
+    // der Witz selbst: vom Schenker, gleich nach dem Auspacken; dann sagt der Chat etwas dazu
+    if (b.kind === 'witz') {
+      this.later(MYSTERY.shake + 0.6, () => {
+        if (open) this.say(GAGS.mystery.witz, b.name);
+      });
+    }
+    this.later(MYSTERY.shake + b.afterT, () => {
+      if (open) this.say(b.after, b.afterName);
+    });
   }
 }

@@ -611,28 +611,44 @@ function fakeGame(secs, { gate = true } = {}) {
     sim.step(MYSTERY.retry + 0.1);
     ok(gg.boxes === n0 + 1, `Mysterybox kommt nicht an den freien Rand (${gg.boxes - n0})`);
   }
-  // ausgepackt mit Pling – hat Dringendes sie vorher abgelöst, springt nichts auf, und es plingt nicht
+  // ausgepackt mit Pling, dann der Chat – hat Dringendes sie vor dem Aufspringen abgelöst, plingt es nicht, der Chat
+  // wartet, und dieselbe Box kommt wieder, sobald der Rand frei ist (ohne neue Ansage, ohne neue Box)
   {
-    const plings = (mode) => {
+    const run = (mode) => {
       const sim = makeStream({ seed: 4 });
       sim.step(1);
-      const { game } = sim;
-      let n = 0;
-      let box = null;
-      game.audio.pling = () => n++;
+      const { game, log } = sim;
+      let plings = 0;
+      const shown = [];
+      game.audio.pling = () => plings++;
       const toast = game.ui.toast;
-      game.ui.toast = (text, kind, key, parts) => (key === 'mystery' ? (box = { t: 0, hold: 0, gone: false }) : toast(text, kind, key, parts));
+      game.ui.toast = (text, kind, key, parts) => {
+        if (key !== 'mystery') return toast(text, kind, key, parts);
+        shown.push({ text, t: 0, hold: 0, gone: false });
+        return shown[shown.length - 1];
+      };
+      const t0 = game.t;
       if (mode) game.gags.boxT = game.t;
       sim.step(0.5);
+      const box = shown[0];
       if (mode) ok(box && box.t === MYSTERY.show && box.hold === MYSTERY.shake + MYSTERY.read, `Mysterybox: steht ${box && box.t} s, hält ${box && box.hold} s`);
       if (mode === 'abgelöst') box.gone = true;
       sim.step(MYSTERY.shake + 1);
-      return n;
+      const first = plings;
+      const chatFirst = log.chat.filter((m) => m.gag && m.t >= t0 && GAGS.mystery.danach.includes(m.text)).length;
+      sim.step(MYSTERY.retry + MYSTERY.shake + 2.5);
+      const chat = log.chat.filter((m) => m.gag && m.t >= t0);
+      const after = chat.filter((m) => GAGS.mystery.danach.includes(m.text)).length;
+      const james = chat.filter((m) => m.bot === 'james' && /schenkt Mini Adam eine Mysterybox/.test(m.text)).length;
+      return { first, plings, shown, chatFirst, after, james, gifts: game.gags.boxes };
     };
-    const base = plings(null);
-    const open = plings('ausgepackt');
-    const cut = plings('abgelöst');
-    ok(open >= base + 1 && cut === base, `Mysterybox: Pling ohne Box ${base}, ausgepackt ${open}, abgelöst ${cut}`);
+    const base = run(null);
+    const open = run('ausgepackt');
+    const cut = run('abgelöst');
+    ok(open.first >= base.first + 1 && cut.first === base.first, `Mysterybox: Pling ohne Box ${base.first}, ausgepackt ${open.first}, abgelöst ${cut.first}`);
+    ok(open.shown.length === 1 && open.after === 1 && open.james === 1, `Mysterybox ausgepackt: ${open.shown.length} × am Rand, Chat danach ${open.after}, James ${open.james}`);
+    const again = cut.shown.length === 2 && cut.shown[1].text === cut.shown[0].text && cut.plings >= base.plings + 1;
+    ok(again && cut.chatFirst === 0 && cut.after === 1 && cut.james === 1 && cut.gifts === open.gifts, `Mysterybox abgelöst: ${cut.shown.map((x) => x.text).join(' / ')}, ${cut.plings - base.plings} × Pling, Chat danach ${cut.chatFirst} → ${cut.after}, James ${cut.james}, Boxen ${cut.gifts}`);
   }
   // am Rand oben (ui.js): Was danach kommt, wartet, bis das Ausgepackte zu lesen war – Dringendes nicht
   {
