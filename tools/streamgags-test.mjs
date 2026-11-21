@@ -6,7 +6,8 @@ import { makeStream, DRIVERS } from './stream-sim.mjs';
 import { SCHOENNBRUN, ABSPANN_REISE, GAGS } from '../src/data.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
 import { drawSchoennbrunLogo } from '../src/ui/schoennbrun.js';
-import { StreamGags, GATE } from '../src/game/gags.js';
+import { StreamGags, GATE, VEREIN } from '../src/game/gags.js';
+import { thanksGroups } from '../src/ui/abspann.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from '../src/world/xxl/schranke.js';
 import { places } from '../src/map/graph.js';
 import { STREET } from '../src/world/kit/layout.js';
@@ -153,9 +154,10 @@ function episodes(sim, n, secs = 1800) {
  */
 function fakeGame(secs, { gate = true } = {}) {
   const g = {
-    t: 0, queue: [], chat: [], donations: [], omi: [], gates: new Map(), tv: null, charging: false,
+    t: 0, queue: [], chat: [], donations: [], omi: [], gates: new Map(), tv: null, charging: false, viewers: 500, funkloch: 0,
     player: { s: 0, speed: 0, kmh: 0 },
-    world: { trip: () => ({ cur: { sections: secs } }) },
+    fits: () => true,
+    world: { trip: () => ({ cur: { sections: secs }, section: { kind: 'ab' } }) },
     ui: { chat: (m) => g.chat.push({ t: g.t, ...m }), toast() {} },
     audio: {},
     later: (d, fn) => g.queue.push({ at: g.t + d, fn }),
@@ -238,6 +240,43 @@ function fakeGame(secs, { gate = true } = {}) {
     ok(off.donations.length === 0 && !off.chat.some((m) => GAGS.schranke.spam.includes(m.text)), 'Ohne Schranken in der Welt spielt der Gag doch');
     console.log(`  Bezahlschranke: ${played} Durchfahrten (3–75 m/s, auch beschleunigend) – offen spätestens ${worst.toFixed(1)} s vor dem Wagen; ${starts.length} in ${(g.t / 60).toFixed(0)} min durch 40 Schranken-Orte`);
   }
+}
+
+// --- 3. Der Verein: gegründet, Beitritte, Zahl nur in der Abrechnung, Namen im Abspann ----------------------------
+{
+  const G = GAGS.verein;
+  let joins = 0;
+  for (const seed of [4, 9]) {
+    const sim = makeStream({ driver: DRIVERS.mittel, seed, endless: true });
+    const { game, log } = sim;
+    sim.step(1800);
+    const james = log.chat.filter((m) => m.bot === 'james' && m.gag);
+    const found = james.filter((m) => m.text === G.gruendung);
+    ok(found.length === 1 && found[0].t >= VEREIN.found[0] && found[0].t <= VEREIN.found[1] + 15, `Seed ${seed}: Gründung ${found.map((m) => m.t.toFixed(0)).join(', ')}`);
+    // (wer in den letzten Sekunden beitreten will, wird erst danach begrüßt)
+    const asks = log.chat.filter((m) => m.gag && G.beitreten.includes(m.text) && m.t < game.t - 2);
+    const welcome = G.willkommen.map((w) => new RegExp('^' + w.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace('{name}', '(.+)') + '$'));
+    const hellos = james.filter((m) => welcome.some((re) => re.test(m.text)) && m.t < game.t - 0.1);
+    const members = game.gags.report().verein.members;
+    ok(asks.length >= 12 && hellos.length === asks.length && members.length >= asks.length && members.length <= asks.length + 1, `Seed ${seed}: ${asks.length} Anträge, ${hellos.length} Begrüßungen, ${members.length} Mitglieder in 30 min`);
+    ok(new Set(members).size === members.length, `Seed ${seed}: ein Mitglied doppelt`);
+    asks.forEach((a, i) => {
+      const h = hellos[i];
+      ok(h && h.t - a.t >= 1.1 - 1e-9 && h.t - a.t <= 1.8 + 0.05 && h.text.includes(a.name) && members[i] === a.name, `Seed ${seed}: Antrag von ${a.name} um ${a.t.toFixed(0)} s, Begrüßung ${h && h.text}`);
+      ok(!/\d/.test(h ? h.text.replace(a.name, '') : ''), `Seed ${seed}: James nennt eine Zahl: ${h && h.text}`);
+      if (i) ok(a.t - asks[i - 1].t >= VEREIN.join[0] * (1 - 0.44) - 0.1, `Seed ${seed}: Beitritte nach ${(a.t - asks[i - 1].t).toFixed(1)} s`);
+    });
+    ok(asks.every((a) => !a.at.tv && !a.at.charging), `Seed ${seed}: Beitritt mitten in einer Szene`);
+    // die Zahl steht erst in der Abrechnung, die Namen im Abspann
+    const F = game.supporters();
+    const grp = thanksGroups(F).find((x) => x.id === 'verein');
+    ok(grp && grp.title === G.name && grp.names.map((x) => x.name).join() === members.join() && grp.sub === `${members.length}\u00a0Mitglieder`, `Seed ${seed}: Abspann ${grp && JSON.stringify(grp.sub)}`);
+    joins += members.length;
+  }
+  ok(/if \(o\.gags\?\.verein\) line\('Vereinsmitglieder', fmtNum\(o\.gags\.verein\.members\.length\)\)/.test(read('src/ui/menus.js')), 'menus.js: die Abrechnung nennt die Vereinsmitglieder nicht');
+  ok(/gags: this\.gags\.report\(\)/.test(read('src/game/game.js')), 'game.js: Game.end gibt den Gags nichts mit');
+  ok(thanksGroups({}).length === 0 && !thanksGroups({ verein: null }).some((x) => x.id === 'verein'), 'Abspann: Verein ohne Gründung');
+  console.log(`  Verein „${G.name}“: ${joins} Beitritte in 2 × 30 min, James begrüßt jeden ohne Zahl, Abrechnung und Abspann nennen sie`);
 }
 
 // --- Grundregel: mit und ohne Gags derselbe Stream -----------------------------------------------------------------

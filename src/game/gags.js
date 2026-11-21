@@ -18,6 +18,13 @@ import { schrankeOf } from '../world/xxl/schranke.js';
  */
 export const GATE = { first: 45, gap: 240, play: 0.75, look: 600, room: 30, near: 170, ahead: 5, pay: 0.8, open: 1.2, keep: 40 };
 
+/**
+ * Der Verein (GAGS.verein): gegründet found Sekunden nach Streambeginn, danach tritt alle join Sekunden jemand bei –
+ * bei guter Stimmung (Economy.level 0 … 4) öfter; echo: so oft lästert der Chat danach. In einer Szene (Folge,
+ * Ladestopp) wartet der nächste Beitritt wait Sekunden.
+ */
+export const VEREIN = { found: [70, 110], join: [35, 90], echo: 0.3, wait: 4 };
+
 /** Kleiner, schneller Zufall mit Saat (wie in tools/stream-sim.mjs). */
 export function mulberry32(a) {
   return () => {
@@ -43,12 +50,22 @@ export class StreamGags {
     this.gateT = GATE.first;
     this.gatesSeen = new Set();
     this.gatesPaid = 0;
+    // Verein: gegründet?, wann es weitergeht (Gründung, dann der nächste Beitritt), die Mitglieder (in der Reihenfolge
+    // des Beitritts)
+    this.verein = { founded: false, due: this.between(...VEREIN.found), members: [] };
+  }
+
+  /** Was Abrechnung und Abspann von den Gags wissen (Game.end): { verein: { name, members } | null }. */
+  report() {
+    const V = this.verein;
+    return { verein: V.founded ? { name: GAGS.verein.name, members: V.members.slice() } : null };
   }
 
   /** Einmal je Bild (Game.update). */
   update() {
     if (!this.on) return;
     if (this.g.world.gate) this.updateGate();
+    this.updateVerein();
   }
 
   // --- Zufall der Gags ------------------------------------------------------------------------------------------
@@ -152,5 +169,37 @@ export class StreamGags {
       g.donate(name, amount, 'die Bezahlschranke', { line: fillTemplate(S.james, { name, betrag: fmtCent(amount) }) });
     });
     this.later(GATE.pay + GATE.open + 0.6, () => g.say(S.omi, 'happy', { priority: false }));
+  }
+
+  // --- 3. Der Verein -------------------------------------------------------------------------------------------------
+  updateVerein() {
+    const g = this.g;
+    const V = this.verein;
+    if (g.t < V.due) return;
+    if (g.tv || g.charging) {
+      V.due = g.t + VEREIN.wait;
+      return;
+    }
+    const G = GAGS.verein;
+    // bessere Stimmung, schnellere Beitritte: bei bester Laune gut die Hälfte der Wartezeit
+    const gap = () => this.between(...VEREIN.join) * (1 - 0.11 * Math.min(4, Math.max(0, g.eco?.level ?? 0)));
+    if (!V.founded) {
+      V.founded = true;
+      this.james(G.gruendung);
+      V.due = g.t + gap() * 0.5;
+      return;
+    }
+    V.due = g.t + gap();
+    const name = this.name();
+    if (V.members.includes(name)) return;
+    this.say(this.pick(G.beitreten), name);
+    const hello = this.pick(G.willkommen);
+    const echo = this.chance(VEREIN.echo) ? this.pick(G.echo) : null;
+    const echoName = this.name();
+    this.later(this.between(1.1, 1.8), () => {
+      V.members.push(name);
+      this.james(fillTemplate(hello, { name }));
+      if (echo) this.later(this.between(1.2, 2.4), () => this.say(echo, echoName));
+    });
   }
 }

@@ -465,6 +465,8 @@ export class Menus {
     line('Rempler', fmtNum(st.crashes));
     line('Höchstgeschwindigkeit', fmtNum(Math.round(st.maxSpeedKmh)) + ' km/h');
     line('Zuschauer-Spitze', fmtNum(o.peakViewers));
+    // die Running Gags (game/gags.js): die Zahl der Vereinsmitglieder steht nur hier, ihre Namen im Abspann
+    if (o.gags?.verein) line('Vereinsmitglieder', fmtNum(o.gags.verein.members.length));
     line('Wischer: gezuckt / gewischt', fmtNum(st.twitches) + ' / ' + fmtNum(st.wipes));
     line('Sendezeit', fmtSpan(o.air) + ' (bis ' + o.clock + ' Uhr)');
     const beruf = el('div', 'beruf', right);

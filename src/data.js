@@ -170,6 +170,18 @@ export const GAGS = {
     // was ein Zuschauer einwirft (Euro)
     betrag: [0.5, 1, 1.5, 2],
   },
+  // „Mini Adam gründet einen Verein“: James ruft ihn aus, Zuschauer treten bei (beitreten), James begrüßt sie
+  // ({name}; die Zahl der Mitglieder steht erst in der Abrechnung, die Namen im Abspann), der Chat lästert (echo)
+  verein: {
+    name: 'Brunnenfreunde Mini Adam e. V.',
+    gruendung: '📝 Mini Adam gründet einen Verein: die Brunnenfreunde Mini Adam e. V.! Wer mitmachen will, schreibt !beitreten',
+    beitreten: ['!beitreten', '!beitreten 🙋', 'Ich will in den Verein! !beitreten', 'Mitgliedsausweis bitte 🪪 !beitreten',
+      'Bin dabei, Vereinsheim ist der Tesla 😂 !beitreten', '!beitreten – wo ist der Aufnahmeantrag?'],
+    willkommen: ['Willkommen bei den Brunnenfreunden, {name}! 🎉', 'Neues Mitglied: {name}. Der Mitgliedsausweis ist unterwegs 🪪',
+      '{name} ist jetzt Brunnenfreund. Willkommen im Verein! ⛲'],
+    echo: ['Vereinsmeier 😂', 'Satzung wann? 📜', 'Erster Vereinsausflug: zum Brunnen ⛲', 'Jahresbeitrag: ein Bananensaft 🍌',
+      'Ehrenmitglied: Herr Schönnbrun 🎩', 'Wann ist die Mitgliederversammlung? 😂'],
+  },
 };
 /**
  * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des

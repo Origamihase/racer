@@ -2718,6 +2718,8 @@ export class Game {
       fans: this.supporters(),
       stats: { ...this.stats },
       peakViewers: Math.round(this.peakViewers),
+      // was die Running Gags zur Abrechnung beitragen (gags.js report: der Verein …)
+      gags: this.gags.report(),
       beruf: berufFor(km),
       clock: fmtClock(this.clock),
     };
@@ -2740,13 +2742,14 @@ export class Game {
   /**
    * Wem der Abspann dankt – wie im echten SkylineTV-Abspann, der die Unterstützenden nach Art aufteilt: die größte
    * Spende, alle Spender und Bieter (höchste Summe zuerst), die Abo-Verschenker (meiste Abos zuerst), die neuen VIPs
-   * und die Raids. Jeder Name, der in diesem Stream etwas gegeben hat, steht darin (src/ui/abspann.js gruppiert).
+   * und die Raids. Jeder Name, der in diesem Stream etwas gegeben hat, steht darin (src/ui/abspann.js gruppiert). Dazu
+   * der Verein des Streams mit seinen Mitgliedern (gags.js; null, solange er nicht gegründet ist).
    */
   supporters() {
     const F = this.fans;
     const gifters = Object.entries(F.gifts).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
     const list = (m) => Object.entries(m).sort((a, b) => b[1].sum - a[1].sum).map(([name, e]) => ({ name, sum: e.sum, n: e.n }));
-    return { top: F.top, donors: list(F.donors), bidders: list(F.bids), gifters, vips: [...new Set(F.vips)], raids: list(F.raids) };
+    return { top: F.top, donors: list(F.donors), bidders: list(F.bids), gifters, vips: [...new Set(F.vips)], raids: list(F.raids), verein: this.gags.report().verein };
   }
 
   /**
