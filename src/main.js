@@ -303,6 +303,14 @@ stopBtn.setAttribute('aria-label', 'Ladestopp einplanen');
 stopBtn.innerHTML = '<span>🔌</span> Ladestopp einplanen';
 touchEl.appendChild(stopBtn);
 input.bindTouch(stopBtn, 'ladestopp');
+// „BrunnenTV hier“ (wie Taste B), zu sehen, solange der Wagen neben einem Brunnen auf dem Weg steht (Game.wayOffer)
+const wayBtn = document.createElement('button');
+wayBtn.type = 'button';
+wayBtn.className = 't-way';
+wayBtn.setAttribute('aria-label', 'BrunnenTV hier');
+wayBtn.innerHTML = '<span>⛲</span> BrunnenTV hier';
+touchEl.appendChild(wayBtn);
+input.bindTouch(wayBtn, 'brunnen');
 app.appendChild(touchEl);
 const touch = new TouchControls(touchEl, input);
 const jolt = new Jolt();
@@ -358,7 +366,11 @@ const uiFacade = {
 // Das Spiel bietet auf echte Orte und braucht dafür die Fahrt der Welt (jedes Gebot setzt ihr Ziel), den Halt am
 // Brunnen (stopping: der Wagen bremst gerade dorthin · release: weiterfahren, auch wenn er knapp hinter dem
 // Haltepunkt zum Stehen kam) sowie Brunnenplatz und Ort für die BrunnenTV-Szene
-const gameWorld = { trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec) };
+const gameWorld = {
+  trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec),
+  // BrunnenTV unterwegs: der Wagen bleibt stehen, wo er steht, bis release()
+  hold: (sec) => (xxl.arrival.held = { s: xxl.trip.s + 0.3, sec, place: sec.place, park: -1 }),
+};
 // (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
 const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
 // Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht, BrunnenTV,
@@ -2138,6 +2150,7 @@ function step(dt, { render = true } = {}) {
         wiper: input.take('wiper'),
         megafon: input.take('megafon'),
         ladestopp: input.take('ladestopp'),
+        brunnen: input.take('brunnen'),
         device: input.lastDevice,
         // Krümmung und Steigung unter dem Wagen aus dem Kurs (courseEnv); auf dem Prüfstand (?debug) lässt sich
         // stattdessen eine Probe einhängen: __MA.kappaProbe(s), __MA.gradeProbe(s)
@@ -2147,6 +2160,7 @@ function step(dt, { render = true } = {}) {
       if (DEBUG && window.__MA.xxl && window.__MA.xxl.auto) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
       if (stopBtn) stopBtn.classList.toggle('show', game.stopOffer());
+      wayBtn.classList.toggle('show', game.wayHint);
       driveHintTick(dt, ctl);
       tipsTick(dt, ctl, camKey);
       // Leitplanke: der Kopf ruckt zur Planke hin, Gamepad und Handy rütteln kurz

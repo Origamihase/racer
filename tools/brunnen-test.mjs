@@ -19,9 +19,11 @@
 import { PerspectiveCamera } from 'three';
 import { places, townLen } from '../src/map/graph.js';
 import { Trip, J } from '../src/game/trip.js';
-import { Game, AUKTION } from '../src/game/game.js';
+import { Game, AUKTION, WAY } from '../src/game/game.js';
 import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor, stillShot, stillKind, STILL } from '../src/world/xxl/brunnentv.js';
-import { squareOf } from '../src/world/xxl/plan.js';
+import { squareOf, Arrival, autoTarget } from '../src/world/xxl/plan.js';
+import { Economy } from '../src/game/economy.js';
+import { albumOf } from '../src/game/album.js';
 import { FOUNTAIN_R, goalKind, goalName, sightBlockers } from '../src/world/kit/layout.js';
 import { MEGA } from '../src/models/miniAdam.js';
 import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, BOARD, BRUNNEN_NOMI, BRUNNEN_MEGAFON, SCHOENER_BRUNNEN, VOICES, ABSPANN_REISE, fillTemplate } from '../src/data.js';
@@ -369,6 +371,134 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
   ok(!said.some((e) => e.text === BOARD.wiperPhantom) && said.filter((e) => !e.tv && e.text === 'Prüfsatz nach der Folge.').length === 1, `Folge: zurückgehalten ${said.map((e) => e.text).join(' | ')}`);
 }
 
+// --- BrunnenTV unterwegs: neben einem Brunnen auf dem Weg anhalten, Taste B ------------------------------------------
+// Eine echte Fahrt: Das erste Gebot steht, an der ersten Ausfahrt fährt der Wagen trotzdem ab – in den Ort dort (nicht
+// das Ziel). Nur wo er still neben dessen Insel steht, bietet das Spiel die Folge an; sie ist dieselbe wie am Ziel, die
+// Runde läuft danach einfach weiter.
+const way = { offers: 0, place: '', gifts: [], arrive: 0, wayMean: 0 };
+{
+  Math.random = mulberry32(2024);
+  const trip = new Trip({ rng: Math.random });
+  const arrival = new Arrival();
+  arrival.hold = true;
+  const log = [];
+  let releases = 0;
+  let holds = 0;
+  const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 3000);
+  const at = () => +(game.brunnenT()).toFixed(3);
+  const square = (sec) => {
+    const q = squareOf(sec);
+    return q ? { place: sec.place, sec, s: q.s, x: q.x, r: q.r, heading: q.heading, stop: { s: q.stop, x: J.L0 }, object: null, world: null } : null;
+  };
+  const game = new Game({
+    traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
+    scenery: loose({ request: () => 1, landmarkSpot: (s) => s, placed: () => null }),
+    road: loose(),
+    sky: loose(),
+    rain: loose(),
+    windshield: loose({ firmware: 0, manual: () => 'wipe' }),
+    cockpit: loose({ nomi: loose() }),
+    audio: loose(),
+    speech: loose({ say: (text, voice) => (log.push({ k: 'say', voice, text, t: at() }), 2.5), busy: false, queue: NONE, current: null }),
+    ui: loose({
+      toast: (text, kind, key) => log.push({ k: 'toast', text, key, g: game.t }),
+      dropKey: (key) => log.push({ k: 'drop', key, g: game.t }),
+      brunnenTV: (n, name) => log.push({ k: 'card', n, name, t: at() }),
+      chat: (m) => log.push({ k: 'chat', text: m.text, t: at() }),
+      money: (v, what) => log.push({ k: 'money', v, what, t: at() }),
+    }),
+    fx: loose(),
+    pickups: loose({ update: () => NONE }),
+    world: {
+      trip: () => trip, stopping: () => !!arrival.pending, release: () => (releases++, arrival.reset()), square, town: () => null,
+      hold: (sec) => (holds++, (arrival.held = { s: trip.s + 0.3, sec, place: sec.place, park: -1 })),
+    },
+  });
+  game.endless = true;
+  game.start({ upgrades: {}, best: {} });
+  const p = game.player;
+  const nv = game.navi;
+  const ctl = { steer: 0, throttle: 0, brake: 1, reverse: false, horn: false, wiper: false, megafon: false, ladestopp: false, brunnen: false, device: null, kappa: 0, grade: 0 };
+  const place = (sec) => (sec ? places[sec.place].name : '–');
+  // das erste Gebot, dann die Fahrt bis in den Ort an der ersten Ausfahrt
+  game.changeNavi(false);
+  const target = trip.target;
+  ok(nv.target && target >= 0 && game.auction.phase === 'offen', `unterwegs: kein Ziel nach dem ersten Gebot (${nv.target ? nv.target.name : '–'}, ${game.auction.phase})`);
+  let s = trip.s;
+  let guard = 0;
+  while (guard++ < 20000 && !(trip.section.kind === 'stadt' && !trip.section.start && trip.section.place !== target)) trip.update((s += 5), autoTarget(trip, 'exit'));
+  const sec = trip.section;
+  const q = square(sec);
+  ok(sec.kind === 'stadt' && q && sec.place !== target, `unterwegs: kein Ort auf dem Weg (${sec.kind} ${place(sec)})`);
+  way.place = place(sec);
+  // auf dem Weg zum Brunnen: im Ort, aber noch weit davor – oder in Fahrt – gibt es nichts
+  const stand = (ds, dx = 0, v = 0) => {
+    trip.s = q.stop.s + ds;
+    trip.x = p.x = J.L0 + dx;
+    p.s = trip.s;
+    p.speed = v;
+    return game.wayOffer();
+  };
+  for (const [ds, dx, v, want] of [[-30, 0, 0, false], [-WAY.before - 0.5, 0, 0, false], [-WAY.before + 0.5, 0, 0, true], [0, 0, 0, true], [WAY.after - 0.3, 0, 0, true], [WAY.after + 0.5, 0, 0, false], [-1, WAY.lane + 0.3, 0, false], [-1, -WAY.lane + 0.2, 0, true], [-1, 0, 2, false], [-1, 0, WAY.still - 0.1, true]]) {
+    const o = stand(ds, dx, v);
+    ok(!!o === want && (!o || (o.sec === sec && o.place === sec.place)), `unterwegs: Halt ${ds} m, quer ${dx} m, ${v} m/s – Angebot ${o ? 'ja' : 'nein'} statt ${want ? 'ja' : 'nein'}`);
+  }
+  // still neben der Insel (1 m vor dem Haltepunkt): Der Rand sagt Taste B, einmal
+  stand(-1);
+  for (let i = 0; i < 10; i++) game.update(DT, ctl, camera);
+  const hint = log.filter((e) => e.k === 'toast' && e.key === 'brunnenHier');
+  way.offers = hint.length;
+  ok(game.wayHint && hint.length === 1 && hint[0].text.includes('Taste B'), `unterwegs: Hinweis ${hint.length}× (${hint.map((e) => e.text).join(' | ')}), wayHint ${game.wayHint}`);
+  const phase = game.auction.phase;
+  const goal = nv.target;
+  const n0 = albumOf(game.save).n;
+  const i0 = log.length;
+  const rep0 = game.breakdown.Reparaturen || 0;
+  // Taste B: die Folge
+  ctl.brunnen = true;
+  game.update(DT, ctl, camera);
+  ctl.brunnen = false;
+  const tv = game.tv;
+  const last = albumOf(game.save).list.at(-1);
+  const mark = game.route.marks.at(-1);
+  ok(tv && tv.way && tv.place === sec.place && tv.goal === goalName(places[sec.place]), `unterwegs: Taste B startet keine Folge (${JSON.stringify(tv && { way: tv.way, goal: tv.goal })})`);
+  ok(holds === 1 && arrival.held && arrival.stop(trip) === arrival.held && !game.wayHint, `unterwegs: Welt hält ${holds}×, Hinweis ${game.wayHint}`);
+  ok(last && last.n === n0 + 1 && last.w === 1 && last.p === places[sec.place].key, `unterwegs: Album ${JSON.stringify(last)}`);
+  ok(mark && mark.type === 'brunnen' && mark.way === true && mark.n === n0 + 1, `unterwegs: Routenmarke ${JSON.stringify(mark)}`);
+  // die Folge läuft ab wie am Ziel; das Ziel und die Runde bleiben, es kommt kein Gebot
+  let end = -1;
+  for (let i = 0; i < 14 * 30 && end < 0; i++) {
+    game.update(DT, ctl, camera);
+    ok(game.auction.phase === phase && nv.target === goal, `unterwegs: Runde ${game.auction.phase} / ${nv.target ? nv.target.name : '–'} während der Folge`);
+    if (!game.tv) end = game.t;
+  }
+  const call = log.filter((e) => e.k === 'say' && e.voice === 'brunnen');
+  const card = log.filter((e) => e.k === 'card' && e.n > 0);
+  const money = log.slice(i0).filter((e) => e.k === 'money');
+  const gifts = money.filter((e) => e.what === 'Brunnenspende');
+  way.gifts = gifts.map((e) => e.v);
+  ok(end > 0 && releases === 1 && !arrival.held, `unterwegs: Ende ${end.toFixed(2)}, ${releases}× freigegeben`);
+  ok(call.length === 1 && Math.abs(call[0].t - TV.call) < 2.5 * DT && card.length === 1 && card[0].name === places[sec.place].name, `unterwegs: Ruf ${call.length}×, Bauchbinde ${card.map((e) => e.name).join(', ')}`);
+  ok(gifts.length === WAY.gifts && gifts.every((e) => e.v >= 1 && e.v <= 7.77) && Math.abs(game.breakdown.Brunnenspenden - gifts.reduce((a, e) => a + e.v, 0)) < 1e-6, `unterwegs: Brunnenspenden ${gifts.map((e) => e.v).join(', ')} (Abrechnung ${game.breakdown.Brunnenspenden})`);
+  // (Spenden des Chats kommen wie in jeder Folge; Ortsspenden, Gebote und die Werkstatt-Rechnung nicht)
+  ok(!money.some((e) => e.what === 'Ortsspende' || e.what === 'Navi-Gebot') && (game.breakdown.Reparaturen || 0) === rep0 && game.auction.phase === phase && nv.target === goal && !game.roundNew, `unterwegs: abgerechnet oder neue Runde (${money.map((e) => e.what).join(', ')}, ${game.auction.phase})`);
+  // danach: weiterfahren; an diesem Brunnen kein zweites Mal
+  for (let i = 0; i < 10; i++) game.update(DT, ctl, camera);
+  ok(!game.wayOffer() && !game.wayHint && log.filter((e) => e.k === 'toast' && e.key === 'brunnenHier').length === 1, 'unterwegs: zweites Angebot am selben Brunnen');
+  ctl.brunnen = true;
+  game.update(DT, ctl, camera);
+  ok(!game.tv && albumOf(game.save).n === n0 + 1, 'unterwegs: Taste B ohne Angebot startet eine Folge');
+  // Brunnenspenden gegen Ortsspenden: im Schnitt weniger als die Hälfte
+  const ea = new Economy({ seed: 11 });
+  const eb = new Economy({ seed: 11 });
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  for (let i = 0; i < 300; i++) {
+    way.arrive += sum(ea.arrive()) / 300;
+    way.wayMean += sum(eb.wayGifts()) / 300;
+  }
+  ok(way.wayMean < 0.5 * way.arrive, `unterwegs: Brunnenspenden ${way.wayMean.toFixed(2)} € gegen Ortsspenden ${way.arrive.toFixed(2)} € je Folge`);
+}
+
 // --- Megafon als Ausstattung ----------------------------------------------------------------------------------------
 const mega = { says: [], toasts: [] };
 {
@@ -458,6 +588,7 @@ console.log(`BrunnenTV-Fahrplan: Bauchbinde ${TV.card} s, Gruß ${TV.line} s, Ch
 console.log(`Überspringen: ohne (${tl(runs.none)}) · früh bei ${(TV.skip + 0.05).toFixed(2)} s (${tl(runs.early)}) · spät bei ${(TV.nomi + 1.5).toFixed(1)} s (${tl(runs.late)}) – derselbe Endzustand, der Ruf jedes Mal genau einmal`);
 console.log(`Standbilder an ${stills.places} Orten: ${Object.entries(stills.kinds).map(([k, v]) => `${k} ${v}`).join(', ')}; mindestens ${stills.minFountain.toFixed(2)} m vom Becken, Brunnen höchstens ${stills.maxAngle.toFixed(0)}° neben der Bildmitte, ${stills.lines} Sichtlinien frei`);
 console.log(`Kameras an ${cams.places} Orten: mindestens ${cams.minFountain.toFixed(2)} m vom Becken, Fenster und Brunnen höchstens ${cams.maxAngle.toFixed(0)}° neben der Blickrichtung (hochkant zurückgefahren ${cams.maxPortrait.toFixed(0)}° von ${portraitHalf.toFixed(0)}°), ${cams.lines} Sichtlinien zu Fenster und Brunnen frei von Häusern, Bäumen und Laternen`);
+console.log(`Unterwegs: Folge in ${way.place} (nicht das Ziel), angeboten ${WAY.before} m vor bis ${WAY.after} m hinter dem Halt, ${way.offers}× Hinweis „Taste B“; Brunnenspenden ${way.gifts.join(' + ')} € (im Schnitt ${way.wayMean.toFixed(2)} € gegen ${way.arrive.toFixed(2)} € Ortsspenden am Ziel), Runde und Ziel unverändert`);
 console.log(`Megafon: kein Shop-Artikel, Taste H ohne Upgrade (${mega.toasts.join(' / ')}), ein gekauftes einmal erstattet (${MEGAFON_PRICE} €, auf dem Titel bis zum ersten Besuch im Shop); Abspann der Reise mit „${ABSPANN_REISE.at(-1)[0]}: ${fillTemplate(ABSPANN_REISE.at(-1)[1], { folgen: '1 Folge' })}“`);
 console.log(fails ? `${fails} Fehler (${checks} Prüfungen)` : `brunnen-test: alles grün (${checks} Prüfungen)`);
 process.exit(fails ? 1 : 0);

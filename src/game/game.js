@@ -23,6 +23,8 @@ import { curvePoint } from '../curve.js';
 import { stopPlan, STOP } from '../world/xxl/charge.js';
 import { TV } from '../world/xxl/brunnentv.js';
 import { addEpisode } from './album.js';
+import { places } from '../map/graph.js';
+import { goalName } from '../world/kit/layout.js';
 import { RouteLog } from './routelog.js';
 import { estimateSpeech } from '../speech.js';
 
@@ -110,6 +112,14 @@ export const TOWN_HOLD = 75;
  * vor dem Ende des Fensters meldet sich der Chat.
  */
 export const AUKTION = { lock: 5, window: 25, warn: 10 };
+/**
+ * BrunnenTV unterwegs (Game.wayOffer): Steht der Wagen in einem Ort auf dem Weg neben der Insel seines Brunnens –
+ * höchstens before Meter vor bis after Meter hinter dem Halt, wo er am Ziel hält, auf seiner Spur (lane Meter
+ * daneben) und langsamer als still m/s –, kann Mini Adam dort eine Folge machen (Taste B, Touch-Knopf). gifts: so
+ * viele kleine Brunnenspenden gibt es dafür (economy.js wayGifts; am Ziel sind es mehr und größere Ortsspenden).
+ * remind: Steht er länger da, kommt der Hinweis am Rand so viele Sekunden nach dem letzten wieder.
+ */
+export const WAY = { before: 6, after: 2, lane: 0.8, still: 0.3, gifts: 2, remind: 8 };
 // Einschaltquote für den Abspann (menus.js, ui/quotechart.js): alle QUOTE_DT Sekunden die Zuschauerzahl
 export const QUOTE_DT = 5;
 /**
@@ -263,8 +273,12 @@ export class Game {
       wipes: 0, twitches: 0, photos: 0, donations: 0, subs: 0, vips: 0, topBid: 0, overtakes: 0, brunnenTV: 0,
       stopsPlanned: 0, parkCharges: 0,
     };
-    // laufende BrunnenTV-Folge am Navi-Ziel oder null
+    // laufende BrunnenTV-Folge am Navi-Ziel (oder unterwegs, tv.way) oder null; wayDone: Ortsdurchfahrten (Abschnitte),
+    // in denen es schon eine Folge unterwegs gab
     this.tv = null;
+    this.wayDone = new WeakSet();
+    this.wayHint = false;
+    this.wayNoteT = 0;
     // Reise: Ladestopp im Ladepark ({ t0, from, park, name, sec, plan, … }, startCharge) oder null; Verbrauch seit dem
     // letzten Laden (meterAkku: Meter Straße und Akku je Art der Straße, für NOMIs Warnung) und wann sie wieder misst;
     // sugarDue: der Zuckerschub des Bananensafts kommt, sobald der Wagen nach dem Stopp wieder auf der Autobahn ist
@@ -647,6 +661,16 @@ export class Game {
     if (ctl.wiper) this.manualWiper();
     if (ctl.megafon) this.useMegafon();
     if (ctl.ladestopp) this.planStop();
+    if (ctl.brunnen) this.wayEpisode();
+    // BrunnenTV unterwegs: steht der Wagen neben einem Brunnen auf dem Weg, sagt es der Rand oben (Taste B; auf dem
+    // Handy steht dazu der Knopf „BrunnenTV hier“ bei den kleinen Knöpfen, main.js)
+    // (ein Hinweis steht nur kurz da: wer länger steht, bekommt ihn alle WAY.remind Sekunden wieder)
+    const offer = !!this.wayOffer();
+    if (offer && (!this.wayHint || this.t - this.wayNoteT >= WAY.remind)) {
+      this.wayNoteT = this.t;
+      this.ui.toast(this.touchUI ? '⛲ BrunnenTV hier: Knopf unten' : '⛲ BrunnenTV hier: Taste B', 'info', 'brunnenHier');
+    } else if (!offer && this.wayHint) this.ui.dropKey('brunnenHier');
+    this.wayHint = offer;
 
     // --- Verkehr ---------------------------------------------------------------
     const tev = this.traffic.update(dt, this.t, p, { difficulty: clamp(p.s / 16000, 0, 1), leftOpen: this.left.open, rain: W.level, dim: W.sky || 0 });
@@ -1153,6 +1177,13 @@ export class Game {
     const A = this.auction;
     // 5 km vor dem Brunnen fällt der Zuschlag: Ab da steht das Ziel fest, und bis zur Ankunft ruht die Uhr der Gebote
     if (A.phase === 'offen' && nv.target && nv.km <= AUKTION.lock) this.zuschlag();
+    // (eine Folge unterwegs ändert die Runde nicht: Solange sie läuft, kommt kein Gebot, und ein offenes Bieterfenster
+    // wartet, bis sie vorbei ist)
+    if (this.tv && this.tv.way) {
+      if (A.phase === 'fenster') A.until += dt;
+      this.T.bid = Math.max(this.T.bid, 1);
+      return;
+    }
     if (A.phase === 'fest' || A.phase === 'folge' || A.phase === 'aus') {
       this.T.bid = Math.max(this.T.bid, 1);
       return;
@@ -1569,17 +1600,60 @@ export class Game {
    * Name des Ziels, Abschnitt, Brunnenplatz der Welt mit Lage und Haltepunkt, der Ort aus dem Stadtbaukasten); ohne
    * Szene (Node-Tests) läuft derselbe Fahrplan, der Wagen wartet an seinem Halt.
    */
-  startBrunnenTV(t, sec) {
+  startBrunnenTV(t, sec, { way = false } = {}) {
     this.stats.brunnenTV++;
+    // je Ortsdurchfahrt eine Folge: am Brunnen des Ziels gibt es danach keine zweite unterwegs (wayOffer)
+    if (sec) this.wayDone.add(sec);
     // ins Album (album.js): Die Folge zählt über alle Streams, und so heißt sie auch in Bauchbinde und Abspann-Route
     const town = this.world.town(sec);
     const kinds = town && town.plan && Array.isArray(town.plan.fountains) ? town.plan.fountains.map((f) => f.kind) : [];
-    const entry = addEpisode(this.save, { place: t.place, t: this.streamT, clock: this.clock, kinds });
+    const entry = addEpisode(this.save, { place: t.place, t: this.streamT, clock: this.clock, kinds, way });
     const n = entry.n;
-    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, skip: false, called: false, debate: entry.d || null };
+    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, skip: false, called: false, debate: entry.d || null, way };
     this.quote.tv.push({ t: this.t, n });
-    this.routeMark('brunnen', { n, place: t.place });
-    this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town });
+    this.routeMark('brunnen', way ? { n, place: t.place, way: true } : { n, place: t.place });
+    this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town, way });
+  }
+
+  /**
+   * BrunnenTV unterwegs: der Ort, in dem Mini Adam jetzt eine Folge machen könnte ({ sec, place }), oder null (siehe
+   * WAY). Nicht im Ort des Navi-Ziels (dort gibt es die Folge des Ziels), nur einmal je Durchfahrt, nicht in einer
+   * anderen Szene (Folge, Ladestopp, Halt am Ziel, Funkloch).
+   */
+  wayOffer() {
+    if (!this.running || this.over || this.tv || this.charging || this.halt || this.funkloch > 0 || !this.world.hold) return null;
+    if (Math.abs(this.player.speed) > WAY.still) return null;
+    const trip = this.world.trip();
+    const sec = trip && trip.section;
+    if (!sec || sec.kind !== 'stadt' || sec.start || !(sec.place >= 0) || sec.place === trip.target || this.wayDone.has(sec)) return null;
+    if (this.world.stopping()) return null;
+    const q = this.world.square(sec);
+    if (!q || !q.stop) return null;
+    const d = trip.s - q.stop.s;
+    if (d < -WAY.before || d > WAY.after || Math.abs(this.player.x - q.stop.x) > WAY.lane) return null;
+    return { sec, place: sec.place };
+  }
+
+  /**
+   * Taste B / Knopf „BrunnenTV hier“: die Folge unterwegs, wenn wayOffer sie anbietet. Dieselbe Folge wie am Ziel –
+   * Bauchbinde, Gruß, „Schöner Brunnen!“, Chat und NOMI, Album und Abspann –, aber die Runde läuft weiter: Das Ziel
+   * und die Gebote bleiben, abgerechnet wird nichts, kein Bieterfenster; dafür zwei kleine Brunnenspenden. Die Welt
+   * hält den Wagen, bis die Folge vorbei ist.
+   */
+  wayEpisode() {
+    const o = this.wayOffer();
+    if (!o) return false;
+    const p = places[o.place];
+    this.world.hold(o.sec);
+    this.ui.dropKey('brunnenHier');
+    this.onMood('happy', 0.4);
+    this.startBrunnenTV({ place: o.place, name: p.name, goal: goalName(p) }, o.sec, { way: true });
+    const gifts = this.eco.wayGifts();
+    gifts.forEach((v, i) => this.later(TV.chat + 1.6 + i * 1.3, () => {
+      const name = viewerName();
+      this.donate(name, v, 'Brunnenspende', { label: 'Brunnenspenden', line: `Brunnenspende von ${name}: ${fmtCent(v)}` });
+    }));
+    return true;
   }
 
   /** Eine Marke auf der Route des Streams (main.js trägt über onRouteMark ihre Lage auf der Karte nach). */
@@ -1667,10 +1741,12 @@ export class Game {
 
   /** Die Folge ist vorbei (oder übersprungen): Bauchbinde weg, der Wagen darf weiter – durch den Ort zur nächsten Straße. */
   endBrunnenTV() {
+    const way = this.tv && this.tv.way;
     this.tv = null;
     this.ui.brunnenTV(0);
     this.world.release();
-    this.openWindow();
+    // (unterwegs läuft die Runde weiter: kein Bieterfenster)
+    if (!way) this.openWindow();
     this.sayHeld();
   }
 

@@ -709,6 +709,16 @@ export class Economy {
     return out;
   }
 
+  /**
+   * BrunnenTV unterwegs (Game.wayEpisode): Der Chat freut sich wie über einen angehupten Brunnen, und zwei Zuschauer
+   * spenden je eine Kleinigkeit (wie nach einem schönen Moment) – weniger als die Ortsspenden am Ziel; die Runde läuft
+   * weiter.
+   */
+  wayGifts() {
+    this.cheer('greet');
+    return [this.pick(THRILL_VALUES), this.pick(THRILL_VALUES)];
+  }
+
   // --- Linke Spur -------------------------------------------------------------------
   laneDonation() {
     return this.pick(LANE_PRICES);

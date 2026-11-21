@@ -89,7 +89,7 @@ function episodeCard(grid, e, pic) {
   }
   const tx = el('div', 'ep-text', art);
   const top = el('div', 'ep-top', tx);
-  el('span', 'ep-n', top, `Folge ${fmtNum(e.n)}`);
+  el('span', 'ep-n', top, `Folge ${fmtNum(e.n)}` + (e.w ? ' · unterwegs' : ''));
   const when = [fmtStreamDate(e.t), Number.isFinite(e.u) ? fmtClock(e.u) + ' Uhr' : ''].filter(Boolean).join(' · ');
   if (when) el('span', 'ep-when', top, when);
   el('div', name.length > 18 ? 'ep-place long' : 'ep-place', tx, name);

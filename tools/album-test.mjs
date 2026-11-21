@@ -73,6 +73,16 @@ for (const [what, raw] of [['Stand von main', MAIN], ['Reise vor dem Album', OLD
   const e = addEpisode(s, { place: idx('Würzburg'), t: 0, clock: 18 * 60 + 7, kinds: [] });
   ok(e.n === 1 && s.album.n === 1 && s.album.list.length === 1 && e.p === 'Würzburg' && e.k === goalKind(places[idx('Würzburg')]), `Album ohne Spielstand: ${JSON.stringify(s.album)}`);
 }
+// eine Folge unterwegs (an einem Brunnen auf dem Weg, nicht am Navi-Ziel) trägt w: 1 – auch nach Speichern und Laden
+{
+  const s = { ...MAIN };
+  const a = addEpisode(s, { place: idx('Hanau'), t: 5, clock: 600, kinds: [], way: true });
+  const b = addEpisode(s, { place: idx('Würzburg'), t: 5, clock: 655, kinds: [] });
+  box.clear();
+  put(s);
+  const back = loadSave().album.list;
+  ok(a.w === 1 && !('w' in b) && back.length === 2 && back[0].w === 1 && !('w' in back[1]), `Folge unterwegs: ${JSON.stringify(back)}`);
+}
 
 // --- Folgen über Streams, Reihenfolge, Neuladen ----------------------------------------------------------------------------
 box.clear();

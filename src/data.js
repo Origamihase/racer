@@ -76,6 +76,7 @@ export const BOTS = {
 export const INCOME = {
   Spenden: 'Spende',
   Ortsspenden: 'Ortsspende',
+  Brunnenspenden: 'Brunnenspende',
   'Navi-Gebote': 'Navi-Gebot',
   Abos: 'Abo',
   'VIP-Abos': 'VIP-Abo',

@@ -9,7 +9,7 @@
 const ACTIONS = {
   ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'gas', KeyW: 'gas',
   ArrowDown: 'brake', KeyS: 'brake', Space: 'horn', KeyE: 'wiper', KeyH: 'megafon', Escape: 'pause', KeyP: 'pause',
-  KeyV: 'camera', KeyM: 'mute', Enter: 'confirm', KeyC: 'chat', KeyL: 'ladestopp',
+  KeyV: 'camera', KeyM: 'mute', Enter: 'confirm', KeyC: 'chat', KeyL: 'ladestopp', KeyB: 'brunnen',
 };
 const STEER_DIR = { left: -1, right: 1 };
 // Fahrtasten: Browser soll damit weder scrollen noch Kurzbefehle auslösen

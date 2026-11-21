@@ -513,7 +513,8 @@ export class Menus {
 
   /**
    * Abspann der Reise: die Folgen dieses Streams als Bilderleiste – je Folge ihr Standbild (o.pics: Nummer → Bild,
-   * save.js loadPictures) oder die gezeichnete Karte ihres Brunnens (fountaincard.js), darunter Nummer, Ort und Brunnen.
+   * save.js loadPictures) oder die gezeichnete Karte ihres Brunnens (fountaincard.js), darunter Nummer, Ort und Brunnen;
+   * Folgen an einem Brunnen unterwegs tragen „unterwegs“.
    */
   episodesBlock(card, o) {
     const eps = o.route.marks.filter((m) => m.type === 'brunnen' && places[m.place]);
@@ -533,7 +534,7 @@ export class Menus {
         img.src = pic;
       } else frame.append(fountainCard({ kind: goalKind(p), place: p.name, n: m.n }));
       const cap = el('figcaption', '', fig);
-      el('span', 'eps-n', cap, `Folge ${fmtNum(m.n)}`);
+      el('span', 'eps-n', cap, `Folge ${fmtNum(m.n)}` + (m.way ? ' · unterwegs' : ''));
       el('span', 'eps-place', cap, p.name);
       el('span', 'eps-kind', cap, fountainName(p));
     }
