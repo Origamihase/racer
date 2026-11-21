@@ -9,7 +9,7 @@ import { createCityKit } from '../kit/city.js';
 import { goalKind, FOUNTAIN_R, STREET } from '../kit/layout.js';
 import { XXL_BEHIND, squareOf, squareWeight, secSeedKey } from './plan.js';
 import { ISLAND_H } from './roadkit.js';
-import { CHARGE, chargeOf } from './charge.js';
+import { CHARGE, chargeOf, steleOf } from './charge.js';
 import { buildChargeRig } from './chargerig.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from './schranke.js';
 import { PARKS, PARK } from '../../map/parks.js';
@@ -68,7 +68,8 @@ export function townPlan(K, sec, budget = Infinity) {
     ...(island ? { island } : sec.start ? { goal: START_GOAL - sec.s0 } : {}),
     // die Ladesäule des Orts (charge.js; in Erlensee am Start der Supercharger, an dem jede Fahrt beginnt): Stecker und
     // Kabel bringt der Ort mit (Towns.lay, chargerig.js), auf der Ortsdurchfahrt steht die Popcorn-Maschine auf der Säule
-    ...(charge ? { charge: { u: charge.u, kind: CHARGE.kindStart, stop: !charge.start } } : {}),
+    // und vor dem Park die Stele (der Plan hält ihr Platz und Sichtlinie frei)
+    ...(charge ? { charge: { u: charge.u, kind: CHARGE.kindStart, stop: !charge.start, stele: steleOf(sec) } } : {}),
   });
 }
 

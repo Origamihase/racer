@@ -299,6 +299,43 @@ export function sightBlockers(plan, f, points = viewPoints(f)) {
   return [...out];
 }
 
+/**
+ * Stele vor der Ladesäule eines Orts (opts.charge.stele = { u, x, w }, xxl/charge.js): Sichtpunkte des Fahrers (Auge im
+ * Cockpit) und der Drohne (über der Spur), alle 10 m von STELE_SEE[0] bis STELE_SEE[1] Meter davor.
+ */
+export const STELE_SEE = [30, 150];
+export function steleViews(st) {
+  const out = [];
+  for (let d = STELE_SEE[0]; d <= STELE_SEE[1]; d += 10) out.push([STREET.eye, -(st.u - d)], [STREET.lane, -(st.u - d)]);
+  return out;
+}
+/**
+ * So hoch muss etwas sein, um den Stecker oben auf der Tafel der Stele zu verdecken: Die Sichtlinie vom Auge (1,2 m)
+ * dorthin liegt über dem Streifen schon höher (Autos, Bänke, Menschen und Poller sieht man von weitem darunter).
+ */
+const STELE_LOW = 2.4;
+/**
+ * Was die Stele stört (Indizes in plan.items): alles, was auf ihrem Platz steht (Laternen und Ampeln mit dem Mast,
+ * Bäume mit der Krone), und was höher als STELE_LOW eine Sichtlinie zu ihrer Tafel kreuzt – Bäume mit der Krone (die
+ * hängt in Höhe der Tafel), ein Häuschen der Straßenbahn. Der Mast einer Laterne verdeckt von der 1 m breiten Tafel
+ * nur einen schmalen Streifen: Er bleibt stehen, die Straße bleibt hell. infoOf: Angaben der Bausteine (für die Art).
+ */
+export function steleBlockers(plan, st, infoOf, points = steleViews(st)) {
+  const spot = [st.x - st.w / 2 - 0.5, st.x + st.w / 2 + 0.5, -st.u - 0.8, -st.u + 0.8];
+  const targets = [-0.4, 0, 0.4].map((k) => [st.x + k * st.w, -st.u]);
+  const out = [];
+  for (let i = 0; i < plan.items.length; i++) {
+    const it = plan.items[i];
+    const fp = it.fp;
+    if (it.external || fp.h <= STREET.top + 0.01) continue;
+    const tree = infoOf(it.name).kind === 'tree';
+    const body = tree ? fp : (fp.thin ?? fp);
+    if (touches(spot, aabb(body))) out.push(i);
+    else if (fp.h > STELE_LOW && (tree || !fp.thin) && points.some(([ex, ez]) => targets.some(([tx, tz]) => segHitsBox(ex, ez, tx, tz, body, 0.05)))) out.push(i);
+  }
+  return out;
+}
+
 /** Wie weit vor dem Brunnen (in Metern, bis max) ist seine Mitte vom Fahrersitz aus ununterbrochen frei zu sehen? */
 export function sightDistance(plan, f, max = 120) {
   let free = 0;
@@ -505,7 +542,7 @@ export function planTown(place, opts = {}) {
       add('popcorn_post', x0 - pz, info.ground, -(c.u - px), toRoad(1));
       add('popcorn_eimer', x0 - info.popcorn[2], info.popcorn[1], -(c.u - info.popcorn[0]), 0.4);
     }
-    plan.charge = { u: c.u, x: x0, kind: c.kind, park: aabb(park.fp) };
+    plan.charge = { u: c.u, x: x0, kind: c.kind, park: aabb(park.fp), stele: c.stele || null };
   }
 
   // --- 2. Weitere Brunnen in größeren Orten: auf eigenen kleinen Plätzen links ------------------------------------
@@ -727,6 +764,13 @@ export function planTown(place, opts = {}) {
   plan.items = plan.items.filter((it) => it.fountain !== undefined || it.fp.h <= STREET.top + 0.01 || boxes.every((b) => !touches(b, aabb(it.fp))));
   for (const f of fountains) {
     const drop = new Set(sightBlockers(plan, f));
+    if (drop.size) plan.items = plan.items.filter((_, i) => !drop.has(i));
+  }
+  // --- 7. Die Stele der Ladesäule (opts.charge.stele): ihr Platz im Streifen und die Sichtlinien bis 150 m davor
+  // bleiben frei (Regel, nicht Zufall: vor der Einfahrt wächst kein Baum, und die Straßenbahn hält woanders)
+  const st = opts.charge && opts.charge.stele;
+  if (st) {
+    const drop = new Set(steleBlockers(plan, st, infoOf));
     if (drop.size) plan.items = plan.items.filter((_, i) => !drop.has(i));
   }
   plan.layout = townLayout(plan, infoOf);

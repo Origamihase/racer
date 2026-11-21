@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { W } from '../../curve.js';
 import { roundRect } from '../../textures.js';
 import { sectionSigns } from './signplan.js';
+import { CHARGE } from './charge.js';
 import { drawTurnIcon } from '../../map/symbols.js';
 
 const FONT = '"DIN Alternate", "Arial Narrow", Arial, sans-serif';
@@ -217,6 +218,55 @@ function postTexture(texts, wM, hM) {
   return toTexture(c);
 }
 
+/**
+ * Stele vor dem Park der Ladesäule eines Orts (charge.js CHARGE.stele): hoch und blau wie die Stelen echter Ladeparks,
+ * oben der Stecker im weißen Feld so breit wie die Tafel, darunter „Ladesäule“ von unten nach oben zu lesen (so groß,
+ * wie die Breite es zulässt), unten die Einfahrt mit dem Pfeil nach rechts. Von weitem ein blauer Strich mit weißem
+ * Kopf am Straßenrand, näher dran lesbar.
+ */
+function steleTexture(texts, wM, hM) {
+  const w = Math.round(wM * PX);
+  const h = Math.round(hM * PX);
+  const c = makeCanvas(w, h);
+  const ctx = c.getContext('2d');
+  plate(ctx, w, h, BLUE, WHITE, 6);
+  ctx.textBaseline = 'middle';
+  const pad = 20;
+  const ps = w - 2 * pad - 6;
+  plugBox(ctx, (w - ps) / 2, pad + 4, ps);
+  // unten: Einfahrt und Pfeil (geradeaus, dann rechts hinein)
+  const foot = 0.62 * PX;
+  ctx.fillStyle = WHITE;
+  ctx.strokeStyle = WHITE;
+  ctx.font = `bold ${Math.round(0.15 * PX)}px ${FONT}`;
+  fitText(ctx, texts[1], w / 2, h - pad - foot + 0.12 * PX, w - 2 * pad, 'center');
+  const ay = h - pad - 0.2 * PX;
+  ctx.lineWidth = 0.07 * PX;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(w * 0.3, ay + 0.14 * PX);
+  ctx.lineTo(w * 0.3, ay);
+  ctx.lineTo(w * 0.62, ay);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(w * 0.8, ay);
+  ctx.lineTo(w * 0.6, ay - 0.11 * PX);
+  ctx.lineTo(w * 0.6, ay + 0.11 * PX);
+  ctx.closePath();
+  ctx.fill();
+  // dazwischen der Name, um 90° gedreht
+  const top = pad + 4 + ps + 0.12 * PX;
+  const bottom = h - pad - foot - 0.08 * PX;
+  ctx.save();
+  ctx.translate(w / 2, (top + bottom) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = `bold ${Math.round(0.5 * PX)}px ${FONT}`;
+  fitText(ctx, texts[0], 0, 4, bottom - top, 'center');
+  ctx.restore();
+  return toTexture(c);
+}
+
 /** Entfernungstafel: Ort links, Kilometer rechtsbündig. */
 function tableTexture(rows, wM, hM) {
   const w = Math.round(wM * PX);
@@ -413,6 +463,8 @@ function layout(e) {
       return { w: 2.0, h: 1.0, y: 1.4, posts: [-0.65, 0.65] };
     case 'ladesaeule':
       return { w: 1.1, h: 1.15, y: 1.0, posts: [0] };
+    case 'ladestele':
+      return { w: CHARGE.stele.w, h: CHARGE.stele.h, y: CHARGE.stele.y, posts: [0] };
     default: {
       const two = splitName(e.texts[0]).length > 1;
       return { w: 1.55, h: two ? 1.15 : 0.92, y: 1.3, posts: [-0.5, 0.5] };
@@ -434,13 +486,15 @@ function textureOf(e, L) {
       return aufTexture(e.road, e.towards, L.w, L.h);
     case 'ladesaeule':
       return postTexture(e.texts, L.w, L.h);
+    case 'ladestele':
+      return steleTexture(e.texts, L.w, L.h);
     default:
       return townTexture(e.texts[0], e.kind === 'ortsende', L.w, L.h);
   }
 }
 
 /** Arten, die diese Klasse selbst baut (die übrigen stehen nur im Log). */
-const BUILDS = new Set(['vorweg', 'tafel', 'ladepark', 'ausfahrt', 'auffahrt', 'ort', 'ortsende', 'ladesaeule']);
+const BUILDS = new Set(['vorweg', 'tafel', 'ladepark', 'ausfahrt', 'auffahrt', 'ort', 'ortsende', 'ladesaeule', 'ladestele']);
 
 export class Signs {
   constructor(world) {

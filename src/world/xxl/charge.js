@@ -30,7 +30,22 @@ export const CHARGE = {
   drop: 0.04, // Höhe des abgesenkten Bordsteins an der Einfahrt
   ramp: 1, // Übergang des Bordsteins auf beiden Seiten der Einfahrt
   keep: 1, // so weit über den Park hinaus bleiben Streifen und Gehweg leer
+  // Stele vor dem Park jedes Orts auf dem Weg (Besitzer, 21.11.: „Die Ladesäule muss man von weitem sehen.“): Der Park
+  // steht in der Häuserflucht, von weitem kaum mehr als eine Lücke zwischen den Häusern. Die Stele steht vorn im
+  // Streifen, d Meter vor seiner Mitte und quer wie die Ortstafeln (x), eine blaue Tafel w × h ab der Höhe y mit dem
+  // Stecker oben (signplan.js 'ladestele', gebaut von signs.js); auf ihrem Platz und in der Sichtlinie bis 150 m davor
+  // steht nichts Hohes (kit/layout.js steleBlockers)
+  stele: { d: 14, x: 12.35, w: 1.0, y: 0.4, h: 3.6 },
 };
+
+/**
+ * Stele vor dem Park einer Ortsdurchfahrt (Ortskoordinaten: u längs, x quer, w Breite der Tafel) oder null: am Start
+ * (dort steht der Wagen schon im Park) und in den Ladeparks hinter den Ausfahrten (dort führt die Ausfahrt hin) keine.
+ */
+export function steleOf(sec) {
+  const c = sec && sec.kind === 'stadt' && !sec.start ? chargeOf(sec) : null;
+  return c ? { u: c.u - CHARGE.stele.d, x: CHARGE.stele.x, w: CHARGE.stele.w } : null;
+}
 
 const lane = STREET.lane;
 // Weg der Hinterachse (Fahrradmodell, nichts rutscht seitlich): gerade aus der Bucht zur Straße (−x), ein Viertelkreis

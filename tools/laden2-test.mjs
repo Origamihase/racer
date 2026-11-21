@@ -204,5 +204,126 @@ console.log(`  a: stand bei u ${a.stood && a.stood.u} m, Hinweis „${(a.toasts.
   ` · d: geplant, von selbst nach ${d.charge && (d.charge.t - d.stood.t).toFixed(2)} s` +
   ` · e: ${e && e.charge ? `${e.charge.name}, L bei u ${e.pressed.u} m (Halt ${PARK.halt}) → Stopp` : '–'}`);
 
+// --- 2. Eine Ladesäule in jedem Ort, von weitem zu sehen -------------------------------------------------------------
+// „Bitte überprüfe, ob in jedem Ort eine Ladesäule ist – ich habe keine gesehen.“ Jeder Ort der Karte (alle Größen),
+// wie er auf dem Weg liegt: Der Park mit der Säule steht bei POST.u rechts an der Flucht, davor im Streifen seine blaue
+// Stele, 100 m davor die Tafel „Ladesäule 100 m“. Die Stele steht auf dem Streifen (nicht auf der Fahrbahn, nicht auf
+// der abgesenkten Einfahrt), und vom Auge im Cockpit wie von der Drohne über der Spur liegt bis 150 m davor nichts
+// zwischen ihr und dem Betrachter, was ihren Kopf mit dem Stecker verdeckt – gerechnet in 3D gegen jeden Baustein
+// (Bäume mit der Krone, alles andere mit Grundriss und Höhe; der Mast einer Laterne verdeckt nur einen Streifen). Ein Ort hat seinen
+// Plan unabhängig von der Seite, von der man kommt (er liegt immer in Fahrtrichtung): an anderer Stelle des Wegs und
+// über einen anderen Knoten derselbe Park, dieselbe Stele. Am Start (Erlensee) steht der Wagen schon im Park: dort keine.
+console.log('2. Eine Ladesäule in jedem Ort, von weitem zu sehen:');
+{
+  // Minimaler DOM-Ersatz wie in tools/citykit-test.mjs: der Baukasten malt Schilder auf Canvas (hier ohne Bild)
+  const ctx2 = new Proxy({}, {
+    get(t, k) {
+      if (k === 'measureText') return (x) => ({ width: String(x).length * 10 });
+      if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => ({ addColorStop() {} });
+      if (k === 'getImageData') return (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) });
+      if (k in t) return t[k];
+      return () => {};
+    },
+    set(t, k, v) {
+      t[k] = v;
+      return true;
+    },
+  });
+  globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2, style: {} }) };
+  const { W } = await import('../src/curve.js');
+  const { createCityKit } = await import('../src/world/kit/city.js');
+  const L = await import('../src/world/kit/layout.js');
+  const { places, townLen } = await import('../src/map/graph.js');
+  const { townPlan } = await import('../src/world/xxl/towns.js');
+  const { CHARGE, chargeOf, steleOf } = await import('../src/world/xxl/charge.js');
+  const { sectionSigns, POST_SIGN_D } = await import('../src/world/xxl/signplan.js');
+  const city = createCityKit(W);
+  const S = L.STREET;
+  const ST = CHARGE.stele;
+  // Kopf der Stele (Mitte des Steckers) und was ihn von einem Sichtpunkt (x, Höhe y, d Meter davor) aus verdeckt
+  const head = ST.y + ST.h - ST.w / 2;
+  const hides = (plan, st, ex, ey, d) => {
+    const out = new Set();
+    for (const it of plan.items) {
+      const fp = it.fp;
+      if (it.external || fp.h <= S.top + 0.01) continue;
+      // (der Mast einer Laterne oder Ampel verdeckt von der 1 m breiten Tafel nur einen schmalen Streifen)
+      const tree = city.info(it.name).kind === 'tree';
+      if (fp.thin && !tree) continue;
+      const b = L.aabb(fp);
+      for (let k = 0.02; k < 0.995; k += 0.005) {
+        const x = ex + (st.x - ex) * k;
+        const u = st.u - d * (1 - k);
+        const y = ey + (head - ey) * k;
+        if (x > b[0] && x < b[1] && -u > b[2] && -u < b[3] && y < fp.h) {
+          out.add(it.name);
+          break;
+        }
+      }
+    }
+    return [...out];
+  };
+  const DRONE_Y = 4.5;
+  const bySize = new Map();
+  const list = [];
+  let free150 = 0;
+  for (const p of places) {
+    const len = townLen(p.pop);
+    const sec = { kind: 'stadt', place: p.i, node: 1, frame: 1, s0: 1000, s1: 1000 + len, spotS: 1000 + Math.round(len * 0.6) };
+    const where = p.name;
+    const plan = townPlan(city, sec);
+    const c = chargeOf(sec);
+    const st = steleOf(sec);
+    const pc = plan.charge;
+    ok(c && pc && pc.u === POST.u && c.u === POST.u && pc.x === CHARGE.front, `2: ${where}: kein Park mit Säule bei POST.u (${JSON.stringify(pc && { u: pc.u, x: pc.x })})`);
+    if (!c || !pc || !st) {
+      ok(false, `2: ${where}: keine Stele`);
+      continue;
+    }
+    ok(JSON.stringify(pc.stele) === JSON.stringify(st) && st.u === POST.u - ST.d, `2: ${where}: Stele im Plan ${JSON.stringify(pc.stele)} statt ${JSON.stringify(st)}`);
+    // auf dem Streifen, vor dem Park und vor der abgesenkten Einfahrt
+    ok(st.x - st.w / 2 >= S.curbR + S.kerb && st.x + st.w / 2 <= S.curbR + S.strip && st.u + st.w / 2 < POST.u - CHARGE.half - CHARGE.keep, `2: ${where}: Stele nicht im Streifen vor dem Park`);
+    ok(sec.s0 + st.u + 1 < c.drive.s0 - c.drive.ramp, `2: ${where}: Stele auf der Einfahrt`);
+    // Tafeln: „Ladesäule 100 m“ vor dem Ort, die Stele selbst
+    const signs = [];
+    sectionSigns(null, [sec], sec, signs, { tables: false });
+    const board = signs.find((e) => e.kind === 'ladesaeule');
+    const stele = signs.find((e) => e.kind === 'ladestele');
+    ok(board && near(board.s, sec.s0 + POST.u - POST_SIGN_D, 1e-6) && board.texts[0] === 'Ladesäule', `2: ${where}: keine Tafel „Ladesäule ${POST_SIGN_D} m“`);
+    ok(stele && near(stele.s, sec.s0 + st.u, 1e-6) && stele.x === st.x && stele.texts[0] === 'Ladesäule', `2: ${where}: keine Stele unter den Schildern`);
+    // nichts auf ihrem Platz, nichts in der Sichtlinie (die Regel des Plans und, unabhängig davon, in 3D)
+    ok(L.steleBlockers(plan, st, city.info).length === 0, `2: ${where}: Plan lässt ${L.steleBlockers(plan, st, city.info).map((i) => plan.items[i].name)} an der Stele`);
+    let free = 0;
+    for (let dd = 20; dd <= 150; dd += 10) {
+      const h = [...hides(plan, st, S.eye, S.eyeY, dd), ...hides(plan, st, S.lane, DRONE_Y, dd + 8)];
+      if (h.length) {
+        ok(dd < 30, `2: ${where}: aus ${dd} m verdeckt ${h.join(', ')} die Stele`);
+        break;
+      }
+      free = dd;
+    }
+    if (free === 150) free150++;
+    // derselbe Ort an anderer Stelle des Wegs, über einen anderen Knoten erreicht: derselbe Park, dieselbe Stele
+    const other = { ...sec, node: 2, s0: 7000, s1: 7000 + len, spotS: 7000 + (sec.spotS - sec.s0) };
+    const op = townPlan(city, other);
+    ok(op.charge.u === pc.u && JSON.stringify(op.charge.stele) === JSON.stringify(pc.stele) && op.items.length === plan.items.length, `2: ${where}: von anderswo ein anderer Park`);
+    const size = L.sizeOf(p.pop);
+    const b = bySize.get(size) || { towns: 0, free: Infinity };
+    b.towns++;
+    b.free = Math.min(b.free, free);
+    bySize.set(size, b);
+    list.push(`${p.name}\t${size}\t${free}`);
+  }
+  // am Start in Erlensee: der Supercharger, keine Stele und keine Tafel davor
+  const erl = places.find((p) => p.key === CHARGE.place);
+  const first = { kind: 'stadt', place: erl.i, node: 1, frame: 1, s0: -300, s1: 200, start: true, spotS: 0 };
+  const fs = [];
+  sectionSigns(null, [first], first, fs, { tables: false });
+  ok(steleOf(first) === null && !fs.some((e) => e.kind === 'ladestele' || e.kind === 'ladesaeule'), '2: am Start eine Stele');
+  ok(list.length === places.length && list.length > 400 && free150 === places.length, `2: ${list.length} Orte, ${free150} davon bis 150 m frei`);
+  if (process.env.LADEN2_LIST) (await import('node:fs')).writeFileSync(process.env.LADEN2_LIST, 'Ort\tGröße\tStele frei bis (m)\n' + list.join('\n') + '\n');
+  console.log(`  ${list.length} Orte: ` + [...bySize].map(([k, v]) => `${k} ${v.towns} (frei bis ${v.free} m)`).join(', ') + ` · Stele ${ST.w} × ${ST.h} m ab ${ST.y} m, ${ST.d} m vor der Mitte des Parks, Tafel ${POST_SIGN_D} m davor`);
+}
+
 console.log(fails ? `laden2-test: ${fails} Fehler (${checks} Prüfungen)` : `laden2-test: alles gut (${checks} Prüfungen)`);
 process.exit(fails ? 1 : 0);
