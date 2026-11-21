@@ -2,7 +2,7 @@
 // - Fahrplan: Bauchbinde, Mini Adams Gruß durchs Megafon (seine tiefe Stimme, eigener Untertitel), Jubel im Chat
 //   („BRUNNENTV! 💦“), sein Ruf „Schöner Brunnen!“ (jede Folge: tief und langsam gesprochen, im Untertitel
 //   „SCHÖÖÖÖÖÖÖNER BRUNNEN!!!!!“, der Chat ruft es nach – in der Einstellung „Brunnen“, solange das Megafon oben ist,
-//   nach dem Gruß), NOMI, Ende – jeder Moment genau einmal, zu seiner Zeit; Fenster, Megafon und Kopf laufen in der richtigen Reihenfolge
+//   nach dem Gruß), OMI, Ende – jeder Moment genau einmal, zu seiner Zeit; Fenster, Megafon und Kopf laufen in der richtigen Reihenfolge
 //   (das Megafon ist erst zu sehen, wenn das Fenster offen ist, und weg, bevor es wieder hochgeht).
 // - Überspringen früh (gleich nach TV.skip), spät (kurz vor dem Ende) und gar nicht: jedes Mal derselbe Endzustand –
 //   keine Folge mehr, Bauchbinde weg, der Wagen genau einmal freigegeben – und danach beginnt die nächste Bieterrunde
@@ -313,7 +313,7 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
   ok(r.bidT > 0 && r.bidT - r.releaseT >= TV.pause - DT && r.bidT - r.releaseT < AUKTION.window + 1, `${name}: nächstes Gebot ${(r.bidT - r.releaseT).toFixed(1)} s nach der Freigabe`);
   // jeder Moment genau einmal zu seiner Zeit, wenn er vor dem Ende lag – sonst gar nicht
   const once = (list, t0, what) => {
-    if (end > t0 || (what === 'NOMI' && end > TV.nomi)) ok(list.length === 1 && Math.abs(list[0].t - t0) < 2 * DT, `${name}: ${what} ${list.length}× (${list.map((e) => e.t).join(', ')} s, erwartet ${t0} s)`);
+    if (end > t0 || (what === 'OMI' && end > TV.nomi)) ok(list.length === 1 && Math.abs(list[0].t - t0) < 2 * DT, `${name}: ${what} ${list.length}× (${list.map((e) => e.t).join(', ')} s, erwartet ${t0} s)`);
     else ok(list.length === 0, `${name}: ${what} nach dem Überspringen`);
   };
   once(card.filter((e) => e.n > 0), TV.card, 'Bauchbinde');
@@ -328,8 +328,8 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
   const gap = echo.length && call.length ? echo[0].g - call[0].g : NaN;
   ok(echo.length === 1 && gap >= 0.6 - 1e-9 && gap <= 0.6 + 3 * DT, `${name}: „${S.chat[0]}“ im Chat ${echo.length}× (${gap.toFixed(3)} s nach dem Ruf)`);
   once(cheer, TV.chat, '„BRUNNENTV! 💦“ im Chat');
-  // (NOMI gongt erst, ihr Satz kommt 0,35 s danach: Game.say)
-  once(nomi, TV.nomi + 0.35, 'NOMI');
+  // (OMI gongt erst, ihr Satz kommt 0,35 s danach: Game.say)
+  once(nomi, TV.nomi + 0.35, 'OMI');
   if (end > TV.card) ok(card[0].name === 'Würzburg', `${name}: Bauchbinde „${card[0].name}“`);
   if (end > TV.line) {
     ok(subs[0].label === 'Mini Adam durchs Megafon', `${name}: Untertitel des Megafons „${subs[0].label}“`);
@@ -356,7 +356,7 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
   ok(fit.length >= 3, `mit „${longest}“ passen nur ${fit.length} Grüße vor den Ruf`);
 }
 
-// Eine Folge hat genau einen Satz NOMIs: Geplauder mittendrin (der Fehlalarm des Wischers) entfällt, Wichtiges kommt
+// Eine Folge hat genau einen Satz OMIs: Geplauder mittendrin (der Fehlalarm des Wischers) entfällt, Wichtiges kommt
 // gleich nach der Folge
 {
   const chatter = (g) => {
@@ -367,7 +367,7 @@ for (const [name, skipAt] of [['none', null], ['early', TV.skip + 0.05], ['late'
   const said = r.log.filter((e) => e.k === 'nomi');
   // (beim Halt sagt sie nichts: Die Folge hat genau ihren einen Satz)
   const inTv = said.filter((e) => e.tv);
-  ok(inTv.length === 1 && BRUNNEN_NOMI.some((l) => fillTemplate(l, { n: '1' }) === inTv[0].text), `Folge: NOMI ${inTv.length}× (${inTv.map((e) => e.text).join(' | ')})`);
+  ok(inTv.length === 1 && BRUNNEN_NOMI.some((l) => fillTemplate(l, { n: '1' }) === inTv[0].text), `Folge: OMI ${inTv.length}× (${inTv.map((e) => e.text).join(' | ')})`);
   ok(!said.some((e) => e.text === BOARD.wiperPhantom) && said.filter((e) => !e.tv && e.text === 'Prüfsatz nach der Folge.').length === 1, `Folge: zurückgehalten ${said.map((e) => e.text).join(' | ')}`);
 }
 
@@ -584,7 +584,7 @@ const mega = { says: [], toasts: [] };
 
 // --- Ausgabe ---------------------------------------------------------------------------------------------------------
 const tl = (r) => `Ende ${r.endT.toFixed(2)} s, nächstes Gebot ${(r.bidT - r.releaseT).toFixed(1)} s danach`;
-console.log(`BrunnenTV-Fahrplan: Bauchbinde ${TV.card} s, Gruß ${TV.line} s, Chat ${TV.chat} s, „Schöner Brunnen!“ ${TV.call} s, NOMI ${TV.nomi} s, Ende ${TV.end} s; Fenster offen ${TV.window.down.join('–')} s, Megafon in der Hand ab ${MEGA.show * 100} % gehoben`);
+console.log(`BrunnenTV-Fahrplan: Bauchbinde ${TV.card} s, Gruß ${TV.line} s, Chat ${TV.chat} s, „Schöner Brunnen!“ ${TV.call} s, OMI ${TV.nomi} s, Ende ${TV.end} s; Fenster offen ${TV.window.down.join('–')} s, Megafon in der Hand ab ${MEGA.show * 100} % gehoben`);
 console.log(`Überspringen: ohne (${tl(runs.none)}) · früh bei ${(TV.skip + 0.05).toFixed(2)} s (${tl(runs.early)}) · spät bei ${(TV.nomi + 1.5).toFixed(1)} s (${tl(runs.late)}) – derselbe Endzustand, der Ruf jedes Mal genau einmal`);
 console.log(`Standbilder an ${stills.places} Orten: ${Object.entries(stills.kinds).map(([k, v]) => `${k} ${v}`).join(', ')}; mindestens ${stills.minFountain.toFixed(2)} m vom Becken, Brunnen höchstens ${stills.maxAngle.toFixed(0)}° neben der Bildmitte, ${stills.lines} Sichtlinien frei`);
 console.log(`Kameras an ${cams.places} Orten: mindestens ${cams.minFountain.toFixed(2)} m vom Becken, Fenster und Brunnen höchstens ${cams.maxAngle.toFixed(0)}° neben der Blickrichtung (hochkant zurückgefahren ${cams.maxPortrait.toFixed(0)}° von ${portraitHalf.toFixed(0)}°), ${cams.lines} Sichtlinien zu Fenster und Brunnen frei von Häusern, Bäumen und Laternen`);

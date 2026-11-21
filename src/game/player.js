@@ -333,7 +333,7 @@ export class Player {
     if (log && log.length && C.key !== keyNow) C.setKey(keyNow, t1, this, copt);
     this.clock = t1;
     if (this.s > this.sFar) this.sFar = this.s;
-    // am Ende des Rückwegs angekommen, die Bremse noch gehalten: einmal melden (NOMI sagt es)
+    // am Ende des Rückwegs angekommen, die Bremse noch gehalten: einmal melden (OMI sagt es)
     if (this.gear === 'R' && !this.revEnd && brake > 0.5 && this.s - this.revFloor < 0.3) {
       this.revEnd = true;
       this.events.push({ type: 'reverseEnd' });

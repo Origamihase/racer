@@ -101,7 +101,7 @@ const DRIVERS = [
 const DUELLIST = { name: 'zügig, Duell im Zielort', cruise: 185, miss: 0, skip: true, duel: true };
 /**
  * Ladestopps (REISE.md A5): Dieser Fahrer lädt nur an Ladesäulen (in den Ladeparks und an der Säule eines Orts auf dem
- * Weg). Er folgt dem Navi und plant bei jeder Warnung NOMIs den Ladestopp ein, den sie nennt (Game.planStop, wie Taste
+ * Weg). Er folgt dem Navi und plant bei jeder Warnung OMIs den Ladestopp ein, den sie nennt (Game.planStop, wie Taste
  * L); sein Akku wird nicht aufgefüllt. In LADE_MIN Minuten Stream läuft er nie leer, und jeder Halt lädt den Akku ganz.
  */
 const LADER = { name: 'Lader (plant Ladestopps)', cruise: 150, miss: 0, skip: true, stops: true };
@@ -175,7 +175,7 @@ function checkNavi(trip, nav, promised, n, where) {
 // was graph.js und navroute.js von den Maßen der Fahrt und der Schilder wissen müssen, stimmt mit ihnen überein
 ok(OFF_KM.exit * 1000 === J.ramp && Math.abs(OFF_KM.enterAb * 1000 - (J.conn + J.auf)) < 1e-9, `graph.js OFF_KM ${JSON.stringify(OFF_KM)} passt nicht zu J.ramp ${J.ramp}, J.conn ${J.conn}, J.auf ${J.auf}`);
 ok(BOARD_M === BOARD_D[0], `Die Ansage wechselt bei ${BOARD_M} m, der erste Vorwegweiser steht bei ${BOARD_D[0]} m`);
-ok(EXIT_CALL.at === BOARD_D[0] && EXIT_CALL.late > BOARD_D[1], `NOMI nennt die nächste Ausfahrt ab ${EXIT_CALL.at} m bis ${EXIT_CALL.late} m, die Vorwegweiser stehen bei ${BOARD_D.join(' und ')} m`);
+ok(EXIT_CALL.at === BOARD_D[0] && EXIT_CALL.late > BOARD_D[1], `OMI nennt die nächste Ausfahrt ab ${EXIT_CALL.at} m bis ${EXIT_CALL.late} m, die Vorwegweiser stehen bei ${BOARD_D.join(' und ')} m`);
 
 /** Anzeige „… km“ oder „… m“ als Meter (für den Vergleich zweier Anzeigen). */
 function shownMetres(text) {
@@ -335,13 +335,13 @@ function numbers(trip, nav, nv, N, game) {
         if (e.kind === 'vorweg' || e.kind === 'bake' || e.kind === 'ladepark') {
           ins = ins || nav.instruction();
           if (e.kind === 'vorweg') {
-            // die nächste Ausfahrt im Navi (Schild, HUD-Zeile, NOMI) ist die des Vorwegweisers, auch wenn die Route
-            // geradeaus bleibt: derselbe Name, dieselben Meter; am ersten nennt NOMI sie mit Namen und Metern
+            // die nächste Ausfahrt im Navi (Schild, HUD-Zeile, OMI) ist die des Vorwegweisers, auch wenn die Route
+            // geradeaus bleibt: derselbe Name, dieselben Meter; am ersten nennt OMI sie mit Namen und Metern
             const nx = ins.next;
             ok(!!nx && nx.fork.id === e.fork && nx.title === e.board.title && nx.name === e.board.head && nx.say === e.board.dist, `Vorwegweiser „${e.board.title} ${e.board.dist}“, das Navi nennt als nächste Ausfahrt „${nx ? nx.title + ' ' + nx.say : '–'}“`);
             if (nx && e.dist === EXIT_CALL.at) {
               const line = exitLine(nx);
-              ok(line.includes(nx.kind === 'ende' ? '1000 Metern' : nx.name + ' in 1000 Metern') && (nx.plan !== 'stay' || line.includes(nx.road)), `NOMI am Vorwegweiser „${e.board.title} ${e.board.dist}“: „${line}“`);
+              ok(line.includes(nx.kind === 'ende' ? '1000 Metern' : nx.name + ' in 1000 Metern') && (nx.plan !== 'stay' || line.includes(nx.road)), `OMI am Vorwegweiser „${e.board.title} ${e.board.dist}“: „${line}“`);
             }
             N.nextBoards++;
           }
@@ -473,7 +473,7 @@ function stream(driver, hours, seed, firstRound = false) {
   let progressS = p.s;
   let progressT = 0;
   let pendingCheck = false;
-  let warned = 0; // Lader: die Warnstufe NOMIs, auf die er schon einen Stopp eingeplant hat
+  let warned = 0; // Lader: die Warnstufe OMIs, auf die er schon einen Stopp eingeplant hat
   let charging = false;
   const job = { travel: -1 }; // wann der Auftrag „50 km Strecke“ geschafft ist
 
@@ -643,7 +643,7 @@ function stream(driver, hours, seed, firstRound = false) {
       }
     }
     game.offAutobahn = sec.kind !== 'ab';
-    // der Lader plant bei jeder neuen Warnung den Ladestopp ein, den NOMI nennt
+    // der Lader plant bei jeder neuen Warnung den Ladestopp ein, den OMI nennt
     if (driver.stops) {
       if (game.batteryWarned > warned) {
         m.warns++;
@@ -896,9 +896,9 @@ for (const { driver, m } of rows) {
   if (HOURS >= 3) ok(m.duels >= 10 && m.arrivals >= 3, `Duell im Zielort: zu wenig geprüft (${m.duels} Duelle, ${m.arrivals} Ankünfte, ${m.late2} knapp dahinter)`);
   rows.push({ driver: DUELLIST, m });
 }
-// Ladestopps: Wer bei NOMIs Warnung den genannten Ladeplatz einplant, läuft nie leer (NOMI rechnet je Meter Straße und
+// Ladestopps: Wer bei OMIs Warnung den genannten Ladeplatz einplant, läuft nie leer (OMI rechnet je Meter Straße und
 // schaut über das Ziel hinaus, Game.reachable; gemessen mit den Startwerten 5101–5145: kleinster Akku 7,6 %, mit den
-// Ladesäulen der Orte bei 5101–5103 13,1 %). Unter 3 % hieße: Was NOMI nannte, lag weiter weg, als sie dachte (so
+// Ladesäulen der Orte bei 5101–5103 13,1 %). Unter 3 % hieße: Was OMI nannte, lag weiter weg, als sie dachte (so
 // ein Park an einer Ausfahrt, deren Zweig in der Sperrzone schon in einen Ort führte).
 {
   const runs = [0, 1, 2].map((k) => stream(LADER, LADE_MIN / 60, 5101 + k));
@@ -908,7 +908,7 @@ for (const { driver, m } of rows) {
   for (const m of runs) ok(m.minBattery > 3 && m.charges >= 1 && m.full >= m.charges - 1, `Lader: kleinster Akku ${fmt(m.minBattery, 1)} %, ${m.charges} Ladestopps, ${m.full} davon voll geladen`);
   ok(all((m) => m.planned) >= 3 && all((m) => m.charges) >= 3, `Lader: zu wenig geprüft (${all((m) => m.planned)} eingeplant, ${all((m) => m.charges)} geladen)`);
   console.log(
-    `${LADER.name}: ${runs.length} × ${LADE_MIN} min, ${all((m) => m.warns)} Warnungen NOMIs, ${all((m) => m.planned)} Ladestopps eingeplant (Weg dorthin ${km.length ? fmt(km[0], 0) + '–' + fmt(km[km.length - 1], 0) : '–'} km), ` +
+    `${LADER.name}: ${runs.length} × ${LADE_MIN} min, ${all((m) => m.warns)} Warnungen OMIs, ${all((m) => m.planned)} Ladestopps eingeplant (Weg dorthin ${km.length ? fmt(km[0], 0) + '–' + fmt(km[km.length - 1], 0) : '–'} km), ` +
       `${all((m) => m.charges)}× an einer Säule gehalten und voll geladen (${all((m) => m.posts)}× an der Ladesäule eines Orts), kleinster Akku ${fmt(minB, 1)} % · ${fmt(all((m) => m.roadKm), 0)} km Straße, ${fmt(all((m) => m.tripKm), 0)} Reisekilometer`,
   );
 }

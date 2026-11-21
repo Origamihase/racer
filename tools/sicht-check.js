@@ -142,7 +142,7 @@
     ui.brunnenTV(12, 'Rothenburg ob der Tauber');
     measure('BrunnenTV', [['BrunnenTV', S.HOMES.brunnentv, ui.tvEl]]);
     ui.nomi('Sie haben Ihr Ziel erreicht.', 4);
-    measure('BrunnenTV und NOMI', [['BrunnenTV', S.HOMES.brunnentv, ui.tvEl, { optional: true }], ['Untertitel nomi', S.HOMES.untertitel, ui.subEl]]);
+    measure('BrunnenTV und OMI', [['BrunnenTV', S.HOMES.brunnentv, ui.tvEl, { optional: true }], ['Untertitel nomi', S.HOMES.untertitel, ui.subEl]]);
     clear();
     ui.cameraLabel(drone ? '🎥 Drohne' : '🎥 Cockpit');
     measure('Kamera', [['Kamera-Schildchen', S.HOMES.kamera, ui.cameraHint]]);

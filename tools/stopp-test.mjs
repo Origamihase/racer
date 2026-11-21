@@ -4,7 +4,7 @@
 // parallel zu ihr, die Räder kreuzen den Bordstein nur, wo er abgesenkt ist, ausgeparkt wird bis in die Spur des Parks;
 // wer überspringt, früh oder spät, steht im selben Zustand wie nach dem ganzen Stopp, und die Fahrt geht auf dem
 // geplanten Weg weiter zur Autobahn, ohne „Bitte wenden“; wer ohne Plan rechts in einen Park fährt, bekommt denselben
-// Stopp. Ebenso an der Ladesäule eines Orts auf dem Weg (src/map/parks.js POST): NOMI, Akku-Karte und Navi nennen sie
+// Stopp. Ebenso an der Ladesäule eines Orts auf dem Weg (src/map/parks.js POST): OMI, Akku-Karte und Navi nennen sie
 // „Ladesäule in …“, Taste L plant sie ein, der Wagen hält dort und lädt im selben Stopp, dann geht es weiter zum Brunnen.
 // Aufruf: node tools/stopp-test.mjs
 import { PerspectiveCamera } from 'three';
@@ -267,7 +267,7 @@ function stream(skip, plan = true) {
     ctl.brake = p.speed > v + 3 ? 0.4 : 0;
     const was = !!game.charging;
     if (game.charging && skip !== null && game.chargeT() >= skip) game.skipCharge();
-    // Geplauder mitten im Stopp (der Fehlalarm des Wischers) und etwas Wichtiges: NOMI sagt dort nur ihren Satz
+    // Geplauder mitten im Stopp (der Fehlalarm des Wischers) und etwas Wichtiges: OMI sagt dort nur ihren Satz
     if (game.charging && !chatter && game.chargeT() >= 0.3) {
       chatter = true;
       game.say(BOARD.wiperPhantom, 'think', { priority: false });
@@ -318,16 +318,16 @@ for (const [name, r] of runs) {
   ok(c && c.battery === 100 && c.charges === 1 && c.bananas === 1 && !c.held && c.sugarDue && c.stop < 0, `${name}: Zustand nach dem Stopp ${JSON.stringify(c)}`);
   ok(r.after && r.after.same && r.after.sugar > 5.8, `${name}: nicht auf derselben Autobahn geradeaus weiter oder ohne Zuckerschub ${JSON.stringify(r.after)}`);
   ok(r.wende === 0 && r.wrong === 0, `${name}: ${r.wende}× „wenden“, ${r.wrong} falsche Abzweige nach dem Stopp`);
-  // im Stopp genau ein Satz NOMIs (ihrer, wenn er vor dem Überspringen lag), das Wichtige danach, das Geplauder nie
+  // im Stopp genau ein Satz OMIs (ihrer, wenn er vor dem Überspringen lag), das Wichtige danach, das Geplauder nie
   const during = r.nomi.filter((e) => e.during).map((e) => e.text);
   const own = r.halt ? fillTemplate(REISE_AKKU.start, { park: PARKS[r.halt.sec.park].name }) : '';
-  ok(during.length === (name === 'früh übersprungen' ? 0 : 1) && during.every((t) => t === own), `${name}: NOMI im Stopp ${during.join(' | ') || '–'}`);
+  ok(during.length === (name === 'früh übersprungen' ? 0 : 1) && during.every((t) => t === own), `${name}: OMI im Stopp ${during.join(' | ') || '–'}`);
   ok(!r.nomi.some((e) => e.text === BOARD.wiperPhantom) && r.nomi.filter((e) => !e.during && e.text === 'Prüfsatz nach dem Stopp.').length === 1, `${name}: zurückgehalten ${r.nomi.map((e) => e.text).join(' | ')}`);
 }
 
 // --- 3b. An der Ladesäule eines Orts ----------------------------------------------------------------------------------
 // Ein Stream ab Erlensee mit dem Ziel Hanau und 9,5 % Akku: Der nächste Ladeplatz auf dem Weg ist die Ladesäule in Hanau
-// (vor dem Brunnen des Orts); NOMI und die Akku-Karte nennen sie mit Entfernung, Taste L plant sie ein (und keinen Park).
+// (vor dem Brunnen des Orts); OMI und die Akku-Karte nennen sie mit Entfernung, Taste L plant sie ein (und keinen Park).
 // Für die Fahrt dorthin bekommt der Akku 40 %; hinter der Ausfahrt zeigt das Navi den Halt mit ihrem Namen. Der Wagen hält
 // in der Spur bei POST.halt, lädt im selben Stopp wie im Park und fährt danach zum Brunnen weiter: Ankunft am Ziel, ohne
 // „wenden“ und ohne falschen Abzweig.
@@ -423,15 +423,15 @@ let postRun = null;
   const name = postName(R.town);
   ok(name === 'Ladesäule in Hanau' && R.first && R.first.post === R.town && R.first.park === -1 && R.first.name === name && R.first.km > 3, `Ladesäule: als nächster Ladeplatz ${JSON.stringify(R.first)}`);
   const warn = R.said.find((e) => e.text.startsWith('Akku'));
-  ok(warn && warn.text.includes(`${name} in `) && R.card && R.card.park === name && R.card.km > 3, `Ladesäule: NOMI „${warn ? warn.text : '–'}“, Karte ${JSON.stringify(R.card)}`);
+  ok(warn && warn.text.includes(`${name} in `) && R.card && R.card.park === name && R.card.km > 3, `Ladesäule: OMI „${warn ? warn.text : '–'}“, Karte ${JSON.stringify(R.card)}`);
   const set = R.said.find((e) => e.text.startsWith('Ladestopp eingeplant:'));
-  ok(R.planned && R.planned.post === R.town && R.planned.stop === -1 && set && set.text.startsWith(`Ladestopp eingeplant: ${name}, in `), `Ladesäule: eingeplant ${JSON.stringify(R.planned)}, NOMI „${set ? set.text : '–'}“`);
+  ok(R.planned && R.planned.post === R.town && R.planned.stop === -1 && set && set.text.startsWith(`Ladestopp eingeplant: ${name}, in `), `Ladesäule: eingeplant ${JSON.stringify(R.planned)}, OMI „${set ? set.text : '–'}“`);
   ok(R.guide && R.guide.type === 'stop' && R.guide.post === R.town && R.ins && R.ins.turn === 'stop' && R.ins.head === name, `Ladesäule: Navi ${JSON.stringify(R.guide)} ${JSON.stringify(R.ins)}`);
   ok(R.halt && R.halt.place === R.town && R.halt.post === R.town && R.halt.park === -1 && R.halt.name === name && near(R.halt.u, POST.halt, 0.6), `Ladesäule: Halt ${JSON.stringify(R.halt)} statt bei u ${POST.halt}`);
   ok(R.scene && R.scene.post === R.town && R.scene.park === -1 && R.scene.name === name, `Ladesäule: Stopp ${JSON.stringify(R.scene)}`);
   ok(R.charged && R.charged.battery === 100 && R.charged.charges === 1 && R.charged.bananas === 1 && R.charged.post < 0 && R.charged.stop < 0 && R.scene && near(R.charged.t, R.scene.end, 0.05), `Ladesäule: nach dem Stopp ${JSON.stringify(R.charged)}`);
   const during = R.said.filter((e) => e.during).map((e) => e.text);
-  ok(during.length === 1 && during[0] === fillTemplate(REISE_AKKU.start, { park: name }), `Ladesäule: NOMI im Stopp ${during.join(' | ') || '–'}`);
+  ok(during.length === 1 && during[0] === fillTemplate(REISE_AKKU.start, { park: name }), `Ladesäule: OMI im Stopp ${during.join(' | ') || '–'}`);
   ok(R.rest && R.rest.place === R.town && R.rest.u > R.rest.spot && R.wende === 0 && R.wrong === 0, `Ladesäule: danach am Brunnen ${JSON.stringify(R.rest)}, ${R.wende}× „wenden“, ${R.wrong} falsche Abzweige`);
   postRun = R;
 }
@@ -517,12 +517,12 @@ if (c1 && c2 && c3) {
 ok(E.toasts.filter((t) => t.key === 'akku').length === 1, `HUD meldet den leeren Akku ${E.toasts.filter((t) => t.key === 'akku').length}×`);
 ok(E.emptyAt !== null && E.vEmpty > 30 && E.faster === 0, `leer bei ${E.vEmpty.toFixed(1)} m/s, danach ${E.faster}× schneller geworden (Tempomat)`);
 ok(E.reason === 'akku' && E.stopT - E.emptyAt < 40, `leer: Ende ${E.reason} nach ${E.stopT !== null ? (E.stopT - E.emptyAt).toFixed(1) : '–'} s Ausrollen`);
-// mit Ziel liegt der erste Ladepark auf dem Weg außer Reichweite: Die Karte nennt wie NOMI den Abstecher in Reichweite
+// mit Ziel liegt der erste Ladepark auf dem Weg außer Reichweite: Die Karte nennt wie OMI den Abstecher in Reichweite
 const K = emptyRun({ target: 'München', battery: 10.05, reach: 32, secs: 4 });
 const k1 = K.cards[0];
 const told = K.said.filter((t) => t.includes('Ladepark')).pop() || '';
 ok(k1 && k1.lvl === 1 && k1.park !== '' && told.includes(k1.park + ' in ') && K.onRoute && k1.park !== K.onRoute,
-  `Ladepark der Karte ${k1 ? k1.park : '–'}, NOMI: „${told}“, erster auf dem Weg: ${K.onRoute}`);
+  `Ladepark der Karte ${k1 ? k1.park : '–'}, OMI: „${told}“, erster auf dem Weg: ${K.onRoute}`);
 
 // --- Popcorn ins Auto ------------------------------------------------------------------------------------------------
 // Die Maschine steht oben auf der Heldensäule (kit/rest.js popcorn_post, um POST_POP.yaw gedreht), der Wagen rückwärts

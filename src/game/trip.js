@@ -733,7 +733,7 @@ export class Trip {
       this.extend(this.cur, this.s + J.horizon);
     }
     this.version++;
-    // an der Ausfahrt des geplanten Ladestopps vorbei: der Stopp entfällt (NOMI schlägt den nächsten Park vor)
+    // an der Ausfahrt des geplanten Ladestopps vorbei: der Stopp entfällt (OMI schlägt den nächsten Park vor)
     let stop = this.stop >= 0 && parkAt(fork.node) === this.stop;
     if (stop && !exit) this.setStop(-1);
     // (eine geplante Ladesäule liegt nach einem anderen Weg als dem geplanten meist nicht mehr auf ihm: sie entfällt)
@@ -1168,7 +1168,7 @@ export class Trip {
   }
   /**
    * Die nächste Ausfahrt auf der eigenen Autobahn: die erste Gabelung voraus, ob der Plan dort abfährt oder geradeaus
-   * bleibt (das Navi zeigt sie immer, NOMI nennt sie am ersten Vorwegweiser). Nur auf der Autobahn, denn nur sie hat
+   * bleibt (das Navi zeigt sie immer, OMI nennt sie am ersten Vorwegweiser). Nur auf der Autobahn, denn nur sie hat
    * Gabelungen. Ergebnis {fork, dist (Meter Straße bis zur Gabelung), title (wie auf dem Schild: „Ausfahrt Hanau-Nord“,
    * „Frankfurter Kreuz“, „Autobahnende“), name (ohne „Ausfahrt “), kind ('ausfahrt' | 'kreuz' | 'ende'), plan
    * (planFor: 'exit', 'stay', ohne Ziel null), exit (der Plan fährt dort ab), road (die Autobahn geradeaus, am

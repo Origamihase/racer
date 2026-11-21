@@ -184,7 +184,7 @@ ok(ELEFANT.room >= 1000, 'Elefantenrennen: bestellt, obwohl gleich eine Ausfahrt
 
 // --- Durchsagen -----------------------------------------------------------------------------------------------
 const lines = JSON.stringify(BOARD);
-ok(!('leftLaneEnd' in BOARD) && !/gesperrt/i.test(lines), 'NOMI sagt noch an, dass die linke Spur gesperrt wird');
+ok(!('leftLaneEnd' in BOARD) && !/gesperrt/i.test(lines), 'OMI sagt noch an, dass die linke Spur gesperrt wird');
 
 console.log(`Verkehr: Rücklicht ${LIGHTS.tail.join(' … ')}, Bremslicht ${LIGHTS.brake}; Bremslicht in der Kolonne ${J.flips} Wechsel in 20 s (${(J.lit * 100).toFixed(0)} % an); Elefantenrennen nur echt (${ELEPHANTS.near}–${ELEPHANTS.far} m voraus, höchstens ${ELEPHANTS.side} m versetzt), alle ${ELEFANT.every.map((m) => m / 1000).join('–')} km bestellt, Ansage höchstens alle ${ELEFANT.cool} s`);
 console.log(fails ? `${fails} FEHLER (${checks} Prüfungen)` : `verkehr-test: alles grün (${checks} Prüfungen)`);

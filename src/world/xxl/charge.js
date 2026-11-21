@@ -54,8 +54,8 @@ export const ROLL_T = TA + TB + TC;
 /**
  * Die Startszene der Reise (main.js, Zustand 'charge') in Sekunden ab ihrem Beginn: Der Stecker verlässt die Buchse und
  * kehrt in seinen Halter zurück (plug), die Klappe schließt (flap), der Wagen rollt an (roll, ROLL_T später ist er dem
- * Spiel übergeben: end), NOMI gongt und Mini Adam winkt, sobald der Stecker hängt (chime, wave), das Sprachstudio
- * meldet sich (live; NOMI grüßt, wenn es ausgeredet hat), und die Kamera geht ins Cockpit (inside, 1,45 s vor dem
+ * Spiel übergeben: end), OMI gongt und Mini Adam winkt, sobald der Stecker hängt (chime, wave), das Sprachstudio
+ * meldet sich (live; OMI grüßt, wenn es ausgeredet hat), und die Kamera geht ins Cockpit (inside, 1,45 s vor dem
  * Ende). Überspringen geht ab skip.
  */
 // hallo: Mini Adam winkt und sagt „Hallo, Partypeople!“ (data.js PARTYPEOPLE), danach das Sprachstudio „Wir sind live.“
@@ -226,7 +226,7 @@ export function dockPath(u, u0, x0 = lane) {
 /**
  * Der Ladestopp im Park (main.js, Spiel: Game.startCharge) in Sekunden ab dem Einparken (Ende von dockPath().T, dock):
  * Klappe auf (flap), Stecker aus dem Halter in die Buchse (plug: rig.set 1 → 0), Zeitraffer, in dem sich der Akku füllt
- * (fill) und Mini Adam Popcorn macht (pop) und Bananensaft holt (juice), NOMIs Satz (nomi), dann ab unplug die Startszene
+ * (fill) und Mini Adam Popcorn macht (pop) und Bananensaft holt (juice), OMIs Satz (nomi), dann ab unplug die Startszene
  * von Erlensee (SCENE, ihr t = 0): Stecker heraus, Klappe zu, Ausparken bis zur Übergabe in der Spur (end). shift: so
  * lange vor dem Anrollen liegt R schon drin.
  */

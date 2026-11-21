@@ -125,7 +125,7 @@ export const MEGAFON_WUENSCHE = [
 
 // BrunnenTV am Navi-Ziel der Reise: Mini Adam spricht durchs offene Fenster mit dem Megafon zum Brunnen (Stimme wie
 // bei der Taste H), {ort} = der Ort – kurz wie die Megafon-Wünsche (mit einem Ortsnamen von 20 Zeichen nicht länger
-// als der längste von ihnen, tools/sicht-test.mjs); danach sagt NOMI etwas dazu ({n} = Folge)
+// als der längste von ihnen, tools/sicht-test.mjs); danach sagt OMI etwas dazu ({n} = Folge)
 export const BRUNNEN_MEGAFON = [
   'Achtung, Achtung! BrunnenTV live aus {ort}!',
   'Hallo {ort}! Hier ist BrunnenTV!',
@@ -446,7 +446,7 @@ export const CHAT = {
   rahmen: ['Schöner Rahmen 😂', 'Ich sehe nichts mehr', 'Bestes Geld ever', 'Danke für den Rahmen!',
     'Ich seh nur noch Rahmen und einen halben Tesla', 'Noch ein Rahmen und wir fahren nach Gehör'],
   // „5 Cent, wenn du …“: ein Meme aus dem Stream. Ein Zuschauer bietet lächerliche 5 Cent für eine Albernheit – immer
-  // genau 5 Cent, das ist der Witz. Mini Adam geht nie darauf ein (kein Geld, keine Aufgabe, keine Antwort von NOMI
+  // genau 5 Cent, das ist der Witz. Mini Adam geht nie darauf ein (kein Geld, keine Aufgabe, keine Antwort von OMI
   // oder dem Sprachstudio); nur der Chat legt noch 2 Cent drauf oder frotzelt. Jedes Angebot höchstens einmal je Stream.
   fuenfCent: [
     '5 Cent, wenn du während der Fahrt den Kopf aus dem Fenster streckst.',
@@ -768,7 +768,7 @@ export const BOARD = {
     stay: 'Wir bleiben auf der {road}.',
   },
   rain: 'Regen erkannt. Automatische Scheibenwischer aktiviert.',
-  // NOMI entschuldigt sich ab und zu für den hängenden Wischer
+  // OMI entschuldigt sich ab und zu für den hängenden Wischer
   wiperSorry: [
     'Entschuldigung. Der automatische Scheibenwischer ist noch in der Beta.',
     'Der Scheibenwischer übt noch. Danke für die Geduld.',
@@ -847,12 +847,12 @@ export const JOB_TEMPLATES = [
   { id: 'rain8', text: '8 km im Regen fahren', goal: 8000, stat: 'rainDistance', wenn: 'du 8 km im Regen durchhältst' },
 ];
 
-// Reise: NOMIs Akku-Warnungen nennen den nächsten Ladeplatz auf dem Weg mit Entfernung (trip.js nextRest: ein Ladepark
+// Reise: OMIs Akku-Warnungen nennen den nächsten Ladeplatz auf dem Weg mit Entfernung (trip.js nextRest: ein Ladepark
 // oder die Ladesäule eines Orts, „Ladesäule in …“); Taste L oder der Knopf „Ladestopp einplanen“ machen ihn zum
 // Zwischenziel. Dort parkt der Wagen an der freien Säule ein und lädt im Zeitraffer voll (Game.startCharge,
 // xxl/charge.js STOP). {pct} Prozent, {park} Name, {km} Weg.
 export const REISE_AKKU = {
-  warn: [25, 10], // Prozent: NOMI warnt, und noch einmal, wenn es knapp wird
+  warn: [25, 10], // Prozent: OMI warnt, und noch einmal, wenn es knapp wird
   early: 70, // darunter warnt sie früher, sobald der nächste Park der letzte in Reichweite ist
   // … „der letzte“: Dahinter trägt keine Lademöglichkeit weiter, die mindestens past Reisekilometer hinter ihm liegt
   // (in jedem Ort steht eine Ladesäule – die nächsten paar Kilometer verlängern die Fahrt kaum); gesucht wird unter

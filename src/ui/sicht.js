@@ -19,7 +19,7 @@ export const HOMES = {
   spur: 'Streifen oben, zweite Reihe: Balken der freigeschalteten linken Spur (Handy: weicht einem Hinweis)',
   akku: 'Streifen oben, zweite Reihe, nur wo der Mittelbildschirm aus dem Bild ragt: Akku-Karte als kleine Kopie (statt des Spur-Balkens, auf kleinen Formaten auch der Navi-Ansage)',
   hinweis: 'Streifen oben, letzte Reihe: ein Hinweis nach dem anderen',
-  untertitel: 'Streifen unten: wer spricht (NOMI, Sprachstudio, Sprachdurchsage, Megafon-Wunsch), einer nach dem anderen',
+  untertitel: 'Streifen unten: wer spricht (OMI, Sprachstudio, Sprachdurchsage, Megafon-Wunsch), einer nach dem anderen',
   brunnentv: 'Streifen unten: Bauchbinde der Sendung, links neben dem Untertitel',
   kamera: 'Streifen unten: Schildchen der Kamera, solange dort niemand spricht',
   funkloch: 'im Chat-Feld (ohne Chat: als Hinweis im Streifen oben)',

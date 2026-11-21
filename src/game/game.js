@@ -47,8 +47,8 @@ const elsaTmp = new Vector3();
 const CHAT_PACE = [1.3, 1.12, 1, 0.92, 0.85];
 // BrunnenTV am Navi-Ziel (Reise): Fahrplan der Folge in world/xxl/brunnentv.js (TV); das erste Gebot der nächsten
 // Runde kommt frühestens TV.pause Sekunden, nachdem der Wagen fahren darf.
-/** Entfernung für NOMIs Ansage: „39 Kilometern“, unter 10 km mit einer Nachkommastelle („4,5 Kilometern“). */
-/** Das Ziel für NOMI: „Marktbrunnen, Würzburg“ → „Marktbrunnen in Würzburg“ (ohne eigenen Namen „Brunnen in …“). */
+/** Entfernung für OMIs Ansage: „39 Kilometern“, unter 10 km mit einer Nachkommastelle („4,5 Kilometern“). */
+/** Das Ziel für OMI: „Marktbrunnen, Würzburg“ → „Marktbrunnen in Würzburg“ (ohne eigenen Namen „Brunnen in …“). */
 export function fountainIn(t) {
   const tail = ', ' + t.name;
   const g = t.goal || 'Brunnen in ' + t.name;
@@ -64,17 +64,17 @@ function kmWords(km) {
 }
 /**
  * Elefantenrennen (zwei Lkw nebeneinander): bestellt wird es frühestens first, dann alle every Meter Straße (bei Tempo
- * 130 gut vier bis sechs Minuten), nur mit room Metern Autobahn ohne Ausfahrt voraus; NOMI sagt es höchstens alle
+ * 130 gut vier bis sechs Minuten), nur mit room Metern Autobahn ohne Ausfahrt voraus; OMI sagt es höchstens alle
  * cool Sekunden an, und nur, wenn es wirklich vor dem Wagen fährt (traffic.js elephantPair).
  */
 export const ELEFANT = { first: [6000, 9000], every: [9000, 14000], room: 1500, cool: 240 };
 /**
- * NOMI und die nächste Ausfahrt (Game.exitCall): Sie nennt sie ab at Metern Straße vor der Gabelung (dem ersten
+ * OMI und die nächste Ausfahrt (Game.exitCall): Sie nennt sie ab at Metern Straße vor der Gabelung (dem ersten
  * Vorwegweiser, signplan.js BOARD_D), bis late Meter davor; eine Ausfahrt, an der die Route vorbeiführt, höchstens alle
  * gap Sekunden.
  */
 export const EXIT_CALL = { at: 1000, late: 700, gap: 90 };
-/** NOMIs Satz zur nächsten Ausfahrt (trip.nextExit): Name wie auf dem Schild, Meter in Worten, was die Route dort tut. */
+/** OMIs Satz zur nächsten Ausfahrt (trip.nextExit): Name wie auf dem Schild, Meter in Worten, was die Route dort tut. */
 export function exitLine(nx) {
   const L = BOARD.exit;
   const d = Math.max(50, Math.round(nx.dist / 50) * 50) + ' Metern';
@@ -245,18 +245,18 @@ export class Game {
     this.megafonCd = 0;
     this.chatT = 1.5;
     this.chatSeen = [];
-    // wann zuletzt eine Gutschrift aufgeblitzt ist, die Leitplanke gekratzt hat, NOMI das Navi angesagt hat
+    // wann zuletzt eine Gutschrift aufgeblitzt ist, die Leitplanke gekratzt hat, OMI das Navi angesagt hat
     this.popT = -9;
     this.scrapeT = -9;
     this.naviSaidT = -99;
-    // die nächste Ausfahrt (exitCall): die Gabelung, die NOMI zuletzt genannt hat, und wann
+    // die nächste Ausfahrt (exitCall): die Gabelung, die OMI zuletzt genannt hat, und wann
     this.exitSaid = null;
     this.exitSaidT = -99;
     // Verkehr aus Sicht des Chats: hängt Mini Adam hinter jemandem fest? (siehe watchTraffic)
     this.trafficT = 0;
     this.stuck = false;
     this.stuckChatT = 0;
-    // Stimmen: bis wann NOMI oder eine Durchsage zu hören ist und bis wann das Sprachstudio (Spielzeit)
+    // Stimmen: bis wann OMI oder eine Durchsage zu hören ist und bis wann das Sprachstudio (Spielzeit)
     this.voiceUntil = 0;
     this.studioUntil = 0;
     // Sprachstudio: wann es zuletzt gesprochen und zuletzt die Stimmung angesagt hat, wohin sie gerade gekippt ist
@@ -281,12 +281,12 @@ export class Game {
     this.wayHint = false;
     this.wayNoteT = 0;
     // Reise: Ladestopp im Ladepark ({ t0, from, park, name, sec, plan, … }, startCharge) oder null; Verbrauch seit dem
-    // letzten Laden (meterAkku: Meter Straße und Akku je Art der Straße, für NOMIs Warnung) und wann sie wieder misst;
+    // letzten Laden (meterAkku: Meter Straße und Akku je Art der Straße, für OMIs Warnung) und wann sie wieder misst;
     // sugarDue: der Zuckerschub des Bananensafts kommt, sobald der Wagen nach dem Stopp wieder auf der Autobahn ist
     this.charging = null;
     this.sugarDue = false;
     this.akku = meterAkku();
-    // was NOMI in einer Szene sagen wollte und erst danach sagt ([Satz, Stimmung], say)
+    // was OMI in einer Szene sagen wollte und erst danach sagt ([Satz, Stimmung], say)
     this.heldSay = [];
     // zwischen Zielpunkt und Halt am Brunnen: { sec: Ortsdurchfahrt, still: so lange steht der Wagen schon }
     this.halt = null;
@@ -335,7 +335,7 @@ export class Game {
     this.townT = 0; // Sekunden im Zielort der ersten Runde (updateNavi)
     // Auktion (AUKTION): offen – Gebote ändern das Ziel · fest – Zuschlag erteilt, bis zur Ankunft ändert sich nichts
     // · folge – am Brunnen · fenster – nach der Folge, bis zum ersten Gebot oder bis until · aus – niemand hat
-    // geboten, der Stream endet; said: das Ziel, das NOMI zuletzt angesagt hat
+    // geboten, der Stream endet; said: das Ziel, das OMI zuletzt angesagt hat
     this.auction = { phase: 'offen', said: null, until: 0, warned: false };
     this.traffic.reset();
     this.traffic.populate(0, p.speed);
@@ -472,9 +472,9 @@ export class Game {
     }
   }
 
-  /** NOMI spricht (mit Gong, Untertitel und Augen-Animation). */
+  /** OMI spricht (mit Gong, Untertitel und Augen-Animation). */
   say(text, mood = 'talk', { priority = true, scene = false } = {}) {
-    // eine Szene (Ladestopp, BrunnenTV) hat genau einen Satz NOMIs, ihren eigenen (scene): Zufälliges Geplauder
+    // eine Szene (Ladestopp, BrunnenTV) hat genau einen Satz OMIs, ihren eigenen (scene): Zufälliges Geplauder
     // (priority false) entfällt dort, Wichtiges wartet bis zum Ende der Szene (sayHeld)
     if (!scene && (this.charging || this.tv)) {
       if (priority && !this.heldSay.some((h) => h[0] === text)) this.heldSay.push([text, mood]);
@@ -491,7 +491,7 @@ export class Game {
       this.ui.nomi(text, dur + 0.8);
       this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.8);
     };
-    // NOMI hat das Wort: Das Sprachstudio verstummt mitten im Satz und wartet, bis sie fertig ist
+    // OMI hat das Wort: Das Sprachstudio verstummt mitten im Satz und wartet, bis sie fertig ist
     this.voiceUntil = Math.max(this.voiceUntil, this.t + 1.2);
     if (this.t < this.studioUntil) {
       this.studioUntil = this.t;
@@ -501,14 +501,14 @@ export class Game {
     else go();
   }
 
-  /** Nach einer Szene: was NOMI darin Wichtiges sagen wollte (say hielt es zurück), der Reihe nach. */
+  /** Nach einer Szene: was OMI darin Wichtiges sagen wollte (say hielt es zurück), der Reihe nach. */
   sayHeld() {
     this.heldSay.forEach(([text, mood], i) => this.later(0.5 + 3.5 * i, () => this.say(text, mood)));
     this.heldSay.length = 0;
   }
 
   /**
-   * Gang gewechselt (Player.shift): ein kurzer Ton; R sagt NOMI an (höchstens alle 20 s, sonst nur der Ton), und auf
+   * Gang gewechselt (Player.shift): ein kurzer Ton; R sagt OMI an (höchstens alle 20 s, sonst nur der Ton), und auf
    * der Autobahn freut sich der Chat (höchstens alle 30 s).
    */
   onGear(gear) {
@@ -633,7 +633,7 @@ export class Game {
         }
         if (e.hard && chance(0.4)) this.chat(pick(['Leitplanke! 😬', 'Uff, die Leitplanke', 'Kratz kratz']));
       } else if (e.type === 'understeer' && this.t > (this.understeerSaid ?? -99) + 25) {
-        // zu schnell für die Kurve: NOMI sagt es freundlich (höchstens alle 25 s)
+        // zu schnell für die Kurve: OMI sagt es freundlich (höchstens alle 25 s)
         this.understeerSaid = this.t;
         this.say(damageLine('understeer'), 'worried', { priority: false });
       } else if (e.type === 'gear') this.onGear(e.gear);
@@ -727,7 +727,7 @@ export class Game {
     }
     if (p.shoulderTime <= 0) this.shoulderWarned = false;
 
-    // Akku: NOMI nennt den nächsten Ladepark (journeyBattery), der Mittelbildschirm zeigt die Akku-Karte (lowBattery);
+    // Akku: OMI nennt den nächsten Ladepark (journeyBattery), der Mittelbildschirm zeigt die Akku-Karte (lowBattery);
     // leer hält der Tempomat nichts mehr (Player.longStep): Der Wagen rollt aus, im Stand ist die Fahrt zu Ende
     this.journeyBattery();
     this.lowBattery();
@@ -736,7 +736,7 @@ export class Game {
 
   /**
    * Akku auf der Reise (REISE.md A5): Geladen wird in den Ladeparks an den Ausfahrten und an der Ladesäule jedes Orts auf
-   * dem Weg. NOMI warnt bei REISE_AKKU.warn (25 % und 10 %) und nennt den nächsten Ladeplatz in Reichweite mit
+   * dem Weg. OMI warnt bei REISE_AKKU.warn (25 % und 10 %) und nennt den nächsten Ladeplatz in Reichweite mit
    * Entfernung (trip.nextRest: auf dem Weg, sonst der nächste Park über Straßen, ein Abstecher). Schon früher, unter
    * REISE_AKKU.early, warnt sie, sobald er der letzte in Reichweite ist (reachable): Der übernächste und das Ziel liegen
    * weiter weg, wer an ihm vorbeifährt, kommt nicht mehr an. Ist ein Stopp geplant, sagt sie nur, wie weit es bis dorthin
@@ -760,7 +760,7 @@ export class Game {
     }
     a.s = p.s;
     a.b = p.battery;
-    // die Akku-Karte nennt denselben Ladepark wie NOMI: den nächsten in Reichweite, sonst den Abstecher dorthin
+    // die Akku-Karte nennt denselben Ladepark wie OMI: den nächsten in Reichweite, sonst den Abstecher dorthin
     const fits = (q) => this.reachable(q);
     if (p.battery <= AKKU_CARD.at[0] + 1) {
       const [q] = trip.restsAhead(1, fits);
@@ -804,7 +804,7 @@ export class Game {
 
   /**
    * Die Akku-Karte für den Mittelbildschirm (null: keine): Stufe (akkuLevel), Prozent, Deckkraft beim Ein- und
-   * Ausblenden und der Ladepark, den NOMI nennt (Name, Reisekilometer bis dorthin, eingeplant?).
+   * Ausblenden und der Ladepark, den OMI nennt (Name, Reisekilometer bis dorthin, eingeplant?).
    */
   lowBatteryCard() {
     const c = this.lowBat;
@@ -878,7 +878,7 @@ export class Game {
    * 'charge' der Welt; e.park bzw. e.post): der Ladestopp
    * beginnt, eine kleine Szene nach dem Fahrplan von xxl/charge.js stopPlan (Sekunden ab jetzt, Spielzeit): einparken,
    * einstecken, im Zeitraffer laden, Popcorn und Bananensaft, ausstecken, ausparken. Das Spiel führt die Zeit, den Akku,
-   * Chat, NOMI und Spenden; main.js zeigt dazu Wagen, Kabel, Kamera (onCharge) und lässt den Wagen am Ende in die Spur
+   * Chat, OMI und Spenden; main.js zeigt dazu Wagen, Kabel, Kamera (onCharge) und lässt den Wagen am Ende in die Spur
    * rollen. Ohne Szene (Node-Tests) läuft derselbe Fahrplan, der Wagen wartet bis zum Ausparken an seinem Halt.
    */
   startCharge(e) {
@@ -909,7 +909,7 @@ export class Game {
     const q = clamp((t - P.at(STOP.fill[0])) / (STOP.fill[1] - STOP.fill[0]), 0, 1);
     p.battery = Math.max(p.battery, c.from + (100 - c.from) * q * q * (3 - 2 * q));
     p.empty = false;
-    // die schönen Momente je einmal: NOMI, Popcorn, Bananensaft (eine Spende kommt nach den Regeln der Ökonomie)
+    // die schönen Momente je einmal: OMI, Popcorn, Bananensaft (eine Spende kommt nach den Regeln der Ökonomie)
     const moments = [
       [STOP.nomi, () => {
         this.say(fillTemplate(REISE_AKKU.start, { park: c.name }), 'happy', { scene: true });
@@ -1136,7 +1136,7 @@ export class Game {
     } else if (type === 'stand' || type === 'stuck') {
       A.wiperStutter(3);
       this.onMood('wiper', 1);
-      // stehen die Wischer im Schauer, entschuldigt sich NOMI ab und zu für die Beta-Software (nach der Regenansage;
+      // stehen die Wischer im Schauer, entschuldigt sich OMI ab und zu für die Beta-Software (nach der Regenansage;
       // die Uhr läuft mit den anderen in this.T)
       if (type === 'stand' && wet && !(this.T.wiperSorry > 0) && chance(0.6)) {
         this.T.wiperSorry = rand(70, 110);
@@ -1161,7 +1161,7 @@ export class Game {
 
   // --- Navi ------------------------------------------------------------------------
   /**
-   * NOMI nennt die nächste Ausfahrt am ersten Vorwegweiser, wie das Schild am Rand: „Nächste Ausfahrt: Hanau-Nord in
+   * OMI nennt die nächste Ausfahrt am ersten Vorwegweiser, wie das Schild am Rand: „Nächste Ausfahrt: Hanau-Nord in
    * 1000 Metern.“ – und sagt dazu, ob die Route dort abfährt oder auf der Autobahn bleibt. Ruhig (EXIT_CALL): Eine
    * Ausfahrt, an der die Route vorbeiführt, nennt sie höchstens alle EXIT_CALL.gap Sekunden; jede Gabelung einmal,
    * nie in einer Szene und nie in einen anderen Satz hinein (wer dann zu spät kommt, entfällt).
@@ -1319,7 +1319,7 @@ export class Game {
     }
     if (snatched) this.later(1, () => this.burst(CHAT.brunnenWeg, 2, 2.5));
     if (t.special === 'siegen') this.later(1.4, () => this.chat('SIEGEN SETZT SICH DURCH?! 😱'));
-    // NOMI und der Hinweis aufs neue Ziel kommen erst, wenn es kurz stehen bleibt – im Chaos und im Duell kämen sie
+    // OMI und der Hinweis aufs neue Ziel kommen erst, wenn es kurz stehen bleibt – im Chaos und im Duell kämen sie
     // nicht hinterher
     if (next.delay > 6) {
       if (chaos) this.later(rand(2.5, 4), () => this.chat(this.chatLine(CHAT.bidCalm)));
@@ -1382,7 +1382,7 @@ export class Game {
   }
 
   /**
-   * Ein neues Ziel steht (das letzte Gebot eines Rennens, ein einzelnes ruhiges Gebot oder der Zuschlag): NOMI sagt
+   * Ein neues Ziel steht (das letzte Gebot eines Rennens, ein einzelnes ruhiges Gebot oder der Zuschlag): OMI sagt
    * es mit Brunnen und Ort an („Neues Ziel: Marktbrunnen in Würzburg!“), und die Navi-Zeile zeigt es hervorgehoben.
    * Was das Navi sonst dazu sagt – die Zeile zum Ort, „Bitte wenden“ –, steht als Hinweis mit dem Schlüssel 'navi'
    * darunter: immer nur einer, und er geht mit dem Ziel, zu dem er gehört.
@@ -1398,7 +1398,7 @@ export class Game {
   /**
    * Der Zuschlag (AUKTION.lock Navi-Kilometer vor dem Brunnen): Wer jetzt vorn liegt, bekommt das Ziel. Ein laufendes
    * Rennen (Chaos, Duell, BontanaBack) endet hier, der Rest seiner Gebote entfällt. Kurze Fanfare, oben am Rand der
-   * Gewinner mit Betrag, James und der Chat feiern ihn; stand das Ziel noch nicht angesagt, sagt NOMI es jetzt.
+   * Gewinner mit Betrag, James und der Chat feiern ihn; stand das Ziel noch nicht angesagt, sagt OMI es jetzt.
    */
   zuschlag() {
     const nv = this.navi;
@@ -1508,7 +1508,7 @@ export class Game {
       if (this.navi.stopping) this.arriveAtFountain();
     } else if (e.type === 'charge') this.startCharge(e);
     else if (e.type === 'fork') {
-      // anders gefahren als angesagt: Die Fahrt plant von dort neu, und NOMI sagt es (am geplanten Ladestopp vorbei:
+      // anders gefahren als angesagt: Die Fahrt plant von dort neu, und OMI sagt es (am geplanten Ladestopp vorbei:
       // der Stopp ist weg, die nächste Warnung bietet den nächsten Park an)
       if (e.wrong) this.say(e.stop ? REISE_AKKU.missed : 'Route wird neu berechnet.', 'think', { priority: false });
       if (e.wrong && e.stop) this.batteryWarned = 0;
@@ -1609,7 +1609,7 @@ export class Game {
    * Gebot, das das Ziel ändert, bevor der Wagen am Brunnen steht (siehe changeNavi, snatched, und tickHalt).
    * Und seit dem 19.11.: „Wenn das Ziel erreicht wird, macht Mini Adam dort BrunnenTV aus dem Auto mit dem Megafon.“
    * Die Folge läuft nach dem Fahrplan TV (world/xxl/brunnentv.js, Sekunden ab dem Halt): Bauchbinde „BrunnenTV · Folge
-   * N“, Mini Adam durchs Megafon zum Brunnen, der Chat jubelt, NOMI sagt etwas, dann darf der Wagen weiter. main.js
+   * N“, Mini Adam durchs Megafon zum Brunnen, der Chat jubelt, OMI sagt etwas, dann darf der Wagen weiter. main.js
    * zeigt dazu Fenster, Megafon und Kameras (onBrunnenTV({ n, place, name, goal, sec, fountain, town }): Folge, Ort,
    * Name des Ziels, Abschnitt, Brunnenplatz der Welt mit Lage und Haltepunkt, der Ort aus dem Stadtbaukasten); ohne
    * Szene (Node-Tests) läuft derselbe Fahrplan, der Wagen wartet an seinem Halt.
@@ -1650,7 +1650,7 @@ export class Game {
 
   /**
    * Taste B / Knopf „BrunnenTV hier“: die Folge unterwegs, wenn wayOffer sie anbietet. Dieselbe Folge wie am Ziel –
-   * Bauchbinde, Gruß, „Schöner Brunnen!“, Chat und NOMI, Album und Abspann –, aber die Runde läuft weiter: Das Ziel
+   * Bauchbinde, Gruß, „Schöner Brunnen!“, Chat und OMI, Album und Abspann –, aber die Runde läuft weiter: Das Ziel
    * und die Gebote bleiben, abgerechnet wird nichts, kein Bieterfenster; dafür zwei kleine Brunnenspenden. Die Welt
    * hält den Wagen, bis die Folge vorbei ist.
    */
@@ -2380,7 +2380,7 @@ export class Game {
    * Ein Meme aus dem Stream: Alle paar Minuten bietet jemand lächerliche 5 Cent für eine Albernheit – nie zwei
    * Angebote kurz hintereinander, keins zweimal im selben Stream. Ab und zu passt eins zur Lage (Ziel erreicht,
    * Brunnen oder Elsa in Sicht, Laster vor uns, Regen, lange Gerade); das darf etwas früher kommen. Mini Adam geht nie
-   * darauf ein: kein Geld, keine Aufgabe, kein Zähler, keine Antwort von NOMI oder dem Sprachstudio. Nur der Chat legt
+   * darauf ein: kein Geld, keine Aufgabe, kein Zähler, keine Antwort von OMI oder dem Sprachstudio. Nur der Chat legt
    * noch 2 Cent drauf, frotzelt, und wer geboten hat, bleibt manchmal stur.
    */
   updateCentOffers(dt, kappa = 0) {
@@ -2458,7 +2458,7 @@ export class Game {
   /**
    * Die ruhige Stimme in Mini Adams Ohr liest den Chat mit und sagt, wie er drauf ist: der einzige Weg, auf dem die
    * heimliche Chat-Stimmung nach außen kommt (als Satz, nie als Zahl oder Balken). Etwa einmal pro Minute und wenn
-   * die Stimmung deutlich umschlägt – aber nie, während NOMI oder eine Sprachdurchsage zu hören ist. Dazwischen gibt
+   * die Stimmung deutlich umschlägt – aber nie, während OMI oder eine Sprachdurchsage zu hören ist. Dazwischen gibt
    * es höchstens einmal etwas anderes weiter (den Dank für eine große Spende, einen Kassensturz) und begrüßt, wer neu
    * im Chat Hallo sagt.
    */
@@ -2521,7 +2521,7 @@ export class Game {
       } else if (x.kind === 'thanks') text = fillTemplate(this.fresh(STUDIO.thanks, 'thanks'), { name: x.name, betrag: fmtCent(x.amount) });
       else text = fillTemplate(this.fresh(STUDIO.total, 'total'), { summe: fmtEuro(Math.floor(this.money)) });
     }
-    // ein leiser Zweiklang, damit man hört, dass jetzt nicht NOMI spricht
+    // ein leiser Zweiklang, damit man hört, dass jetzt nicht OMI spricht
     this.audio.tone(659.25, 0.16, 'sine', 0.05);
     this.audio.tone(523.25, 0.24, 'sine', 0.05, 0.13);
     const dur = this.speech.say(text.replace(/_/g, ' '), 'sprachstudio');
@@ -2624,7 +2624,7 @@ export class Game {
     this.cockpit.nomi.setMood('dizzy', 3);
     const left = p.maxHits - p.hits;
     this.ui.damage(p.hits, p.maxHits);
-    // NOMI tröstet (nie über Verletzungen): erster Rempler, weitere, der letzte Punkt
+    // OMI tröstet (nie über Verletzungen): erster Rempler, weitere, der letzte Punkt
     if (left > 0) this.later(0.6, () => this.say(damageLine(left === 1 ? 'last' : p.hits === 1 ? 'first' : 'more', e.zone), left === 1 ? 'worried' : 'talk', { priority: false }));
     if (e.car.behavior === 'polizei') this.chat('Ausgerechnet die Polizei Gifhorn 😱');
     this.burst(CHAT.crash, 3, 2);

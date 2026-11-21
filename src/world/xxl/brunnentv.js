@@ -1,8 +1,8 @@
 // BrunnenTV am Navi-Ziel der Reise: Der Wagen steht neben dem Brunnen (plan.js SIDE_VIEW), das Fahrerfenster geht
 // herunter, Mini Adam nimmt das Megafon und spricht durchs offene Fenster zum Brunnen, drei Kameras zeigen Wagen,
-// Fenster und Brunnen, der Chat jubelt, NOMI sagt etwas dazu – dann geht das Fenster wieder hoch, und die Fahrt geht
+// Fenster und Brunnen, der Chat jubelt, OMI sagt etwas dazu – dann geht das Fenster wieder hoch, und die Fahrt geht
 // weiter. Hier steht der Fahrplan der Folge (Sekunden ab dem Halt) mit allem, was sich daraus ohne Grafik rechnen
-// lässt: Das Spiel (Game.startBrunnenTV) führt die Zeit, die Sätze, den Chat und NOMI, main.js zeigt Fenster,
+// lässt: Das Spiel (Game.startBrunnenTV) führt die Zeit, die Sätze, den Chat und OMI, main.js zeigt Fenster,
 // Megafon und Kameras. Überspringen geht wie beim Ladestopp ab skip (jede Taste, kurz abblenden); dann endet die Folge
 // so, wie sie sonst endet: Fenster zu, Megafon zurück auf dem Beifahrersitz, der Wagen darf weiter.
 
@@ -11,7 +11,7 @@ import { STILL_LOW } from '../kit/layout.js';
 /**
  * card: Bauchbinde „BrunnenTV · Folge N“ und Jingle · line: Mini Adam grüßt durchs Megafon · chat: der Chat jubelt ·
  * call: Mini Adams Ruf „Schöner Brunnen!“ – in jeder Folge, in der Einstellung „Brunnen“, solange das Megafon oben
- * ist · nomi: NOMI sagt etwas zum Brunnen · end: die Folge ist vorbei (der Wagen darf weiter; das erste Gebot der
+ * ist · nomi: OMI sagt etwas zum Brunnen · end: die Folge ist vorbei (der Wagen darf weiter; das erste Gebot der
  * nächsten Runde kommt frühestens pause Sekunden später) · skip: ab hier lässt sie sich überspringen.
  * window: Fenster herunter [von, bis] und wieder hoch · lift: Megafon an den Mund und wieder hinunter (ab show ist es
  * in der Hand zu sehen, darunter liegt die Hand unter der Gürtellinie) · look: Kopf zum Fenster · cams: Schnitte auf

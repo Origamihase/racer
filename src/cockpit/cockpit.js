@@ -1,6 +1,6 @@
 // Das Cockpit des Model 3 aus Mini Adams Sicht – wie ein Spielzeugmacher es für einen Plüschfahrer bauen würde:
 // gepolsterte Kabine (cabin.js), Lenkrad mit LIVE-Logo (wheel.js), Mini Adams Plüschhände (hands.js), großer
-// Mittelbildschirm, Innen- und Außenspiegel (echte Rückansicht), NOMI, Stream-Technik (rig.js), Mitbringsel
+// Mittelbildschirm, Innen- und Außenspiegel (echte Rückansicht), OMI, Stream-Technik (rig.js), Mitbringsel
 // (props.js) und die Scheibenwischer.
 import * as THREE from 'three';
 import { liveLogoTexture, softDotTexture } from '../textures.js';
@@ -62,7 +62,7 @@ export const WIPERS = (() => {
 const HOUSING = { x: -0.08, hb: 0.038, hw: 0.045, v0: 0.695, v1: 0.795, t0: 0.011, t1: 0.022 };
 
 // Griffwinkel der Hände ab 12 Uhr (Bogenmaß): quer gut „Viertel vor drei“ (knapp über den Speichen, mit Abstand
-// zu NOMI), hochkant auf halb elf und halb zwei – mit Abstand zum Bildrand und zu den Touch-Knöpfen
+// zu OMI), hochkant auf halb elf und halb zwei – mit Abstand zum Bildrand und zu den Touch-Knöpfen
 const GRIP_WIDE = 1.2;
 const GRIP_TALL = 0.8;
 // Arme: Schulter–Handgelenk sind 0,59–0,73 m (je nach Griff und Lenkeinschlag) – länger als Mini Adams eigene
@@ -357,7 +357,7 @@ export class Cockpit {
     this.flush();
 
     this.nomi = new Nomi();
-    // ganz innerhalb der Scheibe (mit etwas Abstand), damit die Wischer hinter NOMI vorbeistreichen
+    // ganz innerhalb der Scheibe (mit etwas Abstand), damit die Wischer hinter OMI vorbeistreichen
     this.nomi.group.position.set(-0.27, 0.911, -0.53);
     this.nomi.group.scale.setScalar(1.1);
     this.root.add(this.nomi.group);
@@ -449,7 +449,7 @@ export class Cockpit {
     buildColumn(S);
 
     // Mini Adams Plüschhände. Wo sie am Kranz greifen, hängt vom Bildformat ab (setAspect):
-    // quer gut „Viertel vor drei“, damit NOMI frei bleibt, hochkant höher, sonst landen sie
+    // quer gut „Viertel vor drei“, damit OMI frei bleibt, hochkant höher, sonst landen sie
     // am Bildrand unter den Touch-Knöpfen.
     const rt = (WHEEL.tr + WHEEL.td) / 2;
     this.hands = [-1, 1].map((s) => {
@@ -726,7 +726,7 @@ export class Cockpit {
     this.root.add(rig.led, rig.display);
     // Mitbringsel: Bananensaft und Dampfcola in den Becherhaltern, Megafon und Pandamütze auf dem Beifahrersitz
     buildProps(S, { x: 0.37, y: SEAT.y + SEAT.h / 2 + SEAT.puff, z: SEAT.z, tilt: SEAT.tilt });
-    // NOMI steht auf dem Armaturenbrett
+    // OMI steht auf dem Armaturenbrett
     blob(S, -0.27, dashTopY(-0.27, -0.53), -0.53, 0.058, 0.05);
 
     // Wackel-Elsa (Shop): die Figur kommt fertig verschmolzen (fünf Zeichenaufrufe, die Arme bleiben beweglich)

@@ -381,7 +381,7 @@ const courseEnv = { kappa: 0, grade: 0 };
 // --- Mini Adams Mimik ------------------------------------------------------------------
 // Spielereignisse kommen über game.onMood und werden zu Stimmung, Geste und Blick – für beide Figuren gleich: die im
 // Auto (Drohne, Titel, Abspann) und die in der Facecam. Eine Stimme hat Adam nicht: er „redet“ in kurzen Stücken mit
-// dem Chat (Mund im Silbentakt, Blick in die Kamera) und hört zu, solange NOMI oder eine Sprachdurchsage spricht.
+// dem Chat (Mund im Silbentakt, Blick in die Kamera) und hört zu, solange OMI oder eine Sprachdurchsage spricht.
 const adams = [tesla.adam, facecam.adam];
 const adamCtl = { talkFrom: 0, talkUntil: 0, talk: 0, chatK: 0, nextChat: 14, megafon: -1, voice: null, camUntil: 0, quiet: 0, doze: 0, wiperT: 0 };
 const hash01 = (k) => {
@@ -393,7 +393,7 @@ function adamDo(fn) {
   // dazu die Figur, die freie Kameras im Cockpit sehen (baut das Cockpit erst beim ersten Blick von außen)
   if (cockpit.driver) fn(cockpit.driver);
 }
-/** In die Kamera schauen; so lange zieht ihn auch NOMI nicht weg. */
+/** In die Kamera schauen; so lange zieht ihn auch OMI nicht weg. */
 function adamToCamera(sec) {
   adamDo((a) => a.lookAt('camera', sec));
   adamCtl.camUntil = Math.max(adamCtl.camUntil, simT + sec);
@@ -1240,7 +1240,7 @@ const CHARGE_KEYS = [
 const CHARGE_TITLE = { pos: [-2.8, 2.6, -4.6], look: [-0.25, 0.85, 0.9] };
 const CHARGE_LINES = { live: 'Wir sind live.', greet: 'Hallo Mini Adam! Akku voll, gute Fahrt!' };
 // town: der Startort (Towns.of: plan, group, charge), port: Ladeklappe des Wagens, keep: Spieler vor der Szene,
-// skipT: wann übersprungen wurde (dann erst abblenden), greetT: wann NOMI grüßt (Spielzeit simT)
+// skipT: wann übersprungen wurde (dann erst abblenden), greetT: wann OMI grüßt (Spielzeit simT)
 // parked: der Titel der Reise zeigt den Wagen am Supercharger (xxlStart)
 // hello: Mini Adams „Hallo, Partypeople!“ ist gesagt, liveT: wann das Sprachstudio „Wir sind live.“ sagt (Spielzeit simT)
 const chargeRun = { town: null, port: null, pose: {}, keep: null, parked: false, chimed: false, hello: false, skipT: -1, liveT: Infinity, greetT: Infinity };
@@ -1370,7 +1370,7 @@ function chargeLive() {
   chargeRun.greetT = simT + d + 1.1;
 }
 
-/** NOMI grüßt (wie Game.say, aber ohne die Spielzeit: die steht in der Szene still). */
+/** OMI grüßt (wie Game.say, aber ohne die Spielzeit: die steht in der Szene still). */
 function chargeGreet() {
   chargeRun.greetT = Infinity;
   audio.nomiChime();
@@ -1601,7 +1601,7 @@ function stopPlace(dt) {
 }
 
 // --- BrunnenTV am Navi-Ziel (world/xxl/brunnentv.js TV, Game.startBrunnenTV) ----------------------------------------
-// Der Wagen steht neben dem Brunnen, das Spiel läuft weiter und führt die Zeit der Folge (Sätze, Chat, NOMI). Hier
+// Der Wagen steht neben dem Brunnen, das Spiel läuft weiter und führt die Zeit der Folge (Sätze, Chat, OMI). Hier
 // gehen das Fahrerfenster herunter und wieder hoch, Mini Adam hebt das Megafon (das vom Beifahrersitz, gebaut bei der
 // ersten Folge) an den Mund und schaut zum Brunnen, und drei Kameras im Rahmen des Wagens zeigen die Folge (tvShots):
 // „Totale“, „Fenster“, „Brunnen“. Von der Drohne gleitet die Kamera in die Totale, aus dem Cockpit wird kurz
@@ -2030,7 +2030,7 @@ function step(dt, { render = true } = {}) {
   let adamWave = 0;
   let adamLook = 0;
   let adamMegafon = 0;
-  // „Wir sind live.“ nach Mini Adams Gruß, NOMIs Gruß, wenn das Sprachstudio ausgeredet hat (auch erst nach der Übergabe)
+  // „Wir sind live.“ nach Mini Adams Gruß, OMIs Gruß, wenn das Sprachstudio ausgeredet hat (auch erst nach der Übergabe)
   if (simT >= chargeRun.liveT) chargeLive();
   if (simT >= chargeRun.greetT) chargeGreet();
 

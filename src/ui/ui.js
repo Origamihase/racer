@@ -145,9 +145,9 @@ export class UI {
     el('span', 'funkloch-icon', this.funklochEl, '📡');
     el('span', 'funkloch-text', this.funklochEl, FUNKLOCH);
 
-    // --- Streifen unten: BrunnenTV als Bauchbinde, daneben der Untertitel – NOMI, das Sprachstudio, die
+    // --- Streifen unten: BrunnenTV als Bauchbinde, daneben der Untertitel – OMI, das Sprachstudio, die
     // Sprachdurchsage und der Megafon-Wunsch sprechen alle hier, einer nach dem anderen, jeder mit seinem Zeichen
-    // (NOMIs Augen, Kopfhörer, Mikrofon mit Stimme und Spender, Megafon) ---
+    // (OMIs Augen, Kopfhörer, Mikrofon mit Stimme und Spender, Megafon) ---
     const bottom = el('div', 'bottom-strip', this.hud);
     this.tvEl = el('div', 'brunnentv hidden', bottom);
     const logo = el('div', 'brunnentv-logo', this.tvEl);
@@ -601,7 +601,7 @@ export class UI {
     this.speak('adam', '»' + text + '«', Math.max(2.2, dur), 'Mini Adam');
   }
 
-  /** Das Sprachstudio spricht: derselbe Untertitel-Platz wie bei NOMI, aber klar als Sprachstudio erkennbar. */
+  /** Das Sprachstudio spricht: derselbe Untertitel-Platz wie bei OMI, aber klar als Sprachstudio erkennbar. */
   studio(text, dur = 3) {
     this.speak('studio', text, Math.max(2.2, dur), 'Sprachstudio');
   }

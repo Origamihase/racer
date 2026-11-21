@@ -1,6 +1,6 @@
 // Alle Geräusche werden mit der Web-Audio-API erzeugt (keine Audiodateien):
 // E-Motor-Surren, Abrollgeräusch, Fahrtwind, Regen, Wischer-Motor, Blinker, Hupe,
-// Martinshorn, Spenden-Pling, NOMI-Gong, Crash und kleine Jingles.
+// Martinshorn, Spenden-Pling, OMI-Gong, Crash und kleine Jingles.
 import { clamp } from './util.js';
 
 /**
@@ -390,7 +390,7 @@ export class Audio {
   /**
    * Radarwarner: drei Doppelpiepser des kleinen Kästchens, hoch und höher (RADAR_BEEP) – über 2 kHz, wo das Ohr am
    * besten hört und Abrollen und Fahrtwind kaum noch Kraft haben; solange er piept, sind die Fahrgeräusche leiser.
-   * NOMIs Gong folgt, wenn er fertig ist (game.js RADAR.lead).
+   * OMIs Gong folgt, wenn er fertig ist (game.js RADAR.lead).
    */
   radar() {
     const B = RADAR_BEEP;

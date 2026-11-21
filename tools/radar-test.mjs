@@ -7,21 +7,21 @@
 //   Chat, Navi), kein Piepen, kein Lämpchen – und dann blitzt es wie immer: Foto, 15 € Bußgeld, Statistik, Chat.
 // - Ohne Radarwarner, brav: keine Ansage; „Nicht geblitzt“ zählt und wird gelobt.
 // - Mit Radarwarner: genau eine Ansage je Blitzer, vor dem Tempo-120-Schild – erst piept das Kästchen, dann kommen
-//   NOMIs Gong und ihr Satz; das Lämpchen blinkt vom Piepen bis zum Blitzer; wer zu schnell ist, wird trotzdem
+//   OMIs Gong und ihr Satz; das Lämpchen blinkt vom Piepen bis zum Blitzer; wer zu schnell ist, wird trotzdem
 //   geblitzt. Zwei Blitzer: zwei Ansagen.
 // - Nach einem Blitz stichelt der Chat in etwa jedem zweiten Stream: ohne Radarwarner mit einem Wink zum Shop, mit
 //   ihm erst recht – höchstens eine Zeile je Blitz, nie vor dem Foto, nie nach einer braven Vorbeifahrt.
 // - Derselbe Stream mit und ohne Radarwarner: Kasse, Abrechnung und Statistik stimmen auf den Cent überein.
 // - Der Artikel: steht im Shop, hat eine Stufe, übersteht Speichern und Laden; alte Spielstände laden unverändert.
 // - Der Piepser (src/audio.js, mit einem mitschreibenden Audio-Kontext): hoch, lang genug und stark genug, um bei
-//   130 km/h über Motor, Abrollen und Wind zu liegen, die er kurz leiser macht; NOMIs Gong kommt danach.
+//   130 km/h über Motor, Abrollen und Wind zu liegen, die er kurz leiser macht; OMIs Gong kommt danach.
 import { Game } from '../src/game/game.js';
 import { Trip } from '../src/game/trip.js';
 import { BOARD, CHAT, SHOP, UPGRADE_LIMITS } from '../src/data.js';
 import { loadSave, storeSave } from '../src/save.js';
 
 const DT = 1 / 30;
-// so viele Meter vor dem Tempo-120-Schild schlägt der Radarwarner an (wie NOMIs Hinweis bisher)
+// so viele Meter vor dem Tempo-120-Schild schlägt der Radarwarner an (wie OMIs Hinweis bisher)
 const AHEAD = 180;
 let fails = 0;
 let checks = 0;
@@ -162,7 +162,7 @@ function world(r, what) {
 
 /** Niemand kündigt den Blitzer an: kein Wort, kein Ton, kein Lämpchen – bis er hinter dem Wagen liegt. */
 function unannounced(r, what) {
-  ok(spoken(r).length === 0 && subtitled(r).length === 0, `${what}: NOMI sagt den Blitzer an`);
+  ok(spoken(r).length === 0 && subtitled(r).length === 0, `${what}: OMI sagt den Blitzer an`);
   ok(calls(r, 'audio', 'radar').length === 0, `${what}: Es piept`);
   ok(r.lamp.length === 0, `${what}: Das Lämpchen geht an`);
   for (const z of r.zones) {
@@ -209,7 +209,7 @@ function clean(r, what) {
 }
 
 /**
- * Der Radarwarner sagt jeden Blitzer genau einmal an, vor dem Schild: Das Kästchen piept, dann kommen NOMIs Gong und
+ * Der Radarwarner sagt jeden Blitzer genau einmal an, vor dem Schild: Das Kästchen piept, dann kommen OMIs Gong und
  * ihr Satz; sein Lämpchen blinkt vom Piepen bis zum Blitzer.
  */
 function announced(r, what) {
@@ -227,7 +227,7 @@ function announced(r, what) {
     ok(e && e.args[1] === 'board' && e.s > from && e.s < z.limitS, `${what}: Ansage ${i + 1} nicht zwischen ${from} und dem Schild bei ${z.limitS} (${e ? e.s.toFixed(1) : 'fehlt'})`);
     const beep = beeps[i];
     ok(beep && beep.s > from && beep.s <= from + r.step + 1e-6, `${what}: Das Piepen kommt nicht ${AHEAD} m vor dem Schild (${beep ? beep.s.toFixed(1) : 'fehlt'} statt ${from})`);
-    // die Reihenfolge fürs Ohr: Piepen, dann NOMIs Gong, dann ihr Satz – alles binnen gut einer Sekunde
+    // die Reihenfolge fürs Ohr: Piepen, dann OMIs Gong, dann ihr Satz – alles binnen gut einer Sekunde
     const gong = beep && e && gongs.find((x) => x.t > beep.t && x.t < e.t);
     ok(!!gong && gong.t - beep.t >= 0.4 && e.t - beep.t < 1.2, `${what}: Piepen, Gong und Satz kommen nicht in dieser Reihenfolge`);
     const l = r.lamp[i];
@@ -262,7 +262,7 @@ ok(flashes(stream({ radar: 1, kmh: 125 })) === 0 && flashes(stream({ kmh: 125 })
 ok(flashes(stream({ radar: 1, kmh: 128 })) === 1 && flashes(stream({ kmh: 128 })) === 1, 'Mit 128 km/h wird nicht geblitzt');
 
 // --- 4. Zwei Blitzer in einem Stream ----------------------------------------------------------------------------------------
-// (Startwert 10: Wann das Sprachstudio spricht, hängt an NOMIs Sätzen – auch an der Warnung des Radarwarners. Fällt
+// (Startwert 10: Wann das Sprachstudio spricht, hängt an OMIs Sätzen – auch an der Warnung des Radarwarners. Fällt
 // ein Satz des Studios genau in die Warnung, würfelt es später und der Zufall läuft auseinander; wer an Stimmung oder
 // Ansagen dreht, sucht hier notfalls neu)
 const twoRadar = stream({ radar: 1, kmh: 150, cameras: 2, seed: 10 });
@@ -357,7 +357,7 @@ ok(slowPlain.game.stats.blitzerClean === 1 && slowRadar.game.stats.blitzerClean 
 // der Stärke am Ausgang (Lautstärke mal Effektivwert der Wellenform) bei 130 km/h und halbem Strom: Der Piepser liegt
 // über 2 kHz, weit über Abrollen und Wind (bei gut 1 kHz); jeder Ton hält seine volle Stärke mindestens 50 ms; er ist
 // mindestens so stark wie alle Fahrgeräusche zusammen, die er dabei auf weniger als die Hälfte drückt, und danach
-// klingen sie wieder wie vorher; NOMIs Gong kommt erst, wenn er fertig ist.
+// klingen sie wieder wie vorher; OMIs Gong kommt erst, wenn er fertig ist.
 let beepInfo = '';
 {
   const { Audio, RADAR_BEEP } = await import('../src/audio.js');
@@ -474,7 +474,7 @@ let beepInfo = '';
   ok(Math.abs(after - before) < 1e-3 * before, `Radarwarner: Die Fahrgeräusche kommen nicht zurück (${after.toFixed(3)} statt ${before.toFixed(3)})`);
   ok(peak <= 0.12, `Radarwarner: zu laut (${peak.toFixed(3)}, die Hupe hat rund 0,08)`);
   const { RADAR } = await import('../src/game/game.js');
-  ok(RADAR && RADAR.lead >= last - first + 0.05, `Radarwarner: NOMIs Gong (nach ${RADAR && RADAR.lead} s) fällt in den Piepser (${(last - first).toFixed(2)} s)`);
+  ok(RADAR && RADAR.lead >= last - first + 0.05, `Radarwarner: OMIs Gong (nach ${RADAR && RADAR.lead} s) fällt in den Piepser (${(last - first).toFixed(2)} s)`);
   beepInfo = `; Piepser ${B.n}×${B.freq.length} Töne ${B.freq.join('/')} Hz, je ${(minHold * 1000).toFixed(0)} ms voll, Stärke ${peak.toFixed(3)} über Fahrgeräuschen ${during.toFixed(3)} (sonst ${before.toFixed(3)})`;
   delete globalThis.window;
 }

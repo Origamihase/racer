@@ -8,7 +8,7 @@ import { pillow, lathe, roundedRect, place, prep, meshOf } from './parts.js';
 import { dashTopY } from './cabin.js';
 
 // Platz auf dem Armaturenbrett (Fahrzeug-Koordinaten) und Drehung zum Fahrer hin: links neben dem Lenkradkranz, wo aus
-// Mini Adams Sicht nur Armaturenbrett liegt – keine Straße, kein Spiegel, nicht NOMI – und so weit hinten, dass die
+// Mini Adams Sicht nur Armaturenbrett liegt – keine Straße, kein Spiegel, nicht OMI – und so weit hinten, dass die
 // linke Hand es auch beim Lenken nicht verdeckt. Die Wackel-Elsa steht eine Handbreit rechts dahinter.
 const SPOT = { x: -0.67, z: -0.64, yaw: 0.3 };
 // Hochkant (Handy aufrecht) ist das Bild schmal: Dort stünde es am linken Bildrand und verlöre in einer langen

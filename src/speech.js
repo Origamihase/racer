@@ -1,4 +1,4 @@
-// Sprachausgabe (Web Speech API, deutsche Stimme). NOMI hat Vorrang vor den
+// Sprachausgabe (Web Speech API, deutsche Stimme). OMI hat Vorrang vor den
 // Sprachdurchsagen der Zuschauer und vor dem Sprachstudio. Ohne Sprachausgabe läuft alles mit geschätzter Dauer weiter.
 import { VOICES } from './data.js';
 
@@ -69,7 +69,7 @@ export class Speech {
     const dur = estimateSpeech(text, v.rate);
     const item = { text, voiceKey, opts, dur };
     if (opts.priority) {
-      // NOMI drängelt sich vor (laufende Zuschauer-Durchsage wird abgebrochen)
+      // OMI drängelt sich vor (laufende Zuschauer-Durchsage wird abgebrochen)
       this.queue = this.queue.filter((q) => q.opts.priority);
       if (this.current && !this.current.opts.priority) this.cancelCurrent();
       this.queue.unshift(item);
