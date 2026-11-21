@@ -83,7 +83,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   ok(DATA.PARTYPEOPLE.say === 'Hallo, Partypeople!', `Gruß zum Start: ${DATA.PARTYPEOPLE.say}`);
   ok(DATA.VOICES.adam.pitch < 0.6, 'Mini Adams Stimme ist tief');
   const main = read('src/main.js');
-  ok(/speech\.say\(PARTYPEOPLE\.say, 'adam'/.test(main) && /ui\.adam\(PARTYPEOPLE\.say/.test(main), 'main.js: Gruß in Mini Adams Stimme mit Untertitel');
+  ok(/function streamHello\(text = PARTYPEOPLE\.say\) \{\s*chargeRun\.hello = true;\s*const d = speech\.say\(text, 'adam'/.test(main) && /ui\.adam\(text, /.test(main), 'main.js: Gruß in Mini Adams Stimme mit Untertitel');
   ok(/if \(!chargeRun\.hello\) streamHello\(\)/.test(main), 'main.js: ohne Startszene grüßt er beim Losfahren');
   const avg = { fast: 0, slow: 0, start: 0 };
   const seeds = [1, 2, 3];

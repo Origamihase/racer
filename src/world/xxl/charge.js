@@ -58,7 +58,7 @@ export const ROLL_T = TA + TB + TC;
  * meldet sich (live; OMI grüßt, wenn es ausgeredet hat), und die Kamera geht ins Cockpit (inside, 1,45 s vor dem
  * Ende). Überspringen geht ab skip.
  */
-// hallo: Mini Adam winkt und sagt „Hallo, Partypeople!“ (data.js PARTYPEOPLE), danach das Sprachstudio „Wir sind live.“
+// hallo: Mini Adam winkt und sagt „Partypeople!“ (data.js PARTYPEOPLE.wave), danach das Sprachstudio „Wir sind live.“
 export const SCENE = { plug: [0.9, 2], flap: [1.25, 1.6], roll: 1.6, chime: 2, wave: [2, 3.3], hallo: 2.05, live: 3.5, skip: 0.3 };
 SCENE.end = SCENE.roll + ROLL_T;
 SCENE.inside = SCENE.end - 1.45;

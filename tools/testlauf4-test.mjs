@@ -1,4 +1,8 @@
 // Testlauf 4 (die Probefahrt des Besitzers vom 21.11.2026 abends), ohne Grafik: node tools/testlauf4-test.mjs
+// 5. Intro: „Wenn Mini Adam im Intro winkt, soll er ‚Partypeople‘ sagen (nicht ‚Hallo Partypeople‘)“: In der Startszene
+//    sagt er, während er winkt, nur „Partypeople!“ (tiefe Stimme, Untertitel); ohne Startszene bleibt der Gruß beim
+//    Losfahren „Hallo, Partypeople!“ – je Stream genau einer. Geprüft am Code aus main.js (Gruß, Szene, Losfahren),
+//    ausgeführt mit nachgebauter Sprachausgabe und Untertitel.
 // 4. „BrunnenTV macht die Zuschauer sehr glücklich“: Beim Ruf jeder Folge springt die Stimmung des Chats deutlich
 //    (CHEER.brunnenTV), die Zuschauerzahl steigt sichtbar (oben links leuchtet sie, am Ende der Folge steht am Rand
 //    „📈 BrunnenTV: +N Zuschauer“), die Zufriedenheit steigt (ZUFRIEDEN.tv), und der Chat feiert. Gemessen gegen
@@ -33,7 +37,8 @@ import { TV } from '../src/world/xxl/brunnentv.js';
 import { SCHOENER_BRUNNEN, VOICES } from '../src/data.js';
 import { places } from '../src/map/graph.js';
 import { readFileSync } from 'node:fs';
-import { REPARATUR, CHAT } from '../src/data.js';
+import { REPARATUR, CHAT, PARTYPEOPLE } from '../src/data.js';
+import { SCENE } from '../src/world/xxl/charge.js';
 import { CHEER } from '../src/game/economy.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
 import { Menus } from '../src/ui/menus.js';
@@ -466,6 +471,42 @@ console.log('4. BrunnenTV macht die Zuschauer glücklich:');
   ok(a.eps.length >= 2 && a.eps.every((x) => x.post - x.pre >= 0.2 * (1 - x.pre)), `Stimmung je Folge: ${a.eps.map((x) => `${x.pre.toFixed(2)}→${x.post.toFixed(2)}`).join(' ')}`);
   const m = (k) => a.eps.reduce((s, x, i) => s + x[k] - b.eps[i][k], 0) / Math.min(a.eps.length, b.eps.length);
   console.log(`  ${a.eps.length} Folgen: Stimmung beim Ruf ${a.eps.map((x) => `${x.pre.toFixed(2)} → ${x.post.toFixed(2)}`).join(', ')} · Zuschauer gegenüber ohne Schub +${Math.round(m('v10'))} nach 10 s, +${Math.round(m('v30'))} nach 30 s (Folge 1: ${Math.round(e.v0)} → ${Math.round(e.v10)}) · Zufriedenheit +${ZUFRIEDEN.tv} · Chat feiert ${e.chat.length} Zeilen in 9 s · „${e.toast && e.toast.text}“`);
+}
+
+// --- 5. Intro: „Partypeople!“ beim Winken ---------------------------------------------------------------------------
+console.log('5. Intro: Partypeople beim Winken:');
+{
+  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  ok(PARTYPEOPLE.wave === 'Partypeople!' && PARTYPEOPLE.say === 'Hallo, Partypeople!', `Gruß: ${PARTYPEOPLE.wave} / ${PARTYPEOPLE.say}`);
+  ok(SCENE.hallo >= SCENE.wave[0] && SCENE.hallo < SCENE.wave[1] - 1, `Gruß bei ${SCENE.hallo} s, gewinkt wird ${SCENE.wave.join('–')} s`);
+  // die drei Stellen aus main.js: der Gruß selbst, sein Aufruf in der Szene und der beim Losfahren
+  const fn = main.match(/function streamHello\(text = PARTYPEOPLE\.say\) \{[\s\S]*?\n\}/);
+  const scene = main.match(/^\s*if \(t >= S\.hallo && !run\.hello\) streamHello\(PARTYPEOPLE\.wave\);$/m);
+  const drive = main.match(/^\s*if \(!chargeRun\.hello\) streamHello\(\);$/m);
+  ok(fn && scene && drive, `main.js: Gruß ${!!fn}, in der Szene ${!!scene}, beim Losfahren ${!!drive}`);
+  // (zurückgesetzt nur beim Start eines Streams)
+  ok((main.match(/Object\.assign\(chargeRun, \{ hello: false/g) || []).length === 1 && /function streamHello[\s\S]{0,80}chargeRun\.hello = true;/.test(main), 'main.js: der Gruß wird nicht genau einmal je Stream gemerkt');
+  if (fn && scene && drive) {
+    // ausführen: Szene bis zum Ende (Schritte von 1/30 s) und Losfahren – oder übersprungen vor dem Gruß
+    const flow = (skipAt) => {
+      const said = [];
+      const subs = [];
+      const env = { speech: { say: (text, voice, opts) => (said.push({ text, voice, prio: !!opts?.priority }), 1.2) }, ui: { adam: (text) => subs.push(text) }, chargeRun: { hello: false, liveT: Infinity, greetT: Infinity }, simT: 0, SCENE, PARTYPEOPLE };
+      const streamHello = new Function(...Object.keys(env), `${fn[0]}; return streamHello;`)(...Object.values(env));
+      const tick = new Function('t', 'S', 'run', 'streamHello', 'PARTYPEOPLE', scene[0]);
+      const toDrive = new Function('chargeRun', 'streamHello', drive[0]);
+      for (let t = 0; t < Math.min(skipAt, SCENE.end); t += 1 / 30) tick(t, SCENE, env.chargeRun, streamHello, PARTYPEOPLE);
+      toDrive(env.chargeRun, streamHello);
+      return { said, subs };
+    };
+    const a = flow(Infinity);
+    ok(a.said.length === 1 && a.said[0].text === 'Partypeople!' && a.said[0].voice === 'adam' && a.said[0].prio && a.subs.length === 1 && a.subs[0] === 'Partypeople!', `Startszene: gesagt ${JSON.stringify(a.said)}, Untertitel ${JSON.stringify(a.subs)}`);
+    const b = flow(SCENE.skip + 0.5);
+    ok(b.said.length === 1 && b.said[0].text === 'Hallo, Partypeople!' && b.subs.length === 1, `übersprungen vor dem Gruß: ${JSON.stringify(b.said)}`);
+    const c = flow(SCENE.hallo + 0.2);
+    ok(c.said.length === 1 && c.said[0].text === 'Partypeople!', `übersprungen nach dem Gruß: ${JSON.stringify(c.said)}`);
+    console.log(`  Startszene: „${a.said[0]?.text}“ (${a.said[0]?.voice}, Untertitel „${a.subs[0]}“) bei ${SCENE.hallo} s, gewinkt ${SCENE.wave.join('–')} s · übersprungen vor dem Gruß: „${b.said[0]?.text}“ beim Losfahren · je ein Gruß`);
+  }
 }
 
 if (fails) {

@@ -1373,7 +1373,7 @@ function chargeStep(dt) {
     run.chimed = true;
     audio.nomiChime();
   }
-  if (t >= S.hallo && !run.hello) streamHello();
+  if (t >= S.hallo && !run.hello) streamHello(PARTYPEOPLE.wave);
   // sein Gruß im Intro (game/wave.js): ab hier winkt er aus dem Fenster, beim Losfahren nicht noch einmal
   if (t >= S.wave[0]) game.waves.ask('intro', game.t);
   const where = placeScene(dt, CHARGE_KEYS, t, S.inside, S.end);
@@ -1394,14 +1394,15 @@ function chargeStep(dt) {
 }
 
 /**
- * Jeder Stream beginnt mit Mini Adams Gruß (data.js PARTYPEOPLE): in der Startszene, während er winkt, sonst (ohne
- * Ladepark, übersprungen vor dem Gruß) beim Losfahren. Mit seiner tiefen Stimme und Vorrang, damit nichts ihn
- * verschluckt; danach das Sprachstudio „Wir sind live.“ und OMIs Gruß.
+ * Jeder Stream beginnt mit Mini Adams Gruß (data.js PARTYPEOPLE), genau einmal (chargeRun.hello): in der Startszene,
+ * während er winkt, nur „Partypeople!“ (text = PARTYPEOPLE.wave), sonst (ohne Ladepark, übersprungen vor dem Gruß)
+ * beim Losfahren „Hallo, Partypeople!“. Mit seiner tiefen Stimme und Vorrang, damit nichts ihn verschluckt; danach
+ * das Sprachstudio „Wir sind live.“ und OMIs Gruß.
  */
-function streamHello() {
+function streamHello(text = PARTYPEOPLE.say) {
   chargeRun.hello = true;
-  const d = speech.say(PARTYPEOPLE.say, 'adam', { priority: true });
-  ui.adam(PARTYPEOPLE.say, d + 0.8);
+  const d = speech.say(text, 'adam', { priority: true });
+  ui.adam(text, d + 0.8);
   chargeRun.liveT = simT + Math.max(d + 0.35, SCENE.live - SCENE.hallo);
 }
 

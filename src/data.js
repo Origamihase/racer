@@ -260,10 +260,13 @@ export const SCHOENER_BRUNNEN = {
   say: 'Schöner Brunnen!',
   chat: ['SCHÖÖÖNER BRUNNEN!', 'SCHÖÖÖÖNER BRUNNEN!!! ⛲', 'Schöner Brunnen! 😍', 'SCHÖÖÖNER BRUNNEN 💦', 'schöööööner brunnen', 'SCHÖNER BRUNNEN! 🔊', 'SCHÖÖÖNER BRUNNEN! 👏'],
 };
-// Jeder Stream beginnt mit Mini Adams Gruß (der Eigentümer: „Hallo, Partypeople“): in der Startszene mit seiner tiefen
-// Stimme (VOICES.adam) und als Untertitel; sobald der Chat zu sehen ist, grüßt er zurück.
+// Jeder Stream beginnt mit Mini Adams Gruß (der Eigentümer: „Hallo, Partypeople“): in der Startszene, während er winkt,
+// nur „Partypeople!“ (wave; der Eigentümer, 21.11.: „nicht ‚Hallo Partypeople‘“), ohne Startszene beim Losfahren say –
+// je Stream genau einmal, mit seiner tiefen Stimme (VOICES.adam) und als Untertitel; sobald der Chat zu sehen ist,
+// grüßt er zurück.
 export const PARTYPEOPLE = {
   say: 'Hallo, Partypeople!',
+  wave: 'Partypeople!',
   chat: ['Hallo Partypeople! 🎉', 'HALLO ADAM! 👋', 'Partypeople am Start 🥳', 'Hallo zurück! ❤', 'Hallo Mini Adam! 🎉', 'Partypeople melden sich zum Dienst 🫡',
     'Hallöchen aus dem Chat 👋', 'Endlich live! ❤', 'Haaallo Partypeople 🎊', 'Die Party kann beginnen 🎉'],
 };
