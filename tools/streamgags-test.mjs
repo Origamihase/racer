@@ -761,6 +761,18 @@ function fakeGame(secs, { gate = true } = {}) {
   console.log(`  Drohnen-Kärtchen: auf ${compact} Handygrößen das kleine Navi (Pfeil, „800 m“, Ausfahrt 42, Name), ab ${COMPACT_W} px die Karte`);
 }
 
+// --- 10b. Navi in Metern auf den letzten 1,5 km vor der Ausfahrt (auch auf geraffter Autobahn) ----------------------
+{
+  const NR = await import('../src/map/navroute.js');
+  const src = read('src/map/navroute.js');
+  ok(NR.NEAR_M === 1500 && NR.BOARD_M === 1000, `NEAR_M ${NR.NEAR_M}, BOARD_M ${NR.BOARD_M}`);
+  ok(src.includes('out.say = g.far || g.dist > Math.max(parkBoard(g.fork), NEAR_M) ? fmtKm(g.toKm) : fmtRoad(g.dist);') && src.includes('nx.say = nx.dist <= Math.max(parkBoard(nx.fork), NEAR_M) ? fmtRoad(nx.dist) : fmtKm(trip.reach(nx.fork.s).km);'), 'navroute.js: Ansage und nächste Ausfahrt nennen die letzten 1,5 km nicht in Metern');
+  ok(src.includes('out.calm = g.far || g.dist > (parkBoard(g.fork) || BOARD_M);'), 'navroute.js: Vorschau und Spurpfeile wechseln nicht mehr an der Tafel');
+  ok(read('tools/journey-test.mjs').includes('const metres = !g.far && g.dist <= Math.max(parkBoard(g.fork), NEAR_M);'), 'journey-test prüft die Meter vor der Tafel nicht');
+  ok(NR.fmtRoad(1500) === '1500 m' && NR.fmtRoad(1449) === '1450 m', 'fmtRoad');
+  console.log(`  Navi: Ausfahrt ab ${NR.NEAR_M} m in Metern (Vorschau und Spurpfeile ab der Tafel bei ${NR.BOARD_M} m)`);
+}
+
 // --- Grundregel: mit und ohne Gags derselbe Stream -----------------------------------------------------------------
 {
   const run = (on) => {

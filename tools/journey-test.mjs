@@ -40,7 +40,7 @@ import { MapDemo } from './mapdemo.mjs';
 import { Game, TOWN_HOLD, AUKTION, EXIT_CALL, exitLine } from '../src/game/game.js';
 import { BID_PLACES, OPENING } from '../src/game/navi.js';
 import { INSIDER_ORTE, JOB_TEMPLATES, SCHOENER_BRUNNEN } from '../src/data.js';
-import { NavModel, BOARD_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
+import { NavModel, BOARD_M, NEAR_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { goalName } from '../src/world/kit/layout.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
@@ -381,7 +381,9 @@ function numbers(trip, nav, nv, N, game) {
       } else if (ins.turn === 'exit') {
         ok(ins.toTarget === text, `Kärtchen „${ins.toTarget}“, HUD-Zeile „${text}“`);
         if (ins.calm) {
-          ok(ins.say === fmtKm(g.toKm) && (g.far || g.dist > (parkBoard(g.fork) || BOARD_M)), `Vorschau „${ins.say}“ ${g.dist.toFixed(0)} m vor ${ins.head}`);
+          // (auf den letzten NEAR_M Metern schon in Metern: dann ist die Tafel zu sehen)
+          const metres = !g.far && g.dist <= Math.max(parkBoard(g.fork), NEAR_M);
+          ok(ins.say === (metres ? fmtRoad(g.dist) : fmtKm(g.toKm)) && (g.far || g.dist > (parkBoard(g.fork) || BOARD_M)), `Vorschau „${ins.say}“ ${g.dist.toFixed(0)} m vor ${ins.head}`);
           ok(!ins.fork || !calmDone.has(ins.fork), `Die Ansage vor ${ins.head} fällt von Metern zurück in die Vorschau`);
           N.calm++;
         } else {
