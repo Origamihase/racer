@@ -1,4 +1,9 @@
 // Testlauf 4 (die Probefahrt des Besitzers vom 21.11.2026 abends), ohne Grafik: node tools/testlauf4-test.mjs
+// 3. „Die Schäden werden nicht abgezogen“: Jeder Rempler kostet 150 €, jeder Kratzer 25 € – ganz, auch wenn die Kasse
+//    dafür ins Minus geht, und auch über die drei gezeichneten Kratzer je Seite hinaus. Die Zeile der Runde am Rand hat
+//    dafür eine eigene rote Zeile „Schäden −… € (N Rempler · M Kratzer)“, das Guthaben sinkt um genau so viel, und am
+//    Ende bucht der Stream, was noch offen ist; die Abrechnung im Abspann führt „Schäden (N Rempler · M Kratzer)“ mit
+//    dem Betrag, das Ergebnis des Streams steht mit Vorzeichen da (gerendert mit menus.js über einem kleinen DOM).
 // 2. „Kein ‚Schöner Brunnen‘ bei BrunnenTV (auch mit Taste B)“: In jeder Folge – am Ziel und unterwegs – ruft Mini Adam
 //    „Schöner Brunnen!“ genau zu seiner Zeit (TV.call) mit seiner tiefen Stimme, ganz und hörbar, und der Untertitel
 //    »SCHÖÖÖÖÖÖÖNER BRUNNEN!!!!!« steht in dieser Zeit oben; der Chat ruft es nach. Geprüft mit der echten Sprachausgabe
@@ -24,6 +29,8 @@ import { TV } from '../src/world/xxl/brunnentv.js';
 import { SCHOENER_BRUNNEN, VOICES } from '../src/data.js';
 import { places } from '../src/map/graph.js';
 import { readFileSync } from 'node:fs';
+import { REPARATUR } from '../src/data.js';
+import { Menus } from '../src/ui/menus.js';
 
 let fails = 0;
 let checks = 0;
@@ -327,6 +334,81 @@ console.log('2. Schöner Brunnen in jeder Folge:');
   Object.assign(globalThis, { setTimeout: saved.setTimeout, clearTimeout: saved.clearTimeout, window: saved.window, SpeechSynthesisUtterance: saved.utt });
   Date.now = saved.now;
 }
+
+// --- 3. Die Werkstatt-Rechnung wird abgezogen ---------------------------------------------------------------------
+console.log('3. Schäden werden abgezogen:');
+{
+  const R = REPARATUR;
+  const S = makeStream({ driver: DRIVERS.zuegig, seed: 5, endless: true });
+  const g = S.game;
+  const bump = () => {
+    g.player.cooldown = 0;
+    g.onCrash({ car: { s: g.player.s, speed: 20, len: 4.6, behavior: 'normal' }, lonOverlap: 3, latOverlap: 0.3, dx: 1, ds: 0 });
+  };
+  const bills = [];
+  const pay = g.payBill.bind(g);
+  g.payBill = (b) => {
+    const before = g.money;
+    const shown = [];
+    const money = g.ui.money;
+    g.ui.money = (v, label) => shown.push({ v, label });
+    pay(b);
+    g.ui.money = money;
+    bills.push({ ...b, before, after: g.money, shown, toast: S.log.toast[S.log.toast.length - 1], tp: g.t });
+  };
+  // Runde 1: zwei Rempler (der dritte Punkt bleibt, sonst endet der Stream in der Werkstatt) und fünf Kratzer an der
+  // linken Seite; die Kasse ist bei der Rechnung fast leer. Runde 2: ein Rempler, dann endet der Stream
+  let done = 0;
+  let open2 = false;
+  for (let i = 0; i < 30 * 900 && !(open2 && g.t > bills[0].tp + 35); i++) {
+    if (g.eco.round === 1 && g.t > 30 && done < 2 && g.t > 30 + done * 4) (bump(), done++);
+    if (g.eco.round === 1 && g.t > 40 && g.player.damage.scraped < 5) g.player.damage.scrape('left');
+    if (g.billDue && g.billDue.n === 1 && !bills.length) g.money = 120;
+    if (bills.length === 1 && !open2 && !g.tv && g.t > bills[0].tp + 30) (bump(), (open2 = true));
+    S.step(1 / 30);
+  }
+  const [b1] = bills;
+  ok(b1 && b1.hits === 2 && b1.marks === 5 && b1.amount === 2 * R.bump + 5 * R.mark, `Runde 1: ${b1 && JSON.stringify({ hits: b1.hits, marks: b1.marks, amount: b1.amount })}`);
+  if (b1) {
+    ok(near(b1.before - b1.after, b1.amount, 1e-9) && b1.after < 0, `Runde 1: Kasse ${b1.before} → ${b1.after} € (soll −${b1.amount} €, ins Minus)`);
+    ok(b1.shown.length === 1 && b1.shown[0].v === -b1.amount && b1.shown[0].label === 'Schäden', `Runde 1 am Guthaben: ${JSON.stringify(b1.shown)}`);
+    ok(b1.toast && /Schäden −425\s€ \(2 Rempler · 5 Kratzer\)$/.test(b1.toast.text), `Runde 1 am Rand: ${b1.toast && b1.toast.text}`);
+    ok(g.player.damage.scratches.left === 3, `gezeichnet ${g.player.damage.scratches.left} Kratzer links (höchstens drei)`);
+  }
+  // Ende des Streams: Der Rempler der offenen Runde wird noch gebucht
+  const mid = g.money;
+  const bd = g.breakdown.Schäden;
+  const open = g.tally.hits;
+  g.end('quit');
+  const o = g.over;
+  ok(open >= 1 && near(mid - g.money, open * R.bump, 1e-9) && near(o.breakdown.Schäden, bd - open * R.bump, 1e-9), `Ende: offene Runde (${open} Rempler) nicht gebucht: ${mid} → ${g.money} €`);
+  ok(o.damage.hits === 2 + open && o.damage.marks === 5 && near(o.damage.amount, -o.breakdown.Schäden, 1e-9), `Abspann: ${JSON.stringify(o.damage)} / ${o.breakdown.Schäden}`);
+  ok(o.money === Math.round(g.money * 100) / 100, `Abspann: Ergebnis ${o.money} statt ${g.money}`);
+  // der Abspann (menus.js render_over über einem kleinen DOM): „Schäden (3 Rempler · 5 Kratzer)“ −575,00 € und das
+  // Ergebnis mit Vorzeichen
+  const node = (tag) => ({ tag, className: '', textContent: '', children: [], dataset: {}, style: {}, classList: { add() {}, remove() {}, toggle() {} }, appendChild(c) { this.children.push(c); return c; }, append(...c) { this.children.push(...c); }, setAttribute() {}, addEventListener() {}, querySelector: () => null });
+  const keep = globalThis.document;
+  globalThis.document = { createElement: node };
+  const screen = node('div');
+  Menus.prototype.render_over.call({}, screen, { ...o, route: null, quote: null, wallet: 0, best: 0, newRecord: false, photos: [] });
+  globalThis.document = keep;
+  const all = [];
+  const walk = (n) => {
+    if (!n || typeof n !== 'object') return;
+    all.push(n);
+    for (const c of n.children || []) walk(c);
+  };
+  walk(screen);
+  const row = all.find((n) => n.className === 'bd minus' && n.children[0] && /^Schäden/.test(n.children[0].textContent));
+  const want = `Schäden (${2 + open} Rempler · 5 Kratzer)`;
+  ok(row && row.children[0].textContent === want && /^−[\d.]+,00\s€$/.test(row.children[1].textContent) && row.children[1].textContent.includes(String(o.damage.amount).replace(/\B(?=(\d{3})+$)/g, '.')), `Abrechnung: „${row && row.children[0].textContent}“ ${row && row.children[1].textContent} (soll „${want}“ −${o.damage.amount} €)`);
+  const mon = all.find((n) => /^over-money/.test(n.className));
+  ok(mon && mon.children[0].textContent.startsWith(o.money < 0 ? '−' : '+') && mon.className === (o.money < 0 ? 'over-money minus' : 'over-money'), `Ergebnis im Abspann: ${mon && mon.children[0].textContent} (${o.money})`);
+  // das Guthaben fällt mit einem Stream im Minus, aber nie unter null (main.js finishRun)
+  ok(/save\.wallet = Math\.max\(0, Math\.round\(\(save\.wallet \+ o\.money\) \* 100\) \/ 100\);/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')), 'main.js: Guthaben nach dem Stream');
+  console.log(`  Runde 1: ${b1 ? `${b1.hits} Rempler + ${b1.marks} Kratzer = ${b1.amount} €, Kasse ${b1.before} → ${b1.after} €, „${b1.toast.text}“` : '–'} · Ende: ${open} Rempler offen gebucht · Abspann „${row && row.children[0].textContent} ${row && row.children[1].textContent}“, Ergebnis ${mon && mon.children[0].textContent}`);
+}
+
 
 if (fails) {
   console.log(`testlauf4-test: ${fails} FEHLER (${checks} Prüfungen)`);

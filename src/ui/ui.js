@@ -881,7 +881,8 @@ export class UI {
     this.recordEl.textContent = odo > best && best > 0 ? '🏆 neuer Rekord!' : best > 0 ? 'Rekord ' + strecke(best) : '';
     this.recordEl.classList.toggle('record', odo > best && best > 0);
     if (tacho === null) this.showKmh(tachoKmh(p.kmh));
-    const money = fmtCent(g.money);
+    // (die Schäden können die Stream-Kasse ins Minus bringen)
+    const money = (g.money < 0 ? '−' : '') + fmtCent(Math.abs(g.money));
     if (money !== this.moneyRow.textContent) {
       this.moneyRow.textContent = money;
       // ein längeres Guthaben lässt einer stehenden Gutschrift weniger Platz

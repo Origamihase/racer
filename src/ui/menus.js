@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, MEGAFON_ERSTATTET, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice } from '../data.js';
 import { fmtNum, fmtCent, fmtEuro, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -59,6 +59,8 @@ const REASONS = {
 
 // Zeilen der Abrechnung: erst alles, was das Publikum gegeben hat (Reihenfolge wie in INCOME), ganz unten die Abzüge
 const BREAKDOWN_ORDER = [...Object.keys(INCOME), ...FINES];
+/** Betrag mit Vorzeichen: „+12,50 €“, „−110,00 €“ (die Schäden können einen Stream ins Minus bringen) */
+const signedCent = (v) => (v < 0 ? '−' : '+') + fmtCent(Math.abs(v));
 
 /** Die Posten einer Abrechnung in dieser Reihenfolge, ohne leere: [[Zeile, Betrag], …] */
 function breakdownRows(breakdown) {
@@ -384,7 +386,7 @@ export class Menus {
       el('span', 'v', r, v);
     };
     item('Strecke', fmtOdo(g.odometer / 1000));
-    item('Einnahmen dieser Fahrt', fmtCent(g.money));
+    item('Einnahmen dieser Fahrt', signedCent(g.money).replace(/^\+/, ''));
     // ein echter Ort – oder, zwischen Ankunft und erstem Gebot der Runde, was gerade gilt (WorldNavi.label)
     item('Navi-Ziel', g.navi.label);
     item('Navi-Gebote', fmtNum(g.stats.naviChanges));
@@ -426,8 +428,8 @@ export class Menus {
     const strecke = (m) => fmtOdo(m / 1000);
     el('span', 'num', dist, strecke(o.distance));
     el('span', 'lbl', dist, o.newRecord ? '🏆 Neuer Rekord!' : 'Rekord: ' + strecke(o.best));
-    const mon = el('div', 'over-money', big);
-    el('span', 'num', mon, '+' + fmtCent(o.money));
+    const mon = el('div', 'over-money' + (o.money < 0 ? ' minus' : ''), big);
+    el('span', 'num', mon, signedCent(o.money));
     el('span', 'lbl', mon, 'Guthaben · jetzt ' + fmtCent(o.wallet));
     const menu = el('div', 'menu row over-menu', card);
     button(menu, '↻ Nochmal fahren', 'restart', 'primary');
@@ -444,7 +446,9 @@ export class Menus {
     el('h3', '', left, 'Abrechnung');
     for (const [k, v] of breakdownRows(o.breakdown)) {
       const row = el('div', 'bd' + (v < 0 ? ' minus' : ''), left);
-      el('span', '', row, k);
+      // die Schäden mit ihrer Zahl: „Schäden (2 Rempler · 1 Kratzer)“
+      const count = k === 'Schäden' && o.damage ? damageCount(o.damage.hits, o.damage.marks) : '';
+      el('span', '', row, count ? `${k} (${count})` : k);
       el('span', '', row, (v < 0 ? '−' : '+') + fmtCent(Math.abs(v)));
     }
     el('h3', '', left, 'You had 5 Jobs');
@@ -558,7 +562,7 @@ export class Menus {
     item('⛲', fmtNum(towns), 'Brunnen besucht');
     item('📺', fmtNum(tv.length), tv.length === 1 ? 'BrunnenTV-Folge' : 'BrunnenTV-Folgen');
     item('🔌', fmtNum(stops), stops === 1 ? 'Ladestopp' : 'Ladestopps');
-    item('💶', '+' + fmtCent(o.money), 'eingenommen');
+    item('💶', signedCent(o.money), 'eingenommen');
     const draw = () => {
       const w = Math.round(wrap.clientWidth);
       const h = Math.round(wrap.clientHeight);

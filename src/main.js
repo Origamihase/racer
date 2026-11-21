@@ -708,7 +708,8 @@ function finishRun() {
   // Rekord und Summe in Reisemetern bzw. Reisekilometern
   const best = save.best.reise || 0;
   const newRecord = o.distance > best && o.distance > 50;
-  save.wallet = Math.round((save.wallet + o.money) * 100) / 100;
+  // (ein Stream im Minus – die Schäden – geht vom Guthaben ab, unter null fällt es nie)
+  save.wallet = Math.max(0, Math.round((save.wallet + o.money) * 100) / 100);
   save.best.reise = Math.max(best, o.distance);
   save.best.earned = Math.max(save.best.earned || 0, o.money);
   save.best.viewers = Math.max(save.best.viewers || 0, o.peakViewers);

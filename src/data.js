@@ -92,15 +92,18 @@ export const INCOME = {
   Challenges: 'Challenge',
 };
 // Abzüge stehen in der Abrechnung ganz unten
-export const FINES = ['Bußgeld', 'Verwarngeld', 'Reparaturen', 'Mitleidskäufe'];
+export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Mitleidskäufe'];
 
 /**
  * Reise: An jedem erreichten Ziel kommt die Werkstatt-Rechnung der Runde (game.js settleRound). bump: Euro je
- * zählendem Rempler (ein Karosserie-Punkt, so viel wie ein gewöhnliches Siegergebot), mark: je neuer Kratzspur von der
- * Leitplanke (höchstens drei je Seite, damage.js). Bezahlt wird aus der Stream-Kasse in ganzen Euro; was sie nicht
- * hergibt, erlässt die Werkstatt. Wann die Fahrt in der Werkstatt endet (keine Punkte mehr), bleibt, wie es ist.
+ * zählendem Rempler (ein Karosserie-Punkt, so viel wie ein gewöhnliches Siegergebot), mark: je Kratzer an der
+ * Leitplanke (jede Schramme, damage.js scraped). Abgebucht wird immer die ganze Rechnung, auch ins Minus, und was am
+ * Ende des Streams noch offen ist, auch (Abrechnung „Schäden“). Wann die Fahrt in der Werkstatt endet (keine Punkte
+ * mehr), bleibt, wie es ist.
  */
 export const REPARATUR = { bump: 150, mark: 25 };
+/** „2 Rempler · 1 Kratzer“: was eine Werkstatt-Rechnung zählt (Rundenzeile, James, Abrechnung im Abspann). */
+export const damageCount = (hits, marks) => [hits ? `${hits} Rempler` : '', marks ? `${marks} Kratzer` : ''].filter(Boolean).join(' · ');
 
 // Wofür gespendet wird (etwa jede dritte Spende nennt einen Zweck)
 export const SPENDEN_ZWECKE = [

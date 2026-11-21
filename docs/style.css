@@ -151,6 +151,8 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 @keyframes mystery-in { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: none; } }
 .toast > .plus { color: var(--green); }
 .toast > .minus { color: var(--bad); }
+/* die Schäden einer Runde stehen in ihrer eigenen Zeile (game.js payBill) */
+.toast > .schaden { display: block; }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
 
 /* --- Streifen unten: wer spricht, steht hier – OMI (ihre Augen), das Sprachstudio (Kopfhörer, warmer Rahmen), die
@@ -635,6 +637,7 @@ body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top)
 .over-dist, .over-money { background: rgba(255,255,255,0.05); border-radius: 14px; padding: 12px 18px; display: flex; flex-direction: column; min-width: 240px; }
 .over-dist .num, .over-money .num { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .over-money .num { color: #6dff9c; }
+.over-money.minus .num { color: var(--bad); }
 .over-dist .lbl, .over-money .lbl { color: var(--sub); font-weight: 600; }
 .over-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
 /* Ziffern gleich breit nur im Wert – im Text machte das die Bindestriche breit („Navi - Ziele“) */

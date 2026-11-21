@@ -2,7 +2,7 @@
 // Sprachdurchsagen, Rahmen, Funkloch, Zuschauer, Spenden, Jobs) und die Abrechnung am Ende.
 // Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
 import {
-  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
+  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_AKKU, REPARATUR, damageCount, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, viewerName, viewerNameAt, fillTemplate, alterReaction, berufFor, fmtBetrag,
   BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, PARTYPEOPLE, SCHOENNBRUN,
 } from '../data.js';
@@ -10,8 +10,8 @@ import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fm
 import { Player } from './player.js';
 import { damageLine } from './damage.js';
 
-/** Kratzspuren von der Leitplanke am ganzen Wagen (je Seite höchstens drei, damage.js). */
-const scratchMarks = (damage) => Object.values(damage.scratches).reduce((a, v) => a + v, 0);
+/** Kratzer von der Leitplanke bisher: jede Schramme (damage.js scraped; gezeichnet sind höchstens drei je Seite). */
+const scratchMarks = (damage) => damage.scraped || 0;
 import { WorldNavi } from './navi.js';
 import { Economy, BONTANA } from './economy.js';
 import { Satisfaction, ZUFRIEDEN } from './satisfaction.js';
@@ -241,6 +241,10 @@ export class Game {
     this.breakdown = {};
     // Reise: was die laufende Runde eingebracht und gekostet hat (Rempler, Kratzspuren bis dahin; settleRound)
     this.tally = { income: 0, hits: 0, marks: 0 };
+    // alle abgebuchten Schäden des Streams (Abrechnung im Abspann: „Schäden (N Rempler · M Kratzer)“) und die
+    // Rechnung, die gerade unterwegs ist (payBill kommt 3,2 s nach der Ankunft; endet der Stream vorher, bucht end)
+    this.damageBill = { hits: 0, marks: 0, amount: 0 };
+    this.billDue = null;
     this.over = null;
     this.running = true;
     this.queue = [];
@@ -1589,8 +1593,8 @@ export class Game {
   /** Der Wagen steht am Brunnen des Navi-Ziels: Ankunft feiern, dann BrunnenTV. */
   /**
    * Reise: Am Ziel wird die Runde abgerechnet (REPARATUR, data.js). Was sie eingebracht hat (samt der Ortsspenden, die
-   * gleich kommen) und was die Werkstatt für ihre Rempler und neuen Kratzspuren bekommt, steht kurz nebeneinander am
-   * oberen Rand (payBill); ab hier zählt die nächste Runde.
+   * gleich kommen) und was die Werkstatt für ihre Rempler und Kratzer bekommt, steht kurz untereinander am oberen Rand
+   * (payBill); ab hier zählt die nächste Runde.
    */
   settleRound(n, gifts) {
     const T = this.tally;
@@ -1600,40 +1604,50 @@ export class Game {
     bill.amount = REPARATUR.bump * bill.hits + REPARATUR.mark * bill.marks;
     // (die Ortsspenden dieser Ankunft buchen sich gleich noch, gehören aber zu dieser Runde)
     this.tally = { income: -sum, hits: 0, marks };
+    this.billDue = bill;
     this.later(3.2, () => this.payBill(bill));
   }
 
   /**
-   * Die Werkstatt-Rechnung einer Runde: bezahlt aus der Stream-Kasse (die Abrechnung am Ende führt sie unter
-   * „Reparaturen“), was die Kasse nicht hergibt, erlässt die Werkstatt. Sie nimmt nur ganze Euro – die Rechnung ist
-   * ganz (REPARATUR), also gehen Bezahltes und Erlassenes in der Zeile genau auf, und die Cent bleiben in der Kasse.
-   * Am Rand die Zeile der Runde, am Guthaben der Abzug, James bucht, der Chat nimmt es gelassen – und wer heil
-   * angekommen ist, wird gefeiert.
+   * Schäden abbuchen, immer ganz (REPARATUR je Rempler und Kratzer): Die Stream-Kasse darf dafür ins Minus gehen. Die
+   * Abrechnung führt sie unter „Schäden“ (mit der Zahl der Rempler und Kratzer im Abspann), am Guthaben steht der Abzug.
+   */
+  chargeDamage(hits, marks) {
+    const amount = REPARATUR.bump * hits + REPARATUR.mark * marks;
+    if (amount <= 0) return 0;
+    this.money -= amount;
+    this.breakdown.Schäden = (this.breakdown.Schäden || 0) - amount;
+    const D = this.damageBill;
+    D.hits += hits;
+    D.marks += marks;
+    D.amount += amount;
+    if (!this.over) this.ui.money(-amount, 'Schäden');
+    return amount;
+  }
+
+  /**
+   * Die Werkstatt-Rechnung einer Runde (chargeDamage): Am Rand die Zeile der Runde – die Einnahmen, darunter in einer
+   * eigenen Zeile „Schäden −325 € (2 Rempler · 1 Kratzer)“ –, am Guthaben der Abzug, James bucht, der Chat nimmt es
+   * gelassen – und wer heil angekommen ist, wird gefeiert.
    */
   payBill(b) {
-    const paid = Math.min(Math.floor(this.money + 1e-6), b.amount);
-    if (paid > 0) {
-      this.money -= paid;
-      this.breakdown.Reparaturen = (this.breakdown.Reparaturen || 0) - paid;
-      this.ui.money(-paid, 'Reparatur');
-    }
+    if (this.billDue !== b) return;
+    this.billDue = null;
+    const paid = this.chargeDamage(b.hits, b.marks);
     // Teile mit Klasse bleiben beisammen, umbrochen wird nur an den Trennern ohne Klasse (auf dem Handy hochkant) – und
-    // nie vor einem „·“ (geschütztes Leerzeichen davor)
+    // nie vor einem „·“ (geschütztes Leerzeichen davor); die Schäden stehen in einer eigenen Zeile (schaden)
     const dot = '\u00a0· ';
-    const parts = [[`🧾 Runde ${b.n}`, 'runde'], [dot], [`Einnahmen +${fmtEuro(b.income)}`, 'plus'], [dot]];
-    if (!b.amount) parts.push(['keine Schäden ✨', 'plus']);
-    else if (paid <= 0) parts.push([`Reparatur ${fmtEuro(b.amount)} erlassen`, 'minus']);
-    else {
-      parts.push([`Reparatur −${fmtEuro(paid)}`, 'minus']);
-      if (paid < b.amount) parts.push([' '], [`(Rest ${fmtEuro(b.amount - paid)} erlassen)`, 'rest']);
-    }
-    this.ui.toast(parts.map((x) => x[0]).join(''), b.amount ? 'info' : 'good', 'rechnung', parts);
-    if (!b.amount) {
+    const parts = [[`🧾 Runde ${b.n}`, 'runde'], [dot], [`Einnahmen +${fmtEuro(b.income)}`, 'plus']];
+    if (!paid) parts.push([dot], ['keine Schäden ✨', 'plus']);
+    else parts.push([' '], [`Schäden −${fmtEuro(paid)} (${damageCount(b.hits, b.marks)})`, 'minus schaden']);
+    this.ui.toast(parts.map((x) => x[0]).join(''), paid ? 'info' : 'good', 'rechnung', parts);
+    if (!paid) {
       if (chance(0.6)) this.later(1, () => this.chat(this.chatLine(CHAT.heil)));
       return;
     }
-    const what = [b.hits ? `${b.hits} Rempler` : '', b.marks ? `${b.marks} Kratzer` : ''].filter(Boolean).join(' und ');
-    this.bot('james', `Werkstatt-Rechnung für Runde ${b.n}: ${fmtEuro(b.amount)} für ${what}` + (paid >= b.amount ? ' – bezahlt aus der Stream-Kasse.' : paid > 0 ? `. Bezahlt sind ${fmtEuro(paid)}, den Rest erlässt die Werkstatt.` : '. Die Werkstatt erlässt sie diesmal.'));
+    const what = damageCount(b.hits, b.marks).replace(' · ', ' und ');
+    const left = this.money < 0 ? ` – die Stream-Kasse steht jetzt bei −${fmtCent(-this.money)}.` : ' – bezahlt aus der Stream-Kasse.';
+    this.bot('james', `Werkstatt-Rechnung für Runde ${b.n}: ${fmtEuro(paid)} für ${what}` + left);
     this.later(1.2, () => this.chat(this.chatLine(CHAT.reparatur)));
   }
 
@@ -2730,6 +2744,13 @@ export class Game {
     if (this.over) return;
     this.running = false;
     const p = this.player;
+    // was noch offen ist, geht nicht verloren: die Rechnung, die gerade unterwegs war, und die Schäden der laufenden
+    // Runde (auch der letzte Rempler vor der Werkstatt) stehen mit in der Abrechnung
+    if (this.billDue) this.chargeDamage(this.billDue.hits, this.billDue.marks);
+    this.billDue = null;
+    this.chargeDamage(this.tally.hits, scratchMarks(p.damage) - this.tally.marks);
+    this.tally.hits = 0;
+    this.tally.marks = scratchMarks(p.damage);
     const km = p.s / 1000; // der Beruf des Tages richtet sich nach den Metern der Straße (keine Zahl auf dem Schirm)
     this.over = {
       reason,
@@ -2739,8 +2760,10 @@ export class Game {
       air: this.airtime,
       // die Einschaltquote des Streams (Kurve im Abspann)
       quote: { dt: this.quote.dt, v: [...this.quote.v, Math.round(this.viewers)], tv: this.quote.tv.slice(), t: this.t },
-      money: Math.max(0, Math.round(this.money * 100) / 100),
+      // (mit Vorzeichen: Die Schäden können mehr kosten, als der Stream eingebracht hat)
+      money: Math.round(this.money * 100) / 100,
       breakdown: { ...this.breakdown },
+      damage: { ...this.damageBill },
       jobs: this.jobs.map((j) => ({ text: j.text, done: j.done, pledge: j.pledge, pledger: j.pledger })),
       fans: this.supporters(),
       stats: { ...this.stats },

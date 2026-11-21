@@ -452,7 +452,7 @@ const way = { offers: 0, place: '', gifts: [], arrive: 0, wayMean: 0 };
   const goal = nv.target;
   const n0 = albumOf(game.save).n;
   const i0 = log.length;
-  const rep0 = game.breakdown.Reparaturen || 0;
+  const rep0 = game.breakdown.Schäden || 0;
   // Taste B: die Folge
   ctl.brunnen = true;
   game.update(DT, ctl, camera);
@@ -480,7 +480,7 @@ const way = { offers: 0, place: '', gifts: [], arrive: 0, wayMean: 0 };
   ok(call.length === 1 && Math.abs(call[0].t - TV.call) < 2.5 * DT && card.length === 1 && card[0].name === places[sec.place].name, `unterwegs: Ruf ${call.length}×, Bauchbinde ${card.map((e) => e.name).join(', ')}`);
   ok(gifts.length === WAY.gifts && gifts.every((e) => e.v >= 1 && e.v <= 7.77) && Math.abs(game.breakdown.Brunnenspenden - gifts.reduce((a, e) => a + e.v, 0)) < 1e-6, `unterwegs: Brunnenspenden ${gifts.map((e) => e.v).join(', ')} (Abrechnung ${game.breakdown.Brunnenspenden})`);
   // (Spenden des Chats kommen wie in jeder Folge; Ortsspenden, Gebote und die Werkstatt-Rechnung nicht)
-  ok(!money.some((e) => e.what === 'Ortsspende' || e.what === 'Navi-Gebot') && (game.breakdown.Reparaturen || 0) === rep0 && game.auction.phase === phase && nv.target === goal && !game.roundNew, `unterwegs: abgerechnet oder neue Runde (${money.map((e) => e.what).join(', ')}, ${game.auction.phase})`);
+  ok(!money.some((e) => e.what === 'Ortsspende' || e.what === 'Navi-Gebot') && (game.breakdown.Schäden || 0) === rep0 && game.auction.phase === phase && nv.target === goal && !game.roundNew, `unterwegs: abgerechnet oder neue Runde (${money.map((e) => e.what).join(', ')}, ${game.auction.phase})`);
   // danach: weiterfahren; an diesem Brunnen kein zweites Mal
   for (let i = 0; i < 10; i++) game.update(DT, ctl, camera);
   ok(!game.wayOffer() && !game.wayHint && log.filter((e) => e.k === 'toast' && e.key === 'brunnenHier').length === 1, 'unterwegs: zweites Angebot am selben Brunnen');
