@@ -10,11 +10,22 @@ const BODY = 0x26282d;
 const RUBBER = 0x1c1d20;
 const SATIN = 0x9a9ea5;
 
-// Lage der Geräte (Fahrzeug-Koordinaten): Die Action-Cam hängt links oben neben dem Spiegelgehäuse, ihr Kabel läuft
-// rechts neben dem Saugnapf (bei x = CAM_CABLE_X) an der Scheibe hoch. Die Bonding-Box steht rechts auf dem
-// Armaturenbrett.
-const ACTION_CAM = v3(-0.25, 1.262, -0.203);
+// Lage der Geräte (Fahrzeug-Koordinaten): Die Action-Cam hängt links oben neben dem Spiegelgehäuse, knapp unter dem
+// Dachrahmen und 8,5 cm hinter der Scheibe – so hoch, dass die Elsa am rechten Rand (6 m mit Krone) aus Mini Adams
+// Sicht ganz unter ihr durchzieht, auch von der rechten Spur aus (dort steigt die Linie ihrer Krone am steilsten:
+// Unterkante der Kamera rechts 2 cm darüber). Ihr Kabel läuft rechts neben dem Saugnapf (bei x = CAM_CABLE_X) an der
+// Scheibe hoch. Die Bonding-Box steht rechts auf dem Armaturenbrett.
+export const ACTION_CAM = v3(-0.27, 1.3, -0.141);
 const CAM_CABLE_X = ACTION_CAM.x + 0.052;
+/**
+ * Umriss der Action-Cam um ACTION_CAM als Kästen [x0, y0, z0, x1, y1, z1]: Gehäuse (58 × 40 × 26 mm) samt Linse vorn,
+ * Halter mit Rändelschraube bis zum Kugelgelenk. tools/sicht-test.mjs prüft damit, dass sie die Elsa am Rand nicht
+ * verdeckt.
+ */
+export const CAM_HULL = [
+  [-0.029, -0.02, -0.024, 0.029, 0.02, 0.013],
+  [-0.008, 0.019, -0.007, 0.017, 0.034, 0.007],
+];
 const ENCODER = { x: 0.432, z: -0.7, yaw: -0.62 };
 
 /** Linse nach −z (lokal): Tubus, dunkles Glas, kleiner Lichtreflex. */
@@ -195,15 +206,17 @@ export function buildRig(S, ctx) {
   cable(pts, 0.0017, 0.015);
   // ab dem letzten Clip (er verdeckt die Naht) fein aufgelöst, wegen der engen Bögen: nach vorn an die Scheibe, an ihr
   // hinunter, kurz vor der Kamera vom Glas weg und von rechts in den Stecker
+  // (v des Saugnapfs auf der Scheibe: Das Kabel verlässt das Glas 4,5 mm darüber)
+  const cupV = (ACTION_CAM.y + 0.047 - W.base.y) / W.U.y;
   const P = cam.port;
   const onGlass = (v, d = 0.002) => W.base.clone().addScaledVector(W.U, v).addScaledVector(W.N, -d).setX(CAM_CABLE_X);
   const end = [pts[pts.length - 1], v3(CAM_CABLE_X + 0.004, hy(CAM_CABLE_X) - 0.003, -0.072), v3(CAM_CABLE_X, 1.3705, -0.094)];
-  for (const v of [0.9, 0.86, 0.82, 0.8]) end.push(onGlass(v));
-  end.push(onGlass(0.788, 0.012), v3(CAM_CABLE_X, P.y + 0.018, P.z + 0.002), v3(P.x + 0.008, P.y + 0.004, P.z + 0.001));
+  for (const v of [0.9, cupV + 0.0365, cupV + 0.0165]) end.push(onGlass(v));
+  end.push(onGlass(cupV + 0.0045, 0.012), v3(CAM_CABLE_X, P.y + 0.018, P.z + 0.002), v3(P.x + 0.008, P.y + 0.004, P.z + 0.001));
   end.push(v3(P.x + 0.003, P.y + 0.0005, P.z), P);
   cable(end, 0.0017, 0.005);
   // ein Klebeclip hält es an der Scheibe
-  const cq = new THREE.Matrix4().makeBasis(W.X, W.U, W.N.clone().negate()).setPosition(onGlass(0.85, 0));
+  const cq = new THREE.Matrix4().makeBasis(W.X, W.U, W.N.clone().negate()).setPosition(onGlass(cupV + 0.03, 0));
   S.gloss.push(prep(place(rbox(0.009, 0.012, 0.0062, 0.0022), 0, 0, 0.0031).applyMatrix4(cq), 0x2a2c30));
   // Clips an der Säule
   for (const t of [0.3, 0.6, 0.86]) {
@@ -211,10 +224,9 @@ export function buildRig(S, ctx) {
     clip(rbox(0.009, 0.012, 0.009, 0.002), p.x, p.y, p.z);
   }
   // was am Glas liegt: Saugnapf der Action-Cam, ihr Kabel bis zum Dachrahmen
-  const cupV = (ACTION_CAM.y + 0.047 - W.base.y) / W.U.y;
   const glass = [
     [ACTION_CAM.x - 0.04, ACTION_CAM.x + 0.04, cupV - 0.04, cupV + 0.04],
-    [CAM_CABLE_X - 0.018, CAM_CABLE_X + 0.018, 0.78, W.length + 0.1],
+    [CAM_CABLE_X - 0.018, CAM_CABLE_X + 0.018, cupV - 0.004, W.length + 0.1],
   ];
   return { led: cam.led, display: cam.display, glass };
 }
