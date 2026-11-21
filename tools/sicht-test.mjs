@@ -22,6 +22,11 @@ const FORMATS = [
   ['Handy quer', 844, 390, true, false],
   ['Handy quer', 667, 375, true, false],
   ['Handy hochkant', 390, 844, true, true],
+  // Tablets hochkant: Zwischen Info-Feld und Chat bliebe nur eine Säule von gut 200 px – der Streifen steht darunter
+  ['Tablet hochkant', 768, 1024, true, true],
+  ['Tablet hochkant', 820, 1180, true, true],
+  ['Tablet hochkant', 834, 1194, true, true],
+  ['Tablet hochkant', 1024, 1366, true, false],
 ];
 
 console.log('Freie Sicht: Rechteck, Streifen und Instrumente je Format');

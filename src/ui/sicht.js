@@ -55,9 +55,18 @@ export const chatWidth = (W, H) => (W <= 760 && H > W ? 0.42 * W : Math.min(310,
 /** Unterkante des Chat-Felds bei voller Höhe (style.css .chat: max-height). */
 export const chatBottom = (H) => Math.max(98, 0.23 * H);
 
+/**
+ * Hochkant bis zu dieser Breite (Handys und Tablets wie 768 × 1024 oder 820 × 1180) steht der Streifen unter den
+ * Feldern, und die Jobs stehen im Pausenmenü statt im Info-Feld (style.css): Zwischen Info-Feld und Chat bliebe dort
+ * nur eine schmale Säule, in der Navi-Zeile und Akku-Kopie abgeschnitten würden und die Navi-Ansage hoch in die Mitte
+ * wüchse.
+ */
+export const PORTRAIT_W = 900;
+export const portraitNarrow = (W, H) => H > W && W <= PORTRAIT_W;
+
 /** Breite des Info-Felds, wie es höchstens wird. */
 export function infoWidth(W, H) {
-  const jobs = H > 560 && !(W <= 760 && H > W);
+  const jobs = H > 560 && !portraitNarrow(W, H);
   return (jobs ? INFO.jobs : INFO.plain) * (W <= 760 ? INFO.small : 1);
 }
 
@@ -71,11 +80,11 @@ export const facecamWidth = (W, H) => (isCompact(W, H) ? 0 : Math.min(0.22 * W, 
 export const stripWidth = (W, H) => W - 4 * PAD - infoWidth(W, H) - chatWidth(W, H);
 
 /**
- * Passt der obere Streifen nicht zwischen Info-Feld und Chat (Handy hochkant, sehr schmale Fenster), steht er unter
- * den beiden Feldern. ui.js misst das an den echten Feldern nach (layout); dies ist dieselbe Rechnung mit den
+ * Passt der obere Streifen nicht zwischen Info-Feld und Chat (Handy und Tablet hochkant, sehr schmale Fenster), steht
+ * er unter den beiden Feldern. ui.js misst das an den echten Feldern nach (layout); dies ist dieselbe Rechnung mit den
  * Höchstmaßen.
  */
-export const isNarrow = (W, H) => stripWidth(W, H) < NARROW_MID;
+export const isNarrow = (W, H) => stripWidth(W, H) < NARROW_MID || portraitNarrow(W, H);
 
 /** Höhe der Touch-Knöpfe über dem unteren Rand samt Abstand (style.css --touch-top). */
 export function touchTop(W, H) {

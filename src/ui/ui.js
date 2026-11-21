@@ -6,7 +6,7 @@ import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
 import { fmtOdo, fmtKm } from '../map/navroute.js';
-import { NARROW_MID, infoWidth, overlap, cockpitParts } from './sicht.js';
+import { NARROW_MID, infoWidth, overlap, cockpitParts, portraitNarrow } from './sicht.js';
 
 /** Zufriedenheit des Chats sichtbar im Chat-Kopf? Nein: Die Chat-Stimmung gehört nicht ins HUD (Besitzer, 17.11.). */
 
@@ -226,7 +226,8 @@ export class UI {
     let left = Math.max(a.right, 14 + infoWidth(W, window.innerHeight)) + 14;
     let mid = (hasChat ? chat.left - 14 : W - left) - left;
     let top = 14;
-    const narrow = mid < NARROW_MID;
+    // (hochkant bis PORTRAIT_W immer: Tablets hätten sonst eine schmale Säule zwischen den Feldern)
+    const narrow = mid < NARROW_MID || portraitNarrow(W, window.innerHeight);
     if (narrow) {
       left = 14;
       mid = W - 28;

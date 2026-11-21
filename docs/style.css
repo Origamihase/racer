@@ -587,9 +587,9 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .card p { line-height: 1.5; color: #dfe2e8; }
 .sub { color: var(--sub) !important; margin-top: 0; }
 
-.pause-card { max-width: 1000px; } /* sechs Knöpfe (mit „Karte“ und „Folgen“) in einer Zeile, ab 1024 px Breite */
+.pause-card { max-width: 1100px; } /* sieben Knöpfe (mit „Karte“, „Folgen“ und „Steuerung“) in einer Zeile, ab 1180 px Breite */
 @media (min-width: 1000px) and (min-height: 561px) {
-  .pause-card > .menu.row .btn { padding-inline: 15px; }
+  .pause-card > .menu.row .btn { padding-inline: 13px; }
 }
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin: 14px 0; }
 .sum { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; }
@@ -797,6 +797,8 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .crow.head { display: none; }
   .c-act { grid-column: 1 / -1; }
   .c-in::before { content: attr(data-dev); flex-basis: 100%; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--sub); }
+  /* lange Touch-Beschriftungen („🔌 Ladestopp einplanen“) brechen in ihrer Kappe um, statt aus der Spalte zu ragen */
+  .ckey { height: auto; min-height: 24px; padding-block: 4px; max-width: 100%; white-space: normal; text-align: center; line-height: 1.2; }
 }
 /* hochkant ist der Blick auf die Straße klein: die Jobs stehen dann im Pausenmenü, und der Chat ist breiter (quer
    bliebe mit einem so breiten Chat kein Platz für den Streifen zwischen den Feldern) */
@@ -808,6 +810,11 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
      bei dreistelligem Tempo), bricht sie um, statt unter den Chat zu wachsen */
   .hud-info { max-width: calc((58vw - 42px) / 0.85); }
   .live-row, .stat { flex-wrap: wrap; row-gap: 2px; }
+}
+/* Tablets hochkant (bis 900 px breit, sicht.js PORTRAIT_W): Der Streifen steht wie auf dem Handy unter den Feldern,
+   und die Jobs stehen im Pausenmenü – so bleibt über der Straße mehr als ein Drittel des Bildes frei */
+@media (min-width: 761px) and (max-width: 900px) and (orientation: portrait) {
+  .jobs-mini { display: none; }
 }
 @media (max-height: 560px) {
   .jobs-mini { display: none; }
