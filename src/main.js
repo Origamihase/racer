@@ -1407,7 +1407,7 @@ function liveOff() {
 /** Das Sprachstudio meldet: Wir sind live (nach Mini Adams Gruß). */
 function chargeLive() {
   chargeRun.liveT = Infinity;
-  const d = speech.say(CHARGE_LINES.live, 'sprachstudio');
+  const d = speech.say(CHARGE_LINES.live, game.studioVoice());
   ui.studio(CHARGE_LINES.live, d + 0.8);
   chargeRun.greetT = simT + d + 1.1;
 }

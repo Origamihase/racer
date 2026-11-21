@@ -579,7 +579,10 @@ export const VOICES = {
   // langgezogen
   adam: { label: 'Mini Adam', pitch: 0.4, rate: 1.1 },
   brunnen: { label: 'Mini Adam: Schöner Brunnen!', pitch: 0.2, rate: 0.6 },
-  sprachstudio: { label: 'Sprachstudio', pitch: 0.94, rate: 0.95 },
+  // das Sprachstudio mit zwei Stimmen, Satz für Satz abwechselnd (speech.js studioVoices): eine Frau und ein Mann; der
+  // Untertitel heißt bei beiden „Sprachstudio“
+  sprachstudio: { label: 'Sprachstudio', pitch: 1.0, rate: 0.95 },
+  sprachstudioM: { label: 'Sprachstudio', pitch: 0.95, rate: 0.95 },
 };
 
 // ---------------------------------------------------------------------------

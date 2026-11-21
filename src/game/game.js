@@ -272,7 +272,7 @@ export class Game {
     // Sprachstudio: wann es zuletzt gesprochen und zuletzt die Stimmung angesagt hat, wohin sie gerade gekippt ist
     // (trend), der zuletzt genannte Anlass (why), was es sonst noch loswerden will (extra), wen es gleich begrüßt
     // (greet), die nächste runde Summe für den Kassensturz (mark) und welche Sätze gerade erst dran waren (used)
-    this.studio = { last: -99, moodT: -99, trend: null, why: null, extra: null, extraT: -99, greet: null, mark: 500, used: {} };
+    this.studio = { last: -99, moodT: -99, trend: null, why: null, extra: null, extraT: -99, greet: null, mark: 500, used: {}, voices: 0 };
     this.sammel = null;
     this.duel = null;
     // für den Abspann: die größte Spende, wer wie viel gespendet und geboten hat (Summe und Anzahl je Name), wer wie
@@ -515,7 +515,7 @@ export class Game {
     this.voiceUntil = Math.max(this.voiceUntil, this.t + 1.2);
     if (this.t < this.studioUntil) {
       this.studioUntil = this.t;
-      if (this.speech.current?.voiceKey === 'sprachstudio') this.speech.cancelCurrent();
+      if (/^sprachstudio/.test(this.speech.current?.voiceKey || '')) this.speech.cancelCurrent();
     }
     if (this.running) this.later(0.35, go);
     else go();
@@ -2557,10 +2557,20 @@ export class Game {
     // ein leiser Zweiklang, damit man hört, dass jetzt nicht OMI spricht
     this.audio.tone(659.25, 0.16, 'sine', 0.05);
     this.audio.tone(523.25, 0.24, 'sine', 0.05, 0.13);
-    const dur = this.speech.say(text.replace(/_/g, ' '), 'sprachstudio');
+    const dur = this.speech.say(text.replace(/_/g, ' '), this.studioVoice());
     this.ui.studio(text, dur + 0.8);
     S.last = this.t;
     this.studioUntil = this.t + dur + 0.8;
+  }
+
+  /**
+   * Die Stimme des nächsten Studio-Satzes: abwechselnd die Frau (sprachstudio) und der Mann (sprachstudioM) – so hört
+   * man beide (speech.js studioVoices). „Wir sind live.“ zu Beginn (main.js) spricht die Frau, danach der Mann.
+   */
+  studioVoice() {
+    const key = this.studio.voices % 2 ? 'sprachstudioM' : 'sprachstudio';
+    this.studio.voices++;
+    return key;
   }
 
   /** Ein Satz aus der Liste, aber keiner der beiden zuletzt gesagten (key: je Liste ein Gedächtnis). */

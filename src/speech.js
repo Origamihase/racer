@@ -15,6 +15,17 @@ const DEEP_MALE = [
   /Kasper/i, /Jonas/i, /\bmale\b/i, /männlich/i,
 ];
 
+/**
+ * Das Sprachstudio spricht mit zwei Stimmen (Besitzer, 21.11.2026: „Das Sprachstudio soll eine weibliche und eine
+ * männliche Stimme verwenden.“), abwechselnd Satz für Satz: zuerst die bekannten deutschen Frauen- und Männerstimmen
+ * (Edge/Windows, macOS, Android, Chrome), dann jede, die sich so nennt.
+ */
+const FEMALE = [/Katja/i, /Amala/i, /Seraphina/i, /Petra/i, /Marlene/i, /Vicki/i, /Hedda/i, /Helena/i, /Anna/i, /Google Deutsch/i, /\bfemale\b/i, /weiblich/i];
+const MALE = [/Killian/i, /Florian/i, /Conrad/i, /Stefan/i, /Markus/i, /Yannick/i, /Bernd/i, /Ralf/i, /Klaus/i, /Christoph/i, /Viktor/i, /Kasper/i, /Jonas/i, /\bmale\b/i, /männlich/i];
+const isMale = (v) => MALE.some((re) => re.test(v.name));
+/** Tonhöhe der Studio-Stimmen, wenn das Gerät für eine von beiden keine passende Stimme hat: deutlich höher und tiefer. */
+export const STUDIO_PITCH = { f: 1.0, m: 0.7 };
+
 export class Speech {
   constructor() {
     this.supported = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
@@ -42,6 +53,10 @@ export class Speech {
    */
   pickVoice(key) {
     if (!this.voices.length) return null;
+    if (key === 'sprachstudio' || key === 'sprachstudioM') {
+      const st = this.studioVoices();
+      return key === 'sprachstudio' ? st.f : st.m;
+    }
     const omi = key === 'board' ? null : this.pickVoice('board');
     const free = (v) => v !== omi || this.voices.length === 1;
     const pref = {
@@ -51,7 +66,6 @@ export class Speech {
       karla: [/Katja/i, /Google Deutsch/i, /Anna/i],
       william: [/Stefan/i, /Markus/i, /Yannick/i, /Conrad/i, /Google Deutsch/i],
       schoennbrun: [/Stefan/i, /Markus/i, /Yannick/i, /Conrad/i],
-      sprachstudio: [/Katja/i, /Petra/i, /Hedda/i, /Anna/i, /Google Deutsch/i],
       adam: DEEP_MALE,
       brunnen: DEEP_MALE,
     }[key] || [];
@@ -60,6 +74,47 @@ export class Speech {
       if (v) return v;
     }
     return this.voices.find(free) || this.voices[0];
+  }
+
+  /**
+   * Die beiden Stimmen des Sprachstudios: die beste deutsche Frauenstimme (f, VOICES.sprachstudio) und die beste
+   * Männerstimme (m, VOICES.sprachstudioM) des Geräts – nie OMIs und nie Mini Adams (seine tiefe Stimme bei BrunnenTV),
+   * solange es andere gibt. Ist Mini Adams Stimme die einzige Männerstimme, leiht sie dem Studio-Mann ihre Stimme in
+   * normaler Höhe (Mini Adam spricht viel tiefer, VOICES.adam); gibt es gar keine, spricht eine andere Stimme tiefer,
+   * gibt es nur eine, spricht sie beide Rollen deutlich höher und tiefer (STUDIO_PITCH). Ergebnis: { f, m, pf, pm }
+   * (Stimmen und ihre Tonhöhen).
+   */
+  studioVoices() {
+    const pf0 = VOICES.sprachstudio.pitch;
+    const pm0 = VOICES.sprachstudioM.pitch;
+    if (!this.voices.length) return { f: null, m: null, pf: pf0, pm: pm0 };
+    const omi = this.pickVoice('board');
+    const adam = this.pickVoice('adam');
+    let pool = this.voices.filter((v) => v !== omi && v !== adam);
+    if (!pool.length) pool = this.voices.filter((v) => v !== omi);
+    if (!pool.length) pool = this.voices;
+    const find = (prefs, list) => {
+      for (const re of prefs) {
+        const v = list.find((x) => re.test(x.name));
+        if (v) return v;
+      }
+      return null;
+    };
+    const women = pool.filter((v) => !isMale(v));
+    const f = find(FEMALE, women) || women[0] || pool[0];
+    const rest = pool.filter((v) => v !== f);
+    const m = find(MALE, rest) || (adam !== f && isMale(adam) ? adam : null) || rest[0] || f;
+    // dieselbe Stimme für beide, oder keine echte Frau / kein echter Mann: über die Tonhöhe getrennt
+    const pf = m === f || isMale(f) ? STUDIO_PITCH.f : pf0;
+    const pm = m === f || !isMale(m) ? STUDIO_PITCH.m : pm0;
+    return { f, m, pf, pm };
+  }
+
+  /** Tonhöhe eines Sprechers (VOICES; das Sprachstudio je nach seinen Stimmen, studioVoices). */
+  pitchFor(key) {
+    if (key === 'sprachstudio') return this.studioVoices().pf;
+    if (key === 'sprachstudioM') return this.studioVoices().pm;
+    return (VOICES[key] || VOICES.board).pitch;
   }
 
   /**
@@ -122,7 +177,7 @@ export class Speech {
         u.lang = 'de-DE';
         const voice = this.pickVoice(item.voiceKey);
         if (voice) u.voice = voice;
-        u.pitch = v.pitch;
+        u.pitch = this.pitchFor(item.voiceKey);
         u.rate = v.rate;
         u.volume = 1;
         u.onend = done;

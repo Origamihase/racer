@@ -13,6 +13,8 @@
 // 4. BrunnenTV lässt sich nicht überspringen: kein TV.skip, kein Game.skipBrunnenTV, keine Taste, kein Tipp aufs Bild,
 //    kein Gamepad-Knopf und kein Text dazu; die Folge (am Ziel und unterwegs) läuft TV.end Sekunden (12–20 s), auch
 //    wenn der Spieler alles drückt.
+// 5. Zwei Stimmen im Sprachstudio: auf jedem Gerät (Edge, Windows, macOS, Chrome, Android, nur Frauen, eine Stimme) eine
+//    Frau und ein Mann, die man auseinanderhört, nie wie OMI oder Mini Adam; im Stream Satz für Satz im Wechsel.
 import { readFileSync } from 'node:fs';
 import * as G from '../src/map/graph.js';
 import * as shapes from '../src/map/shapes.js';
@@ -30,6 +32,8 @@ import { STREET, TOWN_LEN } from '../src/world/kit/layout.js';
 import { Game } from '../src/game/game.js';
 import { CHAT } from '../src/data.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
+import { Speech } from '../src/speech.js';
+import { VOICES } from '../src/data.js';
 import { PerspectiveCamera } from 'three';
 
 let fails = 0;
@@ -426,6 +430,52 @@ let stream12 = [];
     ok(log.length >= 2 && log[0].n > 0 && log[log.length - 1].n === 0, `${way ? 'unterwegs' : 'am Ziel'}: Bauchbinde ${log.map((e) => e.n).join(' → ')}`);
   }
   console.log(`4. BrunnenTV: ${TV.end} s am Stück, am Ziel und unterwegs, auch wenn der Spieler alles drückt; kein Weg zum Überspringen (Tasten, Tipp aufs Bild, Gamepad, Texte)`);
+}
+
+// --- 5. Zwei Stimmen im Sprachstudio -------------------------------------------------------------------------------
+{
+  const de = (names) => names.map((name) => ({ name, lang: 'de-DE' }));
+  const SETS = {
+    'Edge (Windows, natürliche Stimmen)': ['Microsoft Katja Online (Natural) - German (Germany)', 'Microsoft Conrad Online (Natural) - German (Germany)', 'Microsoft Amala Online (Natural) - German (Germany)', 'Microsoft Killian Online (Natural) - German (Germany)', 'Microsoft Seraphina Online (Natural) - German (Germany)', 'Microsoft Florian Online (Natural) - German (Germany)'],
+    'Windows': ['Microsoft Hedda - German (Germany)', 'Microsoft Katja - German (Germany)', 'Microsoft Stefan - German (Germany)'],
+    macOS: ['Anna', 'Markus', 'Petra', 'Yannick', 'Helena', 'Viktor'],
+    'Chrome (Google)': ['Google Deutsch', 'Anna'],
+    'Android': ['Deutsch (Deutschland) female 1', 'Deutsch (Deutschland) male 1', 'Deutsch (Deutschland) female 2', 'Deutsch (Deutschland) male 2'],
+    'nur Frauenstimmen': ['Anna', 'Petra', 'Helena'],
+    'eine Stimme': ['Anna'],
+  };
+  const male = (v) => /Conrad|Killian|Florian|Stefan|Markus|Yannick|Viktor|\bmale\b/i.test(v.name);
+  const rows = [];
+  for (const [dev, names] of Object.entries(SETS)) {
+    const sp = new Speech();
+    sp.voices = de(names);
+    const omi = sp.pickVoice('board');
+    const adam = sp.pickVoice('adam');
+    const st = sp.studioVoices();
+    const f = sp.pickVoice('sprachstudio');
+    const m = sp.pickVoice('sprachstudioM');
+    const pf = sp.pitchFor('sprachstudio');
+    const pm = sp.pitchFor('sprachstudioM');
+    ok(f === st.f && m === st.m && f && m, `${dev}: Studio-Stimmen ${f && f.name} / ${m && m.name}`);
+    // zwei Rollen, die man auseinanderhört: zwei Stimmen, oder eine Stimme deutlich höher und tiefer
+    ok(f !== m || pf - pm >= 0.25, `${dev}: Frau und Mann klingen gleich (${f.name} ${pf} / ${m.name} ${pm})`);
+    // OMI und Mini Adam bleiben eigene Stimmen: andere Stimme oder deutlich andere Tonhöhe
+    for (const [who, v, p] of [['OMI', omi, VOICES.board.pitch], ['Mini Adam', adam, VOICES.adam.pitch]]) {
+      for (const [role, sv, sp2] of [['Frau', f, pf], ['Mann', m, pm]]) ok(sv !== v || Math.abs(sp2 - p) >= 0.15, `${dev}: Studio-${role} klingt wie ${who} (${sv.name} ${sp2} / ${v.name} ${p})`);
+    }
+    // gibt es genug Stimmen, bekommt jeder seine eigene; die Frau ist keine Männerstimme, der Mann eine, wo es eine gibt
+    const males = sp.voices.filter((v) => male(v) && v !== omi);
+    if (names.length >= 4) ok(new Set([omi, adam, f, m]).size === 4, `${dev}: OMI ${omi.name}, Mini Adam ${adam.name}, Studio ${f.name} / ${m.name}`);
+    ok(!male(f) || sp.voices.every(male), `${dev}: Studio-Frau ist ${f.name}`);
+    if (males.length) ok(male(m) && pm === VOICES.sprachstudioM.pitch, `${dev}: Studio-Mann ist ${m.name} (${pm})`);
+    rows.push(`${dev}: OMI ${omi.name.replace(/Microsoft | Online \(Natural\) - German \(Germany\)| - German \(Germany\)/g, '')}, Mini Adam ${adam.name.replace(/Microsoft | Online \(Natural\) - German \(Germany\)| - German \(Germany\)/g, '')}, Studio ${[f, m].map((v, i) => v.name.replace(/Microsoft | Online \(Natural\) - German \(Germany\)| - German \(Germany\)/g, '') + ' ' + [pf, pm][i]).join(' / ')}`);
+  }
+  // im Stream: die Sätze des Studios wechseln Frau und Mann ab, der Untertitel bleibt „Sprachstudio“
+  const studio = stream12.filter((x) => /^sprachstudio/.test(x.voice));
+  ok(studio.length >= 6, `12 Minuten Stream: nur ${studio.length} Sätze des Studios`);
+  ok(studio.every((x, i) => x.voice === (i % 2 ? 'sprachstudioM' : 'sprachstudio')), `Wechsel Frau/Mann: ${studio.map((x) => (x.voice === 'sprachstudio' ? 'F' : 'M')).join('')}`);
+  ok(VOICES.sprachstudio.label === 'Sprachstudio' && VOICES.sprachstudioM.label === 'Sprachstudio', 'Untertitel des Studios heißt anders');
+  console.log(`5. Sprachstudio mit zwei Stimmen (im Stream ${studio.length} Sätze, Frau und Mann im Wechsel):\n  ${rows.join('\n  ')}`);
 }
 
 console.log(`${checks} Prüfungen, ${fails} Fehler`);
