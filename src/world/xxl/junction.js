@@ -80,14 +80,17 @@ function railEnd(rails, solid, x, s0, s1, sRef) {
 const POST = new THREE.Color(0x8e9398);
 
 let beaconGeos = null;
-/** Baken: weiße Tafel mit 3, 2 oder 1 roten Schrägstreifen auf einem Pfosten (Textur je Anzahl). */
+/**
+ * Baken: weiße Tafel mit 3, 2 oder 1 roten Schrägstreifen auf einem Pfosten (Textur je Anzahl), 0,48 × 1,4 m – groß
+ * genug, dass man sie aus dem Cockpit bei Tempo herunterzählt (Besitzer, 21.11.: „Ausfahrten besser ausschildern.“).
+ */
 function beaconGeo(n) {
   if (!beaconGeos) beaconGeos = {};
   if (beaconGeos[n]) return beaconGeos[n];
-  const post = new THREE.BoxGeometry(0.08, 1.0, 0.06).toNonIndexed();
-  post.translate(0, 0.5, -0.04);
-  const board = new THREE.BoxGeometry(0.34, 1.0, 0.04).toNonIndexed();
-  board.translate(0, 1.05, 0);
+  const post = new THREE.BoxGeometry(0.09, 1.6, 0.07).toNonIndexed();
+  post.translate(0, 0.8, -0.055);
+  const board = new THREE.BoxGeometry(0.48, 1.4, 0.04).toNonIndexed();
+  board.translate(0, 1.55, 0);
   // der Pfosten nimmt ein weißes Stück der Textur (oben), die Tafel die ganze
   const n0 = post.attributes.position.count;
   post.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(n0 * 2).map((v, i) => (i % 2 ? 0.99 : 0.5)), 2));

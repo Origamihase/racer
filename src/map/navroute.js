@@ -988,7 +988,7 @@ export class NavModel {
     let g = trip.guidance();
     const sec = trip.section;
     const out = {
-      turn: 'none', dist: 0, km: 0, say: '', calm: false, head: '', short: '', sub: '', road: '', lanes: null, node: -1, fork: null,
+      turn: 'none', dist: 0, km: 0, say: '', calm: false, head: '', no: 0, short: '', sub: '', road: '', lanes: null, node: -1, fork: null,
       mapKm: g.km, toTarget: g.type === 'none' ? '' : fmtDistance(g), clock: g.clock, mins: g.mins, target: trip.target, next: null,
     };
     const nx = trip.nextExit();
@@ -1055,6 +1055,8 @@ export class NavModel {
       out.fork = g.fork || null;
       // der Name wie auf dem Schild an der Gabelung (hinter dem Horizont, wo es sie noch nicht gibt, der Titel der Ansage)
       out.head = g.fork ? trip.signs(g.fork).title : g.title;
+      // und ihre Nummer aus dem Kästchen der Tafeln (Bildschirm und HUD zeigen sie genauso davor)
+      out.no = g.fork ? trip.signs(g.fork).no : 0;
       // am Autobahnende, solange hinter der Rampe noch nichts gebaut ist: der Name der Ausfahrt, an der sie endet
       out.sub = thenText(g.then) || (g.fork && g.fork.forced ? nodeTitle(g.node) : '');
       if (g.then && (g.then.type === 'ab' || g.then.type === 'land')) out.road = g.then.road;

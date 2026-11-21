@@ -3,6 +3,9 @@
 //    echten Fahrphysik (Player), dem Kurs der Karte und den Grenzen der Welt (plan.js limitsFor) fährt der Spieler mit
 //    Vollgas auf jeder Straßenart (Ort, Rampe, Landstraße, Verbindung, Ladepark) deutlich schneller als das Limit; der
 //    brave Fahrer (Autopilot, Player.lawful) und der Tempomat halten es, und am Navi-Ziel hält der Wagen trotzdem.
+// 2. Ausfahrten besser ausgeschildert: Jede Anschlussstelle hat eine Nummer (je Autobahn eindeutig), die Vorwegweiser
+//    1000 und 500 m tragen sie im Kästchen, und das Navi (nextExit, Ansage, OMI) nennt dieselbe Nummer und denselben
+//    Namen wie die Tafel.
 import * as G from '../src/map/graph.js';
 import * as shapes from '../src/map/shapes.js';
 import { Trip, J, PROFILES } from '../src/game/trip.js';
@@ -11,6 +14,9 @@ import { Course, MapPlanner } from '../src/game/course.js';
 import { curveTable, curveAt } from '../src/curve.js';
 import { limitsFor, autoTarget, autoDrive, AUTO, Arrival } from '../src/world/xxl/plan.js';
 import { parkAt } from '../src/map/parks.js';
+import { signsAlong, BOARD_D } from '../src/world/xxl/signplan.js';
+import { exitLine } from '../src/game/game.js';
+import { NavModel } from '../src/map/navroute.js';
 
 let fails = 0;
 let checks = 0;
@@ -137,6 +143,71 @@ const kinds = (o) => [...o.over].map(([k, v]) => `${k} ${v.limit}: +${f0(v.max)}
   }
   // die Abschnittsarten der Welt haben ihre Limits wie auf den Schildern (Ort 50, Rampe 80, Landstraße 100)
   ok(PROFILES.stadt.limit === 50 && PROFILES.rampe.limit === 80 && PROFILES.land.limit === 100 && PROFILES.ab.limit === 0, 'Limits der Abschnitte');
+}
+
+// --- 2. Nummern der Ausfahrten: Tafel, Navi und OMI sagen dasselbe -------------------------------------------------
+{
+  // je Autobahn jede Nummer genau einmal, jede Anschlussstelle einer Autobahn hat eine
+  const used = new Map();
+  let numbered = 0;
+  for (const r of G.roads) {
+    if (r.kind !== 'ab') continue;
+    for (const n of r.nodes) {
+      const no = G.exitNumber(r.label, n);
+      ok(no >= 1, `${r.label}: ${G.nodes[n].name} ohne Nummer`);
+      const k = r.label + '|' + no;
+      ok(!used.has(k) || used.get(k) === n, `${r.label}: Nummer ${no} doppelt (${G.nodes[n].name}, ${G.nodes[used.get(k)]?.name})`);
+      used.set(k, n);
+      numbered++;
+    }
+  }
+  // Fahrten: an jeder Gabelung voraus (bis zur Gabelung) Tafel = nextExit = Ansage = OMI
+  let boards = 0;
+  let calls = 0;
+  for (let r = 0; r < 6; r++) {
+    const rnd = rng(900 + r);
+    const trip = new Trip({ rng: rnd, start: Math.floor(rnd() * G.nodes.length) });
+    const d = trip.distances();
+    const cand = G.places.map((pl) => ({ i: pl.i, c: d.toPlace(pl.i).cost })).filter((c) => isFinite(c.c) && c.c > 40).sort((a, b) => a.c - b.c);
+    if (!cand.length) continue;
+    trip.setTarget(cand[Math.floor(rnd() * Math.min(cand.length, 30))].i);
+    const nav = new NavModel(trip);
+    const p = new Player();
+    p.lawful = true;
+    p.s = trip.s;
+    p.x = trip.x;
+    const lim = {};
+    const arrival = new Arrival();
+    for (let i = 0; i < 30 * 60 * 4 && p.s < trip.s + 12000; i++) {
+      limitsFor(trip, lim, arrival.stop(trip));
+      p.setLimits(lim);
+      const ctl = { steer: 0, throttle: 0, brake: 0 };
+      autoDrive(ctl, p, autoTarget(trip), lim.vmax, 0);
+      p.update(DT, ctl, {});
+      const evs = trip.update(p.s, p.x);
+      arrival.update(trip, evs, p.speed);
+      const nx = trip.nextExit();
+      if (!nx || nx.kind === 'ende' || (i % 15)) continue;
+      const sg = trip.signs(nx.fork);
+      ok(nx.no >= 1 && nx.no === sg.no, `nextExit ${nx.title}: Nummer ${nx.no}, Tafel ${sg.no}`);
+      // die Vorwegweiser dieser Gabelung tragen dieselbe Nummer und denselben Titel
+      for (const e of signsAlong(trip, trip.cur, nx.fork.s - BOARD_D[0] - 1, nx.fork.s)) {
+        if (e.kind !== 'vorweg' || e.fork !== nx.fork.id) continue;
+        boards++;
+        ok(e.no === nx.no && e.board.no === nx.no && e.title === nx.title, `Tafel ${e.texts[0]} [${e.no}] zur Ausfahrt ${nx.title} [${nx.no}]`);
+      }
+      // OMI nennt Nummer und Namen wie die Tafel
+      if (nx.kind === 'ausfahrt') {
+        calls++;
+        ok(exitLine(nx).includes(nx.no + ' ' + nx.name), `OMI: „${exitLine(nx)}“ ohne „${nx.no} ${nx.name}“`);
+      }
+      // die Ansage einer Ausfahrt, die die Route nimmt, zeigt dieselbe Nummer wie ihre Tafel
+      const ins = nav.instruction();
+      if (ins.turn === 'exit' && ins.fork && !ins.fork.forced) ok(ins.no === trip.signs(ins.fork).no && ins.no >= 1, `Ansage ${ins.head}: Nummer ${ins.no}`);
+    }
+  }
+  ok(boards >= 20 && calls >= 20, `zu wenig geprüft: ${boards} Tafeln, ${calls} Sätze`);
+  console.log(`2. Nummern der Ausfahrten: ${numbered} Anschlussstellen nummeriert, ${boards} Tafeln und ${calls} OMI-Sätze mit derselben Nummer wie das Navi`);
 }
 
 console.log(`${checks} Prüfungen, ${fails} Fehler`);

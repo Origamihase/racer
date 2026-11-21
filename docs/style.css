@@ -732,6 +732,11 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 .navi-next.on { display: inline-flex; }
 .navi-next i { flex: none; font-style: normal; font-size: 0.8em; opacity: 0.85; white-space: nowrap; }
 .navi-next b { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.navi-next-d { flex: none; font-weight: 700; white-space: nowrap; }
+/* Nummer der Ausfahrt im weiß umrandeten Kästchen wie auf den Tafeln am Rand (ui.js setTurn) */
+.exit-no { flex: none; align-self: center; padding: 0 5px; border: 1.5px solid #ffffff; border-radius: 4px; font-weight: 700;
+  font-size: 0.86em; line-height: 1.25; color: #ffffff; }
+.exit-no:empty { display: none; }
 
 /* --- Große Karte (src/ui/mapscreen.js) ------------------------------------------------- */
 .screen-karte { padding: 0; display: block; overflow: hidden; background: #a9d3ec; }

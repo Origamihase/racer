@@ -434,6 +434,27 @@ export function nodeTitle(n) {
   return 'Ausfahrt ' + nd.name;
 }
 
+/**
+ * Nummer der Anschlussstelle, wie sie auf den blauen Tafeln steht: je Autobahn (Straßennummer label) werden ihre
+ * Knoten in der Reihenfolge der Straße ab 1 durchgezählt, über alle Stücke derselben Nummer hinweg; Kreuze und
+ * Dreiecke zählen mit (wie in Deutschland). In beiden Richtungen dieselbe Nummer; 0: kein Knoten dieser Autobahn.
+ */
+const exitNos = new Map();
+{
+  const last = new Map();
+  for (const r of roads) {
+    if (r.kind !== 'ab') continue;
+    for (const n of r.nodes) {
+      const k = r.label + '|' + n;
+      if (exitNos.has(k)) continue;
+      const no = (last.get(r.label) || 0) + 1;
+      last.set(r.label, no);
+      exitNos.set(k, no);
+    }
+  }
+}
+export const exitNumber = (label, node) => exitNos.get(label + '|' + node) || 0;
+
 // --- Kartenprojektion (für Kartenansicht und Navi-Bildschirm) ------------------------------
 /** Mercator: Breite/Länge → ebene Koordinaten (x nach Osten, y nach Süden), Einheit: Grad Länge am Äquator. */
 export function project(lat, lon) {

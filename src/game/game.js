@@ -78,7 +78,8 @@ export const EXIT_CALL = { at: 1000, late: 700, gap: 90 };
 export function exitLine(nx) {
   const L = BOARD.exit;
   const d = Math.max(50, Math.round(nx.dist / 50) * 50) + ' Metern';
-  const head = fillTemplate(L[nx.kind], { name: nx.name, d });
+  // die Nummer der Ausfahrt wie im Kästchen der Tafel vor dem Namen („Nächste Ausfahrt: 6 Hanau in 1000 Metern.“)
+  const head = fillTemplate(L[nx.kind], { name: nx.kind === 'ausfahrt' && nx.no ? nx.no + ' ' + nx.name : nx.name, d });
   if (nx.plan === 'exit' && nx.kind !== 'ende') return head + ' ' + L.take;
   return nx.plan === 'stay' ? head + ' ' + fillTemplate(L.stay, { road: nx.road }) : head;
 }

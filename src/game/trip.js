@@ -26,7 +26,7 @@
 // Maßstab (game.js), also gilt überall: Tacho × Uhr = Reisekilometer.
 import {
   nodes, edges, places, K, deEdge, deTo, deFrom, deRev, deKind, deRoad, deTowards, straight, edgeLen, routeTo, routeFrom,
-  stateOfNode, transitions, townLen, zubLen, spotIn, visitList, nodeTitle, dePos, turnAngle, PACE,
+  stateOfNode, transitions, townLen, zubLen, spotIn, visitList, nodeTitle, exitNumber, dePos, turnAngle, PACE,
 } from '../map/graph.js';
 import { PARK, PARK_STOP_AFTER, PARKS, POST, postName, parkAt, parkZub, parkExcursion, routeToPark, nearestParks } from '../map/parks.js';
 
@@ -921,7 +921,7 @@ export class Trip {
     return J.L0 + Trip.offset(link, s).off - J.shoulderEdge;
   }
 
-  /** Schildtexte einer Gabelung (park: Name des Ladeparks an dieser Ausfahrt oder null). */
+  /** Schildtexte einer Gabelung (no: Nummer der Anschlussstelle, park: Name des Ladeparks dort oder null). */
   signs(fork) {
     const nd = nodes[fork.node];
     const exits = [];
@@ -938,6 +938,7 @@ export class Trip {
     }
     return {
       title: fork.forced ? 'Autobahnende' : nodeTitle(nd),
+      no: fork.forced ? 0 : exitNumber(deRoad(fork.de).label, fork.node),
       name: nd.name,
       kind: nd.kind,
       places: nd.places.map((p) => places[p.place].name),
@@ -1170,7 +1171,8 @@ export class Trip {
    * Die nächste Ausfahrt auf der eigenen Autobahn: die erste Gabelung voraus, ob der Plan dort abfährt oder geradeaus
    * bleibt (das Navi zeigt sie immer, OMI nennt sie am ersten Vorwegweiser). Nur auf der Autobahn, denn nur sie hat
    * Gabelungen. Ergebnis {fork, dist (Meter Straße bis zur Gabelung), title (wie auf dem Schild: „Ausfahrt Hanau-Nord“,
-   * „Frankfurter Kreuz“, „Autobahnende“), name (ohne „Ausfahrt “), kind ('ausfahrt' | 'kreuz' | 'ende'), plan
+   * „Frankfurter Kreuz“, „Autobahnende“), no (Nummer der Anschlussstelle im Kästchen der Tafeln, am Ende 0), name (ohne
+   * „Ausfahrt “), kind ('ausfahrt' | 'kreuz' | 'ende'), plan
    * (planFor: 'exit', 'stay', ohne Ziel null), exit (der Plan fährt dort ab), road (die Autobahn geradeaus, am
    * Autobahnende '')} oder null.
    */
@@ -1183,11 +1185,11 @@ export class Trip {
       if (!t) {
         const title = f.forced ? 'Autobahnende' : nodeTitle(f.node);
         const kind = f.forced ? 'ende' : title.startsWith('Ausfahrt ') ? 'ausfahrt' : 'kreuz';
-        t = { title, kind, name: kind === 'ausfahrt' ? title.slice(9) : title, road: f.stay >= 0 ? deRoad(f.stay).label : '' };
+        t = { title, kind, no: f.forced ? 0 : exitNumber(deRoad(f.de).label, f.node), name: kind === 'ausfahrt' ? title.slice(9) : title, road: f.stay >= 0 ? deRoad(f.stay).label : '' };
         EXIT_TITLE.set(f, t);
       }
       const plan = this.planFor(f);
-      return { fork: f, dist: f.s - this.s, title: t.title, name: t.name, kind: t.kind, plan, exit: plan === 'exit', road: t.road };
+      return { fork: f, dist: f.s - this.s, title: t.title, no: t.no, name: t.name, kind: t.kind, plan, exit: plan === 'exit', road: t.road };
     }
     return null;
   }

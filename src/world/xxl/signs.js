@@ -120,22 +120,44 @@ function plugBox(ctx, x, y, s) {
   drawTurnIcon(ctx, 'stop', x + s / 2, y + s * 0.47, s * 0.86, BLUE);
 }
 
-/** Vorwegweiser (Inhalt aus signplan.boardOf): Kopf mit Sinnbild, Zeilen mit Straßenschild, Entfernung unten rechts. */
-function boardTexture(b, wM, hM) {
+/**
+ * Vorwegweiser (Inhalt aus signplan.boardOf): Kopf mit Sinnbild und der Nummer der Anschlussstelle im weißen Kästchen,
+ * Zeilen mit Straßenschild, Entfernung unten rechts. k: Maßstab der Tafel (BOARD_K) – die Leinwand wächst mit, die
+ * Aufteilung bleibt.
+ */
+function boardTexture(b, wM, hM, k = 1) {
   const w = Math.round(wM * PX);
   const h = Math.round(hM * PX);
-  const c = makeCanvas(w, h);
+  const c = makeCanvas(Math.round(w * k), Math.round(h * k));
   const ctx = c.getContext('2d');
+  ctx.scale(k, k);
   plate(ctx, w, h, BLUE, WHITE);
   ctx.textBaseline = 'middle';
   const pad = 34;
   const headH = 0.6 * PX;
   const rowH = 0.46 * PX;
   const ps = headH * 0.78;
-  pictogram(ctx, b.pict, pad, pad - 6 + (headH - ps) / 2, ps);
+  const py = pad - 6 + (headH - ps) / 2;
+  pictogram(ctx, b.pict, pad, py, ps);
+  let hx = pad + ps + 22;
+  if (b.no) {
+    // Nummer der Anschlussstelle: weiß umrandet neben dem Sinnbild, wie auf den echten Tafeln
+    ctx.font = `bold ${Math.round(ps * 0.7)}px ${FONT}`;
+    const nw = Math.max(ps * 0.9, ctx.measureText(String(b.no)).width + 26);
+    const nx = pad + ps + 12;
+    ctx.strokeStyle = WHITE;
+    ctx.lineWidth = 5;
+    roundRect(ctx, nx, py + 2, nw, ps - 4, 9);
+    ctx.stroke();
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    ctx.fillText(String(b.no), nx + nw / 2, py + ps / 2 + 2);
+    ctx.textAlign = 'left';
+    hx = nx + nw + 20;
+  }
   ctx.fillStyle = WHITE;
   ctx.font = `bold ${Math.round(headH * 0.62)}px ${FONT}`;
-  fitText(ctx, b.head, pad + ps + 22, pad - 6 + headH / 2, w - pad * 2 - ps - 22);
+  fitText(ctx, b.head, hx, pad - 6 + headH / 2, w - pad - hx);
   let y = pad + headH + rowH / 2;
   for (const r of b.rows) {
     let x = pad + 4;
@@ -365,17 +387,28 @@ function boardGeo(L) {
   return g;
 }
 
-/** Größe (Meter) und Unterkante einer Tafel je Art. */
+/**
+ * Vorwegweiser 1000 und 500 m vor der Ausfahrt so viel größer als ihre Aufteilung (Besitzer, 21.11.: „Ausfahrten besser
+ * ausschildern.“): Aus dem Cockpit sind Nummer und Name bei Tempo lesbar, solange die Tafel rechts im Bild ist. Die
+ * Tafel wächst nach rechts (dx), ihre linke Kante bleibt hinter der Planke.
+ */
+const BOARD_K = 1.6;
+
+/** Größe (Meter), Unterkante und Pfosten einer Tafel je Art; tw, th, k: Maße der Aufteilung und Maßstab, dx: Versatz. */
 function layout(e) {
   switch (e.kind) {
-    case 'vorweg':
-      return { w: 3.9, h: 0.6 + 0.46 * Math.max(1, e.board.rows.length) + 0.68, y: 1.7, posts: [-1.25, 1.25] };
+    case 'vorweg': {
+      const tw = 3.9;
+      const th = 0.6 + 0.46 * Math.max(1, e.board.rows.length) + 0.68;
+      const k = BOARD_K;
+      return { w: tw * k, h: th * k, y: 2.0, posts: [-1.25 * k, 1.25 * k], tw, th, k, dx: ((k - 1) * tw) / 2 };
+    }
     case 'tafel':
       return { w: 3.6, h: 0.5 + 0.5 * e.rows.length, y: 1.7, posts: [-1.15, 1.15] };
     case 'ladepark':
       return { w: 3.0, h: 2.0, y: 1.7, posts: [-0.95, 0.95] };
     case 'ausfahrt':
-      return { w: 1.45, h: 0.5, y: 1.05, posts: [-0.45, 0.45] };
+      return { w: 2.4, h: 0.85, y: 1.3, posts: [-0.8, 0.8] };
     case 'auffahrt':
       return { w: 2.0, h: 1.0, y: 1.4, posts: [-0.65, 0.65] };
     case 'ladesaeule':
@@ -390,7 +423,7 @@ function layout(e) {
 function textureOf(e, L) {
   switch (e.kind) {
     case 'vorweg':
-      return boardTexture(e.board, L.w, L.h);
+      return boardTexture(e.board, L.tw, L.th, L.k);
     case 'tafel':
       return tableTexture(e.rows, L.w, L.h);
     case 'ladepark':
@@ -484,7 +517,7 @@ export class Signs {
     const L = layout(e);
     const g = new THREE.Group();
     g.name = 'XXL-Tafel ' + e.kind;
-    g.position.set(e.x, 0, -e.s);
+    g.position.set(e.x + (L.dx || 0), 0, -e.s);
     const steel = this.world.scenery.mats.steel;
     const mat = W.std({ map: textureOf(e, L), roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
     const board = new THREE.Mesh(boardGeo(L), [steel, mat]);
@@ -496,6 +529,6 @@ export class Signs {
 
   /** Schilder-Log: alles, was gerade im Sichtbereich steht (Einträge wie signplan, dazu built: von hier gebaut). */
   list() {
-    return this.entries.map((e) => ({ kind: e.kind, s: e.s, x: e.x, side: e.side, frame: e.frame, texts: e.texts.slice(), built: this.items.has(e.key) }));
+    return this.entries.map((e) => ({ kind: e.kind, s: e.s, x: e.x, side: e.side, frame: e.frame, texts: e.texts.slice(), no: e.no, built: this.items.has(e.key) }));
   }
 }
