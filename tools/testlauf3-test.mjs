@@ -10,6 +10,9 @@
 //    nach einem Unfall winken.“ Die Regel (game/wave.js) kennt genau diese vier Anlässe; an Fußgängern echter Orte
 //    winkt er bei Stadttempo höchstens alle WAVE.cool Sekunden, beim Rasen nie; im Spiel winkt er nur nach „Wink mal!“
 //    im Chat und nach einem Rempler (verlegen, kleiner), und kein anderer Weg im Code lässt ihn winken.
+// 4. BrunnenTV lässt sich nicht überspringen: kein TV.skip, kein Game.skipBrunnenTV, keine Taste, kein Tipp aufs Bild,
+//    kein Gamepad-Knopf und kein Text dazu; die Folge (am Ziel und unterwegs) läuft TV.end Sekunden (12–20 s), auch
+//    wenn der Spieler alles drückt.
 import { readFileSync } from 'node:fs';
 import * as G from '../src/map/graph.js';
 import * as shapes from '../src/map/shapes.js';
@@ -26,6 +29,7 @@ import { WAVE, WaveRule, pedestrianAhead, walkerToWave } from '../src/game/wave.
 import { STREET, TOWN_LEN } from '../src/world/kit/layout.js';
 import { Game } from '../src/game/game.js';
 import { CHAT } from '../src/data.js';
+import { TV } from '../src/world/xxl/brunnentv.js';
 import { PerspectiveCamera } from 'three';
 
 let fails = 0;
@@ -381,6 +385,47 @@ let stream12 = [];
   ok((main.match(/adamWave = /g) || []).length === 2 && main.includes('adamWave = c.wave;'), 'äußeres Winken nur in der Startszene (Intro)');
   ok(!/wave:/.test(main.slice(main.indexOf('function stopPlace'), main.indexOf('function stopPlace') + 3000)), 'Ladestopp: kein Winken');
   console.log(`3. Winken: ${slowWaves} Grüße an Fußgänger in ${towns.length} Orten (${people} Menschen, kürzester Abstand ${minGap.toFixed(0)} s, mit 100 km/h ${fastWaves}), im Stream ${asks.length}× „Wink mal!“ → ${chatWaves.length} Grüße, Rempler → ${crashWaves.length} kleiner Gruß`);
+}
+
+// --- 4. BrunnenTV lässt sich nicht überspringen ------------------------------------------------------------------------
+{
+  const src = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8');
+  const main = src('main.js');
+  ok(TV.skip === undefined && typeof Game.prototype.skipBrunnenTV === 'undefined', 'BrunnenTV: TV.skip oder Game.skipBrunnenTV gibt es noch');
+  ok(TV.end >= 12 && TV.end <= 20, `Folge dauert ${TV.end} s (gewünscht etwa 12–20 s)`);
+  ok(!/sceneSkip\(tvRun/.test(main) && !/tvRun\.skipT/.test(main), 'main.js: Tasten oder Gamepad überspringen die Folge');
+  const tap = main.slice(main.indexOf("addEventListener('pointerdown'"), main.indexOf("addEventListener('pointerdown'") + 160);
+  ok(tap.includes('stopRun.on') && !tap.includes('tvRun'), `main.js: ein Tipp aufs Bild überspringt die Folge (${tap.split('\n')[1]})`);
+  // kein Text, kein Tipp, keine Taste spricht mehr vom Überspringen der Folge (Startszene und Ladestopp schon)
+  const texts = ['ui/controls.js', 'ui/first-tips.js', 'ui/drive-hint.js', 'ui/menus.js', 'data.js', 'world/xxl/brunnentv.js'].map((f) => [f, src(f)]);
+  for (const [f, t] of texts) ok(!/BrunnenTV[^'`\n]{0,40}(überspring|skip)|(überspring|skip)[^'`\n]{0,40}BrunnenTV/i.test(t.replace(/^\s*(\/\/|\*).*$/gm, '')), `${f}: Text über das Überspringen von BrunnenTV`);
+  ok(/id: 'skip'.*note: 'Startszene und Ladestopp\.'/.test(src('ui/controls.js')), 'Steuerung: „Szene überspringen“ nennt noch BrunnenTV');
+  // eine Folge am Ziel, während der Spieler alles drückt, was die Steuerung hergibt: Sie läuft bis TV.end
+  for (const way of [false, true]) {
+    const log = [];
+    const { game } = newGame(77, { ui: { brunnenTV: (n) => log.push({ t: game.t, n }) } });
+    const nv = game.navi;
+    const target = nv.targets.find((t) => t.name === 'Würzburg') || nv.targets[0];
+    nv.stop(target.place);
+    if (way) game.startBrunnenTV({ place: target.place, name: target.name }, null, { way: true });
+    else {
+      game.halt = { sec: { kind: 'stadt', place: target.place, s0: 0, s1: 800, spotS: 480 }, still: 0 };
+      game.arriveAtFountain();
+    }
+    ok(!!game.tv, `${way ? 'unterwegs' : 'am Ziel'}: keine Folge`);
+    const t0 = game.t;
+    const all = { steer: 1, throttle: 1, brake: 0, reverse: true, horn: true, wiper: true, megafon: true, ladestopp: true, brunnen: true, device: 'keyboard', kappa: 0, grade: 0 };
+    const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 3000);
+    let end = -1;
+    for (let i = 0; i < 30 * 30 && end < 0; i++) {
+      game.player.speed = 0;
+      game.update(DT, all, camera);
+      if (!game.tv) end = game.t - t0;
+    }
+    ok(Math.abs(end - TV.end) < 2.5 * DT, `${way ? 'unterwegs' : 'am Ziel'}: Folge endet nach ${end.toFixed(2)} s statt ${TV.end} s`);
+    ok(log.length >= 2 && log[0].n > 0 && log[log.length - 1].n === 0, `${way ? 'unterwegs' : 'am Ziel'}: Bauchbinde ${log.map((e) => e.n).join(' → ')}`);
+  }
+  console.log(`4. BrunnenTV: ${TV.end} s am Stück, am Ziel und unterwegs, auch wenn der Spieler alles drückt; kein Weg zum Überspringen (Tasten, Tipp aufs Bild, Gamepad, Texte)`);
 }
 
 console.log(`${checks} Prüfungen, ${fails} Fehler`);

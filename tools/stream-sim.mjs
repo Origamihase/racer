@@ -7,7 +7,6 @@ import { PerspectiveCamera } from 'three';
 import { Trip, J } from '../src/game/trip.js';
 import { Game, FACTS } from '../src/game/game.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
-import { TV } from '../src/world/xxl/brunnentv.js';
 
 export function mulberry32(a) {
   return () => {
@@ -23,11 +22,10 @@ const noop = () => {};
 const loose = (base = {}) => new Proxy(base, { get: (t, k) => (k in t ? t[k] : noop) });
 
 /**
- * Fahrer: cruise Wunschtempo (km/h, Limits hält der Begrenzer ein), skip: überspringt jede Folge gleich nach der
- * Bauchbinde, dawdle: steht nach jeder Folge so viele Sekunden, bevor er weiterfährt (der Trödler).
+ * Fahrer: cruise Wunschtempo (km/h, Limits hält der Begrenzer ein), dawdle: steht nach jeder Folge so viele Sekunden, bevor er weiterfährt (der Trödler).
  */
 export const DRIVERS = {
-  zuegig: { name: 'zügig', cruise: 185, skip: true },
+  zuegig: { name: 'zügig', cruise: 185 },
   mittel: { name: 'mittel', cruise: 145 },
   gemuetlich: { name: 'gemütlich', cruise: 110 },
   troedler: { name: 'Trödler', cruise: 95, dawdle: 25 },
@@ -87,7 +85,6 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
   p.lawful = true; // ein braver Fahrer: auch sein Pedal hält die Tempolimits (Player.lawful)
   const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
   const DT = 1 / 30;
-  let tvT0 = -1;
   let waitUntil = -1;
   const sim = { game, trip, p, log, arrival, state, driver, DT };
   /** secs Sekunden fahren (oder bis der Stream vorbei ist). Gibt false zurück, sobald game.over gesetzt ist. */
@@ -110,7 +107,6 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
       const idle = game.t < waitUntil;
       ctl.throttle = !idle && p.speed < v - 0.5 ? 1 : 0;
       ctl.brake = idle ? 1 : p.speed > v + 3 ? 0.4 : 0;
-      if (game.tv && driver.skip && game.t - tvT0 >= TV.card + 0.1) game.skipBrunnenTV();
       game.offAutobahn = sec.kind !== 'ab';
       const tvBefore = game.tv;
       game.update(DT, ctl, camera);
@@ -120,7 +116,6 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
       for (let k = 0; k < evs.length; k++) game.onTrip(evs[k]);
       const rest = arrival.update(trip, evs, p.speed);
       if (rest) game.onTrip(rest);
-      if (!tvBefore && game.tv) tvT0 = game.t;
       p.battery = 100;
     }
     return !game.over;

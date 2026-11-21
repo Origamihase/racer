@@ -1648,13 +1648,13 @@ function stopPlace(dt) {
 // gehen das Fahrerfenster herunter und wieder hoch, Mini Adam hebt das Megafon (das vom Beifahrersitz, gebaut bei der
 // ersten Folge) an den Mund und schaut zum Brunnen, und drei Kameras im Rahmen des Wagens zeigen die Folge (tvShots):
 // „Totale“, „Fenster“, „Brunnen“. Von der Drohne gleitet die Kamera in die Totale, aus dem Cockpit wird kurz
-// abgeblendet; zurück zur Kamera des Spielers geht es am Ende mit kurzem Abblenden. Überspringen wie beim Ladestopp
-// (sceneSkip): jede Taste ab TV.skip, kurz abblenden, dann beendet das Spiel die Folge, und der Spieler fährt los, wo
-// er steht (Fenster zu, Megafon zurück).
+// abgeblendet; zurück zur Kamera des Spielers geht es am Ende mit kurzem Abblenden. Überspringen lässt sich die Folge
+// nicht (brunnentv.js): Tasten, Tipps aufs Bild und Gamepad-Knöpfe ändern an ihr nichts, sie endet bei TV.end, und der
+// Spieler fährt los, wo er steht (Fenster zu, Megafon zurück).
 // tv: game.tv, f: Mitte des Brunnens im Rahmen des Wagens, shots: die drei Kameras, prop: das Megafon in der Hand,
-// inside: Kamera im Cockpit, skipT / fadeT: wie beim Ladestopp, from / fromLook: Kamera beim Halt
+// inside: Kamera im Cockpit, from / fromLook: Kamera beim Halt
 const tvRun = {
-  on: false, tv: null, f: new THREE.Vector3(), shots: null, prop: null, inside: false, skipT: -1, fadeT: 0,
+  on: false, tv: null, f: new THREE.Vector3(), shots: null, prop: null, inside: false,
   from: new THREE.Vector3(), fromLook: new THREE.Vector3(), pose: { pos: [0, 0, 0], look: [0, 0, 0] },
 };
 const tvM = new THREE.Matrix4();
@@ -1670,7 +1670,7 @@ game.onBrunnenTV = (e) => {
   tvBegin(e);
 };
 
-/** Überspringen einer Szene (Ladestopp, BrunnenTV): jede Taste oder Bestätigung, sobald skip Sekunden vorbei sind. */
+/** Überspringen einer Szene (Ladestopp; BrunnenTV nicht): jede Taste oder Bestätigung, sobald skip Sekunden vorbei sind. */
 function sceneSkip(r, t, skip) {
   if (r.skipT < 0 && t > skip && (input.anyKey || input.take('confirm'))) r.skipT = t;
 }
@@ -1678,7 +1678,7 @@ function sceneSkip(r, t, skip) {
 // Lenkfläche); die Knöpfe liegen darüber und fangen ihren Druck selbst. Ebenso in der Startszene (chargeStep), wo die
 // Touch-Bedienung noch gar nicht zu sehen ist
 renderer.domElement.addEventListener('pointerdown', () => {
-  if (stopRun.on || tvRun.on || state === 'charge') input.anyKey = true;
+  if (stopRun.on || state === 'charge') input.anyKey = true;
 });
 
 /** Game.onBrunnenTV: Der Wagen steht am Brunnen. Ohne Brunnen der Welt (Prüfstand) läuft der Fahrplan ohne Bild. */
@@ -1691,7 +1691,7 @@ function tvBegin(e) {
   r.f.set(q.world.x, 0, q.world.z).applyMatrix4(tvM.copy(carMatrix).invert());
   r.shots = tvShots({ x: r.f.x, z: r.f.z }, q.r);
   // fürs Standbild: Radius der Insel und Maße des Brunnens (r, h seines Bausteins)
-  Object.assign(r, { on: true, tv: e, inside: view === 'cockpit', skipT: -1, fadeT: 0, picDone: false, isl: q.r, fi: q.object ? q.object.userData.info : null });
+  Object.assign(r, { on: true, tv: e, inside: view === 'cockpit', picDone: false, isl: q.r, fi: q.object ? q.object.userData.info : null });
   r.from.copy(camera.position);
   camera.getWorldDirection(r.fromLook).multiplyScalar(20).add(camera.position);
   if (!r.prop) {
@@ -1704,24 +1704,16 @@ function tvBegin(e) {
   adamDo((a) => a.lookAt([-r.f.x, 0.85, -r.f.z], TV.look.off[0]));
 }
 
-/** Nach game.update: Ist die Folge vorbei (Fahrplan zu Ende oder übersprungen), übernimmt der Spieler, wo er steht. */
+/** Nach game.update: Ist die Folge vorbei (ihr Fahrplan zu Ende), übernimmt der Spieler, wo er steht. */
 function tvTick() {
   const r = tvRun;
-  if (game.tv && game.running && !game.over) {
-    if (r.skipT >= 0 && game.brunnenT() - r.skipT >= TV.fade) game.skipBrunnenTV();
-    return;
-  }
+  if (game.tv && game.running && !game.over) return;
   // endet der Stream mitten in der Folge, bekommt das Album ihr Standbild jetzt (der Wagen steht noch am Brunnen)
   if (r.on && !r.picDone && game.over) {
     r.picDone = true;
     takeAlbumShot(r);
   }
   tvStop();
-  if (r.skipT >= 0) {
-    r.fadeT = STOP_FADE;
-    fxState.fade = 1;
-    drone.init = false;
-  }
 }
 
 /** Fenster zu, Megafon zurück auf den Sitz, Szene aus (auch bei einer neuen Fahrt). */
@@ -1787,12 +1779,12 @@ function tvPlace(dt) {
       fade = 1 - (t - sw) / (TV.back[1] - sw);
     }
   }
-  fxState.fade = Math.max(clamp(fade, 0, 1), r.skipT >= 0 ? (t - r.skipT) / TV.fade : 0);
+  fxState.fade = clamp(fade, 0, 1);
   r.inside = inside;
   // das Megafon vom Beifahrersitz ist in seiner Hand
   tesla.seatMegaphone(!tesla.adam.megaphoneShown);
-  // das Standbild fürs Album: in der Brunnen-Kamera mit dem Megafon am Fenster – oder sofort, wenn übersprungen wird
-  if (!r.picDone && (t >= ALBUM_PIC.t || r.skipT >= 0)) {
+  // das Standbild fürs Album: in der Brunnen-Kamera mit dem Megafon am Fenster
+  if (!r.picDone && t >= ALBUM_PIC.t) {
     r.picDone = true;
     takeAlbumShot(r);
   }
@@ -2132,11 +2124,10 @@ function step(dt, { render = true } = {}) {
         pause();
         break;
       }
-      for (const r of [stopRun, tvRun]) {
-        if (r.fadeT <= 0) continue;
-        // nach dem Überspringen des Ladestopps oder der BrunnenTV-Folge blendet das Bild wieder auf
-        r.fadeT = Math.max(0, r.fadeT - dt);
-        fxState.fade = r.fadeT / STOP_FADE;
+      if (stopRun.fadeT > 0) {
+        // nach dem Überspringen des Ladestopps blendet das Bild wieder auf (die BrunnenTV-Folge endet nie übersprungen)
+        stopRun.fadeT = Math.max(0, stopRun.fadeT - dt);
+        fxState.fade = stopRun.fadeT / STOP_FADE;
       }
       if (stopRun.on) {
         // Ladestopp: jede Taste überspringt ihn (wie die Startszene); das Spiel läuft weiter, der Spieler steht an
@@ -2157,9 +2148,8 @@ function step(dt, { render = true } = {}) {
         break;
       }
       if (tvRun.on) {
-        // BrunnenTV: Der Wagen steht am Brunnen, jede Taste überspringt die Folge (wie den Ladestopp); Fenster, Megafon
-        // und Kamera stellt tvPlace nach der Welt
-        sceneSkip(tvRun, game.brunnenT(), TV.skip);
+        // BrunnenTV: Der Wagen steht am Brunnen, bis die Folge vorbei ist – keine Taste überspringt sie (brunnentv.js);
+        // Fenster, Megafon und Kamera stellt tvPlace nach der Welt
         STOP_CTL.device = input.lastDevice;
         p.speed = 0;
         game.update(dt, STOP_CTL, camera);
@@ -2375,7 +2365,7 @@ function step(dt, { render = true } = {}) {
   U.uFlash.value = fxState.flash;
   U.uGlitch.value = fxState.glitch > 0 ? 0.6 + 0.4 * Math.sin(simT * 40) : 0;
   U.uGreen.value = fxState.green > 0 ? (Math.sin(simT * 26) > 0.2 ? 1 : 0.15) : 0;
-  U.uFade.value = state === 'charge' || stopRun.on || stopRun.fadeT > 0 || tvRun.on || tvRun.fadeT > 0 ? clamp(fxState.fade, 0, 1) : 0;
+  U.uFade.value = state === 'charge' || stopRun.on || stopRun.fadeT > 0 || tvRun.on ? clamp(fxState.fade, 0, 1) : 0;
   U.uSat.value = 1.08 - cloud * 0.25;
 
   if (DEBUG && window.__MA && window.__MA.camHook) window.__MA.camHook(camera, carMatrix);
@@ -2445,7 +2435,6 @@ function xxlStart(title) {
   stopRun.on = false;
   stopRun.fadeT = 0;
   tvStop();
-  tvRun.fadeT = 0;
   p.x = xxl.trip.x;
   p.speed = title ? 0 : 40 / 3.6;
   xxl.update(p.s, p.x, 0);
@@ -2552,7 +2541,7 @@ if (DEBUG) {
     /** BrunnenTV-Folge: Szene (tvRun) und Zustand für Prüfbilder: Zeit, Kamera, Fenster, Megafon. */
     get tv() {
       const t = game.brunnenT();
-      return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t) : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, skipT: tvRun.skipT, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl.arrival.held };
+      return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t) : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl.arrival.held };
     },
     /** BrunnenTV-Album: Folgen im Spielstand, gespeicherte Bilder, zuletzt aufgenommenes Standbild. */
     get album() {

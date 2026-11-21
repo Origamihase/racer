@@ -59,7 +59,7 @@ export function controlRows() {
     one('camera', 'Kamera: Cockpit oder Drohne'),
     one('wiper', 'Scheibenwischer von Hand'),
     one('pause', 'Pause'),
-    { id: 'skip', text: 'Szene überspringen', keys: ['jede Taste'], pad: ['jeder Knopf'], touch: ['aufs Bild tippen'], note: 'Startszene, Ladestopp und BrunnenTV.' },
+    { id: 'skip', text: 'Szene überspringen', keys: ['jede Taste'], pad: ['jeder Knopf'], touch: ['aufs Bild tippen'], note: 'Startszene und Ladestopp.' },
     { ...one('confirm', 'Tipps der ersten Minuten abschalten'), touch: ['✕ am Tipp'] },
     one('chat', 'Chat ein oder aus', 'Auch unter Einstellungen.'),
     one('mute', 'Ton an oder aus', 'Auch unter Einstellungen.'),

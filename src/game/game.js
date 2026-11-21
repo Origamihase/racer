@@ -1646,7 +1646,7 @@ export class Game {
     const kinds = town && town.plan && Array.isArray(town.plan.fountains) ? town.plan.fountains.map((f) => f.kind) : [];
     const entry = addEpisode(this.save, { place: t.place, t: this.streamT, clock: this.clock, kinds, way });
     const n = entry.n;
-    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, skip: false, called: false, debate: entry.d || null, way };
+    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, called: false, debate: entry.d || null, way };
     this.quote.tv.push({ t: this.t, n });
     this.routeMark('brunnen', way ? { n, place: t.place, way: true } : { n, place: t.place });
     this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town, way });
@@ -1704,18 +1704,12 @@ export class Game {
   }
 
   /**
-   * Solange die Folge läuft, wartet die nächste Bieterrunde; ihre Momente kommen je einmal zu ihrer Zeit. Übersprungen
-   * (skipBrunnenTV) endet sie im nächsten Bild so, wie sie sonst endet; was noch nicht gesagt war, bleibt ungesagt –
-   * bis auf den Ruf: „Schöner Brunnen!“ kommt in jeder Folge (der Eigentümer), übersprungen eben beim Losfahren.
+   * Solange die Folge läuft, wartet die nächste Bieterrunde; ihre Momente kommen je einmal zu ihrer Zeit, und sie endet
+   * erst bei TV.end – überspringen lässt sie sich nicht (brunnentv.js), der Ruf „Schöner Brunnen!“ kommt in jeder Folge.
    */
   tickBrunnenTV() {
     const tv = this.tv;
     this.T.bid = Math.max(this.T.bid, TV.pause);
-    if (tv.skip) {
-      if (!tv.called) this.brunnenCall();
-      this.endBrunnenTV();
-      return;
-    }
     const t = this.t - tv.t0;
     const moments = [
       [TV.card, () => {
@@ -1771,12 +1765,7 @@ export class Game {
     });
   }
 
-  /** Folge überspringen (main.js: jede Taste ab TV.skip, wie beim Ladestopp): Sie endet im nächsten Bild. */
-  skipBrunnenTV() {
-    if (this.tv) this.tv.skip = true;
-  }
-
-  /** Die Folge ist vorbei (oder übersprungen): Bauchbinde weg, der Wagen darf weiter – durch den Ort zur nächsten Straße. */
+  /** Die Folge ist vorbei: Bauchbinde weg, der Wagen darf weiter – durch den Ort zur nächsten Straße. */
   endBrunnenTV() {
     const way = this.tv && this.tv.way;
     this.tv = null;
