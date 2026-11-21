@@ -7,6 +7,22 @@
 import { eventTime } from '../input.js';
 import { dragToAnalog, swipeDir, TOUCH } from './touch-model.js';
 
+/**
+ * Die Touch-Knöpfe am Rand (main.js baut sie, src/ui/controls.js nennt sie in der Steuerungsübersicht): Aktion, Inhalt,
+ * Klasse; when: nur zu sehen, solange das Spiel sie anbietet (Ladestopp einplanbar, Brunnen auf dem Weg).
+ */
+export const TOUCH_BUTTONS = [
+  { action: 'horn', label: '📯', cls: 't-small t-horn' },
+  { action: 'wiper', label: '🌧️', cls: 't-small t-wiper' },
+  { action: 'megafon', label: '📢', cls: 't-small t-megafon' },
+  { action: 'camera', label: '🎥', cls: 't-small t-camera' },
+  { action: 'pause', label: '⏸', cls: 't-small t-pause' },
+  { action: 'ladestopp', icon: '🔌', label: 'Ladestopp einplanen', cls: 't-stop', when: true },
+  { action: 'brunnen', icon: '⛲', label: 'BrunnenTV hier', cls: 't-way', when: true },
+];
+/** Lenken und Pedale (Beschriftung wie auf dem Schirm). */
+export const TOUCH_LABELS = { left: '◀', right: '▶', drag: '◀ ziehen ▶', brake: 'Bremse', gas: 'Strom' };
+
 const el = (tag, cls, parent, text) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -28,17 +44,17 @@ export class TouchControls {
     root.insertBefore(this.zone, root.firstChild);
     this.base = el('div', 'tc-base', this.zone);
     this.knob = el('div', 'tc-knob', this.zone);
-    this.hint = el('div', 'tc-hint', this.zone, '◀ ziehen ▶');
+    this.hint = el('div', 'tc-hint', this.zone, TOUCH_LABELS.drag);
     // Lenkknöpfe (Bedienung „Tasten“)
-    this.left = el('button', 't-left tc-key', root, '◀');
-    this.right = el('button', 't-right tc-key', root, '▶');
+    this.left = el('button', 't-left tc-key', root, TOUCH_LABELS.left);
+    this.right = el('button', 't-right tc-key', root, TOUCH_LABELS.right);
     for (const [b, dir] of [[this.left, -1], [this.right, 1]]) {
       b.type = 'button';
       this.bindKey(b, dir);
     }
     // Pedale
-    this.brake = el('button', 't-brake tc-pedal', root, 'Bremse');
-    this.gas = el('button', 't-gas tc-pedal', root, 'Strom');
+    this.brake = el('button', 't-brake tc-pedal', root, TOUCH_LABELS.brake);
+    this.gas = el('button', 't-gas tc-pedal', root, TOUCH_LABELS.gas);
     for (const [b, k] of [[this.brake, 'brake'], [this.gas, 'gas']]) {
       b.type = 'button';
       this.bindPedal(b, k);
@@ -60,7 +76,7 @@ export class TouchControls {
     this.mode = ds.touchMode === 'tasten' ? 'tasten' : 'wischen';
     this.root.classList.toggle('tc-tasten', this.mode === 'tasten');
     this.root.classList.toggle('tc-cruise', !!ds.cruise);
-    this.gas.textContent = ds.cruise ? 'Strom +' : 'Strom';
+    this.gas.textContent = ds.cruise ? TOUCH_LABELS.gas + ' +' : TOUCH_LABELS.gas;
     this.reset();
   }
 

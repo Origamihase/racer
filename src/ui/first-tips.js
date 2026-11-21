@@ -7,13 +7,16 @@
 // (localStorage); Enter oder ✕ schaltet alle ab. Diese Datei kennt kein DOM: main.js füttert FirstTips, die Karte
 // zeichnet drive-hint.js showTip, tools/tipps-test.mjs prüft den Ablauf.
 
+import { deviceKey } from './controls.js';
+
 const KEY = 'mini-adam-erste-minuten';
 /** Kein Tipp mehr (Enter oder ✕) – so steht es im Speicher. */
 const OFF = 'aus';
 
 /**
  * Die Tipps in ihrer Rangfolge (sind zwei fällig, kommt der vordere): title, rows je Gerät als [[Tasten …], Text],
- * show: so viele Sekunden steht er, action: diese Eingabe befolgt ihn (dann blendet er bald aus).
+ * show: so viele Sekunden steht er, action: diese Eingabe befolgt ihn (dann blendet er bald aus). Die Tasten kommen
+ * aus der Belegung (controls.js deviceKey) – am Gamepad steht also der Knopf, den es wirklich gibt.
  */
 export const TIPS = {
   ausfahrt: {
@@ -28,19 +31,19 @@ export const TIPS = {
     title: '🎥 Kamera',
     show: 8,
     action: 'camera',
-    rows: (device) => [[[device === 'touch' ? '🎥' : device === 'gamepad' ? 'B' : 'V'], 'Cockpit oder Drohne']],
+    rows: (device) => [[[deviceKey('camera', device)], 'Cockpit oder Drohne']],
   },
   megafon: {
     title: '📢 Megafon',
     show: 8,
     action: 'megafon',
-    rows: (device) => [[[device === 'touch' ? '📢' : device === 'gamepad' ? 'Y' : 'H'], 'Eine Durchsage, und wer vor dir fährt, macht Platz.']],
+    rows: (device) => [[[deviceKey('megafon', device)], 'Eine Durchsage, und wer vor dir fährt, macht Platz.']],
   },
   ladestopp: {
     title: '🔌 Ladestopp',
     show: 9,
     action: 'ladestopp',
-    rows: (device) => [[device === 'touch' ? [] : ['L'], device === 'touch'
+    rows: (device) => [[device === 'touch' ? [] : [deviceKey('ladestopp', device)], device === 'touch'
       ? 'Der Knopf „Ladestopp einplanen“ führt zur nächsten Ladesäule auf dem Weg, danach weiter zum Ziel.'
       : 'Ladestopp einplanen: Das Navi führt zur nächsten Ladesäule auf dem Weg, danach weiter zum Ziel.']],
   },

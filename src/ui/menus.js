@@ -13,6 +13,7 @@ import { goalKind, fountainName } from '../world/kit/layout.js';
 import { drawQuote } from './quotechart.js';
 import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
 import { canFullscreen, fullscreenLabel, toggleFullscreen, onFullscreenChange, homeScreenHint } from './fullscreen.js';
+import { controlRows, keysOf, padOf } from './controls.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -364,6 +365,7 @@ export class Menus {
     button(menu, '↻ Neustart', 'restart');
     button(menu, '🗺️ Karte', 'karte');
     button(menu, '⛲ Folgen', 'album');
+    button(menu, '🎮 Steuerung', 'controls');
     button(menu, '⚙️ Einstellungen', 'settings');
     button(menu, '⏹ Stream beenden', 'quit');
   }
@@ -614,28 +616,26 @@ export class Menus {
     s.textContent = '';
     const card = el('div', 'card', s);
     el('h2', '', card, '🎮 Steuerung');
+    // jede Zeile aus den echten Belegungen (src/ui/controls.js): Tasten und Knöpfe als Kappen, gleichwertige mit „oder“
     const tbl = el('div', 'controls-grid', card);
-    const rows = [
-      // geschützte Leerzeichen: wird die Spalte schmal, bricht die Zeile nur vor und nach „oder“, nie zwischen A und D
-      ['Lenken', '←\u00a0→ oder A\u00a0D', 'Linker Stick', '◀\u00a0▶'],
-      ['Strom geben', '↑ oder W', 'RT oder Steuerkreuz ↑', 'Strom'],
-      ['Bremsen', '↓ oder S', 'LT oder Steuerkreuz ↓', 'Bremse'],
-      ['Rückwärtsgang (im Stand halten, zurück mit Strom)', '↓ oder S', 'LT oder Steuerkreuz ↓', 'Bremse'],
-      ['Hupen (Brunnen & Elsa grüßen)', 'Leertaste', 'A', '📯'],
-      ['Scheibenwischer von Hand', 'E', 'X', '🌧️'],
-      ['Megafon', 'H', 'Y', '📢'],
-      ['Ladestopp einplanen (nächste Ladesäule)', 'L', '–', '🔌 Ladestopp'],
-      ['Kamera (Cockpit / Drohne)', 'V', 'B', '🎥'],
-      ['Chat ein/aus', 'C', '–', '–'],
-      ['Ton aus', 'M', '–', '–'],
-      ['Vollbild an/aus', 'F', '–', '⛶ im Menü'],
-      ['Pause', 'Esc oder P', 'Start', '⏸'],
-    ];
     const head = el('div', 'crow head', tbl);
     for (const h of ['Aktion', 'Tastatur', 'Gamepad', 'Touch']) el('span', '', head, h);
-    for (const r of rows) {
+    for (const r of controlRows()) {
       const row = el('div', 'crow', tbl);
-      for (const c of r) el('span', '', row, c);
+      const act = el('span', 'c-act', row);
+      el('span', 'c-name', act, r.text);
+      if (r.note) el('span', 'c-note', act, r.note);
+      for (const [dev, list] of [['Tastatur', r.keys], ['Gamepad', r.pad], ['Touch', r.touch]]) {
+        const c = el('span', 'c-in', row);
+        c.dataset.dev = dev;
+        if (!list.length) el('span', 'c-none', c, '–');
+        list.forEach((k, i) => {
+          if (i) el('span', 'c-or', c, 'oder');
+          // Tasten und Knöpfe als Kappe, Beschreibungen („jede Taste“, „aufs Bild tippen“) als Text
+          if (/^[a-zäöü]/.test(k)) el('span', 'c-say', c, k);
+          else el('kbd', 'ckey', c, k);
+        });
+      }
     }
     const tips = el('div', 'tips', card);
     el('h3', '', tips, 'Tipps');
@@ -646,7 +646,7 @@ export class Menus {
       'Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.',
       'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
-      'Geladen wird an den Ladesäulen: in jedem Ort auf dem Weg und in den Ladeparks an den Ausfahrten. Warnt OMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) die nächste ein, das Navi führt hin und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.',
+      `Geladen wird an den Ladesäulen: in jedem Ort auf dem Weg und in den Ladeparks an den Ausfahrten. Warnt OMI vor dem Akku, plant ${keysOf('ladestopp')[0]} (am Gamepad ${padOf('ladestopp')[0]}, auf dem Handy der Knopf „Ladestopp einplanen“) die nächste ein, das Navi führt hin und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.`,
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',
       'In den ersten Minuten erklären kurze Tipps am Bildrand, was gerade dran ist – jeder kommt nur einmal. Enter oder ✕ schaltet sie ab.',
     ]) el('p', '', tips, '• ' + t);

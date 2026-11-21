@@ -52,6 +52,9 @@ export function homeScreenHint() {
   return /iPhone|iPod/.test(navigator.userAgent) && !standalone;
 }
 
+/** Die Taste fürs Vollbild (e.code; die Steuerungsübersicht in src/ui/controls.js nennt sie von hier). */
+export const FULLSCREEN_KEY = 'KeyF';
+
 /**
  * Taste F (ohne Strg, Alt oder ⌘, nicht in einem Eingabefeld): Vollbild an oder aus – gleich im Tastendruck, denn nur
  * dort lässt der Browser es zu (aus der Spielschleife heraus würde er es verweigern).
@@ -59,7 +62,7 @@ export function homeScreenHint() {
 export function bindFullscreenKey() {
   if (!canFullscreen()) return;
   window.addEventListener('keydown', (e) => {
-    if (e.code !== 'KeyF' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.code !== FULLSCREEN_KEY || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target && /^(input|textarea|select)$/i.test(e.target.tagName) && e.target.type !== 'range') return;
     e.preventDefault();
     toggleFullscreen();

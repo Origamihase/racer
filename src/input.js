@@ -6,11 +6,16 @@
 // weitergegeben (steerLog): Ein Tipp wirkt im richtigen Teilschritt, egal ob der Rechner 30 oder 144 Bilder pro
 // Sekunde schafft. Fokusverlust (Alt-Tab, Klick daneben, Tab im Hintergrund) lässt alle Tasten los.
 
-const ACTIONS = {
+// Belegung: Tastatur (e.code → Aktion), Gamepad in der Standard-Belegung des Browsers (Knopfnummer → Aktion) und die
+// Fahrt am Gamepad (PAD_DRIVE: Stick, Trigger, Steuerkreuz). Die Steuerungsübersicht (src/ui/controls.js) liest genau
+// diese Tabellen – sie zeigt nur, was hier wirklich belegt ist.
+export const ACTIONS = {
   ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'gas', KeyW: 'gas',
   ArrowDown: 'brake', KeyS: 'brake', Space: 'horn', KeyE: 'wiper', KeyH: 'megafon', Escape: 'pause', KeyP: 'pause',
   KeyV: 'camera', KeyM: 'mute', Enter: 'confirm', KeyC: 'chat', KeyL: 'ladestopp', KeyB: 'brunnen',
 };
+export const PAD_BUTTONS = { 0: 'horn', 1: 'camera', 2: 'wiper', 3: 'megafon', 4: 'ladestopp', 5: 'brunnen', 9: 'pause' };
+export const PAD_DRIVE = { stick: 0, gas: [7, 12], brake: [6, 13], left: 14, right: 15 };
 const STEER_DIR = { left: -1, right: 1 };
 // Fahrtasten: Browser soll damit weder scrollen noch Kurzbefehle auslösen
 const DRIVE_KEYS = new Set(['left', 'right', 'gas', 'brake', 'horn']);
@@ -205,21 +210,21 @@ export class Input {
     for (const p of pads) {
       if (!p || !p.connected) continue;
       // Stick: Totzone und sanfte Kennlinie; der Stick hat Vorrang vor dem Touch-Zug
-      const ax = stickCurve(p.axes[0] || 0);
+      const ax = stickCurve(p.axes[PAD_DRIVE.stick] || 0);
       if (ax !== 0) {
         analog = ax;
         this.lastDevice = 'gamepad';
       }
-      const rt = p.buttons[7]?.value || 0;
-      const lt = p.buttons[6]?.value || 0;
+      const rt = p.buttons[PAD_DRIVE.gas[0]]?.value || 0;
+      const lt = p.buttons[PAD_DRIVE.brake[0]]?.value || 0;
       if (rt > 0.05) gas = Math.max(gas, Math.min(1, (rt - 0.05) / 0.9));
       if (lt > 0.05) brake = Math.max(brake, Math.min(1, (lt - 0.05) / 0.9));
-      if (p.buttons[12]?.pressed) gas = 1;
-      if (p.buttons[13]?.pressed) brake = 1;
+      if (p.buttons[PAD_DRIVE.gas[1]]?.pressed) gas = 1;
+      if (p.buttons[PAD_DRIVE.brake[1]]?.pressed) brake = 1;
       if (rt > 0.05 || lt > 0.05) this.lastDevice = 'gamepad';
       // Steuerkreuz: digital wie die Pfeiltasten (Zeitpunkt: letzte Meldung des Pads)
       const pt = p.timestamp > 0 && p.timestamp <= t ? Math.max(this.lastPoll, p.timestamp) : t;
-      for (const [i, dir] of [[14, -1], [15, 1]]) {
+      for (const [i, dir] of [[PAD_DRIVE.left, -1], [PAD_DRIVE.right, 1]]) {
         const id = 'pad' + p.index + ':' + i;
         const down = !!p.buttons[i]?.pressed;
         if (down !== !!this.padSteer[id]) {
@@ -231,22 +236,18 @@ export class Input {
           } else this.sk.release(id, pt);
         }
       }
-      const btn = (i, action) => {
-        // pro Gamepad merken, sonst löst ein zweites Pad den Knopf in jedem Bild neu aus
+      // Knöpfe: jeder neue Druck zählt als Taste (überspringt eine Szene wie an der Tastatur), die belegten lösen ihre
+      // Aktion aus – pro Gamepad gemerkt, sonst löst ein zweites Pad den Knopf in jedem Bild neu aus
+      p.buttons.forEach((b, i) => {
         const key = p.index + ':' + i;
-        const down = !!p.buttons[i]?.pressed;
+        const down = !!b?.pressed;
         if (down && !this.padPrev[key]) {
-          this.pressed.add(action);
+          if (PAD_BUTTONS[i]) this.pressed.add(PAD_BUTTONS[i]);
           this.anyKey = true;
           this.lastDevice = 'gamepad';
         }
         this.padPrev[key] = down;
-      };
-      btn(0, 'horn');
-      btn(2, 'wiper');
-      btn(3, 'megafon');
-      btn(9, 'pause');
-      btn(1, 'camera');
+      });
     }
     this.sk.take(this.lastPoll, t, this.steerLog);
     this.lastPoll = t;

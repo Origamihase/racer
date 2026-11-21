@@ -29,7 +29,7 @@ import { Rain } from './fx/rain.js';
 import { Audio } from './audio.js';
 import { Speech } from './speech.js';
 import { Input } from './input.js';
-import { TouchControls } from './ui/touch.js';
+import { TouchControls, TOUCH_BUTTONS } from './ui/touch.js';
 import { driveSettings, playerOptions, IS_TOUCH } from './ui/drive-settings.js';
 import { showDriveHint, driveHintTick, driveHintBusy, showTip } from './ui/drive-hint.js';
 import { FirstTips, loadTips, storeTips } from './ui/first-tips.js';
@@ -283,34 +283,24 @@ ui.setFacecam(settings.facecam !== false);
 // Touch-Knöpfe (nur auf Geräten mit Touchscreen sichtbar)
 const touchEl = document.createElement('div');
 touchEl.className = 'touch';
-// Lenken, Bremse und Strom kommen aus src/ui/touch.js (Daumen-Zug oder Lenkknöpfe)
-for (const [action, label, cls] of [
-  ['horn', '📯', 't-small t-horn'], ['wiper', '🌧️', 't-small t-wiper'], ['megafon', '📢', 't-small t-megafon'],
-  ['camera', '🎥', 't-small t-camera'], ['pause', '⏸', 't-small t-pause'],
-]) {
+// Lenken, Bremse und Strom kommen aus src/ui/touch.js (Daumen-Zug oder Lenkknöpfe), die Knöpfe am Rand aus dessen
+// Liste TOUCH_BUTTONS: „Ladestopp einplanen“ (wie Taste L) ist zu sehen, wenn der Akku halb leer ist oder OMI gewarnt
+// hat, „BrunnenTV hier“ (wie Taste B), solange der Wagen neben einem Brunnen auf dem Weg steht (Game.wayOffer)
+const touchBtn = {};
+for (const t of TOUCH_BUTTONS) {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = cls;
-  b.textContent = label;
+  b.className = t.cls;
+  if (t.icon) {
+    b.setAttribute('aria-label', t.label);
+    b.append(Object.assign(document.createElement('span'), { textContent: t.icon }), ' ' + t.label);
+  } else b.textContent = t.label;
   touchEl.appendChild(b);
-  input.bindTouch(b, action);
+  input.bindTouch(b, t.action);
+  touchBtn[t.action] = b;
 }
-// „Ladestopp einplanen“ (wie Taste L), zu sehen, wenn der Akku halb leer ist oder NOMI gewarnt hat
-const stopBtn = document.createElement('button');
-stopBtn.type = 'button';
-stopBtn.className = 't-stop';
-stopBtn.setAttribute('aria-label', 'Ladestopp einplanen');
-stopBtn.innerHTML = '<span>🔌</span> Ladestopp einplanen';
-touchEl.appendChild(stopBtn);
-input.bindTouch(stopBtn, 'ladestopp');
-// „BrunnenTV hier“ (wie Taste B), zu sehen, solange der Wagen neben einem Brunnen auf dem Weg steht (Game.wayOffer)
-const wayBtn = document.createElement('button');
-wayBtn.type = 'button';
-wayBtn.className = 't-way';
-wayBtn.setAttribute('aria-label', 'BrunnenTV hier');
-wayBtn.innerHTML = '<span>⛲</span> BrunnenTV hier';
-touchEl.appendChild(wayBtn);
-input.bindTouch(wayBtn, 'brunnen');
+const stopBtn = touchBtn.ladestopp;
+const wayBtn = touchBtn.brunnen;
 app.appendChild(touchEl);
 const touch = new TouchControls(touchEl, input);
 const jolt = new Jolt();

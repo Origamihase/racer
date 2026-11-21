@@ -658,9 +658,19 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 
 .controls-grid { display: grid; gap: 2px; margin-top: 10px; }
 /* minmax(0, …): jede Zeile bekommt dieselben Spaltenbreiten, egal wie lang ihre Wörter sind */
-.crow { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.6fr); gap: 10px; padding: 7px 10px; border-radius: 8px; background: rgba(255,255,255,0.03); font-size: 15px; }
+.crow { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px; padding: 7px 10px; border-radius: 8px; background: rgba(255,255,255,0.03); font-size: 15px; align-items: center; }
 .crow > span { overflow-wrap: break-word; hyphens: auto; }
 .crow.head { background: none; color: var(--sub); font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; }
+/* Steuerung (src/ui/controls.js): links die Aktion mit kurzer Erklärung, je Gerät die Tasten als Kappen */
+.c-act { display: flex; flex-direction: column; gap: 1px; }
+.c-name { font-weight: 700; }
+.c-note { font-size: 12.5px; line-height: 1.35; color: var(--sub); }
+.c-in { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; }
+.ckey { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 7px; white-space: nowrap;
+  font: 700 13.5px/1 var(--font); color: #20242c; background: linear-gradient(#fbfcfd, #dfe3ea); box-shadow: 0 2px 0 #9ca3b0; }
+.c-or { font-size: 12px; color: var(--sub); }
+.c-say { font-size: 13.5px; }
+.c-none { color: var(--sub); }
 .tips p { margin: 4px 0; font-size: 14.5px; }
 
 .settings-card { max-width: 680px; }
@@ -771,13 +781,11 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .hud-info { transform: scale(0.85); transform-origin: top left; }
   .chat { font-size: 12px; }
   .chat-list { font-size: 12px; }
-  .crow { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
-  .crow span:nth-child(4) { display: none; }
-}
-/* auf dem Handy zählt die Touch-Spalte – dafür fällt dort die Gamepad-Spalte weg */
-@media (max-width: 760px) and (pointer: coarse) {
-  .crow span:nth-child(3) { display: none; }
-  .crow span:nth-child(4) { display: block; }
+  /* schmal: die Aktion über die ganze Breite, darunter Tastatur, Gamepad und Touch nebeneinander mit ihrem Namen */
+  .crow { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; align-items: start; }
+  .crow.head { display: none; }
+  .c-act { grid-column: 1 / -1; }
+  .c-in::before { content: attr(data-dev); flex-basis: 100%; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--sub); }
 }
 /* hochkant ist der Blick auf die Straße klein: die Jobs stehen dann im Pausenmenü, und der Chat ist breiter (quer
    bliebe mit einem so breiten Chat kein Platz für den Streifen zwischen den Feldern) */
