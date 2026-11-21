@@ -593,7 +593,8 @@ export function buildTesla() {
     const a1 = glassPoint(2.305, sidePhi(-1, ROOF_PHI + 0.04), p).clone();
     const bottom = glassPoint(2.5, sidePhi(-1, -0.7), p).y;
     const top = glassPoint(2.5, sidePhi(-1, ROOF_PHI), p).y;
-    return { a0, a1, bottom, top, zB: uToZ(2.82) };
+    // (u: A-Säule unten und oben, B-Säule; phi: Unter- und Oberkante – für windowOpening().at)
+    return { a0, a1, bottom, top, zB: uToZ(2.82), u: [1.55, 2.305, 2.82], phi: [-0.7, ROOF_PHI] };
   })();
   function windowGlass() {
     const m = W.phys(GLASS_MAT);
@@ -647,6 +648,19 @@ export function buildTesla() {
       if (k > 0 && !winMat) winMat = windowGlass();
       glassMesh.material = k > 0 ? winMat : glass;
       if (winMat) winMat.userData.win.uWinA.value.x = lerp(WIN.top, WIN.bottom, Math.min(1, Math.max(0, k)));
+    },
+    /**
+     * Öffnung des Fahrerfensters im Rahmen des Wagens (vorn −z, links −x): a0 / a1 Punkte auf dem Glas an der A-Säule
+     * unten und oben, zB die B-Säule, bottom / top Unter- und Oberkante; at(along, up, out): der Punkt auf dem Glas,
+     * along (0 B-Säule … 1 A-Säule) längs und up (0 Unter- … 1 Oberkante) hoch in der Öffnung (Ladestopp: dort fliegt
+     * das Popcorn hindurch).
+     */
+    windowOpening() {
+      const at = (along, up, out) => {
+        const uA = WIN.u[0] + (WIN.u[1] - WIN.u[0]) * up;
+        return glassPoint(WIN.u[2] + (uA - WIN.u[2]) * along, sidePhi(-1, WIN.phi[0] + (WIN.phi[1] - WIN.phi[0]) * up), out);
+      };
+      return { a0: WIN.a0.clone(), a1: WIN.a1.clone(), zB: WIN.zB, bottom: WIN.bottom, top: WIN.top, at };
     },
     /** Megafon auf dem Beifahrersitz zeigen (false, solange Mini Adam es in der Hand hat). */
     seatMegaphone(show) {

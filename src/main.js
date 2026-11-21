@@ -16,7 +16,7 @@ import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
 import { createNatureKit } from './world/kit/nature.js';
 import { cityKit, naviLayout } from './world/xxl/towns.js';
 import { SCENE, ROLL_T, STOP, DOCK, CHARGE, rollPose, groundAt, chargeOf } from './world/xxl/charge.js';
-import { buildPopping, POPPING_AT } from './world/xxl/popping.js';
+import { buildPopping, POPPING_AT, POPPING_YAW, windowAim } from './world/xxl/popping.js';
 import { TV, tvShots, shotPose, dollyFor, shotAt, windowAt, megaphoneAt, lookAt as tvLookAt, stillShot, STILL } from './world/xxl/brunnentv.js';
 import { buildHandMegaphone } from './models/megaphone.js';
 import { Traffic } from './world/traffic.js';
@@ -1394,16 +1394,16 @@ function chargeGreet() {
 // Spur, während der Wagen der Szene rückwärts in die freie Heldenbucht setzt, lädt und ausparkt (die Wege rechnet
 // charge.js im Rahmen des Parks). Passiert der ausparkende Wagen den Halt, folgt ihm der Spieler: Die Übergabe am Ende
 // ist ohne Sprung. Kamera: beim Einparken die des Spielers (im Cockpit bleibt sie dort, die Drohne steigt über die
-// Gegenspur und schaut zu), in der Bucht nah an Buchse, Säule und Popcorn-Stand (Schlüssel im Rahmen des Wagens wie in
-// Erlensee), beim Ausparken die Startszene (CHARGE_KEYS) zurück ins Cockpit bzw. hinter den Wagen wie die Drohne.
-// (über den Eimer hinweg auf Buchse, Stecker und Säule – der Eimer bleibt unter dem Bild –, dann zum Tisch hinter der
-// Säule, wo das Popcorn springt und der Bananensaft steht, zum Bananensaft schräg von vorn aufs Fahrerfenster mit dem
-// Tisch am Rand, zuletzt Erlensees erster Schlüssel fürs Ausstecken)
+// Gegenspur und schaut zu), in der Bucht nah an Buchse, Säule und Popcorn-Maschine (Schlüssel im Rahmen des Wagens wie
+// in Erlensee), beim Ausparken die Startszene (CHARGE_KEYS) zurück ins Cockpit bzw. hinter den Wagen wie die Drohne.
+// (über den Eimer hinweg auf Buchse, Stecker und Säule – der Eimer bleibt unter dem Bild –, dann von links auf die
+// Maschine oben auf der Säule und das offene Fahrerfenster, in das das Popcorn fliegt, zum Bananensaft schräg von vorn
+// aufs Fahrerfenster, zuletzt Erlensees erster Schlüssel fürs Ausstecken)
 const STOP_KEYS = [
   { t: 0, pos: [-1.7, 1.95, -1.3], look: [-0.95, 0.85, 1.95] },
   { t: STOP.plug[1] + 0.15, pos: [-1.5, 1.8, 1.0], look: [-1.25, 1.2, 1.88] },
-  { t: STOP.pop[0] + 1.0, pos: [-3.0, 1.75, 0.9], look: [-1.9, 0.95, 2.7] },
-  { t: STOP.juice - 1.0, pos: [-2.85, 1.6, 1.2], look: [-1.85, 0.95, 2.75] },
+  { t: STOP.pop[0] + 0.8, pos: [-3.4, 1.9, -0.3], look: [-1.1, 1.75, 1.15] },
+  { t: STOP.juice - 1.0, pos: [-3.15, 1.8, -0.7], look: [-1.0, 1.6, 0.95] },
   { t: STOP.juice - 0.2, pos: [-2.6, 1.45, -1.6], look: [-0.92, 0.95, 0.89] },
   { t: STOP.unplug - 1.4, pos: [-2.5, 1.5, -1.45], look: [-0.9, 0.95, 0.9] },
   { t: STOP.unplug, pos: CHARGE_KEYS[0].pos, look: CHARGE_KEYS[0].look },
@@ -1420,8 +1420,10 @@ const STOP_FADE = 0.35; // Aufblenden in der Spur nach dem Überspringen
 // Rückfahr- und Bremslicht, gear: Gang fürs Display, inside: Kamera im Cockpit (für die Pause), skipT: übersprungen bei
 // (Zeit der Szene), fadeT: Aufblenden danach, from / fromLook: Kamera beim Halt, cam / look: die der Drohne beim
 // Einparken, done: Klänge und Gesten, die schon kamen
+// aim / along: Stelle im offenen Fahrerfenster, durch die das Popcorn fliegt, und die Richtung längs des Wagens dort,
+// im Rahmen der Maschine
 const stopRun = {
-  on: false, c: null, town: null, rig: null, port: null, pop: null, q: {}, v: 0, rev: false, brake: false, gear: 'D', inside: false, skipT: -1, fadeT: 0,
+  on: false, c: null, town: null, rig: null, port: null, pop: null, aim: new THREE.Vector3(), along: new THREE.Vector3(), q: {}, v: 0, rev: false, brake: false, gear: 'D', inside: false, skipT: -1, fadeT: 0,
   from: new THREE.Vector3(), fromLook: new THREE.Vector3(), cam: new THREE.Vector3(), look: new THREE.Vector3(), done: {},
 };
 game.onCharge = (c) => stopBegin(c);
@@ -1442,15 +1444,19 @@ function stopBegin(c) {
   r.rig.plug(pos, normal);
   r.rig.set(1);
   r.port.set(0, 0);
-  stopPose(c.plan.dock.pose(0, r.q));
-  // Popcorn springt in der Maschine auf dem Tisch hinter der Säule
-  const st = town.plan.items.find((it) => it.name === 'popcorn_stand');
+  // Popcorn springt in der Maschine oben auf der Säule – und bei offenem Fenster hinüber ins Auto: durch das Fenster des
+  // Wagens in der Bucht (dort steht er beim Popcorn still), im Rahmen der Maschine
+  const st = town.plan.items.find((it) => it.name === 'popcorn_post');
   if (st) {
     r.pop = r.pop || buildPopping();
     r.pop.group.position.fromArray(POPPING_AT).applyAxisAngle(UP_AXIS, st.ry).add(tmpV.set(st.x, st.y, st.z));
-    r.pop.group.rotation.y = st.ry;
+    r.pop.group.rotation.y = st.ry + POPPING_YAW;
     town.group.add(r.pop.group);
+    r.pop.group.updateWorldMatrix(true, false);
+    windowAim(tesla.windowOpening(), r.aim).applyMatrix4(tesla.root.matrixWorld).applyMatrix4(chargeM.copy(r.pop.group.matrixWorld).invert());
+    r.along.set(0, 0, 1).transformDirection(tesla.root.matrixWorld).transformDirection(chargeM);
   }
+  stopPose(c.plan.dock.pose(0, r.q));
   // die Drohne fliegt von dort los, wo sie gerade ist
   r.from.copy(camera.position);
   camera.getWorldDirection(r.fromLook).multiplyScalar(20).add(camera.position);
@@ -1487,6 +1493,7 @@ function stopTick() {
     Object.assign(p, { s: c.sec.s0 + e.u, x: e.x, speed: e.v, wheel: 0, throttle: 0, braking: 0, yaw: 0, vx: 0 });
     r.rig.set(1);
     r.port.set(0, 0);
+    tesla.setWindow(0);
     if (r.pop) {
       r.pop.update(0, false);
       r.pop.group.removeFromParent();
@@ -1527,7 +1534,10 @@ function stopTick() {
     r.rig.set((te - S.plug[0]) / (S.plug[1] - S.plug[0]));
     r.port.set(1 - smoothstep(S.flap[0], S.flap[1], te), 1 - smoothstep(S.plug[0], S.plug[0] + 0.15, te));
   }
-  if (r.pop) r.pop.update(t - P.at(STOP.pop[0]), t >= P.at(STOP.pop[0]) && t < P.at(STOP.pop[1]));
+  // Fürs Popcorn geht das Fahrerfenster herunter (und danach wieder hoch); ist es offen, fliegen Körner hinein
+  const win = smoothstep(P.at(STOP.pop[0]) - 0.5, P.at(STOP.pop[0]) + 0.2, t) * (1 - smoothstep(P.at(STOP.pop[1]), P.at(STOP.pop[1]) + 0.6, t));
+  tesla.setWindow(win);
+  if (r.pop) r.pop.update(t - P.at(STOP.pop[0]), t >= P.at(STOP.pop[0]) && t < P.at(STOP.pop[1]), win > 0.95 ? r.aim : null, r.along);
   // Klick, wenn der Stecker sitzt und wenn er sich löst, der Zirper von P nach D beim Anrollen; Mini Adam hebt beim
   // Bananensaft die Flasche (nicht nachgeholt)
   const once = (k, at, fn) => {

@@ -934,11 +934,9 @@ export function planRest(opts = {}) {
   const [pcx, pcz] = P(pi.popcorn[0], pi.popcorn[2]);
   const popcorn = [pcx, pi.popcorn[1], pcz];
   if (opts.popcorn !== false) add('popcorn_eimer', pcx, pi.popcorn[1], pcz, 0.4);
-  // Popcorn-Maschine auf dem Klapptisch hinter der Säule, ihr Kabel steckt in deren Rückwand (rest.js popcorn_stand;
-  // info.post = Mitte der Säule im Rahmen des Tischs)
-  const sp = infoOf('popcorn_stand').post;
-  const [psx, psz] = P(postX - sp[0], pi.posts[pi.heroPost][1] - sp[1]);
-  if (opts.popcorn !== false) add('popcorn_stand', psx, pi.ground, psz, FACE_ROAD);
+  // Popcorn-Maschine oben auf der Säule, ihr Kabel steckt in deren Rückwand (rest.js popcorn_post, im Rahmen der Säule)
+  const [psx, psz] = P(postX, pi.posts[pi.heroPost][1]);
+  if (opts.popcorn !== false) add('popcorn_post', psx, pi.ground, psz, FACE_ROAD);
   // Nahaufnahme aus gut 3 m in 1,2 m Höhe: die Kamera steht in der freien Nachbarbucht, Blick schräg auf Säule, Eimer
   // und das Heck des Autos
   const [ccx, ccz] = P(postX + 1.6, -2.5);
@@ -1058,11 +1056,10 @@ export function planPark(opts = {}) {
     const [bx, bz] = pi.bays[i];
     add(car, x0 - bz + 0.2, pi.ground, -(u - bx), Math.PI / 2);
   }
-  // an der Heldensäule: Popcorn-Stand auf dem Klapptisch dahinter (Kabel in ihrer Rückwand), Eimer auf dem Poller
+  // an der Heldensäule: die Popcorn-Maschine oben darauf (Kabel in ihrer Rückwand), der Eimer auf dem Poller
   const [postX, postZ] = pi.posts[pi.heroPost];
-  const sp = infoOf('popcorn_stand').post;
-  const [psx, psz] = P(postX - sp[0], postZ - sp[1]);
-  add('popcorn_stand', psx, pi.ground, psz, FACE);
+  const [psx, psz] = P(postX, postZ);
+  add('popcorn_post', psx, pi.ground, psz, FACE);
   const [pcx, pcz] = P(pi.popcorn[0], pi.popcorn[2]);
   add('popcorn_eimer', pcx, pi.popcorn[1], pcz, 0.4);
   // Tafel an der Einfahrt, zum ankommenden Wagen gedreht

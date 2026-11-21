@@ -41,8 +41,8 @@ ok(near(PARK.halt, dockHalt(U), 0.005), `Halt ${PARK.halt} statt ${dockHalt(U).t
 
 // Hindernisse im Park (kit/rest.js: Säulen 0,45 × 0,4 m auf einem Sockel 0,61 × 0,54 m bei lx −5,2 / 0 / 5,2, lz −5,3,
 // AC-Säulen bei ±10,7; Poller r 0,14 bei lz −4,6; Säulen der Ladedächer r 0,4 bei lx ±1,25 / ±7,05, lz −6,4; geparkte
-// Wagen in den Buchten 0, 6, 7, 0,2 m tiefer als die Buchtmitte (layout.js planPark); der Popcorn-Tisch hinter der
-// Heldensäule (0,62 × 0,48 m)
+// Wagen in den Buchten 0, 6, 7, 0,2 m tiefer als die Buchtmitte (layout.js planPark). Die Popcorn-Maschine steht oben
+// auf der Heldensäule (rest.js popcorn_post): kein Hindernis am Boden
 const boxes = [];
 const circles = [];
 for (const lx of [-5.2, 0, 5.2]) {
@@ -58,10 +58,6 @@ for (const lx of [-7.05, -1.25, 1.25, 7.05]) circles.push({ name: 'Dachsäule ' 
 for (const [i, len, w] of [[0, 3.9, 1.72], [6, 3.2, 1.62], [7, 3.9, 1.72]]) {
   const [x, u] = at(-9.1 + i * 2.6, -3.5);
   boxes.push({ name: 'Wagen in Bucht ' + i, x0: x - len / 2 - 0.06, x1: x + len / 2 + 0.06, u0: u - w / 2 - 0.03, u1: u + w / 2 + 0.03 });
-}
-{
-  const [x, u] = at(0.48, -6.08);
-  boxes.push({ name: 'Popcorn-Tisch', x0: x - 0.24, x1: x + 0.24, u0: u - 0.31, u1: u + 0.31 });
 }
 // Umriss des Wagens (Draufsicht) an der Lage q: Ecken und Kantenpunkte alle 0,25 m
 const HL = TESLA.length / 2;
@@ -414,6 +410,74 @@ const told = K.said.filter((t) => t.includes('Ladepark')).pop() || '';
 ok(k1 && k1.lvl === 1 && k1.park !== '' && told.includes(k1.park + ' in ') && K.onRoute && k1.park !== K.onRoute,
   `Ladepark der Karte ${k1 ? k1.park : '–'}, NOMI: „${told}“, erster auf dem Weg: ${K.onRoute}`);
 
+// --- Popcorn ins Auto ------------------------------------------------------------------------------------------------
+// Die Maschine steht oben auf der Heldensäule (kit/rest.js popcorn_post, um POST_POP.yaw gedreht), der Wagen rückwärts
+// in der Heldenbucht (rollPose zu Beginn des Ausparkens). Jedes Korn springt vorn aus der offenen Tür der Maschine und
+// fliegt im Bogen durch das offene Fahrerfenster: Strahlen längs seiner Bahn gegen die Meshes des Wagens (models/
+// tesla.js) treffen bis dorthin nichts außer dem Glas in der Öffnung (dort ist das Fenster unten), mit Abstand zu ihrem
+// Rahmen.
+const fly = { n: 0, ok: 0, margin: Infinity, apex: -Infinity, door: 0 };
+{
+  const canvas = new Proxy({}, { get: (t, k) => (k === 'measureText' ? (x) => ({ width: String(x).length * 10 }) : k === 'getImageData' ? (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }) : k === 'createImageData' ? (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }) : k.startsWith?.('create') ? () => ({ addColorStop() {} }) : k in t ? t[k] : () => {}), set: (t, k, v) => ((t[k] = v), true) });
+  globalThis.document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => canvas, style: {} }) };
+  const THREE = await import('three');
+  const { buildTesla } = await import('../src/models/tesla.js');
+  const { MACHINE } = await import('../src/world/kit/rest.js');
+  const { flyPath, flyTime, windowAim, FLY, POPPING_AT, POPPING_YAW } = await import('../src/world/xxl/popping.js');
+  const tesla = buildTesla();
+  tesla.setWindow(1);
+  tesla.root.updateMatrixWorld(true);
+  const win = tesla.windowOpening();
+  const meshes = [];
+  tesla.root.traverse((o) => o.isMesh && o.visible && meshes.push(o));
+  const Y = new THREE.Vector3(0, 1, 0);
+  const q = rollPose(U, 0, {});
+  const car = new THREE.Matrix4().compose(new THREE.Vector3(q.x, 0.05, -q.u), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -q.yaw, 0, 'YXZ')), new THREE.Vector3(1, 1, 1));
+  // Säule im Park (planPark: zur Straße gedreht, FACE −π/2), Hof 0,05 m über der Straße
+  const FACE = -Math.PI / 2;
+  const [px, pu] = at(CHARGE.post[0], CHARGE.post[1]);
+  const mach = new THREE.Matrix4().compose(new THREE.Vector3(px, 0.05, -pu).add(new THREE.Vector3(...POPPING_AT).applyAxisAngle(Y, FACE)), new THREE.Quaternion().setFromAxisAngle(Y, FACE + POPPING_YAW), new THREE.Vector3(1, 1, 1));
+  const carInv = car.clone().invert();
+  const machInv = mach.clone().invert();
+  const aim = windowAim(win, new THREE.Vector3()).applyMatrix4(car).applyMatrix4(machInv);
+  const along = new THREE.Vector3(0, 0, 1).transformDirection(car).transformDirection(machInv);
+  const zA = (y) => win.a0.z + (win.a1.z - win.a0.z) * Math.min(1, Math.max(0, (y - win.a0.y) / (win.a1.y - win.a0.y)));
+  const edge = (h) => Math.min(h.y - win.bottom, win.top - h.y, h.z - zA(h.y), win.zB - h.z);
+  const ray = new THREE.Raycaster();
+  const [a, b, v, d] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  for (let j = 0; j < FLY.n; j++) for (let k = 0; k < 16; k++) {
+    fly.n++;
+    const tf = flyTime(j, k);
+    // aus der Tür: vorn hinaus, unter dem Dach der Kabine und zwischen ihren Pfosten
+    flyPath(aim, along, j, k, 0, a, v);
+    const tz = (MACHINE.d / 2 - a.z) / v.z;
+    if (!(v.z > 0 && Math.abs(a.x + v.x * tz) < MACHINE.w / 2 - 0.03 && a.y + v.y * tz - 4.905 * tz * tz < MACHINE.base + MACHINE.cab - 0.015)) fly.door++;
+    let through = null;
+    let hit = null;
+    for (let i = 0; i < 160 && !hit; i++) {
+      flyPath(aim, along, j, k, (tf * i) / 160, a).applyMatrix4(mach).applyMatrix4(carInv);
+      flyPath(aim, along, j, k, (tf * (i + 1)) / 160, b).applyMatrix4(mach).applyMatrix4(carInv);
+      fly.apex = Math.max(fly.apex, a.y);
+      d.subVectors(b, a);
+      ray.set(a, d.clone().normalize());
+      ray.far = d.length();
+      for (const h of ray.intersectObjects(meshes, false)) {
+        if (!through && edge(h.point) > 0.035) {
+          through = h.point.clone();
+          continue;
+        }
+        if (!through) hit = h.point;
+        break;
+      }
+    }
+    if (through && !hit) {
+      fly.ok++;
+      fly.margin = Math.min(fly.margin, edge(through));
+    }
+  }
+  ok(fly.ok === fly.n && fly.door === 0, `Popcorn: ${fly.ok} von ${fly.n} Körnern durchs offene Fenster, ${fly.door} nicht aus der Tür der Maschine`);
+}
+
 console.log(
   `Akku leer: Karten bei ${E.cards.map((c) => c.pct.toFixed(1) + ' %').join(' / ')} (${c1 ? c1.park + ', ' + c1.km.toFixed(1) + ' km' : '–'}), ausgerollt aus ${(E.vEmpty * 3.6).toFixed(0)} km/h in ${E.stopT !== null ? (E.stopT - E.emptyAt).toFixed(1) : '–'} s`,
 );
@@ -422,6 +486,7 @@ console.log(
     `Ausparken ${ROLL_T.toFixed(2)} s bis u ${e.u.toFixed(2)} (Abstand ${rollStat.minC.toFixed(2)} m zu ${rollStat.minWho}), ganzer Stopp ${full.charged ? full.charged.t : '?'} s; ` +
     runs.map(([n, r]) => `${n}: ${r.charged ? r.charged.t : '?'} s`).join(', '),
 );
+console.log(`Popcorn: ${fly.ok} von ${fly.n} Körnern springen aus der Tür der Maschine oben auf der Säule (bis ${fly.apex.toFixed(2)} m hoch) und fliegen durchs offene Fahrerfenster, mindestens ${fly.margin.toFixed(3)} m vom Rahmen`);
 if (fails) {
   console.log(`stopp-test: ${fails} Fehler`);
   process.exit(1);

@@ -392,7 +392,7 @@ for (const p of places) {
 // steht an der Flucht mit der Mitte bei PARK.u, der Wagen hält in der Spur ein Stück hinter der freien Heldenbucht
 // (PARK.halt) und setzt rückwärts hinein, vor ihr ist der Bordstein abgesenkt (charge.js chargeOf, dockHalt). Nichts steht auf Fahrbahn oder Gehweg außer
 // den Laternen am Streifen, nichts vor dem Park, kein Baum im Park, im Rasthaus, in der Tafel oder in einem Tisch; die
-// Heldenbucht und ihre Nachbarn bleiben frei, der Popcorn-Stand steht hinter der Heldensäule. Der Ort der Welt
+// Heldenbucht und ihre Nachbarn bleiben frei, die Popcorn-Maschine steht oben auf der Heldensäule. Der Ort der Welt
 // (towns.js Towns) baut ihn wie einen Ort, zählt ihn aber nicht zu den Orten (list).
 {
   const { PARKS, PARK } = await import('../src/map/parks.js');
@@ -431,9 +431,9 @@ for (const p of places) {
       const bay = [CHARGE.front - bz - 1, CHARGE.front - bz + 1, -(PARK.u - bx) - 1.2, -(PARK.u - bx) + 1.2];
       ok(!cars.some((b) => overlap(b, bay, 0.05)), `${where}: Bucht ${i} belegt`);
     }
-    const stand = plan.items.find((it) => it.name === 'popcorn_stand');
+    const pop = plan.items.filter((it) => it.name === 'popcorn_post');
     const post = [CHARGE.front - CHARGE.post[1], -(PARK.u - CHARGE.post[0])];
-    ok(stand && Math.hypot(stand.x - post[0], stand.z - post[1]) < 1.2 && stand.x > post[0], `${where}: Popcorn-Stand nicht hinter der Heldensäule`);
+    ok(pop.length === 1 && Math.hypot(pop[0].x - post[0], pop[0].z - post[1]) < 0.005 && !plan.items.some((it) => it.name === 'popcorn_stand'), `${where}: Popcorn-Maschine nicht oben auf der Heldensäule`);
     const sign = plan.items.find((it) => it.name === 'autobahn_schild');
     ok(sign && sign.extras && sign.extras.title === pk.name && sign.extras.icons.includes('plug'), `${where}: Tafel ohne Namen`);
     n++;
@@ -663,10 +663,12 @@ for (const [name, seed] of [['Kirchheim', undefined], ['Gründau', 3], ['Hannove
   const dCam = Math.hypot(cam.pos[0] - post.x, cam.pos[2] - post.z);
   ok(dCam >= 2 && dCam <= 4 && cam.pos[1] - stop.y > 1.1 && cam.pos[1] - stop.y < 1.35, `${where}: Kamera ${dCam.toFixed(2)} m vor der Säule, ${(cam.pos[1] - stop.y).toFixed(2)} m hoch`);
   for (const it of plan.items) {
-    if (it.name === 'ladepark' || it.name === 'popcorn_eimer' || city.info(it.name).kind === 'ground') continue;
+    if (it.name === 'ladepark' || it.name === 'popcorn_eimer' || it.name === 'popcorn_post' || city.info(it.name).kind === 'ground') continue;
     ok(!L.segHitsBox(cam.pos[0], cam.pos[2], post.x, post.z, it.fp, 0.1), `${where}: ${it.name} verstellt die Nahaufnahme`);
   }
   ok(Math.hypot(plan.park.popcorn[0] - post.x, plan.park.popcorn[2] - post.z) < 1.2, `${where}: Popcorn-Eimer nicht an der Säule`);
+  const pm = plan.items.filter((it) => it.name === 'popcorn_post');
+  ok(pm.length === 1 && Math.hypot(pm[0].x - post.x, pm[0].z - post.z) < 0.005, `${where}: Popcorn-Maschine nicht oben auf der Heldensäule`);
   // Tür am Gehweg
   const [dx, dz] = Lr.shop.door;
   ok(Lr.paved.some((p) => p.kind === 'walk' && near(p.x1, dx, 0.05) && dz > p.z0 && dz < p.z1), `${where}: Tür ${dx}, ${dz} liegt nicht am Gehweg`);
