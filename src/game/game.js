@@ -557,11 +557,12 @@ export class Game {
       });
       this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.8);
     };
-    // OMI hat das Wort: Das Sprachstudio verstummt mitten im Satz und wartet, bis sie fertig ist
+    // OMI hat das Wort: Das Sprachstudio verstummt mitten im Satz und wartet, bis sie fertig ist – sein Untertitel
+    // geht mit (wie bei jedem abgebrochenen Satz), statt nach ihrem halb gesagt wieder dazustehen
     this.voiceUntil = Math.max(this.voiceUntil, this.t + 1.2);
     if (this.t < this.studioUntil) {
       this.studioUntil = this.t;
-      if (/^sprachstudio/.test(this.speech.current?.voiceKey || '')) this.speech.cancelCurrent();
+      if (/^sprachstudio/.test(this.speech.current?.voiceKey || '')) this.speech.cancelCurrent(true);
     }
     if (this.running) this.later(0.35, go);
     else go();

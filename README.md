@@ -28,7 +28,8 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
   dann beim Losfahren), und die nächste Navi-Runde geht los.
 - **Losfahren am Supercharger:** Der Stecker springt aus der Buchse, die Klappe schließt, der Tesla rollt aus dem
   Ladepark in Erlensee, und die Kamera geht ins Cockpit. In den ersten Minuten erklären kurze Tipps am Bildrand,
-  was gerade dran ist (Ausfahrt nehmen, Spurpfeile im Navi, Kamera, Megafon, Ladestopp) – jeder einmal je Spieler,
+  was gerade dran ist (Ausfahrt nehmen, Spurpfeile im Navi, BrunnenTV mit <kbd>B</kbd>, Laden mit <kbd>L</kbd>,
+  Kamera, Megafon) – jeder einmal je Spieler,
   <kbd>Enter</kbd> oder ✕ schaltet sie ab.
 - **Geld gibt es nur vom Publikum** – wie im echten Stream: Spenden mit Alter-Skala, Ortsspenden, Abos,
   VIPs, Navi-Gebote, Sprachdurchsagen, Rahmen, Aktionen und Sammelaktionen. Fürs Fahren selbst zahlt
@@ -49,8 +50,11 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
   anspringen, zuckt aber nur über die Scheibe (Beta!). Mit <kbd>E</kbd> darf man selbst wischen,
   was auch nicht immer klappt. Der Chat liebt es trotzdem.
 - **Akku und Blech:** Die Stream-Technik im Kofferraum zieht Strom. Geladen wird in den Ladeparks an den
-  Ausfahrten: <kbd>L</kbd> (oder der Knopf „Ladestopp einplanen“) plant den nächsten ein, das Navi führt hinein und
-  danach weiter zum Ziel. Bei 10 und bei 5 % warnt der Mittelbildschirm mit einer roten Karte; ist der Akku
+  Ausfahrten und an der Ladesäule jedes Orts (eine hohe blaue Stele am rechten Rand zeigt sie von weitem): Steht
+  oder kriecht der Wagen daneben, bietet der Bildrand das Laden an, und <kbd>L</kbd> (am Gamepad LB, auf dem Handy
+  „Jetzt laden“) lädt gleich dort. Anderswo plant dieselbe Taste (der Knopf heißt dann „Ladestopp einplanen“) den
+  nächsten Stopp ein, das Navi führt hinein und danach weiter zum Ziel; nur an der geplanten Säule beginnt das Laden
+  von selbst. Bei 10 und bei 5 % warnt der Mittelbildschirm mit einer roten Karte; ist der Akku
   leer, rollt der Wagen aus, und die Fahrt ist zu Ende. Rempler kosten Karosserie-Punkte, die Werkstatt rechnet sie
   am Brunnen ab; zu viel Blechschaden beendet die Fahrt ebenfalls.
 - **Live-Chat und Live-Bereich:** Spenden mit Alter-Skala, Sprachdurchsagen, gekaufte Rahmen
@@ -78,7 +82,8 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
 | Hupen (Brunnen und Elsa grüßen) | Leertaste | A | 📯 |
 | Scheibenwischer von Hand | E | X | 🌧️ |
 | Megafon | H | Y | 📢 |
-| Ladestopp einplanen (nächster Ladepark) | L | – | 🔌 Ladestopp |
+| Laden: neben Säule oder Bucht gleich hier, sonst Ladestopp einplanen | L | LB | 🔌 Jetzt laden / Ladestopp einplanen |
+| BrunnenTV unterwegs (neben einem Brunnen anhalten) | B | RB | ⛲ BrunnenTV hier |
 | Kamera (Cockpit / Drohne) | V | B | 🎥 |
 | Chat ein/aus | C | – | – |
 | Ton aus | M | – | – |

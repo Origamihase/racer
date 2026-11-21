@@ -523,6 +523,50 @@ console.log('3. Eine Warteschlange, BrunnenTV zuerst:');
     ok(still && e0.cut !== undefined && e0.cut - t1 <= EPISODE.polite + 1e-6 && gone.length === 1, `3: höflich ${still ? 'ausreden lassen' : 'sofort abgebrochen'}, Ende ${e0.cut === undefined ? '–' : (e0.cut - t1).toFixed(2) + ' s'} nach Beginn der Folge`);
     sp.stopAll();
   }
+  // OMI fällt dem Sprachstudio ins Wort (game.js say): Das Studio verstummt, und sein Untertitel geht mit – er steht
+  // nicht nach OMIs Satz halb gesagt wieder da; ihrer kommt, sobald sie spricht
+  {
+    clock.timers = [];
+    const sub = { lines: [], line: null, subEl: { classList: cls, className: '' }, subLabel: { textContent: '' }, subText: { textContent: '' } };
+    for (const m of ['speak', 'showLine', 'megafon', 'nomi', 'studio', 'adam', 'durchsage']) sub[m] = UI.prototype[m];
+    const S = makeStream({ driver: DRIVERS.zuegig, seed: 5, endless: true });
+    const g = S.game;
+    const speech = new Speech();
+    g.speech = speech;
+    for (const m of ['megafon', 'nomi', 'studio', 'durchsage', 'adam']) g.ui[m] = (...a) => sub[m](...a);
+    const OMI = 'Achtung, da vorne steht ein Brunnen.';
+    let asked = null;
+    let studioText = null;
+    const seen = [];
+    for (let i = 0; i < 150 * 30; i++) {
+      S.step(1 / 30);
+      clock.t += 1 / 30;
+      runTimers();
+      for (const l of sub.lines) l.t -= 1 / 30;
+      sub.lines = sub.lines.filter((l) => l.t > 0);
+      sub.showLine();
+      const c = speech.current;
+      // das Studio spricht seit einer halben Sekunde, sein Untertitel steht: OMI hat etwas Wichtiges
+      if (asked === null && c && /^sprachstudio/.test(c.voiceKey) && Date.now() - c.start > 500 && sub.lines.some((l) => l.who === 'studio')) {
+        asked = g.t;
+        studioText = c.text;
+        g.say(OMI, 'talk');
+      }
+      if (asked !== null) {
+        seen.push({ dt: +(g.t - asked).toFixed(3), studio: sub.lines.some((l) => l.who === 'studio'), omi: sub.subText.textContent === OMI, speaking: engine.speaking ? engine.speaking.text : null });
+        if (g.t - asked > 6) break;
+      }
+    }
+    const goneAt = seen.find((s) => !s.studio);
+    const omiAt = seen.find((s) => s.omi);
+    const back = seen.some((s, k) => k > 0 && s.studio && !seen[k - 1].studio);
+    const said = engine.log.find((e) => e.text === OMI);
+    // (OMI beginnt nach game.js say 0,35 s später, dazu höchstens die kleine Lücke nach cancel(), speech.js CANCEL_GAP)
+    ok(asked !== null, '3 Studio: Das Sprachstudio sprach in 150 s nie');
+    ok(goneAt && goneAt.dt <= 1 / 30 + 1e-6 && !back, `3 Studio: Untertitel des Studios ${goneAt ? `weg nach ${goneAt.dt} s` : 'bleibt'}${back ? ', kommt wieder' : ''}`);
+    ok(omiAt && said && said.done && omiAt.dt <= 0.35 + 0.1 + 2 / 30, `3 Studio: OMIs Untertitel ${omiAt ? `ab ${omiAt.dt} s` : 'fehlt'}, gesprochen ${said ? (said.done ? 'ganz' : 'abgebrochen') : 'nie'} (Studio: ${studioText && studioText.slice(0, 30)})`);
+    speech.stopAll();
+  }
   Object.assign(globalThis, { setTimeout: saved.setTimeout, clearTimeout: saved.clearTimeout, window: saved.window, SpeechSynthesisUtterance: saved.utt });
   Date.now = saved.now;
   console.log('  ' + runs.map((R) => `${R.what}: still nach ${R.quiet && R.quiet.toFixed(2)} s (Satz bis ${R.cut === null ? '–' : R.cut.toFixed(2) + ' s'}), Folge ${R.ep.map((e) => `${e.text.slice(0, 14)}… ${e.at}–${(e.at + e.len).toFixed(1)} s${e.cut ? ' ABGEBROCHEN' : ''}`).join(', ')}`).join(' · '));

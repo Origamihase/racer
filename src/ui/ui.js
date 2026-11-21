@@ -598,9 +598,10 @@ export class UI {
 
   // --- Untertitel (Streifen unten) ----------------------------------------------------
   /**
-   * Jemand spricht: who = nomi | studio | durchsage | megafon, label = Zeile über dem Satz. Der Neueste hat das
-   * Wort; wen er unterbrochen hat, der steht danach wieder da, solange seine Zeit noch läuft – so geht kein Satz
-   * verloren.
+   * Jemand spricht: who = nomi | studio | durchsage | megafon, label = Zeile über dem Satz. Ein Untertitel kommt mit
+   * seinem Satz aus der Warteschlange der Sprachausgabe (speech.js onStart) und geht mit ihm, wenn der abgebrochen
+   * wird oder entfällt (onDrop, t = 0): Was dasteht, ist gesagt oder wird gerade gesagt. Der Neueste hat das Wort;
+   * läuft die Zeit eines älteren noch (sein Nachklang), steht der danach wieder da.
    */
   /** Ein Untertitel für dur Sekunden; gibt die Zeile zurück (t = 0 nimmt sie wieder weg). */
   speak(who, text, dur, label = '') {
