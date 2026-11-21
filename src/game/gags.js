@@ -39,6 +39,13 @@ export const CODE = { first: [150, 260], every: [180, 360], reply: 0.35 };
  */
 export const TRACKER = { near: 1200, geo: 0.7, gap: 90, first: [200, 320], every: [240, 420] };
 
+/**
+ * Die Paketsuche (GAGS.paket): angekündigt nach first, jeder weitere Schritt step Sekunden später (in einer Szene oder
+ * wenn ein Schritt gerade nicht stimmt, wait Sekunden später); in der Packstation liegt das Paket keep Sekunden, dann
+ * geht es zurück; again Sekunden nach Abholung oder Rücksendung kommt das nächste. leid: so oft leidet der Chat mit.
+ */
+export const PAKET = { first: [300, 540], step: [120, 240], wait: 5, keep: 900, again: [900, 1500], leid: 0.6 };
+
 /** Kleiner, schneller Zufall mit Saat (wie in tools/stream-sim.mjs). */
 export function mulberry32(a) {
   return () => {
@@ -72,6 +79,10 @@ export class StreamGags {
     this.trackedKey = null;
     this.geoT = 0;
     this.glotzT = this.between(...TRACKER.first);
+    // Paketsuche: der nächste Schritt (−1: noch keine Sendung), wann; die Packstation ({ place, name }); der Ort, in
+    // dem der Wagen zuletzt war (dort ist das Paket dann gerade); abgeholt in einer Folge, gemeldet nach ihr
+    this.paket = { step: 0, due: this.between(...PAKET.first), pack: null, picked: false, n: 0 };
+    this.lastTown = null;
   }
 
   /** Was Abrechnung und Abspann von den Gags wissen (Game.end): { verein: { name, members } | null }. */
@@ -87,6 +98,7 @@ export class StreamGags {
     this.updateVerein();
     this.updateCode();
     this.updateTracker();
+    this.updatePaket();
   }
 
   /** Eine Zeile eines Vorrats, die gerade stimmt (FACTS über Game.fits), ohne Stichwort; '' wenn keine passt. */
@@ -286,5 +298,66 @@ export class StreamGags {
     if (scene) return;
     const text = this.line(T.glotz, { n: fmtNum(Math.round(g.viewers)) });
     if (text) this.say(text);
+  }
+
+  // --- 6. Das Leid mit der Paketsuche --------------------------------------------------------------------------------
+  /** Ein Ort für das Paket: ein echter Ort der Karte (big: eine Großstadt für das Paketzentrum), nie der, in dem er ist. */
+  somewhere(big = false) {
+    const here = this.g.world.trip().section;
+    const list = places.filter((p) => (!big || p.pop >= 100000) && p.i !== here.place);
+    return list[Math.floor(this.rnd() * list.length)];
+  }
+
+  updatePaket() {
+    const g = this.g;
+    const P = this.paket;
+    const G = GAGS.paket;
+    const sec = g.world.trip().section;
+    if (sec.kind === 'stadt' && places[sec.place]) this.lastTown = places[sec.place];
+    // abgeholt: in einer Folge am Ort der Packstation; gemeldet, sobald die Folge vorbei ist
+    if (P.pack && g.tv && g.tv.place === P.pack.place) P.picked = true;
+    if (P.picked && !g.tv) {
+      this.james(fillTemplate(G.abgeholt, { stadt: P.pack.name, inhalt: this.pick(G.inhalt) }));
+      const text = this.pick(G.jubel);
+      const name = this.name();
+      this.later(this.between(1, 2), () => this.say(text, name));
+      P.n++;
+      Object.assign(P, { step: 0, due: g.t + this.between(...PAKET.again), pack: null, picked: false });
+      return;
+    }
+    if (g.t < P.due) return;
+    if (g.tv || g.charging) {
+      P.due = g.t + PAKET.wait;
+      return;
+    }
+    if (P.pack) {
+      // zu lange in der Packstation: zurück an den Absender, später eine neue Sendung
+      this.say(G.zurueck, G.fuchs);
+      Object.assign(P, { step: 0, due: g.t + this.between(...PAKET.again), pack: null });
+      return;
+    }
+    let text = G.schritte[P.step];
+    if (!g.fits(text)) {
+      P.due = g.t + PAKET.wait;
+      return;
+    }
+    text = text.replace(/^\[[^\]]*\] /, '');
+    if (P.step === 1) text = fillTemplate(text, { stadt: this.somewhere(true).name });
+    // das Paket ist immer dort, wo der Wagen gerade war
+    if (P.step === 2) text = fillTemplate(text, { stadt: (this.lastTown && this.lastTown.i !== sec.place ? this.lastTown : this.somewhere()).name });
+    if (P.step === 4) {
+      // die Packstation steht am Navi-Ziel (ohne Ziel: irgendwo)
+      const t = g.navi?.target;
+      P.pack = t ? { place: t.place, name: t.name } : (({ i, name }) => ({ place: i, name }))(this.somewhere());
+      text = fillTemplate(text, { stadt: P.pack.name });
+    }
+    this.say(text, G.fuchs);
+    P.due = g.t + (P.step === 4 ? PAKET.keep : this.between(...PAKET.step));
+    P.step++;
+    if (this.chance(PAKET.leid)) {
+      const leid = this.pick(G.leid);
+      const name = this.name();
+      this.later(this.between(1.2, 3), () => this.say(leid, name));
+    }
   }
 }

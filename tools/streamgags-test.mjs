@@ -7,7 +7,7 @@ import { makeStream, DRIVERS } from './stream-sim.mjs';
 import { SCHOENNBRUN, ABSPANN_REISE, GAGS, SHOP, shopPrice } from '../src/data.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
 import { drawSchoennbrunLogo } from '../src/ui/schoennbrun.js';
-import { StreamGags, GATE, VEREIN, CODE, TRACKER } from '../src/game/gags.js';
+import { StreamGags, GATE, VEREIN, CODE, TRACKER, PAKET } from '../src/game/gags.js';
 import { FACTS } from '../src/game/game.js';
 import { thanksGroups } from '../src/ui/abspann.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from '../src/world/xxl/schranke.js';
@@ -357,6 +357,70 @@ function fakeGame(secs, { gate = true } = {}) {
   ok(geo >= 3, `Geo-Tracker nur ${geo}× in 2 × 40 min`);
   ok(/' · Quelle: ' \+ GAGS\.tracker\.seite/.test(read('src/ui/menus.js')), 'menus.js: die Einschaltquote nennt das Glotzometer nicht');
   console.log(`  Tracker: ${geo} Meldungen des Geo-Trackers (immer der nächste Ort voraus), ${glotz} des ${T.seite} (immer die Zuschauerzahl) in 2 × 40 min`);
+}
+
+// --- 6. Das Leid mit der Paketsuche: Schritt für Schritt, nie dort, wo er ist; Abholung an der Packstation ---------
+{
+  const P = GAGS.paket;
+  const texts = JSON.stringify(GAGS);
+  ok(!/\b(DHL|Hermes|DPD|GLS|UPS|FedEx|Amazon|Deutsche Post|Packstation 24)\b/i.test(texts) && /Schneckenpost/.test(P.schritte[0]), 'Paketsuche: ein echter Zusteller');
+  const pattern = (l) => new RegExp('^' + l.replace(/^\[[^\]]*\] /, '').replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace('{stadt}', '(.+)') + '$');
+  const steps = P.schritte.map(pattern);
+  let chains = 0;
+  for (const seed of [2, 5]) {
+    const sim = makeStream({ driver: DRIVERS.zuegig, seed, endless: true });
+    const { game } = sim;
+    const said = [];
+    const say = game.gags.say.bind(game.gags);
+    game.gags.say = (text, name) => {
+      said.push({ t: game.t, text, name, here: sim.trip.section.kind === 'stadt' ? places[sim.trip.section.place].name : null, kmh: game.player.kmh, target: game.navi.target ? game.navi.target.name : null, scene: !!(game.tv || game.charging) });
+      say(text, name);
+    };
+    sim.step(3600);
+    const fuchs = said.filter((x) => x.name === P.fuchs);
+    let next = 0;
+    for (const x of fuchs) {
+      if (x.text === P.zurueck) {
+        ok(next === 5, `Seed ${seed}: zurück an den Absender nach Schritt ${next}`);
+        next = 0;
+        continue;
+      }
+      const k = steps.findIndex((re) => re.test(x.text));
+      // nach der Packstation geht es von vorn los, wenn Mini Adam das Paket abgeholt hat (James meldet es)
+      const picked = sim.log.chat.filter((m) => m.bot === 'james' && /^📦 Paket aus der Packstation in .+ abgeholt!/.test(m.text) && m.t < x.t && m.t > (said.filter((y) => y.t < x.t && steps[4].test(y.text)).pop()?.t ?? Infinity));
+      if (next === 5 && picked.length === 1) next = 0;
+      ok(k === next, `Seed ${seed}: „${x.text}“ als Schritt ${k}, erwartet ${next}`);
+      const m = steps[k]?.exec(x.text);
+      if (k === 1) ok(places.some((p) => p.name === m[1] && p.pop >= 100000), `Seed ${seed}: Paketzentrum in ${m[1]}`);
+      if (k === 2 || k === 4) ok(places.some((p) => p.name === m[1]) && m[1] !== x.here, `Seed ${seed}: „${x.text}“ – und der Wagen ist in ${x.here}`);
+      if (k === 3) ok(x.kmh >= 3, `Seed ${seed}: Zustellversuch, während der Wagen steht`);
+      if (k === 4 && x.target) ok(m[1] === x.target, `Seed ${seed}: Packstation in ${m[1]}, Navi-Ziel ${x.target}`);
+      ok(!x.scene, `Seed ${seed}: Paketsuche mitten in einer Szene`);
+      next = k + 1;
+      if (k === 0) chains++;
+    }
+    ok(fuchs.length >= 5, `Seed ${seed}: nur ${fuchs.length} Meldungen von ${P.fuchs} in 60 min`);
+    ok(fuchs.length && fuchs[0].t >= PAKET.first[0], `Seed ${seed}: Paket zu früh`);
+  }
+  // Abholung: liegt das Paket in der Packstation am Navi-Ziel und läuft dort eine Folge, holt Mini Adam es danach ab
+  const g = fakeGame([]);
+  g.navi = { target: { place: 165, name: 'Hanau' } };
+  g.player.speed = 20;
+  g.player.kmh = 72;
+  g.gags.paket.due = 0;
+  for (let i = 0; i < 5; i++) {
+    g.gags.paket.due = 0;
+    g.step(0.1);
+  }
+  ok(g.chat.some((m) => m.name === P.fuchs && m.text === '📦 Paket liegt jetzt in der Packstation in Hanau'), `Packstation: ${g.chat.filter((m) => m.name === P.fuchs).map((m) => m.text).join(' | ')}`);
+  g.tv = { place: 165 };
+  for (let i = 0; i < 30; i++) g.step(0.1);
+  ok(!g.chat.some((m) => /abgeholt/.test(m.text)), 'Paket schon während der Folge abgeholt');
+  g.tv = null;
+  for (let i = 0; i < 40; i++) g.step(0.1);
+  const got = g.chat.filter((m) => m.bot === 'james' && /^📦 Paket aus der Packstation in Hanau abgeholt! Drin: .+ 🎉$/.test(m.text));
+  ok(got.length === 1 && g.chat.some((m) => P.jubel.includes(m.text)) && g.gags.paket.n === 1 && !g.gags.paket.pack, `Abholung: ${got.map((m) => m.text).join(' | ')}`);
+  console.log(`  Paketsuche: ${chains} Sendungen in 2 × 60 min, Schritt für Schritt, das Paket nie im Ort des Wagens; Abholung in Hanau: ${got[0] ? got[0].text : '—'}`);
 }
 
 // --- Grundregel: mit und ohne Gags derselbe Stream -----------------------------------------------------------------

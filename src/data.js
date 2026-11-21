@@ -197,6 +197,20 @@ export const GAGS = {
     geo: ['[gleich] Laut Geo-Tracker bist du gleich in {ort} 📍', '[gleich] Geo-Tracker sagt: gleich {ort}! 📍', '[gleich] Mein Geo-Tracker meldet: {ort} kommt gleich 👀'],
     glotz: ['[glotz] Laut Glotzometer schauen gerade {n} zu 📈', '[glotz] Glotzometer sagt: {n} Leute im Stream 👀', '[glotz] Glotzometer-Check: {n} Zuschauer, läuft 📈'],
   },
+  // „Das Leid mit der Paketsuche“: Paketfuchs verfolgt ein Paket für Mini Adam beim ausgedachten Zusteller
+  // Schneckenpost (schritte der Reihe nach; {stadt}: echte Orte – das Paket ist nie dort, wo er ist), der Chat leidet
+  // mit (leid). Liegt es in der Packstation am Navi-Ziel, holt Mini Adam es nach der Folge dort ab (abgeholt, {inhalt});
+  // sonst geht es irgendwann zurück (zurueck), und alles beginnt von vorn
+  paket: {
+    fuchs: 'Paketfuchs',
+    schritte: ['📦 Sendung angekündigt: ein Paket für Mini Adam, Zusteller: Schneckenpost 🐌', '📦 Paket ist im Paketzentrum {stadt}', '📦 Paket ist in {stadt}',
+      '[faehrt] 📦 Zustellversuch gescheitert – Empfänger nicht angetroffen (er fährt ja) 😅', '📦 Paket liegt jetzt in der Packstation in {stadt}'],
+    leid: ['Das Leid mit der Paketsuche 😩', 'Schneckenpost halt 🐌', 'Wo ist das Paket?? 📦', 'Paketverfolgung ist mein Lieblingssport 😂', 'Nicht schon wieder die Schneckenpost 🐌'],
+    abgeholt: '📦 Paket aus der Packstation in {stadt} abgeholt! Drin: {inhalt} 🎉',
+    inhalt: ['ein Plüsch-Brunnen für die Ablage', 'eine Kiste Bananensaft', 'neue Wischerblätter (endlich)', 'ein Wackel-Brunnen fürs Armaturenbrett', 'Socken mit Brunnen drauf'],
+    jubel: ['ENDLICH! 📦', 'Das Paket ist da! 🎉', 'Schneckenpost hat geliefert 🐌🎉'],
+    zurueck: '📦 Paket geht zurück an den Absender. Neue Sendung kommt bestimmt 🙄',
+  },
 };
 /**
  * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des
