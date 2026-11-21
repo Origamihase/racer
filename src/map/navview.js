@@ -295,7 +295,10 @@ export class NaviScreen {
     const kmPerM = onRoad ? sec.kmPerM : 0;
     const ox = w / 2;
     const oy = h * CAR_Y;
-    // schräg nur mit WebGL (die Karte braucht es); sonst alles flach wie von oben
+    // schräg nur mit WebGL (die Karte braucht es); sonst alles flach wie von oben – und wieder schräg, sobald ein
+    // verlorenes WebGL zurück ist
+    const wp = this.painter.warp;
+    if (this.tilt === false && wp && wp.ready && wp.gen !== this.tiltGen) this.tilt = undefined;
     if (this.tilt === undefined) this.tilt = this.painter.canTilt();
     const cam = this.cam.set(ox, oy, this.tilt ? TILT : 0, FOCAL);
 
@@ -419,10 +422,14 @@ export class NaviScreen {
     ctx.fillRect(0, FOG_Y[0], w, FOG_Y[1] - FOG_Y[0]);
   }
 
-  /** Kartenlinie (Kartenkoordinaten) → Boden (Bezugs-Bildpunkte vor dem Auto). */
-  ground(P) {
+  /**
+   * Kartenlinie (Kartenkoordinaten) → Boden (Bezugs-Bildpunkte vor dem Auto). trail: in den eigenen Puffer des
+   * gefahrenen Wegs (bis zu Tausende Punkte in jedem Bild; gilt bis zum nächsten Aufruf mit trail).
+   */
+  ground(P, trail = false) {
     const n = P.length / 2;
-    const G = new Float64Array(n * 2);
+    if (trail && !(this.trailG && this.trailG.length >= n * 2)) this.trailG = new Float64Array(Math.ceil(n * 1.25) * 2);
+    const G = trail ? this.trailG.subarray(0, n * 2) : new Float64Array(n * 2);
     const o = [0, 0];
     for (let i = 0; i < n; i++) {
       if (Number.isNaN(P[i * 2])) {
@@ -447,13 +454,17 @@ export class NaviScreen {
     if (this.tilt) {
       const [r, g, b] = FOG[theme];
       ok = this.painter.drawTilted(ctx, this.tv, { fog: [r / 255, g / 255, b / 255], yTop: FOG_Y[0] - 4, reserve, budget: this.budget });
-      // WebGL verloren: ab dem nächsten Bild flach (dieses noch mit der flachen Karte unter schrägen Linien)
-      if (!ok) this.tilt = false;
+      // WebGL verloren: ab dem nächsten Bild flach (dieses noch mit der flachen Karte unter schrägen Linien), bis es
+      // wiederhergestellt ist
+      if (!ok) {
+        this.tilt = false;
+        this.tiltGen = this.painter.warp?.gen;
+      }
     }
     if (!ok) this.painter.drawRotated(ctx, this.view, 1);
     // gefahrener Weg (hinter dem Auto), dann die Route nach vorn
     if (m.trail.length >= 4) {
-      const G = this.ground(m.trail);
+      const G = this.ground(m.trail, true);
       this.band(ctx, G, 4.5, T.drivenCase);
       this.band(ctx, G, 3, T.driven);
     }

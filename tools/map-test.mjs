@@ -708,7 +708,7 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
   const res = { frames: 0, map: 0, reserveOnly: 0, uncovered: 0, blocked: 0, hop: 0 };
   const W = 1024 - 372;
   const H = 640 - 64;
-  const drive = (target, seed, frames, before) => {
+  const drive = (target, seed, frames, before, each) => {
     let s0 = seed;
     const trip = new Trip({ rng: () => ((s0 = (s0 * 16807) % 2147483647) / 2147483647) });
     const nav = new NavModel(trip);
@@ -739,6 +739,7 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
       if (before && before(nav)) continue;
       before = null;
       const t0 = tiles;
+      if (each) each(navi);
       navi.draw(ctxOf({ width: 1024, height: 640 }), 0, 0, W, H, st, 1 / 15);
       if (drawn++ > 0 && tiles - t0 > 1) res.blocked++;
       res.frames++;
@@ -761,6 +762,25 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
   ok(res.reserveOnly > 0 && up[1] > 0, 'schräge Karte: Reserve nie gebraucht ' + JSON.stringify(res));
   ok(worstWarp > 0 && worstWarp < 1e-6, 'schräge Karte: Shader legt den Ausschnitt falsch (' + worstWarp + ' px)');
   console.log('  schräge Karte: ' + JSON.stringify({ ...res, uploads: up, shader: +worstWarp.toExponential(1) }));
+  // WebGL verloren (Hintergrund, Neustart der GPU) und wiederhergestellt: erst flach, dann wieder schräg, mit neu
+  // hochgeladenen Ausschnitten (die Texturen sind nach der Wiederherstellung leer)
+  {
+    let n = 0;
+    const lost = {};
+    drive('Hamburg', 3, 6000, null, (navi) => {
+      const wp = navi.painter.warp;
+      if (!wp || navi.closeW >= 1) return;
+      n++;
+      if (n === 50) wp.ready = false;
+      if (n === 60) {
+        lost.tilt = navi.tilt;
+        Object.assign(wp, { ready: true, gen: 1 });
+        lost.up = up[0];
+      }
+      if (n === 70) Object.assign(lost, { back: navi.tilt, after: up[0] - lost.up });
+    });
+    ok(n >= 70 && lost.tilt === false && lost.back === true && lost.after > 0, 'schräge Karte nach verlorenem WebGL: ' + JSON.stringify({ n, ...lost }));
+  }
 
   // Adapter auf course.preview (Paket K2), so umgeleitet wie in src/main.js: Format und Länge der Linie, das Navi
   // zeichnet ohne Fehler, und die Übergabe zwischen Karte und Nahansicht stimmt am Auto (die gedrehte Karte führt ihre

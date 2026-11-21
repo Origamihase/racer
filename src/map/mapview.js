@@ -1319,6 +1319,12 @@ export class MapPainter {
     if (this.warp === undefined) this.warp = Warp.create(W, H);
     const wp = this.warp;
     if (!wp || !wp.ready) return false;
+    // WebGL verloren und wieder da: Die Texturen sind leer, also alle Ausschnitte neu bauen und hochladen
+    if (wp.gen && wp.gen !== this.warpGen) {
+      this.warpGen = wp.gen;
+      this.lv = [null, null];
+      this.jobs = [null, null];
+    }
     wp.resize(W, H);
     const box = tv.bounds(16, yTop + 16);
     const side = Math.max(box[2] - box[0], box[3] - box[1]);
