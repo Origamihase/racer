@@ -385,8 +385,11 @@ export class Game {
     this.ui.reset?.();
     this.ui.jobs(this.jobs);
     this.bot('hugo', 'Der Stream läuft! Viel Spaß beim Zuschauen.');
-    // Mini Adam hat zu Beginn „Hallo, Partypeople!“ gesagt (Startszene, main.js): Der Chat grüßt zurück
-    shuffle(PARTYPEOPLE.chat).slice(0, 4).forEach((line, i) => this.later(0.6 + i * 0.6 + rand(0, 0.3), () => this.chat(line)));
+    // Mini Adam sagt nach „Wir sind live.“ „Partypeople!“ (main.js streamStart): Der Chat grüßt zurück – nie vor seinem
+    // Gruß (greetFirst: main.js meldet ihn mit greet; wer vorher dran wäre, wartet in helloHeld)
+    this.helloSaid = !this.greetFirst;
+    this.helloHeld = [];
+    shuffle(PARTYPEOPLE.chat).slice(0, 4).forEach((line, i) => this.later(0.6 + i * 0.6 + rand(0, 0.3), () => this.helloChat(line)));
     this.later(3.4, () => this.chat('Wohin fahren wir heute?'));
     // das erste Ziel sucht der Chat erst aus
     this.later(3.2, () => this.bot('james', 'Die Gebote sind eröffnet: Wohin soll die Reise gehen? Ab 10 € seid ihr dabei.'));
@@ -397,6 +400,19 @@ export class Game {
     this.later(68, () => {
       if (!this.allJobsPaid) this.chat(`Und wenn du alle fünf Jobs schaffst, lege ich ${fmtBetrag(this.allJobs.pledge)} drauf! 🏆`, this.allJobs.pledger);
     });
+  }
+
+  /** Eine Antwort des Chats auf Mini Adams Gruß: gleich, wenn er gegrüßt hat, sonst gleich nach seinem Gruß (greet). */
+  helloChat(line) {
+    if (this.helloSaid) this.chat(line);
+    else this.helloHeld.push(line);
+  }
+
+  /** main.js: Mini Adams „Partypeople!“ beginnt (nach „Wir sind live.“) – der Chat grüßt zurück. */
+  greet() {
+    this.helloSaid = true;
+    this.helloHeld.forEach((line, i) => this.later(0.6 + 0.6 * i, () => this.chat(line)));
+    this.helloHeld.length = 0;
   }
 
   /** Titelbildschirm: Der Wagen steht am Supercharger (die Welt stellt ihn hin), kein Stream-Trubel. */

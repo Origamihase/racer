@@ -54,12 +54,12 @@ export const ROLL_T = TA + TB + TC;
 /**
  * Die Startszene der Reise (main.js, Zustand 'charge') in Sekunden ab ihrem Beginn: Der Stecker verlässt die Buchse und
  * kehrt in seinen Halter zurück (plug), die Klappe schließt (flap), der Wagen rollt an (roll, ROLL_T später ist er dem
- * Spiel übergeben: end), OMI gongt und Mini Adam winkt, sobald der Stecker hängt (chime, wave), das Sprachstudio
- * meldet sich (live; OMI grüßt, wenn es ausgeredet hat), und die Kamera geht ins Cockpit (inside, 1,45 s vor dem
- * Ende). Überspringen geht ab skip.
+ * Spiel übergeben: end), OMI gongt, sobald der Stecker hängt (chime), und die Kamera geht ins Cockpit (inside, 1,45 s
+ * vor dem Ende). Überspringen geht ab skip. live: Das Sprachstudio meldet „Wir sind live.“, danach ruft Mini Adam
+ * „Partypeople!“ und winkt dabei wave Sekunden lang aus dem Fenster – sein Gruß folgt in der Warteschlange der
+ * Sprachausgabe auf die Meldung, das Winken beginnt mit ihm (main.js streamStart); dann grüßt OMI.
  */
-// hallo: Mini Adam winkt und sagt „Partypeople!“ (data.js PARTYPEOPLE.wave), danach das Sprachstudio „Wir sind live.“
-export const SCENE = { plug: [0.9, 2], flap: [1.25, 1.6], roll: 1.6, chime: 2, wave: [2, 3.3], hallo: 2.05, live: 3.5, skip: 0.3 };
+export const SCENE = { plug: [0.9, 2], flap: [1.25, 1.6], roll: 1.6, chime: 2, live: 0.5, wave: 1.3, skip: 0.3 };
 SCENE.end = SCENE.roll + ROLL_T;
 SCENE.inside = SCENE.end - 1.45;
 

@@ -390,6 +390,8 @@ const gameWorld = {
 };
 // (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
 const game = new Game({ traffic, scenery, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
+// Mini Adams Gruß zu Beginn kommt von hier (streamStart): Der Chat grüßt erst danach zurück (Game.greet)
+game.greetFirst = true;
 // Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht, BrunnenTV,
 // Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
 xxl.on((e) => {
@@ -699,7 +701,8 @@ function startRun() {
   cockpit.shake = 0;
   chassis.reset();
   // jede Fahrt beginnt mit der Startszene am Supercharger in Erlensee (ohne Ladepark gleich am Steuer)
-  Object.assign(chargeRun, { hello: false, liveT: Infinity, greetT: Infinity });
+  Object.assign(chargeRun, { hello: false, said: false, waveT: -1, greetT: Infinity });
+  chargeRun.id++;
   state = 'charge';
   if (!chargeBegin()) toDrive();
   // die Taste, die „Losfahren“ ausgelöst hat, soll die Startszene nicht gleich überspringen
@@ -1301,10 +1304,11 @@ function toDrive() {
   state = 'drive';
   stateT = 0;
   ui.show(true);
-  if (!chargeRun.hello) streamHello();
-  // die Facecam geht an: hat er in der Startszene nicht schon gewinkt (übersprungen, kein Ladepark), winkt er jetzt
-  // hinein – das ist sein Gruß zum Intro (game/wave.js)
-  game.waveAt('intro');
+  // ohne Startszene (übersprungen, ehe „Wir sind live.“ kam, oder kein Ladepark): der Beginn des Streams jetzt
+  if (!chargeRun.hello) streamStart();
+  // die Facecam geht an: Hat er seinen Gruß in der Startszene gesagt, ohne draußen zu winken (er kam erst, als die
+  // Kamera schon ins Cockpit ging), winkt er jetzt hinein; sonst winkt er, sobald sein Gruß beginnt (streamStart)
+  if (chargeRun.said && chargeRun.waveT < 0) game.waveAt('intro');
   // die Tipps der ersten Minuten zählen ab hier (first-tips.js); keiner steht noch vom letzten Stream
   firstTips.restart();
   tipT = 0;
@@ -1333,8 +1337,10 @@ const CHARGE_LINES = { live: 'Wir sind live.', greet: 'Hallo Mini Adam! Akku vol
 // town: der Startort (Towns.of: plan, group, charge), port: Ladeklappe des Wagens, keep: Spieler vor der Szene,
 // skipT: wann übersprungen wurde (dann erst abblenden), greetT: wann OMI grüßt (Spielzeit simT)
 // parked: der Titel der Reise zeigt den Wagen am Supercharger (xxlStart)
-// hello: Mini Adams „Hallo, Partypeople!“ ist gesagt, liveT: wann das Sprachstudio „Wir sind live.“ sagt (Spielzeit simT)
-const chargeRun = { town: null, port: null, pose: {}, keep: null, parked: false, chimed: false, hello: false, skipT: -1, liveT: Infinity, greetT: Infinity };
+// hello: der Stream hat begonnen („Wir sind live.“ und Mini Adams Gruß stehen in der Sprachausgabe, streamStart),
+// said: sein Gruß hat begonnen, waveT: wann (stateT) er dazu in der Startszene zu winken begann (−1: nicht dort),
+// id: Nummer des Streams für die Rückmeldungen der Sprachausgabe (liveOff zählt weiter: Späteres gilt nicht mehr)
+const chargeRun = { town: null, port: null, pose: {}, keep: null, parked: false, chimed: false, hello: false, said: false, waveT: -1, id: 0, skipT: -1, greetT: Infinity };
 const chargeM = new THREE.Matrix4();
 
 /** Wagen in die Bucht des Startorts, Stecker in die Buchse, Ring grün. false, wenn der Startort keinen Ladepark hat. */
@@ -1423,9 +1429,8 @@ function chargeStep(dt) {
     run.chimed = true;
     audio.nomiChime();
   }
-  if (t >= S.hallo && !run.hello) streamHello(PARTYPEOPLE.wave);
-  // sein Gruß im Intro (game/wave.js): ab hier winkt er aus dem Fenster, beim Losfahren nicht noch einmal
-  if (t >= S.wave[0]) game.waves.ask('intro', game.t);
+  // der Stream geht live (das Sprachstudio), danach grüßt Mini Adam und winkt dabei aus dem Fenster (streamStart)
+  if (t >= S.live && !run.hello) streamStart();
   const where = placeScene(dt, CHARGE_KEYS, t, S.inside, S.end);
   const sw = S.inside;
   const fade = t < 0.6 ? 1 - t / 0.6 : t > sw - 0.25 && t < sw ? (t - (sw - 0.25)) / 0.25 : t >= sw && t < sw + 0.35 ? 1 - (t - sw) / 0.35 : 0;
@@ -1436,37 +1441,53 @@ function chargeStep(dt) {
     updateCarMatrix();
     toDrive();
   }
+  // er winkt, solange er grüßt (ab waveT, S.wave Sekunden lang), und schaut dabei hinaus bis zum Schnitt ins Cockpit
+  const w = run.waveT;
   return {
     inside: where === 'inside',
-    wave: smoothstep(S.wave[0], S.wave[0] + 0.4, t) * (1 - smoothstep(S.wave[1] - 0.5, S.wave[1], t)),
-    look: smoothstep(S.wave[0], S.wave[0] + 0.8, t) * (1 - smoothstep(S.wave[1], S.inside, t)),
+    wave: w < 0 ? 0 : smoothstep(w, w + 0.4, t) * (1 - smoothstep(w + S.wave - 0.5, w + S.wave, t)),
+    look: w < 0 ? 0 : smoothstep(w, w + 0.8, t) * (1 - smoothstep(w + S.wave, S.inside, t)),
   };
 }
 
 /**
- * Jeder Stream beginnt mit Mini Adams Gruß (data.js PARTYPEOPLE), genau einmal (chargeRun.hello): in der Startszene,
- * während er winkt, nur „Partypeople!“ (text = PARTYPEOPLE.wave), sonst (ohne Ladepark, übersprungen vor dem Gruß)
- * beim Losfahren „Hallo, Partypeople!“. Mit seiner tiefen Stimme und Vorrang, damit nichts ihn verschluckt; danach
- * das Sprachstudio „Wir sind live.“ und OMIs Gruß.
+ * Der Beginn jedes Streams, genau einmal (chargeRun.hello; in der Startszene bei SCENE.live, sonst beim Losfahren):
+ * Zuerst meldet das Sprachstudio „Wir sind live.“, dann ruft Mini Adam „Partypeople!“ (data.js PARTYPEOPLE) und winkt
+ * dabei, dann grüßt der Chat zurück (Game.greet) und OMI wünscht gute Fahrt (Besitzer, 21.11.2026: „Es sollte zuerst
+ * ‚Wir sind live‘ und danach ‚Partypeople‘ kommen. Ohne Stream macht ein Gruß keinen Sinn.“). Beide Sätze stehen in
+ * der Warteschlange der Sprachausgabe (mit Vorrang, in dieser Reihenfolge): Sein Gruß beginnt erst, wenn das Studio
+ * ausgeredet hat, und Untertitel und Winken beginnen mit ihm – in der Startszene draußen am Fenster, solange die Kamera
+ * noch draußen ist, sonst in Facecam und Cockpit (game/wave.js 'intro').
  */
-function streamHello(text = PARTYPEOPLE.say) {
-  chargeRun.hello = true;
-  const d = speech.say(text, 'adam', { priority: true });
-  ui.adam(text, d + 0.8);
-  chargeRun.liveT = simT + Math.max(d + 0.35, SCENE.live - SCENE.hallo);
+function streamStart() {
+  const run = chargeRun;
+  run.hello = true;
+  const id = run.id;
+  const now = () => id === run.id;
+  speech.say(CHARGE_LINES.live, game.studioVoice(), { priority: true, onStart: (d) => now() && ui.studio(CHARGE_LINES.live, d + 0.8) });
+  const text = PARTYPEOPLE.say;
+  speech.say(text, 'adam', {
+    priority: true,
+    onStart: (d) => {
+      if (!now()) return;
+      run.said = true;
+      ui.adam(text, d + 0.8);
+      game.greet();
+      if (state === 'charge' && stateT < SCENE.inside - SCENE.wave) {
+        run.waveT = stateT;
+        game.waves.ask('intro', game.t);
+      } else if (state === 'drive') game.waveAt('intro');
+    },
+    onEnd: () => {
+      if (now()) run.greetT = simT + 0.6;
+    },
+  });
 }
 
-/** Der Stream ist aus: kein „Wir sind live.“ und kein Gruß OMIs mehr, die noch geplant waren. */
+/** Der Stream ist aus: kein Gruß OMIs mehr, und was die Sprachausgabe vom Beginn noch meldet, gilt nicht mehr. */
 function liveOff() {
-  chargeRun.liveT = chargeRun.greetT = Infinity;
-}
-
-/** Das Sprachstudio meldet: Wir sind live (nach Mini Adams Gruß). */
-function chargeLive() {
-  chargeRun.liveT = Infinity;
-  const d = speech.say(CHARGE_LINES.live, game.studioVoice());
-  ui.studio(CHARGE_LINES.live, d + 0.8);
-  chargeRun.greetT = simT + d + 1.1;
+  chargeRun.greetT = Infinity;
+  chargeRun.id++;
 }
 
 /** OMI grüßt (wie Game.say, aber ohne die Spielzeit: die steht in der Szene still). */
@@ -2126,8 +2147,7 @@ function step(dt, { render = true } = {}) {
   let adamWave = 0;
   let adamLook = 0;
   let adamMegafon = 0;
-  // „Wir sind live.“ nach Mini Adams Gruß, OMIs Gruß, wenn das Sprachstudio ausgeredet hat (auch erst nach der Übergabe)
-  if (simT >= chargeRun.liveT) chargeLive();
+  // OMIs Gruß, wenn Mini Adam ausgeredet hat (auch erst nach der Übergabe)
   if (simT >= chargeRun.greetT) chargeGreet();
 
   if (input.take('mute')) {
