@@ -9,7 +9,7 @@
 // entlang der Route, Überfahrten (Fähre, Autozug, Flug) als Hüpfer und die Ansage für das Navi. Läuft auch unter Node.
 import { nodes, places, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle } from './graph.js';
 import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm } from './mapview.js';
-import { PARKS, parkBoard } from './parks.js';
+import { PARKS, parkBoard, postName } from './parks.js';
 import { goalName } from '../world/kit/layout.js';
 
 const NODE_XY = nodes.map((n) => project(n.lat, n.lon));
@@ -1034,12 +1034,13 @@ export class NavModel {
       return out;
     }
     if (g.type === 'stop') {
-      // im Zweig zum geplanten Ladestopp: Halt an der freien Säule (Entfernung wie jede andere: Meter auf echter Straße)
+      // im Zweig zum geplanten Ladestopp bzw. im Ort seiner Ladesäule: Halt an der freien Säule (Entfernung wie jede
+      // andere: Meter auf echter Straße)
       out.turn = 'stop';
       out.dist = g.dist;
       out.km = this.kmAhead(g.dist);
       out.say = fmtDistance(trip.reach(trip.s + g.dist));
-      out.head = PARKS[g.park].name;
+      out.head = g.post >= 0 ? postName(g.post) : PARKS[g.park].name;
       out.sub = 'Ladestopp an der freien Säule';
       return out;
     }

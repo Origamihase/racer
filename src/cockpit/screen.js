@@ -439,10 +439,11 @@ export class CenterScreen {
     const tx = x + 34 + ctx.measureText(pct).width;
     ctx.font = '600 22px "Helvetica Neue", Arial, sans-serif';
     fitText(ctx, ['', b.planned ? 'Ladestopp geplant' : 'Bitte bald laden', 'Jetzt laden!', 'Der Wagen rollt aus'][b.lvl], tx, y + 100, x + w - 18 - tx);
-    // der Ladepark, den NOMI nennt – sein Name sagt schon „Ladepark …“ (leer: nichts mehr zu planen)
+    // der Ladeplatz, den NOMI nennt – sein Name sagt schon „Ladepark …“ bzw. „Ladesäule in …“ (leer: nichts mehr zu
+    // planen)
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.font = '500 20px "Helvetica Neue", Arial, sans-serif';
-    const park = b.park ? b.park + ' · ' + fmtKm(b.km) : 'Nächsten Ladepark ansteuern';
+    const park = b.park ? b.park + ' · ' + fmtKm(b.km) : 'Nächste Ladesäule ansteuern';
     fitText(ctx, b.lvl === 3 ? 'Kein Strom mehr für den Antrieb' : park, x + 20, y + 146, w - 40);
     ctx.restore();
   }

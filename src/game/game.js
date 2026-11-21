@@ -733,12 +733,13 @@ export class Game {
   }
 
   /**
-   * Akku auf der Reise (REISE.md A5): Geladen wird in den Ladeparks an den Ausfahrten. NOMI warnt bei REISE_AKKU.warn
-   * (25 % und 10 %) und nennt den nächsten Ladepark in Reichweite mit Entfernung (trip.nextRest: auf dem Weg, sonst
-   * der nächste über Straßen, ein Abstecher). Schon früher, unter REISE_AKKU.early, warnt sie, sobald er der letzte in
-   * Reichweite ist (reachable): Der übernächste und das Ziel liegen weiter weg, wer an ihm vorbeifährt, kommt nicht mehr
-   * an. Ist ein Stopp geplant, sagt sie nur, wie weit es bis dorthin ist. batteryWarned: 1 früh, 2 bei 25 %, 3 bei
-   * 10 %; nach dem Laden wieder 0. Einmal je Sekunde misst sie dazu den Verbrauch je Meter Straße (akku, perM).
+   * Akku auf der Reise (REISE.md A5): Geladen wird in den Ladeparks an den Ausfahrten und an der Ladesäule jedes Orts auf
+   * dem Weg. NOMI warnt bei REISE_AKKU.warn (25 % und 10 %) und nennt den nächsten Ladeplatz in Reichweite mit
+   * Entfernung (trip.nextRest: auf dem Weg, sonst der nächste Park über Straßen, ein Abstecher). Schon früher, unter
+   * REISE_AKKU.early, warnt sie, sobald er der letzte in Reichweite ist (reachable): Der übernächste und das Ziel liegen
+   * weiter weg, wer an ihm vorbeifährt, kommt nicht mehr an. Ist ein Stopp geplant, sagt sie nur, wie weit es bis dorthin
+   * ist. batteryWarned: 1 früh, 2 bei 25 %, 3 bei 10 %; nach dem Laden wieder 0. Einmal je Sekunde misst sie dazu den
+   * Verbrauch je Meter Straße (akku, perM).
    */
   journeyBattery() {
     const p = this.player;
@@ -776,7 +777,7 @@ export class Game {
     const text = !r ? A.none : r.planned ? A.planned : lvl === 3 ? A.veryLow : lvl || !fits(r) ? A.low : A.last;
     this.say(fillTemplate(text, vars), 'worried');
     if (r && !r.planned) this.ui.toast(this.touchUI ? '🔌 Ladestopp einplanen: Knopf unten' : '🔌 Ladestopp einplanen: Taste L', 'info', 'ladestopp');
-    this.chat(pick(['Akku! 🔋', 'Ab in den Ladepark!', 'Popcorn-Pause? 🍿', 'Lade-Pause!']));
+    this.chat(pick(['Akku! 🔋', r && r.post >= 0 ? 'Ab an die Ladesäule!' : 'Ab in den Ladepark!', 'Popcorn-Pause? 🍿', 'Lade-Pause!']));
   }
 
   /**
@@ -835,19 +836,21 @@ export class Game {
     const trip = this.world.trip();
     // im Park selbst nicht: dort hält der Wagen ohnehin an der Säule
     if (trip.section && trip.section.kind === 'park') return false;
-    return trip.stop < 0 && (this.player.battery <= 50 || this.batteryWarned > 0);
+    return trip.stop < 0 && trip.post < 0 && (this.player.battery <= 50 || this.batteryWarned > 0);
   }
 
   /**
-   * Ladestopp einplanen (Reise; Taste L, Touch-Knopf „Ladestopp einplanen“): Der nächste Ladepark auf dem Weg wird
-   * Zwischenziel, das Navi führt hinein und danach weiter zum Ziel. Ein zweiter Druck streicht den Stopp wieder.
+   * Ladestopp einplanen (Reise; Taste L, Touch-Knopf „Ladestopp einplanen“): Der nächste Ladeplatz auf dem Weg wird
+   * Zwischenziel – ein Ladepark (das Navi führt hinein und danach weiter zum Ziel) oder die Ladesäule eines Orts, durch
+   * den der Weg führt (der Wagen hält dort). Ein zweiter Druck streicht den Stopp wieder.
    */
   planStop() {
     if (!this.running || this.charging) return;
     const A = REISE_AKKU;
     const trip = this.world.trip();
-    if (trip.stop >= 0) {
+    if (trip.stop >= 0 || trip.post >= 0) {
       trip.setStop(-1);
+      trip.setPost(-1);
       this.say(A.cancel, 'think', { priority: false });
       return;
     }
@@ -856,14 +859,16 @@ export class Game {
       this.say(A.noPark, 'think', { priority: false });
       return;
     }
-    trip.setStop(r.park);
+    if (r.post >= 0) trip.setPost(r.post);
+    else trip.setStop(r.park);
     this.ui.dropKey('ladestopp');
     this.stats.stopsPlanned++;
     this.say(fillTemplate(A.set, { park: r.name, km: kmWords(r.km) }), 'happy');
   }
 
   /**
-   * Der Wagen steht im Ladepark in der Spur hinter der freien Heldenbucht (Ereignis 'charge' der Welt): der Ladestopp
+   * Der Wagen steht im Ladepark oder an der Ladesäule eines Orts in der Spur hinter der freien Heldenbucht (Ereignis
+   * 'charge' der Welt; e.park bzw. e.post): der Ladestopp
    * beginnt, eine kleine Szene nach dem Fahrplan von xxl/charge.js stopPlan (Sekunden ab jetzt, Spielzeit): einparken,
    * einstecken, im Zeitraffer laden, Popcorn und Bananensaft, ausstecken, ausparken. Das Spiel führt die Zeit, den Akku,
    * Chat, NOMI und Spenden; main.js zeigt dazu Wagen, Kabel, Kamera (onCharge) und lässt den Wagen am Ende in die Spur
@@ -872,8 +877,8 @@ export class Game {
   startCharge(e) {
     const p = this.player;
     const plan = stopPlan(e.sec, p.s, p.x);
-    this.charging = { t0: this.t, from: p.battery, park: e.park, name: e.name, sec: e.sec, plan, said: 0 };
-    this.routeMark('laden', { park: e.park });
+    this.charging = { t0: this.t, from: p.battery, park: e.park, post: e.post ?? -1, name: e.name, sec: e.sec, plan, said: 0 };
+    this.routeMark('laden', e.post >= 0 ? { post: e.post } : { park: e.park });
     this.onCharge(this.charging);
   }
 

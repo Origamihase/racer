@@ -255,7 +255,7 @@ export class UI {
     const pct = clamp(b.pct, 0, 100);
     this.akkuFill.style.width = (b.lvl < 3 ? Math.max(8, pct) : 0) + '%';
     const title = ['', 'Akku fast leer', 'Akku kritisch', 'Akku leer'][b.lvl] + ' · ' + Math.round(pct) + ' %';
-    const park = b.lvl === 3 ? 'Der Wagen rollt aus' : b.park ? b.park + ' · ' + fmtKm(b.km) : 'Nächsten Ladepark ansteuern';
+    const park = b.lvl === 3 ? 'Der Wagen rollt aus' : b.park ? b.park + ' · ' + fmtKm(b.km) : 'Nächste Ladesäule ansteuern';
     if (this.akkuTitle.textContent !== title) this.akkuTitle.textContent = title;
     if (this.akkuPark.textContent !== park) this.akkuPark.textContent = park;
   }

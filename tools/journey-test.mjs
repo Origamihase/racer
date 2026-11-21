@@ -45,7 +45,7 @@ import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { goalName } from '../src/world/kit/layout.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
 import { signsAlong, BOARD_D } from '../src/world/xxl/signplan.js';
-import { parkBoard, PARK_STOP_AFTER, PARKS } from '../src/map/parks.js';
+import { parkBoard, PARK_STOP_AFTER, PARKS, postName } from '../src/map/parks.js';
 
 const HOURS = Number(process.argv[2]) || 3;
 const LOG = process.argv[3] === 'log';
@@ -100,9 +100,9 @@ const DRIVERS = [
  */
 const DUELLIST = { name: 'zügig, Duell im Zielort', cruise: 185, miss: 0, skip: true, duel: true };
 /**
- * Ladestopps (REISE.md A5): Dieser Fahrer lädt nur in den Ladeparks. Er folgt dem Navi und plant bei jeder Warnung
- * NOMIs den Ladestopp ein, den sie nennt (Game.planStop, wie Taste L); sein Akku wird nicht aufgefüllt. In
- * LADE_MIN Minuten Stream läuft er nie leer, und jeder Halt im Park lädt den Akku ganz.
+ * Ladestopps (REISE.md A5): Dieser Fahrer lädt nur an Ladesäulen (in den Ladeparks und an der Säule eines Orts auf dem
+ * Weg). Er folgt dem Navi und plant bei jeder Warnung NOMIs den Ladestopp ein, den sie nennt (Game.planStop, wie Taste
+ * L); sein Akku wird nicht aufgefüllt. In LADE_MIN Minuten Stream läuft er nie leer, und jeder Halt lädt den Akku ganz.
  */
 const LADER = { name: 'Lader (plant Ladestopps)', cruise: 150, miss: 0, skip: true, stops: true };
 const LADE_MIN = 30;
@@ -148,6 +148,11 @@ function checkNavi(trip, nav, promised, n, where) {
       ok(ins.head === nodeTitle(g.node) || ins.head === 'Autobahnende', `${where}: Name hinter dem Horizont: ${ins.head}`);
       promised.set(g.node, { s: trip.s + g.dist, head: ins.head });
     }
+  } else if (ins.turn === 'stop' && trip.post >= 0) {
+    // geplanter Ladestopp an der Ladesäule eines Orts: die Entfernung zeigt auf ihren Halt im Ort
+    n.stop++;
+    const c = trip.cur.sections.find((q) => q.kind === 'stadt' && q.place === trip.post && !q.postDone && q.s1 > trip.s);
+    ok(c && near(ins.dist, c.postS - trip.s) && ins.head === postName(c.place), `${where}: Ladestopp ${ins.head} ohne Halt an der Ladesäule`);
   } else if (ins.turn === 'stop') {
     // geplanter Ladestopp: im Zweig zum Park, die Entfernung zeigt auf den Halt an der freien Säule
     n.stop++;
@@ -433,7 +438,7 @@ function stream(driver, hours, seed, firstRound = false) {
     lockFork: 0, lockNode: 0, wrong: 0, wende: 0, first1: 0, firstN: 0, firstWait: [], maxGap: 0, maxTv: 0, minTv: Infinity, passed: 0,
     bands: [0, 0, 0, 0], legs: [], navi: { checks: 0, exit: 0, far: 0, farKept: 0, arrive: 0, stop: 0, wende: 0 }, reroutes: 0, standing: 0, ratio: 0, stand: [], flipped: 0, minChoice: Infinity,
     // Ladeparks: Halte und Ladestopps; beim Lader dazu Warnungen, eingeplante Stopps, kleinster Akku und Ladestand danach
-    charges: 0, warns: 0, planned: 0, minBattery: 100, full: 0, parkKm: [],
+    charges: 0, posts: 0, warns: 0, planned: 0, minBattery: 100, full: 0, parkKm: [],
     // Akku: Sekunden und verbrauchte Prozent im ganzen Stream, auf der offenen Autobahn und im Stand (siehe AKKU_BOUNDS)
     akku: { t: 0, used: 0, abT: 0, abUsed: 0, standT: 0, standUsed: 0 },
     // die erste Runde: bids = ihre Gebote ({place, secs, kind}), standT/standPlace = wann welches Ziel zum ersten Mal
@@ -642,12 +647,12 @@ function stream(driver, hours, seed, firstRound = false) {
     if (driver.stops) {
       if (game.batteryWarned > warned) {
         m.warns++;
-        if (trip.stop < 0 && !game.charging) {
+        if (trip.stop < 0 && trip.post < 0 && !game.charging) {
           const r = trip.nextRest((q) => game.reachable(q));
           game.planStop();
           // (der Weg führt jetzt über den Park: Was das Navi hinter dem Horizont versprach, galt dem alten Weg)
           promised.clear();
-          if (r && trip.stop === r.park) {
+          if (r && (r.post >= 0 ? trip.post === r.post : trip.stop === r.park)) {
             m.planned++;
             m.parkKm.push(r.km);
           }
@@ -701,10 +706,12 @@ function stream(driver, hours, seed, firstRound = false) {
     for (let k = 0; k < evs.length; k++) onEvent(evs[k]);
     const rest = arrival.update(trip, evs, p.speed);
     if (rest && rest.type === 'charge') {
-      // im Ladepark: Halt neben der freien Säule, der Platzhalter lädt, dann geht es weiter
+      // im Ladepark oder an der Ladesäule eines Orts: Halt neben der freien Säule, der Platzhalter lädt, dann geht es weiter
       m.charges++;
+      if (rest.post >= 0) m.posts++;
       game.onTrip(rest);
-      ok(game.charging && arrival.held && Math.abs(rest.sec.spotS + PARK_STOP_AFTER - p.s) < 2, `Halt im ${rest.name} ohne Laden (${(p.s - rest.sec.spotS).toFixed(1)} m hinter dem Haltepunkt)`);
+      const at = rest.post >= 0 ? rest.sec.postS : rest.sec.spotS;
+      ok(game.charging && arrival.held && Math.abs(at + PARK_STOP_AFTER - p.s) < 2, `Halt ${rest.post >= 0 ? 'an der' : 'im'} ${rest.name} ohne Laden (${(p.s - at).toFixed(1)} m hinter dem Haltepunkt)`);
     } else if (rest) {
       m.rests++;
       game.onTrip(rest);
@@ -889,18 +896,20 @@ for (const { driver, m } of rows) {
   if (HOURS >= 3) ok(m.duels >= 10 && m.arrivals >= 3, `Duell im Zielort: zu wenig geprüft (${m.duels} Duelle, ${m.arrivals} Ankünfte, ${m.late2} knapp dahinter)`);
   rows.push({ driver: DUELLIST, m });
 }
-// Ladestopps: Wer bei NOMIs Warnung den genannten Ladepark einplant, läuft nie leer (NOMI rechnet je Meter Straße und
-// schaut über das Ziel hinaus, Game.reachable; gemessen mit den Startwerten 5101–5145: kleinster Akku 7,6 %)
+// Ladestopps: Wer bei NOMIs Warnung den genannten Ladeplatz einplant, läuft nie leer (NOMI rechnet je Meter Straße und
+// schaut über das Ziel hinaus, Game.reachable; gemessen mit den Startwerten 5101–5145: kleinster Akku 7,6 %, mit den
+// Ladesäulen der Orte bei 5101–5103 13,1 %). Unter 3 % hieße: Was NOMI nannte, lag weiter weg, als sie dachte (so
+// ein Park an einer Ausfahrt, deren Zweig in der Sperrzone schon in einen Ort führte).
 {
   const runs = [0, 1, 2].map((k) => stream(LADER, LADE_MIN / 60, 5101 + k));
   const all = (f) => runs.reduce((a, m) => a + f(m), 0);
   const minB = Math.min(...runs.map((m) => m.minBattery));
   const km = runs.flatMap((m) => m.parkKm).sort((a, b) => a - b);
-  for (const m of runs) ok(m.minBattery > 0 && m.charges >= 1 && m.full >= m.charges - 1, `Lader: kleinster Akku ${fmt(m.minBattery, 1)} %, ${m.charges} Ladestopps, ${m.full} davon voll geladen`);
+  for (const m of runs) ok(m.minBattery > 3 && m.charges >= 1 && m.full >= m.charges - 1, `Lader: kleinster Akku ${fmt(m.minBattery, 1)} %, ${m.charges} Ladestopps, ${m.full} davon voll geladen`);
   ok(all((m) => m.planned) >= 3 && all((m) => m.charges) >= 3, `Lader: zu wenig geprüft (${all((m) => m.planned)} eingeplant, ${all((m) => m.charges)} geladen)`);
   console.log(
     `${LADER.name}: ${runs.length} × ${LADE_MIN} min, ${all((m) => m.warns)} Warnungen NOMIs, ${all((m) => m.planned)} Ladestopps eingeplant (Weg dorthin ${km.length ? fmt(km[0], 0) + '–' + fmt(km[km.length - 1], 0) : '–'} km), ` +
-      `${all((m) => m.charges)}× im Ladepark gehalten und voll geladen, kleinster Akku ${fmt(minB, 1)} % · ${fmt(all((m) => m.roadKm), 0)} km Straße, ${fmt(all((m) => m.tripKm), 0)} Reisekilometer`,
+      `${all((m) => m.charges)}× an einer Säule gehalten und voll geladen (${all((m) => m.posts)}× an der Ladesäule eines Orts), kleinster Akku ${fmt(minB, 1)} % · ${fmt(all((m) => m.roadKm), 0)} km Straße, ${fmt(all((m) => m.tripKm), 0)} Reisekilometer`,
   );
 }
 // --- Im Tempo des Navis steht die Ankunftszeit still ------------------------------------------------------------------

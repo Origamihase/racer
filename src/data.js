@@ -841,15 +841,16 @@ export const JOB_TEMPLATES = [
   { id: 'clean40', text: '40 km ohne Blechschaden', goal: 40000, stat: 'cleanDistance', wenn: 'du 40 km ohne Blechschaden schaffst' },
   { id: 'changes25', text: '25 Navi-Gebote überstehen', goal: 25, stat: 'naviChanges', wenn: 'du 25 Navi-Gebote überstehst' },
   { id: 'viewers1000', text: '1.000 Zuschauer erreichen', goal: 1000, stat: 'maxViewers', wenn: 'hier 1.000 Leute zuschauen' },
-  { id: 'park1', text: 'Im Ladepark den Akku füllen', goal: 1, stat: 'parkCharges', wenn: 'du im Ladepark den Akku füllst' },
+  { id: 'park1', text: 'An der Ladesäule den Akku füllen', goal: 1, stat: 'parkCharges', wenn: 'du an der Ladesäule den Akku füllst' },
   { id: 'dist50', text: '50 km Strecke schaffen', goal: 50000, stat: 'distance', wenn: 'du 50 km weit kommst' },
   { id: 'blitzfrei', text: 'An einem Blitzer vorbei, ohne geblitzt zu werden', goal: 1, stat: 'blitzerClean', wenn: 'du brav am Blitzer vorbeikommst' },
   { id: 'rain8', text: '8 km im Regen fahren', goal: 8000, stat: 'rainDistance', wenn: 'du 8 km im Regen durchhältst' },
 ];
 
-// Reise: NOMIs Akku-Warnungen nennen den nächsten Ladepark auf dem Weg mit Entfernung (trip.js nextRest); Taste L oder
-// der Knopf „Ladestopp einplanen“ machen ihn zum Zwischenziel. Dort parkt der Wagen an der freien Säule ein und lädt im
-// Zeitraffer voll (Game.startCharge, xxl/charge.js STOP). {pct} Prozent, {park} Name, {km} Weg.
+// Reise: NOMIs Akku-Warnungen nennen den nächsten Ladeplatz auf dem Weg mit Entfernung (trip.js nextRest: ein Ladepark
+// oder die Ladesäule eines Orts, „Ladesäule in …“); Taste L oder der Knopf „Ladestopp einplanen“ machen ihn zum
+// Zwischenziel. Dort parkt der Wagen an der freien Säule ein und lädt im Zeitraffer voll (Game.startCharge,
+// xxl/charge.js STOP). {pct} Prozent, {park} Name, {km} Weg.
 export const REISE_AKKU = {
   warn: [25, 10], // Prozent: NOMI warnt, und noch einmal, wenn es knapp wird
   early: 70, // darunter warnt sie früher, sobald der nächste Park der letzte in Reichweite ist
@@ -859,16 +860,16 @@ export const REISE_AKKU = {
   // 0,0061 samt dem Halt am Brunnen)
   perM: { open: 0.0052, real: 0.0065 },
   measure: 1500,
-  low: 'Akku {pct} Prozent. Nächster Ladepark: {park}, in {km}. Ladestopp einplanen?',
+  low: 'Akku {pct} Prozent. Nächster Ladestopp: {park}, in {km}. Einplanen?',
   last: 'Akku {pct} Prozent. {park} in {km} liegt noch in Reichweite. Ladestopp einplanen?',
   veryLow: 'Akku nur noch {pct} Prozent! {park} in {km}. Bitte dort laden.',
-  planned: 'Akku {pct} Prozent. Der Ladestopp im {park} ist eingeplant, in {km}.',
-  none: 'Akku {pct} Prozent, und kein Ladepark auf dem Weg. Bitte sparsam fahren.',
+  planned: 'Akku {pct} Prozent. Der Ladestopp ist eingeplant: {park}, in {km}.',
+  none: 'Akku {pct} Prozent, und keine Ladesäule auf dem Weg. Bitte sparsam fahren.',
   set: 'Ladestopp eingeplant: {park}, in {km}.',
   cancel: 'Ladestopp gestrichen.',
-  noPark: 'Kein Ladepark auf dem Weg.',
-  missed: 'Ladestopp verpasst. Ich suche den nächsten Ladepark.',
-  start: 'Ladestopp im {park}. Ich lade den Akku voll.',
+  noPark: 'Keine Ladesäule auf dem Weg.',
+  missed: 'Ladestopp verpasst. Ich suche die nächste Ladesäule.',
+  start: 'Ladestopp: {park}. Ich lade den Akku voll.',
 };
 
 // ---------------------------------------------------------------------------

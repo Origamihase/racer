@@ -300,6 +300,10 @@ export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = 
       if (sec.kind === 'park' && sec.park === trip.stop && sec.spotS !== undefined && !sec.spotDone && sec.spotS >= lo && sec.spotS <= hi) {
         scene.marks.push({ type: 'park', park: sec.park, d: sec.spotS - s, X: lat(sec, sec.spotS, MID.stadt) });
       }
+      // der Halt an der geplanten Ladesäule eines Orts (trip.post)
+      if (sec.kind === 'stadt' && trip.post >= 0 && sec.place === trip.post && sec.postS !== undefined && !sec.postDone && sec.postS >= lo && sec.postS <= hi) {
+        scene.marks.push({ type: 'park', park: -1, d: sec.postS - s, X: lat(sec, sec.postS, MID.stadt) });
+      }
       if (sec.kind === 'term' && !sec.arrival && sec.spotS !== undefined && sec.spotS >= lo && sec.spotS <= hi) {
         scene.marks.push({ type: 'term', transit: sec.transit, d: sec.spotS - s, X: lat(sec, sec.spotS, MID.stadt) });
       }

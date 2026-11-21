@@ -4,10 +4,13 @@
 // parallel zu ihr, die Räder kreuzen den Bordstein nur, wo er abgesenkt ist, ausgeparkt wird bis in die Spur des Parks;
 // wer überspringt, früh oder spät, steht im selben Zustand wie nach dem ganzen Stopp, und die Fahrt geht auf dem
 // geplanten Weg weiter zur Autobahn, ohne „Bitte wenden“; wer ohne Plan rechts in einen Park fährt, bekommt denselben
-// Stopp. Aufruf: node tools/stopp-test.mjs
+// Stopp. Ebenso an der Ladesäule eines Orts auf dem Weg (src/map/parks.js POST): NOMI, Akku-Karte und Navi nennen sie
+// „Ladesäule in …“, Taste L plant sie ein, der Wagen hält dort und lädt im selben Stopp, dann geht es weiter zum Brunnen.
+// Aufruf: node tools/stopp-test.mjs
 import { PerspectiveCamera } from 'three';
 import { CHARGE, DOCK, STOP, SCENE, ROLL_T, dockHalt, dockPath, rollPose, stopEnd, stopPlan, chargeOf, kerbAt } from '../src/world/xxl/charge.js';
-import { PARK, PARKS, parkAt } from '../src/map/parks.js';
+import { PARK, PARKS, POST, parkAt, postName } from '../src/map/parks.js';
+import { NavModel } from '../src/map/navroute.js';
 import { STREET } from '../src/world/kit/layout.js';
 import { TESLA } from '../src/models/tesla.js';
 import { Trip, J } from '../src/game/trip.js';
@@ -322,6 +325,117 @@ for (const [name, r] of runs) {
   ok(!r.nomi.some((e) => e.text === BOARD.wiperPhantom) && r.nomi.filter((e) => !e.during && e.text === 'Prüfsatz nach dem Stopp.').length === 1, `${name}: zurückgehalten ${r.nomi.map((e) => e.text).join(' | ')}`);
 }
 
+// --- 3b. An der Ladesäule eines Orts ----------------------------------------------------------------------------------
+// Ein Stream ab Erlensee mit dem Ziel Hanau und 9,5 % Akku: Der nächste Ladeplatz auf dem Weg ist die Ladesäule in Hanau
+// (vor dem Brunnen des Orts); NOMI und die Akku-Karte nennen sie mit Entfernung, Taste L plant sie ein (und keinen Park).
+// Für die Fahrt dorthin bekommt der Akku 40 %; hinter der Ausfahrt zeigt das Navi den Halt mit ihrem Namen. Der Wagen hält
+// in der Spur bei POST.halt, lädt im selben Stopp wie im Park und fährt danach zum Brunnen weiter: Ankunft am Ziel, ohne
+// „wenden“ und ohne falschen Abzweig.
+function postStream() {
+  Math.random = mulberry32(11);
+  const trip = new Trip({ rng: Math.random });
+  const arrival = new Arrival();
+  arrival.hold = true;
+  const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 3000);
+  let ids = 0;
+  const out = { said: [], first: null, card: null, planned: null, guide: null, ins: null, halt: null, scene: null, charged: null, rest: null, wende: 0, wrong: 0 };
+  const game = new Game({
+    traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
+    scenery: loose({ request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
+    road: loose(), sky: loose(), rain: loose(), windshield: loose({ firmware: 0, manual: () => 'wipe' }),
+    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    ui: loose({ nomi: (text) => out.said.push({ text, during: !!game.charging }) }), fx: loose(), pickups: loose({ update: () => NONE }),
+    world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
+  });
+  game.start({ upgrades: {}, best: {} });
+  const town = findPlace('Hanau');
+  trip.setTarget(town);
+  const p = game.player;
+  p.s = trip.s;
+  p.x = trip.x;
+  p.speed = 40 / 3.6;
+  p.battery = 9.5;
+  const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+  const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
+  for (let i = 0; i < 900 / DT; i++) {
+    game.T.bid = Math.max(game.T.bid, 60);
+    if (!out.planned && game.t > 1.5) {
+      out.first = trip.restsAhead(1)[0] ?? null;
+      out.card = game.lowBatteryCard();
+      game.planStop();
+      out.planned = { stop: trip.stop, post: trip.post };
+      p.battery = 40;
+    }
+    // die erste Ansage des Halts (hinter der Ausfahrt)
+    if (out.planned && !out.guide && trip.post >= 0) {
+      const g = trip.guidance();
+      if (g.type === 'stop') {
+        out.guide = { type: g.type, post: g.post, park: g.park, m: Math.round(g.dist) };
+        const ins = new NavModel(trip).instruction();
+        out.ins = { turn: ins.turn, head: ins.head };
+      }
+    }
+    limitsFor(trip, lim, arrival.stop(trip));
+    p.setLimits(lim);
+    const sec = trip.section;
+    let want = J.L0;
+    if (sec.kind === 'ab') {
+      const f = sec.fork;
+      want = 5.625;
+      if (f && !f.taken && f.s - trip.s < J.decel - 10 && (f.forced || trip.planFor(f) === 'exit')) want = J.L0;
+    }
+    const dx = want - (p.x + p.vx * AUTO.look);
+    ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
+    const v = Math.min(lim.vmax, 130 / 3.6);
+    ctl.throttle = game.charging ? 0 : p.speed < v - 0.5 ? 1 : 0;
+    ctl.brake = p.speed > v + 3 ? 0.4 : 0;
+    const was = !!game.charging;
+    game.offAutobahn = trip.section.kind !== 'ab';
+    game.update(DT, ctl, camera);
+    if (was && !game.charging) out.charged = { battery: p.battery, charges: game.stats.parkCharges, bananas: game.stats.bananas, post: trip.post, stop: trip.stop, t: +(game.t - out.halt.t).toFixed(2) };
+    const evs = trip.update(p.s, p.x);
+    for (const ev of evs) {
+      if (ev.type === 'fork' && ev.wrong) out.wrong++;
+      game.onTrip(ev);
+    }
+    const rest = arrival.update(trip, evs, p.speed);
+    if (rest && rest.type === 'charge') {
+      out.halt = { t: game.t, u: p.s - rest.sec.s0, place: rest.sec.place, post: rest.post, park: rest.park, name: rest.name };
+      game.onTrip(rest);
+      const c = game.charging;
+      out.scene = c ? { post: c.post, park: c.park, name: c.name, end: c.plan.end } : null;
+    }
+    if (out.charged) {
+      const g = trip.guidance();
+      if (g.then && g.then.wende) out.wende++;
+    }
+    if (rest && rest.type === 'rest') {
+      out.rest = { place: rest.place, u: p.s - rest.sec.s0, spot: rest.sec.spotS - rest.sec.s0 };
+      break;
+    }
+  }
+  out.town = town;
+  return out;
+}
+let postRun = null;
+{
+  const R = postStream();
+  const name = postName(R.town);
+  ok(name === 'Ladesäule in Hanau' && R.first && R.first.post === R.town && R.first.park === -1 && R.first.name === name && R.first.km > 3, `Ladesäule: als nächster Ladeplatz ${JSON.stringify(R.first)}`);
+  const warn = R.said.find((e) => e.text.startsWith('Akku'));
+  ok(warn && warn.text.includes(`${name} in `) && R.card && R.card.park === name && R.card.km > 3, `Ladesäule: NOMI „${warn ? warn.text : '–'}“, Karte ${JSON.stringify(R.card)}`);
+  const set = R.said.find((e) => e.text.startsWith('Ladestopp eingeplant:'));
+  ok(R.planned && R.planned.post === R.town && R.planned.stop === -1 && set && set.text.startsWith(`Ladestopp eingeplant: ${name}, in `), `Ladesäule: eingeplant ${JSON.stringify(R.planned)}, NOMI „${set ? set.text : '–'}“`);
+  ok(R.guide && R.guide.type === 'stop' && R.guide.post === R.town && R.ins && R.ins.turn === 'stop' && R.ins.head === name, `Ladesäule: Navi ${JSON.stringify(R.guide)} ${JSON.stringify(R.ins)}`);
+  ok(R.halt && R.halt.place === R.town && R.halt.post === R.town && R.halt.park === -1 && R.halt.name === name && near(R.halt.u, POST.halt, 0.6), `Ladesäule: Halt ${JSON.stringify(R.halt)} statt bei u ${POST.halt}`);
+  ok(R.scene && R.scene.post === R.town && R.scene.park === -1 && R.scene.name === name, `Ladesäule: Stopp ${JSON.stringify(R.scene)}`);
+  ok(R.charged && R.charged.battery === 100 && R.charged.charges === 1 && R.charged.bananas === 1 && R.charged.post < 0 && R.charged.stop < 0 && R.scene && near(R.charged.t, R.scene.end, 0.05), `Ladesäule: nach dem Stopp ${JSON.stringify(R.charged)}`);
+  const during = R.said.filter((e) => e.during).map((e) => e.text);
+  ok(during.length === 1 && during[0] === fillTemplate(REISE_AKKU.start, { park: name }), `Ladesäule: NOMI im Stopp ${during.join(' | ') || '–'}`);
+  ok(R.rest && R.rest.place === R.town && R.rest.u > R.rest.spot && R.wende === 0 && R.wrong === 0, `Ladesäule: danach am Brunnen ${JSON.stringify(R.rest)}, ${R.wende}× „wenden“, ${R.wrong} falsche Abzweige`);
+  postRun = R;
+}
+
 // --- 4. Akku leer -----------------------------------------------------------------------------------------------------
 // Mit 10,6 % Akku auf der Autobahn, Tempomat auf 130 km/h, kein Ladestopp: Der Mittelbildschirm zeigt bei 10 % „Akku
 // fast leer“ mit dem nächsten Ladepark, bei 5 % „Akku kritisch“ (je AKKU_CARD.show Sekunden), leer „Akku leer“ bis
@@ -486,6 +600,10 @@ console.log(
     `Ausparken ${ROLL_T.toFixed(2)} s bis u ${e.u.toFixed(2)} (Abstand ${rollStat.minC.toFixed(2)} m zu ${rollStat.minWho}), ganzer Stopp ${full.charged ? full.charged.t : '?'} s; ` +
     runs.map(([n, r]) => `${n}: ${r.charged ? r.charged.t : '?'} s`).join(', '),
 );
+if (postRun) {
+  const R = postRun;
+  console.log(`Ladesäule: ${R.first ? R.first.name + ' nach ' + R.first.km.toFixed(1) + ' km' : '–'} als nächster Ladeplatz, eingeplant mit L, Halt bei u ${R.halt ? R.halt.u.toFixed(2) : '–'} m (POST.halt ${POST.halt}), Stopp ${R.charged ? R.charged.t : '?'} s, danach am Brunnen bei u ${R.rest ? R.rest.u.toFixed(1) : '–'} m`);
+}
 console.log(`Popcorn: ${fly.ok} von ${fly.n} Körnern springen aus der Tür der Maschine oben auf der Säule (bis ${fly.apex.toFixed(2)} m hoch) und fliegen durchs offene Fahrerfenster, mindestens ${fly.margin.toFixed(3)} m vom Rahmen`);
 if (fails) {
   console.log(`stopp-test: ${fails} Fehler`);

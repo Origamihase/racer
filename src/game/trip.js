@@ -28,7 +28,7 @@ import {
   nodes, edges, places, K, deEdge, deTo, deFrom, deRev, deKind, deRoad, deTowards, straight, edgeLen, routeTo, routeFrom,
   stateOfNode, transitions, townLen, zubLen, spotIn, visitList, nodeTitle, dePos, turnAngle, PACE,
 } from '../map/graph.js';
-import { PARK, PARK_STOP_AFTER, PARKS, parkAt, parkZub, parkExcursion, routeToPark, nearestParks } from '../map/parks.js';
+import { PARK, PARK_STOP_AFTER, PARKS, POST, postName, parkAt, parkZub, parkExcursion, routeToPark, nearestParks } from '../map/parks.js';
 
 /** So weit (Reisekilometer) sucht nextRest geradeaus nach dem nächsten Ladepark. */
 const WALK_KM = 1500;
@@ -154,6 +154,7 @@ export class Trip {
     this.km = 0; // gefahrene Reisekilometer
     this.target = -1;
     this.stop = -1; // geplanter Ladestopp (Index in PARKS) oder −1, siehe setStop
+    this.post = -1; // geplanter Ladestopp an der Ladesäule eines Orts auf dem Weg (Index in places) oder −1, siehe setPost
     this.policy = null; // Routenplan für die Entscheidungen: zum Ziel, bei geplantem Ladestopp erst zum Park (then: danach)
     this.planned = null; // der geplante Weg zum Ziel (siehe plan)
     this.ghosts = []; // {path, from, until, link}
@@ -327,6 +328,7 @@ export class Trip {
       const tl = townLen(p.pop);
       const town = this.add(path, 'stadt', tl, { node, place: pi });
       town.spotS = town.s0 + spotIn(tl);
+      town.postS = town.s0 + POST.halt - PARK_STOP_AFTER;
       km = p.zubKm;
     }
     this.add(path, 'zub', J.back, { node, place: visits[visits.length - 1], back: true });
@@ -459,6 +461,7 @@ export class Trip {
       const tl = townLen(places[town.place].pop);
       const sec = this.add(path, 'stadt', tl, { node: h, place: town.place, inline: true });
       sec.spotS = sec.s0 + spotIn(tl);
+      sec.postS = sec.s0 + POST.halt - PARK_STOP_AFTER;
     }
     path.frontier = { t: 'node', n: h, via: de };
   }
@@ -504,6 +507,8 @@ export class Trip {
     const T = placeIdx >= 0 ? routeTo(placeIdx, road) : null;
     this.policy = this.stop >= 0 ? { ...this.stopRoute, then: T } : T;
     this.rePlan();
+    // (eine geplante Ladesäule, deren Ort nicht mehr auf dem neuen Weg liegt, entfällt)
+    if (this.post >= 0 && !this.restsAhead(1).some((r) => r.post === this.post)) this.setPost(-1);
   }
   /**
    * Ladestopp planen: pk (Index in PARKS) oder −1 (aufheben). Bis zum Halt im Park gilt der Weg dorthin, dahinter der
@@ -513,11 +518,23 @@ export class Trip {
    */
   setStop(pk) {
     const T = this.stop >= 0 && this.policy ? this.policy.then : this.policy;
+    if (pk >= 0) this.post = -1;
     this.stop = pk;
     this.stopRoute = pk >= 0 ? routeToPark(pk, true) : null;
     this.policy = pk >= 0 ? { ...this.stopRoute, then: T } : T;
     this.rePlan();
     // das Navi zeichnet die Route neu, auch wenn kein Zweig neu geplant werden musste
+    this.version++;
+  }
+  /**
+   * Ladestopp an der Ladesäule eines Orts auf dem Weg planen: place (Index in places) oder −1 (aufheben). Der Weg bleibt,
+   * wie er ist (der Ort liegt auf ihm); an ihrem Haltepunkt meldet update 'post', der Wagen hält dort und lädt wie im
+   * Park. Ein geplanter Park entfällt dafür: es gibt immer nur einen geplanten Stopp.
+   */
+  setPost(place) {
+    if (place >= 0 && this.stop >= 0) this.setStop(-1);
+    this.post = place;
+    // das Navi zeichnet den Halt neu
     this.version++;
   }
   /** Nach einem neuen Ziel oder Ladestopp: Weiterfahrten und Zweige vor uns, die noch weit genug weg sind, neu planen. */
@@ -603,6 +620,14 @@ export class Trip {
       const end = Math.min(s, sec.s1);
       this.km += Math.max(0, end - Math.max(this.s, far)) * sec.kmPerM;
       this.s = end;
+      // an der Ladesäule des Orts: geplant, hält der Wagen dort (plan.js Arrival) und lädt
+      if (sec.postS !== undefined && !sec.postDone && s0 < sec.postS && this.s >= sec.postS) {
+        sec.postDone = true;
+        if (sec.place === this.post) {
+          ev.push({ type: 'post', place: sec.place, sec });
+          this.setPost(-1);
+        }
+      }
       // Ziel- oder Ortsmitte passiert?
       if (sec.spotS !== undefined && !sec.spotDone && s0 < sec.spotS && this.s >= sec.spotS) {
         sec.spotDone = true;
@@ -610,6 +635,7 @@ export class Trip {
           // geladen wird an jedem Park: ein geplanter Ladestopp ist damit erledigt
           ev.push({ type: 'park', park: sec.park, sec, planned: sec.park === this.stop });
           if (this.stop >= 0) this.setStop(-1);
+          if (this.post >= 0) this.setPost(-1);
         } else if (sec.kind === 'stadt') {
           if (sec.place >= 0 && sec.place === this.target) {
             this.visited.push(sec.place);
@@ -708,9 +734,15 @@ export class Trip {
     }
     this.version++;
     // an der Ausfahrt des geplanten Ladestopps vorbei: der Stopp entfällt (NOMI schlägt den nächsten Park vor)
-    const stop = this.stop >= 0 && parkAt(fork.node) === this.stop;
+    let stop = this.stop >= 0 && parkAt(fork.node) === this.stop;
     if (stop && !exit) this.setStop(-1);
-    ev.push({ type: 'fork', fork, taken: fork.taken, planned, wrong: planned !== null && planned !== fork.taken, stop });
+    // (eine geplante Ladesäule liegt nach einem anderen Weg als dem geplanten meist nicht mehr auf ihm: sie entfällt)
+    const wrong = planned !== null && planned !== fork.taken;
+    if (wrong && this.post >= 0) {
+      this.setPost(-1);
+      stop = true;
+    }
+    ev.push({ type: 'fork', fork, taken: fork.taken, planned, wrong, stop });
   }
 
   // --- Auskunft für die Engine ----------------------------------------------------------
@@ -1092,21 +1124,30 @@ export class Trip {
   }
 
   /**
-   * Die nächste Navi-Ansage. type: 'arrive' (Ziel voraus) · 'stop' (Haltepunkt im Park des Ladestopps voraus, park) ·
-   * 'exit' (an der nächsten geplanten Gabelung abfahren) ·
+   * Die nächste Navi-Ansage. type: 'arrive' (Ziel voraus) · 'stop' (Haltepunkt im Park des Ladestopps voraus, park,
+   * oder an der geplanten Ladesäule eines Orts, post; die auch ohne Ziel) · 'exit' (an der nächsten geplanten Gabelung
+   * abfahren) ·
    * 'follow' (dem Straßenverlauf folgen) · 'none' (kein Ziel). dist in Metern auf dem Band bis zur Stelle der Ansage,
    * toKm = Reisekilometer bis dorthin; km, m, real = die Entfernung zum Ziel (reach), mins = geschätzte Restfahrzeit,
    * clock = dieselbe in Sekunden der Uhr, then = was nach der Ausfahrt kommt. far: die Ausfahrt liegt hinter dem
    * Horizont der Fahrt (ihre Gabelung gibt es noch nicht).
    */
   guidance() {
-    if ((this.target < 0 && this.stop < 0) || !this.policy) return { type: 'none' };
+    if ((this.target < 0 && this.stop < 0) || !this.policy) {
+      // ohne Ziel: nur der Halt an einer geplanten Ladesäule auf dem eigenen Weg
+      const sec = this.post >= 0 ? this.cur.sections.find((c) => c.s1 > this.s && c.kind === 'stadt' && c.place === this.post && c.postS !== undefined && !c.postDone) : null;
+      if (!sec) return { type: 'none' };
+      const r = this.reach(sec.postS);
+      return { target: this.target, km: r.km, m: r.m, real: r.real, mins: r.secs / 60, clock: r.clock, type: 'stop', dist: sec.postS - this.s, toKm: r.km, sec, park: -1, post: sec.place };
+    }
     const all = this.reach();
     const base = { target: this.target, km: all.km, m: all.m, real: all.real, mins: all.secs / 60, clock: all.clock };
     for (const sec of this.cur.sections) {
       if (sec.s1 <= this.s) continue;
       // im Zweig zum geplanten Ladestopp: der Halt an der freien Säule
-      if (sec.kind === 'park' && sec.park === this.stop && !sec.spotDone) return { ...base, type: 'stop', dist: sec.spotS - this.s, toKm: this.reach(sec.spotS).km, sec, park: sec.park };
+      if (sec.kind === 'park' && sec.park === this.stop && !sec.spotDone) return { ...base, type: 'stop', dist: sec.spotS - this.s, toKm: this.reach(sec.spotS).km, sec, park: sec.park, post: -1 };
+      // im Ort mit der geplanten Ladesäule: ihr Halt (vor dem Brunnen des Orts)
+      if (sec.kind === 'stadt' && this.post >= 0 && sec.place === this.post && sec.postS !== undefined && !sec.postDone) return { ...base, type: 'stop', dist: sec.postS - this.s, toKm: this.reach(sec.postS).km, sec, park: -1, post: sec.place };
       if (sec.kind === 'stadt' && sec.place === this.target && !sec.spotDone) return { ...base, type: 'arrive', dist: sec.spotS - this.s, toKm: all.km, sec };
       const f = sec.fork;
       if (f && !f.taken && this.planFor(f) === 'exit') {
@@ -1155,8 +1196,10 @@ export class Trip {
     return this.reach();
   }
   /**
-   * Der nächste Ladepark auf dem Weg: der geplante Stopp, sonst der erste an einer Ausfahrt des geplanten Wegs (ohne Ziel:
-   * des eigenen Wegs), dahinter geradeaus auf derselben Autobahn (bis WALK_KM). Ergebnis { park, name, node, m (Meter
+   * Der nächste Ladeplatz auf dem Weg: der geplante Stopp, sonst die Ladesäule eines Orts, durch den der Weg führt, oder
+   * der erste Ladepark an einer Ausfahrt des geplanten Wegs (ohne Ziel: des eigenen Wegs), dahinter geradeaus auf
+   * derselben Autobahn (bis WALK_KM) – was zuerst kommt. Ergebnis { park (Index in PARKS, an einer Ladesäule −1), post
+   * (Ort der Ladesäule, sonst −1), name, node, m (Meter
    * Straße bis zum Halt an der Säule), realM (die Meter davon auf echter Straße, wie reach), km (Reisekilometer bis
    * dorthin, wie reach und der Kilometerzähler sie zählen), planned (der geplante Stopp), fork (die Gabelung, wenn die
    * Fahrt sie schon angelegt hat) } oder null. fits(r): erreicht der Wagen diesen Park? (das Spiel fragt seinen Akku)
@@ -1165,17 +1208,27 @@ export class Trip {
     return this.restsAhead(1, fits)[0] ?? null;
   }
   /**
-   * Die nächsten n Ladeparks wie nextRest, nach Reisekilometern geordnet: die an Ausfahrten des geplanten Wegs (und
-   * geradeaus dahinter); liegt dort keiner oder erreicht der Wagen den ersten nicht (fits), dazu der nächste über
-   * Straßen von der nächsten Gabelung aus, auch abseits des Wegs (ein Abstecher: km, m und realM wie nach setStop dorthin,
-   * siehe detour). Mit geplantem Stopp nur dieser.
+   * Die nächsten n Ladeplätze wie nextRest, nach Reisekilometern geordnet: die Ladesäulen der Orte auf dem Weg und die
+   * Ladeparks an Ausfahrten des geplanten Wegs (und geradeaus dahinter); liegt dort keiner oder erreicht der Wagen den
+   * ersten nicht (fits), dazu der nächste Park über Straßen von der nächsten Gabelung aus, auch abseits des Wegs (ein
+   * Abstecher: km, m und realM wie nach setStop dorthin, siehe detour). Mit geplantem Stopp nur dieser.
    */
   restsAhead(n = 2, fits = ALL) {
     const found = [];
     const s = this.s;
     const ex = parkExcursion();
     const add = (pk, m, realM, km, fork = null) => {
-      if (!found.some((r) => r.park === pk)) found.push({ park: pk, name: PARKS[pk].name, node: PARKS[pk].node, m, realM, km, planned: pk === this.stop, fork });
+      if (!found.some((r) => r.park === pk)) found.push({ park: pk, post: -1, name: PARKS[pk].name, node: PARKS[pk].node, m, realM, km, planned: pk === this.stop, fork });
+      return found.length >= n;
+    };
+    // die Ladesäule eines Orts auf dem Weg (place); mit geplantem Stopp nur dieser
+    const addPost = (c) => {
+      const planned = c.place === this.post;
+      if (this.stop >= 0 || (this.post >= 0 && !planned) || found.some((r) => r.post === c.place)) return false;
+      // (zu nah, um noch davor zu halten: angeboten wird sie nicht mehr)
+      if (!planned && c.postS - s < POST.near) return false;
+      const r = this.reach(c.postS);
+      found.push({ park: -1, post: c.place, name: postName(c.place), node: c.node, m: c.postS - s, realM: r.realM, km: r.km, planned, fork: null });
       return found.length >= n;
     };
     const P = this.plan();
@@ -1188,17 +1241,21 @@ export class Trip {
           if (add(c.park, c.spotS - s, r.realM, r.km)) return;
           continue;
         }
+        if (c.kind === 'stadt' && c.postS !== undefined && !c.postDone && c.postS > s && addPost(c)) return;
         const f = c.kind === 'ab' ? c.fork : null;
         if (!f || f.taken || f.s <= s || f.forced) continue;
         const pk = parkAt(f.node);
-        if (pk < 0 || (this.stop >= 0 && pk !== this.stop)) continue;
+        if (pk < 0 || (this.stop >= 0 && pk !== this.stop) || this.post >= 0) continue;
+        // in der Sperrzone führt der angelegte Zweig schon woandershin (etwa in einen Ort, dessen Ladesäule dann folgt):
+        // der Park liegt nicht mehr am Weg
+        if (f.branch && f.s - s < J.lock && !f.branch.sections.some((q) => q.kind === 'park' && q.park === pk)) continue;
         // abfahren und hinein: Rampe und Abstecher sind echte Straße
         const r = this.reach(f.s);
         if (add(pk, f.s - s + J.ramp + ex.m, r.realM + J.ramp + ex.m, r.km + J.ramp / 1000 + ex.km, f)) return;
       }
       // hinter dem Geplanten geradeaus weiter (ohne Ziel kennt die Fahrt nur ihren Horizont)
       const last = P.legs.length ? P.legs[P.legs.length - 1].sec : this.section;
-      if (last.kind !== 'ab' || !last.fork || last.fork.forced || this.stop >= 0) return;
+      if (last.kind !== 'ab' || !last.fork || last.fork.forced || this.stop >= 0 || this.post >= 0) return;
       let m = last.fork.s - s;
       const r = this.reach(last.fork.s);
       let km = r.km;
@@ -1216,7 +1273,7 @@ export class Trip {
       }
     };
     onRoute();
-    if (this.stop < 0 && (!found.length || !fits(found[0]))) {
+    if (this.stop < 0 && this.post < 0 && (!found.length || !fits(found[0]))) {
       // der nächste über Straßen von der nächsten Gabelung (bzw. dem Ende des Angelegten) aus
       const N = nearestParks();
       let st = -1;
@@ -1231,7 +1288,7 @@ export class Trip {
       const pk = st >= 0 && isFinite(N.km[st]) ? N.park[st] : -1;
       if (pk >= 0 && !found.some((r) => r.park === pk)) {
         const r = this.detour(pk);
-        if (isFinite(r.km)) found.push({ park: pk, name: PARKS[pk].name, node: PARKS[pk].node, m: r.m, realM: r.realM, km: r.km, planned: false, fork: null });
+        if (isFinite(r.km)) found.push({ park: pk, post: -1, name: PARKS[pk].name, node: PARKS[pk].node, m: r.m, realM: r.realM, km: r.km, planned: false, fork: null });
       }
     }
     found.sort((a, b) => a.km - b.km);

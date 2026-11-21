@@ -624,7 +624,7 @@ export class Menus {
       ['Hupen (Brunnen & Elsa grüßen)', 'Leertaste', 'A', '📯'],
       ['Scheibenwischer von Hand', 'E', 'X', '🌧️'],
       ['Megafon', 'H', 'Y', '📢'],
-      ['Ladestopp einplanen (nächster Ladepark)', 'L', '–', '🔌 Ladestopp'],
+      ['Ladestopp einplanen (nächste Ladesäule)', 'L', '–', '🔌 Ladestopp'],
       ['Kamera (Cockpit / Drohne)', 'V', 'B', '🎥'],
       ['Chat ein/aus', 'C', '–', '–'],
       ['Ton aus', 'M', '–', '–'],
@@ -646,7 +646,7 @@ export class Menus {
       'Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.',
       'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
-      'Geladen wird in den Ladeparks an den Ausfahrten: Warnt OMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) den nächsten Park ein, das Navi führt hinein und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.',
+      'Geladen wird an den Ladesäulen: in jedem Ort auf dem Weg und in den Ladeparks an den Ausfahrten. Warnt OMI vor dem Akku, plant L (oder der Knopf „Ladestopp einplanen“) die nächste ein, das Navi führt hin und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.',
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',
       'In den ersten Minuten erklären kurze Tipps am Bildrand, was gerade dran ist – jeder kommt nur einmal. Enter oder ✕ schaltet sie ab.',
     ]) el('p', '', tips, '• ' + t);

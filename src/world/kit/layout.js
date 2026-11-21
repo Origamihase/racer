@@ -312,7 +312,7 @@ export function sightDistance(plan, f, max = 120) {
 /**
  * Plant einen Ort. place = { key, name, cc, pop, n, lat? }, opts = { len, seed, goal (u des Ziels), infoOf(name),
  * landmarks ([{ name, slot }] aus landmarkFor), signName (Name auf dem Ortsschild, Standard signName(place.name)),
- * nextName (nächster Ort, klein unter dem Ortsende-Schild), charge ({ u, kind }: ein Ladepark rechts, Abschnitt 1c;
+ * nextName (nächster Ort, klein unter dem Ortsende-Schild), charge ({ u, kind, stop }: ein Ladepark rechts, Abschnitt 1c;
  * dann plan.charge = { u, x, kind, park }) }. Für den Straßenbau, der Fahrbahn, Bordstein und Gehweg
  * selbst baut: mainKind (Art des Hauptbrunnens, z. B. goalKind(place)), pavement: false (keine Gehwegkacheln),
  * signs: false (keine Ortsschilder) und island = { u, x, y, r, ry, u0, u1, kerb(u) }: der Hauptbrunnen steht auf einer
@@ -497,6 +497,13 @@ export function planTown(place, opts = {}) {
     for (const [i, car] of info.parked) {
       const [bx, bz] = info.bays[i];
       add(car, x0 - bz + 0.2, info.ground, -(c.u - bx), Math.PI / 2);
+    }
+    // stop: hier hält ein Ladestopp (wie in den Ladeparks, planPark) – die Popcorn-Maschine oben auf der Heldensäule,
+    // der Eimer auf ihrem Poller
+    if (c.stop) {
+      const [px, pz] = info.posts[info.heroPost];
+      add('popcorn_post', x0 - pz, info.ground, -(c.u - px), toRoad(1));
+      add('popcorn_eimer', x0 - info.popcorn[2], info.popcorn[1], -(c.u - info.popcorn[0]), 0.4);
     }
     plan.charge = { u: c.u, x: x0, kind: c.kind, park: aabb(park.fp) };
   }

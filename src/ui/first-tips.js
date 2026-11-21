@@ -41,8 +41,8 @@ export const TIPS = {
     show: 9,
     action: 'ladestopp',
     rows: (device) => [[device === 'touch' ? [] : ['L'], device === 'touch'
-      ? 'Der Knopf „Ladestopp einplanen“ führt in den nächsten Ladepark, danach weiter zum Ziel.'
-      : 'Ladestopp einplanen: Das Navi führt in den nächsten Ladepark, danach weiter zum Ziel.']],
+      ? 'Der Knopf „Ladestopp einplanen“ führt zur nächsten Ladesäule auf dem Weg, danach weiter zum Ziel.'
+      : 'Ladestopp einplanen: Das Navi führt zur nächsten Ladesäule auf dem Weg, danach weiter zum Ziel.']],
   },
 };
 export const ORDER = Object.keys(TIPS);
