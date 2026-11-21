@@ -243,8 +243,8 @@ const pic = (n, len) => 'data:image/webp;base64,' + String(n % 10).repeat(len - 
 // Marken an ihrer Stelle oder sichtbar daneben, keine zwei übereinander; jeder Name ganz in der Karte (auch in den runden
 // Ecken) und frei von Marken, Auto, Ortspunkten und anderen Namen – auf dem Desktop, hochkant und quer auf dem Handy.
 {
-  const { routeView, routeLabels } = await import('../src/ui/routemap.js');
-  const { menuLayout, PLACE_BY_INDEX, dotRadius } = await import('../src/map/mapview.js');
+  const { routeView, routeLabels, routePlan } = await import('../src/ui/routemap.js');
+  const { menuLayout, PLACE_BY_INDEX, dotRadius, isCity } = await import('../src/map/mapview.js');
   // Schriftbreite wie in tools/map-test.mjs geschätzt (Node misst keine Schrift)
   const measure = (text, font, spacing = 0) => text.length * (parseFloat(/(\d+)px/.exec(font)[1]) * 0.6 + spacing);
   const at = (key) => PLACE_BY_INDEX[idx(key)];
@@ -267,6 +267,8 @@ const pic = (n, len) => 'data:image/webp;base64,' + String(n % 10).repeat(len - 
     kurz: { line: line('Erlensee', 'Hanau'), marks: [mark('brunnen', 'Hanau', 8)] },
     rund: { line: line('Erlensee', 'Hanau', 'Erlensee'), marks: [mark('brunnen', 'Hanau', 8), mark('laden', 'Erlensee')] },
     ausland: { line: line('Erlensee', 'Hamburg', null, 'Danzig'), marks: [mark('brunnen', 'Hamburg', 102), mark('brunnen', 'Danzig', 1003)] },
+    ffm: { line: line('Erlensee', 'Frankfurt am Main', 'Mainz', 'Wiesbaden'), marks: [mark('brunnen', 'Frankfurt am Main', 1), mark('brunnen', 'Mainz', 2), mark('laden', 'Wiesbaden')] },
+    sued: { line: line('Erlensee', 'Frankfurt am Main', 'Karlsruhe', 'Stuttgart', 'München'), marks: [mark('brunnen', 'Frankfurt am Main', 1), mark('brunnen', 'Stuttgart', 2), mark('laden', 'Karlsruhe'), mark('brunnen', 'München', 3)] },
   };
   // Kartengrößen wie im Abspann gemessen: 1280×720, 1600×900, Handy hochkant 390×844 und quer 844×390
   const SIZES = [[730, 290], [1018, 290], [332, 230], [530, 290]];
@@ -275,10 +277,20 @@ const pic = (n, len) => 'data:image/webp;base64,' + String(n % 10).repeat(len - 
   for (const [what, route] of Object.entries(ROUTES)) {
     for (const [w, h] of SIZES) {
       const tag = `Routenkarte ${what} ${w}×${h}`;
-      const v = routeView(route, w, h);
+      // wie drawRouteMap: routePlan wählt die Richtung, in die verschobene Marken ausweichen
+      const P = routePlan(route, w, h, (b) => menuLayout(b, measure));
+      const v = P.v;
       const layout = menuLayout(v.b, measure);
-      const plan = routeLabels(v, layout);
+      const plan = P.names;
       names += plan.size;
+      // Großstädte im Bild behalten ihren Namen (Frankfurt am Main lag unter Hanaus verschobener Marke); nur auf der
+      // kleinsten Karte (Handy hochkant) darf in dichten Gegenden einer fehlen
+      const cities = layout.labels.filter((l) => l.kind === 'place' && isCity(PLACE_BY_INDEX[l.i]) && v.X(l.x) > 0 && v.Y(l.y) > 0 && v.X(l.x) < w && v.Y(l.y) < h);
+      const unnamed = cities.filter((l) => !plan.has(l)).map((l) => l.text);
+      ok(unnamed.length === P.lost, `${tag}: routePlan zählt ${P.lost} Großstädte ohne Namen, es sind ${unnamed.length}`);
+      if (w > 332) ok(!unnamed.length, `${tag}: ${unnamed.join(', ')} ohne Namen`);
+      if (what === 'lang' && w > 332) ok(cities.some((l) => l.text === 'Frankfurt am Main') && plan.size > routeLabels(routeView(route, w, h), layout).size - 3, `${tag}: Frankfurt am Main nicht im Bild`);
+      ok(P.lost <= cities.filter((l) => !routeLabels(routeView(route, w, h), layout).has(l)).length, `${tag}: routePlan lässt mehr Großstädte ohne Namen als die erste Richtung`);
       ok(plan.size > 0, `${tag}: keine Namen`);
       const start = v.items.find((it) => it.type === 'start');
       ok(start && Math.abs(start.x0 - v.X(route.line[0])) < 1e-9 && Math.abs(start.y0 - v.Y(route.line[1])) < 1e-9, `${tag}: Start nicht am Anfang des Wegs`);
