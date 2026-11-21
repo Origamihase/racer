@@ -1089,8 +1089,8 @@ export class Scenery {
   /** Lärmschutzwand eines Segments; die Form kommt erst mit userData.shape (Lücken, Endpfosten). */
   makeNoiseWall() {
     if (!this.mats.noiseWall) {
-      // ein Wandfeld (5 m) pro Texturkachel, links der Pfosten-Streifen
-      const tex = this.canvasTexFrom('noisewall', () => {
+      // ein Wandfeld (5 m) pro Texturkachel, links der Pfosten-Streifen; einmal gemalt, alle Wände teilen das Material
+      const tex = (() => {
         const c = document.createElement('canvas');
         c.width = 512;
         c.height = 256;
@@ -1140,7 +1140,7 @@ export class Scenery {
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
         t.anisotropy = 4;
         return t;
-      });
+      })();
       this.mats.noiseWall = W.std({ map: tex, roughness: 0.8 });
       this.mats.wallPost = W.std({ color: 0x74838a, metalness: 0.4, roughness: 0.55 });
       this.wallPostGeo = new THREE.BoxGeometry(0.42, 4.45, 0.24);

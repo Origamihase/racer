@@ -19,6 +19,8 @@
 //   der Platz bei spotS; jede Zahl einer Entfernungstafel ist (±1 km) die, die das Navi an der Tafel für diesen Ort
 //   zeigt, wäre er das Ziel, und das Navi führte über genau diese Ausfahrt hin; kein Schild nennt einen Ort oder eine
 //   Straße, die es in der Karte nicht gibt.
+// - Lärmschutzwand am Dorf (Szenerie der Autobahn): die Szenerie baut im ersten Wandabschnitt Wand und Endpfosten
+//   samt bemalter Textur, ein zweiter Abschnitt teilt Material und Textur.
 import * as G from '../src/map/graph.js';
 import * as shapes from '../src/map/shapes.js';
 import { Trip, J, PROFILES } from '../src/game/trip.js';
@@ -451,8 +453,35 @@ const sig = { trips: 0, km: 0, forks: 0, said: 0, boards: 0, parks: 0, tables: 0
   }
   ok(sig.trips >= 50 && sig.forks > 150 && sig.tables > 200 && sig.arrive > 5, `zu wenig geprüft: ${JSON.stringify(sig)}`);
 }
+// Lärmschutzwand am Dorf: die Szenerie (ohne Grafik, Leinwand als Attrappe) baut die ersten beiden Wandabschnitte
+const wall = {};
+{
+  const canvas = new Proxy({}, { get: (t, k) => (k === 'measureText' ? (x) => ({ width: String(x).length * 10 }) : k === 'getImageData' ? (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }) : k.startsWith?.('create') ? () => ({ addColorStop() {} }) : k in t ? t[k] : () => {}), set: (t, k, v) => ((t[k] = v), true) });
+  globalThis.document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => canvas, style: {} }) };
+  const { Scenery } = await import('../src/world/scenery.js');
+  const sc = new Scenery({ add() {} });
+  let k = 3;
+  while (!sc.hasWall(k)) k++;
+  const built = [];
+  for (const kk of [k, k + 1]) {
+    const slot = { k: kk, items: [] };
+    try {
+      sc.buildWall(slot);
+    } catch (e) {
+      ok(false, `Lärmschutzwand im Abschnitt ${kk}: ${e.message}`);
+    }
+    built.push(slot.items.find((o) => o.userData.type === 'noisewall'));
+  }
+  const [a, b] = built;
+  const verts = (w, i) => (w ? w.children[i].geometry.attributes.position?.count ?? 0 : 0);
+  ok(a && verts(a, 0) > 0 && verts(a, 1) > 0, `Lärmschutzwand im Abschnitt ${k}: Wand oder Endpfosten fehlen`);
+  ok(sc.mats.noiseWall?.map?.isTexture && sc.mats.noiseWall.map.wrapS === sc.mats.noiseWall.map.wrapT, 'Lärmschutzwand: Textur fehlt');
+  ok(b && b !== a && verts(b, 0) > 0 && b.children[0].material === a.children[0].material, `Lärmschutzwand im Abschnitt ${k + 1}: fehlt oder malt neu`);
+  Object.assign(wall, { k, verts: verts(a, 0) + verts(b, 0) });
+}
 console.log(`Schilder gegen Navi: ${sig.trips} Fahrten, ${sig.km.toFixed(0)} km, ${sig.forks} angesagte Gabelungen (${sig.boards} Vorwegweiser, ${sig.parks} davon mit Ladepark-Zeile, ${sig.said} Ansagen genau an einer Tafel), ${sig.arrive} Ziele, ${sig.tables} Entfernungstafeln und ${sig.gantries} Schilderbrücken mit ${sig.rows} Zeilen (größte Abweichung zum Navi ${sig.maxDev.toFixed(2)} km), ${sig.towns} Ortstafeln`);
 console.log(`XXL-Planung: ${(stats.metres / 1000).toFixed(1)} km gefahren, ${stats.forks} Gabelungen, ${stats.entries} Einfahrten mit Limit (${stats.over} über +4 km/h, höchstens +${stats.maxOver.toFixed(1)} km/h), ${stats.forests} Waldstücke, ${stats.rests} Halte am Ziel, ${stats.charges} in einem Ladepark, ${stats.island} Bilder neben einer Brunneninsel, ${stats.shears} Scherungsvergleiche, ${stats.pieces} Stückabgleiche (${stats.rebuilt} Neubauten, alle jenseits des Dunsts), ${stats.seams} Nähte zwischen Abschnitten, ${stats.rails} Plankenstöße; Kurven: ${(stats.bendM / 1000).toFixed(1)} km gelenkt (${(stats.tightM / 1000).toFixed(1)} km enger als R 450), höchstens ${stats.maxOff.toFixed(2)} m neben der Linie, Querbeschleunigung bis ${stats.maxLat.toFixed(1)} m/s², ${stats.links} Bilder an Knotenpunkten gerade`);
 for (const [k, n] of kinds) if (n > 3) console.log(`  … ${n}× ${k}`);
+console.log(`Lärmschutzwand: Abschnitte ${wall.k} und ${wall.k + 1} gebaut, ${wall.verts} Eckpunkte, eine Textur für beide`);
 console.log(fails ? `${fails} FEHLER` : 'alles in Ordnung');
 process.exit(fails ? 1 : 0);
