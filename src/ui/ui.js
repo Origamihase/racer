@@ -6,7 +6,8 @@ import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
 import { fmtOdo, fmtKm } from '../map/navroute.js';
-import { NARROW_MID, infoWidth, overlap, cockpitParts, portraitNarrow } from './sicht.js';
+import { NARROW_MID, infoWidth, overlap, cockpitParts, portraitNarrow, droneHud } from './sicht.js';
+import { DroneHud } from './drone-hud.js';
 
 /** Zufriedenheit des Chats sichtbar im Chat-Kopf? Nein: Die Chat-Stimmung gehört nicht ins HUD (Besitzer, 17.11.). */
 
@@ -144,6 +145,8 @@ export class UI {
     const head = el('div', 'chat-head', this.chatEl);
     el('span', '', head, 'Live-Chat');
     this.chatList = el('div', 'chat-list', this.chatEl);
+    // Tacho und Navi-Karte der Drohnenansicht, in der Spalte des Chats (ui/drone-hud.js; main.js schaltet es ein)
+    this.droneHud = new DroneHud(this.hud);
 
     // Funkloch: Der Stream ist weg – das steht dort, wo er fehlt, im Chat-Feld an Stelle der Nachrichten
     this.funklochEl = el('div', 'funkloch hidden', this.chatEl);
@@ -243,6 +246,7 @@ export class UI {
     st.setProperty('--mid', Math.round(mid) + 'px');
     st.setProperty('--top', Math.round(top) + 'px');
     this.hud.classList.toggle('hud-narrow', narrow);
+    this.droneHud.place(droneHud(W, window.innerHeight, { touch: COARSE.matches, narrow }), window.devicePixelRatio || 1);
     // ragt der Mittelbildschirm rechts aus dem Bild? (sicht.js cockpitParts; Handy hochkant) – dann die Akku-Kopie
     this.hud.classList.toggle('screen-cut', cockpitParts(W, window.innerHeight).screen.right > W);
     this.naviMax = Math.min(760, mid);

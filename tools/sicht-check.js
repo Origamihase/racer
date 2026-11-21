@@ -57,6 +57,8 @@
     const fixed = () => {
       const f = { 'Info-Feld': box(ui.infoEl) };
       if (shown(ui.chatEl)) f.Chat = box(ui.chatEl);
+      // Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js): auch darauf liegt nichts
+      if (drone && shown(ui.droneHud.el)) f['Tacho und Karte'] = box(ui.droneHud.el);
       const fc = !drone && ui.facecamTarget();
       if (fc) f.Facecam = { left: fc.x, top: fc.y, right: fc.x + fc.w, bottom: fc.y + fc.h };
       document.querySelectorAll('.touch button, .touch .tc-hint').forEach((b, i) => {
@@ -78,7 +80,7 @@
         const andere = [];
         const under = (o) => o.cover || o.edge;
         if (!under(x.o)) {
-          for (const [name, r] of Object.entries(fix)) if (!(x.o.on || []).includes(name) && S.overlap(x.r, r)) andere.push(name);
+          for (const [name, r] of Object.entries(fix)) if (name !== x.was && !(x.o.on || []).includes(name) && S.overlap(x.r, r)) andere.push(name);
           for (const y of live) if (y !== x && !under(y.o) && S.overlap(x.r, y.r)) andere.push(y.was);
         }
         const instrumente = Object.entries(parts).filter(([, r]) => S.overlap(x.r, r)).map(([n]) => n);
@@ -98,6 +100,10 @@
     const hint = shown(ui.hintEl);
     if (hint) measure('erster Start', [['So steuerst du', S.HOMES.steuerung, ui.hintEl, { on: ['Facecam', 'Chat'] }]]);
     ui.hintEl.classList.add('hidden');
+
+    // 0) Tacho und Navi-Karte der Drohnenansicht: in der Spalte des Chats, nie auf ihm (hochkant rückt er darunter)
+    clear();
+    measure('Tacho und Karte', [['Tacho und Karte', S.HOMES.tacho, ui.droneHud.el, { optional: !drone }]]);
 
     // 1) Streifen oben, volle Belegung: neues Ziel, Ansage, linke Spur (letzte Sekunden), dann dazu ein Hinweis –
     // auf kleinen Formaten weicht ihm der Spur-Balken
@@ -155,7 +161,8 @@
     ui.funkloch(false);
     ui.photo('data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAACAkQBADs=', 137, '14:32');
     ui.photos.pop();
-    measure('Blitzerfoto', [['Blitzerfoto', S.HOMES.foto, ui.photoEl, { on: touch || H <= 560 ? ['Chat'] : [] }]]);
+    // (Touch und niedrige Fenster: auf dem Chat-Feld und, in der Drohnenansicht, auch auf dem Kärtchen darunter)
+    measure('Blitzerfoto', [['Blitzerfoto', S.HOMES.foto, ui.photoEl, { on: touch || H <= 560 ? ['Chat', 'Tacho und Karte'] : [] }]]);
     clear();
 
     // 5) Rahmen: Hinweis und Streifen an den Rändern; die gekauften Abdeckungen mit Untertitel darüber

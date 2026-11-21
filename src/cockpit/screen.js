@@ -48,6 +48,10 @@ export class CenterScreen {
     this.texture.colorSpace = THREE.SRGBColorSpace;
     this.texture.anisotropy = 8;
     this.live = false;
+    // Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js): solange hudOut gilt, zeichnet der Bildschirm weiter,
+    // auch ohne Cockpit im Bild, und reicht jedes neue Bild an onDraw(canvas) weiter (hochgeladen wird es dann nicht)
+    this.hudOut = false;
+    this.onDraw = null;
     this.kmh = null; // die Zahl des Tachos im letzten Bild (null: noch keins)
     this.acc = 0;
     this.spin = 0;
@@ -58,14 +62,15 @@ export class CenterScreen {
     this.acc += dt;
     this.spin += dt;
     // zeichnen und hochladen nur, solange das Cockpit zu sehen ist (live: dann zeigt das HUD die Zahl des Tachos hier,
-    // this.kmh, damit beide in jedem Bild dieselbe Geschwindigkeit nennen)
+    // this.kmh, damit beide in jedem Bild dieselbe Geschwindigkeit nennen); in der Drohnenansicht nur zeichnen (hudOut)
     this.live = st.nav.visible !== false;
     if (this.acc < 1 / 15) return;
-    if (!this.live) return;
+    if (!this.live && !this.hudOut) return;
     this.step = this.acc;
     this.acc = 0;
     this.draw(st);
-    this.texture.needsUpdate = true;
+    if (this.live) this.texture.needsUpdate = true;
+    if (this.hudOut && this.onDraw) this.onDraw(this.canvas);
   }
 
   draw(st) {

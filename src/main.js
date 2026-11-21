@@ -278,6 +278,8 @@ const speech = new Speech();
 speech.enabled = settings.speech;
 const input = new Input();
 const ui = new UI(app);
+// jedes neue Bild des Mittelbildschirms auch ins Kärtchen der Drohnenansicht (solange es zu sehen ist)
+cockpit.screen.onDraw = (c) => ui.droneHud.copy(c);
 ui.setChat(settings.chat);
 ui.setFacecam(settings.facecam !== false);
 
@@ -2342,6 +2344,11 @@ function step(dt, { render = true } = {}) {
         ui.setTurn(turnIns);
       }
     }
+    // Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js): der Mittelbildschirm zeichnet dafür weiter, und jedes
+    // neue Bild landet dort (onDraw) – im Cockpit, in Szenen und außerhalb der Fahrt ist das Kärtchen aus
+    const droneHudOn = state === 'drive' && view === 'drone' && !cockpitOn && !stopRun.on && !tvRun.on;
+    ui.droneHud.show(droneHudOn);
+    cockpit.screen.hudOut = ui.droneHud.on;
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
       sunDir: sky.sunDir, overcast: cloud, adam: adamOpts, gesture: tesla.adam.pose === 'drive' ? tesla.adam.gestures : null,
@@ -2375,7 +2382,7 @@ function step(dt, { render = true } = {}) {
   facecamBox = ui.placeFacecam(paused ? 0 : dt, state === 'drive' && cockpitOn);
   if (render) renderFrame(cockpitOn);
   // in der Pause bleiben Banner, Geld-Anzeigen und Funkloch stehen
-  ui.update(paused ? 0 : dt, state === 'drive' || state === 'charge' ? game : null, cockpit.screen.live ? cockpit.screen.kmh : null);
+  ui.update(paused ? 0 : dt, state === 'drive' || state === 'charge' ? game : null, cockpit.screen.live || cockpit.screen.hudOut ? cockpit.screen.kmh : null);
   input.endFrame();
 }
 

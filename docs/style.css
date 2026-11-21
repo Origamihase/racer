@@ -273,6 +273,19 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .funkloch-icon { flex: none; font-size: 26px; font-family: var(--emoji); animation: lowbat 0.6s infinite; }
 .chat.funk { border-color: rgba(255, 90, 79, 0.55); }
 .chat.funk .chat-list { display: none; }
+/* Tacho und Navi-Karte der Drohnenansicht (src/ui/drone-hud.js, Lage aus sicht.js droneHud): ein Kärtchen in der Spalte
+   des Chats, darunter (hochkant darüber, der Chat rückt so weit nach unten und wird kürzer) – zu sehen nur in der
+   Drohnenansicht während der Fahrt; die beiden Bilder sind Ausschnitte des Mittelbildschirms */
+.drone-hud { position: absolute; display: none; box-sizing: border-box; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px; background: rgba(10, 10, 13, 0.6); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(4px); z-index: 3; }
+.drone-hud.side { flex-direction: row; }
+.drone-hud canvas { display: block; flex: none; border-radius: 8px; }
+body.drone .drone-hud.on { display: flex; }
+body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top); max-height: var(--dh-chat-max); }
+/* Touch: Liegt die Hinweiskarte oben rechts (auf dem Chat), tritt das Kärtchen wie der Chat so lange zurück */
+@media (pointer: coarse) {
+  .hud:has(> .hint-card:not(.hidden)) > .drone-hud { visibility: hidden; }
+}
 
 /* Blitzerfoto: unten rechts in der Ecke, unter dem Mittelbildschirm des Cockpits. Die Unterzeile richtet ihre
    Schriftgröße nach der Breite des Fotos selbst (cqw), damit sie bei jeder Fensterbreite ganz auf dem Rand steht */

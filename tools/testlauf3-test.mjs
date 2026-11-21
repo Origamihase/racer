@@ -15,6 +15,10 @@
 //    wenn der Spieler alles drückt.
 // 5. Zwei Stimmen im Sprachstudio: auf jedem Gerät (Edge, Windows, macOS, Chrome, Android, nur Frauen, eine Stimme) eine
 //    Frau und ein Mann, die man auseinanderhört, nie wie OMI oder Mini Adam; im Stream Satz für Satz im Wechsel.
+// 6. Tacho und Navi-Karte in der Drohnenansicht: ein Kärtchen in der Spalte des Chats (sicht.js droneHud) auf
+//    Desktop, Handy und Tablet, nie in der freien Sicht, nie auf dem eigenen Wagen, dem Chat, den Touch-Knöpfen oder
+//    dem Blitzerfoto; es zeigt Ausschnitte des Mittelbildschirms (dieselben Zahlen), der dafür weiterzeichnet, ohne
+//    hochzuladen – und es ist nur in der Drohnenansicht während der Fahrt an, im Cockpit nie.
 import { readFileSync } from 'node:fs';
 import * as G from '../src/map/graph.js';
 import * as shapes from '../src/map/shapes.js';
@@ -476,6 +480,111 @@ let stream12 = [];
   ok(studio.every((x, i) => x.voice === (i % 2 ? 'sprachstudioM' : 'sprachstudio')), `Wechsel Frau/Mann: ${studio.map((x) => (x.voice === 'sprachstudio' ? 'F' : 'M')).join('')}`);
   ok(VOICES.sprachstudio.label === 'Sprachstudio' && VOICES.sprachstudioM.label === 'Sprachstudio', 'Untertitel des Studios heißt anders');
   console.log(`5. Sprachstudio mit zwei Stimmen (im Stream ${studio.length} Sätze, Frau und Mann im Wechsel):\n  ${rows.join('\n  ')}`);
+}
+
+// --- 6. Tacho und Navi-Karte in der Drohnenansicht ----------------------------------------------------------------
+{
+  const S = await import('../src/ui/sicht.js');
+  const { DroneHud, TACHO_SRC, MAP_SRC } = await import('../src/ui/drone-hud.js');
+  const { CenterScreen, SCREEN_PX } = await import('../src/cockpit/screen.js');
+  // Desktop, Laptop, breite niedrige Fenster, Handys quer und hochkant, Tablets hochkant und quer
+  const FORMATS = [
+    [1920, 1080, false], [1280, 720, false], [1366, 768, false], [1920, 600, false], [1024, 600, false], [844, 390, false],
+    [844, 390, true], [667, 375, true], [932, 430, true], [390, 844, true], [360, 780, true], [768, 1024, true],
+    [820, 1180, true], [1024, 768, true], [1180, 820, true],
+  ];
+  const rows = [];
+  for (const [w, h, touch] of FORMATS) {
+    const name = `${w}×${h}${touch ? ' Touch' : ''}`;
+    const r = S.droneHud(w, h, { touch });
+    const box = { left: r.left, top: r.top, right: r.left + r.width, bottom: r.top + r.height };
+    ok(r.width > 40 && r.height > 40 && Number.isInteger(r.height), `${name}: kein Platz für Tacho und Karte (${r.width} × ${r.height})`);
+    ok(!S.overlap(box, S.freeView(w, h, { touch })), `${name}: Tacho und Karte in der freien Sicht`);
+    ok(!S.overlap(box, S.droneCar(w, h)), `${name}: Tacho und Karte auf dem eigenen Wagen`);
+    ok(box.left >= 0 && box.top >= 0 && box.right <= w && box.bottom <= h, `${name}: außerhalb des Fensters`);
+    // am Rand: rechts in der Spalte des Chats, so breit wie er
+    ok(Math.abs(box.right - (w - 14)) <= 1 && Math.abs(r.width - S.chatWidth(w, h)) <= 1, `${name}: nicht in der Spalte des Chats`);
+    if (r.chatTop != null) {
+      // hochkant über dem Chat: Der rückt darunter und endet unten, wo er sonst endet (der Streifen oben bleibt)
+      ok(r.top === 14 && r.chatTop >= box.bottom + 4 && Math.abs(r.chatTop + r.chatMax - S.chatBottom(h)) <= 1 && r.chatMax >= 60, `${name}: Chat unter dem Kärtchen (${r.chatTop} + ${r.chatMax})`);
+    } else {
+      ok(box.top >= S.chatBottom(h) + 8, `${name}: Kärtchen auf dem Chat`);
+      ok(box.bottom <= (touch ? h - S.touchTop(w, h) - 4 : S.photoTop(w, h) - 4), `${name}: Kärtchen auf den Touch-Knöpfen oder dem Blitzerfoto`);
+    }
+    rows.push(`${name}: ${r.width}×${r.height} ${r.side ? 'nebeneinander' : 'untereinander'}${r.chatTop != null ? ', Chat darunter' : ''}`);
+  }
+
+  // die Ausschnitte: der Tacho im Feld des Wagens (Zahl, km/h, Tempolimit-Schild), das ganze Navi ohne Statusleiste
+  // und Dock (Ansage, nächste Ausfahrt, Route, Ziel mit Entfernung und Ankunft)
+  const [CW, CH] = SCREEN_PX;
+  ok(TACHO_SRC.x >= 0 && TACHO_SRC.x + TACHO_SRC.w <= 372 && TACHO_SRC.x < 186 - 90 && TACHO_SRC.x + TACHO_SRC.w >= 314 + 38 && TACHO_SRC.y <= 196 - 76 && TACHO_SRC.y + TACHO_SRC.h >= 238, 'Tacho-Ausschnitt verfehlt Zahl, Einheit oder Schild');
+  ok(MAP_SRC.x === 372 && MAP_SRC.x + MAP_SRC.w === CW && MAP_SRC.y === 44 && MAP_SRC.y + MAP_SRC.h === CH - 64, 'Navi-Ausschnitt');
+
+  // das Kärtchen selbst, mit einem kleinen DOM-Ersatz
+  const elem = (tag) => {
+    const cls = new Set();
+    const e = {
+      tag, children: [], calls: [], width: 300, height: 150,
+      style: { setProperty(k, v) { this[k] = v; } },
+      classList: { toggle: (c, v) => (v ? cls.add(c) : cls.delete(c), !!v), contains: (c) => cls.has(c) },
+      set className(v) { cls.clear(); for (const c of String(v).split(/\s+/)) if (c) cls.add(c); },
+      appendChild(c) { this.children.push(c); return c; },
+    };
+    e.getContext = () => ({ clearRect() {}, drawImage: (...a) => e.calls.push(a) });
+    return e;
+  };
+  const doc0 = globalThis.document;
+  globalThis.document = { createElement: elem };
+  const parent = elem('div');
+  const hud = new DroneHud(parent);
+  hud.place(S.droneHud(1280, 720), 2);
+  const T = hud.tacho;
+  const M = hud.map;
+  ok(T.width === Math.round(parseFloat(T.style.width) * 2) && M.height === Math.round(parseFloat(M.style.height) * 2), 'Zeichenflächen in Gerätepixeln (DPR 2)');
+  ok(!hud.el.classList.contains('side') && parseFloat(M.style.width) >= 280 && parseFloat(M.style.height) >= 200, `Laptop: Karte ${M.style.width} × ${M.style.height}`);
+  const src = { id: 'Mittelbildschirm' };
+  hud.copy(src);
+  ok(!T.calls.length && !M.calls.length && !hud.el.classList.contains('on'), 'aus: nichts zu sehen, nichts herübergeholt');
+  hud.show(true);
+  hud.copy(src);
+  const [a] = T.calls;
+  const [b] = M.calls;
+  ok(hud.el.classList.contains('on') && a && b && a[0] === src && b[0] === src, 'an: beide Ausschnitte herübergeholt');
+  ok(a && a.slice(1, 5).join() === [TACHO_SRC.x, TACHO_SRC.y, TACHO_SRC.w, TACHO_SRC.h].join() && b && b.slice(1, 5).join() === [MAP_SRC.x, MAP_SRC.y, MAP_SRC.w, MAP_SRC.h].join(), 'die Ausschnitte des Mittelbildschirms');
+  const inside = (c, q) => q[5] >= 0 && q[6] >= 0 && q[5] + q[7] <= c.width + 0.5 && q[6] + q[8] <= c.height + 0.5 && Math.abs(q[7] / q[8] - q[3] / q[4]) < 0.02;
+  ok(a && b && inside(T, a) && inside(M, b), 'ganz zu sehen, unverzerrt');
+  hud.place(S.droneHud(390, 844, { touch: true }), 3);
+  ok(hud.el.classList.contains('side') && hud.el.classList.contains('over-chat') && parent.style['--dh-chat-top'] === '103px' && parent.style['--dh-chat-max'] === '91px', `Handy hochkant: nebeneinander, Chat darunter (${parent.style['--dh-chat-top']}, ${parent.style['--dh-chat-max']})`);
+  hud.place(S.droneHud(844, 390, { touch: true }), 3);
+  ok(hud.el.classList.contains('side') && !hud.el.classList.contains('over-chat'), 'Handy quer: nebeneinander unter dem Chat');
+  hud.place(null);
+  ok(!hud.on && !hud.el.classList.contains('on'), 'ohne Platz aus');
+  globalThis.document = doc0;
+
+  // der Mittelbildschirm: zeichnet in der Drohnenansicht für das Kärtchen weiter (ohne Hochladen), sonst wie bisher
+  const fake = { acc: 0, spin: 0, live: false, hudOut: false, onDraw: null, texture: { needsUpdate: false }, drawn: 0, draw() { this.drawn++; } };
+  const up = (visible) => CenterScreen.prototype.update.call(fake, 0.1, { nav: { visible } });
+  let got = 0;
+  up(false);
+  ok(fake.drawn === 0 && !fake.texture.needsUpdate, 'ohne Cockpit und ohne Kärtchen ruht der Bildschirm');
+  fake.onDraw = () => got++;
+  fake.hudOut = true;
+  up(false);
+  ok(fake.drawn === 1 && got === 1 && !fake.texture.needsUpdate, 'Drohnenansicht: zeichnen und ans Kärtchen geben, nicht hochladen');
+  fake.hudOut = false;
+  up(true);
+  ok(fake.drawn === 2 && got === 1 && fake.texture.needsUpdate, 'Cockpit: zeichnen und hochladen, das Kärtchen bekommt nichts');
+
+  // nur in der Drohnenansicht während der Fahrt (main.js), im Cockpit nie (style.css); HUD und Kärtchen nennen dieselbe Zahl
+  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../docs/style.css', import.meta.url), 'utf8');
+  const uiSrc = readFileSync(new URL('../src/ui/ui.js', import.meta.url), 'utf8');
+  ok(/const droneHudOn = state === 'drive' && view === 'drone' && !cockpitOn && !stopRun\.on && !tvRun\.on;/.test(main) && main.includes('ui.droneHud.show(droneHudOn);') && main.includes('cockpit.screen.hudOut = ui.droneHud.on;') && main.includes('cockpit.screen.onDraw = (c) => ui.droneHud.copy(c);'), 'main.js schaltet das Kärtchen nur in der Drohnenansicht ein');
+  ok(main.includes('cockpit.screen.live || cockpit.screen.hudOut ? cockpit.screen.kmh : null'), 'HUD-Tempo und Tacho des Kärtchens aus demselben Bild');
+  ok(/\.drone-hud \{ position: absolute; display: none;/.test(css) && css.includes('body.drone .drone-hud.on { display: flex; }') && (css.match(/drone-hud[^{]*\{[^}]*display: flex/g) || []).every((r) => r.startsWith('drone-hud.on') || r.includes('body.drone')), 'style.css: nur mit body.drone zu sehen');
+  ok(uiSrc.includes('this.droneHud.place(droneHud(W, window.innerHeight, { touch: COARSE.matches, narrow }), window.devicePixelRatio || 1);'), 'ui.js legt das Kärtchen nach sicht.js');
+  ok(!!S.HOMES.tacho && !!S.HOMES.karte, 'Plätze in HOMES');
+  console.log(`6. Tacho und Navi-Karte in der Drohnenansicht (Ausschnitte des Mittelbildschirms, Spalte des Chats):\n  ${rows.join('\n  ')}`);
 }
 
 console.log(`${checks} Prüfungen, ${fails} Fehler`);
