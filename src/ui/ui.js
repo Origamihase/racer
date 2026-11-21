@@ -873,6 +873,8 @@ export class UI {
     this.lastHud = 0.1;
     const p = g.player;
     this.viewersEl.textContent = '👁 ' + fmtNum(Math.round(g.viewers));
+    // nach dem Ruf einer Folge BrunnenTV leuchtet die Zahl, solange sie steigt (Game.viewersUpT)
+    this.viewersEl.classList.toggle('up', g.viewersUpT > g.t);
     // der Kilometerzähler der Fahrt in Reisekilometern, mit dem Rekord (Game.odometer)
     const odo = g.odometer;
     const strecke = (m) => fmtOdo(m / 1000);

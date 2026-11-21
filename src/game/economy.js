@@ -47,6 +47,9 @@ export const CHEER = {
   overtake: [0.0025, 2, 'manoever'], // überholt (jedes Fahrzeug)
   topSpeed: [0.03, 25, 'tempo'], // neue Höchstgeschwindigkeit dieser Fahrt (ab 200 km/h, in 10er-Schritten)
   arrive: [0.08, 120, 'ziel'], // Navi-Ziel erreicht
+  // eine Folge BrunnenTV, beim Ruf „Schöner Brunnen!“ (am Ziel und unterwegs): Der Chat ist begeistert, und es spricht
+  // sich herum – ein deutlicher Schub Zuschauer (der Eigentümer, 21.11.: „BrunnenTV macht die Zuschauer sehr glücklich“)
+  brunnenTV: [0.12, 450, 'brunnen'],
   greet: [0.05, 60, 'gruss'], // Brunnen oder Elsa angehupt
   banana: [0.012, 8], // Bananensaft
   blitzerClean: [0.015, 10, 'sauber'], // brav am Blitzer vorbei

@@ -44,6 +44,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .live-badge.offline { background: #555; animation: none; }
 @keyframes livepulse { 50% { box-shadow: 0 0 0 4px rgba(232,33,46,0.25); } }
 .viewers, .streamtime { font-size: 14px; color: #e7e9ee; font-variant-numeric: tabular-nums; }
+.viewers.up { color: var(--green); text-shadow: 0 0 8px rgba(53, 200, 106, 0.6); transition: color 0.4s; }
 .stat-rows { display: flex; flex-direction: column; gap: 3px; }
 .stat { display: flex; align-items: center; gap: 7px; position: relative; font-variant-numeric: tabular-nums; }
 .stat-icon { width: 20px; text-align: center; font-family: var(--emoji); }

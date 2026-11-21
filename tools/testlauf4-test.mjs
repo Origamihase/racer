@@ -1,4 +1,8 @@
 // Testlauf 4 (die Probefahrt des Besitzers vom 21.11.2026 abends), ohne Grafik: node tools/testlauf4-test.mjs
+// 4. „BrunnenTV macht die Zuschauer sehr glücklich“: Beim Ruf jeder Folge springt die Stimmung des Chats deutlich
+//    (CHEER.brunnenTV), die Zuschauerzahl steigt sichtbar (oben links leuchtet sie, am Ende der Folge steht am Rand
+//    „📈 BrunnenTV: +N Zuschauer“), die Zufriedenheit steigt (ZUFRIEDEN.tv), und der Chat feiert. Gemessen gegen
+//    denselben Stream ohne diesen Schub (gleicher Zufall).
 // 3. „Die Schäden werden nicht abgezogen“: Jeder Rempler kostet 150 €, jeder Kratzer 25 € – ganz, auch wenn die Kasse
 //    dafür ins Minus geht, und auch über die drei gezeichneten Kratzer je Seite hinaus. Die Zeile der Runde am Rand hat
 //    dafür eine eigene rote Zeile „Schäden −… € (N Rempler · M Kratzer)“, das Guthaben sinkt um genau so viel, und am
@@ -29,7 +33,9 @@ import { TV } from '../src/world/xxl/brunnentv.js';
 import { SCHOENER_BRUNNEN, VOICES } from '../src/data.js';
 import { places } from '../src/map/graph.js';
 import { readFileSync } from 'node:fs';
-import { REPARATUR } from '../src/data.js';
+import { REPARATUR, CHAT } from '../src/data.js';
+import { CHEER } from '../src/game/economy.js';
+import { ZUFRIEDEN } from '../src/game/satisfaction.js';
 import { Menus } from '../src/ui/menus.js';
 
 let fails = 0;
@@ -409,6 +415,58 @@ console.log('3. Schäden werden abgezogen:');
   console.log(`  Runde 1: ${b1 ? `${b1.hits} Rempler + ${b1.marks} Kratzer = ${b1.amount} €, Kasse ${b1.before} → ${b1.after} €, „${b1.toast.text}“` : '–'} · Ende: ${open} Rempler offen gebucht · Abspann „${row && row.children[0].textContent} ${row && row.children[1].textContent}“, Ergebnis ${mon && mon.children[0].textContent}`);
 }
 
+// --- 4. BrunnenTV macht die Zuschauer glücklich -------------------------------------------------------------------
+console.log('4. BrunnenTV macht die Zuschauer glücklich:');
+{
+  // derselbe Stream zweimal (gleicher Zufall bis zum ersten Ruf): mit dem Schub der Folge und ohne
+  const run = (boost) => {
+    const keep = CHEER.brunnenTV;
+    const tv = ZUFRIEDEN.tv;
+    if (!boost) {
+      CHEER.brunnenTV = [0, 0];
+      ZUFRIEDEN.tv = 0;
+    }
+    const S = makeStream({ driver: DRIVERS.mittel, seed: 11, endless: true });
+    const g = S.game;
+    const r = { eps: [] };
+    let ep = null;
+    for (let i = 0; i < 30 * 1500 && r.eps.length < 3; i++) {
+      S.step(1 / 30);
+      if (g.tv && !ep) ep = { t0: g.t, way: g.tv.way };
+      if (ep && !ep.pre && g.t - ep.t0 >= TV.call - 0.05) Object.assign(ep, { pre: g.eco.peek().mood, v0: g.viewers, z0: g.zufrieden.value });
+      if (ep && ep.pre !== undefined && ep.post === undefined && g.t - ep.t0 >= TV.call + 0.2) Object.assign(ep, { post: g.eco.peek().mood, z1: g.zufrieden.value, glow: g.viewersUpT > g.t });
+      if (ep && ep.v10 === undefined && g.t - ep.t0 >= TV.call + 10) ep.v10 = g.viewers;
+      if (ep && ep.v30 === undefined && g.t - ep.t0 >= TV.call + 30) {
+        ep.v30 = g.viewers;
+        ep.chat = S.log.chat.filter((c) => c.t >= ep.t0 + TV.call && c.t < ep.t0 + TV.call + 9);
+        ep.toast = S.log.toast.find((x) => x.key === 'zuschauer' && x.t >= ep.t0 && x.t < ep.t0 + TV.end + 1);
+        r.eps.push(ep);
+        ep = null;
+      }
+    }
+    CHEER.brunnenTV = keep;
+    ZUFRIEDEN.tv = tv;
+    return r;
+  };
+  const a = run(true);
+  const b = run(false);
+  const e = a.eps[0];
+  const f = b.eps[0];
+  ok(e && f && near(e.pre, f.pre, 1e-9) && near(e.v0, f.v0, 1e-9), 'die beiden Streams laufen bis zum Ruf nicht gleich');
+  if (e && f) {
+    // (nahe der besten Laune wird die Stimmung zäh: economy.js sway – der Sprung ist 2 · 0,12 · (1 − Stimmung))
+    ok(e.post - e.pre >= 0.2 * (1 - e.pre) && f.post - f.pre < 0.01, `Stimmung beim Ruf ${e.pre.toFixed(2)} → ${e.post.toFixed(2)} (ohne Schub ${f.pre.toFixed(2)} → ${f.post.toFixed(2)})`);
+    ok(e.v10 - f.v10 >= 150 && e.v30 - f.v30 >= 100, `Zuschauer +10 s ${Math.round(e.v10)} statt ${Math.round(f.v10)}, +30 s ${Math.round(e.v30)} statt ${Math.round(f.v30)}`);
+    ok(near(e.z1 - e.z0, ZUFRIEDEN.tv, 0.05), `Zufriedenheit beim Ruf ${e.z0.toFixed(1)} → ${e.z1.toFixed(1)}`);
+    ok(e.glow, 'Zuschauerzahl leuchtet nach dem Ruf nicht');
+    const jubel = e.chat.filter((c) => CHAT.brunnenJubel.includes(c.text) || SCHOENER_BRUNNEN.chat.includes(c.text));
+    ok(jubel.length >= 6, `Chat feiert nur ${jubel.length}× in 9 s nach dem Ruf`);
+    ok(e.toast && /^📈 BrunnenTV: \+[\d.]+ Zuschauer$/.test(e.toast.text), `Rand am Ende der Folge: ${e.toast && e.toast.text}`);
+  }
+  ok(a.eps.length >= 2 && a.eps.every((x) => x.post - x.pre >= 0.2 * (1 - x.pre)), `Stimmung je Folge: ${a.eps.map((x) => `${x.pre.toFixed(2)}→${x.post.toFixed(2)}`).join(' ')}`);
+  const m = (k) => a.eps.reduce((s, x, i) => s + x[k] - b.eps[i][k], 0) / Math.min(a.eps.length, b.eps.length);
+  console.log(`  ${a.eps.length} Folgen: Stimmung beim Ruf ${a.eps.map((x) => `${x.pre.toFixed(2)} → ${x.post.toFixed(2)}`).join(', ')} · Zuschauer gegenüber ohne Schub +${Math.round(m('v10'))} nach 10 s, +${Math.round(m('v30'))} nach 30 s (Folge 1: ${Math.round(e.v0)} → ${Math.round(e.v10)}) · Zufriedenheit +${ZUFRIEDEN.tv} · Chat feiert ${e.chat.length} Zeilen in 9 s · „${e.toast && e.toast.text}“`);
+}
 
 if (fails) {
   console.log(`testlauf4-test: ${fails} FEHLER (${checks} Prüfungen)`);

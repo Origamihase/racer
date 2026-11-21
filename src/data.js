@@ -511,6 +511,10 @@ export const CHAT = {
     '#BrunnenTV', 'Brunnen gesichtet, Ziel erreicht, alles richtig gemacht', '💦', '💦💦💦', 'Megafon-Folge! 📢⛲',
     'Fenster runter, Megafon raus 📢', 'Der Brunnen hat es gehört 💦', 'Lauter, Mini Adam! 📢', 'Ich höre es bis hierher plätschern 💦',
     'Grüße an den Brunnen!'],
+  // nach dem Ruf „Schöner Brunnen!“: Der Chat feiert die Folge (Game.brunnenCall)
+  brunnenJubel: ['Beste Folge! ❤⛲', 'Gänsehaut 😍', 'Ich bin nur wegen BrunnenTV hier', 'Clip it! 🎬', 'Folge des Jahres 🏆',
+    'Was für ein Brunnen ❤', 'Mehr BrunnenTV!!!', 'Der Brunnen hat sich gefreut 💦', 'Herr Schönnbrun 👏👏👏', 'Ich hab geweint 🥲⛲',
+    'Zeigt das meiner Oma!', 'Brunnen des Tages ⛲'],
   elsaKassel: ['ELSA!!! ❤🐟', 'Elsa ❤', 'Kassel ist Elsa-Stadt 👑🐟', 'Grüß Elsa von uns!'],
   gifhornOrt: ['Gifhorn! Historisch bedeutsam 😂', 'Polizei Gifhorn grüßt bestimmt gleich 👮', 'Wo ist der Supermarkt-Parkplatz?'],
   crash: ['Rezeption!', 'Uff 🙈', 'Das gibt Ärger', 'Hat das die Polizei Gifhorn gesehen? 🚓', 'Blechschaden!', 'Hoffentlich hat das keiner gesehen',
@@ -797,6 +801,7 @@ export const STUDIO = {
       regen: ['Der Regen macht sie munter.', 'Der Wischer hat inzwischen einen Fanclub.'],
       rekord: ['Der Zuschauerrekord beflügelt sie.', 'So viele waren lange nicht dabei.'],
       job: ['Die erledigte Challenge feiern sie noch.', 'Die eingelöste Challenge kam richtig gut an.'],
+      brunnen: ['Die Folge BrunnenTV wirkt noch nach.', 'Alle schwärmen noch vom schönen Brunnen.', 'BrunnenTV hat sie glücklich gemacht.'],
     },
     down: {
       blech: ['Die machen sich Sorgen um den Lack.', 'Die Rempler haben sie erschreckt.', 'Sie wünschen sich etwas mehr Abstand zu den anderen.'],

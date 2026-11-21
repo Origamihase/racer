@@ -265,15 +265,16 @@ console.log('BontanaBack (Reise):');
   ok(Math.abs(share - T.chance) < 0.05, `Kasse: BontanaBack in ${fmt(100 * share)} % der möglichen Runden (soll ${fmt(100 * T.chance)} %)`);
   console.log(`  Kasse allein, 400 Streams zu 12 Runden: in ${fmt(100 * share, 1)} % der möglichen Runden, je Stream 0/1/2-mal: ${per.join(' / ')} · Endstand Median ${q(finals, 0.5)} €, 9. Dezil ${q(finals, 0.9)} €, höchstens ${Math.max(...finals)} €`);
   // im echten Spiel: alle Streams von oben, dazu lange Streams des zügigen Fahrers (viele Runden) – mindestens drei
-  // und so viele mehr, bis drei Eskalationen ganz geprüft sind (höchstens zwölf): Ob BontanaBack vor der Ankunft
-  // zum Zug kommt, hängt am Zufall jedes Streams (und seit dem Zuschlag 5 km vor dem Brunnen auch am Weg dorthin)
+  // und so viele mehr, bis drei Eskalationen ganz geprüft sind (höchstens 36): Ob BontanaBack vor der Ankunft
+  // zum Zug kommt, hängt am Zufall jedes Streams (und seit dem Zuschlag 5 km vor dem Brunnen auch am Weg dorthin;
+  // in 36 langen Streams kommt er etwa zehnmal, mal zwei-, mal sechsmal in zwölf)
   let shown = 0;
   let complete = 0;
   let count = 0;
   let long = 0;
   const tops = [];
   const streams = [...runs.values()].flat();
-  for (let i = 0; i < streams.length || (long < 12 && (long < 3 || complete < 3)); i++) {
+  for (let i = 0; i < streams.length || (long < 36 && (long < 3 || complete < 3)); i++) {
     const r = i < streams.length ? streams[i] : journey(DRIVERS[0], 90, 4304 + 62 * long++);
     const where = `Spiel, Stream ${i}`;
     const esc = r.rounds.map((x) => x.filter((b) => b.kind === 'bontana')).filter((x) => x.length);

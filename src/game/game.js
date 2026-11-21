@@ -245,6 +245,7 @@ export class Game {
     // Rechnung, die gerade unterwegs ist (payBill kommt 3,2 s nach der Ankunft; endet der Stream vorher, bucht end)
     this.damageBill = { hits: 0, marks: 0, amount: 0 };
     this.billDue = null;
+    this.viewersUpT = -1;
     this.over = null;
     this.running = true;
     this.queue = [];
@@ -1802,15 +1803,25 @@ export class Game {
     if (line && typeof line === 'object') line.top = true;
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.call));
+    // die Zuschauer sind begeistert (CHEER.brunnenTV: Stimmung und ein Schub Zuschauer, ZUFRIEDEN.tv), oben links
+    // leuchtet die Zuschauerzahl, solange sie steigt (viewersUpT), und der Chat feiert die Folge
+    this.eco.cheer('brunnenTV');
+    this.zufrieden.brunnenTV();
+    this.viewersUpT = this.t + TV.end - TV.call + 4;
+    if (this.tv) this.tv.viewers = this.viewers;
     this.later(0.6, () => {
       this.chat(S.chat[0]);
       this.burst(S.chat.slice(1), 3, 2.5);
     });
+    this.later(3.4, () => this.burst(CHAT.brunnenJubel, 4, 3));
   }
 
   /** Die Folge ist vorbei: Bauchbinde weg, der Wagen darf weiter – durch den Ort zur nächsten Straße. */
   endBrunnenTV() {
     const way = this.tv && this.tv.way;
+    // was die Folge gebracht hat, steht kurz am Rand
+    const gain = this.tv && this.tv.viewers !== undefined ? Math.round(this.viewers - this.tv.viewers) : 0;
+    if (gain >= 20) this.ui.toast(`📈 BrunnenTV: +${fmtNum(gain)} Zuschauer`, 'good', 'zuschauer');
     this.tv = null;
     this.ui.brunnenTV(0);
     this.world.release();
