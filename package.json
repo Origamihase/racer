@@ -9,7 +9,7 @@
     "dev": "node build.mjs --watch",
     "serve": "python3 -m http.server 8080 --directory docs",
     "map": "node tools/map/export.mjs",
-    "test": "node tools/save-test.mjs && node tools/album-test.mjs && node tools/trip-test.mjs && node tools/course-test.mjs && node tools/steer-test.mjs && node tools/verkehr-test.mjs && node tools/xxl-test.mjs && node tools/wiper-test.mjs && node tools/shape-test.mjs && node tools/map-test.mjs && node tools/citykit-test.mjs && node tools/journey-test.mjs && node tools/brunnen-test.mjs && node tools/sicht-test.mjs && node tools/tipps-test.mjs && node tools/menues-test.mjs && node tools/radar-test.mjs && node tools/rueckwaerts-test.mjs && node tools/stopp-test.mjs && node tools/geld-test.mjs && node tools/ansagen-test.mjs"
+    "test": "node tools/save-test.mjs && node tools/album-test.mjs && node tools/trip-test.mjs && node tools/course-test.mjs && node tools/steer-test.mjs && node tools/verkehr-test.mjs && node tools/xxl-test.mjs && node tools/wiper-test.mjs && node tools/shape-test.mjs && node tools/map-test.mjs && node tools/citykit-test.mjs && node tools/journey-test.mjs && node tools/brunnen-test.mjs && node tools/sicht-test.mjs && node tools/tipps-test.mjs && node tools/menues-test.mjs && node tools/radar-test.mjs && node tools/rueckwaerts-test.mjs && node tools/stopp-test.mjs && node tools/geld-test.mjs && node tools/ansagen-test.mjs && node tools/testlauf3-test.mjs"
   },
   "repository": {
     "type": "git",

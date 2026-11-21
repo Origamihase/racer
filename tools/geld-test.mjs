@@ -107,6 +107,7 @@ function journey(driver, minutes, seed, hook = null) {
   p.speed = 40 / 3.6;
   const nv = game.navi;
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+  p.lawful = true; // ein braver Fahrer: auch sein Pedal hält die Tempolimits (Player.lawful)
   const sloppy = new WeakMap();
   const run = { rounds: [[]], bids: 0, booked: 0, bidSum: 0, earned: 0, bills: [], zSum: 0, zN: 0, viewSum: 0, viewers: [] };
   const payBill = game.payBill.bind(game);

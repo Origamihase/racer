@@ -433,6 +433,7 @@ function stream(driver, hours, seed, firstRound = false) {
   p.speed = 40 / 3.6;
   const nv = game.navi;
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+  p.lawful = true; // ein braver Fahrer: auch sein Pedal hält die Tempolimits (Player.lawful)
   const m = {
     bids: 0, bidSum: 0, earnN: 0, earnSum: 0, chaos: 0, calm: 0, late: 0, snatched: 0, spots: 0, rolled: 0, arrivals: 0, rests: 0, late2: 0, tvEnds: 0, calls: 0, skipCalls: 0, duels: 0,
     lockFork: 0, lockNode: 0, wrong: 0, wende: 0, first1: 0, firstN: 0, firstWait: [], maxGap: 0, maxTv: 0, minTv: Infinity, passed: 0,

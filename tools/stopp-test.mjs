@@ -234,6 +234,7 @@ function stream(skip, plan = true) {
   p.battery = 80;
   let chatter = false;
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+  p.lawful = true; // ein braver Fahrer: auch sein Pedal hält die Tempolimits (Player.lawful)
   const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
   const out = { charged: null, after: null, wende: 0, wrong: 0, sugar: false, events: [], nomi: [] };
   let planned = false;
@@ -356,6 +357,7 @@ function postStream() {
   p.speed = 40 / 3.6;
   p.battery = 9.5;
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+  p.lawful = true; // ein braver Fahrer: auch sein Pedal hält die Tempolimits (Player.lawful)
   const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
   for (let i = 0; i < 900 / DT; i++) {
     game.T.bid = Math.max(game.T.bid, 60);
@@ -468,6 +470,7 @@ function emptyRun({ target = null, battery = 10.6, reach = null, secs = 600 } = 
   p.cruiseSet = p.speed;
   p.battery = battery;
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+  p.lawful = true; // ein braver Fahrer: auch sein Pedal hält die Tempolimits (Player.lawful)
   const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
   let last = null;
   for (let i = 0; i < secs / DT; i++) {

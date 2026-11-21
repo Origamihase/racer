@@ -84,6 +84,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
   p.x = trip.x;
   p.speed = 40 / 3.6;
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+  p.lawful = true; // ein braver Fahrer: auch sein Pedal hält die Tempolimits (Player.lawful)
   const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
   const DT = 1 / 30;
   let tvT0 = -1;

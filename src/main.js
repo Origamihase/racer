@@ -2180,7 +2180,9 @@ function step(dt, { render = true } = {}) {
         kappa: DEBUG && window.__MA && window.__MA.kappaProbe ? window.__MA.kappaProbe(p.s) : courseEnv.kappa,
         grade: DEBUG && window.__MA && window.__MA.gradeProbe ? window.__MA.gradeProbe(p.s) : courseEnv.grade,
       };
-      if (DEBUG && window.__MA.xxl && window.__MA.xxl.auto) xxlAuto(p, ctl);
+      // der Autopilot hält das Tempolimit, der Spieler darf schneller (Player.lawful)
+      p.lawful = !!(DEBUG && window.__MA.xxl && window.__MA.xxl.auto);
+      if (p.lawful) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
       if (stopBtn) stopBtn.classList.toggle('show', game.stopOffer());
       wayBtn.classList.toggle('show', game.wayHint);
@@ -2393,7 +2395,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // --- XXL-Welt ------------------------------------------------------------------
-const xxlLimits = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };
+const xxlLimits = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, hold: Infinity, holdDecel: 0, posted: 0, slack: 0, closing: 0 };
 let xxlTrafficFrame = null;
 // Navi der XXL-Fahrt (src/map/navroute.js): Lage auf der Karte, Route und Ansage, alles aus xxl.trip; je Fahrt ein Modell
 let xxlNav = null;

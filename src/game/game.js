@@ -2740,7 +2740,8 @@ export class Game {
   screenState() {
     const p = this.player;
     const W = this.weather;
-    const limit = this.blitzer && p.s > this.blitzer.limitS && p.s < this.blitzer.endS ? 120 : null;
+    // das Tempolimit, das hier gilt: in der Blitzer-Zone 120, sonst das der Straße (Ort 50, Rampe 80, Landstraße 100)
+    const limit = this.blitzer && p.s > this.blitzer.limitS && p.s < this.blitzer.endS ? 120 : p.limits.posted || null;
     return {
       dark: W.level > 0.45,
       battery: p.battery,
