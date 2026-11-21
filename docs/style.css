@@ -147,7 +147,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .toast > .minus { color: var(--bad); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
 
-/* --- Streifen unten: wer spricht, steht hier – NOMI (ihre Augen), das Sprachstudio (Kopfhörer, warmer Rahmen), die
+/* --- Streifen unten: wer spricht, steht hier – OMI (ihre Augen), das Sprachstudio (Kopfhörer, warmer Rahmen), die
    Sprachdurchsage (Mikrofon, Stimme und Spender, violett) und der Megafon-Wunsch (Megafon, orange), einer nach dem
    anderen. Links daneben die Bauchbinde von BrunnenTV. Zwischen Facecam (links) und Rahmen-Hinweis bzw. Blitzerfoto
    (rechts); schiebt ein Rahmen die Facecam nach innen, ist der Streifen so lange schmaler (in schmalen Fenstern
@@ -161,16 +161,17 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   font-size: 16px; line-height: 1.3; font-weight: 600; box-shadow: 0 0 20px rgba(80,130,255,0.25); animation: subin 0.25s; }
 @keyframes subin { from { opacity: 0; transform: translateY(8px); } }
 .sub-sign { display: none; flex: none; width: 34px; height: 34px; border-radius: 50%; align-items: center; justify-content: center; font-size: 19px; line-height: 1; }
-.sub-nomi > .nomi-eyes, .sub-studio > .studio-icon, .sub-durchsage > .durchsage-icon, .sub-megafon > .megafon-icon { display: inline-flex; }
+.sub-nomi > .nomi-eyes, .sub-studio > .studio-icon, .sub-durchsage > .durchsage-icon, .sub-megafon > .megafon-icon, .sub-adam > .adam-icon { display: inline-flex; }
 .nomi-eyes { gap: 4px; background: radial-gradient(circle at 35% 30%, #3b3d44, #070708 70%); }
 .nomi-eyes i { width: 7px; height: 10px; border: 2px solid #fff; border-radius: 3px; animation: blink 2.6s infinite; }
 .studio-icon { background: radial-gradient(circle at 35% 30%, #54401f, #17110a 70%); }
 .durchsage-icon { background: radial-gradient(circle at 35% 30%, #6a3a9c, #1d0c2e 70%); }
 .megafon-icon { background: radial-gradient(circle at 35% 30%, #a35a14, #2b1503 70%); }
+.adam-icon { background: radial-gradient(circle at 35% 30%, #2f6a4a, #0a1d13 70%); }
 .sub-words { min-width: 0; }
 .sub-label { display: block; font-size: 11px; font-weight: 700; line-height: 1.3; text-transform: uppercase; letter-spacing: 0.08em; }
 .sub-label:empty { display: none; }
-/* das Sprachstudio (die Stimme in Mini Adams Ohr): damit man es auch ohne Ton nie mit NOMI verwechselt */
+/* das Sprachstudio (die Stimme in Mini Adams Ohr): damit man es auch ohne Ton nie mit OMI verwechselt */
 .sub-studio { border-color: rgba(255, 196, 120, 0.5); box-shadow: 0 0 20px rgba(255, 170, 80, 0.22); }
 .sub-studio .sub-label { color: #ffcf8a; }
 .sub-durchsage { background: rgba(40, 14, 60, 0.94); border-color: rgba(200, 140, 255, 0.5); box-shadow: 0 0 20px rgba(170, 100, 255, 0.25); }
@@ -178,9 +179,13 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .sub-durchsage .sub-text, .sub-megafon .sub-text { font-style: italic; }
 .sub-megafon { background: rgba(52, 26, 4, 0.94); border-color: rgba(255, 170, 80, 0.55); box-shadow: 0 0 20px rgba(255, 150, 60, 0.25); }
 .sub-megafon .sub-label { color: #ffc78a; font-size: 12px; text-transform: none; letter-spacing: 0.01em; }
+/* Mini Adam selbst (sein Gruß zu Beginn): grün wie das LIVE-Gefühl des Streams, kursiv wie jedes Zitat */
+.sub-adam { border-color: rgba(120, 230, 160, 0.5); box-shadow: 0 0 20px rgba(90, 210, 140, 0.25); }
+.sub-adam .sub-label { color: #9ff0bf; }
+.sub-adam .sub-text { font-style: italic; }
 /* BrunnenTV am Navi-Ziel (XXL): die Bauchbinde der Folge, wie eine Sendung ihren Titel einblendet – der Brunnen in
    der Bildmitte bleibt zu sehen. Wer spricht, hat den Streifen: Die Bauchbinde wartet so lange. Nur in breiten
-   Fenstern bleibt sie neben einem kurzen Satz stehen („Sie haben Ihr Ziel erreicht.“; ui.js setzt .short). */
+   Fenstern bleibt sie neben einem kurzen Satz stehen („Neues Ziel: Brunnen in Hanau!“; ui.js setzt .short). */
 .brunnentv { flex: none; max-width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 10px; border-radius: 14px; border: 2px solid rgba(190, 236, 255, 0.85);
   background: linear-gradient(160deg, rgba(18, 96, 150, 0.96), rgba(10, 44, 92, 0.96)); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
 .brunnentv.pop { animation: tvin 0.5s cubic-bezier(.2,1.3,.4,1); }
@@ -192,7 +197,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .brunnentv-place { font-size: 14.5px; font-weight: 700; line-height: 1.3; color: #dff3ff; }
 .bottom-strip:has(> .sub-bar:not(.hidden)) > .brunnentv { display: none; }
 /* in der Folge am Brunnen (ui.js: Streifen .tv) steht der Wagen, und fast immer spricht jemand – das Navi, Mini Adam
-   durchs Megafon, NOMI: Dort wartet die Bauchbinde nicht, sie steht über dem Untertitel, in jedem Format am Rand */
+   durchs Megafon, OMI: Dort wartet die Bauchbinde nicht, sie steht über dem Untertitel, in jedem Format am Rand */
 .bottom-strip.tv { flex-direction: column; align-items: center; }
 .bottom-strip.tv:has(> .sub-bar:not(.hidden)) > .brunnentv { display: flex; }
 /* Startszene der Reise (ui.show(false, true)): vom HUD nur der Untertitel */
@@ -248,15 +253,6 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .chat { position: absolute; top: 14px; right: 14px; width: min(310px, 30vw); max-height: max(84px, calc(23vh - 14px)); display: flex; flex-direction: column; background: rgba(10, 10, 13, 0.6);
   border: 1px solid var(--line); border-radius: 14px; overflow: hidden; backdrop-filter: blur(4px); z-index: 3; }
 .chat-head { display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; padding: 7px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sub); border-bottom: 1px solid var(--line); }
-.chat-count { text-transform: none; letter-spacing: 0; font-weight: 600; }
-/* Reise: Zufriedenheit des Chats im Kopf – Gesicht und schmaler Balken (grün, ab 35–59 gold, darunter rot) */
-.chat-mood { display: none; align-items: center; gap: 5px; margin-left: auto; text-transform: none; letter-spacing: 0; }
-.chat-mood.on { display: inline-flex; }
-.chat-mood-face { font-family: var(--emoji); font-size: 13px; line-height: 1; }
-.chat-mood-bar { display: block; width: 44px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
-.chat-mood-fill { display: block; height: 100%; width: 60%; border-radius: 2px; background: var(--green); transition: width 0.4s linear, background-color 0.4s; }
-.chat-mood.mid .chat-mood-fill { background: var(--gold); }
-.chat-mood.low .chat-mood-fill { background: var(--bad); }
 /* oben nur ganze Nachrichten: eine angeschnittene blendet ui.trimChat aus (.gone) */
 .chat-list { overflow: hidden; padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; line-height: 1.32; }
 .msg { animation: msgin 0.25s; overflow-wrap: anywhere; }
@@ -353,8 +349,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) and (max-aspect-ratio: 2.08/1) {
   .rahmen.corner-only .strip-bottom { right: auto; left: 14px; }
 }
-/* hochkant stehen Untertitel und Rahmen-Hinweis unten in der Mitte: so lange der Kürbis da ist, links daneben */
+/* hochkant stehen Untertitel und Rahmen-Hinweis unten in der Mitte: so lange der Kürbis da ist, links daneben. Der
+   Kürbis selbst bleibt im Rand neben der freien Sicht (sicht.js freeView: 7,5 % der Höhe + 4 px), auch auf Tablets */
 @media (pointer: coarse) and (orientation: portrait) {
+  :root { --pk: min(13vmin, 88px, calc(7.5vh - 8px)); }
   .hud:has(.rahmen-kuerbis) .bottom-strip, .rahmen-kuerbis .rahmen-caption { right: calc(var(--pk) + 20px); max-width: calc(100vw - var(--pk) - 48px); }
 }
 .rahmen-sonnenblumen .strip { background: rgba(150, 105, 10, 0.35); }
@@ -396,10 +394,13 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .touch .t-small { width: 54px; height: 54px; font-size: 22px; bottom: 140px; }
 .touch .t-horn { right: 18px; } .touch .t-wiper { right: 80px; } .touch .t-megafon { right: 142px; } .touch .t-camera { left: 18px; } .touch .t-pause { left: 80px; }
 /* Reise: „Ladestopp einplanen“ (Taste L), eine Pille in der Reihe der kleinen Knöpfe, nur wenn das Spiel sie anbietet */
-.touch .t-stop { display: none; left: 142px; bottom: 140px; width: 118px; height: 54px; border-radius: 27px; padding: 0 8px;
+.touch .t-stop, .touch .t-way { display: none; left: 142px; bottom: 140px; width: 118px; height: 54px; border-radius: 27px; padding: 0 8px;
   background: rgba(20,82,168,0.62); font-family: var(--font); font-size: 12px; font-weight: 700; line-height: 1.15; }
-.touch .t-stop span { font-family: var(--emoji); font-size: 16px; }
-.touch .t-stop.show { display: block; }
+.touch .t-stop span, .touch .t-way span { font-family: var(--emoji); font-size: 16px; }
+.touch .t-stop.show, .touch .t-way.show { display: block; }
+/* „BrunnenTV hier“ (Taste B) an derselben Stelle, solange der Wagen neben einem Brunnen auf dem Weg steht: Er geht vor */
+.touch .t-way { background: rgba(14,128,150,0.7); }
+.touch:has(.t-way.show) .t-stop { display: none; }
 @media (pointer: coarse) { body.playing .touch { display: block; } }
 /* schmale Handys hochkant: Knöpfe kleiner, damit „Bremse“ nicht über dem Pfeil liegt */
 @media (max-width: 480px) {
@@ -412,7 +413,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .touch .t-small { width: 48px; height: 48px; font-size: 20px; bottom: calc(var(--tb) * 1.14 + 40px); }
   .touch .t-camera { left: 12px; } .touch .t-pause { left: 66px; }
   .touch .t-horn { right: 12px; } .touch .t-wiper { right: 66px; } .touch .t-megafon { right: 120px; }
-  .touch .t-stop { left: 120px; width: calc(100vw - 300px); max-width: 118px; height: 48px; bottom: calc(var(--tb) * 1.14 + 40px); font-size: 11px; }
+  .touch .t-stop, .touch .t-way { left: 120px; width: calc(100vw - 300px); max-width: 118px; height: 48px; bottom: calc(var(--tb) * 1.14 + 40px); font-size: 11px; }
 }
 /* Handy quer: unten rechts liegt im Cockpit der Mittelbildschirm – Pfeile und Pedale kleiner und tiefer, rechts nur so
    viele kleine Knöpfe, wie neben den Bildschirm passen: das Megafon steht links, auf schmalen Handys auch der Scheibenwischer.
@@ -427,7 +428,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .touch .t-small { bottom: 108px; }
   .touch .t-horn { right: 14px; } .touch .t-wiper { right: 76px; }
   .touch .t-camera { left: 14px; } .touch .t-pause { left: 76px; } .touch .t-megafon { right: auto; left: 138px; }
-  .touch .t-stop { left: 200px; bottom: 108px; }
+  .touch .t-stop, .touch .t-way { left: 200px; bottom: 108px; }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) and (max-aspect-ratio: 2.08/1) {
   :root { --touch-top: 152px; }
@@ -435,7 +436,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   .touch .t-brake { width: 76px; height: 76px; right: 104px; }
   .touch .t-small { width: 44px; height: 44px; font-size: 19px; bottom: 100px; }
   .touch .t-pause { left: 64px; } .touch .t-megafon { left: 114px; } .touch .t-wiper { right: auto; left: 164px; }
-  .touch .t-stop { left: 214px; bottom: 100px; height: 44px; }
+  .touch .t-stop, .touch .t-way { left: 214px; bottom: 100px; height: 44px; }
 }
 
 /* --- Touch-Lenkung (src/ui/touch.js) ------------------------------------------ */
@@ -538,6 +539,11 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .pause-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 6px; }
 .pause-head h2 { margin: 0; }
 .pause-head .fs-btn { padding: 7px 13px; font-size: 15px; }
+.pause-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* Feedback (menus.js feedbackLink): ein Link zu GitHub im Kleid eines Knopfs, darunter klein, wohin er führt */
+.btn.feedback { display: flex; flex-direction: column; gap: 1px; color: #fff; text-decoration: none; }
+.fb-sub { font-size: 11.5px; font-weight: 500; line-height: 1.3; color: #c9ced6; text-shadow: 0 1px 2px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6); }
+.pause-head .btn.feedback { padding: 5px 13px; font-size: 15px; }
 .fs-hint { margin: 10px 0 0; color: var(--sub); font-size: 13px; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
 /* einmal nach der Erstattung des gekauften Megafons (save.js refundMegafon): eine freundliche Zeile auf dem Titel und im Shop */
 .refund-note { margin: 12px 0 0; max-width: min(520px, calc(100vw - 56px)); color: #ffe39a; font-size: 14px; font-weight: 600; line-height: 1.35; text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
@@ -583,9 +589,9 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .card p { line-height: 1.5; color: #dfe2e8; }
 .sub { color: var(--sub) !important; margin-top: 0; }
 
-.pause-card { max-width: 1000px; } /* sechs Knöpfe (mit „Karte“ und „Folgen“) in einer Zeile, ab 1024 px Breite */
+.pause-card { max-width: 1100px; } /* sieben Knöpfe (mit „Karte“, „Folgen“ und „Steuerung“) in einer Zeile, ab 1180 px Breite */
 @media (min-width: 1000px) and (min-height: 561px) {
-  .pause-card > .menu.row .btn { padding-inline: 15px; }
+  .pause-card > .menu.row .btn { padding-inline: 13px; }
 }
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin: 14px 0; }
 .sum { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; }
@@ -630,6 +636,12 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 /* „Danke an“: die Unterstützenden als eigener Abschnitt unter der Crew, die Überschrift über die ganze Breite */
 .crew.thanks { margin-top: 14px; }
 .crew.thanks h3 { grid-column: 1 / -1; margin: 0 0 2px; }
+/* je Art (src/ui/abspann.js) alle Namen in Spalten, mit Summe oder Anzahl; lange Listen scrollen mit der Karte */
+.thanks-group { margin-top: 8px; }
+.thanks-sum { text-transform: none; letter-spacing: 0; font-weight: 600; }
+.thanks-names { list-style: none; margin: 3px 0 0; padding: 0; columns: 4 180px; column-gap: 18px; }
+.thanks-names li { break-inside: avoid; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
+.thanks-what { font-weight: 500; color: var(--sub); white-space: nowrap; }
 /* Abspann der Reise: ganz am Ende eine leise Zeile des Gedenkens, allein, mit einem kurzen Strich davor */
 .gedenken { margin: 26px auto 2px; max-width: 560px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--sub); font-style: italic; text-wrap: balance; }
 .gedenken::before { content: ''; display: block; width: 48px; height: 1px; margin: 0 auto 14px; background: var(--line); }
@@ -659,9 +671,19 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 
 .controls-grid { display: grid; gap: 2px; margin-top: 10px; }
 /* minmax(0, …): jede Zeile bekommt dieselben Spaltenbreiten, egal wie lang ihre Wörter sind */
-.crow { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.6fr); gap: 10px; padding: 7px 10px; border-radius: 8px; background: rgba(255,255,255,0.03); font-size: 15px; }
+.crow { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px; padding: 7px 10px; border-radius: 8px; background: rgba(255,255,255,0.03); font-size: 15px; align-items: center; }
 .crow > span { overflow-wrap: break-word; hyphens: auto; }
 .crow.head { background: none; color: var(--sub); font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; }
+/* Steuerung (src/ui/controls.js): links die Aktion mit kurzer Erklärung, je Gerät die Tasten als Kappen */
+.c-act { display: flex; flex-direction: column; gap: 1px; }
+.c-name { font-weight: 700; }
+.c-note { font-size: 12.5px; line-height: 1.35; color: var(--sub); }
+.c-in { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; }
+.ckey { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 7px; white-space: nowrap;
+  font: 700 13.5px/1 var(--font); color: #20242c; background: linear-gradient(#fbfcfd, #dfe3ea); box-shadow: 0 2px 0 #9ca3b0; }
+.c-or { font-size: 12px; color: var(--sub); }
+.c-say { font-size: 13.5px; }
+.c-none { color: var(--sub); }
 .tips p { margin: 4px 0; font-size: 14.5px; }
 
 .settings-card { max-width: 680px; }
@@ -693,16 +715,23 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
    Ein Ortsname bleibt ganz: ist der Streifen schmal (Handy), bricht der Text um, statt hinten gekürzt zu werden – aus
    „Ausfahrt Frankfurt (Oder)“ würde sonst „Ausfahrt Frank…“. Der Radius ist die halbe Höhe der einzeiligen Ansage. */
 .navi-turn { display: none; flex: 0 1 auto; align-items: center; gap: 8px; min-width: 0; background: var(--panel-strong); border: 1px solid var(--line);
-  border-radius: 15px; padding: 2px 14px 2px 3px; font-size: 14.5px; line-height: 19px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+  border-radius: 17px; padding: 3px 14px 3px 3px; font-size: 15.5px; line-height: 21px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
 body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 /* in breiten Fenstern passt sie groß in eine Zeile neben den Spur-Balken */
 @media (min-width: 1240px) and (min-height: 561px) {
-  .navi-turn { font-size: 16px; line-height: 21px; }
-  .navi-turn-dist { font-size: 17px; }
+  .navi-turn { font-size: 17px; line-height: 23px; }
+  .navi-turn-icon { width: 30px; height: 30px; }
+  .navi-turn-dist { font-size: 19px; }
 }
-.navi-turn-icon { width: 24px; height: 24px; flex: none; }
-.navi-turn-dist { flex: none; font-size: 15.5px; white-space: nowrap; }
+.navi-turn-icon { width: 27px; height: 27px; flex: none; }
+.navi-turn-dist { flex: none; font-size: 17px; white-space: nowrap; }
 .navi-turn-text { min-width: 0; overflow-wrap: anywhere; color: #e3e6ec; }
+/* die nächste Ausfahrt (ui.js setTurn): ein blaues Schild mit weißem Rand wie die Wegweiser am Straßenrand */
+.navi-next { display: none; flex: 0 1 auto; min-width: 0; align-items: baseline; gap: 6px; padding: 1px 9px; border-radius: 8px;
+  background: #2a5bb8; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.9); color: #ffffff; }
+.navi-next.on { display: inline-flex; }
+.navi-next i { flex: none; font-style: normal; font-size: 0.8em; opacity: 0.85; white-space: nowrap; }
+.navi-next b { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* --- Große Karte (src/ui/mapscreen.js) ------------------------------------------------- */
 .screen-karte { padding: 0; display: block; overflow: hidden; background: #a9d3ec; }
@@ -765,14 +794,13 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .hud-info { transform: scale(0.85); transform-origin: top left; }
   .chat { font-size: 12px; }
   .chat-list { font-size: 12px; }
-  .chat-count { display: none; }
-  .crow { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
-  .crow span:nth-child(4) { display: none; }
-}
-/* auf dem Handy zählt die Touch-Spalte – dafür fällt dort die Gamepad-Spalte weg */
-@media (max-width: 760px) and (pointer: coarse) {
-  .crow span:nth-child(3) { display: none; }
-  .crow span:nth-child(4) { display: block; }
+  /* schmal: die Aktion über die ganze Breite, darunter Tastatur, Gamepad und Touch nebeneinander mit ihrem Namen */
+  .crow { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; align-items: start; }
+  .crow.head { display: none; }
+  .c-act { grid-column: 1 / -1; }
+  .c-in::before { content: attr(data-dev); flex-basis: 100%; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--sub); }
+  /* lange Touch-Beschriftungen („🔌 Ladestopp einplanen“) brechen in ihrer Kappe um, statt aus der Spalte zu ragen */
+  .ckey { height: auto; min-height: 24px; padding-block: 4px; max-width: 100%; white-space: normal; text-align: center; line-height: 1.2; }
 }
 /* hochkant ist der Blick auf die Straße klein: die Jobs stehen dann im Pausenmenü, und der Chat ist breiter (quer
    bliebe mit einem so breiten Chat kein Platz für den Streifen zwischen den Feldern) */
@@ -784,6 +812,11 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
      bei dreistelligem Tempo), bricht sie um, statt unter den Chat zu wachsen */
   .hud-info { max-width: calc((58vw - 42px) / 0.85); }
   .live-row, .stat { flex-wrap: wrap; row-gap: 2px; }
+}
+/* Tablets hochkant (bis 900 px breit, sicht.js PORTRAIT_W): Der Streifen steht wie auf dem Handy unter den Feldern,
+   und die Jobs stehen im Pausenmenü – so bleibt über der Straße mehr als ein Drittel des Bildes frei */
+@media (min-width: 761px) and (max-width: 900px) and (orientation: portrait) {
+  .jobs-mini { display: none; }
 }
 @media (max-height: 560px) {
   .jobs-mini { display: none; }
@@ -825,10 +858,14 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
      Hinweis steht, weicht ihm der Balken (seine Warnung vor dem Ende kommt selbst als dringender Hinweis) */
   .top-row { flex-direction: column; align-items: center; gap: 0; }
   .top-strip:has(> .notice > .toast) .leftlane { display: none; }
+  /* die Akku-Kopie (nur hochkant, 8 s lang) nimmt hier den Platz der Navi-Ansage: Der Hinweis dazu bleibt stehen */
+  .top-row:has(.akku-mini.on) .navi-turn { display: none; }
   .leftlane { width: 230px; padding: 1px 10px 5px; font-size: 13px; line-height: 17px; }
-  .navi-turn { padding: 1px 11px 1px 3px; font-size: 13px; line-height: 17px; }
-  .navi-turn-icon { width: 20px; height: 20px; }
-  .navi-turn-dist { font-size: 13.5px; }
+  .navi-turn { padding: 1px 11px 1px 3px; font-size: 14px; line-height: 18px; }
+  .navi-turn-icon { width: 22px; height: 22px; }
+  .navi-turn-dist { font-size: 15px; }
+  .navi-next { padding: 0 7px; }
+  .navi-next i { display: none; }
   .toast { padding: 2px 10px; font-size: 13px; line-height: 17px; }
   .bottom-strip { bottom: 8px; gap: 6px; }
   .sub-bar { padding: 4px 10px; gap: 8px; border-radius: 12px; font-size: 14px; }
@@ -875,7 +912,7 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 .album-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
   background: rgba(95, 208, 255, 0.12); border: 1px solid rgba(95, 208, 255, 0.38); color: #e2f6ff; }
 .album-chip.miss { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.16); color: #e1e4ea; }
-.album-chip-icon, .ep-drawn-icon, .ep-intl, .ep-chat-k { font-family: var(--font), var(--emoji); }
+.album-chip-icon, .ep-intl, .ep-chat-k { font-family: var(--font), var(--emoji); }
 .album-tabs { justify-content: flex-start; margin: 0 0 14px; }
 .album-tabs .btn { font-size: 15px; padding: 8px 14px; }
 .album-tabs .btn.on { background: rgba(95, 208, 255, 0.22); border-color: rgba(95, 208, 255, 0.7); }
@@ -886,13 +923,8 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 8px; }
 .ep-pic { width: 144px; height: 81px; border-radius: 9px; overflow: hidden; background: #1d2a38; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) inset; }
 .ep-pic img { width: 100%; height: 100%; display: block; object-fit: cover; }
-/* ohne Bild: eine gezeichnete Karte – Himmel, Wiese, der Brunnen und die Nummer der Folge */
-.ep-drawn { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse 46% 22% at 50% 76%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 70%),
-    linear-gradient(180deg, #8fd2ff 0%, #d8f1ff 62%, #b9e2ae 62%, #93cf86 100%); }
-.ep-drawn-icon { font-size: 46px; line-height: 1; filter: drop-shadow(0 2px 3px rgba(10, 50, 90, 0.28)); }
-.ep-drawn-n { position: absolute; right: 6px; bottom: 5px; font-size: 12px; font-weight: 800; line-height: 1.35; color: #0e3a63;
-  background: rgba(255, 255, 255, 0.82); border-radius: 6px; padding: 0 5px; }
+/* ohne Bild: eine gezeichnete Karte (src/ui/fountaincard.js, 288 × 162 wie ein Standbild) */
+.ep-card { width: 100%; height: 100%; display: block; }
 .ep-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ep-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
 .ep-n { font-size: 14px; font-weight: 800; color: #5fd0ff; white-space: nowrap; }
@@ -913,7 +945,6 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 @media (max-width: 480px) {
   .ep { grid-template-columns: 128px minmax(0, 1fr); gap: 6px 10px; }
   .ep-pic { width: 128px; height: 72px; }
-  .ep-drawn-icon { font-size: 40px; }
   .ep-place { font-size: 16px; }
 }
 /* Abspann der Reise: die Route des Tages (src/ui/routemap.js), daneben die Summen; schmal untereinander */
@@ -928,6 +959,31 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 .lg-start { background: radial-gradient(circle, #e8212e 0 3px, #ffffff 3.5px); border: 2.5px solid #1d1f22; }
 .lg-tv { background: #1f8fd8; border: 2px solid #fff; }
 .lg-park { background: #2f8f4e; border: 2px solid #fff; }
+/* Akku-Karte als kleine Kopie (ui.js showAkkuCard): nur, wo der Mittelbildschirm rechts aus dem Bild ragt (Handy
+   hochkant, .screen-cut); rot wie die Karte dort, ab „kritisch“ mit hellem Rand. Sie nimmt den Platz des Spur-Balkens,
+   auf kleinen Formaten auch den der Navi-Ansage (unten). */
+.akku-mini { display: none; align-items: center; gap: 7px; min-width: 0; max-width: 100%; padding: 3px 10px; border-radius: 9px; color: #fff; font-size: 13px; line-height: 17px;
+  background: linear-gradient(#e4502f, #b8291c); box-shadow: 0 3px 10px rgba(0,0,0,0.35); }
+.akku-mini.crit { background: linear-gradient(#e0281e, #a3101a); box-shadow: 0 0 0 2px rgba(255,255,255,0.75), 0 3px 10px rgba(0,0,0,0.35); }
+.screen-cut .akku-mini.on { display: flex; }
+.screen-cut .top-row:has(.akku-mini.on) .leftlane { display: none; }
+.akku-mini-icon { position: relative; flex: none; width: 24px; height: 12px; border: 2px solid #fff; border-radius: 3px; margin-right: 3px; }
+.akku-mini-icon::after { content: ''; position: absolute; right: -5px; top: 2px; width: 3px; height: 4px; background: #fff; border-radius: 0 1px 1px 0; }
+.akku-mini-icon i { position: absolute; left: 1px; top: 1px; bottom: 1px; max-width: calc(100% - 2px); background: #fff; border-radius: 1px; }
+.akku-mini-title { flex: none; white-space: nowrap; }
+.akku-mini-park { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.92; }
+/* Folgen dieses Streams: Standbild oder gezeichnete Karte je Folge, darunter Nummer, Ort und Brunnen */
+.eps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.eps-tile { margin: 0; min-width: 0; background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 6px; }
+.eps-pic { aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; background: #1d2a38; }
+.eps-pic img, .eps-pic canvas { width: 100%; height: 100%; display: block; object-fit: cover; }
+.eps-tile figcaption { display: flex; flex-direction: column; gap: 1px; margin-top: 5px; min-width: 0; }
+.eps-n { font-size: 12px; font-weight: 800; color: #5fd0ff; }
+.eps-place { font-size: 14px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+.eps-kind { font-size: 12px; color: #cfd5e2; }
+/* Einschaltquote (src/ui/quotechart.js): niedriger als die Karte, die Linie wie die Route */
+.quote-wrap { height: 170px; background: #ebe8e1; }
+.lg-quote { width: 18px !important; height: 5px !important; border-radius: 3px !important; background: #2f6fe4; box-shadow: 0 0 0 1.5px #1e4fb0; }
 .lg-park::after { content: ''; width: 6px; height: 7px; border-radius: 1px 1px 3px 3px; background: #fff; box-shadow: -2px -3px 0 -1.5px #fff, 2px -3px 0 -1.5px #fff; }
 .route-totals { display: flex; flex-direction: column; gap: 8px; }
 .rt { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center; column-gap: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 10px; padding: 7px 12px; }

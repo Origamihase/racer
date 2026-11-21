@@ -2,6 +2,7 @@
 // auf dem Handy die Daumen-Bedienung, mit Gamepad dessen Knöpfe. Danach nur noch der kurze Tipp wie bisher. Auf
 // derselben Karte stehen danach die Tipps der ersten Minuten (first-tips.js, showTip).
 import { TIPS } from './first-tips.js';
+import { deviceKey } from './controls.js';
 
 const SEEN = 'mini-adam-so-steuerst-du';
 
@@ -100,8 +101,8 @@ export function showDriveHint(ui, device, ds) {
 }
 
 /**
- * Ein Tipp der ersten Minuten auf der Karte des Hinweises (id aus TIPS; null räumt die Karte). Mit Tastatur sagt die
- * letzte Zeile, wie man alle abschaltet; das ✕ oben rechts tut es für Maus und Finger (onOff).
+ * Ein Tipp der ersten Minuten auf der Karte des Hinweises (id aus TIPS; null räumt die Karte). Mit Tastatur und
+ * Gamepad sagt die letzte Zeile, wie man alle abschaltet; das ✕ oben rechts tut es für Maus und Finger (onOff).
  */
 export function showTip(ui, id, device, onOff) {
   const card = ui.hintEl;
@@ -124,7 +125,9 @@ export function showTip(ui, id, device, onOff) {
     if (k.length) keys(r, k);
     el('span', 'hint-text', r, text);
   }
-  if (device === 'keyboard') el('div', 'hint-sub hint-off', card, 'Enter: keine Tipps mehr');
+  // wie man alle abschaltet: mit Tastatur und Gamepad die Taste dafür (Enter, Back – controls.js), auf Touch das ✕
+  const off = device === 'touch' ? null : deviceKey('confirm', device);
+  if (off) el('div', 'hint-sub hint-off', card, off + ': keine Tipps mehr');
   const x = el('button', 'hint-close', card, '✕');
   x.type = 'button';
   x.title = 'Keine Tipps mehr';

@@ -20,6 +20,16 @@ const LEVEL_HOLD = 4;
 // neutral: Dorthin findet die Stimmung von selbst zurück, mit dieser Zeitkonstante in Sekunden
 const NEUTRAL = 0.5;
 const DRIFT = 150;
+// Der Eigentümer: „Die Chatstimmung ist bei Streamstart immer gut.“ So beginnt jeder Stream (Stufe 3, gut drauf).
+export const MOOD_START = 0.68;
+/**
+ * Fortschritt zum Navi-Ziel (satisfaction.js pace: faire Sekunden je Sekunde, gegen das Tempo des Navis – auf jeder
+ * Straße, auch im Ort und auf der Landstraße mit ihren Limits): Ab fair hebt er die Stimmung (up je Sekunde und
+ * Einheit über fair, höchstens bis max darüber), darunter senkt er sie (down, höchstens bis min darunter). Wer im Tempo
+ * des Navis fährt (p = 1), hält sie gegen das Zurücksinken zur Mitte; wer zügig ist, hebt sie deutlich (Zahlen in
+ * NOTES des Ansagen-Schritts). Auf den letzten near Sekunden zum Ziel fiebert der Chat mit (nearSway je Sekunde).
+ */
+export const PROGRESS = { fair: 0.9, up: 0.03, down: 0.02, max: 0.5, min: -0.4, near: 90, nearSway: 0.0015 };
 // So stark hängt die Spendierlaune an der Stimmung: Faktor e^(GAIN · (Stimmung − 0,5)),
 // also etwa ×0,46 bei 0,2 · ×1 bei 0,5 · ×2,2 bei 0,8
 const MOOD_GAIN = 2.6;
@@ -128,11 +138,12 @@ const BIG_BIDS = [[10, 100], [15, 150], [20, 150], [25, 200], [33.33, 250], [50,
  * ein (es kommt nach derselben Ruhe) und eskaliert mit bids Geboten (die größere Zahl mit Anteil five), er und wer vorn
  * lag im Wechsel, gap Sekunden auseinander, er zuletzt: seine Schritte first, dann then Euro (in Zehnern), sein letztes
  * Gebot landet auf der nächsten mark-Marke ab floor (höchstens cap); der andere hält mit rival Euro dagegen. Die
- * Takt-Leiter steigt je Gebot um Euro / ladder: Danach ist es so lange still wie nach einem großen Gebot.
+ * Takt-Leiter steigt je Gebot um Euro / ladder: Danach ist es so lange still wie nach einem großen Gebot. Er kommt nur
+ * zu einem gut gelaunten Chat (Stimmung ab mood).
  */
 export const BONTANA = {
   name: 'BontanaBack',
-  from: 3, chance: 0.35, max: 2, bids: [3, 5], five: 0.4, gap: [3, 5],
+  from: 3, chance: 0.35, max: 2, bids: [3, 5], five: 0.4, gap: [3, 5], mood: 0.6,
   first: [200, 400], then: [300, 500], mark: 500, floor: 1000, cap: 3000, rival: [10, 20, 50], ladder: 40,
 };
 // Die Ruhe nach einem Gebot ist für ein Ziel eine knappe Minute voraus bemessen. Echte Orte liegen aber Minuten entfernt (30 Kartenkilometer gut 4 Minuten, 100 gut 6, 250 gut 11): Dort wächst die Ruhe mit der
@@ -148,13 +159,17 @@ const CALM_MAX = 2;
 // und nach dem Bieter-Chaos bleibt das Ziel so lange stehen, dass die meisten dort ankommen: die Fahrzeit des Navis
 // mal einem Faktor aus diesem Bereich. Fährt der Wagen schon im Zielort, wartet das nächste Gebot ohnehin, bis er am
 // Brunnen steht oder vorbeigerollt ist (Game.updateNavi) – die Ruhe muss also nur bis zum Ortseingang reichen.
-// Gemessen mit tools/journey-test.mjs (je Fahrer 300 erste Runden zu 10 Minuten): Der zügige Fahrer steht bei 93 %
-// am Brunnen des Ziels, bevor ein Gebot es ändert, der mittlere bei 80 %, der gemütliche bei 64 %. Die Regel selbst
-// bleibt: Ein Gebot vor dem Halt nimmt die Folge weg.
+// Gemessen mit tools/journey-test.mjs (je Fahrer 60 erste Runden zu 10 Minuten): Seit dem Zuschlag fünf Kilometer vor
+// dem Brunnen (game.js AUKTION) steht der zügige und der mittlere Fahrer fast immer am Brunnen des Ziels, das stand,
+// der gemütliche bei 85 %. Die Regel selbst bleibt: Ein Gebot vor dem Zuschlag nimmt die Folge weg.
 const OPENING_CALM = [0.6, 1.7];
 // Wem ein Gebot das erste stehende Ziel doch genommen hat, der hat die Regel gesehen – das nächste bleibt länger
 // stehen, damit auch die erste Runde eines gemütlichen Fahrers an einem Brunnen endet.
 const OPENING_AGAIN = [1.2, 2.4];
+// Bieterfenster nach jeder Folge (windowBid): mittlere Wartezeit aufs erste Gebot in Sekunden, [fest, je (1 − Stimmung)³]
+// (kubisch: Ein gut gelaunter Chat lässt einen ordentlichen Fahrer praktisch nie stehen, ein mürrischer oft; bei mittlerer
+// Stimmung 0,5 bleibt ein Fenster etwa jedes neunte Mal leer – milder für langsame Fahrer, der Eigentümer am 20.11.)
+export const WINDOW = { mean: [3, 60] };
 
 // Sammelaktionen: Zielbeträge und was einzelne dazugeben
 const SAMMEL_GOALS = [20, 25, 30, 30, 35, 40, 50];
@@ -203,9 +218,10 @@ export class Economy {
   reset(upgrades = {}) {
     this.up = upgrades;
     this.t = 0;
-    this.#mood = NEUTRAL;
-    this.#slow = NEUTRAL;
-    this.level = 2;
+    this.#mood = MOOD_START;
+    this.#slow = MOOD_START;
+    this.level = 2; // levelOf geht von der Stufe aus, die gerade gilt
+    this.level = this.levelOf(MOOD_START);
     this.levelT = 0;
     this.hype = 0;
     // Raid (Reise, König Knolli): Leute, die eine Weile bleiben und langsam wieder gehen (raidIn)
@@ -304,7 +320,8 @@ export class Economy {
    * @param {number} dt
    * @param {{kmh:number, limit:boolean, stuck:boolean, leftOpen:boolean, inLeft:boolean, funkloch:boolean}} d
    *   kmh Tempo · limit Tempolimit-Zone (da ist langsam fahren richtig) · stuck hinter jemandem her · leftOpen/inLeft
-   *   freigeschaltete linke Spur und ob Mini Adam sie nutzt · funkloch Stream gerade weg
+   *   freigeschaltete linke Spur und ob Mini Adam sie nutzt · funkloch Stream gerade weg · pace Fortschritt zum Ziel
+   *   (satisfaction.js; ohne Ziel undefined) und near Sekunden Fahrt bis dorthin (PROGRESS)
    * @returns {object[]} was in diesem Schritt passiert ist: donation, sub, vip, sammel (jeweils mit amount), clean
    *   (volle Minute ohne Kratzer; amount > 0, wenn jemand dafür spendet) und level (Stimmungsstufe hat gewechselt).
    *   Das Feld wird beim nächsten Aufruf wiederverwendet.
@@ -324,6 +341,14 @@ export class Economy {
       const slow = clamp((PACE.slowBelow - d.kmh) / 50, 0, 1);
       if (fast) this.sway(fast * PACE.fast * dt, 'tempo');
       if (slow) this.sway(-slow * PACE.slow * dt, 'langsam');
+    }
+    // Fortschritt zum Ziel (nur, solange ein Ziel gilt und gezählt wird; pace aus satisfaction.js)
+    if (Number.isFinite(d.pace)) {
+      const P = PROGRESS;
+      const q = clamp(d.pace - P.fair, P.min, P.max);
+      if (q > 0) this.sway(q * P.up * dt, 'tempo');
+      else if (q < 0) this.sway(q * P.down * dt, 'langsam');
+      if (d.near < P.near && q >= 0) this.sway(P.nearSway * dt, 'nah');
     }
     if (d.stuck) {
       this.stuckT += dt;
@@ -417,15 +442,16 @@ export class Economy {
   /**
    * Woran liegt die Laune gerade? Das Stichwort eines Anlasses, der die Stimmung zuletzt spürbar gehoben ('up') oder
    * gedrückt ('down') hat – gewürfelt nach Gewicht, damit bei mehreren Anlässen nicht immer derselbe genannt wird.
-   * Stichworte nach oben: manoever, tempo, ziel, gruss, sauber, blitzer, spur, gebot, spass, regen, rekord, job ·
+   * Stichworte nach oben: manoever, tempo, ziel, nah, gruss, sauber, blitzer, spur, gebot, spass, regen, rekord, job ·
    * nach unten: blech, langsam, stau, spur, funkloch, verpasst, strafe.
    * @param {'up'|'down'} dir
    * @param {string} [avoid] zuletzt genanntes Stichwort (kommt nur dran, wenn es das einzige ist)
+   * @param {(k:string)=>boolean} [ok] stimmt der Anlass noch? (Game.causeTrue: „gleich sind wir da“ nur kurz davor)
    * @returns {string|null}
    */
-  why(dir, avoid) {
+  why(dir, avoid, ok = null) {
     const c = this.causes[dir];
-    let keys = Object.keys(c).filter((k) => c[k] >= CAUSE_MIN);
+    let keys = Object.keys(c).filter((k) => c[k] >= CAUSE_MIN && (!ok || ok(k)));
     if (keys.length > 1) keys = keys.filter((k) => k !== avoid);
     if (!keys.length) return null;
     let r = this.rnd() * keys.reduce((s, k) => s + c[k], 0);
@@ -489,7 +515,9 @@ export class Economy {
    */
   newRound(first = false) {
     this.round = first ? 1 : this.round + 1;
-    this.bids = { n: 0, chaos: first ? this.int(7, 11) : this.int(5, 9), duel: 0, calm: 0, quiet: false, late: false, level: 0, next: 0, bontana: 0, bontanaK: 0 };
+    // (gut gelaunt bieten nach einer Ankunft mehr mit, verstimmt nur wenige: bei Stimmung 0,8 etwa 7, bei 0,3 etwa 4)
+    const chaos = first ? this.int(7, 11) : Math.max(1, Math.round(this.int(5, 9) * clamp(this.#mood + 0.25, 0.4, 1.2)));
+    this.bids = { n: 0, chaos, duel: 0, calm: 0, quiet: false, level: 0, next: 0, bontana: 0, bontanaK: 0 };
   }
 
   /** Das kleinste Gebot und der kleinste Schritt: 10 €. */
@@ -531,7 +559,6 @@ export class Economy {
     const act = clamp(Math.sqrt(this.activity()), 0.75, 1.4);
     const plan = { increment: 0, delay: 0, kind: 'step' };
     let step = STEP;
-    B.late = false;
     if (B.chaos > 0) {
       plan.kind = 'chaos';
       plan.first = B.n === 0;
@@ -598,7 +625,7 @@ export class Economy {
    */
   #bontanaRoll(opening) {
     const T = BONTANA;
-    if (opening || this.bids.calm > 0 || this.round < T.from) return false;
+    if (opening || this.bids.calm > 0 || this.round < T.from || this.#mood < T.mood) return false;
     if (this.bontana.n >= T.max || this.bontana.round === this.round - 1 || !this.chance(T.chance)) return false;
     this.bontana.n++;
     this.bontana.round = this.round;
@@ -622,13 +649,30 @@ export class Economy {
   }
 
   /**
-   * Kurz vor dem Ziel doch noch überboten – ein Klassiker. Gewürfelt wird höchstens einmal je Ziel
-   * (nextBid stellt die Sperre zurück).
+   * Das Bieterfenster nach einer Folge (Game.updateNavi): Bietet in diesem Schritt (dt Sekunden) jemand als Erster der
+   * neuen Runde? Die Rate je Sekunde ist 1 / (WINDOW.mean[0] + WINDOW.mean[1] · (1 − m)³), m die träge Stimmung (den
+   * Jubel der Ankunft hat sie erst zum Teil übernommen: Es zählt, wie die Runde war). Gut gelaunt (0,8) bietet im
+   * Mittel nach 4 s jemand, mittel (0,5) nach 13 s, verstimmt (0,3) nach 30 s – im Fenster (nach James' Aufruf gut
+   * 23 s) bietet so bei 0,8 praktisch immer jemand, bei 0,5 zu 84 %, bei 0,3 nur zu 54 %. Wer im Fenster trödelt,
+   * senkt die Stimmung weiter.
    */
-  lateBid() {
-    if (this.bids.late) return false;
-    this.bids.late = true;
-    return this.chance(0.22);
+  windowBid(dt) {
+    return this.rnd() < dt / (WINDOW.mean[0] + WINDOW.mean[1] * (1 - this.#slow) ** 3);
+  }
+
+  /**
+   * Zuschlag (Game.zuschlag, fünf Kilometer vor dem Brunnen): Ein laufendes Bieterrennen – Chaos, Duell,
+   * BontanaBack – endet hier, der Rest seiner Gebote entfällt; danach ist Ruhe wie nach einem großen Gebot. Gibt
+   * zurück, ob noch Gebote des Rennens ausstanden.
+   */
+  cutRace() {
+    const B = this.bids;
+    const open = B.chaos > 0 || B.duel > 0 || B.bontana > 0;
+    B.chaos = 0;
+    B.duel = 0;
+    B.bontana = 0;
+    B.quiet = true;
+    return open;
   }
 
   /**
@@ -663,6 +707,16 @@ export class Economy {
     this.sinceArrival = 0;
     this.newRound();
     return out;
+  }
+
+  /**
+   * BrunnenTV unterwegs (Game.wayEpisode): Der Chat freut sich wie über einen angehupten Brunnen, und zwei Zuschauer
+   * spenden je eine Kleinigkeit (wie nach einem schönen Moment) – weniger als die Ortsspenden am Ziel; die Runde läuft
+   * weiter.
+   */
+  wayGifts() {
+    this.cheer('greet');
+    return [this.pick(THRILL_VALUES), this.pick(THRILL_VALUES)];
   }
 
   // --- Linke Spur -------------------------------------------------------------------

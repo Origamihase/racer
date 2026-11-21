@@ -3,17 +3,20 @@
 // dem Chat-Feld; nie in der freien Sicht, siehe sicht.js HOMES.steuerung). Jeder Tipp kommt, wenn er gebraucht wird:
 // die Ausfahrt am 1000-m-Schild der ersten Ausfahrt, die das Navi nehmen will, das Megafon, sobald vor dem Wagen
 // jemand langsamer fährt (spätestens nach zwei Minuten), der Ladestopp, sobald er sich einplanen lässt (Akku höchstens
-// halb voll oder NOMI warnt), die Kamera nach den ersten Sekunden. Jeder Tipp erscheint einmal je Spieler
-// (localStorage); Enter oder ✕ schaltet alle ab. Diese Datei kennt kein DOM: main.js füttert FirstTips, die Karte
-// zeichnet drive-hint.js showTip, tools/tipps-test.mjs prüft den Ablauf.
+// halb voll oder OMI warnt), die Kamera nach den ersten Sekunden. Jeder Tipp erscheint einmal je Spieler
+// (localStorage); Enter (am Gamepad Back) oder ✕ schaltet alle ab. Diese Datei kennt kein DOM: main.js füttert
+// FirstTips, die Karte zeichnet drive-hint.js showTip, tools/tipps-test.mjs prüft den Ablauf.
+
+import { deviceKey } from './controls.js';
 
 const KEY = 'mini-adam-erste-minuten';
-/** Kein Tipp mehr (Enter oder ✕) – so steht es im Speicher. */
+/** Kein Tipp mehr (Enter, Back oder ✕) – so steht es im Speicher. */
 const OFF = 'aus';
 
 /**
  * Die Tipps in ihrer Rangfolge (sind zwei fällig, kommt der vordere): title, rows je Gerät als [[Tasten …], Text],
- * show: so viele Sekunden steht er, action: diese Eingabe befolgt ihn (dann blendet er bald aus).
+ * show: so viele Sekunden steht er, action: diese Eingabe befolgt ihn (dann blendet er bald aus). Die Tasten kommen
+ * aus der Belegung (controls.js deviceKey) – am Gamepad steht also der Knopf, den es wirklich gibt.
  */
 export const TIPS = {
   ausfahrt: {
@@ -28,21 +31,21 @@ export const TIPS = {
     title: '🎥 Kamera',
     show: 8,
     action: 'camera',
-    rows: (device) => [[[device === 'touch' ? '🎥' : device === 'gamepad' ? 'B' : 'V'], 'Cockpit oder Drohne']],
+    rows: (device) => [[[deviceKey('camera', device)], 'Cockpit oder Drohne']],
   },
   megafon: {
     title: '📢 Megafon',
     show: 8,
     action: 'megafon',
-    rows: (device) => [[[device === 'touch' ? '📢' : device === 'gamepad' ? 'Y' : 'H'], 'Eine Durchsage, und wer vor dir fährt, macht Platz.']],
+    rows: (device) => [[[deviceKey('megafon', device)], 'Eine Durchsage, und wer vor dir fährt, macht Platz.']],
   },
   ladestopp: {
     title: '🔌 Ladestopp',
     show: 9,
     action: 'ladestopp',
-    rows: (device) => [[device === 'touch' ? [] : ['L'], device === 'touch'
-      ? 'Der Knopf „Ladestopp einplanen“ führt in den nächsten Ladepark, danach weiter zum Ziel.'
-      : 'Ladestopp einplanen: Das Navi führt in den nächsten Ladepark, danach weiter zum Ziel.']],
+    rows: (device) => [[device === 'touch' ? [] : [deviceKey('ladestopp', device)], device === 'touch'
+      ? 'Der Knopf „Ladestopp einplanen“ führt zur nächsten Ladesäule auf dem Weg, danach weiter zum Ziel.'
+      : 'Ladestopp einplanen: Das Navi führt zur nächsten Ladesäule auf dem Weg, danach weiter zum Ziel.']],
   },
 };
 export const ORDER = Object.keys(TIPS);
@@ -117,7 +120,7 @@ export class FirstTips {
     if (this.cur && TIPS[this.cur].action === action) this.left = Math.min(this.left, 1.2);
   }
 
-  /** Enter oder ✕: kein Tipp mehr, auch nicht im nächsten Stream (der stehende verschwindet beim nächsten update). */
+  /** Enter, Back oder ✕: kein Tipp mehr, auch nicht im nächsten Stream (der stehende verschwindet beim nächsten update). */
   stop() {
     this.off = true;
   }

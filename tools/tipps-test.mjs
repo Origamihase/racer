@@ -117,7 +117,8 @@ function drive(tips, sec, world = () => ({}), t0 = 0) {
 }
 // die Zeilen: je Gerät die richtige Taste, kurz genug für die Karte am Rand
 {
-  const KEYS = { kamera: { keyboard: 'V', touch: '🎥', gamepad: 'B' }, megafon: { keyboard: 'H', touch: '📢', gamepad: 'Y' }, ladestopp: { keyboard: 'L', gamepad: 'L' } };
+  // der Ladestopp liegt am Gamepad auf LB (vorher zeigte der Tipp dort die Taste L, die es am Pad nicht gibt)
+  const KEYS = { kamera: { keyboard: 'V', touch: '🎥', gamepad: 'B' }, megafon: { keyboard: 'H', touch: '📢', gamepad: 'Y' }, ladestopp: { keyboard: 'L', gamepad: 'LB' } };
   for (const id of ORDER) {
     for (const device of ['keyboard', 'touch', 'gamepad']) {
       const rows = TIPS[id].rows(device);

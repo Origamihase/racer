@@ -76,6 +76,7 @@ export const BOTS = {
 export const INCOME = {
   Spenden: 'Spende',
   Ortsspenden: 'Ortsspende',
+  Brunnenspenden: 'Brunnenspende',
   'Navi-Gebote': 'Navi-Gebot',
   Abos: 'Abo',
   'VIP-Abos': 'VIP-Abo',
@@ -124,7 +125,7 @@ export const MEGAFON_WUENSCHE = [
 
 // BrunnenTV am Navi-Ziel der Reise: Mini Adam spricht durchs offene Fenster mit dem Megafon zum Brunnen (Stimme wie
 // bei der Taste H), {ort} = der Ort – kurz wie die Megafon-Wünsche (mit einem Ortsnamen von 20 Zeichen nicht länger
-// als der längste von ihnen, tools/sicht-test.mjs); danach sagt NOMI etwas dazu ({n} = Folge)
+// als der längste von ihnen, tools/sicht-test.mjs); danach sagt OMI etwas dazu ({n} = Folge)
 export const BRUNNEN_MEGAFON = [
   'Achtung, Achtung! BrunnenTV live aus {ort}!',
   'Hallo {ort}! Hier ist BrunnenTV!',
@@ -136,6 +137,23 @@ export const BRUNNEN_MEGAFON = [
   'Fünf von fünf Tropfen für {ort}!',
   'Bitte weiterplätschern! Hier ist BrunnenTV!',
 ];
+/**
+ * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des
+ * Besitzers); say spricht die Sprachausgabe – richtig geschrieben, damit jede Stimme es richtig ausspricht, das Lange
+ * macht die Stimme 'brunnen' (tief und langsam); chat: so ruft der Chat es nach (das erste immer).
+ */
+export const SCHOENER_BRUNNEN = {
+  text: 'SCHÖÖÖÖÖÖÖNER BRUNNEN!!!!!',
+  say: 'Schöner Brunnen!',
+  chat: ['SCHÖÖÖNER BRUNNEN!', 'SCHÖÖÖÖNER BRUNNEN!!! ⛲', 'Schöner Brunnen! 😍', 'SCHÖÖÖNER BRUNNEN 💦', 'schöööööner brunnen', 'SCHÖNER BRUNNEN! 🔊', 'SCHÖÖÖNER BRUNNEN! 👏'],
+};
+// Jeder Stream beginnt mit Mini Adams Gruß (der Eigentümer: „Hallo, Partypeople“): in der Startszene mit seiner tiefen
+// Stimme (VOICES.adam) und als Untertitel; sobald der Chat zu sehen ist, grüßt er zurück.
+export const PARTYPEOPLE = {
+  say: 'Hallo, Partypeople!',
+  chat: ['Hallo Partypeople! 🎉', 'HALLO ADAM! 👋', 'Partypeople am Start 🥳', 'Hallo zurück! ❤', 'Hallo Mini Adam! 🎉', 'Partypeople melden sich zum Dienst 🫡',
+    'Hallöchen aus dem Chat 👋', 'Endlich live! ❤', 'Haaallo Partypeople 🎊', 'Die Party kann beginnen 🎉'],
+};
 export const BRUNNEN_NOMI = [
   'Folge {n} ist im Kasten. Ich finde, das Becken hat heute besonders geglänzt.',
   'Ich habe den Brunnen geprüft: Das Wasser läuft, die Tauben sind zufrieden.',
@@ -175,32 +193,32 @@ export const SAMMELAKTIONEN = [
 export const CHAT = {
   ambient: [
     'Grüße aus {city}! 👋', 'Hallo Mini Adam ❤', 'Ist das Bild wirklich Full HD?', 'Wo seid ihr gerade?',
-    'Welche Farbe hat die Bank hier?', 'Gibt es in {city} einen Ringtennis-Verein?', 'Rechts fahren, Adam! 😅',
+    'Welche Farbe hat die Bank hier?', 'Gibt es in {city} einen Ringtennis-Verein?', '[ab] Rechts fahren, Adam! 😅',
     'Schöne Landschaft heute', 'Wie viel Akku noch?', 'Wann kommt Meister Pünktlich?', 'Walte Walte Walte Walte Walte',
-    'Erzähl mal die Raab-Story!', 'Das Bild ist so scharf 😍', 'Elsa ❤🐟', 'BrunnenTV wann?', 'Bananensaft-Pause? 🍌',
-    'Kappandramäßige Zusammenfassung bitte, bin grad erst rein', 'Wir sind auf der Autobahn und streamen in Full HD! 🎶',
-    'Wohin fahren wir eigentlich?', 'Das Navi-Ziel ändert sich eh gleich wieder', 'Grüße ans Sprachstudio!',
-    'Danke an alle Ehrenmenschen 🙏', 'Pfefferminz jemand?', 'Pandamütze aufsetzen!', 'Ich biete 10 € mehr 🤑',
-    'Was ist eigentlich im Kofferraum?', 'Grüße an die Polizei Gifhorn 👮', 'Welche Autobahn ist das eigentlich?', 'Schöner Tesla 🖤',
+    'Erzähl mal die Raab-Story!', '[netz] Das Bild ist so scharf 😍', 'Elsa ❤🐟', 'BrunnenTV wann?', 'Bananensaft-Pause? 🍌',
+    'Kappandramäßige Zusammenfassung bitte, bin grad erst rein', '[ab netz] Wir sind auf der Autobahn und streamen in Full HD! 🎶',
+    'Wohin fahren wir eigentlich?', '[offen] Das Navi-Ziel ändert sich eh gleich wieder', 'Grüße ans Sprachstudio!',
+    'Danke an alle Ehrenmenschen 🙏', 'Pfefferminz jemand?', 'Pandamütze aufsetzen!', '[offen] Wer bietet 10 € mehr? 🤑',
+    'Was ist eigentlich im Kofferraum?', 'Grüße an die Polizei Gifhorn 👮', '[ab] Welche Autobahn ist das eigentlich?', 'Schöner Tesla 🖤',
     'Der Wischer ist auch nur ein Mensch', 'Nils weiß bestimmt, wann wir das letzte Mal hier waren',
-    'Bester Stream der Woche', 'Die Plüsch-Hände am Lenkrad 😂', 'Gleich kommt bestimmt ein Brunnen',
+    'Bester Stream der Woche', 'Die Plüsch-Hände am Lenkrad 😂', '[ziel] Gleich kommt bestimmt ein Brunnen',
     'Tesla-Taxi spielen wann?', 'Erster! (nicht)', 'Falsche Bude? 😂', 'Wer hat das Navi so eingestellt',
     'Adam, schreib mal eine Zahl in den Chat', 'Was läuft da im Radio?', 'Live-Eskalationen immer woanders 🔥',
     'Guten Abend zusammen 👋', 'Bin grad von der Arbeit heim, was hab ich verpasst?', 'Hab den Stream auf dem Fernseher, sieht mega aus',
     'Meine Oma guckt mit und lässt grüßen', 'Wie lange geht der Stream heute?', 'Hugo, wie spät ist es?',
-    'James hat heute viel zu tun', 'Kanalpunkte sind gespart, was gibt es dafür?', 'Das Ziel stabilisiert sich … oder auch nicht',
-    'Mini Adam, wink mal! 🧸', 'Die Kappe sitzt heute perfekt', 'Kommt gleich eine Raststätte?', 'Wer ist noch aus Hessen hier?',
-    'erster stream für mich, wie geht das mit dem navi?', 'Einfach 10 € mehr bieten, dann gehört das Navi dir 😂',
-    'Das Lenkrad ist größer als Mini Adam', 'NOMI guckt so lieb', 'Wann wieder Drohne?', 'Supercharger wann?',
+    'James hat heute viel zu tun', 'Kanalpunkte sind gespart, was gibt es dafür?', '[offen] Das Ziel stabilisiert sich … oder auch nicht',
+    'Mini Adam, wink mal! 🧸', 'Die Kappe sitzt heute perfekt', '[ab] Kommt gleich eine Raststätte?', 'Wer ist noch aus Hessen hier?',
+    'erster stream für mich, wie geht das mit dem navi?', '[offen] Einfach 10 € mehr bieten, dann gehört das Navi dir 😂',
+    'Das Lenkrad ist größer als Mini Adam', 'OMI guckt so lieb', 'Wann wieder Drohne?', 'Supercharger wann?',
     'Mein Handy-Akku: 4 %. Eurer?', 'Chat, benehmt euch, Gifhorn liest mit', 'Schöne Grüße aus dem Homeoffice',
-    'Ich sollte schlafen, aber das hier ist wichtiger', 'Bild und Ton synchron, ich bin beeindruckt',
+    'Ich sollte schlafen, aber das hier ist wichtiger', '[netz] Bild und Ton synchron, ich bin beeindruckt',
     'Bin kurz Getränke holen, bitte nichts Spannendes machen!', 'Ebbelwoi steht kalt 🍏', 'Kriegt das Navi eigentlich Provision? 😂',
     'Läuft bei mir im Zweitfenster, Chef guckt nicht', 'Wer fährt eigentlich, wenn Mini Adam schläft?',
     'Danke fürs Vorlesen, Sprachstudio! 🎧', 'Feierabend, Snacks, Navi-Stream. Mehr brauch ich nicht.',
   ],
   // Die heimliche Chat-Stimmung färbt das Geplauder: ausgelassen bei guter Laune …
   cheerful: [
-    'Bester Stream seit Langem 😍', 'ICH LIEBE DIESE FAHRT', 'So muss Autobahn!', 'Mini Adam fährt wie ein Meister 🧸',
+    'Bester Stream seit Langem 😍', 'ICH LIEBE DIESE FAHRT', '[ab] So muss Autobahn!', 'Mini Adam fährt wie ein Meister 🧸',
     'Der Tesla schnurrt 🖤', 'Kann das bitte ewig so weitergehen?', 'Chat ist on fire 🔥', 'Hab Popcorn geholt 🍿',
     'Mein Kaffee wird kalt, egal', 'Das ist besser als Fernsehen', 'Wer jetzt abschaltet, verpasst was', 'STIMMUNG!!! 🎉',
     'Meine Katze guckt auch zu 🐈', 'Ehrenfahrt 🙏', 'Gänsehaut vom Blinker', 'Einfach schön hier ❤',
@@ -212,13 +230,36 @@ export const CHAT = {
   // … und unruhig, wenn zu wenig passiert
   restless: [
     'Passiert heute noch was? 😴', 'Bin kurz Tee kochen', 'Ist das eine Wiederholung?', 'Ich zähl schon Leitpfosten',
-    'Überhol doch mal 🙈', 'gähn', 'Wann wird wieder gehupt?', 'Sogar die Laster haben heute mehr Schwung',
-    'Kann mal jemand das Navi ärgern?', 'Kommen wir heute noch an?', 'Hallo? Jemand da?', 'Ich guck solange aus dem Fenster',
-    'Schneller, die Pommes werden kalt 🍟', 'Chat schläft 💤', 'Weckt mich, wenn ein Brunnen kommt',
-    'Hab nebenbei schon aufgeräumt', 'Bisschen mehr Strom geben? ⚡', 'Selbst der Wischer langweilt sich',
-    'laaangsam', 'Da hinten überholt uns eine Schnecke 🐌', 'Gibt es heute noch Eskalation?', 'zzz',
+    '[ab] Überhol doch mal 🙈', 'gähn', 'Wann wird wieder gehupt?', '[langsam] Sogar die Laster haben heute mehr Schwung',
+    'Kann mal jemand das Navi ärgern?', '[ziel] Kommen wir heute noch an?', 'Hallo? Jemand da?', 'Ich guck solange aus dem Fenster',
+    '[langsam] Schneller, die Pommes werden kalt 🍟', 'Chat schläft 💤', 'Weckt mich, wenn ein Brunnen kommt',
+    'Hab nebenbei schon aufgeräumt', '[langsam] Bisschen mehr Strom geben? ⚡', 'Selbst der Wischer langweilt sich',
+    '[langsam] laaangsam', '[langsam] Da hinten überholt uns eine Schnecke 🐌', 'Gibt es heute noch Eskalation?', 'zzz',
     'Meine Geduld ist auch nur ein Akku 🔋', 'Ich frag jetzt zum dritten Mal: Wohin fahren wir?', 'Ich mecker nur, weil ich euch mag',
     'Können wir bitte irgendwo ankommen? Egal wo.',
+  ],
+  // Running Gags aus dem Stream (Recherche memes-A, die stärksten zuerst), jede Zeile nur, wenn sie zum Moment passt
+  // (Stichworte: game.js FACTS) – sonst plaudert der Chat wie immer (Game.updateChat, MEME_SHARE)
+  meme: [
+    '[offen] Summe bereinigt, minus 19 %, wie immer 🤓', '[offen] Jetzt wird es eng da oben 👀',
+    '[offen] Nein, bei MIR zuhause! 🏠', '[offen] Was mit Malte, egal was! 🙌', '[offen] 10,01 schlägt 10,00, Mathe ist brutal',
+    '[offen] Wer bietet auf „irgendwo mit Schatten“? 😎', '[offen] Früher zu Fuß, heute per Navi 😂',
+    '[donnerstag] ENDLICH DONNERSTAG 🎉', '[start] Schon live? Rekordpünktlich ⏰',
+    '[studio] Gruß an die ruhige Stimme im Ohr 🎧', '[studio] Wer hat heute Dienst am Mikro? 🎙️',
+    '[weit] Fünf Minuten noch, sagt Meister Pünktlich 😂', '[nah] Technisch gesehen sind wir da ✅',
+    '[nah] Ich wette, !CF steht schon am Ziel', '[laden] Der Strom kommt in die Streamkosten-Tabelle 🤓',
+    '[laden] Ich hab dir einen Bananensaft bestellt 🍌', '[kassandra] Fräulein Kassandra, bitte langsamer lesen 😅',
+    '[durchsage] Bitte lies meine auch vor, ist ganz brav', '[durchsage] DIE BOX SOLL LAUTER 🔊',
+    '[ort] Drehgenehmigung dabei? 📝', '[ort] Diesmal die richtige Bude? 🌭', '[ort] Magnet kaufen nicht vergessen! 🧲',
+    '[ort] Wetten, der Laden hat schon zu?', '[ort] Bodenpommes-Gefahr, Achtung! 🍟',
+    '[folge2] Der hier ist schöner als der letzte ⛲', '[tv] Bitte auf Polnisch moderieren 😂', '[tv] DAS MUSS INS WIKI! 📝',
+    '[gifhorn] GIFHORN GIFHORN GIFHORN', '[gifhorn] Gifhorn, immer eine Reise wert',
+    '[siegen] Siegen im Navi? Glaub ich erst, wenn wir da sind', '[siegen] Diesmal siegt Siegen, ich spür es 🏆',
+    '[wende] Navi will wenden? Tschüss du Betrüger 😤', '[ab lange] Stundenlang Autobahn, Wunsch erfüllt ✅',
+    '[lange] Noch fit, Mini Adam? 😴', '[akku] Akku knapp, Steckdose suchen! 🔌', '[akku] Powerbank dabei? Diesmal wirklich?',
+    '[steht] Im Zweifel: Taxi 🚕', '[langsam] Zu Fuß wären wir schneller 😂', '[regen] Pandamütze bei dem Wetter! 🐼',
+    '[ab netz] 4K? Ach, Full HD reicht doch 😌', '[netz] Für diese Aussicht reicht Full HD locker 🏞️',
+    '[party] Und da ist sie, die ESKALATION 🔥',
   ],
   // im Regen ist der Chat besonders gesprächig
   rain: ['Schmuddelwetter 🌧', 'Bei dem Wetter bleib ich im Chat', 'Regen-Stream = bester Stream', 'Der Wischer hat Lampenfieber',
@@ -226,7 +267,7 @@ export const CHAT = {
     'Wisch! … oder auch nicht 😂', 'Tropfen zählen: 1, 2, viele'],
   // jemand ist zum ersten Mal da – das Sprachstudio begrüßt ihn dann mit Namen
   newViewer: ['Hallo! Bin zum ersten Mal hier 👋', 'Hi, bin neu. Warum fährt da ein Plüschtier? 😄',
-    'Moin aus {city}! Hab euch eben beim Zappen gefunden', 'Neu hier und schon Fan von NOMI 😍',
+    'Moin aus {city}! Hab euch eben beim Zappen gefunden', 'Neu hier und schon Fan von OMI 😍',
     'Ein Kumpel hat mir den Stream empfohlen. Hallo zusammen!'],
   // Abos und VIP
   sub: ['ABO! 🎉', 'Willkommen im Club ❤', 'Neuer Abonnent, hurra!', 'Abo-Hype!', 'Danke fürs Abo!',
@@ -277,20 +318,41 @@ export const CHAT = {
     'Tempo! Ich liebe es', 'Das Navi kommt kaum hinterher 😂', 'Der Chat ist zufrieden 😌', 'Läuft heute 👌',
     'Schon wieder ein Ziel geschafft?!', 'Reisen mit Mini Adam = Express 🚄', 'Die Bieter kommen gar nicht hinterher',
     'Bestes Roadtrip-Tempo'],
-  schneller: ['Schneller! 😩', 'Wann sind wir da?', 'Gib Gas, Mini Adam!', 'Das dauert ja ewig', 'Ich schlaf gleich ein 😴',
-    'Bitte etwas zügiger 🙏', 'Sind wir bald da?', 'Das Navi wartet auf dich 😅', 'Das Ziel läuft uns nicht weg … oder? 😅',
-    'Ein bisschen mehr Tempo bitte', 'Mein Popcorn ist schon alle 🍿', 'Gleich überholt uns ein Traktor 🚜'],
+  schneller: ['Schneller! 😩', '[ziel] Wann sind wir da?', 'Gib Gas, Mini Adam!', 'Das dauert ja ewig', 'Ich schlaf gleich ein 😴',
+    'Bitte etwas zügiger 🙏', '[ziel] Sind wir bald da?', 'Das Navi wartet auf dich 😅', 'Das Ziel läuft uns nicht weg … oder? 😅',
+    'Ein bisschen mehr Tempo bitte', 'Mein Popcorn ist schon alle 🍿', '[langsam] Gleich überholt uns ein Traktor 🚜'],
   // Werkstatt-Rechnung am Ziel (Reise): freundlich, die Werkstatt gehört dazu – und wer heil ankommt, wird gefeiert
   reparatur: ['Die Werkstatt freut sich 😅', 'Ein bisschen Spachtel, ein bisschen Liebe', 'Beulen gehören dazu',
     'Hauptsache, Mini Adam ist gut angekommen ❤', 'Gut, dass der Chat zusammenlegt 😂', 'Neue Beule, neue Geschichte',
     'Die Plüsch-Hände sind heil, das zählt 🧸'],
   heil: ['Keine Kratzer, keine Rechnung ✨', 'Sauber gefahren!', 'Die Werkstatt hat heute frei 😎',
     'Ohne eine Schramme 👏', 'Der Lack glänzt noch'],
+  // Trödeladam (game.js TROEDEL): wenn er lange steht, lange langsam ist oder eine Runde vertrödelt hat – freundlich
+  // geneckt, je Anlass eigene Sätze, dazu manchmal ein Echo aus dem Chat
+  troedel: {
+    steht: ['Trödeladam! 🐌', 'Trödeladam, der Brunnen läuft nicht weg … wir aber auch nicht 😅', 'Steht der Wagen, oder ruckelt mein Stream? Ach so, Trödeladam 😅',
+      'Trödeladam macht Pause. Schon wieder 😂', 'Hallo? Trödeladam? Die Straße wartet!', 'Trödeladam parkt wie ein Profi 🅿️',
+      'Ich hol mir schnell Pommes, Trödeladam steht ja eh 🍟'],
+    langsam: ['TRÖDELADAM 🐌', 'Trödeladam, das Navi schläft gleich ein 😴', 'Sogar die Schnecken überholen uns, Trödeladam 🐌',
+      'Trödeladam auf Sightseeing-Tour 📸', 'Gas ist rechts, Trödeladam 😂', 'Gemütlich, Trödeladam, sehr gemütlich 🐢',
+      'Das Navi hat die Ankunftszeit gerade nach hinten geschoben, Trödeladam'],
+    runde: ['Trödeladam ist angekommen. Endlich 😂', 'Rekord im Trödeln, Trödeladam 🏆🐌', 'Da ist er ja, unser Trödeladam ⛲',
+      'Für die Runde gibt es den Trödelpokal 🐌', 'Trödeladam hat den Brunnen gefunden. Irgendwann.'],
+    echo: ['🐌🐌🐌', 'Trödeladam 😂', 'Hahaha Trödeladam', 'Trödeladam, der neue Spitzname?', '#Trödeladam', 'Trödeladam forever 🐌'],
+  },
   // am Ziel vorbeigefahren (kommt mit der Karte und ihren echten Ausfahrten)
   missedTarget: ['Die Ausfahrt war DA 😭', 'Vorbei … so nah dran', 'Das Navi weint leise', 'Nächste Ausfahrt dann, ja?',
     'Zu flott für die Ausfahrt 😅', 'Tschüss, schönes Ziel 👋'],
-  bidLate: ['KURZ VORM ZIEL 😭', 'Nein!!! So knapp', 'Das war gemein 😂', 'Chat, wir waren fast da. FAST.',
-    'Ich konnte das Ziel schon sehen 😭', 'Auf den letzten Metern überboten', 'Last-Minute-Gebot. Frech, aber Königsdisziplin 👑'],
+  // das Bieterfenster nach einer Folge läuft bald ab (game.js updateNavi): gut gelaunt drängelt der Chat, sonst gähnt er
+  fensterBald: ['Leute, bietet mal! ⏳', 'Wer bietet? Die Uhr läuft ⏳', 'Zehn Sekunden noch, kommt schon 😅', 'Ich will weiterfahren, bietet jemand?',
+    'Nicht einschlafen, Chat! Bieten!', 'Ich würde ja bieten, aber mein Taschengeld 😭'],
+  fensterStill: ['…', 'Ist noch jemand da? 👀', 'Hm.', 'Schon spät heute 🥱', 'Ich glaub, das wars', 'Bietet keiner mehr?'],
+  // niemand hat geboten: Der Stream ist vorbei (game.js streamOver)
+  streamEnde: ['Gute Nacht, Mini Adam! 🌙', 'Danke für den Stream ❤', 'Bis zum nächsten Mal 👋', 'Schöner Stream heute', 'Tschüss Partypeople! 🎉',
+    'Das war schön ⛲'],
+  // der Zuschlag fünf Kilometer vor dem Brunnen (game.js zuschlag): Das Ziel steht fest
+  zuschlag: ['ZUSCHLAG! 🔨', 'Verkauft! 🔨', 'Glückwunsch zum Ziel 🎉', 'Jetzt gilt es, keine Gebote mehr', 'Ziel steht! Ab zum Brunnen ⛲',
+    'Das war ein Rennen 😮', 'Ehrenmensch hat gewonnen 👑', 'Ab jetzt wird nicht mehr umgeplant 😌', 'Gekauft wie gesehen 😂'],
   // Challenges („Wenn …, spende ich …“) – {wenn} und {betrag} kommen vom Job
   pledge: ['Wenn {wenn}, spende ich {betrag}!', '{betrag} von mir, wenn {wenn} 🤝', 'Challenge: {betrag}, wenn {wenn}',
     'Ich leg {betrag} drauf, wenn {wenn}', 'Deal: {betrag} in die Kasse, sobald {wenn}'],
@@ -338,7 +400,7 @@ export const CHAT = {
     'Grüße an den Brunnen!'],
   elsaKassel: ['ELSA!!! ❤🐟', 'Elsa ❤', 'Kassel ist Elsa-Stadt 👑🐟', 'Grüß Elsa von uns!'],
   gifhornOrt: ['Gifhorn! Historisch bedeutsam 😂', 'Polizei Gifhorn grüßt bestimmt gleich 👮', 'Wo ist der Supermarkt-Parkplatz?'],
-  crash: ['Rezeption!', 'Uff 🙈', 'Das gibt Ärger', 'Polizei Gifhorn ist unterwegs 🚓', 'Blechschaden!', 'Hoffentlich hat das keiner gesehen',
+  crash: ['Rezeption!', 'Uff 🙈', 'Das gibt Ärger', 'Hat das die Polizei Gifhorn gesehen? 🚓', 'Blechschaden!', 'Hoffentlich hat das keiner gesehen',
     'Eskalation! 😂', 'Das war die falsche Spur'],
   nearMiss: ['WAS WAR DAS 😱', 'Knapp!!!', 'Millimeterarbeit', 'CLIP!', 'Clip it!', 'Puh…', 'Mutig!'],
   rainStart: ['Regen 🌧', 'Jetzt wird es spannend', 'Wischer.exe reagiert nicht', 'Auto-Wischer (Beta) 😂',
@@ -354,13 +416,14 @@ export const CHAT = {
     'Der Wischer hat heute seinen großen Tag', 'Klare Sicht für drei Sekunden 🥹'],
   wiperPhantom: ['Es regnet doch gar nicht? 😂', 'Der Wischer hat was gehört', 'Phantomregen erkannt', 'Der Wischer träumt',
     'Fehlalarm, weiterfahren'],
-  police: ['POLIZEI GIFHORN 🚓', 'Polizei Gifhorn kommt!', 'Benehmen jetzt!', 'Ganz ruhig bleiben…', '👮👮👮'],
-  funkloch: ['F', 'F', 'F', 'Ton f', '/cam2', 'F', 'Bild weg?', 'F'],
-  funklochBack: ['✔️', '✔️', '✔️ Bild ist wieder da', 'Da ist es wieder ✔️'],
-  frog: ['🐸', '🐸🐸', 'Frosch!', '🐸 HDMI-Kabel?'],
+  police: ['POLIZEI GIFHORN 🚓', 'Polizei Gifhorn kommt!', 'Benehmen jetzt!', 'Ganz ruhig bleiben…', '👮👮👮',
+    'Wer hat die Polizei Gifhorn gerufen? 😂'],
+  funkloch: ['F', 'F', 'F', 'Ton f', '/cam2', 'F', 'Bild weg?', 'F', 'Null Balken 📵'],
+  funklochBack: ['✔️', '✔️', '✔️ Bild ist wieder da', 'Da ist es wieder ✔️', 'IST DAS LIVE?? 🤨', 'Funkloch vorbei. Tschüss, du Betrüger!'],
+  frog: ['🐸', '🐸🐸', 'Frosch!', '🐸 HDMI-Kabel?', 'Wackel mal am Kabel'],
   blitzer: ['📸', 'Lächeln! 📸', 'Das Foto kommt in einen Rahmen', 'Tschüss, du Betrüger!', 'Teures Selfie'],
   // nach einem Blitz stichelt ab und zu jemand: ohne Radarwarner mit einem Wink zum Shop, mit ihm erst recht
-  radarFehlt: ['Ein Radarwarner hätte jetzt gepiept', 'Im Tesla-Shop gibt es Radarwarner 😏', 'Radarwarner wann? 📟',
+  radarFehlt: ['Ein Radarwarner hätte jetzt gepiept', 'Im Shop gibt es Radarwarner 😏', 'Radarwarner wann? 📟',
     'Mit Radarwarner wäre das nicht passiert'],
   radarTrotz: ['Trotz Radarwarner 😂', 'Der hat doch gepiept?!', 'Gepiept, geblinkt, geblitzt 📟📸',
     'Der Radarwarner hat alles gegeben'],
@@ -383,13 +446,13 @@ export const CHAT = {
   rahmen: ['Schöner Rahmen 😂', 'Ich sehe nichts mehr', 'Bestes Geld ever', 'Danke für den Rahmen!',
     'Ich seh nur noch Rahmen und einen halben Tesla', 'Noch ein Rahmen und wir fahren nach Gehör'],
   // „5 Cent, wenn du …“: ein Meme aus dem Stream. Ein Zuschauer bietet lächerliche 5 Cent für eine Albernheit – immer
-  // genau 5 Cent, das ist der Witz. Mini Adam geht nie darauf ein (kein Geld, keine Aufgabe, keine Antwort von NOMI
+  // genau 5 Cent, das ist der Witz. Mini Adam geht nie darauf ein (kein Geld, keine Aufgabe, keine Antwort von OMI
   // oder dem Sprachstudio); nur der Chat legt noch 2 Cent drauf oder frotzelt. Jedes Angebot höchstens einmal je Stream.
   fuenfCent: [
     '5 Cent, wenn du während der Fahrt den Kopf aus dem Fenster streckst.',
-    '5 Cent, wenn du NOMI einmal kitzelst 🤏',
-    'Angebot des Tages: 5 Cent für ein Tänzchen mit NOMI 💃',
-    '5 Cent, wenn du NOMI beibringst, „Bimmel hurra“ zu sagen',
+    '5 Cent, wenn du OMI einmal kitzelst 🤏',
+    'Angebot des Tages: 5 Cent für ein Tänzchen mit OMI 💃',
+    '5 Cent, wenn du OMI beibringst, „Bimmel hurra“ zu sagen',
     '5 Cent, wenn du dem Wischer ein Gute-Nacht-Lied singst',
     '5 Cent wenn du den wischer ab heute zucki nennst',
     '5 Cent, wenn du dem nächsten Brunnen einen Luftkuss zuwirfst 😘',
@@ -464,7 +527,7 @@ export function fillTemplate(text, vars = {}) {
   return text.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : pick(CHAT_CITIES)));
 }
 
-export const CHAT_CITIES = ['Fulda', 'Kassel', 'Gifhorn', 'Mainz', 'Köln', 'Siegen', 'Hanau', 'Darmstadt', 'Bielefeld',
+const CHAT_CITIES = ['Fulda', 'Kassel', 'Gifhorn', 'Mainz', 'Köln', 'Siegen', 'Hanau', 'Darmstadt', 'Bielefeld',
   'Buxtehude', 'Konstanz', 'Augsburg', 'Bremen', 'Nürnberg', 'Hamburg', 'Lübeck', 'Trier', 'Erlensee'];
 
 /** Ein Betrag, wie ihn der Chat schreibt: runde ohne Nachkommastellen („25 €“), krumme mit („33,33 €“). */
@@ -503,8 +566,12 @@ export const VOICES = {
   weronika: { label: 'Weronika', pitch: 1.1, rate: 0.95 },
   karla: { label: 'Karla', pitch: 1.0, rate: 1.05 },
   william: { label: 'Brüll-William', pitch: 0.55, rate: 1.12 },
-  board: { label: 'NOMI', pitch: 1.18, rate: 1.04 },
+  board: { label: 'OMI', pitch: 1.18, rate: 1.04 },
   schoennbrun: { label: 'Herr Schönnbrun', pitch: 0.45, rate: 0.82 },
+  // Mini Adam bei BrunnenTV: tief und männlich (speech.js DEEP_MALE); sein Ruf „Schöner Brunnen!“ noch tiefer und
+  // langgezogen
+  adam: { label: 'Mini Adam', pitch: 0.4, rate: 1.1 },
+  brunnen: { label: 'Mini Adam: Schöner Brunnen!', pitch: 0.2, rate: 0.6 },
   sprachstudio: { label: 'Sprachstudio', pitch: 0.94, rate: 0.95 },
 };
 
@@ -547,7 +614,7 @@ export const STUDIO = {
       'Der Chat plaudert vor sich hin. Gerade geht es um Ringtennis.',
       'Im Chat ist es gemütlich. Jemand verteilt Pfefferminz.',
       'Der Chat ist dabei und wartet gespannt, was als Nächstes kommt.',
-      'Solide Stimmung im Chat. Keine Eskalation, aber auch kein Funkloch.',
+      '[netz] Solide Stimmung im Chat. Keine Eskalation, aber auch kein Funkloch.',
       'Der Chat fühlt sich wohl. Ein paar fragen nach Meister Pünktlich.',
       'Der Chat plätschert so dahin. Kein Wasserfall, eher ein ruhiger Bach.',
       'Stimmung so mittel. Nicht Mittelalter, einfach nur mittel.',
@@ -602,6 +669,7 @@ export const STUDIO = {
       manoever: ['Die Überholmanöver kommen bestens an.', 'So knapp überholt, das lieben sie.', 'Jedes Überholen wird mitgezählt.'],
       tempo: ['Das Tempo gefällt ihnen.', 'Sie mögen es, wenn der Tacho arbeitet.', 'So flott waren sie lange nicht unterwegs.'],
       ziel: ['Die Ankunft wird noch gefeiert.', 'Ein erreichtes Ziel vergessen sie nicht so schnell.'],
+      nah: ['Das Ziel ist ganz nah, alle sind gespannt.', 'Gleich sind wir da, der Chat zählt schon mit.', 'Kurz vor dem Ziel, da fiebern alle mit.'],
       gruss: ['Der Gruß mit der Hupe kam gut an.', 'So ein Hupgruß geht ihnen ans Herz.'],
       sauber: ['Sie loben die saubere Fahrt.', 'Kein Kratzer, das fällt ihnen auf.'],
       blitzer: ['Das Blitzerfoto macht gerade die Runde.', 'Das Blitzerfoto bekommt gerade viele Herzen.'],
@@ -621,6 +689,7 @@ export const STUDIO = {
         'Beim Funkloch haben alle F geschrieben, das wirkt noch nach.'],
       verpasst: ['Dem verpassten Ziel trauern sie noch nach.', 'Die Ausfahrt von eben lässt sie nicht los.'],
       strafe: ['Das Verwarngeld fanden sie nicht so lustig.', 'Die Polizei Gifhorn war ihnen einmal zu oft zu Besuch.'],
+      troedel: ['Im Chat heißt er gerade Trödeladam.', 'Der Chat hat einen neuen Spitznamen verteilt: Trödeladam.', 'Trödeladam, sagen sie. Liebevoll, aber deutlich.'],
     },
   },
   // Kassensturz zwischendurch ({summe}) …
@@ -667,9 +736,9 @@ export const DURCHSAGEN = [
   { voice: 'karla', text: 'Gibt es in {city} eigentlich einen Ringtennis-Verein?' },
   { voice: 'weronika', text: 'Welche Farbe hat die Bank in {city}?' },
   { voice: 'william', text: 'Mini Adam, erzähl doch mal die Raab-Story!' },
-  { voice: 'karla', text: 'Wir sind auf der Autobahn und streamen in Full HD!' },
-  { voice: 'william', text: 'Ich biete zehn Euro mehr. Neues Ziel: {city}.' },
-  { voice: 'kassandra', text: 'Bitte rechts fahren. Mit freundlichen Grüßen, die Polizei Gifhorn.' },
+  // (when: nur, wenn es gerade stimmt – game.js FACTS)
+  { voice: 'karla', text: 'Wir sind auf der Autobahn und streamen in Full HD!', when: 'ab netz' },
+  { voice: 'kassandra', text: 'Bitte rechts fahren. Mit freundlichen Grüßen, die Polizei Gifhorn.', when: 'ab' },
   { voice: 'weronika', text: 'Mini Adam, du fährst besser als jedes Navi.' },
   { voice: 'karla', text: 'Hallo Mini Adam! Schreib mal eine Zahl in den Chat. Aber bitte ohne Drei.' },
   { voice: 'william', text: 'Kappandramäßige Zusammenfassung bitte! Ich war beim Schwimmunterricht.' },
@@ -688,11 +757,18 @@ export const DURCHSAGEN_REGEN = [
 // Boardcomputer-Sätze
 export const BOARD = {
   leftLane: 'Die linke Fahrspur ist freigeschaltet.',
-  leftLaneEnd: 'Die linke Fahrspur ist wieder gesperrt. Bitte rechts fahren.',
-  naviChanged: 'Das Navi-Ziel wurde geändert.',
-  arrived: 'Sie haben Ihr Ziel erreicht.',
+  // jedes neue Ziel, sobald es steht (game.js announceTarget): {ziel} „Marktbrunnen in Würzburg“
+  neuesZiel: 'Neues Ziel: {ziel}!',
+  // die nächste Ausfahrt am ersten Vorwegweiser (game.js exitLine): {name} wie auf dem Schild, {d} „1000 Metern“
+  exit: {
+    ausfahrt: 'Nächste Ausfahrt: {name} in {d}.',
+    kreuz: 'Als Nächstes: {name} in {d}.',
+    ende: 'Die Autobahn endet in {d}. Alle Spuren führen hinaus.',
+    take: 'Dort fahren wir ab.',
+    stay: 'Wir bleiben auf der {road}.',
+  },
   rain: 'Regen erkannt. Automatische Scheibenwischer aktiviert.',
-  // NOMI entschuldigt sich ab und zu für den hängenden Wischer
+  // OMI entschuldigt sich ab und zu für den hängenden Wischer
   wiperSorry: [
     'Entschuldigung. Der automatische Scheibenwischer ist noch in der Beta.',
     'Der Scheibenwischer übt noch. Danke für die Geduld.',
@@ -731,7 +807,7 @@ export const RAHMEN = [
 
 // ---------------------------------------------------------------------------
 // Erlogene Berufsbezeichnungen (aus dem Wiki) für den Abspann
-export const BERUFE = [
+const BERUFE = [
   { km: 0, job: 'Brownietester', src: '19.03.2020, Ersatzstream im Homeoffice' },
   { km: 1, job: 'Briefmarkenautomatenbefüller', src: '26.03.2020, Ersatzstream im Homeoffice' },
   { km: 2, job: 'Plumpsklo-Ingenieur', src: '20.09.2018, Münster' },
@@ -765,38 +841,44 @@ export const JOB_TEMPLATES = [
   { id: 'clean40', text: '40 km ohne Blechschaden', goal: 40000, stat: 'cleanDistance', wenn: 'du 40 km ohne Blechschaden schaffst' },
   { id: 'changes25', text: '25 Navi-Gebote überstehen', goal: 25, stat: 'naviChanges', wenn: 'du 25 Navi-Gebote überstehst' },
   { id: 'viewers1000', text: '1.000 Zuschauer erreichen', goal: 1000, stat: 'maxViewers', wenn: 'hier 1.000 Leute zuschauen' },
-  { id: 'park1', text: 'Im Ladepark den Akku füllen', goal: 1, stat: 'parkCharges', wenn: 'du im Ladepark den Akku füllst' },
+  { id: 'park1', text: 'An der Ladesäule den Akku füllen', goal: 1, stat: 'parkCharges', wenn: 'du an der Ladesäule den Akku füllst' },
   { id: 'dist50', text: '50 km Strecke schaffen', goal: 50000, stat: 'distance', wenn: 'du 50 km weit kommst' },
   { id: 'blitzfrei', text: 'An einem Blitzer vorbei, ohne geblitzt zu werden', goal: 1, stat: 'blitzerClean', wenn: 'du brav am Blitzer vorbeikommst' },
   { id: 'rain8', text: '8 km im Regen fahren', goal: 8000, stat: 'rainDistance', wenn: 'du 8 km im Regen durchhältst' },
 ];
 
-// Reise: NOMIs Akku-Warnungen nennen den nächsten Ladepark auf dem Weg mit Entfernung (trip.js nextRest); Taste L oder
-// der Knopf „Ladestopp einplanen“ machen ihn zum Zwischenziel. Dort parkt der Wagen an der freien Säule ein und lädt im
-// Zeitraffer voll (Game.startCharge, xxl/charge.js STOP). {pct} Prozent, {park} Name, {km} Weg.
+// Reise: OMIs Akku-Warnungen nennen den nächsten Ladeplatz auf dem Weg mit Entfernung (trip.js nextRest: ein Ladepark
+// oder die Ladesäule eines Orts, „Ladesäule in …“); Taste L oder der Knopf „Ladestopp einplanen“ machen ihn zum
+// Zwischenziel. Dort parkt der Wagen an der freien Säule ein und lädt im Zeitraffer voll (Game.startCharge,
+// xxl/charge.js STOP). {pct} Prozent, {park} Name, {km} Weg.
 export const REISE_AKKU = {
-  warn: [25, 10], // Prozent: NOMI warnt, und noch einmal, wenn es knapp wird
+  warn: [25, 10], // Prozent: OMI warnt, und noch einmal, wenn es knapp wird
   early: 70, // darunter warnt sie früher, sobald der nächste Park der letzte in Reichweite ist
+  // … „der letzte“: Dahinter trägt keine Lademöglichkeit weiter, die mindestens past Reisekilometer hinter ihm liegt
+  // (in jedem Ort steht eine Ladesäule – die nächsten paar Kilometer verlängern die Fahrt kaum); gesucht wird unter
+  // den look nächsten Halten
+  past: 15,
+  look: 8,
   reserve: 0.85, // so viel des Akkus gilt als sicher nutzbar
   // Prozent je Meter Straße, bis measure Meter davon seit dem Laden gemessen sind (Player.update: auf der Autobahn bei
   // 38 m/s rund 0,0052; echte Straße mischt Rampen und Zubringer um 0,006 mit Orten um 0,0086 – gemessen 0,0053 bis
   // 0,0061 samt dem Halt am Brunnen)
   perM: { open: 0.0052, real: 0.0065 },
   measure: 1500,
-  low: 'Akku {pct} Prozent. Nächster Ladepark: {park}, in {km}. Ladestopp einplanen?',
+  low: 'Akku {pct} Prozent. Nächster Ladestopp: {park}, in {km}. Einplanen?',
   last: 'Akku {pct} Prozent. {park} in {km} liegt noch in Reichweite. Ladestopp einplanen?',
   veryLow: 'Akku nur noch {pct} Prozent! {park} in {km}. Bitte dort laden.',
-  planned: 'Akku {pct} Prozent. Der Ladestopp im {park} ist eingeplant, in {km}.',
-  none: 'Akku {pct} Prozent, und kein Ladepark auf dem Weg. Bitte sparsam fahren.',
+  planned: 'Akku {pct} Prozent. Der Ladestopp ist eingeplant: {park}, in {km}.',
+  none: 'Akku {pct} Prozent, und keine Ladesäule auf dem Weg. Bitte sparsam fahren.',
   set: 'Ladestopp eingeplant: {park}, in {km}.',
   cancel: 'Ladestopp gestrichen.',
-  noPark: 'Kein Ladepark auf dem Weg.',
-  missed: 'Ladestopp verpasst. Ich suche den nächsten Ladepark.',
-  start: 'Ladestopp im {park}. Ich lade den Akku voll.',
+  noPark: 'Keine Ladesäule auf dem Weg.',
+  missed: 'Ladestopp verpasst. Ich suche die nächste Ladesäule.',
+  start: 'Ladestopp: {park}. Ich lade den Akku voll.',
 };
 
 // ---------------------------------------------------------------------------
-// Tesla-Shop (bezahlt wird mit den Stream-Einnahmen)
+// Shop (bezahlt wird mit den Stream-Einnahmen)
 export const SHOP = [
   {
     id: 'boost', icon: '⚡', name: 'Beschleunigungs-Boost', cat: 'Leistung', prices: [300, 700, 1500],
@@ -820,8 +902,20 @@ export const SHOP = [
   },
   {
     id: 'reifen', icon: '🛞', name: 'Sportreifen', cat: 'Fahrwerk', prices: [350, 900],
-    desc: 'Mehr Grip für schnelle Spurwechsel, auch bei Regen.',
-    effect: (l) => `Spurwechsel +${l * 12}\u00a0%, besserer Nassgrip`,
+    desc: 'Mehr Grip für schnelle Spurwechsel und flotte Kurven, auch bei Regen.',
+    effect: (l) => `Haftung +${l * 12}\u00a0%, Spurwechsel +${l * 12}\u00a0%, besserer Nassgrip`,
+  },
+  {
+    // wirkt in src/game/chassis.js (Wanken, Kopf, Kameras: straffer und schneller ruhig) und steering.js (Kurvendrift)
+    id: 'fahrwerk', icon: '🛠️', name: 'Sportfahrwerk', cat: 'Fahrwerk', prices: [450, 1100],
+    desc: 'Straffere Dämpfer und dickere Stabis: Nach dem Spurwechsel steht der Wagen sofort ruhig, in Kurven hält er die Linie.',
+    effect: (l) => `Wanken −${[0, 18, 32][l]}\u00a0%, schneller ruhig, Kurvendrift −${Math.round((1 - 1 / (1 + 0.2 * l)) * 100)}\u00a0%`,
+  },
+  {
+    // wirkt in src/game/player.js (BRAKES, brakeDecel): mehr Verzögerung, bei Nässe weniger Verlust; Bremsweg ∝ 1 / a
+    id: 'bremse', icon: '🛑', name: 'Sportbremsen', cat: 'Fahrwerk', prices: [400, 950],
+    desc: 'Größere Scheiben und griffigere Beläge: Der Wagen steht früher, auch wenn die Straße nass ist.',
+    effect: (l) => `Bremsweg −${Math.round((1 - 1 / (1 + 0.08 * l)) * 100)}\u00a0%, bei Nässe −${Math.round((1 - 0.82 / ((1 + 0.08 * l) * (1 - 0.18 * (1 - 0.25 * l)))) * 100)}\u00a0%`,
   },
   {
     id: 'polster', icon: '🧸', name: 'Plüsch-Polster', cat: 'Fahrwerk', prices: [500, 1300],
@@ -835,8 +929,8 @@ export const SHOP = [
   },
   {
     id: 'radar', icon: '📟', name: 'Radarwarner', cat: 'Spaß', prices: [250],
-    desc: 'Ein Kästchen fürs Armaturenbrett. Es piept, und NOMI sagt jeden Blitzer an, bevor es blitzt. Ohne ihn bleibt es beim Überraschungsfoto.',
-    effect: () => 'NOMI warnt vor jedem Blitzer',
+    desc: 'Ein Kästchen fürs Armaturenbrett. Es piept, und OMI sagt jeden Blitzer an, bevor es blitzt. Ohne ihn bleibt es beim Überraschungsfoto.',
+    effect: () => 'OMI warnt vor jedem Blitzer',
   },
   {
     id: 'starlink', icon: '🛰️', name: 'Satelliten-Schüssel', cat: 'Spaß', prices: [1100],
@@ -910,7 +1004,7 @@ export const ABSPANN_CREW = [
   ['Fahrer', 'Mini Adam'],
   ['Kamera', 'stationär'],
   ['Drohne', 'die Drohne'],
-  ['Sprachstudio', 'das Sprachstudio'],
+  ['Sprachstudio', '?CF und IceBonbon'],
   ['Scheibenwischer', 'Auto-Wischer (Beta)'],
   ['Navigation', 'ferngesteuert vom Chat'],
 ];
@@ -921,7 +1015,6 @@ export const ABSPANN_CREW = [
  */
 export const ABSPANN_REISE = [
   ['Musik', 'Elti und IceBonbon'],
-  ['Stimmen im Sprachstudio', '?CF und IceDrache'],
   ['Geek im Hintergrund', 'Arno Nühm'],
   ['Discord', 'Wils und DomZe'],
   ['Großbieter vom Dienst', 'BontanaBack'],

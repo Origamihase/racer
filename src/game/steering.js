@@ -35,8 +35,8 @@ export const STEER = {
   easeTo: 0.26,
   wetSlow: 0.22, // Nässe: so viel langsamere Antwort (Anteil) …
   wetLat: 0.1, // … und so viel weniger Quergeschwindigkeit
-  mu: 1.9, // Selbstausrichtung gegen die Kurvendrift (1/s)
-  grip: 8, // Haftgrenze trocken (m/s²) für Kurve plus Selbstausrichtung
+  mu: 2.6, // Selbstausrichtung gegen die Kurvendrift (1/s): straff, damit der Wagen in Kurven nicht nach außen schwimmt
+  grip: 8, // Haftgrenze trocken (m/s²) für Kurve plus Selbstausrichtung (Sportreifen: +12 % je Stufe)
   gripWet: 5, // nass
   imp: 6, // Abklingen von Stößen (1/s)
   wheelAcc: 9, // so viel Querbeschleunigung (m/s²) zeigt das Lenkrad als vollen Einschlag (Kurvenanteil)
@@ -56,7 +56,7 @@ export const CURVE_ASSIST = { aus: 0, sanft: 0.5, stark: 0.85 };
  */
 export const LANE_ASSIST = {
   aus: null,
-  sanft: { dead: 0.7, pause: 0.45, max: 0.7, acc: 0.8, gain: 5, far: 0.9, farPause: 0.12, farMax: 2.2, farAcc: 4.5 },
+  sanft: { dead: 0.7, pause: 0.25, max: 1.5, acc: 3, gain: 7, far: 0.9, farPause: 0.1, farMax: 2.4, farAcc: 5 },
   an: { dead: 0.2, pause: 0.3, max: 1, acc: 1.2, gain: 5.5, far: 0.9, farPause: 0.1, farMax: 2.4, farAcc: 5 },
 };
 
@@ -76,9 +76,11 @@ function rate(target, cur, P) {
 }
 
 /**
- * Wirksame Lenk-Kennwerte für Tempo, Nässe, Reifen-Upgrade und Lenkempfindlichkeit.
+ * Wirksame Lenk-Kennwerte für Tempo, Nässe, Reifen-Upgrade, Sportfahrwerk und Lenkempfindlichkeit.
  * @param {object} out wird befüllt und zurückgegeben (keine Speicheranforderung pro Teilschritt)
- * @param {{v:number, wet:number, latMul:number, sens:number, wetGrip:number}} q
+ * @param {{v:number, wet:number, latMul:number, sens:number, wetGrip:number, grip?:number, firm?:number}} q grip:
+ *   Faktor auf die Haftgrenze (Sportreifen), firm: Stufe des Sportfahrwerks (0 … 2: straffer in Kurven; Wanken und
+ *   Kameras macht es in src/game/chassis.js straffer)
  */
 export function steerParams(out, q) {
   const wet = Math.min(1, Math.max(0, q.wet || 0));
@@ -92,8 +94,8 @@ export function steerParams(out, q) {
   out.down = STEER.down * slow;
   out.slow = slow;
   out.rev = STEER.rev * slow;
-  out.mu = STEER.mu;
-  out.grip = STEER.grip + (STEER.gripWet - STEER.grip) * wetK;
+  out.mu = STEER.mu * (1 + 0.2 * (q.firm || 0));
+  out.grip = (STEER.grip + (STEER.gripWet - STEER.grip) * wetK) * (q.grip || 1);
   return out;
 }
 

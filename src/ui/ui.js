@@ -5,12 +5,10 @@ import { fmtNum, fmtCent, fmtEuro, fmtClock, clamp, tachoKmh } from '../util.js'
 import { nameColor, nameBreak, BOTS } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
-import { fmtOdo } from '../map/navroute.js';
-import { moodEmoji } from '../game/satisfaction.js';
-import { NARROW_MID, infoWidth, overlap } from './sicht.js';
+import { fmtOdo, fmtKm } from '../map/navroute.js';
+import { NARROW_MID, infoWidth, overlap, cockpitParts, portraitNarrow } from './sicht.js';
 
 /** Zufriedenheit des Chats sichtbar im Chat-Kopf? Nein: Die Chat-Stimmung gehört nicht ins HUD (Besitzer, 17.11.). */
-const CHAT_MOOD_SICHTBAR = false;
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -118,23 +116,28 @@ export class UI {
     this.turnIcon.width = this.turnIcon.height = 56;
     this.turnDist = el('b', 'navi-turn-dist', this.turnEl, '');
     this.turnText = el('span', 'navi-turn-text', this.turnEl, '');
+    // die nächste Ausfahrt, auch wenn die Route geradeaus bleibt: ein blaues Schild wie am Straßenrand (ins.next)
+    this.turnNext = el('span', 'navi-next', this.turnEl);
+    el('i', '', this.turnNext, 'Nächste Ausfahrt');
+    this.turnNextText = el('b', '', this.turnNext, '');
     this.leftLaneEl = el('div', 'leftlane hidden', second);
     this.leftLaneText = el('div', 'leftlane-text', this.leftLaneEl, '');
     const bar = el('div', 'leftlane-bar', this.leftLaneEl);
     this.leftLaneFill = el('div', 'leftlane-fill', bar);
+    // Handy hochkant ragt der Mittelbildschirm rechts aus dem Bild und mit ihm die Akku-Karte: Dann steht hier eine
+    // kleine Kopie (showAkkuCard, style.css .screen-cut .akku-mini) – Batterie, Stufe, Prozent und der Ladepark
+    this.akkuEl = el('div', 'akku-mini', second);
+    this.akkuFill = el('i', '', el('span', 'akku-mini-icon', this.akkuEl));
+    this.akkuTitle = el('b', 'akku-mini-title', this.akkuEl, '');
+    this.akkuPark = el('span', 'akku-mini-park', this.akkuEl, '');
     this.noticeEl = el('div', 'notice', strip);
 
     // --- rechts: Chat ---
     this.chatEl = el('div', 'chat', this.hud);
+    // (die Zuschauerzahl steht nur oben links am 👁: eine Zahl, an einer Stelle – der Eigentümer, 20.11.2026; die
+    // Stimmung des Chats zeigt das HUD nie, sie wirkt nur: Geld, Zuschauer, Ton)
     const head = el('div', 'chat-head', this.chatEl);
     el('span', '', head, 'Live-Chat');
-    // wie zufrieden der Chat ist (Gesicht und schmaler Balken; satisfaction.js), ausgeblendet (CHAT_MOOD_SICHTBAR)
-    this.chatMood = el('span', 'chat-mood', head);
-    this.chatMood.title = 'Zufriedenheit des Chats';
-    this.chatMoodFace = el('span', 'chat-mood-face', this.chatMood, '');
-    this.chatMoodFill = el('i', 'chat-mood-fill', el('span', 'chat-mood-bar', this.chatMood));
-    this.chatMoodShown = '';
-    this.chatCount = el('span', 'chat-count', head, '');
     this.chatList = el('div', 'chat-list', this.chatEl);
 
     // Funkloch: Der Stream ist weg – das steht dort, wo er fehlt, im Chat-Feld an Stelle der Nachrichten
@@ -142,9 +145,9 @@ export class UI {
     el('span', 'funkloch-icon', this.funklochEl, '📡');
     el('span', 'funkloch-text', this.funklochEl, FUNKLOCH);
 
-    // --- Streifen unten: BrunnenTV als Bauchbinde, daneben der Untertitel – NOMI, das Sprachstudio, die
+    // --- Streifen unten: BrunnenTV als Bauchbinde, daneben der Untertitel – OMI, das Sprachstudio, die
     // Sprachdurchsage und der Megafon-Wunsch sprechen alle hier, einer nach dem anderen, jeder mit seinem Zeichen
-    // (NOMIs Augen, Kopfhörer, Mikrofon mit Stimme und Spender, Megafon) ---
+    // (OMIs Augen, Kopfhörer, Mikrofon mit Stimme und Spender, Megafon) ---
     const bottom = el('div', 'bottom-strip', this.hud);
     this.tvEl = el('div', 'brunnentv hidden', bottom);
     const logo = el('div', 'brunnentv-logo', this.tvEl);
@@ -160,6 +163,7 @@ export class UI {
     el('span', 'sub-sign studio-icon', this.subEl, '🎧');
     el('span', 'sub-sign durchsage-icon', this.subEl, '🎙️');
     el('span', 'sub-sign megafon-icon', this.subEl, '📢');
+    el('span', 'sub-sign adam-icon', this.subEl, '🎤');
     const words = el('span', 'sub-words', this.subEl);
     this.subLabel = el('span', 'sub-label', words, '');
     this.subText = el('span', 'sub-text', words, '');
@@ -191,7 +195,6 @@ export class UI {
     this.photoT = 0;
     this.rahmenList = [];
     this.photos = [];
-    this.moneyShown = 0;
 
     // Der obere Streifen liegt zwischen den Feldern links und rechts. Ist dort kein Platz (Handy hochkant), steht er
     // unter den Feldern, statt sie zu überdecken.
@@ -222,7 +225,8 @@ export class UI {
     let left = Math.max(a.right, 14 + infoWidth(W, window.innerHeight)) + 14;
     let mid = (hasChat ? chat.left - 14 : W - left) - left;
     let top = 14;
-    const narrow = mid < NARROW_MID;
+    // (hochkant bis PORTRAIT_W immer: Tablets hätten sonst eine schmale Säule zwischen den Feldern)
+    const narrow = mid < NARROW_MID || portraitNarrow(W, window.innerHeight);
     if (narrow) {
       left = 14;
       mid = W - 28;
@@ -234,7 +238,26 @@ export class UI {
     st.setProperty('--mid', Math.round(mid) + 'px');
     st.setProperty('--top', Math.round(top) + 'px');
     this.hud.classList.toggle('hud-narrow', narrow);
+    // ragt der Mittelbildschirm rechts aus dem Bild? (sicht.js cockpitParts; Handy hochkant) – dann die Akku-Kopie
+    this.hud.classList.toggle('screen-cut', cockpitParts(W, window.innerHeight).screen.right > W);
     this.naviMax = Math.min(760, mid);
+  }
+
+  /**
+   * Die Akku-Karte des Mittelbildschirms (Game.lowBatteryCard, screen.js drawLowBattery) als kleine Kopie in der
+   * zweiten Reihe oben – zu sehen nur, wo der Mittelbildschirm aus dem Bild ragt (style.css .screen-cut). b: null = keine.
+   */
+  showAkkuCard(b) {
+    this.akkuEl.classList.toggle('on', !!b);
+    if (!b) return;
+    this.akkuEl.classList.toggle('crit', b.lvl > 1);
+    this.akkuEl.style.opacity = b.alpha.toFixed(2);
+    const pct = clamp(b.pct, 0, 100);
+    this.akkuFill.style.width = (b.lvl < 3 ? Math.max(8, pct) : 0) + '%';
+    const title = ['', 'Akku fast leer', 'Akku kritisch', 'Akku leer'][b.lvl] + ' · ' + Math.round(pct) + ' %';
+    const park = b.lvl === 3 ? 'Der Wagen rollt aus' : b.park ? b.park + ' · ' + fmtKm(b.km) : 'Nächste Ladesäule ansteuern';
+    if (this.akkuTitle.textContent !== title) this.akkuTitle.textContent = title;
+    if (this.akkuPark.textContent !== park) this.akkuPark.textContent = park;
   }
 
   /** Navi-Ansage der Fahrt (NavModel.instruction()) oder null; sichtbar nur ohne Mittelbildschirm (style.css). */
@@ -258,6 +281,12 @@ export class UI {
     const text = ins.calm && ins.say ? ins.head + ' · in ' + ins.say : ins.head;
     if (this.turnDist.textContent !== dist) this.turnDist.textContent = dist;
     if (this.turnText.textContent !== text) this.turnText.textContent = text;
+    // die nächste Ausfahrt – nicht, solange die Ansage selbst sie nennt
+    const nx = ins.next && ins.next.fork !== ins.fork ? ins.next : null;
+    const next = nx ? nx.name + ' · ' + nx.say : '';
+    this.turnNext.classList.toggle('on', !!nx);
+    this.turnNext.firstChild.textContent = nx && nx.kind === 'kreuz' ? 'Nächstes Kreuz' : 'Nächste Ausfahrt';
+    if (this.turnNextText.textContent !== next) this.turnNextText.textContent = next;
   }
 
   /** v: HUD an oder aus; subs (bei v = false): von allem nur der Untertitel-Streifen (Startszene der Reise). */
@@ -517,8 +546,8 @@ export class UI {
 
   tickNotices(dt) {
     for (const n of this.notices) n.wait += dt;
-    // ein wartender Tipp, der zu alt geworden ist, entfällt
-    this.notices = this.notices.filter((n) => urgent(n) || n.wait < NOTICE.stale || ((n.gone = true), false));
+    // ein wartender Tipp, der zu alt geworden ist, entfällt (meist wartet keiner: dann keine neue Liste je Bild)
+    if (this.notices.length) this.notices = this.notices.filter((n) => urgent(n) || n.wait < NOTICE.stale || ((n.gone = true), false));
     const n = this.notice;
     if (!n) return;
     n.age += dt;
@@ -547,9 +576,12 @@ export class UI {
    * Wort; wen er unterbrochen hat, der steht danach wieder da, solange seine Zeit noch läuft – so geht kein Satz
    * verloren.
    */
+  /** Ein Untertitel für dur Sekunden; gibt die Zeile zurück (t = 0 nimmt sie wieder weg). */
   speak(who, text, dur, label = '') {
-    this.lines.push({ who, text, label, t: dur });
+    const l = { who, text, label, t: dur };
+    this.lines.push(l);
     this.showLine();
+    return l;
   }
 
   showLine() {
@@ -566,7 +598,12 @@ export class UI {
     this.speak('nomi', text, Math.max(2.2, dur));
   }
 
-  /** Das Sprachstudio spricht: derselbe Untertitel-Platz wie bei NOMI, aber klar als Sprachstudio erkennbar. */
+  /** Mini Adam sagt selbst etwas, ohne Megafon (der Gruß zu Beginn jedes Streams): Mikrofon und sein Name. */
+  adam(text, dur = 3) {
+    this.speak('adam', '»' + text + '«', Math.max(2.2, dur), 'Mini Adam');
+  }
+
+  /** Das Sprachstudio spricht: derselbe Untertitel-Platz wie bei OMI, aber klar als Sprachstudio erkennbar. */
   studio(text, dur = 3) {
     this.speak('studio', text, Math.max(2.2, dur), 'Sprachstudio');
   }
@@ -613,7 +650,7 @@ export class UI {
 
   /** Eine gekaufte Sprachdurchsage: Mikrofon, Stimme und Spender über dem vorgelesenen Satz. */
   durchsage(voiceLabel, text, dur, buyer) {
-    this.speak('durchsage', '»' + text + '«', clamp(dur, 3, 14), `${voiceLabel} · Sprachdurchsage von ${buyer}`);
+    return this.speak('durchsage', '»' + text + '«', clamp(dur, 3, 14), `${voiceLabel} · Sprachdurchsage von ${buyer}`);
   }
 
   /**
@@ -621,7 +658,7 @@ export class UI {
    * (BrunnenTV) – auch das ist gesprochen und steht deshalb hier.
    */
   megafon(text, dur, buyer, label = 'Megafon-Wunsch von ' + buyer) {
-    this.speak('megafon', '»' + text + '«', clamp(dur, 3, 14), label);
+    return this.speak('megafon', '»' + text + '«', clamp(dur, 3, 14), label);
   }
 
   /**
@@ -651,7 +688,7 @@ export class UI {
     else this.dropKey('funk');
   }
 
-  damage(hits, max) {
+  damage() {
     this.damageEl.parentNode.classList.remove('shake');
     void this.damageEl.offsetWidth;
     this.damageEl.parentNode.classList.add('shake');
@@ -738,7 +775,9 @@ export class UI {
       const img = el('img', '', this.photoEl);
       img.src = dataUrl;
       img.alt = 'Blitzerfoto';
+      // der Abspann zeigt die letzten drei; ältere Fotos (je 30–40 KB) nicht den ganzen Stream lang aufheben
       this.photos.push({ url: dataUrl, kmh, clock });
+      if (this.photos.length > 3) this.photos.shift();
     }
     el('div', 'photo-cap', this.photoEl, `📸 ${kmh} km/h · ${clock} Uhr`);
     el('div', 'photo-sub', this.photoEl, 'Das Foto kommt in einen Rahmen.');
@@ -784,7 +823,7 @@ export class UI {
       if (r.t < 0.6) r.el.classList.add('out');
       if (r.t <= 0) r.el.remove();
     }
-    this.rahmenList = this.rahmenList.filter((r) => r.t > 0);
+    if (this.rahmenList.length) this.rahmenList = this.rahmenList.filter((r) => r.t > 0);
 
     // Die Uhr der Reise neben LIVE: dieselbe wie auf dem Mittelbildschirm (Game.clock) – an ihr hängen die Ankunftszeit und „Sendezeit … (bis … Uhr)“ am Ende. Sie springt in jedem Bild
     // mit um, nicht erst mit den übrigen Zahlen: Auf geraffter Straße läuft sie schnell, und zwei Uhren, die eine
@@ -818,6 +857,7 @@ export class UI {
     this.batteryEl.textContent = Math.round(p.battery) + ' %';
     this.batteryFill.style.width = clamp(p.battery, 0, 100) + '%';
     this.batteryFill.className = 'battery-fill' + (p.battery < 15 ? ' low' : p.battery < 30 ? ' mid' : '');
+    if (g.lowBatteryCard) this.showAkkuCard(g.lowBatteryCard());
     this.dmgBadge.update(p.damage);
     this.cruiseBadge.update(p);
     // linke Spur: Der Balken erscheint mit der Freischaltung und zählt herunter; in den letzten zehn Sekunden warnt er
@@ -882,24 +922,5 @@ export class UI {
         if (short && first() > max) this.naviTarget.textContent = short;
       }
     }
-    this.chatCount.textContent = fmtNum(Math.round(g.viewers)) + ' Zuschauer';
-    this.showChatMood(g.zufrieden);
-  }
-
-  /** Zufriedenheit im Chat-Kopf (Reise): Gesicht, Balken, Farbe; neu geschrieben nur, wenn sich etwas ändert. */
-  showChatMood(z) {
-    const v = z ? Math.round(z.value) : -1;
-    const key = String(v);
-    if (key === this.chatMoodShown) return;
-    this.chatMoodShown = key;
-    // Der Besitzer (17.11.): „Die Chat-Stimmung soll nicht ins HUD.“ Die Zufriedenheit wirkt auf Geld, Zuschauer und
-    // Ton, angezeigt wird sie nicht; das Element bleibt aus, bis er es anders will (CHAT_MOOD_SICHTBAR).
-    this.chatMood.classList.toggle('on', CHAT_MOOD_SICHTBAR && v >= 0);
-    if (v < 0 || !CHAT_MOOD_SICHTBAR) return;
-    this.chatMoodFace.textContent = moodEmoji(v);
-    this.chatMoodFill.style.width = v + '%';
-    this.chatMood.classList.toggle('low', v < 35);
-    this.chatMood.classList.toggle('mid', v >= 35 && v < 60);
-    this.chatMood.setAttribute('aria-label', `Zufriedenheit des Chats: ${v} von 100`);
   }
 }

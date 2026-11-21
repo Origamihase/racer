@@ -6,12 +6,16 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { W } from '../curve.js';
 import { megaphone } from '../cockpit/props.js';
 
-/** Megafon im Rahmen von props.js (Achse +y zur Öffnung, Griff nach −x, Mundstück bei y ≈ −0,02, Länge 0,18 m). */
-export function buildHandMegaphone() {
+/**
+ * Megafon im Rahmen von props.js (Achse +y zur Öffnung, Griff nach −x, Mundstück bei y ≈ −0,02, Länge 0,18 m).
+ * curved: Material für die gebogene Welt (Mini Adam im Auto), sonst gerade (die Figur in der Facecam).
+ */
+export function buildHandMegaphone({ curved = true } = {}) {
   const S = { gloss: [], perf: [] };
   megaphone(S, new THREE.Matrix4());
   const list = [...S.gloss, ...S.perf];
-  const mesh = new THREE.Mesh(mergeGeometries(list), W.std({ vertexColors: true, roughness: 0.38, metalness: 0.05 }));
+  const params = { vertexColors: true, roughness: 0.38, metalness: 0.05 };
+  const mesh = new THREE.Mesh(mergeGeometries(list), curved ? W.std(params) : new THREE.MeshStandardMaterial(params));
   for (const g of list) g.dispose();
   mesh.name = 'Megafon';
   mesh.castShadow = true;

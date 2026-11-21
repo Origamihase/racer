@@ -34,7 +34,7 @@ const INSIDE = v3(0, 0.95, 0.15);
 // Armaturenbrett: Wölbung der Oberseite zu den Türen hin (m)
 const crown = (x) => 0.012 * (x / 0.8) ** 2;
 const DASH_TOP = [[-0.895, 0.893], [-0.7, 0.9085], [-0.5, 0.913], [-0.44, 0.9105]];
-/** Höhe der Armaturenbrett-Oberseite (zum Aufstellen von NOMI, Wackel-Elsa und Stream-Technik). */
+/** Höhe der Armaturenbrett-Oberseite (zum Aufstellen von OMI, Wackel-Elsa und Stream-Technik). */
 export function dashTopY(x, z) {
   const zz = clamp(z, DASH_TOP[0][0], DASH_TOP[DASH_TOP.length - 1][0]);
   let y = DASH_TOP[0][1];

@@ -73,6 +73,16 @@ for (const [what, raw] of [['Stand von main', MAIN], ['Reise vor dem Album', OLD
   const e = addEpisode(s, { place: idx('Würzburg'), t: 0, clock: 18 * 60 + 7, kinds: [] });
   ok(e.n === 1 && s.album.n === 1 && s.album.list.length === 1 && e.p === 'Würzburg' && e.k === goalKind(places[idx('Würzburg')]), `Album ohne Spielstand: ${JSON.stringify(s.album)}`);
 }
+// eine Folge unterwegs (an einem Brunnen auf dem Weg, nicht am Navi-Ziel) trägt w: 1 – auch nach Speichern und Laden
+{
+  const s = { ...MAIN };
+  const a = addEpisode(s, { place: idx('Hanau'), t: 5, clock: 600, kinds: [], way: true });
+  const b = addEpisode(s, { place: idx('Würzburg'), t: 5, clock: 655, kinds: [] });
+  box.clear();
+  put(s);
+  const back = loadSave().album.list;
+  ok(a.w === 1 && !('w' in b) && back.length === 2 && back[0].w === 1 && !('w' in back[1]), `Folge unterwegs: ${JSON.stringify(back)}`);
+}
 
 // --- Folgen über Streams, Reihenfolge, Neuladen ----------------------------------------------------------------------------
 box.clear();
@@ -233,8 +243,8 @@ const pic = (n, len) => 'data:image/webp;base64,' + String(n % 10).repeat(len - 
 // Marken an ihrer Stelle oder sichtbar daneben, keine zwei übereinander; jeder Name ganz in der Karte (auch in den runden
 // Ecken) und frei von Marken, Auto, Ortspunkten und anderen Namen – auf dem Desktop, hochkant und quer auf dem Handy.
 {
-  const { routeView, routeLabels } = await import('../src/ui/routemap.js');
-  const { menuLayout, PLACE_BY_INDEX, dotRadius } = await import('../src/map/mapview.js');
+  const { routeView, routeLabels, routePlan } = await import('../src/ui/routemap.js');
+  const { menuLayout, PLACE_BY_INDEX, dotRadius, isCity } = await import('../src/map/mapview.js');
   // Schriftbreite wie in tools/map-test.mjs geschätzt (Node misst keine Schrift)
   const measure = (text, font, spacing = 0) => text.length * (parseFloat(/(\d+)px/.exec(font)[1]) * 0.6 + spacing);
   const at = (key) => PLACE_BY_INDEX[idx(key)];
@@ -257,6 +267,8 @@ const pic = (n, len) => 'data:image/webp;base64,' + String(n % 10).repeat(len - 
     kurz: { line: line('Erlensee', 'Hanau'), marks: [mark('brunnen', 'Hanau', 8)] },
     rund: { line: line('Erlensee', 'Hanau', 'Erlensee'), marks: [mark('brunnen', 'Hanau', 8), mark('laden', 'Erlensee')] },
     ausland: { line: line('Erlensee', 'Hamburg', null, 'Danzig'), marks: [mark('brunnen', 'Hamburg', 102), mark('brunnen', 'Danzig', 1003)] },
+    ffm: { line: line('Erlensee', 'Frankfurt am Main', 'Mainz', 'Wiesbaden'), marks: [mark('brunnen', 'Frankfurt am Main', 1), mark('brunnen', 'Mainz', 2), mark('laden', 'Wiesbaden')] },
+    sued: { line: line('Erlensee', 'Frankfurt am Main', 'Karlsruhe', 'Stuttgart', 'München'), marks: [mark('brunnen', 'Frankfurt am Main', 1), mark('brunnen', 'Stuttgart', 2), mark('laden', 'Karlsruhe'), mark('brunnen', 'München', 3)] },
   };
   // Kartengrößen wie im Abspann gemessen: 1280×720, 1600×900, Handy hochkant 390×844 und quer 844×390
   const SIZES = [[730, 290], [1018, 290], [332, 230], [530, 290]];
@@ -265,10 +277,20 @@ const pic = (n, len) => 'data:image/webp;base64,' + String(n % 10).repeat(len - 
   for (const [what, route] of Object.entries(ROUTES)) {
     for (const [w, h] of SIZES) {
       const tag = `Routenkarte ${what} ${w}×${h}`;
-      const v = routeView(route, w, h);
+      // wie drawRouteMap: routePlan wählt die Richtung, in die verschobene Marken ausweichen
+      const P = routePlan(route, w, h, (b) => menuLayout(b, measure));
+      const v = P.v;
       const layout = menuLayout(v.b, measure);
-      const plan = routeLabels(v, layout);
+      const plan = P.names;
       names += plan.size;
+      // Großstädte im Bild behalten ihren Namen (Frankfurt am Main lag unter Hanaus verschobener Marke); nur auf der
+      // kleinsten Karte (Handy hochkant) darf in dichten Gegenden einer fehlen
+      const cities = layout.labels.filter((l) => l.kind === 'place' && isCity(PLACE_BY_INDEX[l.i]) && v.X(l.x) > 0 && v.Y(l.y) > 0 && v.X(l.x) < w && v.Y(l.y) < h);
+      const unnamed = cities.filter((l) => !plan.has(l)).map((l) => l.text);
+      ok(unnamed.length === P.lost, `${tag}: routePlan zählt ${P.lost} Großstädte ohne Namen, es sind ${unnamed.length}`);
+      if (w > 332) ok(!unnamed.length, `${tag}: ${unnamed.join(', ')} ohne Namen`);
+      if (what === 'lang' && w > 332) ok(cities.some((l) => l.text === 'Frankfurt am Main') && plan.size > routeLabels(routeView(route, w, h), layout).size - 3, `${tag}: Frankfurt am Main nicht im Bild`);
+      ok(P.lost <= cities.filter((l) => !routeLabels(routeView(route, w, h), layout).has(l)).length, `${tag}: routePlan lässt mehr Großstädte ohne Namen als die erste Richtung`);
       ok(plan.size > 0, `${tag}: keine Namen`);
       const start = v.items.find((it) => it.type === 'start');
       ok(start && Math.abs(start.x0 - v.X(route.line[0])) < 1e-9 && Math.abs(start.y0 - v.Y(route.line[1])) < 1e-9, `${tag}: Start nicht am Anfang des Wegs`);
@@ -294,6 +316,58 @@ const pic = (n, len) => 'data:image/webp;base64,' + String(n % 10).repeat(len - 
     }
   }
   ok(names > 100, `Routenkarten mit zusammen nur ${names} Namen`);
+}
+
+// --- Gezeichnete Karte einer Folge ohne Standbild (src/ui/fountaincard.js) und Name ihres Brunnens ---------------------
+// Jede Hauptbrunnen-Art hat ihre eigene Gestalt; zwei Karten gleichen sich nur bei gleicher Art, gleichem Ort und
+// gleicher Nummer; auf der Karte stehen der Ort (notfalls gekürzt) und die Nummer. Der Name einer Folge ist der ihres
+// Brunnens („Gänselieselbrunnen“), solange der Ort ihn noch hat.
+{
+  const { drawFountainCard, cardShape, CARD } = await import('../src/ui/fountaincard.js');
+  const L = await import('../src/world/kit/layout.js');
+  const { episodeTitle } = await import('../src/game/album.js');
+  const record = () => {
+    const log = [];
+    const ctx = new Proxy({ font: '10px x' }, {
+      get: (t, k) => {
+        if (k in t) return t[k];
+        if (k === 'measureText') return (x) => ({ width: String(x).length * parseFloat(/([\d.]+)px/.exec(t.font)[1]) * 0.6 });
+        if (k === 'createLinearGradient') return (...a) => ({ addColorStop: (o, c) => log.push('stop ' + o + ' ' + c) });
+        return (...a) => void log.push(String(k) + ' ' + a.map((v) => (typeof v === 'number' ? v.toFixed(1) : String(v))).join(' '));
+      },
+      set: (t, k, v) => {
+        t[k] = v;
+        log.push(String(k) + '=' + v);
+        return true;
+      },
+    });
+    const canvas = { width: 0, height: 0, getContext: () => ctx };
+    return { canvas, log };
+  };
+  const card = (o) => {
+    const r = record();
+    drawFountainCard(r.canvas, o);
+    ok(r.canvas.width === CARD.w && r.canvas.height === CARD.h, 'Karte: Größe');
+    return r.log;
+  };
+  const goalKinds = Object.keys(L.FOUNTAIN_R);
+  const shapes = new Set(goalKinds.map((k) => cardShape(k)));
+  ok(shapes.size === goalKinds.length, `Karte: ${goalKinds.length} Hauptbrunnen-Arten, aber nur ${shapes.size} Gestalten`);
+  const seenCards = new Set();
+  for (const k of goalKinds) {
+    const log = card({ kind: k, place: 'Würzburg', n: 7 });
+    const text = log.filter((x) => x.startsWith('fillText '));
+    ok(text.some((x) => x.startsWith('fillText Würzburg')) && text.some((x) => x.startsWith('fillText #7')), `Karte ${k}: Ort oder Nummer fehlt`);
+    seenCards.add(log.join('|'));
+  }
+  ok(seenCards.size === goalKinds.length, 'Karte: zwei Arten zeichnen dasselbe Bild');
+  const a = card({ kind: 'fountainGoose', place: 'Göttingen', n: 1 }).join('|');
+  ok(a !== card({ kind: 'fountainGoose', place: 'Hanau', n: 1 }).join('|') && a === card({ kind: 'fountainGoose', place: 'Göttingen', n: 1 }).join('|'), 'Karte: derselbe Brunnen in zwei Orten sieht gleich aus (oder dieselbe Karte zweimal anders)');
+  const long = card({ kind: 'fountainLion', place: 'Krausnick (Tropical Islands) an der langen Straße', n: 12 }).filter((x) => x.startsWith('fillText '));
+  ok(long.some((x) => x.startsWith('fillText Krausnick') && x.includes('…')), 'Karte: ein langer Ortsname wird nicht gekürzt');
+  // Name der Folge: der Brunnen des Orts, für alte Folgen einer anderen Art der Name der Art
+  const pl = places.find((p) => p.name === 'Würzburg');
+  ok(episodeTitle({ p: pl.key, k: L.goalKind(pl) }) === L.fountainName(pl) && episodeTitle({ p: pl.key, k: 'fountainGrand' === L.goalKind(pl) ? 'fountainTrough' : 'fountainGrand' }) !== L.fountainName(pl), 'Name der Folge: nicht der Brunnen des Orts');
 }
 
 console.log(`Album und Route: ${checks} Prüfungen`);

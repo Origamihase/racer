@@ -53,6 +53,12 @@ const REAR_TEXTS = [
 
 // ---------------------------------------------------------------------------
 // Gemeinsame Materialien
+/**
+ * Lichter des Verkehrs: Rücklicht (Leuchtstärke bei klarem Himmel und bei Regen oder trübem Himmel), Bremslicht,
+ * Blinker (Hz). Das Rücklicht ist immer an, so wie im echten Verkehr mit Tagfahrlicht hinten.
+ */
+export const LIGHTS = { tail: [0.3, 0.55], brake: 0.95, blinkHz: 1.45 };
+
 let M = null;
 function mats() {
   if (M) return M;
@@ -61,10 +67,11 @@ function mats() {
     // Scheiben: freundliches Blaugrau statt fast Schwarz, der Himmel spiegelt sich weich darin
     glass: W.std({ color: 0x2c3d52, metalness: 0.5, roughness: 0.12, envMapIntensity: 1.15 }),
     detail: W.std({ vertexColors: true, roughness: 0.6, metalness: 0.15 }),
-    // reines Rot: das Rücklicht bleibt dunkelrot, das Bremslicht leuchtet hell. Noch heller kippt
-    // es im ACES-Tonemapping nach Orange und sähe aus wie ein Blinker.
-    tail: W.std({ color: 0x2a0505, emissive: 0xff0000, emissiveIntensity: 0.14, roughness: 0.3 }),
-    brake: W.std({ color: 0x500a0a, emissive: 0xff0000, emissiveIntensity: 0.95, roughness: 0.3 }),
+    // reines Rot: das Rücklicht leuchtet immer (am Tag gut sichtbar, bei Regen und trübem Himmel kräftiger, siehe
+    // setVehicleLights), das Bremslicht deutlich heller. Noch heller kippt es im ACES-Tonemapping nach Orange und
+    // sähe aus wie ein Blinker.
+    tail: W.std({ color: 0x2a0505, emissive: 0xff0000, emissiveIntensity: LIGHTS.tail[0], roughness: 0.3 }),
+    brake: W.std({ color: 0x5a0a0a, emissive: 0xff0000, emissiveIntensity: LIGHTS.brake, roughness: 0.3 }),
     // dunkles Radhaus, von beiden Seiten sichtbar
     liner: W.std({ color: 0x0c0c0d, roughness: 0.85, side: THREE.DoubleSide }),
     blink: W.std({ color: 0x553300, emissive: 0xffa21a, emissiveIntensity: 3.0, roughness: 0.3 }),
@@ -72,7 +79,7 @@ function mats() {
     blueOff: W.std({ color: 0x1a2a66, emissive: 0x0a1540, emissiveIntensity: 0.4, roughness: 0.3 }),
     plates: new Map(),
     trailers: new Map(),
-    // weicher Bodenschatten (bei Regen kräftiger, siehe setVehicleEnvIntensity)
+    // weicher Bodenschatten (bei Regen kräftiger, siehe setVehicleLights)
     ground: W.basic({ color: 0x000000, map: contactShadowTexture(), transparent: true, opacity: 0.5, depthWrite: false }),
   };
   return M;
@@ -107,10 +114,14 @@ function plateMaterial(text) {
   return m.plates.get(text);
 }
 
-/** Setzt die Umgebungs-Reflexion (PMREM) auf allen gemeinsamen Fahrzeug-Materialien. */
-export function setVehicleEnvIntensity(rainy) {
+/**
+ * Lichter und Bodenschatten aller Fahrzeuge ans Wetter angleichen: dim 0 … 1 (Regen oder Wolken; je trüber, desto
+ * kräftiger die Rücklichter), rainy: nasse Fahrbahn (der Bodenschatten wird kräftiger).
+ */
+export function setVehicleLights(dim, rainy) {
   const m = mats();
-  m.tail.emissiveIntensity = rainy ? 0.3 : 0.14;
+  const k = Math.min(1, Math.max(0, dim));
+  m.tail.emissiveIntensity = LIGHTS.tail[0] + (LIGHTS.tail[1] - LIGHTS.tail[0]) * k;
   m.ground.opacity = rainy ? 0.78 : 0.5;
 }
 
@@ -541,6 +552,8 @@ export class Vehicle {
     this.group = new THREE.Group();
     this.brake = false;
     this.blinkDir = 0;
+    // jeder Blinker hat seinen eigenen Takt (sonst blinkt die ganze Autobahn im Gleichschritt)
+    this.blinkPhase = Math.random();
     this.police = kind === 'polizei';
     const typeKey = kind === 'polizei' ? 'kombi' : kind;
     if (kind === 'lkw') {
@@ -647,7 +660,7 @@ export class Vehicle {
 
   /** @param {number} t Zeit in s; @param {boolean} sirens Blaulicht an */
   updateLights(t, sirens = false) {
-    const on = Math.sin(t * Math.PI * 2 * 1.45) > 0;
+    const on = Math.sin((t * LIGHTS.blinkHz + this.blinkPhase) * Math.PI * 2) > 0;
     if (this.blinkDir) {
       this.blinkL.visible = this.blinkDir < 0 && on;
       this.blinkR.visible = this.blinkDir > 0 && on;

@@ -213,7 +213,7 @@ export function handTarget(side, wheel, { wave = 0, cheer = 0, steer = 0, t = 0 
  * Bananensaft für die Hand (wie im Becherhalter, ohne Schrift): gelbe Flasche, helles Etikett, grüner Deckel; Boden
  * im Ursprung, Hals nach +y.
  */
-function buildBottle(curved) {
+export function buildBottle(curved) {
   const g = new THREE.Group();
   g.name = 'bananensaft';
   const add = (geo, color, roughness) => {
@@ -344,7 +344,7 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
   // Lenkrad (von außen gesehen): wird vom Auto gesetzt, Standard: vor der Brust
   const wheel = { m: new THREE.Matrix4().makeRotationX(0.35).setPosition(0, 0.44, 0.22), r: 0.17 };
   const targets = [{ pos: V(), pole: V(), palm: V() }, { pos: V(), pole: V(), palm: V() }];
-  const gest = { steer: 0, wave: 0, cheer: 0, t: 0, megafon: 0 };
+  const gest = { steer: 0, wave: 0, cheer: 0, t: 0, megafon: 0, bottle: false };
   // Megafon in der Fensterhand (BrunnenTV): das Modell hängt der Aufrufer an (holdMegaphone), sonst gibt es keins
   let prop = null;
   const megaFrom = V();
@@ -498,8 +498,16 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
       gest.cheer = f.cheer;
       gest.t = t;
       gest.megafon = s.megafon || 0;
-      if (bottle) bottle.visible = t < bottleUntil && f.cheer > 0.25;
+      gest.bottle = t < bottleUntil;
+      if (bottle) bottle.visible = gest.bottle && f.cheer > 0.25;
       poseArms();
+    },
+    /**
+     * Was die Hände gerade tun (nach animate, nur lesen): wave, cheer, megafon 0 … 1, bottle (hält den Bananensaft), t –
+     * die Ich-Perspektive im Cockpit macht dieselbe Geste (cockpit.placeGesture).
+     */
+    get gestures() {
+      return gest;
     },
   };
   vest.visible = false;

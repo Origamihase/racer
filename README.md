@@ -23,8 +23,9 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
 
 - **BrunnenTV XXL:** Jedes Navi-Ziel ist der Hauptbrunnen eines Orts, und das Navi nennt ihn
   („Marktbrunnen, Würzburg“). Am Ziel hält Mini Adam neben dem Brunnen, kurbelt das Fahrerfenster herunter und
-  macht mit dem Megafon BrunnenTV aus dem Auto – der Chat jubelt, NOMI lobt den Brunnen, und die Folge kommt ins
-  Album. Jede Taste überspringt sie, dann geht die nächste Navi-Runde los.
+  macht mit dem Megafon BrunnenTV aus dem Auto: In jeder Folge ruft er tief und langgezogen „Schöner Brunnen!“,
+  der Chat jubelt, OMI lobt den Brunnen, und die Folge kommt ins Album. Jede Taste überspringt sie (den Ruf gibt es
+  dann beim Losfahren), und die nächste Navi-Runde geht los.
 - **Losfahren am Supercharger:** Der Stecker springt aus der Buchse, die Klappe schließt, der Tesla rollt aus dem
   Ladepark in Erlensee, und die Kamera geht ins Cockpit. In den ersten Minuten erklären kurze Tipps am Bildrand,
   was gerade dran ist (Ausfahrt nehmen, Spurpfeile im Navi, Kamera, Megafon, Ladestopp) – jeder einmal je Spieler,
@@ -32,7 +33,7 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
 - **Geld gibt es nur vom Publikum** – wie im echten Stream: Spenden mit Alter-Skala, Ortsspenden, Abos,
   VIPs, Navi-Gebote, Sprachdurchsagen, Rahmen, Aktionen und Sammelaktionen. Fürs Fahren selbst zahlt
   niemand. Aber wer flott, knapp und sauber fährt, hat einen gut gelaunten Chat, und der gibt gern.
-- **NOMI**, der Boardcomputer (schwarze Kugel mit zwei Augen auf dem Armaturenbrett), sagt
+- **OMI**, der Boardcomputer (schwarze Kugel mit zwei Augen auf dem Armaturenbrett), sagt
   **„Die linke Fahrspur ist freigeschaltet.“**, sobald ein Zuschauer dafür gespendet hat. Dann darfst du
   eine Minute lang ganz links fahren. Geld bringt das keins – aber wer die Spur nutzt, macht den Chat
   froh, und die nächste Freischaltung kommt etwas schneller. Sonst gilt das Rechtsfahrgebot.
@@ -49,19 +50,20 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
   was auch nicht immer klappt. Der Chat liebt es trotzdem.
 - **Akku und Blech:** Die Stream-Technik im Kofferraum zieht Strom. Geladen wird in den Ladeparks an den
   Ausfahrten: <kbd>L</kbd> (oder der Knopf „Ladestopp einplanen“) plant den nächsten ein, das Navi führt hinein und
-  danach weiter zum Ziel. Rempler kosten Karosserie-Punkte, die Werkstatt rechnet sie am Brunnen ab. Leerer Akku
-  oder zu viel Blechschaden beendet die Fahrt.
+  danach weiter zum Ziel. Bei 10 und bei 5 % warnt der Mittelbildschirm mit einer roten Karte; ist der Akku
+  leer, rollt der Wagen aus, und die Fahrt ist zu Ende. Rempler kosten Karosserie-Punkte, die Werkstatt rechnet sie
+  am Brunnen ab; zu viel Blechschaden beendet die Fahrt ebenfalls.
 - **Live-Chat und Live-Bereich:** Spenden mit Alter-Skala, Sprachdurchsagen, gekaufte Rahmen
   (Rosen, Sonnenblumen, Pappkartons …), Funklöcher, Polizei Gifhorn, Blitzer mit Polaroid,
   Brunnen und die blaue Plüsch-Elsa mit Krönchen und Schärpe am Straßenrand, Bananensaft und Koriander – und ab und zu ein lächerliches
   „5 Cent, wenn du …“-Angebot, auf das Mini Adam natürlich nie eingeht (der Chat legt höchstens 2 Cent drauf).
 - **You had 5 Jobs:** Pro Fahrt fünf kleine Aufgaben. Für jede verspricht ein Zuschauer eine Spende
   („Wenn du 200 km/h fährst, spende ich 20 €!“), für alle fünf legt noch jemand ordentlich drauf.
-- **Tesla-Shop:** Mit den Stream-Einnahmen rüstest du den Tesla auf: Beschleunigung, Tempo-Freischaltung,
-  Akku-Puffer, Stream-Technik, Sportreifen, Plüsch-Polster, Wischer-Firmware (Beta), Radarwarner,
-  Satelliten-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone. Blitzer kommen
-  unangekündigt – nur wer den Radarwarner an Bord hat, hört es vorher piepen und NOMI warnen. Das Megafon gehört
-  zur Ausstattung (wer es früher gekauft hat, bekommt die 450 € einmal zurück).
+- **Shop:** Mit den Stream-Einnahmen rüstest du den Tesla auf: Beschleunigung, Tempo-Freischaltung,
+  Akku-Puffer, Stream-Technik, Sportreifen, Sportfahrwerk, Sportbremsen, Plüsch-Polster, Wischer-Firmware (Beta),
+  Radarwarner, Satelliten-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone. Blitzer
+  kommen unangekündigt – nur wer den Radarwarner an Bord hat, hört es vorher piepen und OMI warnen. Das Megafon
+  gehört zur Ausstattung (wer es früher gekauft hat, bekommt die 450 € einmal zurück).
 - **Abspann** mit Abrechnung, Statistik, Blitzerfotos, erlogener Berufsbezeichnung des Tages und einem
   „Danke an“ – größte Spende, wer Abos verschenkt hat und wer neu VIP geworden ist.
 
@@ -110,7 +112,7 @@ Nach Änderungen in `src/` bitte `npm run build` ausführen und die neue `docs/g
 | `src/map/` | Karte (Knoten, Straßen, Orte), Routen, Navi-Bildschirm, große Karte, Kartendaten |
 | `src/world/` | Autobahn, Himmel, Verkehr (mit Spurwechseln); `xxl/`: die Welt der Reise (Ausfahrten, Landstraßen, Orte, Tafeln, Ladeparks); `kit/`: Stadtbaukasten und Brunnen |
 | `src/models/` | Tesla, Mini Adam, Elsa, Fahrzeuge |
-| `src/cockpit/` | Cockpit, NOMI, Mittelbildschirm mit Navi |
+| `src/cockpit/` | Cockpit, OMI, Mittelbildschirm mit Navi |
 | `src/fx/` | Regen, Tropfen auf der Scheibe, zuckender Wischer, Bild-Effekte |
 | `src/ui/` | HUD, Chat, Menüs, Shop, Abspann |
 | `src/data.js` | Alle Texte, Insider-Orte, Rahmen, Durchsagen und Shop-Artikel |

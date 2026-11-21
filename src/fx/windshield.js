@@ -1682,7 +1682,7 @@ function createDropLayer(ws, U) {
   mesh.matrixAutoUpdate = false;
   mesh.matrix.copy(ws.glassBasis);
   mesh.frustumCulled = false;
-  // vor allem anderen Durchsichtigen im Cockpit (NOMI-Gesicht, Logo, Spiegelmaske – das liegt innen)
+  // vor allem anderen Durchsichtigen im Cockpit (OMI-Gesicht, Logo, Spiegelmaske – das liegt innen)
   mesh.renderOrder = -1;
   return mesh;
 }

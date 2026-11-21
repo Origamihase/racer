@@ -3590,9 +3590,6 @@ export function landmarkFor(place) {
   return names.filter((n) => defs[n]).map((name) => ({ name, ...META[name] }));
 }
 
-/** Alle Wahrzeichen mit ihren Angaben (ohne Bauen). */
-export const landmarkMeta = (name) => META[name];
-
 export function createLandmarkKit(F) {
   return makeKit(F, defs);
 }

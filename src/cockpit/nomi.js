@@ -1,4 +1,4 @@
-// NOMI – der Boardcomputer. Eine kleine schwarze Kugel auf dem Armaturenbrett mit rundem
+// OMI – der Boardcomputer. Eine kleine schwarze Kugel auf dem Armaturenbrett mit rundem
 // Display und zwei weißen, abgerundeten Augen. Dreht sich beim Sprechen zum Fahrer.
 import * as THREE from 'three';
 import { damp, clamp } from '../util.js';
@@ -8,7 +8,7 @@ const S = 256;
 export class Nomi {
   constructor() {
     this.group = new THREE.Group();
-    this.group.name = 'NOMI';
+    this.group.name = 'OMI';
     this.canvas = document.createElement('canvas');
     this.canvas.width = S;
     this.canvas.height = S;
@@ -80,7 +80,7 @@ export class Nomi {
     this.bounce = 1;
   }
 
-  /** NOMI spricht (dreht sich zum Fahrer, Augen hüpfen). */
+  /** OMI spricht (dreht sich zum Fahrer, Augen hüpfen). */
   speak(dur = 2.5) {
     this.talkTimer = Math.max(this.talkTimer, dur);
     this.bounce = 1;
