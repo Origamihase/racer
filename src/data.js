@@ -854,6 +854,11 @@ export const JOB_TEMPLATES = [
 export const REISE_AKKU = {
   warn: [25, 10], // Prozent: NOMI warnt, und noch einmal, wenn es knapp wird
   early: 70, // darunter warnt sie früher, sobald der nächste Park der letzte in Reichweite ist
+  // … „der letzte“: Dahinter trägt keine Lademöglichkeit weiter, die mindestens past Reisekilometer hinter ihm liegt
+  // (in jedem Ort steht eine Ladesäule – die nächsten paar Kilometer verlängern die Fahrt kaum); gesucht wird unter
+  // den look nächsten Halten
+  past: 15,
+  look: 8,
   reserve: 0.85, // so viel des Akkus gilt als sicher nutzbar
   // Prozent je Meter Straße, bis measure Meter davon seit dem Laden gemessen sind (Player.update: auf der Autobahn bei
   // 38 m/s rund 0,0052; echte Straße mischt Rampen und Zubringer um 0,006 mit Orten um 0,0086 – gemessen 0,0053 bis

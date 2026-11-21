@@ -605,6 +605,43 @@ if (postRun) {
   console.log(`Ladesäule: ${R.first ? R.first.name + ' nach ' + R.first.km.toFixed(1) + ' km' : '–'} als nächster Ladeplatz, eingeplant mit L, Halt bei u ${R.halt ? R.halt.u.toFixed(2) : '–'} m (POST.halt ${POST.halt}), Stopp ${R.charged ? R.charged.t : '?'} s, danach am Brunnen bei u ${R.rest ? R.rest.u.toFixed(1) : '–'} m`);
 }
 console.log(`Popcorn: ${fly.ok} von ${fly.n} Körnern springen aus der Tür der Maschine oben auf der Säule (bis ${fly.apex.toFixed(2)} m hoch) und fliegen durchs offene Fahrerfenster, mindestens ${fly.margin.toFixed(3)} m vom Rahmen`);
+
+// --- Frühe Akku-Warnung ---------------------------------------------------------------------------------------------
+// Unter REISE_AKKU.early warnt OMI, sobald der nächste Halt der letzte in Reichweite ist. Die Ladesäulen der nächsten
+// Orte (wenige Kilometer dahinter) zählen dabei nicht als „dahinter“: Liegt hinter dem Park nur die Säule des Orts
+// 4 km weiter in Reichweite, ist er trotzdem die letzte Gelegenheit, die weiter trägt. Ein Halt ab past km dahinter
+// in Reichweite (oder eine volle Liste, die ganz in diesen past km liegt) hält die Warnung zurück. Gerechnet mit dem
+// echten Game und einer Fahrt, die genau diese Halte nennt.
+{
+  const { makeStream } = await import('./stream-sim.mjs');
+  const A = REISE_AKKU;
+  const rest = (name, km, m, extra = {}) => ({ name, km, m, realM: 300, park: 1, post: -1, planned: false, ...extra });
+  const park = rest('Ladepark Testhausen', 30, 2000);
+  const cases = [
+    ['Säule 4 km hinter dem Park', [park, rest('Ladesäule in Testdorf', 34, 2150, { park: -1, post: 3 }), rest('Ladepark Fernweh', 140, 9e6)], true],
+    ['Säule 4 km dahinter und eine weit hinten in Reichweite', [park, rest('Ladesäule in Testdorf', 34, 2150, { park: -1, post: 3 }), rest('Ladesäule in Weiterweg', 30 + A.past + 1, 3200, { park: -1, post: 4 })], false],
+    ['volle Liste in den nächsten Kilometern', Array.from({ length: A.look }, (_, i) => rest('Ladesäule ' + i, 30 + i, 2000 + 30 * i, { park: -1, post: i }))],
+    // (die häufige Lage: Säulen in jedem Ort, die Liste voll, die weiten Halte außer Reichweite)
+    ['volle Liste, die weiten außer Reichweite', [park, ...Array.from({ length: A.look - 2 }, (_, i) => rest('Ladesäule ' + i, 31 + i, 2050 + 30 * i, { park: -1, post: i })), rest('Ladepark Fernweh', 30 + A.past + 5, 9e6)], true],
+    ['nichts dahinter', [park], true],
+  ];
+  const said = [];
+  for (const [what, rests, want = false] of cases) {
+    const sim = makeStream({ seed: 2 });
+    const g = sim.game;
+    const trip = { scale: 1, km: 0, restsAhead: (n) => rests.slice(0, n), pastTarget: () => null };
+    g.world.trip = () => trip;
+    g.player.battery = 60;
+    g.akku.next = 0;
+    g.batteryWarned = 0;
+    let line = null;
+    g.say = (text) => (line = text);
+    g.journeyBattery();
+    ok(!!line === want && (!want || line === fillTemplate(A.last, { pct: 60, park: rests[0].name, km: '30 Kilometern' }) || /liegt noch in Reichweite/.test(line)), `Frühe Akku-Warnung (${what}): ${line || 'keine'}`);
+    if (line) said.push(line);
+  }
+  console.log(`Frühe Akku-Warnung bei 60 %: ${said.length} von ${cases.length} Lagen („${said[0] || '–'}“), Säulen bis ${A.past} km hinter dem Park zählen nicht`);
+}
 if (fails) {
   console.log(`stopp-test: ${fails} Fehler`);
   process.exit(1);

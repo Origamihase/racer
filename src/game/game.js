@@ -770,9 +770,14 @@ export class Game {
     const lvl = p.battery < A.warn[1] ? 3 : p.battery < A.warn[0] ? 2 : 0;
     if (lvl && lvl <= this.batteryWarned) return;
     if (!lvl && (this.batteryWarned || p.battery > A.early)) return;
-    const [r, r2] = trip.restsAhead(2, fits);
-    // früh nur, wenn hinter dem nächsten Park weder der übernächste in Reichweite liegt noch das Ziel und von dort ein Park
-    const beyond = () => (r2 && fits(r2)) || fits(trip.pastTarget() ?? NOWHERE);
+    const rests = trip.restsAhead(lvl ? 2 : A.look, fits);
+    const r = rests[0];
+    // früh nur, wenn r der letzte Halt in Reichweite ist: Hinter ihm liegt keiner in Reichweite, der die Fahrt verlängert
+    // (A.past km und mehr dahinter – die Ladesäulen der nächsten Orte zählen nicht), und auch das Ziel samt einem Park
+    // von dort ist nicht zu schaffen. Liegt die volle Liste ganz in diesen A.past km, ist unbekannt, was danach kommt:
+    // dann nicht.
+    const open = rests.length >= A.look && Math.max(...rests.map((q) => q.km)) < r.km + A.past;
+    const beyond = () => open || rests.some((q) => q.km >= r.km + A.past && fits(q)) || fits(trip.pastTarget() ?? NOWHERE);
     if (!lvl && (!r || r.planned || (fits(r) && beyond()))) return;
     this.batteryWarned = lvl || 1;
     const vars = { pct: Math.round(p.battery), park: r ? r.name : '', km: r ? kmWords(r.km) : '' };
