@@ -494,6 +494,15 @@ const wall = {};
   ok(sc.mats.noiseWall?.map?.isTexture && sc.mats.noiseWall.map.wrapS === sc.mats.noiseWall.map.wrapT, 'Lärmschutzwand: Textur fehlt');
   ok(b && b !== a && verts(b, 0) > 0 && b.children[0].material === a.children[0].material, `Lärmschutzwand im Abschnitt ${k + 1}: fehlt oder malt neu`);
   Object.assign(wall, { k, verts: verts(a, 0) + verts(b, 0) });
+  // ein angefragtes Wahrzeichen bleibt stehen, wenn invalidate seinen Abschnitt neu baut (neuer Knotenpunkt in Sicht)
+  sc.update(0, 0);
+  const have = (type) => sc.slots.flatMap((sl) => sl.items).filter((o) => o.userData.active && o.userData.type === type).length;
+  for (const type of ['brunnen', 'elsa', 'blitzer']) sc.request(type, 1500 + 37 * type.length);
+  const before = ['brunnen', 'elsaStatue', 'blitzer'].map(have);
+  sc.invalidate(1300);
+  sc.update(1, 0);
+  const after = ['brunnen', 'elsaStatue', 'blitzer'].map(have);
+  ok(before.join() === '1,1,1' && after.join() === '1,1,1', `Wahrzeichen nach dem Neubau der Abschnitte: vorher ${before}, nachher ${after} (Brunnen, Elsa, Blitzer)`);
 }
 console.log(`Schilder gegen Navi: ${sig.trips} Fahrten, ${sig.km.toFixed(0)} km, ${sig.forks} angesagte Gabelungen (${sig.boards} Vorwegweiser, ${sig.parks} davon mit Ladepark-Zeile, ${sig.said} Ansagen genau an einer Tafel), ${sig.arrive} Ziele, ${sig.tables} Entfernungstafeln und ${sig.gantries} Schilderbrücken mit ${sig.rows} Zeilen (größte Abweichung zum Navi ${sig.maxDev.toFixed(2)} km), ${sig.towns} Ortstafeln`);
 console.log(`XXL-Planung: ${(stats.metres / 1000).toFixed(1)} km gefahren, ${stats.forks} Gabelungen, ${stats.entries} Einfahrten mit Limit (${stats.over} über +4 km/h, höchstens +${stats.maxOver.toFixed(1)} km/h), ${stats.forests} Waldstücke, ${stats.rests} Halte am Ziel, ${stats.charges} in einem Ladepark, ${stats.island} Bilder neben einer Brunneninsel, ${stats.shears} Scherungsvergleiche, ${stats.pieces} Stückabgleiche (${stats.rebuilt} Neubauten, alle jenseits des Dunsts), ${stats.seams} Nähte zwischen Abschnitten, ${stats.rails} Plankenstöße; Kurven: ${(stats.bendM / 1000).toFixed(1)} km gelenkt (${(stats.tightM / 1000).toFixed(1)} km enger als R 450), höchstens ${stats.maxOff.toFixed(2)} m neben der Linie, Querbeschleunigung bis ${stats.maxLat.toFixed(1)} m/s², ${stats.links} Bilder an Knotenpunkten gerade`);

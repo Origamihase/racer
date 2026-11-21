@@ -22,9 +22,6 @@ export const TESLA = {
   plate: 'F-LV 333',
 };
 
-// Augenposition des Fahrers (Fahrzeug-Koordinaten, vorne = -z)
-export const DRIVER_EYE = new THREE.Vector3(-0.37, 1.2, 0.27);
-
 const L = TESLA.length;
 const ARCH_U = [0.84, 3.715];
 

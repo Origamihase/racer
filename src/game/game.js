@@ -1791,6 +1791,8 @@ export class Game {
       this.donate(name, this.eco.durchsagePrice(), 'Sprachdurchsage', { label: 'Sprachdurchsagen' });
       this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
       this.later(1.2, () => {
+        // hat inzwischen eine Szene begonnen (Folge, Ladestopp), entfällt sie: dort spricht keine Durchsage
+        if (this.tv || this.charging) return;
         // die Karte nur zu einer Durchsage, die auch zu hören ist (OMI kann sie aus der Warteschlange drängen)
         let line = null;
         const dur = this.speech.say(text, d.voice, { onDrop: () => line && (line.t = 0) });
@@ -2063,6 +2065,7 @@ export class Game {
   callPolice(text) {
     if (this.policeCar) return;
     this.policeCar = this.traffic.police(this.player.s, text);
+    if (!this.policeCar) return; // (gleich hinter dem Beginn einer Autobahn hat sie keinen Platz)
     this.burst(CHAT.police, 3, 2.5);
     this.later(1, () => this.cockpit.nomi.setMood('worried', 2.5));
   }

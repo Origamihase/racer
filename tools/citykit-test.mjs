@@ -525,6 +525,8 @@ const { Towns } = await import('../src/world/xxl/towns.js');
   const p = places.find((q) => q.name === 'Frankfurt am Main') ?? places[0];
   const len = townLen(p.pop);
   const S0 = 5000;
+  // Schilder mit Text (textMaterial): so viele hält der Baukasten, bevor der Ort entsteht
+  const texts0 = towns.kit.core.textMats.size;
   const sec = { kind: 'stadt', place: p.i, s0: S0, s1: S0 + len, spotS: S0 + Math.round(len * 0.6), frame: 7 };
   towns.begin();
   towns.need(sec, null);
@@ -579,8 +581,11 @@ const { Towns } = await import('../src/world/xxl/towns.js');
   towns.update(S0 + 300, new Map([[7, { a: 0, b: 0 }]]), 0, 0);
   const u = towns.of(sec);
   ok(u && u.group.visible && u.group.pending === 0, 'XXL-Ort: mitten im Ort nicht sofort fertig');
+  const textsBuilt = towns.kit.core.textMats.size;
   towns.reset();
   ok(towns.items.size === 0 && root.children.length === 0, 'XXL-Ort: nach reset nicht leer');
+  // abgeräumt gehen auch seine Schilder (Ortstafel, Wegweiser …), die niemand sonst nutzt
+  ok(textsBuilt > texts0 && towns.kit.core.textMats.size === texts0, `XXL-Ort: Textmaterialien vor dem Ort ${texts0}, gebaut ${textsBuilt}, abgeräumt ${towns.kit.core.textMats.size}`);
   xxl.parts = total;
 }
 

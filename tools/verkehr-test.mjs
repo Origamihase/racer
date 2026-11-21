@@ -186,6 +186,40 @@ ok(ELEFANT.room >= 1000, 'Elefantenrennen: bestellt, obwohl gleich eine Ausfahrt
 const lines = JSON.stringify(BOARD);
 ok(!('leftLaneEnd' in BOARD) && !/gesperrt/i.test(lines), 'OMI sagt noch an, dass die linke Spur gesperrt wird');
 
-console.log(`Verkehr: Rücklicht ${LIGHTS.tail.join(' … ')}, Bremslicht ${LIGHTS.brake}; Bremslicht in der Kolonne ${J.flips} Wechsel in 20 s (${(J.lit * 100).toFixed(0)} % an); Elefantenrennen nur echt (${ELEPHANTS.near}–${ELEPHANTS.far} m voraus, höchstens ${ELEPHANTS.side} m versetzt), alle ${ELEFANT.every.map((m) => m / 1000).join('–')} km bestellt, Ansage höchstens alle ${ELEFANT.cool} s`);
+// --- Elefantenrennen und Polizei im echten Verkehr (ohne Grafik, Leinwand als Attrappe) ---------------------------
+const real = {};
+{
+  const canvas = new Proxy({}, { get: (t, k) => (k === 'measureText' ? (x) => ({ width: String(x).length * 10 }) : k === 'getImageData' || k === 'createImageData' ? (...a) => ({ data: new Uint8ClampedArray(a[a.length - 2] * a[a.length - 1] * 4) }) : k.startsWith?.('create') ? () => ({ addColorStop() {} }) : k in t ? t[k] : () => {}), set: (t, k, v) => ((t[k] = v), true) });
+  globalThis.document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => canvas, style: {} }) };
+  const { Traffic } = await import('../src/world/traffic.js');
+  const tr = new Traffic({ add() {} });
+  tr.reset();
+  const P = { s: 1000, x: 0, speed: 30, v: 30, len: 4.7, w: 1.9 };
+  const env = { difficulty: 0, leftOpen: false, rain: 0 };
+  tr.update(1 / 30, 10, P, env);
+  const [a, b] = tr.elefantenrennen(P.s);
+  // nach 26 s Spielzeit fahren beide wieder normal, auch der Lkw rechts (die Uhr ist die des Spiels, keine Wanduhr)
+  let t = 10;
+  const at = (sec) => {
+    for (; t < sec; t += 1 / 30) {
+      P.s += 30 / 30;
+      tr.update(1 / 30, t, P, env);
+    }
+    return a.behavior + '/' + b.behavior;
+  };
+  real.mid = at(30);
+  real.end = at(37);
+  ok(real.mid === 'elefant/elefant' && real.end === 'normal/normal', `Elefantenrennen nach 20 s ${real.mid}, nach 27 s ${real.end}`);
+  // Polizei von hinten: nie vor dem Beginn der Autobahn
+  tr.begin = P.s - 80;
+  ok(tr.police(P.s, 'X') === null, 'Polizei kommt, obwohl hinter dem Wagen nur 80 m Autobahn sind');
+  for (const [back, want] of [[150, -110], [400, -170]]) {
+    tr.begin = P.s - back;
+    const cop = tr.police(P.s, 'X');
+    ok(cop && cop.s - P.s === want, `Polizei mit ${back} m Autobahn dahinter bei ${cop && (cop.s - P.s).toFixed(0)} m statt ${want} m`);
+  }
+}
+
+console.log(`Verkehr: Rücklicht ${LIGHTS.tail.join(' … ')}, Bremslicht ${LIGHTS.brake}; Bremslicht in der Kolonne ${J.flips} Wechsel in 20 s (${(J.lit * 100).toFixed(0)} % an); Elefantenrennen nur echt (${ELEPHANTS.near}–${ELEPHANTS.far} m voraus, höchstens ${ELEPHANTS.side} m versetzt), alle ${ELEFANT.every.map((m) => m / 1000).join('–')} km bestellt, Ansage höchstens alle ${ELEFANT.cool} s, Ende nach Spielzeit (${real.mid} → ${real.end}), Polizei nie vor dem Beginn der Autobahn`);
 console.log(fails ? `${fails} FEHLER (${checks} Prüfungen)` : `verkehr-test: alles grün (${checks} Prüfungen)`);
 process.exit(fails ? 1 : 0);

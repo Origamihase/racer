@@ -91,12 +91,12 @@ export class Traffic {
     this.begin = null;
   }
 
-  acquire(kind, opts) {
+  acquire(kind) {
     const list = this.pool.get(kind) || [];
     this.pool.set(kind, list);
-    let v = list.find((x) => !x.inUse && !opts);
+    let v = list.find((x) => !x.inUse);
     if (!v) {
-      v = new Vehicle(kind, opts);
+      v = new Vehicle(kind);
       list.push(v);
       this.group.add(v.group);
     }
@@ -130,11 +130,11 @@ export class Traffic {
   }
 
   /** Neues Fahrzeug einsetzen. */
-  spawn(s, lane, { kind, speed, behavior = 'normal', opts } = {}) {
+  spawn(s, lane, { kind, speed, behavior = 'normal' } = {}) {
     const k = kind || randomKind(lane >= 2, lane === 3 ? 0.3 : 0.22);
     const truck = k === 'lkw';
     if (truck && lane < 2) lane = 2 + Math.round(Math.random());
-    const v = this.acquire(k, opts);
+    const v = this.acquire(k);
     const car = {
       id: nextId++,
       v,
@@ -263,6 +263,10 @@ export class Traffic {
     const P = { s: player.s, x: player.x, speed: player.v ?? player.speed, len: player.len, w: player.w, isPlayer: true };
 
     for (const c of objs) {
+      if (c.elefantUntil !== undefined && this.t >= c.elefantUntil) {
+        c.behavior = 'normal';
+        c.elefantUntil = undefined;
+      }
       // Spurwechsel-Entscheidungen
       c.decideIn -= dt;
       if (!c.change && c.decideIn <= 0) {
@@ -407,18 +411,21 @@ export class Traffic {
   leader(c, objs, P) {
     let best = null;
     let bestDs = Infinity;
-    const lanes = c.change && c.change.t >= c.change.delay ? [c.change.from, c.change.to] : [c.lane];
+    // die Spur, beim Wechsel beide (zwei Zahlen statt einer Liste: das läuft je Wagen und Bild)
+    const both = c.change && c.change.t >= c.change.delay;
+    const l0 = both ? c.change.from : c.lane;
+    const l1 = both ? c.change.to : c.lane;
     for (const o of objs) {
       if (o === c) continue;
       const ds = o.s - c.s;
       if (ds <= 0 || ds > 220 || ds >= bestDs) continue;
-      if (lanes.some((l) => laneOverlap(o, l))) {
+      if (laneOverlap(o, l0) || laneOverlap(o, l1)) {
         best = o;
         bestDs = ds;
       }
     }
     const ds = P.s - c.s;
-    if (ds > 0 && ds < bestDs && lanes.some((l) => laneOverlap(P, l))) best = P;
+    if (ds > 0 && ds < bestDs && (laneOverlap(P, l0) || laneOverlap(P, l1))) best = P;
     return best;
   }
 
@@ -437,7 +444,7 @@ export class Traffic {
       }
     }
     // Rechtsfahrgebot
-    if (c.lane < 3 && !(c.truck && c.lane >= 3)) {
+    if (c.lane < 3) {
       const eager = c.behavior === 'schleicher' ? 0.02 : 0.25;
       if (chance(eager)) {
         const to = c.lane + 1;
@@ -536,9 +543,8 @@ export class Traffic {
     this.cars = this.cars.filter((c) => c.s > -1e8);
     const a = this.spawn(s, 3, { kind: 'lkw', speed: 84 * KMH, behavior: 'elefant' });
     const b = this.spawn(s + 6, 2, { kind: 'lkw', speed: 84.6 * KMH, behavior: 'elefant' });
-    setTimeout(() => {
-      if (b) b.behavior = 'normal';
-    }, 26000);
+    // nach 26 s Spielzeit (die Pause und Szenen halten sie an) fahren beide wieder wie alle (update)
+    a.elefantUntil = b.elefantUntil = this.t + 26;
     return [a, b];
   }
 
@@ -547,7 +553,11 @@ export class Traffic {
     this.policeText = text;
     // einzige Rücksicht auf die freigeschaltete Spur: Dort säße sie Mini Adam sonst im Nacken
     const lane = this.leftOpen ? 1 : 0;
-    const car = this.spawn(sPlayer - 170, lane, { kind: 'polizei', speed: 185 * KMH, behavior: 'polizei' });
+    // nicht vor dem Beginn dieser Autobahn (dort ist keine Straße): bis 40 m dahinter, und reicht das nicht für einen
+    // Anlauf von hinten, kommt sie diesmal nicht
+    const s = this.begin !== null ? Math.max(sPlayer - 170, this.begin + 40) : sPlayer - 170;
+    if (s > sPlayer - 60) return null;
+    const car = this.spawn(s, lane, { kind: 'polizei', speed: 185 * KMH, behavior: 'polizei' });
     car.v0 = 185 * KMH;
     car.passed = true; // kommt von hinten – erst wenn sie vorbei ist, kann man sie überholen
     return car;
