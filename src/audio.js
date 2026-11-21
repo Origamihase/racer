@@ -432,6 +432,22 @@ export class Audio {
     this.noiseBurst(1.2, 0.03, { type: 'highpass', freq: 4000, when: 0.1 });
   }
 
+  /**
+   * Die Hymne von Herrn Schönnbrun (Wiki: er hat eine eigene) zu Beginn jeder Folge BrunnenTV: eine eigene kleine
+   * Melodie in C-Dur, gut zwei Sekunden, ohne Text – aufsteigend wie ein Strahl, zum Schluss ein Tusch und ein Plätschern.
+   */
+  schoennbrunHymne() {
+    const melody = [
+      [0, 392, 0.14], [0.15, 523.25, 0.14], [0.3, 659.25, 0.14], [0.45, 783.99, 0.3], [0.8, 659.25, 0.14], [0.95, 783.99, 0.14],
+      [1.1, 880, 0.28], [1.42, 783.99, 0.14], [1.57, 659.25, 0.14], [1.72, 587.33, 0.14], [1.87, 523.25, 0.55],
+    ];
+    for (const [t, f, d] of melody) this.tone(f, d, 'triangle', 0.06, t);
+    for (const [t, f, d] of [[0, 130.81, 0.4], [0.8, 98, 0.4], [1.87, 130.81, 0.6]]) this.tone(f, d, 'sine', 0.05, t);
+    this.tone(659.25, 0.5, 'sine', 0.022, 1.87);
+    this.tone(783.99, 0.5, 'sine', 0.018, 1.87);
+    this.noiseBurst(0.8, 0.025, { type: 'highpass', freq: 3500, when: 1.95 });
+  }
+
   record() {
     [659.25, 783.99, 987.77, 1318.5].forEach((f, i) => this.tone(f, 0.35, 'triangle', 0.08, i * 0.1));
   }

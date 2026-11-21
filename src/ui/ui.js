@@ -2,12 +2,13 @@
 // Bots, die Streifen oben (Navi, Hinweise) und unten (Untertitel, BrunnenTV), Rahmen und Blitzerfotos. Wo was wohnt
 // und welches Rechteck dabei frei bleibt, steht in sicht.js: Über der Bildmitte liegt nichts, solange gefahren wird.
 import { fmtNum, fmtCent, fmtEuro, fmtClock, clamp, tachoKmh } from '../util.js';
-import { nameColor, nameBreak, BOTS } from '../data.js';
+import { nameColor, nameBreak, BOTS, SCHOENNBRUN } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
 import { fmtOdo, fmtKm } from '../map/navroute.js';
 import { NARROW_MID, infoWidth, overlap, cockpitParts, portraitNarrow, droneHud } from './sicht.js';
 import { DroneHud } from './drone-hud.js';
+import { schoennbrunBadge } from './schoennbrun.js';
 
 /** Zufriedenheit des Chats sichtbar im Chat-Kopf? Nein: Die Chat-Stimmung gehört nicht ins HUD (Besitzer, 17.11.). */
 
@@ -157,13 +158,16 @@ export class UI {
     // Sprachdurchsage und der Megafon-Wunsch sprechen alle hier, einer nach dem anderen, jeder mit seinem Zeichen
     // (OMIs Augen, Kopfhörer, Mikrofon mit Stimme und Spender, Megafon) ---
     const bottom = el('div', 'bottom-strip', this.hud);
+    // (die Bauchbinde: das Logo von Herrn Schönnbrun, „BrunnenTV mit Herrn Schönnbrun“, darunter Folge und Ort)
     this.tvEl = el('div', 'brunnentv hidden', bottom);
-    const logo = el('div', 'brunnentv-logo', this.tvEl);
-    el('span', 'brunnentv-drop', logo, '⛲');
-    el('span', '', logo, 'BrunnenTV');
+    this.tvEl.appendChild(schoennbrunBadge(document, 'brunnentv-badge', 46));
     const tv = el('div', 'brunnentv-words', this.tvEl);
-    this.tvEpisode = el('div', 'brunnentv-episode', tv, '');
-    this.tvPlace = el('div', 'brunnentv-place', tv, '');
+    const logo = el('div', 'brunnentv-logo', tv);
+    el('span', '', logo, 'BrunnenTV');
+    el('span', 'brunnentv-host', logo, SCHOENNBRUN.host);
+    const line = el('div', 'brunnentv-line', tv);
+    this.tvEpisode = el('span', 'brunnentv-episode', line, '');
+    this.tvPlace = el('span', 'brunnentv-place', line, '');
     this.subEl = el('div', 'sub-bar hidden', bottom);
     const eyes = el('span', 'sub-sign nomi-eyes', this.subEl);
     el('i', '', eyes);

@@ -4,7 +4,7 @@
 import {
   CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, viewerName, viewerNameAt, fillTemplate, alterReaction, berufFor, fmtBetrag,
-  BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, PARTYPEOPLE,
+  BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, PARTYPEOPLE, SCHOENNBRUN,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
 import { Player } from './player.js';
@@ -28,6 +28,7 @@ import { goalName } from '../world/kit/layout.js';
 import { RouteLog } from './routelog.js';
 import { estimateSpeech } from '../speech.js';
 import { WaveRule, WAVE, chatGap } from './wave.js';
+import { StreamGags } from './gags.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
 // „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
@@ -207,6 +208,8 @@ export class Game {
     this.onMood = () => {};
     // wann Mini Adam winkt (wave.js): Intro, Fußgänger am Gehweg, „Wink mal!“ im Chat, nach einem Rempler
     this.waves = new WaveRule();
+    // die Running Gags aus dem Stream des Eigentümers (gags.js): mit eigenem Zufall, damit der Stream sonst gleich verläuft
+    this.gags = new StreamGags(this);
     // BrunnenTV am Navi-Ziel: Hier hängt sich die Szene ein (siehe startBrunnenTV)
     this.onBrunnenTV = () => {};
     // Ladestopp im Park: Hier hängt sich die Szene ein (siehe startCharge)
@@ -233,6 +236,7 @@ export class Game {
     this.clock = 18 * 60;
     // Reise: Beginn des Streams (Datum im BrunnenTV-Album) und seine Route für den Abspann (routelog.js)
     this.streamT = Date.now();
+    this.gags.reset(this.streamT);
     this.route = new RouteLog();
     this.travel = null; // Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
     this.eco.reset(up);
@@ -1714,12 +1718,14 @@ export class Game {
     const moments = [
       [TV.card, () => {
         this.ui.brunnenTV(tv.n, tv.name);
-        this.audio.brunnenJingle();
+        // Mini Adam moderiert als Herr Schönnbrun: dessen Hymne eröffnet die Folge
+        this.audio.schoennbrunHymne();
       }],
       [TV.line, () => this.brunnenMegafon(tv)],
       [TV.chat, () => {
         this.chat('BRUNNENTV! 💦');
         this.burst(CHAT.brunnenTV, 4, 3);
+        this.gags.tvGreet();
         // passt eine Streitfrage des Wikis (Trinkbrunnen, Kanal, Alsterfontäne), kommt sie nach dem Jubel
         if (tv.debate) this.later(3.2, () => this.chat(this.chatLine(BRUNNEN_DEBATTE[tv.debate])));
       }],
@@ -1732,7 +1738,8 @@ export class Game {
 
   /**
    * Mini Adam grüßt durchs Megafon den Brunnen, mit seiner tiefen Stimme (VOICES.adam); der Satz steht unten im Bild
-   * wie ein Megafon-Wunsch, nur mit Mini Adam statt eines Käufers (die Folge steht in der Bauchbinde darüber). Nur ein
+   * wie ein Megafon-Wunsch, nur mit Herrn Schönnbrun statt eines Käufers – als der moderiert Mini Adam die Folge
+   * (SCHOENNBRUN.label; die Bauchbinde darüber nennt ihn auch). Nur ein
    * Gruß, der vor seinem Ruf (TV.call) zu Ende ist: Mit langem Ortsnamen bleiben die kürzeren.
    */
   brunnenMegafon(tv) {
@@ -1742,7 +1749,7 @@ export class Game {
     this.audio.megafon();
     // (mit Vorrang: Eine Durchsage, die noch läuft, endet hier – die Folge gehört Mini Adam)
     const dur = this.speech.say(text, 'adam', { priority: true });
-    this.ui.megafon(text, dur + 1, '', 'Mini Adam durchs Megafon');
+    this.ui.megafon(text, dur + 1, '', SCHOENNBRUN.label);
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.line));
   }
@@ -1756,7 +1763,7 @@ export class Game {
     if (this.tv) this.tv.called = true;
     this.audio.megafon();
     const dur = this.speech.say(S.say, 'brunnen', { priority: true });
-    this.ui.megafon(S.text, dur + 1.2, '', 'Mini Adam durchs Megafon');
+    this.ui.megafon(S.text, dur + 1.2, '', SCHOENNBRUN.label);
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.call));
     this.later(0.6, () => {

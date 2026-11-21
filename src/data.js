@@ -143,6 +143,20 @@ export const BRUNNEN_MEGAFON = [
   'Bitte weiterplätschern! Hier ist BrunnenTV!',
 ];
 /**
+ * Herr Schönnbrun (Wiki: der Held von BrunnenTV, mit eigenem Logo und eigener Hymne): In jeder Folge moderiert Mini
+ * Adam als Herr Schönnbrun. Die Bauchbinde nennt ihn (host), sein Logo steht davor (ui/schoennbrun.js), seine Hymne
+ * spielt zu Beginn (audio.js schoennbrunHymne, eine eigene Melodie ohne Text), der Untertitel des Megafons heißt nach
+ * ihm (label), der Chat grüßt ihn mit Namen (gruss, game/gags.js), Album und Abspann nennen ihn.
+ */
+export const SCHOENNBRUN = {
+  name: 'Herr Schönnbrun',
+  host: 'mit Herrn Schönnbrun',
+  label: 'Herr Schönnbrun durchs Megafon',
+  gruss: ['Guten Abend, Herr Schönnbrun! 🎩', 'Herr Schönnbrun ist auf Sendung! ⛲', 'Hallo Herr Schönnbrun, schöne Hymne heute 🎺',
+    'Herr Schönnbrun, Sie sehen gut aus! 🎩', 'Applaus für Herrn Schönnbrun 👏', 'Da ist er ja, Herr Schönnbrun höchstpersönlich ⛲',
+    'Die Hymne! Gänsehaut 🎺', 'Bühne frei für Herrn Schönnbrun! 🎬'],
+};
+/**
  * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des
  * Besitzers); say spricht die Sprachausgabe – richtig geschrieben, damit jede Stimme es richtig ausspricht, das Lange
  * macht die Stimme 'brunnen' (tief und langsam); chat: so ruft der Chat es nach (das erste immer).
@@ -1030,7 +1044,7 @@ export const ABSPANN_REISE = [
   ['Großbieter vom Dienst', 'BontanaBack'],
   ['Raid-Kommando', 'König Knolli'],
   ['Moderation', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'wide'],
-  ['BrunnenTV', '{folgen} mit Mini Adam am Megafon', 'wide'],
+  ['BrunnenTV', '{folgen} mit Herrn Schönnbrun (Mini Adam am Megafon)', 'wide'],
 ];
 /** Ganz am Ende des Abspanns der Reise, allein und leise (Wortlaut des Eigentümers, unverändert). */
 export const GEDENKEN = 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte';
