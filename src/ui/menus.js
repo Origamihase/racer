@@ -30,6 +30,24 @@ function button(parent, text, action, cls = '') {
   return b;
 }
 
+/** Feedback geht über GitHub: ein neues Issue im Repository des Spiels. Das Spiel selbst sendet nichts. */
+export const FEEDBACK = { url: 'https://github.com/Origamihase/racer/issues/new', hint: 'GitHub · neuer Tab · das Spiel sendet nichts' };
+
+/**
+ * Der Feedback-Knopf (Titel und Pause): ein echter Link in einem neuen Tab, ohne Rückgriff auf das Spiel (noopener)
+ * und ohne angehängte Daten; darunter klein, wohin er führt.
+ */
+function feedbackLink(parent) {
+  const a = el('a', 'btn feedback', parent);
+  a.href = FEEDBACK.url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.title = FEEDBACK.url;
+  el('span', 'fb-main', a, '💬 Feedback ↗');
+  el('span', 'fb-sub', a, FEEDBACK.hint);
+  return a;
+}
+
 const REASONS = {
   akku: { title: 'Akku leer', sub: 'Die Stream-Technik im Kofferraum hat den letzten Strom bekommen.' },
   werkstatt: { title: 'Ab in die Werkstatt', sub: 'Zu viele Rempler – der Tesla braucht eine kleine Pause. Mini Adam winkt trotzdem in die Kamera.' },
@@ -272,7 +290,14 @@ export class Menus {
       if (this.current === 'pause') this.h.action('resume');
       else if (this.current !== 'title' && this.current !== 'over') this.back();
     } else if (e.code === 'Enter' || e.code === 'Space') {
-      if (document.activeElement && btns.includes(document.activeElement)) return; // Browser klickt selbst
+      if (document.activeElement && btns.includes(document.activeElement)) {
+        // einen Link (Feedback, Wiki) öffnet der Browser nur mit Enter selbst – mit der Leertaste wie einen Knopf
+        if (e.code === 'Space' && document.activeElement.tagName === 'A') {
+          e.preventDefault();
+          document.activeElement.click();
+        }
+        return; // Browser klickt selbst
+      }
       e.preventDefault();
       (s.querySelector('.btn.primary:not([disabled])') || btns[0])?.click();
     }
@@ -311,6 +336,7 @@ export class Menus {
     button(menu, '🎮  Steuerung', 'controls');
     button(menu, '⚙️  Einstellungen', 'settings');
     button(menu, 'ℹ️  Über das Spiel', 'about');
+    feedbackLink(menu);
     const stats = el('div', 'title-stats', card);
     el('span', '', stats, '💶 ' + fmtCent(d.wallet) + ' Guthaben');
     // Rekord und Summe in Reisekilometern, dazu die besuchten Orte (dieselbe Zahl wie auf der großen Karte)
@@ -328,10 +354,12 @@ export class Menus {
   render_pause(s, g) {
     s.textContent = '';
     const card = el('div', 'card pause-card', s);
-    // neben der Überschrift der Knopf fürs Vollbild (die sechs Knöpfe unten bleiben in einer Zeile)
+    // neben der Überschrift Feedback und der Knopf fürs Vollbild (die Knöpfe unten bleiben in einer Zeile)
     const head = el('div', 'pause-head', card);
     el('h2', '', head, '⏸ Pause');
-    if (canFullscreen()) button(head, fullscreenLabel(), 'vollbild', 'fs-btn');
+    const tools = el('div', 'pause-tools', head);
+    feedbackLink(tools);
+    if (canFullscreen()) button(tools, fullscreenLabel(), 'vollbild', 'fs-btn');
     el('p', 'sub', card, 'Kappandramäßige Zusammenfassung für alle, die gerade erst reingekommen sind:');
     const grid = el('div', 'summary-grid', card);
     const item = (k, v) => {

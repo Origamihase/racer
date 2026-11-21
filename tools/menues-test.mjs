@@ -1,15 +1,19 @@
 // Prüft die Menüs ohne Browser. Steuerung (src/ui/controls.js): Jede belegte Taste, jeder belegte Gamepad-Knopf und
 // jeder Touch-Knopf steht in der Übersicht bei seiner Aktion, und dort steht nichts, was nirgends belegt ist; die
 // Tasten der Tipps der ersten Minuten und von „So steuerst du“ sind echte Belegungen; das Gamepad löst die Aktionen
-// seiner Tabelle wirklich aus; die Übersicht ist auch aus der Pause erreichbar.
+// seiner Tabelle wirklich aus; die Übersicht ist auch aus der Pause erreichbar. Feedback: ein Link zu GitHub im Titel
+// und in der Pause, und das Spiel selbst sendet nichts.
 // node tools/menues-test.mjs
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ACTIONS, PAD_BUTTONS, PAD_DRIVE, Input } from '../src/input.js';
 import { TOUCH_BUTTONS, TOUCH_LABELS } from '../src/ui/touch.js';
 import { FULLSCREEN_KEY } from '../src/ui/fullscreen.js';
 import { controlRows, keyName, padName, touchOf, deviceKey } from '../src/ui/controls.js';
 import { TIPS, ORDER } from '../src/ui/first-tips.js';
 import { hintRows } from '../src/ui/drive-hint.js';
+import { FEEDBACK } from '../src/ui/menus.js';
 
 let fails = 0;
 let checks = 0;
@@ -135,5 +139,26 @@ for (const device of ['keyboard', 'gamepad']) {
   ok(/controlRows\(\)/.test(block('controls')), 'Steuerung: Zeilen nicht aus controls.js');
 }
 
-console.log(fails ? `menues-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `menues-test: alles grün (${checks} Prüfungen: Steuerung aus ${rows.length} Zeilen, jede Belegung genannt)`);
+// ---------- Feedback ----------
+// ein Link zu einem neuen Issue auf GitHub (neuer Tab, noopener, nichts angehängt) im Titel und in der Pause; das Spiel
+// selbst sendet nichts – im ganzen Quelltext gibt es keinen Weg ins Netz
+{
+  const m = src('src/ui/menus.js');
+  ok(FEEDBACK.url === 'https://github.com/Origamihase/racer/issues/new', `Feedback: falsche Adresse ${FEEDBACK.url}`);
+  ok(/GitHub/.test(FEEDBACK.hint) && /sendet nichts/.test(FEEDBACK.hint) && FEEDBACK.hint.length <= 50, `Feedback: Hinweis „${FEEDBACK.hint}“`);
+  const fn = m.slice(m.indexOf('function feedbackLink('), m.indexOf('\n}\n', m.indexOf('function feedbackLink(')));
+  ok(/a\.href = FEEDBACK\.url;/.test(fn) && /a\.target = '_blank';/.test(fn) && /a\.rel = 'noopener';/.test(fn), 'Feedback: kein Link in neuem Tab mit noopener');
+  ok(/el\('a', 'btn feedback'/.test(fn), 'Feedback: kein .btn (Tastatur und Gamepad erreichen ihn nicht)');
+  const block = (name) => m.slice(m.indexOf(`  render_${name}(`), m.indexOf('\n  }\n', m.indexOf(`  render_${name}(`)));
+  ok(/feedbackLink\(/.test(block('title')), 'Titel: Feedback fehlt');
+  ok(/feedbackLink\(/.test(block('pause')), 'Pause: Feedback fehlt');
+  ok(/e\.code === 'Space' && document\.activeElement\.tagName === 'A'/.test(m), 'Leertaste öffnet den Link nicht');
+  const net = /\bfetch\(|sendBeacon|XMLHttpRequest|WebSocket|EventSource|window\.open\(|navigator\.share/;
+  const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((f) => (f.isDirectory() ? walk(join(d, f.name)) : f.name.endsWith('.js') ? [join(d, f.name)] : []));
+  const files = walk(fileURLToPath(new URL('../src', import.meta.url)));
+  const talk = files.filter((f) => net.test(readFileSync(f, 'utf8')));
+  ok(files.length > 50 && !talk.length, `das Spiel spricht mit dem Netz: ${talk.join(', ')}`);
+}
+
+console.log(fails ? `menues-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `menues-test: alles grün (${checks} Prüfungen: Steuerung aus ${rows.length} Zeilen, jede Belegung genannt; Feedback als Link zu GitHub)`);
 process.exit(fails ? 1 : 0);
