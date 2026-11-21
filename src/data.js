@@ -92,7 +92,7 @@ export const INCOME = {
   Challenges: 'Challenge',
 };
 // Abzüge stehen in der Abrechnung ganz unten
-export const FINES = ['Bußgeld', 'Verwarngeld', 'Reparaturen'];
+export const FINES = ['Bußgeld', 'Verwarngeld', 'Reparaturen', 'Mitleidskäufe'];
 
 /**
  * Reise: An jedem erreichten Ziel kommt die Werkstatt-Rechnung der Runde (game.js settleRound). bump: Euro je
@@ -142,6 +142,111 @@ export const BRUNNEN_MEGAFON = [
   'Fünf von fünf Tropfen für {ort}!',
   'Bitte weiterplätschern! Hier ist BrunnenTV!',
 ];
+/**
+ * Herr Schönnbrun (Wiki: der Held von BrunnenTV, mit eigenem Logo und eigener Hymne): In jeder Folge moderiert Mini
+ * Adam als Herr Schönnbrun. Die Bauchbinde nennt ihn (host), sein Logo steht davor (ui/schoennbrun.js), seine Hymne
+ * spielt zu Beginn (audio.js schoennbrunHymne, eine eigene Melodie ohne Text), der Untertitel des Megafons heißt nach
+ * ihm (label), der Chat grüßt ihn mit Namen (gruss, game/gags.js), Album und Abspann nennen ihn.
+ */
+export const SCHOENNBRUN = {
+  name: 'Herr Schönnbrun',
+  host: 'mit Herrn Schönnbrun',
+  label: 'Herr Schönnbrun durchs Megafon',
+  gruss: ['Guten Abend, Herr Schönnbrun! 🎩', 'Herr Schönnbrun ist auf Sendung! ⛲', 'Hallo Herr Schönnbrun, schöne Hymne heute 🎺',
+    'Herr Schönnbrun, Sie sehen gut aus! 🎩', 'Applaus für Herrn Schönnbrun 👏', 'Da ist er ja, Herr Schönnbrun höchstpersönlich ⛲',
+    'Die Hymne! Gänsehaut 🎺', 'Bühne frei für Herrn Schönnbrun! 🎬'],
+};
+/**
+ * Die übrigen Running Gags aus dem Stream des Eigentümers vom 21.11.2026 (game/gags.js; Marken, Seiten und Firmen
+ * darin sind erfunden). schranke: die Bezahlschranke hinter der Ortstafel (world/xxl/schranke.js) – der Chat ruft sie
+ * aus (spam), einer zahlt ein paar Cent ({name}, {betrag}: James meldet es), OMI kommentiert.
+ */
+export const GAGS = {
+  schranke: {
+    spam: ['BEZAHLSCHRANKE! 🚧', 'BEZAHLSCHRANKE 😂', 'Bezahlschranke ist ein geiles Wort', 'Wer zahlt die Bezahlschranke?',
+      'BE-ZAHL-SCHRAN-KE 🚧', 'Schranke auf, Schranke auf! 💶', 'Bezahlschranke!! Ich zahl, ich zahl 💶'],
+    james: '{name} zahlt {betrag} an der Bezahlschranke – Schranke auf! 🚧',
+    omi: 'Bezahlschranke erkannt. Der Chat hat bezahlt. Gute Fahrt!',
+    // was ein Zuschauer einwirft (Euro)
+    betrag: [0.5, 1, 1.5, 2],
+  },
+  // „Mini Adam gründet einen Verein“: James ruft ihn aus, Zuschauer treten bei (beitreten), James begrüßt sie
+  // ({name}; die Zahl der Mitglieder steht erst in der Abrechnung, die Namen im Abspann), der Chat lästert (echo)
+  verein: {
+    name: 'Brunnenfreunde Mini Adam e. V.',
+    gruendung: '📝 Mini Adam gründet einen Verein: die Brunnenfreunde Mini Adam e. V.! Wer mitmachen will, schreibt !beitreten',
+    beitreten: ['!beitreten', '!beitreten 🙋', 'Ich will in den Verein! !beitreten', 'Mitgliedsausweis bitte 🪪 !beitreten',
+      'Bin dabei, Vereinsheim ist der Tesla 😂 !beitreten', '!beitreten – wo ist der Aufnahmeantrag?'],
+    willkommen: ['Willkommen bei den Brunnenfreunden, {name}! 🎉', 'Neues Mitglied: {name}. Der Mitgliedsausweis ist unterwegs 🪪',
+      '{name} ist jetzt Brunnenfreund. Willkommen im Verein! ⛲'],
+    echo: ['Vereinsmeier 😂', 'Satzung wann? 📜', 'Erster Vereinsausflug: zum Brunnen ⛲', 'Jahresbeitrag: ein Bananensaft 🍌',
+      'Ehrenmitglied: Herr Schönnbrun 🎩', 'Wann ist die Mitgliederversammlung? 😂'],
+  },
+  // „Holy nur mit Code ADAM“: die ausgedachte Brause Plüschbrause; der Chat erinnert an den Code (chat), manchmal
+  // antwortet jemand (antwort); im Shop gibt es die Kiste mit Code ADAM 10 % günstiger (SHOP brause, shopPrice)
+  code: {
+    chat: ['Nur mit Code ADAM, 10 % auf alles!', 'Code ADAM nicht vergessen: 10 % auf alles bei Plüschbrause 🥤', 'Plüschbrause mit Code ADAM bestellt 😎',
+      'CODE ADAM! 10 % auf alles!', 'Gilt Code ADAM auch für Bananensaft? 🍌', 'Ohne Code ADAM kauf ich gar nix mehr', 'Holy! Plüschbrause nur mit Code ADAM 🥤'],
+    antwort: ['Holy 🥤', 'Code ADAM ist Pflicht', 'Plüschbrause > alles', '10 % sind 10 % 😂', 'Holy, nur mit Code ADAM!'],
+  },
+  // Tracker: ein Zuschauer mit Geo-Tracker kündigt den nächsten Ort an ({ort}, wahr: Stichwort gleich), Zahlen zum
+  // Stream kommen von der ausgedachten Statistikseite Glotzometer ({n}: die Zuschauer gerade, Stichwort glotz); die
+  // Einschaltquote im Abspann nennt sie als Quelle
+  tracker: {
+    seite: 'Glotzometer',
+    geo: ['[gleich] Laut Geo-Tracker bist du gleich in {ort} 📍', '[gleich] Geo-Tracker sagt: gleich {ort}! 📍', '[gleich] Mein Geo-Tracker meldet: {ort} kommt gleich 👀'],
+    glotz: ['[glotz] Laut Glotzometer schauen gerade {n} zu 📈', '[glotz] Glotzometer sagt: {n} Leute im Stream 👀', '[glotz] Glotzometer-Check: {n} Zuschauer, läuft 📈'],
+  },
+  // „Das Leid mit der Paketsuche“: Paketfuchs verfolgt ein Paket für Mini Adam beim ausgedachten Zusteller
+  // Schneckenpost (schritte der Reihe nach; {stadt}: echte Orte – das Paket ist nie dort, wo er ist), der Chat leidet
+  // mit (leid). Liegt es in der Packstation am Navi-Ziel, holt Mini Adam es nach der Folge dort ab (abgeholt, {inhalt});
+  // sonst geht es irgendwann zurück (zurueck), und alles beginnt von vorn
+  paket: {
+    fuchs: 'Paketfuchs',
+    schritte: ['📦 Sendung angekündigt: ein Paket für Mini Adam, Zusteller: Schneckenpost 🐌', '📦 Paket ist im Paketzentrum {stadt}', '📦 Paket ist in {stadt}',
+      '[faehrt] 📦 Zustellversuch gescheitert – Empfänger nicht angetroffen (er fährt ja) 😅', '📦 Paket liegt jetzt in der Packstation in {stadt}'],
+    leid: ['Das Leid mit der Paketsuche 😩', 'Schneckenpost halt 🐌', 'Wo ist das Paket?? 📦', 'Paketverfolgung ist mein Lieblingssport 😂', 'Nicht schon wieder die Schneckenpost 🐌'],
+    abgeholt: '📦 Paket aus der Packstation in {stadt} abgeholt! Drin: {inhalt} 🎉',
+    inhalt: ['ein Plüsch-Brunnen für die Ablage', 'eine Kiste Bananensaft', 'neue Wischerblätter (endlich)', 'ein Wackel-Brunnen fürs Armaturenbrett', 'Socken mit Brunnen drauf'],
+    jubel: ['ENDLICH! 📦', 'Das Paket ist da! 🎉', 'Schneckenpost hat geliefert 🐌🎉'],
+    zurueck: '📦 Paket geht zurück an den Absender. Neue Sendung kommt bestimmt 🙄',
+  },
+  // „Schade Schokolade“: so tröstet der Chat, wenn etwas schiefgeht (Ausfahrt verpasst, niemand bietet, Rempler, Blitzer)
+  schade: ['Schade Schokolade 🍫', 'Schade Schokolade!', 'schade schokolade 😅', 'Tja. Schade Schokolade 🍫', 'Schade Schokolade, Mini Adam 🍫'],
+  // „Mitleidskauf“: Hält Mini Adam im Ort vor einem kleinen Laden, kauft er dort eine Kleinigkeit. laeden: je Laden
+  // des Baukastens [wo, was (eines davon), Preis von … bis (Euro)] – kurz, der Hinweis am Rand nennt beides
+  // (streamgags-test: nie länger als der längste Hinweis, den die Prüfung der freien Sicht misst); chat freut sich
+  mitleid: {
+    laeden: {
+      shopBakery: ['in der Bäckerei', ['eine Brezel', 'zwei Schnecken', 'ein Laugenbrötchen'], [2, 5]],
+      shopIce: ['in der Eisdiele', ['eine Kugel Vanille', 'ein Spaghetti-Eis', 'zwei Kugeln Schoko'], [2, 6]],
+      shopCafe: ['im Café', ['einen Kaffee', 'ein Stück Apfelkuchen'], [3, 6]],
+      shopKiosk: ['am Kiosk', ['saure Schnüre', 'eine Zeitung', 'eine Tüte Gummibärchen'], [2, 5]],
+      shopBooks: ['im Buchladen', ['ein Rätselheft', 'eine Brunnen-Postkarte'], [2, 7]],
+      shopFlowers: ['im Blumenladen', ['einen kleinen Kaktus', 'drei Tulpen'], [3, 7]],
+      shopToys: ['im Spielzeugladen', ['einen Flummi', 'ein Mini-Auto', 'Seifenblasen'], [2, 7]],
+      shopVeg: ['im Gemüseladen', ['zwei Bananen', 'einen Apfel', 'eine Gurke'], [2, 4]],
+      shopDoner: ['beim Imbiss', ['eine Portion Pommes', 'ein Ayran'], [3, 7]],
+      shopPizza: ['in der Pizzeria', ['ein Stück Pizza', 'eine Pizzaschnecke'], [3, 6]],
+      shopElectro: ['im Elektroladen', ['ein Ladekabel', 'zwei Batterien'], [4, 7]],
+    },
+    chat: ['Mitleidskauf! 🛍️', 'Adam unterstützt die kleinen Läden ❤', 'Der Laden freut sich 😊', 'Ehrenmann, kauft im Ort ein 🛍️',
+      'Mitleidskauf, wie im Stream 😂', 'Lokal einkaufen, Herr Adam 👏'],
+  },
+  // „Mysteryboxen“: Ein Zuschauer schenkt eine (James nennt ihn im Chat); am Rand oben wackelt sie, dann springt sie
+  // auf (inhalt: [Art, Text] – kurz wie jeder Hinweis am Rand; sound bimmelt, konfetti regnet im Wagen, den witz
+  // erzählt der Schenker danach im Chat), der Chat fiebert mit (chat) und freut sich (danach)
+  mystery: {
+    james: '🎁 {name} schenkt Mini Adam eine Mysterybox!',
+    inhalt: [['sticker', 'Sticker »Brunnenfreund« ✨'], ['sticker', 'Sticker »Herr Schönnbrun« 🎩'], ['sound', 'Chat-Sound »Bimmel hurra« 🔔'],
+      ['witz', 'ein Brunnenwitz 😄'], ['konfetti', 'Konfetti für den Tesla 🎉'],
+      ['ding', 'ein Kühlschrankmagnet mit Brunnen 🧲'], ['ding', 'eine Rolle Pfefferminz 🍬'], ['ding', 'ein 0-Euro-Schein 💶'],
+      ['ding', 'ein Gutschein für einmal Wischen 🌧️']],
+    chat: ['MYSTERYBOX! 🎁', 'Was ist drin?? 👀', 'Aufmachen, aufmachen! 🎁', 'Mysterybox-Unboxing live 😂'],
+    danach: ['Wow 😂', 'Bester Inhalt ever', 'Den will ich auch 😍', 'Mysterybox hat geliefert 🎁'],
+    witz: 'Was macht ein Brunnen im Urlaub? Er lässt es plätschern 😄',
+  },
+};
 /**
  * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des
  * Besitzers); say spricht die Sprachausgabe – richtig geschrieben, damit jede Stimme es richtig ausspricht, das Lange
@@ -953,6 +1058,13 @@ export const SHOP = [
     effect: (l) => `Linke Spur ${60 + l * 10}\u00a0s offen, Pause danach ${l * 30}\u00a0% kürzer`,
   },
   {
+    // die Brause aus dem Stream (eine ausgedachte Marke, GAGS.code): nur mit Code ADAM, 10 % günstiger (shopPrice);
+    // wirkt in game.js: der Zuckerschub nach dem Ladestopp hält länger
+    id: 'brause', icon: '🥤', name: 'Plüschbrause-Kiste', cat: 'Spaß', prices: [190], code: { name: 'ADAM', off: 10 },
+    desc: 'Eine Kiste Plüschbrause für den Kofferraum: Nach dem Ladestopp hält der Zuckerschub länger. Holy – nur mit Code ADAM!',
+    effect: () => 'Zuckerschub nach dem Ladestopp 10 statt 6\u00a0s',
+  },
+  {
     id: 'elsa', icon: '👑', name: 'Wackel-Elsa', cat: 'Deko', prices: [120],
     desc: 'Das Spirit-Animal von SkylineTV LIVE als Wackelfigur fürs Armaturenbrett: die blaue Plüsch-Elsa mit Krönchen und Schärpe.',
     effect: () => 'Wackelt bei jeder Kurve mit',
@@ -970,6 +1082,11 @@ export const SHOP = [
 ];
 
 export const UPGRADE_LIMITS = Object.fromEntries(SHOP.map((s) => [s.id, s.prices.length]));
+/** Preis eines Shop-Artikels auf Stufe lvl – mit Rabattcode (it.code: „Code ADAM −10 %“) auf den Cent gerundet. */
+export function shopPrice(it, lvl) {
+  const p = it.prices[lvl];
+  return it.code ? Math.round(p * (100 - it.code.off)) / 100 : p;
+}
 // Das Megafon ist kein Shop-Artikel mehr (save.js refundMegafon): Titel und Shop sagen es dem, der es gekauft hatte
 export const MEGAFON_ERSTATTET = (euro) => `📢 Das Megafon gehört jetzt zur Ausstattung – deine ${euro} sind zurück im Guthaben.`;
 
@@ -1030,7 +1147,7 @@ export const ABSPANN_REISE = [
   ['Großbieter vom Dienst', 'BontanaBack'],
   ['Raid-Kommando', 'König Knolli'],
   ['Moderation', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'wide'],
-  ['BrunnenTV', '{folgen} mit Mini Adam am Megafon', 'wide'],
+  ['BrunnenTV', '{folgen} mit Herrn Schönnbrun (Mini Adam am Megafon)', 'wide'],
 ];
 /** Ganz am Ende des Abspanns der Reise, allein und leise (Wortlaut des Eigentümers, unverändert). */
 export const GEDENKEN = 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte';

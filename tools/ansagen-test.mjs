@@ -275,7 +275,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
       const omi = spoken.filter((x) => x.who === 'nomi');
       ok(omi.length === 1, `Seed ${seed}, Folge um ${e.t0.toFixed(0)} s: OMI ${omi.length}× (${omi.map((x) => x.text).join(' | ')})`);
       ok(!spoken.some((x) => x.who === 'studio' || x.who === 'durchsage'), `Seed ${seed}, Folge um ${e.t0.toFixed(0)} s: ${spoken.filter((x) => x.who === 'studio' || x.who === 'durchsage').map((x) => x.who + ': ' + x.text).join(' | ')}`);
-      ok(spoken.filter((x) => x.who === 'megafon').every((x) => x.label === 'Mini Adam durchs Megafon'), `Seed ${seed}: ein fremder Megafon-Satz in der Folge`);
+      ok(spoken.filter((x) => x.who === 'megafon').every((x) => x.label === DATA.SCHOENNBRUN.label), `Seed ${seed}: ein fremder Megafon-Satz in der Folge`);
       ok(log.say.filter(inside).every((x) => ['adam', 'brunnen', 'board'].includes(x.voice)), `Seed ${seed}: in der Folge spricht ${log.say.filter(inside).map((x) => x.voice).join(', ')}`);
     }
     // was Mini Adam durchs Megafon sagt (Folge, Wunsch, Taste H), spricht er selbst

@@ -45,7 +45,7 @@ import { UI } from './ui/ui.js';
 import * as sicht from './ui/sicht.js';
 import { Menus } from './ui/menus.js';
 import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
-import { SHOP, UPGRADE_LIMITS, PARTYPEOPLE } from './data.js';
+import { SHOP, UPGRADE_LIMITS, PARTYPEOPLE, shopPrice } from './data.js';
 import { NavModel } from './map/navroute.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
@@ -279,7 +279,7 @@ speech.enabled = settings.speech;
 const input = new Input();
 const ui = new UI(app);
 // jedes neue Bild des Mittelbildschirms auch ins Kärtchen der Drohnenansicht (solange es zu sehen ist)
-cockpit.screen.onDraw = (c) => ui.droneHud.copy(c);
+cockpit.screen.onDraw = (c, navi) => ui.droneHud.copy(c, navi);
 ui.setChat(settings.chat);
 ui.setFacecam(settings.facecam !== false);
 
@@ -339,6 +339,7 @@ const uiFacade = {
   // parts: eine Zeile in Teilen ([Text, Klasse]), etwa die Zeile der Runde mit Einnahmen grün und Reparatur rot
   toast: (t, k, key, parts) => ui.toast(t, k, key, parts),
   dropKey: (key) => ui.dropKey(key),
+  noticeBusy: () => ui.noticeBusy(),
   naviNews: () => ui.naviNews(),
   nomi: (t, d) => ui.nomi(t, d),
   studio: (t, d) => ui.studio(t, d),
@@ -363,6 +364,8 @@ const gameWorld = {
   trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec),
   // BrunnenTV unterwegs: der Wagen bleibt stehen, wo er steht, bis release()
   hold: (sec) => (xxl.arrival.held = { s: xxl.trip.s + 0.3, sec, place: sec.place, park: -1 }),
+  // die Bezahlschranke eines Orts (gags.js, world/xxl/schranke.js): 0 zu … 1 offen
+  gate: (sec, k) => xxl.towns.gate(sec, k),
 };
 // (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
 const game = new Game({ traffic, scenery, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
@@ -561,7 +564,7 @@ const menus = new Menus(app, {
     const it = SHOP.find((x) => x.id === id);
     const lvl = save.upgrades[id] || 0;
     if (!it || lvl >= UPGRADE_LIMITS[id]) return false;
-    const price = it.prices[lvl];
+    const price = shopPrice(it, lvl);
     if (save.wallet < price) {
       audio.bad();
       return false;

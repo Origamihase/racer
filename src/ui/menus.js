@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice } from '../data.js';
 import { fmtNum, fmtCent, fmtEuro, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -465,6 +465,9 @@ export class Menus {
     line('Rempler', fmtNum(st.crashes));
     line('Höchstgeschwindigkeit', fmtNum(Math.round(st.maxSpeedKmh)) + ' km/h');
     line('Zuschauer-Spitze', fmtNum(o.peakViewers));
+    // die Running Gags (game/gags.js): die Zahl der Vereinsmitglieder steht nur hier, ihre Namen im Abspann
+    if (o.gags?.verein) line('Vereinsmitglieder', fmtNum(o.gags.verein.members.length));
+    if (o.gags?.mitleid.n) line('Mitleidskäufe', fmtNum(o.gags.mitleid.n) + ' · ' + fmtCent(o.gags.mitleid.sum));
     line('Wischer: gezuckt / gewischt', fmtNum(st.twitches) + ' / ' + fmtNum(st.wipes));
     line('Sendezeit', fmtSpan(o.air) + ' (bis ' + o.clock + ' Uhr)');
     const beruf = el('div', 'beruf', right);
@@ -602,7 +605,9 @@ export class Menus {
    */
   quoteBlock(card, q) {
     const box = el('section', 'over-route over-quote', card);
-    el('h3', '', box, 'Einschaltquote');
+    const head = el('h3', '', box, 'Einschaltquote');
+    // die Zahlen „laut Glotzometer“ (GAGS.tracker: die ausgedachte Statistikseite, die der Chat zitiert)
+    el('span', 'quote-src', head, ' · Quelle: ' + GAGS.tracker.seite);
     const wrap = el('div', 'route-map-wrap quote-wrap', box);
     const canvas = el('canvas', 'route-map', wrap);
     canvas.setAttribute('role', 'img');
@@ -654,7 +659,13 @@ export class Menus {
       if (lvl > 0) el('div', 'now', eff, 'Aktuell: ' + it.effect(lvl));
       if (lvl < max) el('div', 'next', eff, (lvl > 0 ? 'Nächste Stufe: ' : 'Bringt: ') + it.effect(lvl + 1));
       if (lvl < max) {
-        const price = it.prices[lvl];
+        const price = shopPrice(it, lvl);
+        // mit Rabattcode (die Plüschbrause: Code ADAM): der Code, daneben der alte Preis durchgestrichen
+        if (it.code) {
+          const code = el('div', 'shop-code', c);
+          el('span', 'shop-code-tag', code, `Code ${it.code.name} −${it.code.off}\u00a0%`);
+          el('s', '', code, fmtEuro(it.prices[lvl]));
+        }
         const ok = d.wallet >= price;
         // reicht das Guthaben nicht, steht da, wie viel noch fehlt
         const b = button(c, ok ? 'Kaufen · ' + fmtEuro(price) : fmtEuro(price) + ' · fehlt noch ' + fmtCent(price - d.wallet), 'buy', ok ? 'buy' : 'buy poor');

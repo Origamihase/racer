@@ -29,6 +29,8 @@ export function thanksGroups(F) {
     { id: 'abos', title: 'Abos verschenkt', sub: plural(total(gifters, 'count'), 'Abo', 'Abos'), names: gifters.map((x) => ({ name: x.name, what: fmtNum(x.count) })) },
     { id: 'vips', title: 'Neue VIPs', sub: plural(vips.length, 'VIP', 'VIPs'), names: vips.map((name) => ({ name, what: '' })) },
     { id: 'raids', title: 'Raids', sub: `${plural(total(raids, 'n'), 'Raid', 'Raids')} · ${plural(total(raids, 'sum'), 'Gast', 'Gäste')}`, names: raids.map((x) => ({ name: x.name, what: `${plural(x.n, 'Raid', 'Raids')}, ${plural(x.sum, 'Gast', 'Gäste')}` })) },
+    // der Verein des Streams (game/gags.js): seine Mitglieder in der Reihenfolge des Beitritts
+    ...(F.verein ? [{ id: 'verein', title: F.verein.name, sub: plural(F.verein.members.length, 'Mitglied', 'Mitglieder'), names: F.verein.members.map((name) => ({ name, what: '' })) }] : []),
   ];
   return groups.filter((g) => g.names.length);
 }

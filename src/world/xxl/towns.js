@@ -11,6 +11,7 @@ import { XXL_BEHIND, squareOf, squareWeight, secSeedKey } from './plan.js';
 import { ISLAND_H } from './roadkit.js';
 import { CHARGE, chargeOf } from './charge.js';
 import { buildChargeRig } from './chargerig.js';
+import { SCHRANKE, schrankeOf, buildSchranke } from './schranke.js';
 import { PARKS, PARK } from '../../map/parks.js';
 
 let kit = null;
@@ -179,7 +180,19 @@ export class Towns {
       it.charge.group.rotation.y = -Math.PI / 2;
       group.add(it.charge.group);
     }
+    // die Bezahlschranke hinter der Ortstafel (schranke.js): offen, bis das Spiel sie schließt (gate)
+    const gate = schrankeOf(it.sec);
+    if (gate) {
+      it.gate = buildSchranke();
+      it.gate.group.position.set(SCHRANKE.x, STREET.top, -gate.u);
+      group.add(it.gate.group);
+    }
     return true;
+  }
+
+  /** Die Bezahlschranke der Ortsdurchfahrt sec stellen: k 0 zu … 1 offen (ohne gebauten Ort: nichts). */
+  gate(sec, k) {
+    for (const t of this.items.values()) if (t.sec === sec && t.gate) t.gate.set(k);
   }
 
   sweep() {

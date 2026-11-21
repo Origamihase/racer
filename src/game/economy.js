@@ -63,6 +63,7 @@ export const CHEER = {
   record: [0.04, 0, 'rekord'], // Zuschauerrekord
   challenge: [0.015, 20, 'job'], // Job erledigt
   megafon: [0.008, 10, 'spass'],
+  mitleid: [0.04, 15, 'spass'], // Mitleidskauf in einem kleinen Laden (game/gags.js)
   // und was ihn verstimmt
   scrape: [-0.03, 0, 'blech'], // Leitplanke gestreift
   scrapeHard: [-0.05, 5, 'blech'],

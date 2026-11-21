@@ -4,7 +4,8 @@
 // im zweiten Reiter, die Orte, deren Brunnen noch fehlt. Die große Karte zeigt dieselbe Sammlung als Abzeichen
 // (albumBadges, Ringe an Orten mit Folge). Daten: src/game/album.js, Bilder: src/save.js loadPictures.
 import { albumOf, albumCounts, missingPlaces, missingLine, episodeTitle, fmtStreamDate, placeOf, episodesByPlace } from '../game/album.js';
-import { BRUNNEN_DEBATTE } from '../data.js';
+import { BRUNNEN_DEBATTE, SCHOENNBRUN } from '../data.js';
+import { schoennbrunBadge } from './schoennbrun.js';
 import { fountainCard } from './fountaincard.js';
 import { fmtNum, fmtClock } from '../util.js';
 import { addBadges, countryName } from '../map/mapview.js';
@@ -38,7 +39,12 @@ export function renderAlbum(s, d) {
   const c = albumCounts(album);
   const tab = d.tab === 'fehlen' ? 'fehlen' : 'folgen';
   const card = el('div', 'card album-card', s);
-  el('h2', '', card, '⛲ BrunnenTV-Folgen');
+  // die Sendung von Herrn Schönnbrun: sein Logo vor dem Titel, darunter sein Name
+  const head = el('div', 'album-head', card);
+  head.appendChild(schoennbrunBadge(document, 'album-badge', 52));
+  const ht = el('div', '', head);
+  el('h2', '', ht, 'BrunnenTV-Folgen');
+  el('div', 'album-host', ht, SCHOENNBRUN.host);
   const chips = el('div', 'album-chips', card);
   const chip = (icon, text, cls = '') => {
     const e = el('span', 'album-chip ' + cls, chips);

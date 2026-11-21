@@ -35,7 +35,7 @@ export const DRIVERS = {
  * Baut einen Stream. opts: driver (DRIVERS), seed, upgrades, traffic (Ersatz für den Verkehr), endless (der Stream
  * endet nicht, wenn nach einer Folge niemand bietet: Game.endless).
  * Liefert { game, trip, p, log, step(secs), state() }; log.chat/log.say/log.toast: [{ t, text, name|voice, at }],
- * at = state() im Moment der Meldung.
+ * at = state() im Moment der Meldung; Chatzeilen der Running Gags (gags.js) tragen gag: true.
  */
 export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, traffic = null, endless = false } = {}) {
   Math.random = mulberry32(seed);
@@ -51,7 +51,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
   };
   let ids = 0;
   const ui = loose({
-    chat: (m) => log.chat.push({ t: game.t, name: m.name, text: m.text, bot: m.bot || null, at: state() }),
+    chat: (m) => log.chat.push({ t: game.t, name: m.name, text: m.text, bot: m.bot || null, gag: !!m.gag, at: state() }),
     toast: (text, kind, key) => log.toast.push({ t: game.t, text, kind, key, at: state() }),
     nomi: (text) => log.speak.push({ t: game.t, who: 'nomi', text, at: state() }),
     studio: (text) => log.speak.push({ t: game.t, who: 'studio', text, at: state() }),
@@ -77,6 +77,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
   });
   game.endless = endless;
   game.start({ upgrades, best: {} });
+  game.gags.reset(seed); // (im Spiel würfeln die Gags je Stream neu – hier mit der Saat, damit jeder Lauf gleich ist)
   const p = game.player;
   p.s = trip.s;
   p.x = trip.x;

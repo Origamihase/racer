@@ -143,6 +143,12 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .toast-bad { border-color: rgba(255, 90, 79, 0.8); }
 /* eine Zeile in Teilen (Runde abgerechnet): jeder Teil bleibt beisammen, umbrochen wird zwischen ihnen */
 .toast > span { white-space: nowrap; }
+/* Mysterybox (game/gags.js): die Box wackelt, springt auf, dann erscheint, was drin war */
+.toast > .mystery-box { display: inline-block; animation: mystery-shake 0.2s ease-in-out 8 alternate, mystery-pop 0.4s ease-out 1.6s both; }
+.toast > .mystery-what { display: inline-block; white-space: normal; color: var(--gold); font-weight: 800; animation: mystery-in 0.45s ease-out 1.6s both; }
+@keyframes mystery-shake { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
+@keyframes mystery-pop { 0% { transform: scale(1); } 45% { transform: scale(1.7); } 100% { transform: scale(1.1); } }
+@keyframes mystery-in { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: none; } }
 .toast > .plus { color: var(--green); }
 .toast > .minus { color: var(--bad); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
@@ -186,15 +192,18 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 /* BrunnenTV am Navi-Ziel (XXL): die Bauchbinde der Folge, wie eine Sendung ihren Titel einblendet – der Brunnen in
    der Bildmitte bleibt zu sehen. Wer spricht, hat den Streifen: Die Bauchbinde wartet so lange. Nur in breiten
    Fenstern bleibt sie neben einem kurzen Satz stehen („Neues Ziel: Brunnen in Hanau!“; ui.js setzt .short). */
-.brunnentv { flex: none; max-width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 10px; border-radius: 14px; border: 2px solid rgba(190, 236, 255, 0.85);
+.brunnentv { flex: none; max-width: 100%; display: flex; align-items: center; gap: 10px; padding: 5px 16px 5px 7px; border-radius: 14px; border: 2px solid rgba(190, 236, 255, 0.85);
   background: linear-gradient(160deg, rgba(18, 96, 150, 0.96), rgba(10, 44, 92, 0.96)); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
 .brunnentv.pop { animation: tvin 0.5s cubic-bezier(.2,1.3,.4,1); }
 @keyframes tvin { from { transform: translateY(120%); opacity: 0; } }
-.brunnentv-logo { font-size: 22px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.05; color: #fff; text-shadow: 0 2px 0 rgba(0, 40, 80, 0.6); white-space: nowrap; }
-.brunnentv-drop { margin-right: 0.22em; }
-.brunnentv-words { min-width: 0; padding-left: 10px; border-left: 2px solid rgba(190, 236, 255, 0.5); }
-.brunnentv-episode { font-size: 12px; font-weight: 800; line-height: 1.3; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
-.brunnentv-place { font-size: 14.5px; font-weight: 700; line-height: 1.3; color: #dff3ff; }
+/* das Logo von Herrn Schönnbrun (ui/schoennbrun.js), daneben „BrunnenTV mit Herrn Schönnbrun“, darunter Folge und Ort */
+.brunnentv-badge { flex: none; display: block; width: 46px; height: 46px; filter: drop-shadow(0 2px 3px rgba(0, 24, 60, 0.45)); }
+.brunnentv-logo { font-size: 22px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.1; color: #fff; text-shadow: 0 2px 0 rgba(0, 40, 80, 0.6); white-space: nowrap; }
+.brunnentv-host { margin-left: 0.4em; font-size: 15px; font-weight: 700; letter-spacing: 0; color: #dff3ff; text-shadow: 0 1px 0 rgba(0, 40, 80, 0.6); }
+.brunnentv-words { min-width: 0; }
+.brunnentv-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin-top: 2px; }
+.brunnentv-episode { font-size: 12px; font-weight: 800; line-height: 1.3; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); white-space: nowrap; }
+.brunnentv-place { font-size: 14px; font-weight: 700; line-height: 1.3; color: #dff3ff; }
 .bottom-strip:has(> .sub-bar:not(.hidden)) > .brunnentv { display: none; }
 /* in der Folge am Brunnen (ui.js: Streifen .tv) steht der Wagen, und fast immer spricht jemand – das Navi, Mini Adam
    durchs Megafon, OMI: Dort wartet die Bauchbinde nicht, sie steht über dem Untertitel, in jedem Format am Rand */
@@ -677,6 +686,12 @@ body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top)
 .shop-eff { font-size: 13px; }
 .shop-eff .now { color: #8be3a5; }
 .shop-eff .next { color: #9fc2ff; }
+/* Rabattcode (Plüschbrause: Code ADAM −10 %), daneben der alte Preis durchgestrichen */
+.shop-code { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; font-size: 13px; }
+.shop-code-tag { padding: 1px 7px; border-radius: 6px; background: var(--gold); color: #1e2128; font-weight: 800; white-space: nowrap; }
+.shop-code s { opacity: 0.7; }
+/* Quelle der Einschaltquote im Abspann (das ausgedachte Glotzometer) */
+.quote-src { font-size: 12px; font-weight: 600; opacity: 0.65; }
 .btn.buy { text-align: center; font-size: 15px; padding: 9px 12px; background: rgba(63,125,255,0.28); border-color: rgba(120,170,255,0.5); }
 .btn.buy:hover:not([disabled]), .btn.buy:focus-visible { background: rgba(63,125,255,0.5); }
 .btn.poor { background: rgba(255,255,255,0.05); }
@@ -890,12 +905,15 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
   .sub-sign { width: 26px; height: 26px; font-size: 15px; }
   /* die Kopfzeile fällt weg (wer spricht, zeigt das Zeichen; der Spender steht im Chat) – so bleiben drei Zeilen Platz */
   .sub-label { display: none; }
-  /* die Bauchbinde bricht um, wo sie nicht in eine Reihe passt: das Logo, darunter „Folge N · Heute aus …“ */
-  .brunnentv { flex-wrap: wrap; justify-content: center; padding: 3px 10px; gap: 0 8px; border-radius: 12px; }
-  .brunnentv-logo { font-size: 17px; }
-  .brunnentv-words { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 0 6px; padding-left: 0; border-left: none; }
+  /* die Bauchbinde kompakt: kleineres Logo, die Zeilen brechen nur zwischen ihren Teilen um */
+  .brunnentv { padding: 3px 11px 3px 5px; gap: 7px; border-radius: 12px; }
+  .brunnentv-badge { width: 32px; height: 32px; }
+  .brunnentv-logo { font-size: 16px; white-space: normal; }
+  .brunnentv-logo > span { white-space: nowrap; }
+  .brunnentv-host { margin-left: 0.35em; font-size: 12px; }
+  .brunnentv-line { gap: 0 6px; margin-top: 0; }
   .brunnentv-episode { font-size: 10px; }
-  .brunnentv-place { font-size: 12px; text-align: center; }
+  .brunnentv-place { font-size: 12px; }
   .camera-hint { padding: 4px 10px; font-size: 13px; line-height: 17px; }
   .funkloch { padding: 6px 10px 8px; font-size: 12px; gap: 8px; }
   .funkloch-icon { font-size: 20px; }
@@ -926,6 +944,11 @@ body.drone .navi-turn.on, .hud-narrow .navi-turn.on { display: flex; }
 
 /* --- BrunnenTV-Album der Reise (src/ui/album.js) ---------------------------------------------------------------- */
 .album-card { max-width: 1040px; }
+/* Kopf des Albums: das Logo von Herrn Schönnbrun vor dem Titel, darunter sein Name */
+.album-head { display: flex; align-items: center; gap: 12px; }
+.album-head h2 { margin: 0; }
+.album-badge { flex: none; display: block; width: 52px; height: 52px; filter: drop-shadow(0 2px 3px rgba(0, 24, 60, 0.4)); }
+.album-host { font-size: 15px; font-weight: 700; color: var(--gold); }
 .album-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 14px; }
 .album-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
   background: rgba(95, 208, 255, 0.12); border: 1px solid rgba(95, 208, 255, 0.38); color: #e2f6ff; }

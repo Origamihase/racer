@@ -26,7 +26,7 @@ import { Economy } from '../src/game/economy.js';
 import { albumOf } from '../src/game/album.js';
 import { FOUNTAIN_R, goalKind, goalName, sightBlockers } from '../src/world/kit/layout.js';
 import { MEGA } from '../src/models/miniAdam.js';
-import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, BOARD, BRUNNEN_NOMI, BRUNNEN_MEGAFON, SCHOENER_BRUNNEN, VOICES, ABSPANN_REISE, fillTemplate } from '../src/data.js';
+import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, BOARD, BRUNNEN_NOMI, BRUNNEN_MEGAFON, SCHOENER_BRUNNEN, SCHOENNBRUN, VOICES, ABSPANN_REISE, fillTemplate } from '../src/data.js';
 import { estimateSpeech } from '../src/speech.js';
 import { readFileSync } from 'node:fs';
 import { loadSave, storeSave, refundMegafon, megafonNoteSeen, MEGAFON_PRICE, DEFAULT_SAVE } from '../src/save.js';
@@ -331,11 +331,11 @@ for (const [name, skipAt] of [['none', null]]) {
   once(nomi, TV.nomi + 0.35, 'OMI');
   if (end > TV.card) ok(card[0].name === 'Würzburg', `${name}: Bauchbinde „${card[0].name}“`);
   if (end > TV.line) {
-    ok(subs[0].label === 'Mini Adam durchs Megafon', `${name}: Untertitel des Megafons „${subs[0].label}“`);
+    ok(subs[0].label === SCHOENNBRUN.label, `${name}: Untertitel des Megafons „${subs[0].label}“`);
     ok(adam[0].text === subs[0].text && !/\{|\}/.test(subs[0].text), `${name}: Megafon-Gruß „${subs[0].text}“`);
     ok(estimateSpeech(adam[0].text, VOICES.adam.rate) <= TV.call - TV.line - 0.3, `${name}: Gruß „${adam[0].text}“ läuft in den Ruf hinein`);
   }
-  if (call.length && callSub.length) ok(call[0].text === S.say && callSub[0].label === 'Mini Adam durchs Megafon', `${name}: Ruf „${call[0].text}“ / ${callSub[0].label}`);
+  if (call.length && callSub.length) ok(call[0].text === S.say && callSub[0].label === SCHOENNBRUN.label, `${name}: Ruf „${call[0].text}“ / ${callSub[0].label}`);
   if (end > TV.chat) ok(r.log.filter((e) => e.k === 'chat' && e.t >= TV.chat && e.t < TV.chat + 3.5).length >= 3, `${name}: der Chat jubelt kaum`);
 }
 // Der Ruf: in der Einstellung „Brunnen“, gesprochen, solange das Megafon am Mund ist, nach dem Gruß; tiefer und
@@ -556,7 +556,7 @@ const mega = { says: [], toasts: [] };
   ok(src.includes('shopRefund = megafonNoteSeen(save)') && src.includes('if (d.megafonNote)') && src.includes('if (d.refund)'), 'Titel oder Shop lesen die Zeile zur Erstattung nicht aus dem Spielstand');
   // der Abspann der Reise: die letzte Zeile zählt die Folgen (menus.js setzt {folgen} ein; ohne Folge fehlt sie)
   const row = ABSPANN_REISE[ABSPANN_REISE.length - 1];
-  ok(row[0] === 'BrunnenTV' && row[2] === 'wide' && fillTemplate(row[1], { folgen: '3 Folgen' }) === '3 Folgen mit Mini Adam am Megafon' && ABSPANN_REISE.filter((r) => r[1].includes('{folgen}')).length === 1, `Abspann: ${row.join(' | ')}`);
+  ok(row[0] === 'BrunnenTV' && row[2] === 'wide' && fillTemplate(row[1], { folgen: '3 Folgen' }) === '3 Folgen mit Herrn Schönnbrun (Mini Adam am Megafon)' && ABSPANN_REISE.filter((r) => r[1].includes('{folgen}')).length === 1, `Abspann: ${row.join(' | ')}`);
   ok(src.includes("st.brunnenTV === 1 ? '1 Folge'") && src.includes("fillTemplate(v, { folgen })"), 'Der Abspann zählt die Folgen nicht');
   // ein später noch einmal gekauftes Megafon (ein alter Stand in einem anderen Fenster): kein zweites Geld
   b.upgrades.megafon = 1;

@@ -4,7 +4,7 @@
 import {
   CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, viewerName, viewerNameAt, fillTemplate, alterReaction, berufFor, fmtBetrag,
-  BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, PARTYPEOPLE,
+  BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, PARTYPEOPLE, SCHOENNBRUN,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
 import { Player } from './player.js';
@@ -28,6 +28,7 @@ import { goalName } from '../world/kit/layout.js';
 import { RouteLog } from './routelog.js';
 import { estimateSpeech } from '../speech.js';
 import { WaveRule, WAVE, chatGap } from './wave.js';
+import { StreamGags } from './gags.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
 // „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
@@ -168,6 +169,11 @@ export const FACTS = {
   durchsage: (g) => g.t - g.said.t < 20,
   kassandra: (g) => g.t - g.said.t < 20 && g.said.voice === 'kassandra',
   donnerstag: () => new Date().getDay() === 4,
+  // … und für die Running Gags (gags.js): gleich ein Ort liegt kurz voraus auf dem Weg (der Geo-Tracker nennt ihn) ·
+  // glotz die Zuschauerzahl steht (kein Funkloch; das Glotzometer nennt sie) · faehrt der Wagen rollt (die Paketsuche)
+  gleich: (g) => !!g.gags.nextTown(),
+  glotz: (g) => g.viewers > 0 && g.funkloch <= 0,
+  faehrt: (g) => g.player.kmh >= 3,
 };
 // so oft greift der Chat zu einem Running Gag (CHAT.meme), wenn einer zum Moment passt
 const MEME_SHARE = 0.18;
@@ -176,13 +182,16 @@ export const untag = (line) => (line.charCodeAt(0) === 91 ? line.slice(line.inde
 // Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
 // Kästchen (audio.js RADAR_BEEP, gut 0,6 s), lead Sekunden später – wenn es fertig ist – folgen OMIs Gong und ihre Ansage
 export const RADAR = { ahead: 180, lead: 0.7 };
+// so viele Meter vor dem ersten Schild der 120-Zone am Blitzer beginnt der Tempomat zu bremsen
+export const ZONE_LEAD = 250;
 
 export class Game {
   /**
    * @param {object} ctx traffic, scenery, windshield, cockpit, audio, speech, ui, fx, pickups;
    *   world: { trip(): die Fahrt über die echte Karte (trip.js), stopping(): bremst der Wagen gerade zum Halt am Brunnen
    *   des Ziels?, release(): der Wagen am Brunnen darf weiterfahren, square(sec) und town(sec): Brunnenplatz und Ort
-   *   einer Ortsdurchfahrt für die BrunnenTV-Szene }. Geboten wird auf echte Orte (WorldNavi): Jedes Gebot setzt das
+   *   einer Ortsdurchfahrt für die BrunnenTV-Szene, gate(sec, k): die Bezahlschranke eines Orts stellen (gags.js; fehlt
+   *   sie, gibt es keine) }. Geboten wird auf echte Orte (WorldNavi): Jedes Gebot setzt das
    *   Ziel der Fahrt, das Navi im Auto zeigt sie (src/map), und die Ankunft meldet onTrip am Brunnenplatz.
    *   touchUI: Das Bild zeigt Touch-Knöpfe (Handy, Tablet), der Hinweis zum Ladestopp nennt dann den Knopf.
    */
@@ -207,6 +216,8 @@ export class Game {
     this.onMood = () => {};
     // wann Mini Adam winkt (wave.js): Intro, Fußgänger am Gehweg, „Wink mal!“ im Chat, nach einem Rempler
     this.waves = new WaveRule();
+    // die Running Gags aus dem Stream des Eigentümers (gags.js): mit eigenem Zufall, damit der Stream sonst gleich verläuft
+    this.gags = new StreamGags(this);
     // BrunnenTV am Navi-Ziel: Hier hängt sich die Szene ein (siehe startBrunnenTV)
     this.onBrunnenTV = () => {};
     // Ladestopp im Park: Hier hängt sich die Szene ein (siehe startCharge)
@@ -233,6 +244,7 @@ export class Game {
     this.clock = 18 * 60;
     // Reise: Beginn des Streams (Datum im BrunnenTV-Album) und seine Route für den Abspann (routelog.js)
     this.streamT = Date.now();
+    this.gags.reset(this.streamT);
     this.route = new RouteLog();
     this.travel = null; // Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
     this.eco.reset(up);
@@ -679,6 +691,8 @@ export class Game {
     // die Uhr ist die Reisezeit
     this.clock += go.secs / 60;
     this.megafonCd = Math.max(0, this.megafonCd - dt);
+    // die Running Gags (gags.js) mit eigenem Zufall: Bezahlschranke, Verein, Paketsuche, Mitleidskauf …
+    this.gags.update(dt);
 
     // --- Eingaben ------------------------------------------------------------
     if (ctl.device) this.device = ctl.device;
@@ -720,9 +734,10 @@ export class Game {
     if (this.charging) this.tickCharge(dt);
     if (this.sugarDue && !this.offAutobahn) {
       this.sugarDue = false;
-      p.sugar = 6;
+      // mit der Plüschbrause-Kiste aus dem Shop (Code ADAM, gags.js) hält er länger
+      p.sugar = this.up.brause ? 10 : 6;
       this.audio.coin();
-      this.ui.toast('🍌 Bananensaft! Zuckerschub', 'good');
+      this.ui.toast(this.up.brause ? '🍌 Bananensaft und Plüschbrause! Zuckerschub' : '🍌 Bananensaft! Zuckerschub', 'good');
     }
     if (this.tv) this.tickBrunnenTV();
     else if (this.navi.stopping) this.tickHalt(dt);
@@ -1230,6 +1245,7 @@ export class Game {
       if (!A.warned && left <= AUKTION.warn) {
         A.warned = true;
         this.chat(this.chatLine(this.eco.level >= 2 ? CHAT.fensterBald : CHAT.fensterStill));
+        this.gags.fail('fenster');
       }
       // ob jemand bietet, würfelt die Stream-Kasse je Schritt nach der Stimmung (economy.js windowBid) – die ersten
       // TV.pause Sekunden gehören James' Aufruf; bietet bis zum Ende niemand, ist der Stream vorbei (endless: dann
@@ -1539,6 +1555,7 @@ export class Game {
       if (e.wrong && this.navi.target) this.zufrieden.detour();
       if (e.wrong && e.planned === 'exit') {
         this.missedTarget();
+        this.gags.fail('ausfahrt');
         this.onMood('startled', 0.5);
       } else if (e.taken === 'exit') this.onMood('curious', 0.7);
     }
@@ -1714,12 +1731,14 @@ export class Game {
     const moments = [
       [TV.card, () => {
         this.ui.brunnenTV(tv.n, tv.name);
-        this.audio.brunnenJingle();
+        // Mini Adam moderiert als Herr Schönnbrun: dessen Hymne eröffnet die Folge
+        this.audio.schoennbrunHymne();
       }],
       [TV.line, () => this.brunnenMegafon(tv)],
       [TV.chat, () => {
         this.chat('BRUNNENTV! 💦');
         this.burst(CHAT.brunnenTV, 4, 3);
+        this.gags.tvGreet();
         // passt eine Streitfrage des Wikis (Trinkbrunnen, Kanal, Alsterfontäne), kommt sie nach dem Jubel
         if (tv.debate) this.later(3.2, () => this.chat(this.chatLine(BRUNNEN_DEBATTE[tv.debate])));
       }],
@@ -1732,7 +1751,8 @@ export class Game {
 
   /**
    * Mini Adam grüßt durchs Megafon den Brunnen, mit seiner tiefen Stimme (VOICES.adam); der Satz steht unten im Bild
-   * wie ein Megafon-Wunsch, nur mit Mini Adam statt eines Käufers (die Folge steht in der Bauchbinde darüber). Nur ein
+   * wie ein Megafon-Wunsch, nur mit Herrn Schönnbrun statt eines Käufers – als der moderiert Mini Adam die Folge
+   * (SCHOENNBRUN.label; die Bauchbinde darüber nennt ihn auch). Nur ein
    * Gruß, der vor seinem Ruf (TV.call) zu Ende ist: Mit langem Ortsnamen bleiben die kürzeren.
    */
   brunnenMegafon(tv) {
@@ -1742,7 +1762,7 @@ export class Game {
     this.audio.megafon();
     // (mit Vorrang: Eine Durchsage, die noch läuft, endet hier – die Folge gehört Mini Adam)
     const dur = this.speech.say(text, 'adam', { priority: true });
-    this.ui.megafon(text, dur + 1, '', 'Mini Adam durchs Megafon');
+    this.ui.megafon(text, dur + 1, '', SCHOENNBRUN.label);
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.line));
   }
@@ -1756,7 +1776,7 @@ export class Game {
     if (this.tv) this.tv.called = true;
     this.audio.megafon();
     const dur = this.speech.say(S.say, 'brunnen', { priority: true });
-    this.ui.megafon(S.text, dur + 1.2, '', 'Mini Adam durchs Megafon');
+    this.ui.megafon(S.text, dur + 1.2, '', SCHOENNBRUN.label);
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.call));
     this.later(0.6, () => {
@@ -1922,6 +1942,10 @@ export class Game {
       this.scenery.request('blitzer', this.blitzer.camS);
       this.scenery.request('speed', this.blitzer.endS, { limit: 'ende' });
     }
+    // der Tempomat hält die 120 am Blitzer: ab ZONE_LEAD Metern vor dem ersten Schild (dann ist er an der Kamera längst
+    // langsam genug), bis zum Ende der Zone (Player.limits.zone; das Strompedal des Spielers kennt sie nicht)
+    const zb = this.blitzer;
+    p.setLimits({ zone: zb && p.s > zb.limitS - ZONE_LEAD && p.s < zb.endS ? 120 / 3.6 : Infinity });
     if (this.blitzer) {
       const b = this.blitzer;
       // Einen Blitzer kündigt niemand an: Die Warnung vorher ist ein Artikel des Shops (hasRadar) – Blitz, Bußgeld
@@ -1940,6 +1964,7 @@ export class Game {
           this.scenery.flashBlitzer(true);
           this.later(0.15, () => this.scenery.flashBlitzer(false));
           this.stats.photos++;
+          this.gags.fail('blitzer');
           // Tempo und Uhrzeit im Moment des Blitzes festhalten (danach wird meist gebremst)
           const kmh = Math.round(p.kmh);
           const clock = fmtClock(this.clock);
@@ -2657,6 +2682,7 @@ export class Game {
   onCrash(e) {
     const p = this.player;
     if (!p.collide(e)) return;
+    this.gags.fail('rempler');
     this.stats.crashes++;
     this.tally.hits++;
     this.stats.cleanDistance = 0;
@@ -2708,6 +2734,8 @@ export class Game {
       fans: this.supporters(),
       stats: { ...this.stats },
       peakViewers: Math.round(this.peakViewers),
+      // was die Running Gags zur Abrechnung beitragen (gags.js report: der Verein …)
+      gags: this.gags.report(),
       beruf: berufFor(km),
       clock: fmtClock(this.clock),
     };
@@ -2730,13 +2758,14 @@ export class Game {
   /**
    * Wem der Abspann dankt – wie im echten SkylineTV-Abspann, der die Unterstützenden nach Art aufteilt: die größte
    * Spende, alle Spender und Bieter (höchste Summe zuerst), die Abo-Verschenker (meiste Abos zuerst), die neuen VIPs
-   * und die Raids. Jeder Name, der in diesem Stream etwas gegeben hat, steht darin (src/ui/abspann.js gruppiert).
+   * und die Raids. Jeder Name, der in diesem Stream etwas gegeben hat, steht darin (src/ui/abspann.js gruppiert). Dazu
+   * der Verein des Streams mit seinen Mitgliedern (gags.js; null, solange er nicht gegründet ist).
    */
   supporters() {
     const F = this.fans;
     const gifters = Object.entries(F.gifts).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
     const list = (m) => Object.entries(m).sort((a, b) => b[1].sum - a[1].sum).map(([name, e]) => ({ name, sum: e.sum, n: e.n }));
-    return { top: F.top, donors: list(F.donors), bidders: list(F.bids), gifters, vips: [...new Set(F.vips)], raids: list(F.raids) };
+    return { top: F.top, donors: list(F.donors), bidders: list(F.bids), gifters, vips: [...new Set(F.vips)], raids: list(F.raids), verein: this.gags.report().verein };
   }
 
   /**

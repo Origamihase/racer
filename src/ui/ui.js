@@ -2,12 +2,13 @@
 // Bots, die Streifen oben (Navi, Hinweise) und unten (Untertitel, BrunnenTV), Rahmen und Blitzerfotos. Wo was wohnt
 // und welches Rechteck dabei frei bleibt, steht in sicht.js: Über der Bildmitte liegt nichts, solange gefahren wird.
 import { fmtNum, fmtCent, fmtEuro, fmtClock, clamp, tachoKmh } from '../util.js';
-import { nameColor, nameBreak, BOTS } from '../data.js';
+import { nameColor, nameBreak, BOTS, SCHOENNBRUN } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
 import { fmtOdo, fmtKm } from '../map/navroute.js';
 import { NARROW_MID, infoWidth, overlap, cockpitParts, portraitNarrow, droneHud } from './sicht.js';
 import { DroneHud } from './drone-hud.js';
+import { schoennbrunBadge } from './schoennbrun.js';
 
 /** Zufriedenheit des Chats sichtbar im Chat-Kopf? Nein: Die Chat-Stimmung gehört nicht ins HUD (Besitzer, 17.11.). */
 
@@ -30,7 +31,8 @@ const FC_MIN_W = 168;
 
 // Hinweise im oberen Streifen: einer nach dem anderen. Was der Spieler beachten muss (Art 'bad' und 'warn'), kommt
 // vor Tipps und Grüßen und löst einen Tipp ab, sobald der kurz zu lesen war. Wartet etwas, bleibt der gezeigte nur
-// noch so lange stehen, wie man zum Lesen braucht. Ein wartender Tipp, der zu alt geworden ist, entfällt (er
+// noch so lange stehen, wie man zum Lesen braucht (hurry Sekunden; einer, der erst später zu lesen ist, hold Sekunden:
+// die Mysterybox springt erst nach dem Wackeln auf). Ein wartender Tipp, der zu alt geworden ist, entfällt (er
 // beschriebe etwas, das längst vorbei ist), ebenso der älteste, wenn mehr als vier warten; Dringendes entfällt nie.
 const NOTICE = { read: 3.6, hurry: 2.4, yield: 1.2, stale: 8, waiting: 4 };
 const urgent = (n) => n.kind === 'bad' || n.kind === 'warn';
@@ -157,13 +159,16 @@ export class UI {
     // Sprachdurchsage und der Megafon-Wunsch sprechen alle hier, einer nach dem anderen, jeder mit seinem Zeichen
     // (OMIs Augen, Kopfhörer, Mikrofon mit Stimme und Spender, Megafon) ---
     const bottom = el('div', 'bottom-strip', this.hud);
+    // (die Bauchbinde: das Logo von Herrn Schönnbrun, „BrunnenTV mit Herrn Schönnbrun“, darunter Folge und Ort)
     this.tvEl = el('div', 'brunnentv hidden', bottom);
-    const logo = el('div', 'brunnentv-logo', this.tvEl);
-    el('span', 'brunnentv-drop', logo, '⛲');
-    el('span', '', logo, 'BrunnenTV');
+    this.tvEl.appendChild(schoennbrunBadge(document, 'brunnentv-badge', 46));
     const tv = el('div', 'brunnentv-words', this.tvEl);
-    this.tvEpisode = el('div', 'brunnentv-episode', tv, '');
-    this.tvPlace = el('div', 'brunnentv-place', tv, '');
+    const logo = el('div', 'brunnentv-logo', tv);
+    el('span', '', logo, 'BrunnenTV');
+    el('span', 'brunnentv-host', logo, SCHOENNBRUN.host);
+    const line = el('div', 'brunnentv-line', tv);
+    this.tvEpisode = el('span', 'brunnentv-episode', line, '');
+    this.tvPlace = el('span', 'brunnentv-place', line, '');
     this.subEl = el('div', 'sub-bar hidden', bottom);
     const eyes = el('span', 'sub-sign nomi-eyes', this.subEl);
     el('i', '', eyes);
@@ -512,10 +517,11 @@ export class UI {
    * Ein Hinweis: eine kleine Reihe unter der Navi-Zeile, einer nach dem anderen (Reihenfolge und Dauer: NOTICE).
    * kind: info | good | warn | bad · key: Ein neuer Hinweis mit demselben Schlüssel ersetzt den alten sofort, auch den
    * gerade gezeigten – für Meldungen, die ein Zustand sind und keine Schlange (etwa was das Navi zum Ziel sagt).
-   * Rückgabe: { drop() } nimmt ihn vorzeitig weg, ob er wartet oder steht.
+   * Rückgabe: { drop() } nimmt ihn vorzeitig weg, ob er wartet oder steht; t ist, wie lange er steht, hold, wie lange
+   * ihn nur Dringendes ablöst (beides lässt sich setzen), gone, ob er schon weg ist.
    */
   toast(text, kind = 'info', key = '', parts = null) {
-    const n = { text, kind, key, parts, t: NOTICE.read, age: 0, wait: 0, gone: false, drop: () => this.dropNotice(n) };
+    const n = { text, kind, key, parts, t: NOTICE.read, hold: 0, age: 0, wait: 0, gone: false, drop: () => this.dropNotice(n) };
     if (key) this.dropKey(key);
     // Dringendes vor allem, was nicht dringend ist; sonst der Reihe nach
     let i = this.notices.length;
@@ -534,6 +540,11 @@ export class UI {
     const i = this.notices.indexOf(n);
     if (i >= 0) this.notices.splice(i, 1);
     if (this.notice === n) this.nextNotice();
+  }
+
+  /** Steht oben gerade ein Hinweis, oder wartet einer? (Die Mysterybox kommt erst, wenn dort nichts steht.) */
+  noticeBusy() {
+    return !!this.notice || this.notices.length > 0;
   }
 
   /** Nimmt alle Hinweise mit diesem Schlüssel weg. */
@@ -567,7 +578,7 @@ export class UI {
     if (!n) return;
     n.age += dt;
     const next = this.notices[0];
-    const limit = next ? (urgent(next) && !urgent(n) ? NOTICE.yield : Math.min(n.t, NOTICE.hurry)) : n.t;
+    const limit = next ? (urgent(next) && !urgent(n) ? NOTICE.yield : Math.min(n.t, Math.max(NOTICE.hurry, n.hold))) : n.t;
     if (n.age >= limit) {
       n.gone = true;
       this.nextNotice();

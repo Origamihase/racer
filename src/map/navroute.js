@@ -540,6 +540,13 @@ function thenText(th) {
  * hält beide gleich). Ab ihm zählt die Ansage die Meter bis zur Gabelung herunter, genau wie Tafeln und Baken.
  */
 export const BOARD_M = 1000;
+/**
+ * Auf den letzten so vielen Metern Straße vor einer Ausfahrt nennt die Ansage (und die nächste Ausfahrt) schon Meter,
+ * auch wo die Autobahn gerafft ist: Dann ist der erste Vorwegweiser schon zu sehen, und Tafel und Navi zählen in
+ * derselben Einheit – statt „3,4 km“ im Navi neben der Tafel „1000 m“. Vorschau (calm) und Spurpfeile wechseln weiter
+ * erst an der Tafel.
+ */
+export const NEAR_M = 1500;
 /** Meter Straße: „1000 m“, „450 m“, „80 m“ – in Schritten von 50 m, auf den letzten 100 m von 10 m. */
 export function fmtRoad(m) {
   const step = m < 95 ? 10 : 50;
@@ -977,11 +984,12 @@ export class NavModel {
    * target, next}. Ohne bekannte Stelle (dem Straßenverlauf folgen) ist dist 0 und wird nicht gezeigt.
    * Ohne Ziel nennt die Ansage nur die Straße – und ein Autobahnende, das auf dem eigenen Weg liegt.
    * next: die nächste Ausfahrt auf der eigenen Autobahn (trip.nextExit), auch wenn die Route geradeaus bleibt, mit say
-   * in denselben Worten wie die Ansage (ab ihrer ersten Tafel Meter Straße, davor Reisekilometer) – oder null.
+   * in denselben Worten wie die Ansage (auf den letzten NEAR_M Metern Straße Meter, davor Reisekilometer) – oder null.
    *
    * Die Ausfahrt hat zwei Zustände, der Wechsel liegt am ersten Vorwegweiser (BOARD_M): Davor ist sie eine ruhige
    * Vorschau (calm: Name der Ausfahrt, darunter „in 55 km“ in Reisekilometern); ab der Tafel zählt say die Meter
-   * Straße bis zur Gabelung herunter, genau wie Tafeln und Baken – und die Spurpfeile erscheinen.
+   * Straße bis zur Gabelung herunter, genau wie Tafeln und Baken – und die Spurpfeile erscheinen. Meter nennt say
+   * schon auf den letzten NEAR_M davor (die Vorschau heißt dann „in 1450 m“), dann ist die Tafel schon zu sehen.
    */
   instruction() {
     const trip = this.trip;
@@ -993,7 +1001,7 @@ export class NavModel {
     };
     const nx = trip.nextExit();
     if (nx) {
-      nx.say = nx.dist <= (parkBoard(nx.fork) || BOARD_M) ? fmtRoad(nx.dist) : fmtKm(trip.reach(nx.fork.s).km);
+      nx.say = nx.dist <= Math.max(parkBoard(nx.fork), NEAR_M) ? fmtRoad(nx.dist) : fmtKm(trip.reach(nx.fork.s).km);
       out.next = nx;
     }
     // gerade unterwegs zu einem Terminal? Dann ist die Überfahrt die nächste Handlung (Stelle: das Terminal der Fahrt)
@@ -1050,7 +1058,7 @@ export class NavModel {
       out.km = this.kmAhead(g.dist);
       // vor der Ausfahrt eines Ladeparks steht schon 2000 m vorher seine Tafel (parks.js parkBoard): ab dort Meter
       out.calm = g.far || g.dist > (parkBoard(g.fork) || BOARD_M);
-      out.say = out.calm ? fmtKm(g.toKm) : fmtRoad(g.dist);
+      out.say = g.far || g.dist > Math.max(parkBoard(g.fork), NEAR_M) ? fmtKm(g.toKm) : fmtRoad(g.dist);
       out.node = g.node;
       out.fork = g.fork || null;
       // der Name wie auf dem Schild an der Gabelung (hinter dem Horizont, wo es sie noch nicht gibt, der Titel der Ansage)
