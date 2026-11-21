@@ -349,8 +349,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) and (max-aspect-ratio: 2.08/1) {
   .rahmen.corner-only .strip-bottom { right: auto; left: 14px; }
 }
-/* hochkant stehen Untertitel und Rahmen-Hinweis unten in der Mitte: so lange der Kürbis da ist, links daneben */
+/* hochkant stehen Untertitel und Rahmen-Hinweis unten in der Mitte: so lange der Kürbis da ist, links daneben. Der
+   Kürbis selbst bleibt im Rand neben der freien Sicht (sicht.js freeView: 7,5 % der Höhe + 4 px), auch auf Tablets */
 @media (pointer: coarse) and (orientation: portrait) {
+  :root { --pk: min(13vmin, 88px, calc(7.5vh - 8px)); }
   .hud:has(.rahmen-kuerbis) .bottom-strip, .rahmen-kuerbis .rahmen-caption { right: calc(var(--pk) + 20px); max-width: calc(100vw - var(--pk) - 48px); }
 }
 .rahmen-sonnenblumen .strip { background: rgba(150, 105, 10, 0.35); }
@@ -540,7 +542,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .pause-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 /* Feedback (menus.js feedbackLink): ein Link zu GitHub im Kleid eines Knopfs, darunter klein, wohin er führt */
 .btn.feedback { display: flex; flex-direction: column; gap: 1px; color: #fff; text-decoration: none; }
-.fb-sub { font-size: 11.5px; font-weight: 500; line-height: 1.3; color: var(--sub); }
+.fb-sub { font-size: 11.5px; font-weight: 500; line-height: 1.3; color: #c9ced6; text-shadow: 0 1px 2px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6); }
 .pause-head .btn.feedback { padding: 5px 13px; font-size: 15px; }
 .fs-hint { margin: 10px 0 0; color: var(--sub); font-size: 13px; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
 /* einmal nach der Erstattung des gekauften Megafons (save.js refundMegafon): eine freundliche Zeile auf dem Titel und im Shop */
