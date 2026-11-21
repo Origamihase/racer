@@ -29,6 +29,8 @@ export const ZUFRIEDEN = {
   stand: 0.25, standAfter: 12, standKmh: 3,
   arrive: { k: 30, lo: -10, hi: 12, bonus: 3, minT: 30 },
   detour: -4,
+  // eine Folge BrunnenTV (beim Ruf): Der Chat ist glücklich, auch wenn die Runde nicht die schnellste war
+  tv: 5,
   // Wirkung: Geld (Uhren) und Zuschauer, je bei S = 0 und S = 100
   gain: [0.6, 1.4], audience: [0.85, 1.15],
   // Ton des Chats: ab happy klingt er zu share fröhlich-flott, bis grumpy zu share ungeduldig
@@ -94,6 +96,13 @@ export class Satisfaction {
   detour() {
     this.wrong = true;
     this.value = clamp(this.value + ZUFRIEDEN.detour, 0, 100);
+  }
+
+  /** Eine Folge BrunnenTV: Der Chat freut sich (ZUFRIEDEN.tv). Gibt die Änderung zurück. */
+  brunnenTV() {
+    const before = this.value;
+    this.value = clamp(this.value + ZUFRIEDEN.tv, 0, 100);
+    return this.value - before;
   }
 
   /** Ziel erreicht: Die Runde zählt als Ganzes (q), dann beginnt die nächste. Gibt die Änderung zurück. */

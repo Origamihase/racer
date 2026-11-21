@@ -1,8 +1,9 @@
 // Prüft die Ansagen, den Chat und die Auktion der Reise ohne Grafik (die zweite Testfahrt des Eigentümers, 20.11.2026):
 // - OMI: Der Boardcomputer heißt überall, wo Spieler ihn lesen oder hören, OMI (Texte, Stimmen, Menüs, README, INSIDER,
 //   Ladekarte); intern darf er nomi heißen.
-// - Streamstart: Mini Adam sagt „Hallo, Partypeople!“ in seiner Stimme, der Chat grüßt zurück, die Stimmung ist gut;
-//   wer zügig zum Ziel fährt, hebt sie deutlich, wer trödelt, senkt sie (simulierte Streams, tools/stream-sim.mjs).
+// - Streamstart: Nach „Wir sind live.“ sagt Mini Adam „Partypeople!“ in seiner Stimme, der Chat grüßt zurück, die
+//   Stimmung ist gut; wer zügig zum Ziel fährt, hebt sie deutlich, wer trödelt, senkt sie (simulierte Streams,
+//   tools/stream-sim.mjs).
 // - Auktion: Gebote ändern das Ziel nur bis AUKTION.lock Navi-Kilometer vor dem Brunnen, dann fällt der Zuschlag (am
 //   Rand, mit Gewinner und Betrag); jedes Gebot steht im Chat und am Rand, jedes neue Ziel, sobald es steht, sagt OMI
 //   mit Brunnen und Ort an.
@@ -80,11 +81,12 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
 
 // --- Streamstart und Stimmung -------------------------------------------------------------------------------------
 {
-  ok(DATA.PARTYPEOPLE.say === 'Hallo, Partypeople!', `Gruß zum Start: ${DATA.PARTYPEOPLE.say}`);
+  ok(DATA.PARTYPEOPLE.say === 'Partypeople!', `Gruß zum Start: ${DATA.PARTYPEOPLE.say}`);
   ok(DATA.VOICES.adam.pitch < 0.6, 'Mini Adams Stimme ist tief');
   const main = read('src/main.js');
-  ok(/speech\.say\(PARTYPEOPLE\.say, 'adam'/.test(main) && /ui\.adam\(PARTYPEOPLE\.say/.test(main), 'main.js: Gruß in Mini Adams Stimme mit Untertitel');
-  ok(/if \(!chargeRun\.hello\) streamHello\(\)/.test(main), 'main.js: ohne Startszene grüßt er beim Losfahren');
+  // erst „Wir sind live.“ (Sprachstudio), dann sein Gruß in seiner Stimme mit Untertitel, beides mit Vorrang der Reihe nach
+  ok(/function streamStart\(\) \{[\s\S]*?speech\.say\(CHARGE_LINES\.live, game\.studioVoice\(\), \{ priority: true[\s\S]*?speech\.say\(text, 'adam', \{\s*priority: true[\s\S]*?ui\.adam\(text, /.test(main), 'main.js: „Wir sind live.“ und danach der Gruß in Mini Adams Stimme mit Untertitel');
+  ok(/if \(!chargeRun\.hello\) streamStart\(\)/.test(main), 'main.js: ohne Startszene beginnt der Stream beim Losfahren');
   const avg = { fast: 0, slow: 0, start: 0 };
   const seeds = [1, 2, 3];
   for (const seed of seeds) {

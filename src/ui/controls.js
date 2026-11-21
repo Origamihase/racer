@@ -27,6 +27,12 @@ export function touchOf(action) {
   return t ? (t.icon ? t.icon + ' ' + t.label : t.label) : null;
 }
 
+/** Beschriftung des Touch-Knopfs einer Aktion, solange er gleich hier handelt (TOUCH_BUTTONS now), oder null. */
+export function touchNowOf(action) {
+  const t = TOUCH_BUTTONS.find((b) => b.action === action && b.now);
+  return t ? (t.icon ? t.icon + ' ' + t.now : t.now) : null;
+}
+
 /** Was eine Taste der Tipps zeigt (first-tips.js): für das Gerät die erste Belegung der Aktion. */
 export function deviceKey(action, device) {
   if (device === 'touch') return touchOf(action);
@@ -55,7 +61,7 @@ export function controlRows() {
     one('horn', 'Hupen', 'Brunnen und Elsa grüßen.'),
     one('megafon', 'Megafon', 'Eine Durchsage – wer vor dir fährt, macht Platz.'),
     one('brunnen', 'BrunnenTV unterwegs', 'Neben einem Brunnen auf dem Weg anhalten, dann geht es los.'),
-    one('ladestopp', 'Ladestopp einplanen', 'Das Navi führt zur nächsten Ladesäule, danach weiter zum Ziel.'),
+    { ...one('ladestopp', 'Laden', 'Neben einer Ladesäule oder Bucht: gleich hier laden. Sonst den nächsten Ladestopp einplanen – das Navi führt hin, danach weiter zum Ziel.'), touch: [touchOf('ladestopp'), touchNowOf('ladestopp')] },
     one('camera', 'Kamera: Cockpit oder Drohne'),
     one('wiper', 'Scheibenwischer von Hand'),
     one('pause', 'Pause'),

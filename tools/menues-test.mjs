@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { ACTIONS, PAD_BUTTONS, PAD_DRIVE, Input } from '../src/input.js';
 import { TOUCH_BUTTONS, TOUCH_LABELS } from '../src/ui/touch.js';
 import { FULLSCREEN_KEY } from '../src/ui/fullscreen.js';
-import { controlRows, keyName, padName, touchOf, deviceKey } from '../src/ui/controls.js';
+import { controlRows, keyName, padName, touchOf, touchNowOf, deviceKey } from '../src/ui/controls.js';
 import { TIPS, ORDER } from '../src/ui/first-tips.js';
 import { hintRows } from '../src/ui/drive-hint.js';
 import { FEEDBACK } from '../src/ui/menus.js';
@@ -70,7 +70,7 @@ const realKeys = new Set([...Object.keys(ACTIONS), FULLSCREEN_KEY].map(keyName))
 const realPad = new Set([...Object.keys(PAD_BUTTONS).map((i) => padName(+i)), ...PAD_DRIVE.gas.map(padName), ...PAD_DRIVE.brake.map(padName), '✚', '←', '→']);
 if (PAD_DRIVE.stick === 0 || PAD_DRIVE.stick === 2) realPad.add(PAD_DRIVE.stick === 0 ? 'Linker Stick' : 'Rechter Stick');
 // Touch: die Knöpfe der Liste, Lenken und Pedale und drei Dinge, die es im Spiel wirklich gibt (Quelle geprüft)
-const realTouch = new Set([...TOUCH_BUTTONS.map((t) => touchOf(t.action)), ...Object.values(TOUCH_LABELS), '⛶ im Menü', '✕ am Tipp']);
+const realTouch = new Set([...TOUCH_BUTTONS.map((t) => touchOf(t.action)), ...TOUCH_BUTTONS.filter((t) => t.now).map((t) => touchNowOf(t.action)), ...Object.values(TOUCH_LABELS), '⛶ im Menü', '✕ am Tipp']);
 ok(/⛶/.test(src('src/ui/fullscreen.js')) && /fs-btn/.test(src('src/ui/menus.js')), 'Vollbild-Knopf ⛶ im Menü fehlt');
 ok(/hint-close', card, '✕'/.test(src('src/ui/drive-hint.js')), 'das ✕ am Tipp fehlt');
 ok(/renderer\.domElement\.addEventListener\('pointerdown'[\s\S]{0,120}anyKey = true/.test(src('src/main.js')), 'Tipp aufs Bild überspringt keine Szene mehr');
@@ -97,7 +97,8 @@ for (const id of ORDER) {
     if (action && device !== 'touch') ok(TIPS[id].rows(device)[0][0][0] === deviceKey(action, device), `Tipp ${id} (${device}): nicht die erste Belegung`);
   }
 }
-ok(TIPS.ladestopp.rows('gamepad')[0][0][0] === padName(4) && padName(4) === 'LB', 'Ladestopp-Tipp am Gamepad: nicht LB');
+ok(TIPS.laden.rows('gamepad')[0][0][0] === padName(4) && padName(4) === 'LB', 'Laden-Tipp am Gamepad: nicht LB');
+ok(TIPS.brunnen.rows('gamepad')[0][0][0] === padName(5) && padName(5) === 'RB', 'BrunnenTV-Tipp am Gamepad: nicht RB');
 for (const device of ['keyboard', 'gamepad']) {
   const real = device === 'keyboard' ? realKeys : new Set([...realPad, 'Stick']);
   for (const ds of [{}, { tipLane: true }]) {

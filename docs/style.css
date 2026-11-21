@@ -34,6 +34,13 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   box-shadow: 0 0 0 4px rgba(120, 170, 255, 0.25), 0 0 40px rgba(80, 140, 255, 0.35); display: flex; align-items: center; justify-content: center; gap: 16px; }
 .nomi-orb .eye { width: 22px; height: 30px; border: 4px solid #fff; border-radius: 9px; animation: blink 3.2s infinite; box-shadow: 0 0 12px rgba(255,255,255,0.6); }
 @keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+/* Ladeanzeige am unteren Rand: wächst, bis der Titel steht (eine Animation des Compositors – sie läuft auch weiter,
+   während das Script den Rechner beschäftigt), in zehn Stufen statt fließend: Jede Änderung ist ein neues Bild des
+   ganzen Ladebilds, und fließend nahm das dem Übersetzen der Shader Sekunden; dann blendet das Ladebild aus */
+.load-bar { position: absolute; left: 0; right: 0; bottom: env(safe-area-inset-bottom, 0px); height: 3px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
+.load-bar i { position: absolute; inset: 0; background: var(--live); transform-origin: 0 50%; transform: scaleX(0.03); animation: loadcreep 16s step-end forwards; }
+@keyframes loadcreep { 0% { transform: scaleX(0.03); } 5% { transform: scaleX(0.15); } 12% { transform: scaleX(0.28); } 20% { transform: scaleX(0.4); } 30% { transform: scaleX(0.51); }
+  42% { transform: scaleX(0.61); } 56% { transform: scaleX(0.7); } 72% { transform: scaleX(0.78); } 88% { transform: scaleX(0.85); } 100% { transform: scaleX(0.9); } }
 
 /* --- HUD ---------------------------------------------------------------- */
 .hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; font-size: 15px; }
@@ -44,6 +51,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .live-badge.offline { background: #555; animation: none; }
 @keyframes livepulse { 50% { box-shadow: 0 0 0 4px rgba(232,33,46,0.25); } }
 .viewers, .streamtime { font-size: 14px; color: #e7e9ee; font-variant-numeric: tabular-nums; }
+.viewers.up { color: var(--green); text-shadow: 0 0 8px rgba(53, 200, 106, 0.6); transition: color 0.4s; }
 .stat-rows { display: flex; flex-direction: column; gap: 3px; }
 .stat { display: flex; align-items: center; gap: 7px; position: relative; font-variant-numeric: tabular-nums; }
 .stat-icon { width: 20px; text-align: center; font-family: var(--emoji); }
@@ -151,6 +159,8 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 @keyframes mystery-in { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: none; } }
 .toast > .plus { color: var(--green); }
 .toast > .minus { color: var(--bad); }
+/* die Schäden einer Runde stehen in ihrer eigenen Zeile (game.js payBill) */
+.toast > .schaden { display: block; }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
 
 /* --- Streifen unten: wer spricht, steht hier – OMI (ihre Augen), das Sprachstudio (Kopfhörer, warmer Rahmen), die
@@ -635,6 +645,7 @@ body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top)
 .over-dist, .over-money { background: rgba(255,255,255,0.05); border-radius: 14px; padding: 12px 18px; display: flex; flex-direction: column; min-width: 240px; }
 .over-dist .num, .over-money .num { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .over-money .num { color: #6dff9c; }
+.over-money.minus .num { color: var(--bad); }
 .over-dist .lbl, .over-money .lbl { color: var(--sub); font-weight: 600; }
 .over-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
 /* Ziffern gleich breit nur im Wert – im Text machte das die Bindestriche breit („Navi - Ziele“) */

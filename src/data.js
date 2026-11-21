@@ -92,15 +92,18 @@ export const INCOME = {
   Challenges: 'Challenge',
 };
 // Abzüge stehen in der Abrechnung ganz unten
-export const FINES = ['Bußgeld', 'Verwarngeld', 'Reparaturen', 'Mitleidskäufe'];
+export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Mitleidskäufe'];
 
 /**
  * Reise: An jedem erreichten Ziel kommt die Werkstatt-Rechnung der Runde (game.js settleRound). bump: Euro je
- * zählendem Rempler (ein Karosserie-Punkt, so viel wie ein gewöhnliches Siegergebot), mark: je neuer Kratzspur von der
- * Leitplanke (höchstens drei je Seite, damage.js). Bezahlt wird aus der Stream-Kasse in ganzen Euro; was sie nicht
- * hergibt, erlässt die Werkstatt. Wann die Fahrt in der Werkstatt endet (keine Punkte mehr), bleibt, wie es ist.
+ * zählendem Rempler (ein Karosserie-Punkt, so viel wie ein gewöhnliches Siegergebot), mark: je Kratzer an der
+ * Leitplanke (jede Schramme, damage.js scraped). Abgebucht wird immer die ganze Rechnung, auch ins Minus, und was am
+ * Ende des Streams noch offen ist, auch (Abrechnung „Schäden“). Wann die Fahrt in der Werkstatt endet (keine Punkte
+ * mehr), bleibt, wie es ist.
  */
 export const REPARATUR = { bump: 150, mark: 25 };
+/** „2 Rempler · 1 Kratzer“: was eine Werkstatt-Rechnung zählt (Rundenzeile, James, Abrechnung im Abspann). */
+export const damageCount = (hits, marks) => [hits ? `${hits} Rempler` : '', marks ? `${marks} Kratzer` : ''].filter(Boolean).join(' · ');
 
 // Wofür gespendet wird (etwa jede dritte Spende nennt einen Zweck)
 export const SPENDEN_ZWECKE = [
@@ -257,10 +260,13 @@ export const SCHOENER_BRUNNEN = {
   say: 'Schöner Brunnen!',
   chat: ['SCHÖÖÖNER BRUNNEN!', 'SCHÖÖÖÖNER BRUNNEN!!! ⛲', 'Schöner Brunnen! 😍', 'SCHÖÖÖNER BRUNNEN 💦', 'schöööööner brunnen', 'SCHÖNER BRUNNEN! 🔊', 'SCHÖÖÖNER BRUNNEN! 👏'],
 };
-// Jeder Stream beginnt mit Mini Adams Gruß (der Eigentümer: „Hallo, Partypeople“): in der Startszene mit seiner tiefen
-// Stimme (VOICES.adam) und als Untertitel; sobald der Chat zu sehen ist, grüßt er zurück.
+// Jeder Stream beginnt mit Mini Adams Gruß (der Eigentümer: „Hallo, Partypeople“), nachdem das Sprachstudio „Wir sind
+// live.“ gemeldet hat (der Eigentümer, 21.11.: „Ohne Stream macht ein Gruß keinen Sinn.“): „Partypeople!“, während er
+// winkt (der Eigentümer, 21.11.: „nicht ‚Hallo Partypeople‘“) – je Stream genau einmal, mit seiner tiefen Stimme
+// (VOICES.adam) und als Untertitel, in der Startszene oder beim Losfahren (main.js streamStart); danach grüßt der Chat
+// zurück (chat).
 export const PARTYPEOPLE = {
-  say: 'Hallo, Partypeople!',
+  say: 'Partypeople!',
   chat: ['Hallo Partypeople! 🎉', 'HALLO ADAM! 👋', 'Partypeople am Start 🥳', 'Hallo zurück! ❤', 'Hallo Mini Adam! 🎉', 'Partypeople melden sich zum Dienst 🫡',
     'Hallöchen aus dem Chat 👋', 'Endlich live! ❤', 'Haaallo Partypeople 🎊', 'Die Party kann beginnen 🎉'],
 };
@@ -508,6 +514,10 @@ export const CHAT = {
     '#BrunnenTV', 'Brunnen gesichtet, Ziel erreicht, alles richtig gemacht', '💦', '💦💦💦', 'Megafon-Folge! 📢⛲',
     'Fenster runter, Megafon raus 📢', 'Der Brunnen hat es gehört 💦', 'Lauter, Mini Adam! 📢', 'Ich höre es bis hierher plätschern 💦',
     'Grüße an den Brunnen!'],
+  // nach dem Ruf „Schöner Brunnen!“: Der Chat feiert die Folge (Game.brunnenCall)
+  brunnenJubel: ['Beste Folge! ❤⛲', 'Gänsehaut 😍', 'Ich bin nur wegen BrunnenTV hier', 'Clip it! 🎬', 'Folge des Jahres 🏆',
+    'Was für ein Brunnen ❤', 'Mehr BrunnenTV!!!', 'Der Brunnen hat sich gefreut 💦', 'Herr Schönnbrun 👏👏👏', 'Ich hab geweint 🥲⛲',
+    'Zeigt das meiner Oma!', 'Brunnen des Tages ⛲'],
   elsaKassel: ['ELSA!!! ❤🐟', 'Elsa ❤', 'Kassel ist Elsa-Stadt 👑🐟', 'Grüß Elsa von uns!'],
   gifhornOrt: ['Gifhorn! Historisch bedeutsam 😂', 'Polizei Gifhorn grüßt bestimmt gleich 👮', 'Wo ist der Supermarkt-Parkplatz?'],
   crash: ['Rezeption!', 'Uff 🙈', 'Das gibt Ärger', 'Hat das die Polizei Gifhorn gesehen? 🚓', 'Blechschaden!', 'Hoffentlich hat das keiner gesehen',
@@ -794,6 +804,7 @@ export const STUDIO = {
       regen: ['Der Regen macht sie munter.', 'Der Wischer hat inzwischen einen Fanclub.'],
       rekord: ['Der Zuschauerrekord beflügelt sie.', 'So viele waren lange nicht dabei.'],
       job: ['Die erledigte Challenge feiern sie noch.', 'Die eingelöste Challenge kam richtig gut an.'],
+      brunnen: ['Die Folge BrunnenTV wirkt noch nach.', 'Alle schwärmen noch vom schönen Brunnen.', 'BrunnenTV hat sie glücklich gemacht.'],
     },
     down: {
       blech: ['Die machen sich Sorgen um den Lack.', 'Die Rempler haben sie erschreckt.', 'Sie wünschen sich etwas mehr Abstand zu den anderen.'],

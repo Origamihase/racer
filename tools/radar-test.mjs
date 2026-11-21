@@ -93,7 +93,7 @@ function stream({ radar = 0, kmh, cameras = 1, seed = 7 }) {
     windshield: witness('windshield', log, now, { firmware: 0, manual: () => 'wipe' }),
     cockpit: witness('cockpit', log, now, { nomi: witness('nomi', log, now) }),
     audio: witness('audio', log, now),
-    speech: witness('speech', log, now, { say: () => 2.5, busy: false, queue: NONE, current: null }),
+    speech: witness('speech', log, now, { say: (t, v, o) => (o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: witness('ui', log, now),
     fx: witness('fx', log, now),
     pickups: witness('pickups', log, now, { update: () => NONE }),

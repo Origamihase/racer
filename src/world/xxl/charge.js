@@ -30,7 +30,22 @@ export const CHARGE = {
   drop: 0.04, // Höhe des abgesenkten Bordsteins an der Einfahrt
   ramp: 1, // Übergang des Bordsteins auf beiden Seiten der Einfahrt
   keep: 1, // so weit über den Park hinaus bleiben Streifen und Gehweg leer
+  // Stele vor dem Park jedes Orts auf dem Weg (Besitzer, 21.11.: „Die Ladesäule muss man von weitem sehen.“): Der Park
+  // steht in der Häuserflucht, von weitem kaum mehr als eine Lücke zwischen den Häusern. Die Stele steht vorn im
+  // Streifen, d Meter vor seiner Mitte und quer wie die Ortstafeln (x), eine blaue Tafel w × h ab der Höhe y mit dem
+  // Stecker oben (signplan.js 'ladestele', gebaut von signs.js); auf ihrem Platz und in der Sichtlinie bis 150 m davor
+  // steht nichts Hohes (kit/layout.js steleBlockers)
+  stele: { d: 14, x: 12.35, w: 1.0, y: 0.4, h: 3.6 },
 };
+
+/**
+ * Stele vor dem Park einer Ortsdurchfahrt (Ortskoordinaten: u längs, x quer, w Breite der Tafel) oder null: am Start
+ * (dort steht der Wagen schon im Park) und in den Ladeparks hinter den Ausfahrten (dort führt die Ausfahrt hin) keine.
+ */
+export function steleOf(sec) {
+  const c = sec && sec.kind === 'stadt' && !sec.start ? chargeOf(sec) : null;
+  return c ? { u: c.u - CHARGE.stele.d, x: CHARGE.stele.x, w: CHARGE.stele.w } : null;
+}
 
 const lane = STREET.lane;
 // Weg der Hinterachse (Fahrradmodell, nichts rutscht seitlich): gerade aus der Bucht zur Straße (−x), ein Viertelkreis
@@ -54,12 +69,12 @@ export const ROLL_T = TA + TB + TC;
 /**
  * Die Startszene der Reise (main.js, Zustand 'charge') in Sekunden ab ihrem Beginn: Der Stecker verlässt die Buchse und
  * kehrt in seinen Halter zurück (plug), die Klappe schließt (flap), der Wagen rollt an (roll, ROLL_T später ist er dem
- * Spiel übergeben: end), OMI gongt und Mini Adam winkt, sobald der Stecker hängt (chime, wave), das Sprachstudio
- * meldet sich (live; OMI grüßt, wenn es ausgeredet hat), und die Kamera geht ins Cockpit (inside, 1,45 s vor dem
- * Ende). Überspringen geht ab skip.
+ * Spiel übergeben: end), OMI gongt, sobald der Stecker hängt (chime), und die Kamera geht ins Cockpit (inside, 1,45 s
+ * vor dem Ende). Überspringen geht ab skip. live: Das Sprachstudio meldet „Wir sind live.“, danach ruft Mini Adam
+ * „Partypeople!“ und winkt dabei wave Sekunden lang aus dem Fenster – sein Gruß folgt in der Warteschlange der
+ * Sprachausgabe auf die Meldung, das Winken beginnt mit ihm (main.js streamStart); dann grüßt OMI.
  */
-// hallo: Mini Adam winkt und sagt „Hallo, Partypeople!“ (data.js PARTYPEOPLE), danach das Sprachstudio „Wir sind live.“
-export const SCENE = { plug: [0.9, 2], flap: [1.25, 1.6], roll: 1.6, chime: 2, wave: [2, 3.3], hallo: 2.05, live: 3.5, skip: 0.3 };
+export const SCENE = { plug: [0.9, 2], flap: [1.25, 1.6], roll: 1.6, chime: 2, live: 0.5, wave: 1.3, skip: 0.3 };
 SCENE.end = SCENE.roll + ROLL_T;
 SCENE.inside = SCENE.end - 1.45;
 
@@ -236,15 +251,48 @@ STOP.end = STOP.unplug + SCENE.end;
 
 /**
  * Fahrplan eines Ladestopps (Game.startCharge, main.js): Der Wagen steht in der Spur des Parks sec mit seiner Mitte bei
- * s (Meter der Fahrt) und x. Ergebnis: { u (Mitte des Parks im Abschnitt), dock (dockPath), d0 (Sekunden bis zum Stand
- * in der Bucht: R einlegen und einparken), at(k) (Zeitpunkt k aus STOP in Sekunden ab dem Halt), roll, end (Ausparken
- * und Übergabe in der Spur) }.
+ * s (Meter der Fahrt) und x. Ergebnis: { u (Mitte des Parks im Abschnitt), creep (creepPath oder null), c (seine Dauer
+ * oder 0), dock (dockPath), d0 (Sekunden bis zum Stand in der Bucht: vorrollen, R einlegen und einparken), at(k)
+ * (Zeitpunkt k aus STOP in Sekunden ab dem Halt), roll, end (Ausparken und Übergabe in der Spur) }.
  */
 export function stopPlan(sec, s, x) {
   const u = chargeOf(sec).u;
-  const dock = dockPath(u, s - sec.s0, x);
-  const d0 = STOP.shift + dock.T;
-  return { u, dock, d0, at: (k) => d0 + k, roll: d0 + STOP.roll, end: d0 + STOP.end };
+  const u0 = s - sec.s0;
+  const h = dockHalt(u);
+  // steht er vor dem Haltepunkt (an der Säule eines Orts angehalten, ohne Plan), rollt er erst bis dorthin vor
+  const creep = u0 < h - CREEP.min ? creepPath(u0, h, x) : null;
+  const dock = dockPath(u, creep ? h : u0, x);
+  const c = creep ? creep.T : 0;
+  const d0 = c + STOP.shift + dock.T;
+  return { u, creep, c, dock, d0, at: (k) => d0 + k, roll: d0 + STOP.roll, end: d0 + STOP.end };
+}
+
+/**
+ * Vorrollen in der Spur (im Gang D), bevor der Wagen rückwärts in die Bucht setzt: wer an der Säule eines Orts neben der
+ * Bucht anhält, steht vor dem Haltepunkt. v: höchstes Tempo (m/s), min: kürzere Wege gleicht dockPath aus (das Stück in
+ * der Spur wird kürzer).
+ */
+export const CREEP = { v: 5, min: 0.6 };
+
+/**
+ * Weg des Vorrollens von u0 nach u1 (Wagenmitte, Ortskoordinaten) bei x: sanft an und sanft bis zum Stand (Weg
+ * d = f · q²(3 − 2q), Spitze 1,5 f / T ≤ CREEP.v). Ergebnis: { T, pose(t, out) } mit pose wie rollPose.
+ */
+export function creepPath(u0, u1, x) {
+  const f = u1 - u0;
+  const T = Math.max(1.2, (1.5 * f) / CREEP.v);
+  return {
+    T,
+    pose(t, out = {}) {
+      const q = Math.min(1, Math.max(0, t / T));
+      out.x = x;
+      out.u = u0 + f * q * q * (3 - 2 * q);
+      out.yaw = 0;
+      out.v = (6 * f * q * (1 - q)) / T;
+      out.steer = 0;
+      return out;
+    },
+  };
 }
 
 /** Übergabe am Ende des Stopps (Park mit Mitte u): Wagenmitte (u, x) in der Spur und Tempo, wie rollPose sie verlässt. */

@@ -598,9 +598,10 @@ export class UI {
 
   // --- Untertitel (Streifen unten) ----------------------------------------------------
   /**
-   * Jemand spricht: who = nomi | studio | durchsage | megafon, label = Zeile über dem Satz. Der Neueste hat das
-   * Wort; wen er unterbrochen hat, der steht danach wieder da, solange seine Zeit noch läuft – so geht kein Satz
-   * verloren.
+   * Jemand spricht: who = nomi | studio | durchsage | megafon, label = Zeile über dem Satz. Ein Untertitel kommt mit
+   * seinem Satz aus der Warteschlange der Sprachausgabe (speech.js onStart) und geht mit ihm, wenn der abgebrochen
+   * wird oder entfällt (onDrop, t = 0): Was dasteht, ist gesagt oder wird gerade gesagt. Der Neueste hat das Wort;
+   * läuft die Zeit eines älteren noch (sein Nachklang), steht der danach wieder da.
    */
   /** Ein Untertitel für dur Sekunden; gibt die Zeile zurück (t = 0 nimmt sie wieder weg). */
   speak(who, text, dur, label = '') {
@@ -611,7 +612,14 @@ export class UI {
   }
 
   showLine() {
-    const l = this.lines[this.lines.length - 1];
+    // der jüngste Satz – außer einer mit top (der Ruf einer Folge BrunnenTV) lebt noch: der bleibt oben
+    let l = this.lines[this.lines.length - 1];
+    for (let i = this.lines.length - 1; i >= 0; i--) {
+      if (this.lines[i].top) {
+        l = this.lines[i];
+        break;
+      }
+    }
     this.subEl.classList.toggle('hidden', !l);
     if (!l || l === this.line) return;
     this.line = l;
@@ -621,17 +629,17 @@ export class UI {
   }
 
   nomi(text, dur = 3) {
-    this.speak('nomi', text, Math.max(2.2, dur));
+    return this.speak('nomi', text, Math.max(2.2, dur));
   }
 
   /** Mini Adam sagt selbst etwas, ohne Megafon (der Gruß zu Beginn jedes Streams): Mikrofon und sein Name. */
   adam(text, dur = 3) {
-    this.speak('adam', '»' + text + '«', Math.max(2.2, dur), 'Mini Adam');
+    return this.speak('adam', '»' + text + '«', Math.max(2.2, dur), 'Mini Adam');
   }
 
   /** Das Sprachstudio spricht: derselbe Untertitel-Platz wie bei OMI, aber klar als Sprachstudio erkennbar. */
   studio(text, dur = 3) {
-    this.speak('studio', text, Math.max(2.2, dur), 'Sprachstudio');
+    return this.speak('studio', text, Math.max(2.2, dur), 'Sprachstudio');
   }
 
   money(amount, label) {
@@ -866,6 +874,8 @@ export class UI {
     this.lastHud = 0.1;
     const p = g.player;
     this.viewersEl.textContent = '👁 ' + fmtNum(Math.round(g.viewers));
+    // nach dem Ruf einer Folge BrunnenTV leuchtet die Zahl, solange sie steigt (Game.viewersUpT)
+    this.viewersEl.classList.toggle('up', g.viewersUpT > g.t);
     // der Kilometerzähler der Fahrt in Reisekilometern, mit dem Rekord (Game.odometer)
     const odo = g.odometer;
     const strecke = (m) => fmtOdo(m / 1000);
@@ -874,7 +884,8 @@ export class UI {
     this.recordEl.textContent = odo > best && best > 0 ? '🏆 neuer Rekord!' : best > 0 ? 'Rekord ' + strecke(best) : '';
     this.recordEl.classList.toggle('record', odo > best && best > 0);
     if (tacho === null) this.showKmh(tachoKmh(p.kmh));
-    const money = fmtCent(g.money);
+    // (die Schäden können die Stream-Kasse ins Minus bringen)
+    const money = (g.money < 0 ? '−' : '') + fmtCent(Math.abs(g.money));
     if (money !== this.moneyRow.textContent) {
       this.moneyRow.textContent = money;
       // ein längeres Guthaben lässt einer stehenden Gutschrift weniger Platz

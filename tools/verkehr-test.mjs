@@ -115,7 +115,7 @@ ok(ELEFANT.room >= 1000, 'Elefantenrennen: bestellt, obwohl gleich eine Ausfahrt
   const game = new Game({
     traffic: loose(T), scenery: loose({ request: () => 1, landmarkSpot: (s) => s, placed: () => null }),
     road: loose(), sky: loose(), rain: loose(), windshield: loose({ firmware: 0, manual: () => 'wipe' }),
-    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
+    cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: (t, v, o) => (o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose(), fx: loose(), pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });

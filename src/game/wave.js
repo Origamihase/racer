@@ -1,7 +1,7 @@
 // Wann Mini Adam winkt (Besitzer, 21.11.2026: „Mini Adam winkt zu viel. Soll nur Menschen in der Stadt am Gehsteig,
 // im Intro, wenn der Chat es will und nach einem Unfall winken.“) – genau vier Anlässe, sonst nie:
-//   intro    – in der Startszene am Supercharger (charge.js SCENE.wave); fehlt dort der Gruß (übersprungen, ehe er
-//              winkt, oder ohne Ladepark), einmal beim Losfahren in die Facecam
+//   intro    – zu seinem „Partypeople!“ nach „Wir sind live.“ (main.js streamStart): in der Startszene am Supercharger
+//              aus dem Fenster (charge.js SCENE.wave), sonst (übersprungen, ohne Ladepark) beim Losfahren in die Facecam
 //   gehsteig – Fußgängern auf dem Gehweg eines Orts, an denen der Wagen gleich vorbeifährt (pedestrianAhead), nicht
 //              schneller als WAVE.slow und höchstens alle WAVE.cool Sekunden
 //   chat     – ein Zuschauer schreibt „Wink mal!“ (data.js CHAT.winkMal), WAVE.chatDelay Sekunden später winkt er

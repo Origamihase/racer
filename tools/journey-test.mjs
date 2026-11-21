@@ -420,7 +420,7 @@ function stream(driver, hours, seed, firstRound = false) {
     windshield: loose({ firmware: 0, manual: () => 'wipe' }),
     cockpit: loose({ nomi: loose() }),
     audio: loose(),
-    speech: loose({ say: (text, voice) => (voice === 'brunnen' && calls.push({ t: game.t, text }), 2.5), busy: false, queue: NONE, current: null }),
+    speech: loose({ say: (text, voice, o) => (voice === 'brunnen' && calls.push({ t: game.t, text }), o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose({ brunnenTV: (n, name) => tvCards.push({ n, name }) }),
     fx: loose(),
     pickups: loose({ update: () => NONE }),

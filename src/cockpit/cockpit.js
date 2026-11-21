@@ -15,7 +15,7 @@ import { plush, COLORS, buildMiniAdam, buildBottle, ADAM_DIM } from '../models/m
 import { prep, meshOf, rbox, sweep, ring, place, roundedRect, warp, pillow, lathe } from './parts.js';
 import { buildCabin, buildHood, roofGlassGeometry, blob, dashTopY, pillarPoint, PAL, SEAT } from './cabin.js';
 import { WHEEL, buildWheelParts, buildColumn } from './wheel.js';
-import { mittenGeometry, forearmGeometry, upperArmGeometry, sleeveGeometry, WRIST } from './hands.js';
+import { mittenGeometry, openHandGeometry, forearmGeometry, upperArmGeometry, sleeveGeometry, WRIST } from './hands.js';
 import { buildRig, setLiveCrop } from './rig.js';
 import { buildProps } from './props.js';
 import { buildRadar } from './radar.js';
@@ -506,6 +506,7 @@ export class Cockpit {
         G.on = false;
         this.placeHands();
       }
+      if (G.mitten && hand.geometry !== G.mitten) hand.geometry = G.mitten;
       return;
     }
     if (g.bottle && !G.bottle) {
@@ -528,6 +529,12 @@ export class Cockpit {
     // oben: winken vor dem Seitenfenster (Finger nach oben, leicht nach außen), jubeln höher und weiter vorn (die Faust
     // um die Flasche, Hals nach oben); die Hand pendelt bzw. wippt erst, wenn sie oben ist
     const kc = g.cheer / Math.max(1e-6, g.wave + g.cheer);
+    // winkt sie, ist die Hand offen (gespreizte Finger, erst gebaut beim ersten Winken), sonst (jubeln, Flasche) der
+    // Fäustling
+    G.mitten = G.mitten || hand.geometry;
+    const open = up > 0.3 && kc < 0.2 && !g.bottle && !(g.megafon > 0);
+    const geo = open ? (G.open = G.open || openHandGeometry(hand.userData.side)) : G.mitten;
+    if (hand.geometry !== geo) hand.geometry = geo;
     const wig = smoothstep(0.7, 1, up);
     G.p1.lerpVectors(GESTURE.wave, GESTURE.cheer, kc);
     G.p1.x += Math.sin(g.t * 9) * 0.035 * wig * (1 - kc);

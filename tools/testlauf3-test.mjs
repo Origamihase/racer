@@ -249,7 +249,7 @@ function newGame(seed, { ui = {}, world = {} } = {}) {
     road: loose(), sky: loose(), rain: loose(), fx: loose(), audio: loose(),
     windshield: loose({ firmware: 0, manual: () => 'wipe' }),
     cockpit: loose({ nomi: loose() }),
-    speech: loose({ say: (text, voice) => (said.push({ t: game.t, text, voice }), 2.5), busy: false, queue: NONE, current: null }),
+    speech: loose({ say: (text, voice, o) => (said.push({ t: game.t, text, voice }), o && o.onStart && o.onStart(2.5), 2.5), busy: false, queue: NONE, current: null }),
     ui: loose({ chat: (m) => chat.push({ t: game.t, ...m }), ...ui }),
     pickups: loose({ update: () => NONE }),
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null, ...world },

@@ -10,12 +10,14 @@ import { setMaxAnisotropy, ROAD } from './textures.js';
 import { Road } from './world/road.js';
 import { XxlWorld, ROAD_OPTS, autoTarget, autoDrive, AUTO } from './world/xxl/world.js';
 import { installDebug } from './world/xxl/debug.js';
+import { Gegenverkehr } from './world/xxl/gegenverkehr.js';
 import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
 import { createNatureKit } from './world/kit/nature.js';
 import { cityKit, naviLayout } from './world/xxl/towns.js';
 import { SCENE, ROLL_T, STOP, DOCK, CHARGE, rollPose, groundAt, chargeOf } from './world/xxl/charge.js';
+import { squareOf } from './world/xxl/plan.js';
 import { buildPopping, POPPING_AT, POPPING_YAW, windowAim } from './world/xxl/popping.js';
 import { TV, tvShots, shotPose, dollyFor, shotAt, windowAt, megaphoneAt, lookAt as tvLookAt, stillShot, STILL } from './world/xxl/brunnentv.js';
 import { buildHandMegaphone } from './models/megaphone.js';
@@ -51,7 +53,11 @@ import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
 import { albumBadges } from './ui/album.js';
 import { thinLine } from './ui/routemap.js';
-import { clamp, lerp, damp, easeInOut, smoothstep } from './util.js';
+import { clamp, lerp, damp, easeInOut, smoothstep, mulberry32 } from './util.js';
+
+// Ladezeit: Marken für die Messung (performance.mark ma:…, zu lesen mit performance.getEntriesByType('mark')): alle
+// Module ausgewertet
+performance.mark('ma:main');
 
 const QUALITY = {
   hoch: { pr: 1.5, msaa: 4, shadows: true, shadowSize: 2048, mirrorEvery: 1 },
@@ -117,8 +123,9 @@ const xxl = new XxlWorld({ scene, road, scenery });
 albumBadges(save);
 const rain = new Rain(scene);
 const traffic = new Traffic(scene, rain);
+// Gegenverkehr auf Orts- und Landstraßen (eigener kleiner Vorrat und eigener Zufall, gesetzt wie der Verkehr: xxlStep)
+const gegen = new Gegenverkehr(scene, { rnd: mulberry32(1121) });
 const pickups = new Pickups(scene);
-prewarmVehicles();
 const tesla = buildTesla();
 // Schaden außen: Dellen, Schrammen, Pflaster, Leuchten, Dampf (baut nur neu, wenn sich der Schaden ändert)
 const teslaDamage = new TeslaDamage(tesla.damageHooks);
@@ -288,7 +295,8 @@ const touchEl = document.createElement('div');
 touchEl.className = 'touch';
 // Lenken, Bremse und Strom kommen aus src/ui/touch.js (Daumen-Zug oder Lenkknöpfe), die Knöpfe am Rand aus dessen
 // Liste TOUCH_BUTTONS: „Ladestopp einplanen“ (wie Taste L) ist zu sehen, wenn der Akku halb leer ist oder OMI gewarnt
-// hat, „BrunnenTV hier“ (wie Taste B), solange der Wagen neben einem Brunnen auf dem Weg steht (Game.wayOffer)
+// hat, und heißt „Jetzt laden“, solange der Wagen neben einer Ladesäule oder Bucht steht (Game.chargeOffer); „BrunnenTV
+// hier“ (wie Taste B), solange der Wagen neben einem Brunnen auf dem Weg steht (Game.wayOffer)
 const touchBtn = {};
 for (const t of TOUCH_BUTTONS) {
   const b = document.createElement('button');
@@ -304,6 +312,16 @@ for (const t of TOUCH_BUTTONS) {
 }
 const stopBtn = touchBtn.ladestopp;
 const wayBtn = touchBtn.brunnen;
+/** Der Knopf der Taste L sagt, was er gerade tut: neben einer Säule oder Bucht „Jetzt laden“, sonst „Ladestopp einplanen“. */
+let stopNow = false;
+function stopLabel(now) {
+  if (!stopBtn || now === stopNow) return;
+  stopNow = now;
+  const t = TOUCH_BUTTONS.find((b) => b.action === 'ladestopp');
+  const label = now ? t.now : t.label;
+  stopBtn.setAttribute('aria-label', label);
+  stopBtn.lastChild.textContent = ' ' + label;
+}
 app.appendChild(touchEl);
 const touch = new TouchControls(touchEl, input);
 const jolt = new Jolt();
@@ -364,11 +382,16 @@ const gameWorld = {
   trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec),
   // BrunnenTV unterwegs: der Wagen bleibt stehen, wo er steht, bis release()
   hold: (sec) => (xxl.arrival.held = { s: xxl.trip.s + 0.3, sec, place: sec.place, park: -1 }),
+  // Laden ohne Plan: der Ladeplatz neben dem Wagen (Tempo v) und Taste L dort (plan.js Arrival.chargeSpot, charge)
+  chargeSpot: (v) => xxl.arrival.chargeSpot(xxl.trip, v),
+  charge: (v) => xxl.arrival.charge(xxl.trip, v),
   // die Bezahlschranke eines Orts (gags.js, world/xxl/schranke.js): 0 zu … 1 offen
   gate: (sec, k) => xxl.towns.gate(sec, k),
 };
 // (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
 const game = new Game({ traffic, scenery, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
+// Mini Adams Gruß zu Beginn kommt von hier (streamStart): Der Chat grüßt erst danach zurück (Game.greet)
+game.greetFirst = true;
 // Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht, BrunnenTV,
 // Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
 xxl.on((e) => {
@@ -664,6 +687,7 @@ function toTitle() {
 }
 
 function startRun() {
+  performance.mark('ma:start');
   audio.init();
   menus.hide();
   paused = false;
@@ -677,11 +701,13 @@ function startRun() {
   cockpit.shake = 0;
   chassis.reset();
   // jede Fahrt beginnt mit der Startszene am Supercharger in Erlensee (ohne Ladepark gleich am Steuer)
-  Object.assign(chargeRun, { hello: false, liveT: Infinity, greetT: Infinity });
+  Object.assign(chargeRun, { hello: false, said: false, waveT: -1, greetT: Infinity });
+  chargeRun.id++;
   state = 'charge';
   if (!chargeBegin()) toDrive();
   // die Taste, die „Losfahren“ ausgelöst hat, soll die Startszene nicht gleich überspringen
   input.endFrame();
+  performance.mark('ma:started');
 }
 
 function resume() {
@@ -708,7 +734,8 @@ function finishRun() {
   // Rekord und Summe in Reisemetern bzw. Reisekilometern
   const best = save.best.reise || 0;
   const newRecord = o.distance > best && o.distance > 50;
-  save.wallet = Math.round((save.wallet + o.money) * 100) / 100;
+  // (ein Stream im Minus – die Schäden – geht vom Guthaben ab, unter null fällt es nie)
+  save.wallet = Math.max(0, Math.round((save.wallet + o.money) * 100) / 100);
   save.best.reise = Math.max(best, o.distance);
   save.best.earned = Math.max(save.best.earned || 0, o.money);
   save.best.viewers = Math.max(save.best.viewers || 0, o.peakViewers);
@@ -1220,18 +1247,41 @@ function slowCarAhead(p) {
   });
 }
 
+/**
+ * Was die Tipps der ersten Minuten vor sich sehen (first-tips.js): fountain – der Brunnen eines Orts auf dem Weg (nicht
+ * der des Ziels, dort beginnt die Folge von selbst) liegt höchstens TIP_SEE.brunnen Meter voraus; post – die Ladesäule
+ * eines Orts höchstens TIP_SEE.post Meter (ihr Schild steht 100 m davor).
+ */
+const TIP_SEE = { brunnen: 250, post: 160 };
+const tipSeen = { fountain: false, post: false };
+function tipSights() {
+  const T = xxl.trip;
+  tipSeen.fountain = tipSeen.post = false;
+  for (const c of T.cur.sections) {
+    if (c.s0 > T.s + TIP_SEE.brunnen) break;
+    if (c.s1 < T.s || c.kind !== 'stadt' || c.start) continue;
+    const q = c.place !== T.target ? squareOf(c) : null;
+    if (q && q.s > T.s && q.s - T.s <= TIP_SEE.brunnen) tipSeen.fountain = true;
+    const at = c.postS !== undefined && !c.charged ? c.s0 + chargeOf(c).u - T.s : -1;
+    if (at > 0 && at <= TIP_SEE.post) tipSeen.post = true;
+  }
+  return tipSeen;
+}
+
 /** Jedes Bild der Fahrt: Tipps der ersten Minuten (camera: V in diesem Bild; ctl: die übrigen Eingaben). */
 function tipsTick(dt, ctl, camera) {
   if (firstTips.done && !firstTips.cur) return;
   const p = game.player;
-  // frei: kein Halt am Brunnen oder an der Säule, und „So steuerst du“ hat den Platz geräumt
-  const free = !game.charging && !game.navi.stopping && !driveHintBusy();
+  // frei: kein Halt am Brunnen oder an der Säule, keine Folge, und „So steuerst du“ hat den Platz geräumt
+  const free = !game.charging && !game.tv && !game.navi.stopping && !driveHintBusy();
   if (free) tipT += dt;
   if (camera) firstTips.did('camera');
   if (ctl.megafon) firstTips.did('megafon');
   if (ctl.ladestopp) firstTips.did('ladestopp');
+  if (ctl.brunnen) firstTips.did('brunnen');
   if (firstTips.cur && input.take('confirm')) tipsOff();
   const ins = turnIns;
+  const see = firstTips.seen.has('brunnen') && firstTips.seen.has('laden') ? tipSeen : tipSights();
   const ev = firstTips.update(dt, {
     free,
     t: tipT,
@@ -1239,6 +1289,10 @@ function tipsTick(dt, ctl, camera) {
     exit: !!ins && ins.turn === 'exit' && !ins.calm && ins.dist > 250,
     carAhead: !firstTips.seen.has('megafon') && slowCarAhead(p),
     stop: game.stopOffer(),
+    // B: der erste Brunnen auf dem Weg kommt in Sicht (oder der Wagen steht schon daneben)
+    fountain: see.fountain || game.wayHint,
+    // L: die erste Ladesäule kommt in Sicht, der Wagen steht neben einer (oder OMI warnt: stop)
+    post: see.post || game.chargeHint,
   });
   if (!ev) return;
   showTip(ui, ev.show || null, input.lastDevice, tipsOff);
@@ -1250,10 +1304,11 @@ function toDrive() {
   state = 'drive';
   stateT = 0;
   ui.show(true);
-  if (!chargeRun.hello) streamHello();
-  // die Facecam geht an: hat er in der Startszene nicht schon gewinkt (übersprungen, kein Ladepark), winkt er jetzt
-  // hinein – das ist sein Gruß zum Intro (game/wave.js)
-  game.waveAt('intro');
+  // ohne Startszene (übersprungen, ehe „Wir sind live.“ kam, oder kein Ladepark): der Beginn des Streams jetzt
+  if (!chargeRun.hello) streamStart();
+  // die Facecam geht an: Hat er seinen Gruß in der Startszene gesagt, ohne draußen zu winken (er kam erst, als die
+  // Kamera schon ins Cockpit ging), winkt er jetzt hinein; sonst winkt er, sobald sein Gruß beginnt (streamStart)
+  if (chargeRun.said && chargeRun.waveT < 0) game.waveAt('intro');
   // die Tipps der ersten Minuten zählen ab hier (first-tips.js); keiner steht noch vom letzten Stream
   firstTips.restart();
   tipT = 0;
@@ -1282,8 +1337,10 @@ const CHARGE_LINES = { live: 'Wir sind live.', greet: 'Hallo Mini Adam! Akku vol
 // town: der Startort (Towns.of: plan, group, charge), port: Ladeklappe des Wagens, keep: Spieler vor der Szene,
 // skipT: wann übersprungen wurde (dann erst abblenden), greetT: wann OMI grüßt (Spielzeit simT)
 // parked: der Titel der Reise zeigt den Wagen am Supercharger (xxlStart)
-// hello: Mini Adams „Hallo, Partypeople!“ ist gesagt, liveT: wann das Sprachstudio „Wir sind live.“ sagt (Spielzeit simT)
-const chargeRun = { town: null, port: null, pose: {}, keep: null, parked: false, chimed: false, hello: false, skipT: -1, liveT: Infinity, greetT: Infinity };
+// hello: der Stream hat begonnen („Wir sind live.“ und Mini Adams Gruß stehen in der Sprachausgabe, streamStart),
+// said: sein Gruß hat begonnen, waveT: wann (stateT) er dazu in der Startszene zu winken begann (−1: nicht dort),
+// id: Nummer des Streams für die Rückmeldungen der Sprachausgabe (liveOff zählt weiter: Späteres gilt nicht mehr)
+const chargeRun = { town: null, port: null, pose: {}, keep: null, parked: false, chimed: false, hello: false, said: false, waveT: -1, id: 0, skipT: -1, greetT: Infinity };
 const chargeM = new THREE.Matrix4();
 
 /** Wagen in die Bucht des Startorts, Stecker in die Buchse, Ring grün. false, wenn der Startort keinen Ladepark hat. */
@@ -1372,9 +1429,8 @@ function chargeStep(dt) {
     run.chimed = true;
     audio.nomiChime();
   }
-  if (t >= S.hallo && !run.hello) streamHello();
-  // sein Gruß im Intro (game/wave.js): ab hier winkt er aus dem Fenster, beim Losfahren nicht noch einmal
-  if (t >= S.wave[0]) game.waves.ask('intro', game.t);
+  // der Stream geht live (das Sprachstudio), danach grüßt Mini Adam und winkt dabei aus dem Fenster (streamStart)
+  if (t >= S.live && !run.hello) streamStart();
   const where = placeScene(dt, CHARGE_KEYS, t, S.inside, S.end);
   const sw = S.inside;
   const fade = t < 0.6 ? 1 - t / 0.6 : t > sw - 0.25 && t < sw ? (t - (sw - 0.25)) / 0.25 : t >= sw && t < sw + 0.35 ? 1 - (t - sw) / 0.35 : 0;
@@ -1385,36 +1441,53 @@ function chargeStep(dt) {
     updateCarMatrix();
     toDrive();
   }
+  // er winkt, solange er grüßt (ab waveT, S.wave Sekunden lang), und schaut dabei hinaus bis zum Schnitt ins Cockpit
+  const w = run.waveT;
   return {
     inside: where === 'inside',
-    wave: smoothstep(S.wave[0], S.wave[0] + 0.4, t) * (1 - smoothstep(S.wave[1] - 0.5, S.wave[1], t)),
-    look: smoothstep(S.wave[0], S.wave[0] + 0.8, t) * (1 - smoothstep(S.wave[1], S.inside, t)),
+    wave: w < 0 ? 0 : smoothstep(w, w + 0.4, t) * (1 - smoothstep(w + S.wave - 0.5, w + S.wave, t)),
+    look: w < 0 ? 0 : smoothstep(w, w + 0.8, t) * (1 - smoothstep(w + S.wave, S.inside, t)),
   };
 }
 
 /**
- * Jeder Stream beginnt mit Mini Adams Gruß (data.js PARTYPEOPLE): in der Startszene, während er winkt, sonst (ohne
- * Ladepark, übersprungen vor dem Gruß) beim Losfahren. Mit seiner tiefen Stimme und Vorrang, damit nichts ihn
- * verschluckt; danach das Sprachstudio „Wir sind live.“ und OMIs Gruß.
+ * Der Beginn jedes Streams, genau einmal (chargeRun.hello; in der Startszene bei SCENE.live, sonst beim Losfahren):
+ * Zuerst meldet das Sprachstudio „Wir sind live.“, dann ruft Mini Adam „Partypeople!“ (data.js PARTYPEOPLE) und winkt
+ * dabei, dann grüßt der Chat zurück (Game.greet) und OMI wünscht gute Fahrt (Besitzer, 21.11.2026: „Es sollte zuerst
+ * ‚Wir sind live‘ und danach ‚Partypeople‘ kommen. Ohne Stream macht ein Gruß keinen Sinn.“). Beide Sätze stehen in
+ * der Warteschlange der Sprachausgabe (mit Vorrang, in dieser Reihenfolge): Sein Gruß beginnt erst, wenn das Studio
+ * ausgeredet hat, und Untertitel und Winken beginnen mit ihm – in der Startszene draußen am Fenster, solange die Kamera
+ * noch draußen ist, sonst in Facecam und Cockpit (game/wave.js 'intro').
  */
-function streamHello() {
-  chargeRun.hello = true;
-  const d = speech.say(PARTYPEOPLE.say, 'adam', { priority: true });
-  ui.adam(PARTYPEOPLE.say, d + 0.8);
-  chargeRun.liveT = simT + Math.max(d + 0.35, SCENE.live - SCENE.hallo);
+function streamStart() {
+  const run = chargeRun;
+  run.hello = true;
+  const id = run.id;
+  const now = () => id === run.id;
+  speech.say(CHARGE_LINES.live, game.studioVoice(), { priority: true, onStart: (d) => now() && ui.studio(CHARGE_LINES.live, d + 0.8) });
+  const text = PARTYPEOPLE.say;
+  speech.say(text, 'adam', {
+    priority: true,
+    onStart: (d) => {
+      if (!now()) return;
+      run.said = true;
+      ui.adam(text, d + 0.8);
+      game.greet();
+      if (state === 'charge' && stateT < SCENE.inside - SCENE.wave) {
+        run.waveT = stateT;
+        game.waves.ask('intro', game.t);
+      } else if (state === 'drive') game.waveAt('intro');
+    },
+    onEnd: () => {
+      if (now()) run.greetT = simT + 0.6;
+    },
+  });
 }
 
-/** Der Stream ist aus: kein „Wir sind live.“ und kein Gruß OMIs mehr, die noch geplant waren. */
+/** Der Stream ist aus: kein Gruß OMIs mehr, und was die Sprachausgabe vom Beginn noch meldet, gilt nicht mehr. */
 function liveOff() {
-  chargeRun.liveT = chargeRun.greetT = Infinity;
-}
-
-/** Das Sprachstudio meldet: Wir sind live (nach Mini Adams Gruß). */
-function chargeLive() {
-  chargeRun.liveT = Infinity;
-  const d = speech.say(CHARGE_LINES.live, game.studioVoice());
-  ui.studio(CHARGE_LINES.live, d + 0.8);
-  chargeRun.greetT = simT + d + 1.1;
+  chargeRun.greetT = Infinity;
+  chargeRun.id++;
 }
 
 /** OMI grüßt (wie Game.say, aber ohne die Spielzeit: die steht in der Szene still). */
@@ -1422,8 +1495,15 @@ function chargeGreet() {
   chargeRun.greetT = Infinity;
   audio.nomiChime();
   cockpit.nomi.setMood('happy', 3.2);
-  const d = speech.say(CHARGE_LINES.greet, 'board', { priority: true, onStart: (x) => cockpit.nomi.speak(x) });
-  ui.nomi(CHARGE_LINES.greet, d + 0.8);
+  let line = null;
+  speech.say(CHARGE_LINES.greet, 'board', {
+    priority: true,
+    onStart: (x) => {
+      cockpit.nomi.speak(x);
+      line = ui.nomi(CHARGE_LINES.greet, x + 0.8);
+    },
+    onDrop: () => line && (line.t = 0),
+  });
 }
 
 // --- Ladestopp im Park (world/xxl/charge.js STOP, Game.startCharge) -------------------------------------------------
@@ -1470,7 +1550,9 @@ function stopBegin(c) {
   const town = xxl.town(c.sec);
   if (!town || !town.charge) return;
   const r = stopRun;
-  Object.assign(r, { on: true, c, town, rig: town.charge, port: tesla.port(), v: 0, rev: true, brake: true, gear: 'R', skipT: -1, fadeT: 0, done: {} });
+  // (rollt er erst vor bis an den Haltepunkt, legt er R danach ein: stopTick)
+  const creep = c.plan.creep;
+  Object.assign(r, { on: true, c, town, rig: town.charge, port: tesla.port(), v: 0, rev: !creep, brake: !creep, gear: creep ? 'D' : 'R', skipT: -1, fadeT: 0, done: {} });
   // die Buchse des Wagens in der Bucht im Rahmen der Säule (wie chargePlug): dorthin führt der Stecker
   stopPose(rollPose(c.plan.u, 0, r.q));
   tesla.root.updateWorldMatrix(true, false);
@@ -1493,13 +1575,13 @@ function stopBegin(c) {
     windowAim(tesla.windowOpening(), r.aim).applyMatrix4(tesla.root.matrixWorld).applyMatrix4(chargeM.copy(r.pop.group.matrixWorld).invert());
     r.along.set(0, 0, 1).transformDirection(tesla.root.matrixWorld).transformDirection(chargeM);
   }
-  stopPose(c.plan.dock.pose(0, r.q));
+  stopPose(creep ? creep.pose(0, r.q) : c.plan.dock.pose(0, r.q));
   // die Drohne fliegt von dort los, wo sie gerade ist
   r.from.copy(camera.position);
   camera.getWorldDirection(r.fromLook).multiplyScalar(20).add(camera.position);
   r.look.copy(r.fromLook);
   if (stopBtn) stopBtn.classList.remove('show');
-  audio.gear('R');
+  if (!creep) audio.gear('R');
 }
 
 /** Wagen der Szene an die Lage q (Ortskoordinaten des Parks): über die Matrix des Parks in die Welt (wie chargePose). */
@@ -1551,12 +1633,13 @@ function stopTick() {
   }
   const t = game.chargeT();
   const te = t - P.at(STOP.unplug);
-  const q = t < P.d0 ? P.dock.pose(t - STOP.shift, r.q) : rollPose(P.u, clamp(te - SCENE.roll, 0, ROLL_T), r.q);
+  // (an der Säule eines Orts vor dem Haltepunkt angehalten: erst vorrollen, P.creep, dann R)
+  const q = t < P.c ? P.creep.pose(t, r.q) : t < P.d0 ? P.dock.pose(t - P.c - STOP.shift, r.q) : rollPose(P.u, clamp(te - SCENE.roll, 0, ROLL_T), r.q);
   r.v = q.v;
-  r.rev = t < P.d0;
-  r.gear = r.rev ? 'R' : t < P.roll ? 'P' : 'D';
+  r.rev = t >= P.c && t < P.d0;
+  r.gear = t < P.c ? 'D' : r.rev ? 'R' : t < P.roll ? 'P' : 'D';
   // Bremslicht, solange er in R wartet und wenn er vor der Bucht anhält
-  r.brake = t < STOP.shift + 0.15 || (t < P.d0 && t > P.d0 - DOCK.down);
+  r.brake = (t > P.c - 0.5 && t < P.c + STOP.shift + 0.15) || (t < P.d0 && t > P.d0 - DOCK.down);
   // so zeigen Tacho, Räder, Lenkrad und Motor den Wagen der Szene (vor dem nächsten game.update steht der Spieler wieder)
   p.speed = Math.abs(q.v);
   p.wheel = q.steer / 0.35;
@@ -1584,6 +1667,7 @@ function stopTick() {
     r.done[k] = true;
     if (t < at + 0.3) fn();
   };
+  if (P.c) once('r', P.c, () => audio.gear('R'));
   once('in', P.at(STOP.plug[1]), () => audio.unplug());
   once('juice', P.at(STOP.juice), () => adamDo((a) => {
     a.raiseBottle();
@@ -2070,8 +2154,7 @@ function step(dt, { render = true } = {}) {
   let adamWave = 0;
   let adamLook = 0;
   let adamMegafon = 0;
-  // „Wir sind live.“ nach Mini Adams Gruß, OMIs Gruß, wenn das Sprachstudio ausgeredet hat (auch erst nach der Übergabe)
-  if (simT >= chargeRun.liveT) chargeLive();
+  // OMIs Gruß, wenn Mini Adam ausgeredet hat (auch erst nach der Übergabe)
   if (simT >= chargeRun.greetT) chargeGreet();
 
   if (input.take('mute')) {
@@ -2202,7 +2285,10 @@ function step(dt, { render = true } = {}) {
       if (p.lawful) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
       waveAtWalkers(dt, p);
-      if (stopBtn) stopBtn.classList.toggle('show', game.stopOffer());
+      if (stopBtn) {
+        stopBtn.classList.toggle('show', game.stopOffer());
+        stopLabel(game.chargeHint);
+      }
       wayBtn.classList.toggle('show', game.wayHint);
       driveHintTick(dt, ctl);
       tipsTick(dt, ctl, camKey);
@@ -2437,6 +2523,7 @@ function xxlStart(title) {
   courseTrip = xxl.trip;
   xxlNav = new NavModel(xxl.trip);
   traffic.reset();
+  gegen.reset();
   pickups.reset();
   xxlTrafficFrame = null;
   // die Fahrt beginnt am Supercharger in Erlensee: Dort wartet der Wagen schon im Titel
@@ -2491,6 +2578,9 @@ function xxlStep(p, w, dt) {
   if (sh) pickups.applyShear(sh, p.s);
   pickups.group.visible = traffic.group.visible;
   game.offAutobahn = !v || v.role !== 'cur';
+  // Gegenverkehr abseits der Autobahn: Ein Rempler zählt nur im Spiel (wer in die Gegenspur gerät, Game.onCrash)
+  const gev = gegen.update(dt, xxl.trip, p, xxl.shear, simT);
+  if (state === 'drive' && game.running) for (const e of gev) if (e.type === 'crash') game.onCrash(e);
 }
 /** Autopilot zum Prüfen (?debug, __MA.xxl.auto): folgt dem Navi, hält Spur und Tempo, lenkt in den Kurven mit. */
 function xxlAuto(p, ctl) {
@@ -2499,22 +2589,32 @@ function xxlAuto(p, ctl) {
   autoDrive(ctl, p, autoTarget(xxl.trip, xxl.choice), xxlLimits.vmax, k);
 }
 
+/** Start: Welt der Titelfahrt, Shader, Titel (die Marken ma:… messen die Ladezeit). */
 function boot() {
+  performance.mark('ma:init');
   applyCosmetics();
   applyDrive();
   game.startTitle();
   xxlStart(true);
+  performance.mark('ma:world');
   // Ein paar Bilder vorab rendern (Shader kompilieren), dann Titel zeigen
   updateCarMatrix();
   placeDrone(0.016, 'orbit');
   try {
+    // jedes Programm so, wie das erste Bild es braucht: Welt und Facecam zeichnen in ein Render-Ziel (ohne Tone-Mapping,
+    // linear – ohne das gebundene Ziel übersetzte das erste Bild die ganze Welt noch einmal), Cockpit und Quads direkt
+    renderer.setRenderTarget(worldRT);
     renderer.compile(scene, camera);
-    renderer.compile(cockpit.scene, camera);
+    renderer.setRenderTarget(facecam.rt);
     renderer.compile(facecam.scene, facecam.camera);
+    renderer.setRenderTarget(null);
+    renderer.compile(cockpit.scene, camera);
     renderer.compile(facecam.quadScene, facecam.quadCam);
+    renderer.compile(compScene, compCam);
   } catch (e) {
-    /* egal */
+    renderer.setRenderTarget(null);
   }
+  performance.mark('ma:compiled');
   state = 'title';
   menus.show('title', save);
   loadingEl.classList.add('done');
@@ -2522,6 +2622,10 @@ function boot() {
   requestAnimationFrame((t) => {
     last = t;
     frame(t);
+    performance.mark('ma:frame');
+    // die Netze aller Fahrzeuge vorab (gegen Ruckler beim ersten Auftauchen) erst nach dem ersten Bild des Titels: bis
+    // dahin baut jedes Fahrzeug, was es braucht, selbst
+    setTimeout(prewarmVehicles, 300);
   });
 }
 
@@ -2617,11 +2721,12 @@ if (DEBUG) {
     },
   };
   installDebug(window.__MA, xxl, () => game.player, {
-    afterWarp: () => { traffic.reset(); pickups.reset(); scenery.reset(); },
+    afterWarp: () => { traffic.reset(); gegen.reset(); pickups.reset(); scenery.reset(); },
     // ein Sprung plant den Kurs unterwegs wie eine Fahrt mit 30 m/s (ohne die Tabelle des Shaders zu schreiben)
     eachStep: (s, step) => course.fill(xxl.trip, s, null, step / 30),
   });
   window.__MA.kit = { ...window.__MA.kit, nature: createNatureKit(W) };
+  window.__MA.gegen = gegen;
 }
 
 /** Prüfstand: den Spieler an die Stelle s setzen (Verkehr, Sammelsachen und Landschaft neu). */

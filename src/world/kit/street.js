@@ -1034,6 +1034,12 @@ prop('signPosts', 'sign', (b) => {
 
 // --- Parkende Spielzeugautos (Karosserie in der Instanzfarbe) ------------------------------------------------------
 /**
+ * Lichter geparkter Autos sind aus (der Eigentümer, 21.11.: „Parkende Autos sollten kein aktives Rücklicht haben“):
+ * dunkelrotes Glas hinten, graues vorn. Es leuchtet nur der fahrende Verkehr (models/vehicles.js).
+ */
+export const LAMP_OFF = { tail: 0x6a2420, head: 0x8f8c82 };
+
+/**
  * Spielzeugauto, Mitte im Ursprung, Front nach +z. Weiche Wanne in der Instanzfarbe, darauf ein „Glashaus“ aus
  * dunklen, glänzenden Scheiben mit Dach in Wagenfarbe; dicke Räder, die ein wenig aus der Flanke schauen.
  * p: L Länge, W Breite, bh Höhe der Wanne, ch Höhe der Kabine, cabL/cab Länge und Lage der Kabine, roof (Farbe des
@@ -1098,8 +1104,9 @@ function toyCar(b, p) {
       const x = s * (w / 2 - 0.3);
       const y = clr + bh * 0.62;
       b.xf([x, y, z - (back ? -0.02 : 0.02)], [back ? -Math.PI / 2 : Math.PI / 2, 0, 0], 1, () => {
-        if (near) G.lathe(0, 0, 0, [[0.11, 0], [0.11, 0.025], [0.07, 0.055], [0, 0.065]], back ? PAL.red : 0xfff4cc, { seg: 12, ks: [0.85, 1, 1.15, 1.25] });
-        else G.disc(0, 0.04, 0, 0.11, back ? PAL.red : 0xfff4cc, { up: true, seg: 6, k: 1.15 });
+        const lamp = back ? LAMP_OFF.tail : LAMP_OFF.head;
+        if (near) G.lathe(0, 0, 0, [[0.11, 0], [0.11, 0.025], [0.07, 0.055], [0, 0.065]], lamp, { seg: 12, ks: [0.85, 1, 1.15, 1.25] });
+        else G.disc(0, 0.04, 0, 0.11, lamp, { up: true, seg: 6, k: 1.15 });
       });
     }
   }

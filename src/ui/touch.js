@@ -9,7 +9,8 @@ import { dragToAnalog, swipeDir, TOUCH } from './touch-model.js';
 
 /**
  * Die Touch-Knöpfe am Rand (main.js baut sie, src/ui/controls.js nennt sie in der Steuerungsübersicht): Aktion, Inhalt,
- * Klasse; when: nur zu sehen, solange das Spiel sie anbietet (Ladestopp einplanbar, Brunnen auf dem Weg).
+ * Klasse; when: nur zu sehen, solange das Spiel sie anbietet (Ladestopp einplanbar oder Ladesäule neben dem Wagen,
+ * Brunnen auf dem Weg); now: so heißt der Knopf, solange er gleich hier lädt (neben einer Säule oder Bucht).
  */
 export const TOUCH_BUTTONS = [
   { action: 'horn', label: '📯', cls: 't-small t-horn' },
@@ -17,7 +18,7 @@ export const TOUCH_BUTTONS = [
   { action: 'megafon', label: '📢', cls: 't-small t-megafon' },
   { action: 'camera', label: '🎥', cls: 't-small t-camera' },
   { action: 'pause', label: '⏸', cls: 't-small t-pause' },
-  { action: 'ladestopp', icon: '🔌', label: 'Ladestopp einplanen', cls: 't-stop', when: true },
+  { action: 'ladestopp', icon: '🔌', label: 'Ladestopp einplanen', now: 'Jetzt laden', cls: 't-stop', when: true },
   { action: 'brunnen', icon: '⛲', label: 'BrunnenTV hier', cls: 't-way', when: true },
 ];
 /** Lenken und Pedale (Beschriftung wie auf dem Schirm). */

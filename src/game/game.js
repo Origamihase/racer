@@ -2,7 +2,7 @@
 // Sprachdurchsagen, Rahmen, Funkloch, Zuschauer, Spenden, Jobs) und die Abrechnung am Ende.
 // Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
 import {
-  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
+  CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_AKKU, REPARATUR, damageCount, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
   MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, viewerName, viewerNameAt, fillTemplate, alterReaction, berufFor, fmtBetrag,
   BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, PARTYPEOPLE, SCHOENNBRUN,
 } from '../data.js';
@@ -10,8 +10,8 @@ import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fm
 import { Player } from './player.js';
 import { damageLine } from './damage.js';
 
-/** Kratzspuren von der Leitplanke am ganzen Wagen (je Seite höchstens drei, damage.js). */
-const scratchMarks = (damage) => Object.values(damage.scratches).reduce((a, v) => a + v, 0);
+/** Kratzer von der Leitplanke bisher: jede Schramme (damage.js scraped; gezeichnet sind höchstens drei je Seite). */
+const scratchMarks = (damage) => damage.scraped || 0;
 import { WorldNavi } from './navi.js';
 import { Economy, BONTANA } from './economy.js';
 import { Satisfaction, ZUFRIEDEN } from './satisfaction.js';
@@ -31,6 +31,9 @@ import { WaveRule, WAVE, chatGap } from './wave.js';
 import { StreamGags } from './gags.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
+// So viel langsamer als geschätzt (estimateSpeech) sprechen echte Stimmen höchstens: Der Gruß einer Folge BrunnenTV muss
+// auch dann vor ihrem Ruf zu Ende sein
+const SPEECH_SLACK = 1.35;
 // „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
 // aus dem großen Vorrat – sonst gäbe es fast nur Regen- und Brunnen-Angebote, denn eins von beiden ist fast immer.
 // Passt eins zur Lage, darf es kommen, sobald die Uhr weniger als so viele Sekunden zeigt: Ein Ziel, ein Brunnen
@@ -238,6 +241,11 @@ export class Game {
     this.breakdown = {};
     // Reise: was die laufende Runde eingebracht und gekostet hat (Rempler, Kratzspuren bis dahin; settleRound)
     this.tally = { income: 0, hits: 0, marks: 0 };
+    // alle abgebuchten Schäden des Streams (Abrechnung im Abspann: „Schäden (N Rempler · M Kratzer)“) und die
+    // Rechnung, die gerade unterwegs ist (payBill kommt 3,2 s nach der Ankunft; endet der Stream vorher, bucht end)
+    this.damageBill = { hits: 0, marks: 0, amount: 0 };
+    this.billDue = null;
+    this.viewersUpT = -1;
     this.over = null;
     this.running = true;
     this.queue = [];
@@ -302,6 +310,9 @@ export class Game {
     this.wayDone = new WeakSet();
     this.wayHint = false;
     this.wayNoteT = 0;
+    // neben einer Ladesäule oder Bucht: Laden mit L wird angeboten (chargeOffer), der Hinweis kam zuletzt bei chargeNoteT
+    this.chargeHint = false;
+    this.chargeNoteT = 0;
     // Reise: Ladestopp im Ladepark ({ t0, from, park, name, sec, plan, … }, startCharge) oder null; Verbrauch seit dem
     // letzten Laden (meterAkku: Meter Straße und Akku je Art der Straße, für OMIs Warnung) und wann sie wieder misst;
     // sugarDue: der Zuckerschub des Bananensafts kommt, sobald der Wagen nach dem Stopp wieder auf der Autobahn ist
@@ -374,8 +385,11 @@ export class Game {
     this.ui.reset?.();
     this.ui.jobs(this.jobs);
     this.bot('hugo', 'Der Stream läuft! Viel Spaß beim Zuschauen.');
-    // Mini Adam hat zu Beginn „Hallo, Partypeople!“ gesagt (Startszene, main.js): Der Chat grüßt zurück
-    shuffle(PARTYPEOPLE.chat).slice(0, 4).forEach((line, i) => this.later(0.6 + i * 0.6 + rand(0, 0.3), () => this.chat(line)));
+    // Mini Adam sagt nach „Wir sind live.“ „Partypeople!“ (main.js streamStart): Der Chat grüßt zurück – nie vor seinem
+    // Gruß (greetFirst: main.js meldet ihn mit greet; wer vorher dran wäre, wartet in helloHeld)
+    this.helloSaid = !this.greetFirst;
+    this.helloHeld = [];
+    shuffle(PARTYPEOPLE.chat).slice(0, 4).forEach((line, i) => this.later(0.6 + i * 0.6 + rand(0, 0.3), () => this.helloChat(line)));
     this.later(3.4, () => this.chat('Wohin fahren wir heute?'));
     // das erste Ziel sucht der Chat erst aus
     this.later(3.2, () => this.bot('james', 'Die Gebote sind eröffnet: Wohin soll die Reise gehen? Ab 10 € seid ihr dabei.'));
@@ -386,6 +400,19 @@ export class Game {
     this.later(68, () => {
       if (!this.allJobsPaid) this.chat(`Und wenn du alle fünf Jobs schaffst, lege ich ${fmtBetrag(this.allJobs.pledge)} drauf! 🏆`, this.allJobs.pledger);
     });
+  }
+
+  /** Eine Antwort des Chats auf Mini Adams Gruß: gleich, wenn er gegrüßt hat, sonst gleich nach seinem Gruß (greet). */
+  helloChat(line) {
+    if (this.helloSaid) this.chat(line);
+    else this.helloHeld.push(line);
+  }
+
+  /** main.js: Mini Adams „Partypeople!“ beginnt (nach „Wir sind live.“) – der Chat grüßt zurück. */
+  greet() {
+    this.helloSaid = true;
+    this.helloHeld.forEach((line, i) => this.later(0.6 + 0.6 * i, () => this.chat(line)));
+    this.helloHeld.length = 0;
   }
 
   /** Titelbildschirm: Der Wagen steht am Supercharger (die Welt stellt ihn hin), kein Stream-Trubel. */
@@ -516,18 +543,26 @@ export class Game {
     const nomi = this.cockpit.nomi;
     nomi.setMood(mood, 3.2);
     const go = () => {
+      // ihr Satz in einer Folge BrunnenTV gehört zur Folge (episode: der Reihe nach, nie unterbrochen); ihr Untertitel
+      // steht, sobald sie wirklich spricht, und geht mit, wenn der Satz entfällt
+      let line = null;
       const dur = this.speech.say(text, 'board', {
         priority,
-        onStart: (d) => nomi.speak(d),
+        episode: scene && !!this.tv,
+        onStart: (d) => {
+          nomi.speak(d);
+          line = this.ui.nomi(text, d + 0.8);
+        },
+        onDrop: () => line && (line.t = 0),
       });
-      this.ui.nomi(text, dur + 0.8);
       this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.8);
     };
-    // OMI hat das Wort: Das Sprachstudio verstummt mitten im Satz und wartet, bis sie fertig ist
+    // OMI hat das Wort: Das Sprachstudio verstummt mitten im Satz und wartet, bis sie fertig ist – sein Untertitel
+    // geht mit (wie bei jedem abgebrochenen Satz), statt nach ihrem halb gesagt wieder dazustehen
     this.voiceUntil = Math.max(this.voiceUntil, this.t + 1.2);
     if (this.t < this.studioUntil) {
       this.studioUntil = this.t;
-      if (/^sprachstudio/.test(this.speech.current?.voiceKey || '')) this.speech.cancelCurrent();
+      if (/^sprachstudio/.test(this.speech.current?.voiceKey || '')) this.speech.cancelCurrent(true);
     }
     if (this.running) this.later(0.35, go);
     else go();
@@ -699,7 +734,8 @@ export class Game {
     if (ctl.horn) this.honk();
     if (ctl.wiper) this.manualWiper();
     if (ctl.megafon) this.useMegafon();
-    if (ctl.ladestopp) this.planStop();
+    // Taste L: neben einer Ladesäule oder Bucht gleich dort laden, sonst den nächsten Ladestopp einplanen
+    if (ctl.ladestopp && !this.chargeHere()) this.planStop();
     if (ctl.brunnen) this.wayEpisode();
     // BrunnenTV unterwegs: steht der Wagen neben einem Brunnen auf dem Weg, sagt es der Rand oben (Taste B; auf dem
     // Handy steht dazu der Knopf „BrunnenTV hier“ bei den kleinen Knöpfen, main.js)
@@ -710,6 +746,15 @@ export class Game {
       this.ui.toast(this.touchUI ? '⛲ BrunnenTV hier: Knopf unten' : '⛲ BrunnenTV hier: Taste B', 'info', 'brunnenHier');
     } else if (!offer && this.wayHint) this.ui.dropKey('brunnenHier');
     this.wayHint = offer;
+    // Laden ohne Plan: steht (oder kriecht) der Wagen neben einer Ladesäule oder Bucht, bietet es der Rand oben an –
+    // Taste L, auf dem Handy der Knopf „Jetzt laden“ (Besitzer, 21.11.2026: „Es sollte ein manuelles Triggern des Ladens
+    // (wie bei BrunnenTV mit B) möglich sein.“), wie bei BrunnenTV alle WAY.remind Sekunden wieder
+    const here = !!this.chargeOffer();
+    if (here && (!this.chargeHint || this.t - this.chargeNoteT >= WAY.remind)) {
+      this.chargeNoteT = this.t;
+      this.ui.toast(this.touchUI ? '🔌 Ladesäule: Knopf „Jetzt laden“' : '🔌 Ladesäule: Jetzt laden mit Taste L', 'info', 'ladenHier');
+    } else if (!here && this.chargeHint) this.ui.dropKey('ladenHier');
+    this.chargeHint = here;
 
     // --- Verkehr ---------------------------------------------------------------
     const tev = this.traffic.update(dt, this.t, p, { difficulty: clamp(p.s / 16000, 0, 1), leftOpen: this.left.open, rain: W.level, dim: W.sky || 0 });
@@ -875,13 +920,39 @@ export class Game {
     return a.m >= REISE_AKKU.measure ? a.pct / a.m : (REISE_AKKU.perM[k] * 75) / this.player.capacity;
   }
 
-  /** Soll der Touch-Knopf „Ladestopp einplanen“ zu sehen sein? (kein Stopp geplant, Akku halb leer oder Warnung) */
+  /**
+   * Soll der Touch-Knopf zu sehen sein? Neben einer Ladesäule oder Bucht als „Jetzt laden“ (chargeHint), sonst als
+   * „Ladestopp einplanen“ (kein Stopp geplant, Akku halb leer oder Warnung).
+   */
   stopOffer() {
     if (!this.running || this.charging) return false;
+    if (this.chargeHint) return true;
     const trip = this.world.trip();
     // im Park selbst nicht: dort hält der Wagen ohnehin an der Säule
     if (trip.section && trip.section.kind === 'park') return false;
     return trip.stop < 0 && trip.post < 0 && (this.player.battery <= 50 || this.batteryWarned > 0);
+  }
+
+  /**
+   * Ladeplatz neben dem Wagen ({ sec, park, post, name }, plan.js Arrival.chargeSpot) oder null: nicht in einer Szene
+   * (Folge, Ladestopp, Halt am Brunnen). Ein Funkloch stört nicht: Sonst plante L dort einen Stopp oder striche ihn.
+   */
+  chargeOffer() {
+    if (!this.running || this.over || this.tv || this.charging || this.halt || !this.world.chargeSpot) return null;
+    return this.world.chargeSpot(this.player.speed);
+  }
+
+  /**
+   * Taste L neben einer Ladesäule oder Bucht (chargeOffer): Der Ladestopp beginnt hier, auch ohne Plan – steht der
+   * Wagen, gleich; kriecht er noch, bremst die Welt ihn sanft zum Stand und meldet dann 'charge' (onTrip). false: hier
+   * gibt es nichts zu laden (dann plant L den nächsten Stopp).
+   */
+  chargeHere() {
+    if (!this.chargeOffer()) return false;
+    this.ui.dropKey('ladenHier');
+    const e = this.world.charge(this.player.speed);
+    if (e) this.startCharge(e);
+    return true;
   }
 
   /**
@@ -920,6 +991,7 @@ export class Game {
    * rollen. Ohne Szene (Node-Tests) läuft derselbe Fahrplan, der Wagen wartet bis zum Ausparken an seinem Halt.
    */
   startCharge(e) {
+    if (this.charging) return;
     const p = this.player;
     const plan = stopPlan(e.sec, p.s, p.x);
     this.charging = { t0: this.t, from: p.battery, park: e.park, post: e.post ?? -1, name: e.name, sec: e.sec, plan, said: 0 };
@@ -1585,8 +1657,8 @@ export class Game {
   /** Der Wagen steht am Brunnen des Navi-Ziels: Ankunft feiern, dann BrunnenTV. */
   /**
    * Reise: Am Ziel wird die Runde abgerechnet (REPARATUR, data.js). Was sie eingebracht hat (samt der Ortsspenden, die
-   * gleich kommen) und was die Werkstatt für ihre Rempler und neuen Kratzspuren bekommt, steht kurz nebeneinander am
-   * oberen Rand (payBill); ab hier zählt die nächste Runde.
+   * gleich kommen) und was die Werkstatt für ihre Rempler und Kratzer bekommt, steht kurz untereinander am oberen Rand
+   * (payBill); ab hier zählt die nächste Runde.
    */
   settleRound(n, gifts) {
     const T = this.tally;
@@ -1596,40 +1668,50 @@ export class Game {
     bill.amount = REPARATUR.bump * bill.hits + REPARATUR.mark * bill.marks;
     // (die Ortsspenden dieser Ankunft buchen sich gleich noch, gehören aber zu dieser Runde)
     this.tally = { income: -sum, hits: 0, marks };
+    this.billDue = bill;
     this.later(3.2, () => this.payBill(bill));
   }
 
   /**
-   * Die Werkstatt-Rechnung einer Runde: bezahlt aus der Stream-Kasse (die Abrechnung am Ende führt sie unter
-   * „Reparaturen“), was die Kasse nicht hergibt, erlässt die Werkstatt. Sie nimmt nur ganze Euro – die Rechnung ist
-   * ganz (REPARATUR), also gehen Bezahltes und Erlassenes in der Zeile genau auf, und die Cent bleiben in der Kasse.
-   * Am Rand die Zeile der Runde, am Guthaben der Abzug, James bucht, der Chat nimmt es gelassen – und wer heil
-   * angekommen ist, wird gefeiert.
+   * Schäden abbuchen, immer ganz (REPARATUR je Rempler und Kratzer): Die Stream-Kasse darf dafür ins Minus gehen. Die
+   * Abrechnung führt sie unter „Schäden“ (mit der Zahl der Rempler und Kratzer im Abspann), am Guthaben steht der Abzug.
+   */
+  chargeDamage(hits, marks) {
+    const amount = REPARATUR.bump * hits + REPARATUR.mark * marks;
+    if (amount <= 0) return 0;
+    this.money -= amount;
+    this.breakdown.Schäden = (this.breakdown.Schäden || 0) - amount;
+    const D = this.damageBill;
+    D.hits += hits;
+    D.marks += marks;
+    D.amount += amount;
+    if (!this.over) this.ui.money(-amount, 'Schäden');
+    return amount;
+  }
+
+  /**
+   * Die Werkstatt-Rechnung einer Runde (chargeDamage): Am Rand die Zeile der Runde – die Einnahmen, darunter in einer
+   * eigenen Zeile „Schäden −325 € (2 Rempler · 1 Kratzer)“ –, am Guthaben der Abzug, James bucht, der Chat nimmt es
+   * gelassen – und wer heil angekommen ist, wird gefeiert.
    */
   payBill(b) {
-    const paid = Math.min(Math.floor(this.money + 1e-6), b.amount);
-    if (paid > 0) {
-      this.money -= paid;
-      this.breakdown.Reparaturen = (this.breakdown.Reparaturen || 0) - paid;
-      this.ui.money(-paid, 'Reparatur');
-    }
+    if (this.billDue !== b) return;
+    this.billDue = null;
+    const paid = this.chargeDamage(b.hits, b.marks);
     // Teile mit Klasse bleiben beisammen, umbrochen wird nur an den Trennern ohne Klasse (auf dem Handy hochkant) – und
-    // nie vor einem „·“ (geschütztes Leerzeichen davor)
+    // nie vor einem „·“ (geschütztes Leerzeichen davor); die Schäden stehen in einer eigenen Zeile (schaden)
     const dot = '\u00a0· ';
-    const parts = [[`🧾 Runde ${b.n}`, 'runde'], [dot], [`Einnahmen +${fmtEuro(b.income)}`, 'plus'], [dot]];
-    if (!b.amount) parts.push(['keine Schäden ✨', 'plus']);
-    else if (paid <= 0) parts.push([`Reparatur ${fmtEuro(b.amount)} erlassen`, 'minus']);
-    else {
-      parts.push([`Reparatur −${fmtEuro(paid)}`, 'minus']);
-      if (paid < b.amount) parts.push([' '], [`(Rest ${fmtEuro(b.amount - paid)} erlassen)`, 'rest']);
-    }
-    this.ui.toast(parts.map((x) => x[0]).join(''), b.amount ? 'info' : 'good', 'rechnung', parts);
-    if (!b.amount) {
+    const parts = [[`🧾 Runde ${b.n}`, 'runde'], [dot], [`Einnahmen +${fmtEuro(b.income)}`, 'plus']];
+    if (!paid) parts.push([dot], ['keine Schäden ✨', 'plus']);
+    else parts.push([' '], [`Schäden −${fmtEuro(paid)} (${damageCount(b.hits, b.marks)})`, 'minus schaden']);
+    this.ui.toast(parts.map((x) => x[0]).join(''), paid ? 'info' : 'good', 'rechnung', parts);
+    if (!paid) {
       if (chance(0.6)) this.later(1, () => this.chat(this.chatLine(CHAT.heil)));
       return;
     }
-    const what = [b.hits ? `${b.hits} Rempler` : '', b.marks ? `${b.marks} Kratzer` : ''].filter(Boolean).join(' und ');
-    this.bot('james', `Werkstatt-Rechnung für Runde ${b.n}: ${fmtEuro(b.amount)} für ${what}` + (paid >= b.amount ? ' – bezahlt aus der Stream-Kasse.' : paid > 0 ? `. Bezahlt sind ${fmtEuro(paid)}, den Rest erlässt die Werkstatt.` : '. Die Werkstatt erlässt sie diesmal.'));
+    const what = damageCount(b.hits, b.marks).replace(' · ', ' und ');
+    const left = this.money < 0 ? ` – die Stream-Kasse steht jetzt bei −${fmtCent(-this.money)}.` : ' – bezahlt aus der Stream-Kasse.';
+    this.bot('james', `Werkstatt-Rechnung für Runde ${b.n}: ${fmtEuro(paid)} für ${what}` + left);
     this.later(1.2, () => this.chat(this.chatLine(CHAT.reparatur)));
   }
 
@@ -1664,6 +1746,8 @@ export class Game {
     const entry = addEpisode(this.save, { place: t.place, t: this.streamT, clock: this.clock, kinds, way });
     const n = entry.n;
     this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, called: false, debate: entry.d || null, way };
+    // ab jetzt gehört die Sprachausgabe der Folge: Was spricht, endet höflich, alles andere wartet dahinter (speech.js)
+    this.speech.episode?.(true);
     this.quote.tv.push({ t: this.t, n });
     this.routeMark('brunnen', way ? { n, place: t.place, way: true } : { n, place: t.place });
     this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town, way });
@@ -1756,13 +1840,14 @@ export class Game {
    * Gruß, der vor seinem Ruf (TV.call) zu Ende ist: Mit langem Ortsnamen bleiben die kürzeren.
    */
   brunnenMegafon(tv) {
-    const room = TV.call - TV.line - 0.3;
-    const fits = BRUNNEN_MEGAFON.map((l) => fillTemplate(l, { ort: tv.name })).filter((l) => estimateSpeech(l, VOICES.adam.rate) <= room);
-    const text = pick(fits);
+    // (echte Stimmen sprechen oft langsamer als geschätzt: Der Gruß lässt dem Ruf Luft; passt keiner, der kürzeste)
+    const room = (TV.call - TV.line - 0.3) / SPEECH_SLACK;
+    const all = BRUNNEN_MEGAFON.map((l) => fillTemplate(l, { ort: tv.name }));
+    const fits = all.filter((l) => estimateSpeech(l, VOICES.adam.rate) <= room);
+    const text = fits.length ? pick(fits) : all.reduce((a, b) => (b.length < a.length ? b : a));
     this.audio.megafon();
-    // (mit Vorrang: Eine Durchsage, die noch läuft, endet hier – die Folge gehört Mini Adam)
-    const dur = this.speech.say(text, 'adam', { priority: true });
-    this.ui.megafon(text, dur + 1, '', SCHOENNBRUN.label);
+    // ein Satz der Folge (episode): Was sonst noch reden wollte, wartet dahinter; sein Untertitel kommt mit ihm
+    const dur = this.speech.say(text, 'adam', { episode: true, onStart: (d) => this.ui.megafon(text, d + 1, '', SCHOENNBRUN.label) });
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.line));
   }
@@ -1775,20 +1860,41 @@ export class Game {
     const S = SCHOENER_BRUNNEN;
     if (this.tv) this.tv.called = true;
     this.audio.megafon();
-    const dur = this.speech.say(S.say, 'brunnen', { priority: true });
-    this.ui.megafon(S.text, dur + 1.2, '', SCHOENNBRUN.label);
+    // ein Satz der Folge (episode) und sofort (cut): vor allem, was sonst wartet; der Gruß davor redet aus (die Folge
+    // wird nie unterbrochen – brunnenMegafon wählt ihn so kurz, dass er vorher endet). Sein Untertitel kommt mit ihm
+    // und bleibt oben, bis er abläuft (top), auch wenn derweil ein anderer Satz kommt
+    const dur = this.speech.say(S.say, 'brunnen', {
+      episode: true,
+      cut: true,
+      onStart: (d) => {
+        const line = this.ui.megafon(S.text, d + 1.2, '', SCHOENNBRUN.label);
+        if (line && typeof line === 'object') line.top = true;
+      },
+    });
     this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
     this.onMood('megafon', Math.min(dur, TV.lift.down[0] - TV.call));
+    // die Zuschauer sind begeistert (CHEER.brunnenTV: Stimmung und ein Schub Zuschauer, ZUFRIEDEN.tv), oben links
+    // leuchtet die Zuschauerzahl, solange sie steigt (viewersUpT), und der Chat feiert die Folge
+    this.eco.cheer('brunnenTV');
+    this.zufrieden.brunnenTV();
+    this.viewersUpT = this.t + TV.end - TV.call + 4;
+    if (this.tv) this.tv.viewers = this.viewers;
     this.later(0.6, () => {
       this.chat(S.chat[0]);
       this.burst(S.chat.slice(1), 3, 2.5);
     });
+    this.later(3.4, () => this.burst(CHAT.brunnenJubel, 4, 3));
   }
 
   /** Die Folge ist vorbei: Bauchbinde weg, der Wagen darf weiter – durch den Ort zur nächsten Straße. */
   endBrunnenTV() {
     const way = this.tv && this.tv.way;
+    // was die Folge gebracht hat, steht kurz am Rand
+    const gain = this.tv && this.tv.viewers !== undefined ? Math.round(this.viewers - this.tv.viewers) : 0;
+    if (gain >= 20) this.ui.toast(`📈 BrunnenTV: +${fmtNum(gain)} Zuschauer`, 'good', 'zuschauer');
     this.tv = null;
+    // was hinter der Folge gewartet hat, spricht jetzt (Veraltetes entfällt)
+    this.speech.episode?.(false);
     this.ui.brunnenTV(0);
     this.world.release();
     // (unterwegs läuft die Runde weiter: kein Bieterfenster)
@@ -1819,12 +1925,15 @@ export class Game {
       this.later(1.2, () => {
         // hat inzwischen eine Szene begonnen (Folge, Ladestopp), entfällt sie: dort spricht keine Durchsage
         if (this.tv || this.charging) return;
-        // die Karte nur zu einer Durchsage, die auch zu hören ist (OMI kann sie aus der Warteschlange drängen)
+        // die Karte nur zu einer Durchsage, die auch zu hören ist: Sie kommt, wenn sie spricht, und geht, wenn OMI oder
+        // eine Folge BrunnenTV sie aus der Warteschlange drängt oder abbricht
         let line = null;
-        const dur = this.speech.say(text, d.voice, { onDrop: () => line && (line.t = 0) });
+        const dur = this.speech.say(text, d.voice, {
+          onStart: (dd) => (line = this.ui.durchsage(VOICES[d.voice].label, text, dd + 1, name)),
+          onDrop: () => line && (line.t = 0),
+        });
         if (!dur) return;
         this.said = { t: this.t, voice: d.voice };
-        line = this.ui.durchsage(VOICES[d.voice].label, text, dur + 1, name);
         this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 1);
       });
     }
@@ -1894,12 +2003,13 @@ export class Game {
         const text = pick(MEGAFON_WUENSCHE);
         this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
         this.later(1, () => {
+          // hat inzwischen eine Szene begonnen (Folge, Ladestopp), entfällt er: Dort spricht nur die Szene
+          if (this.tv || this.charging) return;
           this.audio.megafon();
           // Mini Adam ruft den Wunsch durchs Megafon – mit seiner Stimme
           let line = null;
-          const dur = this.speech.say(text, 'adam', { onDrop: () => line && (line.t = 0) });
+          const dur = this.speech.say(text, 'adam', { onStart: (dd) => (line = this.ui.megafon(text, dd + 1, name)), onDrop: () => line && (line.t = 0) });
           if (!dur) return;
-          line = this.ui.megafon(text, dur + 1, name);
           this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
         });
       }
@@ -2582,8 +2692,8 @@ export class Game {
     // ein leiser Zweiklang, damit man hört, dass jetzt nicht OMI spricht
     this.audio.tone(659.25, 0.16, 'sine', 0.05);
     this.audio.tone(523.25, 0.24, 'sine', 0.05, 0.13);
-    const dur = this.speech.say(text.replace(/_/g, ' '), this.studioVoice());
-    this.ui.studio(text, dur + 0.8);
+    let line = null;
+    const dur = this.speech.say(text.replace(/_/g, ' '), this.studioVoice(), { onStart: (d) => (line = this.ui.studio(text, d + 0.8)), onDrop: () => line && (line.t = 0) });
     S.last = this.t;
     this.studioUntil = this.t + dur + 0.8;
   }
@@ -2719,6 +2829,13 @@ export class Game {
     if (this.over) return;
     this.running = false;
     const p = this.player;
+    // was noch offen ist, geht nicht verloren: die Rechnung, die gerade unterwegs war, und die Schäden der laufenden
+    // Runde (auch der letzte Rempler vor der Werkstatt) stehen mit in der Abrechnung
+    if (this.billDue) this.chargeDamage(this.billDue.hits, this.billDue.marks);
+    this.billDue = null;
+    this.chargeDamage(this.tally.hits, scratchMarks(p.damage) - this.tally.marks);
+    this.tally.hits = 0;
+    this.tally.marks = scratchMarks(p.damage);
     const km = p.s / 1000; // der Beruf des Tages richtet sich nach den Metern der Straße (keine Zahl auf dem Schirm)
     this.over = {
       reason,
@@ -2728,8 +2845,10 @@ export class Game {
       air: this.airtime,
       // die Einschaltquote des Streams (Kurve im Abspann)
       quote: { dt: this.quote.dt, v: [...this.quote.v, Math.round(this.viewers)], tv: this.quote.tv.slice(), t: this.t },
-      money: Math.max(0, Math.round(this.money * 100) / 100),
+      // (mit Vorzeichen: Die Schäden können mehr kosten, als der Stream eingebracht hat)
+      money: Math.round(this.money * 100) / 100,
       breakdown: { ...this.breakdown },
+      damage: { ...this.damageBill },
       jobs: this.jobs.map((j) => ({ text: j.text, done: j.done, pledge: j.pledge, pledger: j.pledger })),
       fans: this.supporters(),
       stats: { ...this.stats },

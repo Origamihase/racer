@@ -69,7 +69,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
     windshield: loose({ firmware: 0, manual: () => 'wipe' }),
     cockpit: loose({ nomi: loose() }),
     audio: loose(),
-    speech: loose({ say: (text, voice) => (log.say.push({ t: game.t, text, voice, at: state() }), Math.max(1.2, text.length / 14)), busy: false, queue: NONE, current: null }),
+    speech: loose({ say: (text, voice, o) => (log.say.push({ t: game.t, text, voice, at: state() }), o && o.onStart && o.onStart(Math.max(1.2, text.length / 14)), Math.max(1.2, text.length / 14)), busy: false, queue: NONE, current: null }),
     ui,
     fx: loose(),
     pickups: loose({ update: () => NONE }),

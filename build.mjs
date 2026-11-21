@@ -14,7 +14,8 @@ const options = {
   legalComments: 'none',
   outfile: 'docs/game.js',
   banner: {
-    js: '/* Mini Adam – Navi ferngesteuert BrunnenTV XXL – gebaut aus src/ (npm run build). Enthält three.js (MIT). */',
+    // (die erste Anweisung: ab hier läuft das Script; die Ladezeit-Marken ma:… davor messen Laden und Übersetzen)
+    js: '/* Mini Adam – Navi ferngesteuert BrunnenTV XXL – gebaut aus src/ (npm run build). Enthält three.js (MIT). */\nself.performance && performance.mark && performance.mark(\'ma:run\');',
   },
   logLevel: 'info',
 };

@@ -40,6 +40,8 @@ export class Damage {
     this.log = []; // zählende Treffer in ihrer Reihenfolge (Zone), für „älteste zuerst“
     this.patches = []; // reparierte Stellen: { zone, step, n } (n: die wievielte Reparatur)
     this.repairs = 0;
+    // jede Schramme an der Leitplanke (die Werkstatt-Rechnung zählt sie alle, gezeichnet werden höchstens drei je Seite)
+    this.scraped = 0;
     // zählt jede Änderung, auch das Zurücksetzen (Anzeigen bauen nur dann neu); nie wieder bei 0 anfangen, sonst hätte
     // ein neuer Zustand nach gleich vielen Treffern dieselbe Nummer wie der alte
     this.version = (this.version || 0) + 1;
@@ -76,6 +78,7 @@ export class Damage {
   /** Leitplanke: kosmetische Kratzer an der Seite (kostet keinen Punkt). */
   scrape(side) {
     if (!(side in this.scratches)) return 0;
+    this.scraped++;
     if (this.scratches[side] < 3) {
       this.scratches[side]++;
       this.version++;

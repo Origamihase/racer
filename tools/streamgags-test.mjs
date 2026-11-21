@@ -530,7 +530,7 @@ function fakeGame(secs, { gate = true } = {}) {
     ok(g.gags.mitleid.n === 0, `Mitleidskauf ${what}`);
   }
   ok(/if \(o\.gags\?\.mitleid\.n\) line\('Mitleidskäufe', fmtNum\(o\.gags\.mitleid\.n\) \+ ' · ' \+ fmtCent\(o\.gags\.mitleid\.sum\)\)/.test(read('src/ui/menus.js')), 'menus.js: die Statistik zählt die Mitleidskäufe nicht');
-  ok(read('src/data.js').includes("export const FINES = ['Bußgeld', 'Verwarngeld', 'Reparaturen', 'Mitleidskäufe'];"), 'data.js: Mitleidskäufe nicht bei den Abzügen');
+  ok(read('src/data.js').includes("export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Mitleidskäufe'];"), 'data.js: Mitleidskäufe nicht bei den Abzügen');
   // ohne Plan des Orts (die Prüfstände) gibt es keine
   const sim = makeStream({ driver: DRIVERS.troedler, seed: 4, endless: true });
   sim.step(600);

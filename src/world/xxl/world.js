@@ -164,7 +164,7 @@ export class XxlWorld {
     if (T.version !== this.version || s >= this.nextSync || ev.length) this.sync();
     T.shearsInto(this.shear);
     for (let i = 0; i < ev.length; i++) for (let k = 0; k < this.listeners.length; k++) this.listeners[k](ev[i]);
-    const rest = this.arrival.update(T, ev, speed);
+    const rest = this.arrival.update(T, ev, speed, time);
     if (rest) {
       rest.fountain = this.square(rest.sec);
       for (let k = 0; k < this.listeners.length; k++) this.listeners[k](rest);
