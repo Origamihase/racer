@@ -17,10 +17,11 @@
 //             side 0): Orte geradeaus mit den Kartenkilometern, die das Navi für sie zeigt (siehe tableAt)
 //   auffahrt  Wegweiser zur Autobahn am Beginn der Auffahrt: Straße und Richtung der Autobahn dahinter
 //   ort       gelbe Ortstafel am Anfang einer Ortsdurchfahrt · ortsende: am Ende (Name genau wie places[].name)
+//   ladesaeule  kleine Tafel „Ladesäule 100 m“ am Rand, POST_SIGN_D vor der Ladesäule des Orts (noch vor der Ortstafel)
 //   ziel      Navi-Ziel: der Brunnenplatz des Zielorts am Zielpunkt spotS (der Wagen hält 2 m dahinter)
 import { J, R as rampR } from '../../game/trip.js';
 import { nodes, places, deTo, deEdge, deRoad, deTowards, straight, edgeLen, routeFrom, stateOfNode, excursion, COST } from '../../map/graph.js';
-import { parkBoard } from '../../map/parks.js';
+import { parkBoard, POST } from '../../map/parks.js';
 
 /** Vorwegweiser: so viele Meter vor der Gabelung (wie guidance().dist). */
 export const BOARD_D = [1000, 500];
@@ -46,6 +47,11 @@ export const BEGIN_SIGN_U = 40;
 /** Ortstafeln: so weit hinter dem Anfang bzw. vor dem Ende der Ortsdurchfahrt, quer auf dem Gehweg. */
 export const TOWN_SIGN_IN = 6;
 export const TOWN_SIGN_X = 12.35;
+/**
+ * Ladesäule des Orts (map/parks.js POST, Mitte des kleinen Parks POST.u hinter dem Ortsanfang): Ihre Tafel steht so
+ * viele Meter davor am Rand – sonst sähe man die Säule erst auf den letzten 30 m.
+ */
+export const POST_SIGN_D = 100;
 /** Wegweiser zur Autobahn: so weit hinter dem Anfang der Auffahrt, quer hinter der Planke der Rampe. */
 export const AUF_SIGN_IN = 14;
 export const AUF_SIGN_X = 13.2;
@@ -248,6 +254,8 @@ function sectionSigns0(trip, secs, sec, out, opts) {
     const name = places[sec.place].name;
     const k = 'o' + sec.place + '@' + sec.node;
     if (!sec.start) push('ort', sec.s0 + TOWN_SIGN_IN, TOWN_SIGN_X, 1, [name], { keyPart: k, place: sec.place });
+    // die Ladesäule am Ortsanfang (Start: der Supercharger, an dem die Fahrt beginnt, braucht keine Tafel)
+    if (!sec.start) push('ladesaeule', sec.s0 + POST.u - POST_SIGN_D, TOWN_SIGN_X, 1, ['Ladesäule', POST_SIGN_D + ' m'], { keyPart: k, place: sec.place, dist: POST_SIGN_D });
     push('ortsende', sec.s1 - TOWN_SIGN_IN, TOWN_SIGN_X, 1, [name], { keyPart: k, place: sec.place });
   }
   return out;
@@ -258,8 +266,9 @@ export function signsAlong(trip, path, lo, hi, opts = {}) {
   const out = [];
   const secs = path.sections;
   for (const sec of secs) {
-    // Vorwegweiser stehen bis 1000 m vor dem Ende des Abschnitts, die Ortsende-Tafel am Ende
-    if (sec.s1 < lo || sec.s0 - 10 > hi) continue;
+    // Vorwegweiser stehen bis 1000 m vor dem Ende des Abschnitts, die Ortsende-Tafel am Ende, die Tafel der Ladesäule
+    // eines Orts noch vor seinem Anfang
+    if (sec.s1 < lo || sec.s0 - Math.max(10, POST_SIGN_D - POST.u + 10) > hi) continue;
     const mine = [];
     sectionSigns(trip, secs, sec, mine, opts);
     for (const e of mine) if (e.s >= lo && e.s <= hi) out.push(e);

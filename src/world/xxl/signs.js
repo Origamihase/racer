@@ -177,6 +177,24 @@ function parkTexture(name, dist, wM, hM) {
   return toTexture(c);
 }
 
+/** Kleine Tafel „Ladesäule“ vor der Säule eines Orts (keine Marke): Stecker im weißen Feld, darunter Text und Meter. */
+function postTexture(texts, wM, hM) {
+  const w = Math.round(wM * PX);
+  const h = Math.round(hM * PX);
+  const c = makeCanvas(w, h);
+  const ctx = c.getContext('2d');
+  plate(ctx, w, h, BLUE, WHITE, 6);
+  ctx.textBaseline = 'middle';
+  const ps = 0.36 * PX;
+  plugBox(ctx, (w - ps) / 2, 22, ps);
+  ctx.fillStyle = WHITE;
+  ctx.font = `bold ${Math.round(0.19 * PX)}px ${FONT}`;
+  fitText(ctx, texts[0], w / 2, 22 + ps + 0.15 * PX, w - 40, 'center');
+  ctx.font = `bold ${Math.round(0.17 * PX)}px ${FONT}`;
+  fitText(ctx, texts[1], w / 2, h - 22 - 0.1 * PX, w - 40, 'center');
+  return toTexture(c);
+}
+
 /** Entfernungstafel: Ort links, Kilometer rechtsbündig. */
 function tableTexture(rows, wM, hM) {
   const w = Math.round(wM * PX);
@@ -360,6 +378,8 @@ function layout(e) {
       return { w: 1.45, h: 0.5, y: 1.05, posts: [-0.45, 0.45] };
     case 'auffahrt':
       return { w: 2.0, h: 1.0, y: 1.4, posts: [-0.65, 0.65] };
+    case 'ladesaeule':
+      return { w: 1.1, h: 1.15, y: 1.0, posts: [0] };
     default: {
       const two = splitName(e.texts[0]).length > 1;
       return { w: 1.55, h: two ? 1.15 : 0.92, y: 1.3, posts: [-0.5, 0.5] };
@@ -379,13 +399,15 @@ function textureOf(e, L) {
       return exitTexture(L.w, L.h);
     case 'auffahrt':
       return aufTexture(e.road, e.towards, L.w, L.h);
+    case 'ladesaeule':
+      return postTexture(e.texts, L.w, L.h);
     default:
       return townTexture(e.texts[0], e.kind === 'ortsende', L.w, L.h);
   }
 }
 
 /** Arten, die diese Klasse selbst baut (die übrigen stehen nur im Log). */
-const BUILDS = new Set(['vorweg', 'tafel', 'ladepark', 'ausfahrt', 'auffahrt', 'ort', 'ortsende']);
+const BUILDS = new Set(['vorweg', 'tafel', 'ladepark', 'ausfahrt', 'auffahrt', 'ort', 'ortsende', 'ladesaeule']);
 
 export class Signs {
   constructor(world) {
