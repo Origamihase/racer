@@ -182,6 +182,8 @@ export const untag = (line) => (line.charCodeAt(0) === 91 ? line.slice(line.inde
 // Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
 // Kästchen (audio.js RADAR_BEEP, gut 0,6 s), lead Sekunden später – wenn es fertig ist – folgen OMIs Gong und ihre Ansage
 export const RADAR = { ahead: 180, lead: 0.7 };
+// so viele Meter vor dem ersten Schild der 120-Zone am Blitzer beginnt der Tempomat zu bremsen
+export const ZONE_LEAD = 250;
 
 export class Game {
   /**
@@ -1940,6 +1942,10 @@ export class Game {
       this.scenery.request('blitzer', this.blitzer.camS);
       this.scenery.request('speed', this.blitzer.endS, { limit: 'ende' });
     }
+    // der Tempomat hält die 120 am Blitzer: ab ZONE_LEAD Metern vor dem ersten Schild (dann ist er an der Kamera längst
+    // langsam genug), bis zum Ende der Zone (Player.limits.zone; das Strompedal des Spielers kennt sie nicht)
+    const zb = this.blitzer;
+    p.setLimits({ zone: zb && p.s > zb.limitS - ZONE_LEAD && p.s < zb.endS ? 120 / 3.6 : Infinity });
     if (this.blitzer) {
       const b = this.blitzer;
       // Einen Blitzer kündigt niemand an: Die Warnung vorher ist ein Artikel des Shops (hasRadar) – Blitz, Bußgeld

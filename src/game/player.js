@@ -129,7 +129,7 @@ export class Player {
     this.kS = null;
     this.ctrl.reset();
     // Grenzen der Welt: bis die Welt sie setzt (jedes Bild, setLimits), die vier Spuren der Autobahn
-    this.limits = { left: LEFT_LIMIT, right: RIGHT_LIMIT, shoulder: SHOULDER_X, lanes: null, extraLane: null, vmax: Infinity, decel: 0, hold: Infinity, holdDecel: 0, posted: 0, slack: 0, back: 0 };
+    this.limits = { left: LEFT_LIMIT, right: RIGHT_LIMIT, shoulder: SHOULDER_X, lanes: null, extraLane: null, vmax: Infinity, decel: 0, hold: Infinity, holdDecel: 0, zone: Infinity, posted: 0, slack: 0, back: 0 };
     this.lanes = [];
     this.laneKey = null;
     this.setLimits(this.limits);
@@ -150,7 +150,8 @@ export class Player {
    * es gilt für den Tempomaten und den braven Fahrer, lawful), decel: Verzögerung in m/s², mit der vmax gerade
    * planmäßig fällt (die XXL-Welt bremst so vor einem Tempolimit und vor dem Halt am Ziel; 0 = fester Wert): Drossel
    * und Tempomat bremsen dann mit, statt der Grenze nachzulaufen. hold, holdDecel: dasselbe nur für einen Halt (am
-   * Ziel, an der Ladesäule) – die einzige Obergrenze, die auch das Strompedal des Spielers kennt. posted: das
+   * Ziel, an der Ladesäule) – die einzige Obergrenze, die auch das Strompedal des Spielers kennt. zone: Tempolimit einer
+   * Zone in m/s, das nur der Tempomat hält (die 120 am Blitzer, Game: vom ersten Schild an, mit Vorlauf). posted: das
    * Tempolimit an dieser Stelle in km/h, wie es das Schild zeigt (0 = keins; Anzeige und Stream-Kasse).
    * slack: Querbewegung nach außen in m/s, bis zu der eine Grenze den Wagen nur mitschiebt (siehe rails; 0 = feste
    * Leitplanke, die XXL-Welt gibt ihren wandernden Grenzen dieses Spiel). back: bis hierher (Meter der Straße) darf
@@ -167,6 +168,7 @@ export class Player {
     if (l.decel !== undefined) L.decel = l.decel > 0 ? l.decel : 0;
     if (l.hold !== undefined) L.hold = l.hold >= 0 ? l.hold : Infinity;
     if (l.holdDecel !== undefined) L.holdDecel = l.holdDecel > 0 ? l.holdDecel : 0;
+    if (l.zone !== undefined) L.zone = l.zone >= 0 ? l.zone : Infinity;
     if (l.posted !== undefined) L.posted = l.posted > 0 ? l.posted : 0;
     if (l.slack !== undefined) L.slack = l.slack > 0 ? l.slack : 0;
     if (l.back !== undefined) L.back = l.back;
@@ -388,11 +390,12 @@ export class Player {
     let acc = 0;
     // mit leerem Akku hält der Tempomat nichts mehr: Der Wagen rollt aus wie ohne Pedal (das Tempo folgt ihm)
     const cruise = this.cruiseSet !== null && !this.empty && brake <= 0.02 && throttle <= 0.02;
-    // Obergrenze: Tempomat und brave Fahrer halten das Tempolimit (vmax), das Pedal des Spielers kennt nur den Halt
-    // (hold) und das Höchsttempo des Wagens – Blitzer und Radarwarner bleiben, wie sie sind
+    // Obergrenze: Tempomat und brave Fahrer halten das Tempolimit (vmax), der Tempomat dazu die Zone am Blitzer (zone);
+    // das Pedal des Spielers kennt nur den Halt (hold) und das Höchsttempo des Wagens – Blitzer und Radarwarner
+    // bleiben für ihn, wie sie sind
     const L = this.limits;
     const law = cruise || this.lawful;
-    const cap = law ? L.vmax : L.hold;
+    const cap = law ? Math.min(L.vmax, cruise ? L.zone : Infinity) : L.hold;
     const top = Math.min(vmax, cap);
     // fällt die Obergrenze der Welt gerade planmäßig, bremst der Wagen mit ihr mit (sonst liefe er ihr hinterher)
     const fall = cap < vmax ? (law ? L.decel : L.holdDecel) : 0;

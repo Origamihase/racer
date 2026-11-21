@@ -1,6 +1,9 @@
 // Prüfstand der Running Gags aus dem Stream des Eigentümers vom 21.11.2026 (src/game/gags.js und was sie zeigt):
-// Herr Schönnbrun moderiert BrunnenTV (Bauchbinde, Logo, Hymne, Gruß im Chat, Album, Abspann). Dazu die Grundregel
-// aller Gags: Sie würfeln mit eigenem Zufall – ein Stream verläuft mit ihnen genauso wie ohne sie.
+// Herr Schönnbrun moderiert BrunnenTV (Bauchbinde, Logo, Hymne, Gruß im Chat, Album, Abspann), die Bezahlschranke, der
+// Verein, Code ADAM, Geo-Tracker und Glotzometer, die Paketsuche, Schade Schokolade, der Mitleidskauf und die
+// Mysterybox; dazu drei Punkte der Fahrt (das kleine Navi im Kärtchen der Drohnenansicht, Meter auf den letzten 1,5 km
+// vor der Ausfahrt, der Tempomat am Blitzer) und die Grundregel aller Gags: Sie würfeln mit eigenem Zufall – ein
+// Stream verläuft mit ihnen genauso wie ohne sie.
 import { readFileSync } from 'node:fs';
 import { fmtNum, fmtCent } from '../src/util.js';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
@@ -771,6 +774,60 @@ function fakeGame(secs, { gate = true } = {}) {
   ok(read('tools/journey-test.mjs').includes('const metres = !g.far && g.dist <= Math.max(parkBoard(g.fork), NEAR_M);'), 'journey-test prüft die Meter vor der Tafel nicht');
   ok(NR.fmtRoad(1500) === '1500 m' && NR.fmtRoad(1449) === '1450 m', 'fmtRoad');
   console.log(`  Navi: Ausfahrt ab ${NR.NEAR_M} m in Metern (Vorschau und Spurpfeile ab der Tafel bei ${NR.BOARD_M} m)`);
+}
+
+// --- 10c. Der Tempomat hält die 120 am Blitzer ------------------------------------------------------------------------
+{
+  const { Player } = await import('../src/game/player.js');
+  const { ZONE_LEAD } = await import('../src/game/game.js');
+  // who: 'tempomat' (Tempomat gesetzt, kein Pedal), 'gas' (Strompedal ganz durch), 'brav' (brav wie Autopilot und
+  // Prüffahrer, Pedal ganz durch); zone: ob das Spiel die Zone setzt
+  const zoneRun = (kmh, who, zone = true) => {
+    const p = new Player();
+    p.lawful = who === 'brav';
+    if (who === 'tempomat') p.configure({ cruise: true });
+    p.speed = kmh / 3.6;
+    if (who === 'tempomat') p.cruiseSet = kmh / 3.6;
+    // die Zone wie im Spiel: erstes Schild bei limitS, Kamera 600 m dahinter, Ende 780 m dahinter
+    const b = { limitS: 1500, camS: 2100, endS: 2280 };
+    let atCam = null;
+    let after = 0;
+    const ctl = { steer: 0, throttle: who === 'tempomat' ? 0 : 1, brake: 0 };
+    for (let i = 0; i < 30 * 120 && p.s < b.endS + 900; i++) {
+      p.setLimits({ zone: zone && p.s > b.limitS - ZONE_LEAD && p.s < b.endS ? 120 / 3.6 : Infinity });
+      p.update(1 / 30, ctl, { wet: 0, kappa: 0, grade: 0 });
+      if (atCam === null && p.s >= b.camS) atCam = p.kmh;
+      if (p.s > b.endS + 700) after = p.kmh;
+    }
+    return { atCam, after, top: p.vmax * 3.6 };
+  };
+  for (const kmh of [150, 200, 250]) {
+    const t = zoneRun(kmh, 'tempomat');
+    ok(t.atCam !== null && t.atCam <= 121, `Tempomat auf ${kmh} km/h: an der Kamera ${t.atCam && t.atCam.toFixed(1)} km/h`);
+    // danach wieder das alte Tempo (höchstens so schnell, wie der Wagen kann)
+    ok(Math.abs(t.after - Math.min(kmh, t.top)) < 3, `Tempomat auf ${kmh} km/h: nach der Zone ${t.after.toFixed(1)} km/h (Wagen ${t.top.toFixed(0)} km/h)`);
+  }
+  const slow = zoneRun(100, 'tempomat');
+  ok(Math.abs(slow.atCam - 100) < 1, `Tempomat auf 100 km/h in der Zone: ${slow.atCam.toFixed(1)} km/h`);
+  const gas = zoneRun(200, 'gas');
+  ok(gas.atCam > 150, `Das Strompedal bremst in der Zone (${gas.atCam.toFixed(1)} km/h an der Kamera)`);
+  // Autopilot und Prüffahrer (brav) fahren wie bisher: mit und ohne Zone aufs Hundertstel gleich
+  const brav = zoneRun(200, 'brav');
+  const bravFrei = zoneRun(200, 'brav', false);
+  ok(brav.atCam > 150 && brav.atCam === bravFrei.atCam && brav.after === bravFrei.after, `Brave Fahrer merken die Zone (${brav.atCam.toFixed(2)} statt ${bravFrei.atCam.toFixed(2)} km/h)`);
+  ok(/p\.setLimits\(\{ zone: zb && p\.s > zb\.limitS - ZONE_LEAD && p\.s < zb\.endS \? 120 \/ 3\.6 : Infinity \}\);/.test(read('src/game/game.js')), 'game.js gibt dem Tempomaten die Zone am Blitzer nicht');
+  // im Spiel: die Zone steht, solange der Wagen in ihr (oder ZONE_LEAD davor) ist
+  const sim = makeStream({ seed: 3 });
+  sim.step(2);
+  const g = sim.game;
+  const s0 = g.player.s;
+  g.blitzer = { limitS: s0 + 100, camS: s0 + 700, endS: s0 + 880, announced: false, checked: false };
+  sim.step(1 / 30);
+  ok(Math.abs(g.player.limits.zone - 120 / 3.6) < 1e-9, `Spiel: Zone ${g.player.limits.zone} vor dem Blitzer`);
+  g.blitzer = null;
+  sim.step(1 / 30);
+  ok(g.player.limits.zone === Infinity, 'Spiel: Zone ohne Blitzer');
+  console.log(`  Tempomat am Blitzer: ab ${ZONE_LEAD} m vor dem Schild auf 120, an der Kamera höchstens ${Math.max(...[150, 200, 250].map((k) => zoneRun(k, 'tempomat').atCam)).toFixed(1)} km/h; Pedal und brave Prüfstandsfahrer wie bisher`);
 }
 
 // --- Grundregel: mit und ohne Gags derselbe Stream -----------------------------------------------------------------
