@@ -3,14 +3,14 @@
 // dem Chat-Feld; nie in der freien Sicht, siehe sicht.js HOMES.steuerung). Jeder Tipp kommt, wenn er gebraucht wird:
 // die Ausfahrt am 1000-m-Schild der ersten Ausfahrt, die das Navi nehmen will, das Megafon, sobald vor dem Wagen
 // jemand langsamer fährt (spätestens nach zwei Minuten), der Ladestopp, sobald er sich einplanen lässt (Akku höchstens
-// halb voll oder NOMI warnt), die Kamera nach den ersten Sekunden. Jeder Tipp erscheint einmal je Spieler
-// (localStorage); Enter oder ✕ schaltet alle ab. Diese Datei kennt kein DOM: main.js füttert FirstTips, die Karte
-// zeichnet drive-hint.js showTip, tools/tipps-test.mjs prüft den Ablauf.
+// halb voll oder OMI warnt), die Kamera nach den ersten Sekunden. Jeder Tipp erscheint einmal je Spieler
+// (localStorage); Enter (am Gamepad Back) oder ✕ schaltet alle ab. Diese Datei kennt kein DOM: main.js füttert
+// FirstTips, die Karte zeichnet drive-hint.js showTip, tools/tipps-test.mjs prüft den Ablauf.
 
 import { deviceKey } from './controls.js';
 
 const KEY = 'mini-adam-erste-minuten';
-/** Kein Tipp mehr (Enter oder ✕) – so steht es im Speicher. */
+/** Kein Tipp mehr (Enter, Back oder ✕) – so steht es im Speicher. */
 const OFF = 'aus';
 
 /**
@@ -120,7 +120,7 @@ export class FirstTips {
     if (this.cur && TIPS[this.cur].action === action) this.left = Math.min(this.left, 1.2);
   }
 
-  /** Enter oder ✕: kein Tipp mehr, auch nicht im nächsten Stream (der stehende verschwindet beim nächsten update). */
+  /** Enter, Back oder ✕: kein Tipp mehr, auch nicht im nächsten Stream (der stehende verschwindet beim nächsten update). */
   stop() {
     this.off = true;
   }

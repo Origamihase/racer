@@ -134,6 +134,12 @@ for (const device of ['keyboard', 'gamepad']) {
   ok(input.throttle === 1, 'RT gibt keinen Strom');
   delete globalThis.navigator.getGamepads;
 }
+// Back schaltet die Tipps der ersten Minuten ab wie Enter (main.js: take('confirm')); die Übersicht, „So steuerst du“
+// und der Tipp in der Steuerung nennen den Knopf
+ok(deviceKey('confirm', 'gamepad') === 'Back' && rowOf('confirm')[0].pad.includes('Back'), 'Gamepad: kein Knopf schaltet die Tipps ab');
+ok(/firstTips\.cur && input\.take\('confirm'\)\) tipsOff\(\)/.test(src('src/main.js')), 'Tipps: confirm schaltet sie nicht ab');
+ok(/deviceKey\('confirm', device\)/.test(src('src/ui/drive-hint.js')), 'So steuerst du: nennt die Taste zum Abschalten nicht');
+ok(/\(am Gamepad \$\{padOf\('confirm'\)\[0\]\}\) oder ✕ schaltet sie ab/.test(src('src/ui/menus.js')), 'Steuerung: Tipp nennt Back nicht');
 
 // die Übersicht ist im Titel und in der Pause zu erreichen
 {
