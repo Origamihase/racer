@@ -1,4 +1,6 @@
 // Testlauf 4 (die Probefahrt des Besitzers vom 21.11.2026 abends), ohne Grafik: node tools/testlauf4-test.mjs
+// 7. „Parkende Autos sollten kein aktives Rücklicht haben“: Die Spielzeugautos am Straßenrand und in den Parks
+//    (kit/street.js toyCar) haben dunkle Rücklichter und graue Scheinwerfer; es leuchtet nur der fahrende Verkehr.
 // 6. „Finger beim Winken ausstrecken“: Die winkende Hand ist offen – Handteller, vier gespreizte Finger und der Daumen
 //    (Figur in Außenansicht und Facecam: adamSculpt.js armOpenL/R; Ich-Perspektive: hands.js openHandGeometry); sie
 //    ersetzt den Fäustling nur beim Winken, beim Jubeln, mit Megafon oder Flasche bleibt die Faust. Geprüft an den
@@ -45,6 +47,8 @@ import { REPARATUR, CHAT, PARTYPEOPLE } from '../src/data.js';
 import { SCENE } from '../src/world/xxl/charge.js';
 import { buildAdamGeometry } from '../src/models/adamSculpt.js';
 import { openHandGeometry, mittenGeometry } from '../src/cockpit/hands.js';
+import { LAMP_OFF } from '../src/world/kit/street.js';
+import { PAL } from '../src/world/kit/palette.js';
 import { CHEER } from '../src/game/economy.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
 import { Menus } from '../src/ui/menus.js';
@@ -571,6 +575,19 @@ console.log('6. Finger beim Winken:');
   const cock = readFileSync(new URL('../src/cockpit/cockpit.js', import.meta.url), 'utf8');
   ok(/const open = up > 0\.3 && kc < 0\.2 && !g\.bottle && !\(g\.megafon > 0\);/.test(cock) && /if \(G\.mitten && hand\.geometry !== G\.mitten\) hand\.geometry = G\.mitten;/.test(cock), 'cockpit.js: die Hand der Ich-Perspektive wird beim Winken nicht offen');
   console.log('  ' + res.join(' · '));
+}
+
+// --- 7. Geparkte Autos leuchten nicht -------------------------------------------------------------------------------
+console.log('7. Geparkte Autos leuchten nicht:');
+{
+  // Helligkeit (sRGB-Werte, Rec. 709) und Sättigung der Lampenfarben
+  const lum = (c) => (0.2126 * ((c >> 16) & 255) + 0.7152 * ((c >> 8) & 255) + 0.0722 * (c & 255)) / 255;
+  ok(lum(LAMP_OFF.tail) < 0.6 * lum(PAL.red) && ((LAMP_OFF.tail >> 16) & 255) > ((LAMP_OFF.tail >> 8) & 255), `Rücklicht aus ${LAMP_OFF.tail.toString(16)} (Helligkeit ${lum(LAMP_OFF.tail).toFixed(2)}, an ${lum(PAL.red).toFixed(2)})`);
+  ok(lum(LAMP_OFF.head) < 0.65, `Scheinwerfer aus ${LAMP_OFF.head.toString(16)} (Helligkeit ${lum(LAMP_OFF.head).toFixed(2)})`);
+  const street = readFileSync(new URL('../src/world/kit/street.js', import.meta.url), 'utf8');
+  const toy = street.slice(street.indexOf('function toyCar('), street.indexOf('const CAR_TINTS'));
+  ok(/const lamp = back \? LAMP_OFF\.tail : LAMP_OFF\.head;/.test(toy) && !/PAL\.red|0xfff4cc/.test(toy), 'street.js: Lampen der Spielzeugautos leuchten noch');
+  console.log(`  Spielzeugautos: Rücklicht ${LAMP_OFF.tail.toString(16)} (Helligkeit ${lum(LAMP_OFF.tail).toFixed(2)} statt ${lum(PAL.red).toFixed(2)}), Scheinwerfer ${LAMP_OFF.head.toString(16)} (${lum(LAMP_OFF.head).toFixed(2)} statt ${lum(0xfff4cc).toFixed(2)})`);
 }
 
 if (fails) {
