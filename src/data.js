@@ -233,6 +233,19 @@ export const GAGS = {
     chat: ['Mitleidskauf! 🛍️', 'Adam unterstützt die kleinen Läden ❤', 'Der Laden freut sich 😊', 'Ehrenmann, kauft im Ort ein 🛍️',
       'Mitleidskauf, wie im Stream 😂', 'Lokal einkaufen, Herr Adam 👏'],
   },
+  // „Mysteryboxen“: Ein Zuschauer schenkt eine (James nennt ihn im Chat); am Rand oben wackelt sie, dann springt sie
+  // auf (inhalt: [Art, Text] – kurz wie jeder Hinweis am Rand; sound bimmelt, konfetti regnet im Wagen, den witz
+  // erzählt der Schenker danach im Chat), der Chat fiebert mit (chat) und freut sich (danach)
+  mystery: {
+    james: '🎁 {name} schenkt Mini Adam eine Mysterybox!',
+    inhalt: [['sticker', 'Sticker »Brunnenfreund« ✨'], ['sticker', 'Sticker »Herr Schönnbrun« 🎩'], ['sound', 'Chat-Sound »Bimmel hurra« 🔔'],
+      ['witz', 'ein Brunnenwitz 😄'], ['konfetti', 'Konfetti für den Tesla 🎉'],
+      ['ding', 'ein Kühlschrankmagnet mit Brunnen 🧲'], ['ding', 'eine Rolle Pfefferminz 🍬'], ['ding', 'ein 0-Euro-Schein 💶'],
+      ['ding', 'ein Gutschein für einmal Wischen 🌧️']],
+    chat: ['MYSTERYBOX! 🎁', 'Was ist drin?? 👀', 'Aufmachen, aufmachen! 🎁', 'Mysterybox-Unboxing live 😂'],
+    danach: ['Wow 😂', 'Bester Inhalt ever', 'Den will ich auch 😍', 'Mysterybox hat geliefert 🎁'],
+    witz: 'Was macht ein Brunnen im Urlaub? Er lässt es plätschern 😄',
+  },
 };
 /**
  * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des

@@ -60,6 +60,13 @@ export const SCHADE = { chance: 0.6, gap: 25, delay: [1.4, 2.8] };
  */
 export const MITLEID = { stand: 1.5, kmh: 1, reach: 9, gap: 45, side: STREET.curbR + STREET.pave - 0.5 };
 
+/**
+ * Mysterybox (GAGS.mystery): erstmals nach first, dann alle every Sekunden schenkt jemand eine (in einer Szene wait
+ * Sekunden später; James nennt den Schenker im Chat). Am Rand oben wackelt sie shake Sekunden und springt dann auf
+ * (style.css .mystery-*); der Hinweis steht show Sekunden.
+ */
+export const MYSTERY = { first: [240, 420], every: [480, 840], wait: 10, shake: 1.6, show: 5.5 };
+
 /** Kleiner, schneller Zufall mit Saat (wie in tools/stream-sim.mjs). */
 export function mulberry32(a) {
   return () => {
@@ -100,6 +107,9 @@ export class StreamGags {
     this.schadeT = 0;
     // Mitleidskäufe: Anzahl, Summe, wie lange der Wagen schon steht, die Orte mit Kauf, wann wieder
     this.mitleid = { n: 0, sum: 0, still: 0, towns: new Set(), next: 0 };
+    // Mysteryboxen: wann die nächste kommt, wie viele es gab
+    this.boxT = this.between(...MYSTERY.first);
+    this.boxes = 0;
   }
 
   /** Was Abrechnung und Abspann von den Gags wissen (Game.end): { verein: { name, members } | null, mitleid: { n, sum } }. */
@@ -118,6 +128,7 @@ export class StreamGags {
     this.updateTracker();
     this.updatePaket();
     if (this.g.world.town) this.updateMitleid(dt);
+    this.updateMystery();
   }
 
   /** Eine Zeile eines Vorrats, die gerade stimmt (FACTS über Game.fits), ohne Stichwort; '' wenn keine passt. */
@@ -434,5 +445,39 @@ export class StreamGags {
       const name = this.name();
       this.later(this.between(0.8, 1.6) + i * this.between(0.8, 1.4), () => this.say(text, name));
     }
+  }
+
+  // --- 9. Mysterybox -------------------------------------------------------------------------------------------------
+  updateMystery() {
+    const g = this.g;
+    if (g.t < this.boxT) return;
+    if (g.tv || g.charging) {
+      this.boxT = g.t + MYSTERY.wait;
+      return;
+    }
+    this.boxT = g.t + this.between(...MYSTERY.every);
+    this.boxes++;
+    const M = GAGS.mystery;
+    const name = this.name();
+    const [kind, what] = this.pick(M.inhalt);
+    // wer sie schenkt, sagt James im Chat; am Rand oben wackelt die Box, springt auf, dann steht da, was drin war (die
+    // Teile: style.css .mystery-*)
+    this.james(fillTemplate(M.james, { name }));
+    const n = g.ui.toast(`🎁 Mysterybox: ${what}`, 'good', 'mystery', [['🎁', 'mystery-box'], [' Mysterybox: '], [what, 'mystery-what']]);
+    // (ui.js toast gibt den Hinweis zurück: er steht länger als andere)
+    if (n && typeof n === 'object') n.t = MYSTERY.show;
+    const hype = this.pick(M.chat);
+    const hypeName = this.name();
+    this.later(this.between(0.3, 0.9), () => this.say(hype, hypeName));
+    const after = this.pick(M.danach);
+    const afterName = this.name();
+    this.later(MYSTERY.shake, () => {
+      g.audio.pling();
+      if (kind === 'sound') this.later(0.35, () => g.audio.pling());
+      if (kind === 'konfetti') g.cockpit.addConfetti?.(30);
+    });
+    // der Witz selbst: vom Schenker, gleich nach dem Auspacken
+    if (kind === 'witz') this.later(MYSTERY.shake + 0.6, () => this.say(M.witz, name));
+    this.later(MYSTERY.shake + this.between(1, 2), () => this.say(after, afterName));
   }
 }

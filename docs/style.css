@@ -143,6 +143,12 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 .toast-bad { border-color: rgba(255, 90, 79, 0.8); }
 /* eine Zeile in Teilen (Runde abgerechnet): jeder Teil bleibt beisammen, umbrochen wird zwischen ihnen */
 .toast > span { white-space: nowrap; }
+/* Mysterybox (game/gags.js): die Box wackelt, springt auf, dann erscheint, was drin war */
+.toast > .mystery-box { display: inline-block; animation: mystery-shake 0.2s ease-in-out 8 alternate, mystery-pop 0.4s ease-out 1.6s both; }
+.toast > .mystery-what { display: inline-block; white-space: normal; color: var(--gold); font-weight: 800; animation: mystery-in 0.45s ease-out 1.6s both; }
+@keyframes mystery-shake { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
+@keyframes mystery-pop { 0% { transform: scale(1); } 45% { transform: scale(1.7); } 100% { transform: scale(1.1); } }
+@keyframes mystery-in { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: none; } }
 .toast > .plus { color: var(--green); }
 .toast > .minus { color: var(--bad); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }

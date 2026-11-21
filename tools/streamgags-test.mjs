@@ -7,7 +7,7 @@ import { makeStream, DRIVERS } from './stream-sim.mjs';
 import { SCHOENNBRUN, ABSPANN_REISE, GAGS, SHOP, shopPrice } from '../src/data.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
 import { drawSchoennbrunLogo } from '../src/ui/schoennbrun.js';
-import { StreamGags, GATE, VEREIN, CODE, TRACKER, PAKET, SCHADE, MITLEID } from '../src/game/gags.js';
+import { StreamGags, GATE, VEREIN, CODE, TRACKER, PAKET, SCHADE, MITLEID, MYSTERY } from '../src/game/gags.js';
 import { FACTS } from '../src/game/game.js';
 import { thanksGroups } from '../src/ui/abspann.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from '../src/world/xxl/schranke.js';
@@ -535,6 +535,63 @@ function fakeGame(secs, { gate = true } = {}) {
   const longest = Object.values(GAGS.mitleid.laeden).flatMap(([where, things, [, hi]]) => things.map((what) => `🛍️ Mitleidskauf ${where}: ${what} · −${fmtCent(hi)}`)).sort((a, b) => chars(b) - chars(a))[0];
   ok(chars(longest) <= chars(LONGEST_NOTICE), `Mitleidskauf: „${longest}“ ist länger als der längste Hinweis „${LONGEST_NOTICE}“`);
   console.log(`  Mitleidskauf: nach ${MITLEID.stand} s Stand vor einem kleinen Laden rechts (±${MITLEID.reach} m), einmal je Ort; nicht vor Bank, links, in Szenen, ohne Geld`);
+}
+
+// --- 9. Mysterybox: geschenkt, am Rand oben ausgepackt -------------------------------------------------------------
+{
+  const M = GAGS.mystery;
+  let boxes = 0;
+  for (const seed of [1, 7]) {
+    const sim = makeStream({ driver: DRIVERS.mittel, seed, endless: true });
+    const { game, log } = sim;
+    const shown = [];
+    const toast = game.ui.toast;
+    game.ui.toast = (text, kind, key, parts) => {
+      if (key === 'mystery') shown.push({ t: game.t, text, kind, parts, scene: !!(game.tv || game.charging) });
+      return toast(text, kind, key, parts);
+    };
+    sim.step(3600);
+    const gaps = shown.slice(1).map((x, i) => x.t - shown[i].t);
+    ok(shown.length >= 4 && shown.length <= 8 && shown[0].t >= MYSTERY.first[0] && gaps.every((d) => d >= MYSTERY.every[0] - 0.1), `Seed ${seed}: Mysteryboxen um ${shown.map((x) => x.t.toFixed(0)).join(', ')} s`);
+    for (const x of shown) {
+      const what = x.parts && x.parts[2] && x.parts[2][0];
+      ok(x.kind === 'good' && !x.scene && x.parts.length === 3 && x.parts[0][1] === 'mystery-box' && x.parts[2][1] === 'mystery-what' && M.inhalt.some(([, w]) => w === what), `Seed ${seed}: Mysterybox ${JSON.stringify(x.parts)}`);
+      ok(x.text === `🎁 Mysterybox: ${what}`, `Seed ${seed}: Mysterybox-Text ${x.text}`);
+      // wer sie schenkt, sagt James im selben Moment im Chat
+      const james = log.chat.filter((m) => m.gag && m.bot === 'james' && m.t === x.t && /^🎁 \S+ schenkt Mini Adam eine Mysterybox!$/.test(m.text));
+      ok(james.length === 1, `Seed ${seed}: James nennt den Schenker der Mysterybox nicht (${james.length})`);
+      const hype = log.chat.filter((m) => m.gag && M.chat.includes(m.text) && m.t >= x.t && m.t <= x.t + 1);
+      const after = log.chat.filter((m) => m.gag && M.danach.includes(m.text) && m.t >= x.t + MYSTERY.shake + 1 - 1e-6 && m.t <= x.t + MYSTERY.shake + 2.05);
+      ok(hype.length === 1 && after.length === 1, `Seed ${seed}: Chat zur Mysterybox ${hype.length} + ${after.length}`);
+    }
+    boxes += shown.length;
+  }
+  // wackeln, aufspringen, zeigen: die Animation am Rand oben (Hinweiszeile), nicht in der Mitte
+  const css = read('docs/style.css');
+  ok(/\.toast > \.mystery-box \{[^}]*animation: mystery-shake [^}]*mystery-pop [^}]*1\.6s/.test(css) && /\.toast > \.mystery-what \{[^}]*animation: mystery-in [^}]*1\.6s both/.test(css) && /@keyframes mystery-shake/.test(css), 'style.css: die Mysterybox wackelt nicht oder springt zur falschen Zeit auf');
+  ok(MYSTERY.shake === 1.6 && MYSTERY.show > MYSTERY.shake + 3, 'Mysterybox: zu kurz zu sehen');
+  ok(M.inhalt.length >= 6 && M.inhalt.every(([k]) => ['sticker', 'sound', 'witz', 'konfetti', 'ding'].includes(k)), 'Mysterybox: Inhalt unbekannt');
+  // kurz wie jeder Hinweis am Rand
+  const longest = M.inhalt.map(([, w]) => `🎁 Mysterybox: ${w}`).sort((a, b) => chars(b) - chars(a))[0];
+  ok(chars(longest) <= chars(LONGEST_NOTICE), `Mysterybox: „${longest}“ ist länger als der längste Hinweis „${LONGEST_NOTICE}“`);
+  // den Witz erzählt der Schenker im Chat, gleich nach dem Auspacken
+  {
+    const sim = makeStream({ seed: 2 });
+    sim.step(1);
+    const gg = sim.game.gags;
+    const pick = gg.pick;
+    gg.pick = (list) => (list === M.inhalt ? M.inhalt.find(([k]) => k === 'witz') : pick.call(gg, list));
+    gg.boxT = sim.game.t;
+    sim.step(1 / 30);
+    gg.pick = pick;
+    const t0 = sim.game.t;
+    sim.step(MYSTERY.shake + 2.5);
+    const james = sim.log.chat.find((m) => m.bot === 'james' && /^🎁 \S+ schenkt Mini Adam eine Mysterybox!$/.test(m.text));
+    const gifter = james && /^🎁 (\S+) schenkt/.exec(james.text)[1];
+    const witz = sim.log.chat.find((m) => m.gag && m.text === M.witz);
+    ok(gifter && witz && witz.name === gifter && witz.t >= t0 + MYSTERY.shake && witz.t <= t0 + MYSTERY.shake + 1.2, `Mysterybox mit Witz: ${JSON.stringify(witz)} (Schenker ${gifter})`);
+  }
+  console.log(`  Mysterybox: ${boxes} Boxen in 2 × 60 min, am Rand oben (wackelt ${MYSTERY.shake} s, springt auf), Chat fiebert mit`);
 }
 
 // --- Grundregel: mit und ohne Gags derselbe Stream -----------------------------------------------------------------
