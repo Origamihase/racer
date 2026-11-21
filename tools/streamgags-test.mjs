@@ -10,6 +10,7 @@ import { drawSchoennbrunLogo } from '../src/ui/schoennbrun.js';
 import { StreamGags, GATE, VEREIN, CODE, TRACKER, PAKET, SCHADE, MITLEID, MYSTERY } from '../src/game/gags.js';
 import { FACTS } from '../src/game/game.js';
 import { thanksGroups } from '../src/ui/abspann.js';
+import { UI } from '../src/ui/ui.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from '../src/world/xxl/schranke.js';
 import { places } from '../src/map/graph.js';
 import { STREET } from '../src/world/kit/layout.js';
@@ -590,6 +591,81 @@ function fakeGame(secs, { gate = true } = {}) {
     const gifter = james && /^🎁 (\S+) schenkt/.exec(james.text)[1];
     const witz = sim.log.chat.find((m) => m.gag && m.text === M.witz);
     ok(gifter && witz && witz.name === gifter && witz.t >= t0 + MYSTERY.shake && witz.t <= t0 + MYSTERY.shake + 1.2, `Mysterybox mit Witz: ${JSON.stringify(witz)} (Schenker ${gifter})`);
+  }
+  // sie kommt nur an einen freien Rand oben: sofort zu sehen, und das Pling passt zum Aufspringen
+  {
+    const sim = makeStream({ seed: 3 });
+    sim.step(1);
+    const { game } = sim;
+    const gg = game.gags;
+    let busy = true;
+    game.ui.noticeBusy = () => busy;
+    const n0 = gg.boxes;
+    gg.boxT = game.t;
+    sim.step(5);
+    ok(gg.boxes === n0 && gg.boxT > game.t && gg.boxT <= game.t + MYSTERY.retry + 1e-9, `Mysterybox trotz Hinweis am Rand oben (${gg.boxes - n0}, wieder in ${(gg.boxT - game.t).toFixed(2)} s)`);
+    busy = false;
+    sim.step(MYSTERY.retry + 0.1);
+    ok(gg.boxes === n0 + 1, `Mysterybox kommt nicht an den freien Rand (${gg.boxes - n0})`);
+  }
+  // ausgepackt mit Pling – hat Dringendes sie vorher abgelöst, springt nichts auf, und es plingt nicht
+  {
+    const plings = (mode) => {
+      const sim = makeStream({ seed: 4 });
+      sim.step(1);
+      const { game } = sim;
+      let n = 0;
+      let box = null;
+      game.audio.pling = () => n++;
+      const toast = game.ui.toast;
+      game.ui.toast = (text, kind, key, parts) => (key === 'mystery' ? (box = { t: 0, hold: 0, gone: false }) : toast(text, kind, key, parts));
+      if (mode) game.gags.boxT = game.t;
+      sim.step(0.5);
+      if (mode) ok(box && box.t === MYSTERY.show && box.hold === MYSTERY.shake + MYSTERY.read, `Mysterybox: steht ${box && box.t} s, hält ${box && box.hold} s`);
+      if (mode === 'abgelöst') box.gone = true;
+      sim.step(MYSTERY.shake + 1);
+      return n;
+    };
+    const base = plings(null);
+    const open = plings('ausgepackt');
+    const cut = plings('abgelöst');
+    ok(open >= base + 1 && cut === base, `Mysterybox: Pling ohne Box ${base}, ausgepackt ${open}, abgelöst ${cut}`);
+  }
+  // am Rand oben (ui.js): Was danach kommt, wartet, bis das Ausgepackte zu lesen war – Dringendes nicht
+  {
+    const strip = () => {
+      const f = { notices: [], notice: null, nextNotice: () => (f.notice = f.notices.shift() || null) };
+      for (const m of ['toast', 'dropNotice', 'dropKey', 'tickNotices', 'noticeBusy']) f[m] = UI.prototype[m];
+      return f;
+    };
+    const run = (f, secs) => {
+      for (let i = 0; i < Math.round(secs * 30); i++) f.tickNotices(1 / 30);
+    };
+    const give = (f) => Object.assign(f.toast('🎁 Mysterybox: ein Flummi', 'good', 'mystery'), { t: MYSTERY.show, hold: MYSTERY.shake + MYSTERY.read });
+    ok(MYSTERY.shake + MYSTERY.read <= MYSTERY.show && MYSTERY.read >= 2, `Mysterybox: das Ausgepackte steht nur ${MYSTERY.read} s`);
+    // nichts wartet: show Sekunden
+    let f = strip();
+    let box = give(f);
+    run(f, MYSTERY.show - 0.1);
+    ok(f.notice === box && f.noticeBusy(), 'Mysterybox: steht keine show Sekunden');
+    run(f, 0.2);
+    ok(!f.notice && box.gone && !f.noticeBusy(), 'Mysterybox: steht länger als show Sekunden');
+    // ein Gruß wartet: Sie bleibt, bis das Ausgepackte read Sekunden zu lesen war, dann kommt er dran
+    f = strip();
+    box = give(f);
+    run(f, 0.5);
+    const tip = f.toast('🤑 Bieter-Chaos im Chat: Jeder legt einen Zehner drauf!', 'good');
+    run(f, MYSTERY.shake + MYSTERY.read - 0.6);
+    ok(f.notice === box, 'Mysterybox: ein Gruß löst sie ab, bevor das Ausgepackte zu lesen war');
+    run(f, 0.2);
+    ok(f.notice === tip && box.gone, 'Mysterybox: der wartende Gruß kommt nicht dran');
+    // Dringendes wartet nicht auf sie
+    f = strip();
+    box = give(f);
+    run(f, 0.3);
+    const warn = f.toast('⚠️ Blitzer voraus', 'warn');
+    run(f, MYSTERY.shake - 0.3);
+    ok(f.notice === warn && box.gone, 'Mysterybox: Dringendes wartet auf sie');
   }
   console.log(`  Mysterybox: ${boxes} Boxen in 2 × 60 min, am Rand oben (wackelt ${MYSTERY.shake} s, springt auf), Chat fiebert mit`);
 }

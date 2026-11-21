@@ -339,6 +339,7 @@ const uiFacade = {
   // parts: eine Zeile in Teilen ([Text, Klasse]), etwa die Zeile der Runde mit Einnahmen grün und Reparatur rot
   toast: (t, k, key, parts) => ui.toast(t, k, key, parts),
   dropKey: (key) => ui.dropKey(key),
+  noticeBusy: () => ui.noticeBusy(),
   naviNews: () => ui.naviNews(),
   nomi: (t, d) => ui.nomi(t, d),
   studio: (t, d) => ui.studio(t, d),

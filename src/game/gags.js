@@ -62,10 +62,11 @@ export const MITLEID = { stand: 1.5, kmh: 1, reach: 9, gap: 45, side: STREET.cur
 
 /**
  * Mysterybox (GAGS.mystery): erstmals nach first, dann alle every Sekunden schenkt jemand eine (in einer Szene wait
- * Sekunden später; James nennt den Schenker im Chat). Am Rand oben wackelt sie shake Sekunden und springt dann auf
- * (style.css .mystery-*); der Hinweis steht show Sekunden.
+ * Sekunden später, steht oben am Rand gerade ein Hinweis, retry Sekunden später: Sie kommt sofort dorthin; James nennt
+ * den Schenker im Chat). Am Rand oben wackelt sie shake Sekunden und springt dann auf (style.css .mystery-*); der
+ * Hinweis steht show Sekunden – wartet ein anderer, bleibt das Ausgepackte noch read Sekunden zu lesen (ui.js hold).
  */
-export const MYSTERY = { first: [240, 420], every: [480, 840], wait: 10, shake: 1.6, show: 5.5 };
+export const MYSTERY = { first: [240, 420], every: [480, 840], wait: 10, retry: 1, shake: 1.6, read: 2.4, show: 5.5 };
 
 /** Kleiner, schneller Zufall mit Saat (wie in tools/stream-sim.mjs). */
 export function mulberry32(a) {
@@ -455,6 +456,11 @@ export class StreamGags {
       this.boxT = g.t + MYSTERY.wait;
       return;
     }
+    // sie kommt sofort an den Rand oben (dann passt das Pling zum Aufspringen), also erst, wenn dort nichts steht
+    if (g.ui.noticeBusy?.()) {
+      this.boxT = g.t + MYSTERY.retry;
+      return;
+    }
     this.boxT = g.t + this.between(...MYSTERY.every);
     this.boxes++;
     const M = GAGS.mystery;
@@ -464,14 +470,21 @@ export class StreamGags {
     // Teile: style.css .mystery-*)
     this.james(fillTemplate(M.james, { name }));
     const n = g.ui.toast(`🎁 Mysterybox: ${what}`, 'good', 'mystery', [['🎁', 'mystery-box'], [' Mysterybox: '], [what, 'mystery-what']]);
-    // (ui.js toast gibt den Hinweis zurück: er steht länger als andere)
-    if (n && typeof n === 'object') n.t = MYSTERY.show;
+    // (ui.js toast gibt den Hinweis zurück: Er steht länger als andere, und was danach kommt, wartet, bis das
+    // Ausgepackte zu lesen war – nur Dringendes nicht)
+    const box = n && typeof n === 'object' ? n : null;
+    if (box) {
+      box.t = MYSTERY.show;
+      box.hold = MYSTERY.shake + MYSTERY.read;
+    }
     const hype = this.pick(M.chat);
     const hypeName = this.name();
     this.later(this.between(0.3, 0.9), () => this.say(hype, hypeName));
     const after = this.pick(M.danach);
     const afterName = this.name();
     this.later(MYSTERY.shake, () => {
+      // (hat Dringendes sie schon abgelöst, springt am Rand nichts mehr auf)
+      if (box && box.gone) return;
       g.audio.pling();
       if (kind === 'sound') this.later(0.35, () => g.audio.pling());
       if (kind === 'konfetti') g.cockpit.addConfetti?.(30);
