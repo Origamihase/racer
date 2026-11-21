@@ -579,7 +579,7 @@ let stream12 = [];
   const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../docs/style.css', import.meta.url), 'utf8');
   const uiSrc = readFileSync(new URL('../src/ui/ui.js', import.meta.url), 'utf8');
-  ok(/const droneHudOn = state === 'drive' && view === 'drone' && !cockpitOn && !stopRun\.on && !tvRun\.on;/.test(main) && main.includes('ui.droneHud.show(droneHudOn);') && main.includes('cockpit.screen.hudOut = ui.droneHud.on;') && main.includes('cockpit.screen.onDraw = (c) => ui.droneHud.copy(c);'), 'main.js schaltet das Kärtchen nur in der Drohnenansicht ein');
+  ok(/const droneHudOn = state === 'drive' && view === 'drone' && !cockpitOn && !stopRun\.on && !tvRun\.on;/.test(main) && main.includes('ui.droneHud.show(droneHudOn);') && main.includes('cockpit.screen.hudOut = ui.droneHud.on;') && main.includes('cockpit.screen.onDraw = (c, navi) => ui.droneHud.copy(c, navi);'), 'main.js schaltet das Kärtchen nur in der Drohnenansicht ein');
   ok(main.includes('cockpit.screen.live || cockpit.screen.hudOut ? cockpit.screen.kmh : null'), 'HUD-Tempo und Tacho des Kärtchens aus demselben Bild');
   ok(/\.drone-hud \{ position: absolute; display: none;/.test(css) && css.includes('body.drone .drone-hud.on { display: flex; }') && (css.match(/drone-hud[^{]*\{[^}]*display: flex/g) || []).every((r) => r.startsWith('drone-hud.on') || r.includes('body.drone')), 'style.css: nur mit body.drone zu sehen');
   ok(uiSrc.includes('this.droneHud.place(droneHud(W, window.innerHeight, { touch: COARSE.matches, narrow }), window.devicePixelRatio || 1);'), 'ui.js legt das Kärtchen nach sicht.js');

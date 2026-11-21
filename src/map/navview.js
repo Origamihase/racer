@@ -62,11 +62,11 @@ const NEXT_HEAD = { ausfahrt: 'Nächste Ausfahrt', kreuz: 'Nächstes Kreuz', end
  * Nummer der Anschlussstelle im weiß umrandeten Kästchen wie auf den Tafeln (trip.signs no), linke Kante x, Mitte y,
  * Höhe h. Liefert die Breite samt Abstand dahinter (0 ohne Nummer).
  */
-function numBox(ctx, no, x, y, h) {
+export function numBox(ctx, no, x, y, h) {
   if (!no) return 0;
+  const w = numBoxWidth(ctx, no, h) - 10;
   ctx.save();
   ctx.font = `700 ${Math.round(h * 0.72)}px ${FONT}`;
-  const w = Math.max(h, ctx.measureText(String(no)).width + h * 0.55);
   ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 2.2;
   rrect(ctx, x + 1, y - h / 2, w, h, h * 0.2);
@@ -75,6 +75,15 @@ function numBox(ctx, no, x, y, h) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(String(no), x + 1 + w / 2, y + 1);
+  ctx.restore();
+  return w + 10;
+}
+/** Breite, die numBox belegen wird (samt Abstand dahinter; 0 ohne Nummer), ohne zu zeichnen. */
+export function numBoxWidth(ctx, no, h) {
+  if (!no) return 0;
+  ctx.save();
+  ctx.font = `700 ${Math.round(h * 0.72)}px ${FONT}`;
+  const w = Math.max(h, ctx.measureText(String(no)).width + h * 0.55);
   ctx.restore();
   return w + 10;
 }
@@ -308,6 +317,9 @@ export class NaviScreen {
     this.painter.setTheme(theme);
     const ins = m.instruction();
     const hop = m.hopPose();
+    // (das kleine Navi der Drohnenansicht auf dem Handy zeichnet sich daraus selbst, ui/drone-hud.js)
+    this.ins = ins;
+    this.hop = hop;
     const pose = hop || m.pose;
     const trip = m.trip;
     const sec = trip.section;

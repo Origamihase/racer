@@ -670,6 +670,97 @@ function fakeGame(secs, { gate = true } = {}) {
   console.log(`  Mysterybox: ${boxes} Boxen in 2 × 60 min, am Rand oben (wackelt ${MYSTERY.shake} s, springt auf), Chat fiebert mit`);
 }
 
+// --- 10a. Das kleine Navi im Kärtchen der Drohnenansicht auf dem Handy ----------------------------------------------
+{
+  const { DroneHud, COMPACT_W, drawCompactNavi } = await import('../src/ui/drone-hud.js');
+  const S = await import('../src/ui/sicht.js');
+  // ein Kärtchen ohne DOM: Zeichenflächen schreiben mit, was sie zeichnen (Text mit Lage und Breite)
+  const record = (c) => {
+    const log = { text: [], blits: 0, icons: 0 };
+    let font = 10;
+    const ctx = new Proxy({}, {
+      get: (t, k) => {
+        if (k in t) return t[k];
+        if (k === 'measureText') return (s) => ({ width: String(s).length * font * 0.56 });
+        if (k === 'fillText') return (s, x, y) => log.text.push({ s: String(s), x, y, w: String(s).length * font * 0.56, align: t.textAlign, size: font });
+        if (k === 'drawImage') return () => log.blits++;
+        return () => {};
+      },
+      set: (t, k, v) => {
+        t[k] = v;
+        if (k === 'font') font = +/(\d+)px/.exec(v)[1];
+        return true;
+      },
+    });
+    c.getContext = () => ctx;
+    return log;
+  };
+  const elem = () => {
+    const e = { style: {}, children: [], width: 0, height: 0, className: '', classList: { toggle() {}, contains: () => false }, appendChild: (c) => (e.children.push(c), c) };
+    e.style.setProperty = () => {};
+    return e;
+  };
+  const doc0 = globalThis.document;
+  globalThis.document = { createElement: elem };
+  const hud = new DroneHud(elem());
+  const ins = { turn: 'exit', dist: 800, say: '800 m', calm: false, no: 42, head: 'Ausfahrt Hanau-Nord', short: 'Hanau-Nord', road: 'A 66' };
+  let compact = 0;
+  for (const [w, h, touch] of [[390, 844, true], [844, 390, true], [360, 740, true], [1280, 720, false], [1920, 1080, false]]) {
+    hud.place(S.droneHud(w, h, { touch }), 3);
+    const cssW = parseFloat(hud.map.style.width);
+    const small = hud.compact;
+    ok(small === (w < 1000), `${w} × ${h}: kleines Navi ${small} bei einer Karte von ${cssW} px`);
+    hud.show(true);
+    const log = record(hud.map);
+    record(hud.tacho);
+    hud.copy({ id: 'Mittelbildschirm' }, { ins, hop: null });
+    if (!small) {
+      ok(log.blits === 1 && !log.text.length && cssW >= COMPACT_W, `${w} × ${h}: Karte nicht herübergeholt`);
+      continue;
+    }
+    compact++;
+    const W = hud.map.width;
+    const H = hud.map.height;
+    ok(Math.abs(W - Math.floor(parseFloat(hud.map.style.width)) * 3) <= 3 && H > 60, `${w} × ${h}: kleines Navi ${W} × ${H}`);
+    const big = log.text.find((x) => x.s === '800 m');
+    const no = log.text.find((x) => x.s === '42');
+    const name = log.text.find((x) => /^Hanau-/.test(x.s));
+    ok(big && no && (!name || big.size > name.size) && log.text.length === (name ? 3 : 2), `${w} × ${h}: Entfernung, Nummer, Name (${log.text.map((x) => x.s).join(' | ')})`);
+    for (const x of log.text) {
+      const x0 = x.align === 'center' ? x.x - x.w / 2 : x.align === 'right' ? x.x - x.w : x.x;
+      ok(x0 >= -0.5 && x0 + x.w <= W + 0.5 && x.y - x.size / 2 >= -0.5 && x.y + x.size / 2 <= H + 0.5, `${w} × ${h}: „${x.s}“ ragt aus dem kleinen Navi`);
+    }
+    ok(big && big.size * 3 >= 0.25 * H * 0.9, `${w} × ${h}: Entfernung nur ${big && big.size} px hoch`);
+  }
+  // ohne Handlung (geradeaus): nur Pfeil und Straße; in der Überfahrt kein Text
+  const c = elem();
+  c.width = 300;
+  c.height = 180;
+  const log = record(c);
+  drawCompactNavi(c.getContext('2d'), 300, 180, { turn: 'straight', dist: 0, say: '', no: 0, head: '', short: '', road: 'A 66' }, null);
+  ok(log.text.length === 1 && log.text[0].s === 'A 66', `geradeaus: ${log.text.map((x) => x.s).join(' | ')}`);
+  const log2 = record(c);
+  drawCompactNavi(c.getContext('2d'), 300, 180, ins, { kind: 'faehre' });
+  ok(log2.text.length === 0, 'Überfahrt: Text im kleinen Navi');
+  // eine Ausfahrt ohne kurzen Namen (wie im Spiel: „Ausfahrt Hanau“): neben dem Kästchen nur der Name, Handy quer
+  hud.place(S.droneHud(844, 390, { touch: true }), 2);
+  const log3 = record(hud.map);
+  hud.copy({ id: 'Mittelbildschirm' }, { ins: { ...ins, no: 6, head: 'Ausfahrt Hanau', short: '' }, hop: null });
+  ok(log3.text.map((x) => x.s).join(' | ') === '800 m | 6 | Hanau', `Ausfahrt ohne kurzen Namen: ${log3.text.map((x) => x.s).join(' | ')}`);
+  // ohne Entfernung ein langer Name (wie im Spiel „Auffahrt A66“): Passt er nicht lesbar hinein, steht die Straße allein da
+  for (const [w, h] of [[390, 844], [844, 390], [360, 740]]) {
+    hud.place(S.droneHud(w, h, { touch: true }), 2);
+    const t = record(hud.map).text;
+    hud.copy({ id: 'Mittelbildschirm' }, { ins: { turn: 'merge', dist: 0, say: '', calm: false, no: 0, head: 'Auffahrt A66', short: '', road: 'A66' }, hop: null });
+    const legible = t.length === 1 && t[0].size >= 0.14 * hud.map.height - 1 && ['Auffahrt A66', 'A66'].includes(t[0].s);
+    ok(legible && (w > 400 || t[0].s === 'A66'), `${w} × ${h} ohne Entfernung: ${t.map((x) => `${x.s} (${x.size} px von ${hud.map.height})`).join(' | ')}`);
+  }
+  globalThis.document = doc0;
+  const main = read('src/main.js');
+  ok(main.includes('cockpit.screen.onDraw = (c, navi) => ui.droneHud.copy(c, navi);') && /this\.onDraw\(this\.canvas, this\.navi\)/.test(read('src/cockpit/screen.js')) && /this\.ins = ins;/.test(read('src/map/navview.js')), 'Die Ansage kommt nicht beim kleinen Navi an');
+  console.log(`  Drohnen-Kärtchen: auf ${compact} Handygrößen das kleine Navi (Pfeil, „800 m“, Ausfahrt 42, Name), ab ${COMPACT_W} px die Karte`);
+}
+
 // --- Grundregel: mit und ohne Gags derselbe Stream -----------------------------------------------------------------
 {
   const run = (on) => {

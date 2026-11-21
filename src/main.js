@@ -279,7 +279,7 @@ speech.enabled = settings.speech;
 const input = new Input();
 const ui = new UI(app);
 // jedes neue Bild des Mittelbildschirms auch ins Kärtchen der Drohnenansicht (solange es zu sehen ist)
-cockpit.screen.onDraw = (c) => ui.droneHud.copy(c);
+cockpit.screen.onDraw = (c, navi) => ui.droneHud.copy(c, navi);
 ui.setChat(settings.chat);
 ui.setFacecam(settings.facecam !== false);
 
