@@ -14,8 +14,6 @@ import { ALBUM_MAX, cleanAlbum } from '../save.js';
 
 export { ALBUM_MAX };
 
-/** Die Streitfragen des Wikis, die zu einer Folge passen können. */
-export const DEBATES = ['trink', 'kanal', 'alster'];
 /** So oft kommt die Trinkbrunnenproblematik auf, wenn im Ort ein Trinkbrunnen steht (sonst stünde sie fast überall). */
 const TRINK_CHANCE = 0.3;
 

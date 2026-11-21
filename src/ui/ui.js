@@ -577,9 +577,12 @@ export class UI {
    * Wort; wen er unterbrochen hat, der steht danach wieder da, solange seine Zeit noch läuft – so geht kein Satz
    * verloren.
    */
+  /** Ein Untertitel für dur Sekunden; gibt die Zeile zurück (t = 0 nimmt sie wieder weg). */
   speak(who, text, dur, label = '') {
-    this.lines.push({ who, text, label, t: dur });
+    const l = { who, text, label, t: dur };
+    this.lines.push(l);
     this.showLine();
+    return l;
   }
 
   showLine() {
@@ -648,7 +651,7 @@ export class UI {
 
   /** Eine gekaufte Sprachdurchsage: Mikrofon, Stimme und Spender über dem vorgelesenen Satz. */
   durchsage(voiceLabel, text, dur, buyer) {
-    this.speak('durchsage', '»' + text + '«', clamp(dur, 3, 14), `${voiceLabel} · Sprachdurchsage von ${buyer}`);
+    return this.speak('durchsage', '»' + text + '«', clamp(dur, 3, 14), `${voiceLabel} · Sprachdurchsage von ${buyer}`);
   }
 
   /**
@@ -656,7 +659,7 @@ export class UI {
    * (BrunnenTV) – auch das ist gesprochen und steht deshalb hier.
    */
   megafon(text, dur, buyer, label = 'Megafon-Wunsch von ' + buyer) {
-    this.speak('megafon', '»' + text + '«', clamp(dur, 3, 14), label);
+    return this.speak('megafon', '»' + text + '«', clamp(dur, 3, 14), label);
   }
 
   /**

@@ -177,7 +177,7 @@ export const RADAR = { ahead: 180, lead: 0.7 };
 
 export class Game {
   /**
-   * @param {object} ctx traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui, fx, pickups;
+   * @param {object} ctx traffic, scenery, windshield, cockpit, audio, speech, ui, fx, pickups;
    *   world: { trip(): die Fahrt über die echte Karte (trip.js), stopping(): bremst der Wagen gerade zum Halt am Brunnen
    *   des Ziels?, release(): der Wagen am Brunnen darf weiterfahren, square(sec) und town(sec): Brunnenplatz und Ort
    *   einer Ortsdurchfahrt für die BrunnenTV-Szene }. Geboten wird auf echte Orte (WorldNavi): Jedes Gebot setzt das
@@ -242,6 +242,9 @@ export class Game {
     this.quote = { dt: QUOTE_DT, v: [], tv: [], next: 0 };
     this.recordShown = false;
     this.lastHorn = -99;
+    // wann OMI zuletzt „zu schnell für die Kurve“ und den Rückwärtsgang gesagt hat und der Chat ihn kommentiert hat
+    // (Spielzeit: die beginnt in jedem Stream bei 0)
+    this.understeerSaid = this.reverseSaid = this.reverseChat = -99;
     this.megafonCd = 0;
     this.chatT = 1.5;
     this.chatSeen = [];
@@ -609,8 +612,11 @@ export class Game {
     // geplante Kleinigkeiten
     if (this.queue.length) {
       const now = this.t;
-      const due = this.queue.filter((q) => q.at <= now);
-      if (due.length) {
+      // erst nachsehen, ob etwas fällig ist: Die Liste ist fast nie leer, neue Listen braucht es nur dann
+      let any = false;
+      for (const q of this.queue) if (q.at <= now) any = true;
+      if (any) {
+        const due = this.queue.filter((q) => q.at <= now);
         this.queue = this.queue.filter((q) => q.at > now);
         for (const q of due) q.fn();
       }
@@ -1768,7 +1774,7 @@ export class Game {
   updateEvents(dt, camera) {
     const p = this.player;
     const T = this.T;
-    for (const k of Object.keys(T)) T[k] -= dt;
+    for (const k in T) T[k] -= dt;
     // ein großes, gut gelauntes Publikum bucht öfter Durchsagen, Rahmen und Aktionen
     const eager = (clamp(this.eco.activity(), 0.6, 1.8) - 1) * dt;
     T.durchsage -= eager;
@@ -1785,9 +1791,12 @@ export class Game {
       this.donate(name, this.eco.durchsagePrice(), 'Sprachdurchsage', { label: 'Sprachdurchsagen' });
       this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
       this.later(1.2, () => {
-        const dur = this.speech.say(text, d.voice);
+        // die Karte nur zu einer Durchsage, die auch zu hören ist (OMI kann sie aus der Warteschlange drängen)
+        let line = null;
+        const dur = this.speech.say(text, d.voice, { onDrop: () => line && (line.t = 0) });
+        if (!dur) return;
         this.said = { t: this.t, voice: d.voice };
-        this.ui.durchsage(VOICES[d.voice].label, text, dur + 1, name);
+        line = this.ui.durchsage(VOICES[d.voice].label, text, dur + 1, name);
         this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 1);
       });
     }
@@ -1859,8 +1868,10 @@ export class Game {
         this.later(1, () => {
           this.audio.megafon();
           // Mini Adam ruft den Wunsch durchs Megafon – mit seiner Stimme
-          const dur = this.speech.say(text, 'adam');
-          this.ui.megafon(text, dur + 1, name);
+          let line = null;
+          const dur = this.speech.say(text, 'adam', { onDrop: () => line && (line.t = 0) });
+          if (!dur) return;
+          line = this.ui.megafon(text, dur + 1, name);
           this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 0.6);
         });
       }

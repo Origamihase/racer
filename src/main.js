@@ -362,7 +362,7 @@ const gameWorld = {
   hold: (sec) => (xxl.arrival.held = { s: xxl.trip.s + 0.3, sec, place: sec.place, park: -1 }),
 };
 // (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
-const game = new Game({ traffic, scenery, road, sky, rain, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
+const game = new Game({ traffic, scenery, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
 // Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht, BrunnenTV,
 // Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
 xxl.on((e) => {
@@ -625,6 +625,7 @@ function toTitle() {
   state = 'title';
   stateT = 0;
   paused = false;
+  liveOff();
   cockpit.shake = 0;
   view = 'cockpit';
   ui.show(false);
@@ -709,6 +710,9 @@ const drone = { pos: new THREE.Vector3(0, 4, 10), look: new THREE.Vector3(0, 1, 
 // Fahrwerk (src/game/chassis.js): Wanken, Kopf, Neigung der Cockpitkamera, Verfolgerkamera – straff, ohne Schaukeln
 const chassis = new Chassis();
 const droneQuat = new THREE.Quaternion();
+// Ziel und Blickpunkt der Drohne in diesem Bild (placeDrone) und die Kamera einer Szene (lerpKeys): ohne neue Vektoren je Bild
+const droneAim = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
+const keyCam = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
 const droneMatrix = new THREE.Matrix4();
 
 function updateCarMatrix() {
@@ -1074,14 +1078,14 @@ function placeDrone(dt, mode) {
   let look;
   if (mode === 'orbit') {
     pos = orbitTarget(p, dt);
-    look = new THREE.Vector3(0, 0.9, 0).applyMatrix4(carMatrix);
+    look = droneAim.look.set(0, 0.9, 0).applyMatrix4(carMatrix);
   } else {
     // hinter dem Wagen, mit dem halben Gierwinkel geschwenkt und kaum versetzt: Sie bleibt eng am Wagen, statt ihn bei
     // jedem Spurwechsel quer durchs Bild gleiten zu lassen (Fahrwerk)
     droneQuat.setFromAxisAngle(UP_AXIS, -p.yaw * CHASSIS.droneYaw);
     droneMatrix.compose(carPos, droneQuat, ONE);
-    pos = new THREE.Vector3(-p.vx * CHASSIS.lag, 3.3, 9.2).applyMatrix4(droneMatrix);
-    look = new THREE.Vector3(0, 1.0, -14).applyMatrix4(droneMatrix);
+    pos = droneAim.pos.set(-p.vx * CHASSIS.lag, 3.3, 9.2).applyMatrix4(droneMatrix);
+    look = droneAim.look.set(0, 1.0, -14).applyMatrix4(droneMatrix);
     // in die Kurve schauen (um die Kamera gedreht) und mit der Straße etwas hoch oder runter
     look.sub(pos).applyAxisAngle(UP_AXIS, lookAhead.yaw * 0.6);
     look.y += Math.tan(lookAhead.pitch * 0.6) * 23;
@@ -1143,12 +1147,16 @@ function lerpKeys(t, keys) {
       break;
     }
   }
-  if (t > b.t) return { pos: new THREE.Vector3(...b.pos), look: new THREE.Vector3(...b.look) };
+  // (die Vektoren gelten bis zum nächsten Aufruf)
+  if (t > b.t) {
+    keyCam.pos.fromArray(b.pos);
+    keyCam.look.fromArray(b.look);
+    return keyCam;
+  }
   const k = easeInOut(clamp((t - a.t) / (b.t - a.t), 0, 1));
-  return {
-    pos: new THREE.Vector3().fromArray(a.pos).lerp(new THREE.Vector3().fromArray(b.pos), k),
-    look: new THREE.Vector3().fromArray(a.look).lerp(new THREE.Vector3().fromArray(b.look), k),
-  };
+  keyCam.pos.fromArray(a.pos).lerp(tmpV2.fromArray(b.pos), k);
+  keyCam.look.fromArray(a.look).lerp(tmpV2.fromArray(b.look), k);
+  return keyCam;
 }
 
 /** Kamera einer Szene: Schlüssel im Rahmen des Wagens bis inside, danach im Cockpit (Kopf dreht nach vorne bis end). */
@@ -1367,6 +1375,11 @@ function streamHello() {
   chargeRun.liveT = simT + Math.max(d + 0.35, SCENE.live - SCENE.hallo);
 }
 
+/** Der Stream ist aus: kein „Wir sind live.“ und kein Gruß OMIs mehr, die noch geplant waren. */
+function liveOff() {
+  chargeRun.liveT = chargeRun.greetT = Infinity;
+}
+
 /** Das Sprachstudio meldet: Wir sind live (nach Mini Adams Gruß). */
 function chargeLive() {
   chargeRun.liveT = Infinity;
@@ -1482,7 +1495,9 @@ function stopTick() {
   const p = game.player;
   const c = r.c;
   const P = c.plan;
-  if (!game.charging) {
+  // endet der Stream mitten im Stopp (Stream beenden, keine Gebote mehr), kommt der Abspann gleich: Sonst stünde die
+  // Szene still, denn game.update läuft nicht mehr, und game.charging bliebe gesetzt
+  if (!game.charging || game.over) {
     // Übergabe: der Wagen steht da, wo das Ausparken endet, mit dessen Tempo; Stecker im Halter, Klappe zu
     const e = rollPose(P.u, ROLL_T, r.q);
     Object.assign(p, { s: c.sec.s0 + e.u, x: e.x, speed: e.v, wheel: 0, throttle: 0, braking: 0, yaw: 0, vx: 0 });
@@ -2192,6 +2207,7 @@ function step(dt, { render = true } = {}) {
       if (game.over) {
         state = 'ending';
         stateT = 0;
+        liveOff();
         drone.init = false;
         finishRun();
       }

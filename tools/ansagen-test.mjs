@@ -502,5 +502,48 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   console.log(`  Handy hochkant: Akku-Kopie oben, sobald der Mittelbildschirm aus dem Bild ragt (390 × 844: rechts bei ${cockpitParts(390, 844).screen.right.toFixed(0)} px) · ${seen.slice(1).join(' / ')}`);
 }
 
+// --- Warteschlange und Pause der Sprachausgabe (src/speech.js) -------------------------------------------------------
+{
+  const sp = new Speech();
+  // Sätze mit Vorrang hinter einem laufenden kommen in ihrer Reihenfolge, wie ihre Untertitel
+  for (const t of ['Regen erkannt.', 'Neues Ziel: Hanau.', 'Akku fast leer.']) sp.say(t, 'board', { priority: true });
+  ok(sp.current.text === 'Regen erkannt.' && sp.queue.map((q) => q.text).join('|') === 'Neues Ziel: Hanau.|Akku fast leer.', `Vorrang: ${sp.queue.map((q) => q.text).join(' | ')} warten (neuester zuerst?)`);
+  // eine Durchsage, die OMI aus der Warteschlange drängt, meldet das; eine, die gar nicht hineinkommt, hat Dauer 0
+  sp.stopAll();
+  let dropped = 0;
+  sp.say('Sprachstudio spricht.', 'sprachstudio');
+  ok(sp.say('Eine Durchsage.', 'kassandra', { onDrop: () => dropped++ }) > 0, 'Durchsage kommt nicht in die Warteschlange');
+  sp.say('OMI sagt etwas.', 'board', { priority: true });
+  ok(dropped === 1 && !sp.queue.some((q) => q.text === 'Eine Durchsage.'), `Verdrängte Durchsage: onDrop ${dropped}×`);
+  sp.stopAll();
+  for (let i = 0; i < 4; i++) sp.say(`Satz ${i}.`, 'kassandra');
+  ok(sp.say('Einer zu viel.', 'kassandra') === 0, 'Ein Satz über der vollen Warteschlange meldet eine Dauer');
+  // die Pause hält den laufenden Satz an (auch sein Sicherheitsnetz); Neustart aus der Pause hebt sie auf
+  sp.stopAll();
+  sp.say('Kurz.', 'board');
+  sp.pause(true);
+  await new Promise((r) => setTimeout(r, 1600));
+  ok(sp.current?.text === 'Kurz.' && sp.busy, 'Während der Pause gilt der Satz als fertig');
+  sp.say('Danach.', 'board');
+  sp.stopAll();
+  ok(!sp.paused && !sp.queue.length && !sp.current, 'stopAll aus der Pause: Sprachausgabe bleibt angehalten');
+  sp.say('Neuer Stream.', 'board');
+  ok(sp.current?.text === 'Neuer Stream.', 'Nach stopAll aus der Pause spricht niemand');
+  sp.stopAll();
+  console.log('  Sprachausgabe: Vorrang in Reihenfolge, verdrängte Durchsage gemeldet, Pause hält den Satz an, Neustart hebt sie auf');
+}
+
+// Nach dem Stopp, Neustart oder Ende des Streams: geplante Ansagen, Abspann im Ladestopp, Zeiten des neuen Streams
+{
+  const main = read('src/main.js');
+  ok(/if \(!game\.charging \|\| game\.over\) \{/.test(main), 'main.js: Endet der Stream im Ladestopp, bleibt die Szene stehen (stopTick)');
+  ok(/function toTitle\(\) \{[^}]*liveOff\(\);/.test(main) && /state = 'ending';\n\s*stateT = 0;\n\s*liveOff\(\);/.test(main), 'main.js: „Wir sind live.“ kommt noch nach dem Ende');
+  const sim = makeStream({ driver: DRIVERS.zuegig, seed: 3 });
+  const g = sim.game;
+  g.understeerSaid = g.reverseSaid = g.reverseChat = 7200;
+  g.start(g.save);
+  ok(g.understeerSaid === -99 && g.reverseSaid === -99 && g.reverseChat === -99, 'Game.start: Sperrzeiten der Ansagen aus dem vorigen Stream bleiben');
+}
+
 console.log(`ansagen-test: ${checks} Prüfungen, ${fails} Fehler`);
 if (fails) process.exit(1);
