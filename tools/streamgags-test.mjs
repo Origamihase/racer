@@ -2,11 +2,13 @@
 // Herr Schönnbrun moderiert BrunnenTV (Bauchbinde, Logo, Hymne, Gruß im Chat, Album, Abspann). Dazu die Grundregel
 // aller Gags: Sie würfeln mit eigenem Zufall – ein Stream verläuft mit ihnen genauso wie ohne sie.
 import { readFileSync } from 'node:fs';
+import { fmtNum } from '../src/util.js';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
 import { SCHOENNBRUN, ABSPANN_REISE, GAGS, SHOP, shopPrice } from '../src/data.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
 import { drawSchoennbrunLogo } from '../src/ui/schoennbrun.js';
-import { StreamGags, GATE, VEREIN, CODE } from '../src/game/gags.js';
+import { StreamGags, GATE, VEREIN, CODE, TRACKER } from '../src/game/gags.js';
+import { FACTS } from '../src/game/game.js';
 import { thanksGroups } from '../src/ui/abspann.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from '../src/world/xxl/schranke.js';
 import { places } from '../src/map/graph.js';
@@ -159,7 +161,8 @@ function fakeGame(secs, { gate = true } = {}) {
     fits: () => true,
     world: { trip: () => ({ cur: { sections: secs }, section: { kind: 'ab' } }) },
     ui: { chat: (m) => g.chat.push({ t: g.t, ...m }), toast() {} },
-    audio: {},
+    audio: { pling() {} },
+    cockpit: {},
     later: (d, fn) => g.queue.push({ at: g.t + d, fn }),
     donate: (name, amount, what, o) => g.donations.push({ t: g.t, name, amount, what, line: o.line }),
     say: (text, mood, o) => g.omi.push({ t: g.t, text, o }),
@@ -174,7 +177,7 @@ function fakeGame(secs, { gate = true } = {}) {
     g.player.speed = Math.max(0, Math.min(75, g.player.speed + accel * dt));
     g.player.kmh = g.player.speed * 3.6;
     g.player.s += g.player.speed * dt;
-    g.gags.update();
+    g.gags.update(dt);
   };
   return g;
 }
@@ -316,6 +319,44 @@ function fakeGame(secs, { gate = true } = {}) {
   }
   ok(C.chat.every((l) => /Code ADAM|CODE ADAM/.test(l)) && C.chat.filter((l) => /10 %/.test(l)).length >= 3, 'Code ADAM: eine Zeile ohne Code');
   console.log(`  Code ADAM: Plüschbrause-Kiste 190 € → ${shopPrice(it, 0)} €, Zuckerschub 10 s; ${n} Erinnerungen in 2 × 40 min`);
+}
+
+// --- 5. Geo-Tracker und Glotzometer: was sie sagen, stimmt ----------------------------------------------------------
+{
+  const T = GAGS.tracker;
+  const tags = (l) => (l.startsWith('[') ? l.slice(1, l.indexOf(']')).split(' ') : []);
+  // jede Zeile der Gags, die etwas über den Moment behauptet, trägt ihr Stichwort (und nur bekannte)
+  const all = Object.entries(GAGS).flatMap(([k, v]) => Object.entries(v).flatMap(([j, x]) => (Array.isArray(x) ? x.filter((l) => typeof l === 'string').map((l) => [k + '.' + j, l]) : typeof x === 'string' ? [[k + '.' + j, x]] : [])));
+  for (const [where, l] of all) {
+    ok(tags(l).every((k) => k in FACTS), `${where}: unbekanntes Stichwort in „${l}“`);
+    if (/Geo-Tracker|gleich in|kommt gleich/.test(l)) ok(tags(l).includes('gleich'), `${where}: „${l}“ ohne Stichwort gleich`);
+    if (/Glotzometer.*\{n\}|\{n\}.*(Zuschauer|zu|Leute)/.test(l)) ok(tags(l).includes('glotz'), `${where}: „${l}“ ohne Stichwort glotz`);
+  }
+  let geo = 0;
+  let glotz = 0;
+  for (const seed of [1, 6]) {
+    const sim = makeStream({ driver: DRIVERS.mittel, seed, endless: true });
+    const { game } = sim;
+    const said = [];
+    const say = game.gags.say.bind(game.gags);
+    game.gags.say = (text, name) => {
+      said.push({ t: game.t, text, next: game.gags.nextTown(), viewers: fmtNum(Math.round(game.viewers)), gleich: FACTS.gleich(game), glotzOk: FACTS.glotz(game), scene: !!(game.tv || game.charging) });
+      say(text, name);
+    };
+    sim.step(2400);
+    const g1 = said.filter((x) => /Geo-Tracker/.test(x.text));
+    const g2 = said.filter((x) => /Glotzometer/.test(x.text));
+    for (const x of g1) ok(x.gleich && x.next && x.text.includes(x.next.name) && x.next.d <= TRACKER.near, `Seed ${seed}: „${x.text}“ um ${x.t.toFixed(0)} s, voraus ${x.next ? x.next.name + ' in ' + x.next.d.toFixed(0) + ' m' : 'nichts'}`);
+    for (const x of g2) ok(x.glotzOk && x.text.includes(x.viewers) && !x.scene, `Seed ${seed}: „${x.text}“ bei ${x.viewers} Zuschauern`);
+    ok(g1.length >= 1 && g2.length >= 4, `Seed ${seed}: ${g1.length} Meldungen des Geo-Trackers, ${g2.length} des Glotzometers in 40 min`);
+    ok(g1.slice(1).every((x, i) => x.t - g1[i].t >= TRACKER.gap - 0.1), `Seed ${seed}: Geo-Tracker zu oft`);
+    ok(said.every((x) => !/\[/.test(x.text)), `Seed ${seed}: ein Stichwort steht im Chat`);
+    geo += g1.length;
+    glotz += g2.length;
+  }
+  ok(geo >= 3, `Geo-Tracker nur ${geo}× in 2 × 40 min`);
+  ok(/' · Quelle: ' \+ GAGS\.tracker\.seite/.test(read('src/ui/menus.js')), 'menus.js: die Einschaltquote nennt das Glotzometer nicht');
+  console.log(`  Tracker: ${geo} Meldungen des Geo-Trackers (immer der nächste Ort voraus), ${glotz} des ${T.seite} (immer die Zuschauerzahl) in 2 × 40 min`);
 }
 
 // --- Grundregel: mit und ohne Gags derselbe Stream -----------------------------------------------------------------

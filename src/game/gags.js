@@ -6,8 +6,9 @@
 // Chats) und rührt Geld und Stimmung nur an, wo die Welt mitspielt (Schranke, Laden). So verläuft ein Stream mit den
 // Gags genauso wie ohne sie – die Prüfstände mit festem Zufall (journey-, geld-, ansagen-test) bleiben, wie sie sind.
 import { BOTS, SCHOENNBRUN, GAGS, viewerNameAt, fillTemplate } from '../data.js';
-import { fmtCent } from '../util.js';
+import { fmtCent, fmtNum } from '../util.js';
 import { schrankeOf } from '../world/xxl/schranke.js';
+import { places } from '../map/graph.js';
 
 /**
  * Die Bezahlschranke (world/xxl/schranke.js): Erst nach first Sekunden Stream, danach frühestens gap Sekunden nach der
@@ -30,6 +31,13 @@ export const VEREIN = { found: [70, 110], join: [35, 90], echo: 0.3, wait: 4 };
  * einer Szene fällt die Erinnerung aus); reply: so oft antwortet jemand.
  */
 export const CODE = { first: [150, 260], every: [180, 360], reply: 0.35 };
+
+/**
+ * Tracker (GAGS.tracker): Der Geo-Tracker meldet einen Ort, sobald er höchstens near Meter voraus auf dem Weg liegt –
+ * mit der Wahrscheinlichkeit geo, frühestens gap Sekunden nach der letzten Meldung; das Glotzometer nennt die
+ * Zuschauerzahl erstmals nach first, dann alle every Sekunden. Beide nur außerhalb der Szenen.
+ */
+export const TRACKER = { near: 1200, geo: 0.7, gap: 90, first: [200, 320], every: [240, 420] };
 
 /** Kleiner, schneller Zufall mit Saat (wie in tools/stream-sim.mjs). */
 export function mulberry32(a) {
@@ -60,6 +68,10 @@ export class StreamGags {
     // des Beitritts)
     this.verein = { founded: false, due: this.between(...VEREIN.found), members: [] };
     this.codeT = this.between(...CODE.first);
+    // Tracker: der zuletzt gemeldete Ort, wann der Geo-Tracker wieder darf, wann das Glotzometer dran ist
+    this.trackedKey = null;
+    this.geoT = 0;
+    this.glotzT = this.between(...TRACKER.first);
   }
 
   /** Was Abrechnung und Abspann von den Gags wissen (Game.end): { verein: { name, members } | null }. */
@@ -74,6 +86,28 @@ export class StreamGags {
     if (this.g.world.gate) this.updateGate();
     this.updateVerein();
     this.updateCode();
+    this.updateTracker();
+  }
+
+  /** Eine Zeile eines Vorrats, die gerade stimmt (FACTS über Game.fits), ohne Stichwort; '' wenn keine passt. */
+  line(pool, vars = {}) {
+    const fits = pool.filter((l) => this.g.fits(l));
+    if (!fits.length) return '';
+    const l = this.pick(fits);
+    return fillTemplate(l.charCodeAt(0) === 91 ? l.slice(l.indexOf(']') + 2) : l, vars);
+  }
+
+  /** Der nächste Ort voraus auf dem Weg, höchstens TRACKER.near Meter entfernt: { sec, name, d } oder null. */
+  nextTown() {
+    const trip = this.g.world.trip();
+    // (Prüfstände mit einer Fahrt ohne Abschnitte: kein Ort)
+    if (!trip || !trip.cur) return null;
+    const s = this.g.player.s;
+    for (const sec of trip.cur.sections) {
+      if (sec.kind !== 'stadt' || sec.s0 <= s) continue;
+      return sec.s0 - s <= TRACKER.near && places[sec.place] ? { sec, name: places[sec.place].name, d: sec.s0 - s } : null;
+    }
+    return null;
   }
 
   // --- Zufall der Gags ------------------------------------------------------------------------------------------
@@ -224,5 +258,33 @@ export class StreamGags {
       const name = this.name();
       this.later(this.between(1.2, 2.6), () => this.say(text, name));
     }
+  }
+
+  // --- 5. Geo-Tracker und Glotzometer ---------------------------------------------------------------------------------
+  updateTracker() {
+    const g = this.g;
+    const T = GAGS.tracker;
+    const scene = g.tv || g.charging;
+    const next = this.nextTown();
+    const key = next ? next.sec.place + '@' + Math.round(next.sec.s0) : null;
+    if (key && key !== this.trackedKey) {
+      this.trackedKey = key;
+      if (!scene && g.t >= this.geoT && this.chance(TRACKER.geo)) {
+        this.geoT = g.t + TRACKER.gap;
+        const name = this.name();
+        const pick = this.rnd();
+        // gesagt wird, was im Moment der Zeile stimmt (der Ort kann inzwischen erreicht sein: dann nichts)
+        this.later(this.between(0.6, 2.2), () => {
+          const now = this.nextTown();
+          const fits = T.geo.filter((l) => g.fits(l));
+          if (now && fits.length) this.say(fillTemplate(fits[Math.floor(pick * fits.length)].replace(/^\[[^\]]*\] /, ''), { ort: now.name }), name);
+        });
+      }
+    }
+    if (g.t < this.glotzT) return;
+    this.glotzT = g.t + this.between(...TRACKER.every);
+    if (scene) return;
+    const text = this.line(T.glotz, { n: fmtNum(Math.round(g.viewers)) });
+    if (text) this.say(text);
   }
 }

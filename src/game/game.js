@@ -169,6 +169,10 @@ export const FACTS = {
   durchsage: (g) => g.t - g.said.t < 20,
   kassandra: (g) => g.t - g.said.t < 20 && g.said.voice === 'kassandra',
   donnerstag: () => new Date().getDay() === 4,
+  // … und für die Running Gags (gags.js): gleich ein Ort liegt kurz voraus auf dem Weg (der Geo-Tracker nennt ihn) ·
+  // glotz die Zuschauerzahl steht (kein Funkloch; das Glotzometer nennt sie)
+  gleich: (g) => !!g.gags.nextTown(),
+  glotz: (g) => g.viewers > 0 && g.funkloch <= 0,
 };
 // so oft greift der Chat zu einem Running Gag (CHAT.meme), wenn einer zum Moment passt
 const MEME_SHARE = 0.18;

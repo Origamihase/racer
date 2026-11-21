@@ -189,6 +189,14 @@ export const GAGS = {
       'CODE ADAM! 10 % auf alles!', 'Gilt Code ADAM auch für Bananensaft? 🍌', 'Ohne Code ADAM kauf ich gar nix mehr', 'Holy! Plüschbrause nur mit Code ADAM 🥤'],
     antwort: ['Holy 🥤', 'Code ADAM ist Pflicht', 'Plüschbrause > alles', '10 % sind 10 % 😂', 'Holy, nur mit Code ADAM!'],
   },
+  // Tracker: ein Zuschauer mit Geo-Tracker kündigt den nächsten Ort an ({ort}, wahr: Stichwort gleich), Zahlen zum
+  // Stream kommen von der ausgedachten Statistikseite Glotzometer ({n}: die Zuschauer gerade, Stichwort glotz); die
+  // Einschaltquote im Abspann nennt sie als Quelle
+  tracker: {
+    seite: 'Glotzometer',
+    geo: ['[gleich] Laut Geo-Tracker bist du gleich in {ort} 📍', '[gleich] Geo-Tracker sagt: gleich {ort}! 📍', '[gleich] Mein Geo-Tracker meldet: {ort} kommt gleich 👀'],
+    glotz: ['[glotz] Laut Glotzometer schauen gerade {n} zu 📈', '[glotz] Glotzometer sagt: {n} Leute im Stream 👀', '[glotz] Glotzometer-Check: {n} Zuschauer, läuft 📈'],
+  },
 };
 /**
  * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des

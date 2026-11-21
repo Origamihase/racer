@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate, shopPrice } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice } from '../data.js';
 import { fmtNum, fmtCent, fmtEuro, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -604,7 +604,9 @@ export class Menus {
    */
   quoteBlock(card, q) {
     const box = el('section', 'over-route over-quote', card);
-    el('h3', '', box, 'Einschaltquote');
+    const head = el('h3', '', box, 'Einschaltquote');
+    // die Zahlen „laut Glotzometer“ (GAGS.tracker: die ausgedachte Statistikseite, die der Chat zitiert)
+    el('span', 'quote-src', head, ' · Quelle: ' + GAGS.tracker.seite);
     const wrap = el('div', 'route-map-wrap quote-wrap', box);
     const canvas = el('canvas', 'route-map', wrap);
     canvas.setAttribute('role', 'img');

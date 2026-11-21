@@ -684,6 +684,8 @@ body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top)
 .shop-code { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; font-size: 13px; }
 .shop-code-tag { padding: 1px 7px; border-radius: 6px; background: var(--gold); color: #1e2128; font-weight: 800; white-space: nowrap; }
 .shop-code s { opacity: 0.7; }
+/* Quelle der Einschaltquote im Abspann (das ausgedachte Glotzometer) */
+.quote-src { font-size: 12px; font-weight: 600; opacity: 0.65; }
 .btn.buy { text-align: center; font-size: 15px; padding: 9px 12px; background: rgba(63,125,255,0.28); border-color: rgba(120,170,255,0.5); }
 .btn.buy:hover:not([disabled]), .btn.buy:focus-visible { background: rgba(63,125,255,0.5); }
 .btn.poor { background: rgba(255,255,255,0.05); }
