@@ -46,6 +46,12 @@ export const TRACKER = { near: 1200, geo: 0.7, gap: 90, first: [200, 320], every
  */
 export const PAKET = { first: [300, 540], step: [120, 240], wait: 5, keep: 900, again: [900, 1500], leid: 0.6 };
 
+/**
+ * „Schade Schokolade“ (GAGS.schade): Geht etwas schief (Game: Ausfahrt verpasst, Bieterfenster bleibt leer, Rempler,
+ * Blitzer), tröstet der Chat mit der Wahrscheinlichkeit chance, delay Sekunden später – höchstens alle gap Sekunden.
+ */
+export const SCHADE = { chance: 0.6, gap: 25, delay: [1.4, 2.8] };
+
 /** Kleiner, schneller Zufall mit Saat (wie in tools/stream-sim.mjs). */
 export function mulberry32(a) {
   return () => {
@@ -83,6 +89,7 @@ export class StreamGags {
     // dem der Wagen zuletzt war (dort ist das Paket dann gerade); abgeholt in einer Folge, gemeldet nach ihr
     this.paket = { step: 0, due: this.between(...PAKET.first), pack: null, picked: false, n: 0 };
     this.lastTown = null;
+    this.schadeT = 0;
   }
 
   /** Was Abrechnung und Abspann von den Gags wissen (Game.end): { verein: { name, members } | null }. */
@@ -359,5 +366,16 @@ export class StreamGags {
       const name = this.name();
       this.later(this.between(1.2, 3), () => this.say(leid, name));
     }
+  }
+
+  // --- 7. Schade Schokolade ------------------------------------------------------------------------------------------
+  /** Etwas ist schiefgegangen (kind: ausfahrt, fenster, rempler, blitzer): vielleicht tröstet der Chat. */
+  fail(kind) {
+    const g = this.g;
+    if (!this.on || g.t < this.schadeT || !this.chance(SCHADE.chance)) return;
+    this.schadeT = g.t + SCHADE.gap;
+    const text = this.pick(GAGS.schade);
+    const name = this.name();
+    this.later(this.between(...SCHADE.delay), () => this.say(text, name));
   }
 }

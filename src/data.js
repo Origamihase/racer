@@ -211,6 +211,8 @@ export const GAGS = {
     jubel: ['ENDLICH! 📦', 'Das Paket ist da! 🎉', 'Schneckenpost hat geliefert 🐌🎉'],
     zurueck: '📦 Paket geht zurück an den Absender. Neue Sendung kommt bestimmt 🙄',
   },
+  // „Schade Schokolade“: so tröstet der Chat, wenn etwas schiefgeht (Ausfahrt verpasst, niemand bietet, Rempler, Blitzer)
+  schade: ['Schade Schokolade 🍫', 'Schade Schokolade!', 'schade schokolade 😅', 'Tja. Schade Schokolade 🍫', 'Schade Schokolade, Mini Adam 🍫'],
 };
 /**
  * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des

@@ -7,7 +7,7 @@ import { makeStream, DRIVERS } from './stream-sim.mjs';
 import { SCHOENNBRUN, ABSPANN_REISE, GAGS, SHOP, shopPrice } from '../src/data.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
 import { drawSchoennbrunLogo } from '../src/ui/schoennbrun.js';
-import { StreamGags, GATE, VEREIN, CODE, TRACKER, PAKET } from '../src/game/gags.js';
+import { StreamGags, GATE, VEREIN, CODE, TRACKER, PAKET, SCHADE } from '../src/game/gags.js';
 import { FACTS } from '../src/game/game.js';
 import { thanksGroups } from '../src/ui/abspann.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from '../src/world/xxl/schranke.js';
@@ -422,6 +422,49 @@ function fakeGame(secs, { gate = true } = {}) {
   ok(got.length === 1 && g.chat.some((m) => P.jubel.includes(m.text)) && g.gags.paket.n === 1 && !g.gags.paket.pack, `Abholung: ${got.map((m) => m.text).join(' | ')}`);
   console.log(`  Paketsuche: ${chains} Sendungen in 2 × 60 min, Schritt für Schritt, das Paket nie im Ort des Wagens; Abholung in Hanau: ${got[0] ? got[0].text : '—'}`);
 }
+
+// --- 7. Schade Schokolade: wenn etwas schiefgeht, höchstens alle SCHADE.gap Sekunden --------------------------------
+{
+  const game = read('src/game/game.js');
+  const at = (kind, before) => {
+    const i = game.indexOf(`this.gags.fail('${kind}');`);
+    return i > 0 && game.slice(Math.max(0, i - 400), i).includes(before);
+  };
+  ok(at('ausfahrt', "if (e.wrong && e.planned === 'exit') {"), 'game.js: verpasste Ausfahrt ohne Schade Schokolade');
+  ok(at('fenster', 'A.warned = true;'), 'game.js: leeres Bieterfenster ohne Schade Schokolade');
+  ok(at('rempler', 'if (!p.collide(e)) return;'), 'game.js: Rempler ohne Schade Schokolade');
+  ok(at('blitzer', 'this.stats.photos++;'), 'game.js: Blitzer ohne Schade Schokolade');
+  const g = fakeGame([]);
+  const calls = [];
+  for (let i = 0; i < 400; i++) {
+    g.step(7.5);
+    calls.push(g.t);
+    g.gags.fail(['ausfahrt', 'fenster', 'rempler', 'blitzer'][i % 4]);
+  }
+  for (let i = 0; i < 40; i++) g.step(0.5);
+  const lines = g.chat.filter((m) => GAGS.schade.includes(m.text));
+  const gaps = lines.slice(1).map((m, i) => m.t - lines[i].t);
+  ok(lines.every((m) => m.gag && calls.some((t) => m.t - t >= SCHADE.delay[0] - 7.6 && m.t - t <= SCHADE.delay[1] + 7.6)), 'Schade Schokolade ohne Anlass');
+  ok(gaps.every((d) => d >= SCHADE.gap - 7.6), `Schade Schokolade zu oft: ${Math.min(...gaps).toFixed(1)} s`);
+  ok(lines.length > 60 && lines.length < 120, `Schade Schokolade ${lines.length}× auf 400 Pannen im Abstand von 7,5 s`);
+  g.gags.on = false;
+  const before = g.chat.length;
+  g.step(60);
+  g.gags.fail('rempler');
+  g.step(5);
+  ok(g.chat.length === before, 'Schade Schokolade bei abgeschalteten Gags');
+  // im simulierten Stream: nach leeren Bieterfenstern
+  const sim = makeStream({ driver: DRIVERS.troedler, seed: 3, endless: true });
+  const fails = [];
+  const fail = sim.game.gags.fail.bind(sim.game.gags);
+  sim.game.gags.fail = (kind) => (fails.push({ t: sim.game.t, kind }), fail(kind));
+  sim.step(2400);
+  const said = sim.log.chat.filter((m) => m.gag && GAGS.schade.includes(m.text));
+  ok(said.every((m) => fails.some((f) => m.t - f.t >= SCHADE.delay[0] - 1e-6 && m.t - f.t <= SCHADE.delay[1] + 0.05)), 'Stream: Schade Schokolade ohne Panne davor');
+  console.log(`  Schade Schokolade: ${lines.length}× auf 400 Pannen (höchstens alle ${SCHADE.gap} s); im Stream des Trödlers ${said.length}× auf ${fails.length} Pannen (${[...new Set(fails.map((f) => f.kind))].join(', ') || '–'})`);
+}
+
+// --- 7 Ende
 
 // --- Grundregel: mit und ohne Gags derselbe Stream -----------------------------------------------------------------
 {

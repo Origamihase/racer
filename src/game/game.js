@@ -1243,6 +1243,7 @@ export class Game {
       if (!A.warned && left <= AUKTION.warn) {
         A.warned = true;
         this.chat(this.chatLine(this.eco.level >= 2 ? CHAT.fensterBald : CHAT.fensterStill));
+        this.gags.fail('fenster');
       }
       // ob jemand bietet, würfelt die Stream-Kasse je Schritt nach der Stimmung (economy.js windowBid) – die ersten
       // TV.pause Sekunden gehören James' Aufruf; bietet bis zum Ende niemand, ist der Stream vorbei (endless: dann
@@ -1552,6 +1553,7 @@ export class Game {
       if (e.wrong && this.navi.target) this.zufrieden.detour();
       if (e.wrong && e.planned === 'exit') {
         this.missedTarget();
+        this.gags.fail('ausfahrt');
         this.onMood('startled', 0.5);
       } else if (e.taken === 'exit') this.onMood('curious', 0.7);
     }
@@ -1956,6 +1958,7 @@ export class Game {
           this.scenery.flashBlitzer(true);
           this.later(0.15, () => this.scenery.flashBlitzer(false));
           this.stats.photos++;
+          this.gags.fail('blitzer');
           // Tempo und Uhrzeit im Moment des Blitzes festhalten (danach wird meist gebremst)
           const kmh = Math.round(p.kmh);
           const clock = fmtClock(this.clock);
@@ -2673,6 +2676,7 @@ export class Game {
   onCrash(e) {
     const p = this.player;
     if (!p.collide(e)) return;
+    this.gags.fail('rempler');
     this.stats.crashes++;
     this.tally.hits++;
     this.stats.cleanDistance = 0;
