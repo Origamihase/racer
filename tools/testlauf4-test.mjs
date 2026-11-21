@@ -1,4 +1,8 @@
 // Testlauf 4 (die Probefahrt des Besitzers vom 21.11.2026 abends), ohne Grafik: node tools/testlauf4-test.mjs
+// 8. „Gegenverkehr außerhalb der Autobahn“: Auf Orts- und Landstraßen kommen in der Gegenspur Autos entgegen
+//    (world/xxl/gegenverkehr.js), im Ort 40–50 km/h, draußen 70–95 km/h, ab und zu ein Transporter; nie auf der
+//    Autobahn, nie an einer Brunneninsel, höchstens GEGEN.max zugleich. Wer in seiner Spur bleibt, wird nie berührt;
+//    wer in der Gegenspur steht, vor dem halten sie an, und wer hineinfährt, rempelt (ein Ereignis 'crash').
 // 7. „Parkende Autos sollten kein aktives Rücklicht haben“: Die Spielzeugautos am Straßenrand und in den Parks
 //    (kit/street.js toyCar) haben dunkle Rücklichter und graue Scheinwerfer; es leuchtet nur der fahrende Verkehr.
 // 6. „Finger beim Winken ausstrecken“: Die winkende Hand ist offen – Handteller, vier gespreizte Finger und der Daumen
@@ -49,6 +53,10 @@ import { buildAdamGeometry } from '../src/models/adamSculpt.js';
 import { openHandGeometry, mittenGeometry } from '../src/cockpit/hands.js';
 import { LAMP_OFF } from '../src/world/kit/street.js';
 import { PAL } from '../src/world/kit/palette.js';
+import { Gegenverkehr, GEGEN, twoWay, oncomingX } from '../src/world/xxl/gegenverkehr.js';
+import { CAR_TYPES } from '../src/models/vehicles.js';
+import { autoTarget, squareOf } from '../src/world/xxl/plan.js';
+import { Group } from 'three';
 import { CHEER } from '../src/game/economy.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
 import { Menus } from '../src/ui/menus.js';
@@ -588,6 +596,99 @@ console.log('7. Geparkte Autos leuchten nicht:');
   const toy = street.slice(street.indexOf('function toyCar('), street.indexOf('const CAR_TINTS'));
   ok(/const lamp = back \? LAMP_OFF\.tail : LAMP_OFF\.head;/.test(toy) && !/PAL\.red|0xfff4cc/.test(toy), 'street.js: Lampen der Spielzeugautos leuchten noch');
   console.log(`  Spielzeugautos: Rücklicht ${LAMP_OFF.tail.toString(16)} (Helligkeit ${lum(LAMP_OFF.tail).toFixed(2)} statt ${lum(PAL.red).toFixed(2)}), Scheinwerfer ${LAMP_OFF.head.toString(16)} (${lum(LAMP_OFF.head).toFixed(2)} statt ${lum(0xfff4cc).toFixed(2)})`);
+}
+
+// --- 8. Gegenverkehr auf Orts- und Landstraßen --------------------------------------------------------------------
+console.log('8. Gegenverkehr:');
+{
+  // Fahrzeuge ohne Bild, mit den Maßen der echten (models/vehicles.js)
+  const make = (kind) => ({ group: new Group(), length: CAR_TYPES[kind].L, width: CAR_TYPES[kind].half * 2 + 0.12 });
+  Math.random = mulberry32(21);
+  const trip = new Trip({ rng: Math.random });
+  const goals = ['Hanau', 'Gelnhausen', 'Fulda', 'Frankfurt am Main', 'Offenbach am Main', 'Aschaffenburg'].map(findPlace).filter((i) => i >= 0);
+  let gi = 0;
+  trip.setTarget(goals[gi]);
+  const G = new Gegenverkehr(null, { rnd: mulberry32(5), make });
+  const P = { s: trip.s, x: trip.x, speed: 0, len: 4.7, w: 1.92 };
+  const st = { steps: 0, wrong: 0, fast: 0, lane: 0, crash: 0, max: 0, km: { stadt: 0, land: 0 }, seen: { stadt: new Set(), land: new Set() }, kinds: {}, ab: 0, island: 0 };
+  let t = 0;
+  for (let i = 0; i < (30 * 60) / DT; i++) {
+    const sec = trip.section;
+    const prof = trip.profile();
+    P.speed = prof.limit > 0 ? prof.limit / 3.6 : 130 / 3.6;
+    P.s += P.speed * DT;
+    P.x = autoTarget(trip);
+    trip.update(P.s, P.x);
+    // angekommen: das nächste Ziel
+    if (trip.target < 0) trip.setTarget(goals[(gi = (gi + 1) % goals.length)]);
+    t += DT;
+    const ev = G.update(DT, trip, P, trip.shears(), t);
+    st.crash += ev.length;
+    const k = twoWay(trip.section);
+    if (k) st.km[k] += (P.speed * DT) / 1000;
+    st.max = Math.max(st.max, G.cars.length);
+    for (const c of G.cars) {
+      st.steps++;
+      const ahead = c.s > P.s + 2;
+      const at = G.allowed(trip.cur, c.s);
+      if (ahead && !at) st.wrong++;
+      const csec = c.sec;
+      if (!twoWay(csec)) st.ab++;
+      const q = csec.kind === 'stadt' ? squareOf(csec) : null;
+      if (q && ahead && Math.abs(c.s - q.s) < q.r + 4) st.island++;
+      const lim = twoWay(csec) === 'stadt' ? 50 : 95;
+      if (c.speed > lim / 3.6 + 0.01) st.fast++;
+      if (Math.abs(c.x - oncomingX(csec)) > 0.45) st.lane++;
+      st.seen[twoWay(csec) || 'stadt'].add(c);
+      st.kinds[c.kind] = (st.kinds[c.kind] || 0) + 1;
+    }
+  }
+  const nS = st.seen.stadt.size;
+  const nL = st.seen.land.size;
+  ok(nS >= 5 && nL >= 5, `zu wenig Gegenverkehr: ${nS} im Ort, ${nL} draußen`);
+  ok(st.wrong === 0 && st.ab === 0 && st.island === 0, `Gegenverkehr am falschen Ort: ${st.wrong}× außerhalb, ${st.ab}× ohne Gegenspur, ${st.island}× an der Brunneninsel`);
+  ok(st.fast === 0 && st.lane === 0, `Gegenverkehr zu schnell ${st.fast}×, neben der Spur ${st.lane}×`);
+  ok(st.crash === 0, `${st.crash} Rempler, obwohl der Wagen in seiner Spur blieb`);
+  ok(st.max <= GEGEN.max, `${st.max} Fahrzeuge zugleich (höchstens ${GEGEN.max})`);
+  ok(Object.keys(st.kinds).some((k) => k === 'transporter' || k === 'wohnmobil'), `nur Autos: ${Object.keys(st.kinds).join(', ')}`);
+  // in die Gegenspur geraten: Stehend wartet der Entgegenkommende davor, hineinfahren gibt genau einen Rempler
+  // (eine neue Fahrt bis zur ersten Landstraße mit 160 m Gegenspur voraus)
+  let drift = null;
+  Math.random = mulberry32(21);
+  const trip2 = new Trip({ rng: Math.random });
+  trip2.setTarget(goals[2]);
+  P.s = trip2.s;
+  for (let i = 0; i < (20 * 60) / DT && !drift; i++) {
+    const prof = trip2.profile();
+    P.speed = prof.limit > 0 ? prof.limit / 3.6 : 130 / 3.6;
+    P.s += P.speed * DT;
+    P.x = autoTarget(trip2);
+    trip2.update(P.s, P.x);
+    if (twoWay(trip2.section) === 'land' && G.clearPath(trip2.cur, P.s, P.s + 160)) drift = true;
+  }
+  ok(drift, 'keine Landstraße mit 160 m Gegenspur gefunden');
+  if (drift) {
+    const D2 = new Gegenverkehr(null, { rnd: mulberry32(9), make });
+    const sec = trip2.section;
+    P.x = oncomingX(sec) + 0.1;
+    P.speed = 0;
+    const c = D2.spawn(trip2.cur, P.s + 95, sec);
+    c.speed = 25;
+    let ev = 0;
+    for (let i = 0; i < 8 / DT; i++) ev += D2.update(DT, trip2, P, trip2.shears(), i * DT).length;
+    const gap = c.s - P.s - (c.len + P.len) / 2;
+    ok(ev === 0 && c.speed < 0.05 && gap > 0.5 && gap < 12, `stehend in der Gegenspur: ${ev} Rempler, der andere steht ${gap.toFixed(1)} m davor mit ${(c.speed * 3.6).toFixed(1)} km/h`);
+    // jetzt fährt der Spieler mit 18 km/h hinein
+    const hits = [];
+    for (let i = 0; i < 4 / DT; i++) {
+      P.speed = 5;
+      P.s += P.speed * DT;
+      for (const e of D2.update(DT, trip2, P, trip2.shears(), 8 + i * DT)) hits.push(e);
+      if (hits.length) P.s = Math.min(P.s, c.s - (c.len + P.len) / 2 - 0.35);
+    }
+    ok(hits.length >= 1 && hits[0].type === 'crash' && hits[0].car.oncoming && hits[0].ds > 0 && D2.stats.crashes === 1, `hineingefahren: ${hits.length} Ereignisse, ${D2.stats.crashes} Rempler`);
+    console.log(`  ${(st.km.stadt + st.km.land).toFixed(1)} km mit Gegenspur (Ort ${st.km.stadt.toFixed(1)} km, draußen ${st.km.land.toFixed(1)} km): ${nS} Entgegenkommende im Ort (${(nS / Math.max(0.01, st.km.stadt)).toFixed(1)} je km), ${nL} draußen (${(nL / Math.max(0.01, st.km.land)).toFixed(1)} je km), höchstens ${st.max} zugleich · Typen ${Object.entries(st.kinds).map(([k, n]) => `${k} ${Math.round((100 * n) / st.steps)} %`).join(', ')} · 0 Rempler in der eigenen Spur · in der Gegenspur: steht ${gap.toFixed(1)} m davor, hineingefahren ${D2.stats.crashes} Rempler`);
+  }
 }
 
 if (fails) {

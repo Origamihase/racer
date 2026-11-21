@@ -10,6 +10,7 @@ import { setMaxAnisotropy, ROAD } from './textures.js';
 import { Road } from './world/road.js';
 import { XxlWorld, ROAD_OPTS, autoTarget, autoDrive, AUTO } from './world/xxl/world.js';
 import { installDebug } from './world/xxl/debug.js';
+import { Gegenverkehr } from './world/xxl/gegenverkehr.js';
 import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
@@ -51,7 +52,7 @@ import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
 import { albumBadges } from './ui/album.js';
 import { thinLine } from './ui/routemap.js';
-import { clamp, lerp, damp, easeInOut, smoothstep } from './util.js';
+import { clamp, lerp, damp, easeInOut, smoothstep, mulberry32 } from './util.js';
 
 const QUALITY = {
   hoch: { pr: 1.5, msaa: 4, shadows: true, shadowSize: 2048, mirrorEvery: 1 },
@@ -117,6 +118,8 @@ const xxl = new XxlWorld({ scene, road, scenery });
 albumBadges(save);
 const rain = new Rain(scene);
 const traffic = new Traffic(scene, rain);
+// Gegenverkehr auf Orts- und Landstraßen (eigener kleiner Vorrat und eigener Zufall, gesetzt wie der Verkehr: xxlStep)
+const gegen = new Gegenverkehr(scene, { rnd: mulberry32(1121) });
 const pickups = new Pickups(scene);
 prewarmVehicles();
 const tesla = buildTesla();
@@ -2443,6 +2446,7 @@ function xxlStart(title) {
   courseTrip = xxl.trip;
   xxlNav = new NavModel(xxl.trip);
   traffic.reset();
+  gegen.reset();
   pickups.reset();
   xxlTrafficFrame = null;
   // die Fahrt beginnt am Supercharger in Erlensee: Dort wartet der Wagen schon im Titel
@@ -2497,6 +2501,9 @@ function xxlStep(p, w, dt) {
   if (sh) pickups.applyShear(sh, p.s);
   pickups.group.visible = traffic.group.visible;
   game.offAutobahn = !v || v.role !== 'cur';
+  // Gegenverkehr abseits der Autobahn: Ein Rempler zählt nur im Spiel (wer in die Gegenspur gerät, Game.onCrash)
+  const gev = gegen.update(dt, xxl.trip, p, xxl.shear, simT);
+  if (state === 'drive' && game.running) for (const e of gev) if (e.type === 'crash') game.onCrash(e);
 }
 /** Autopilot zum Prüfen (?debug, __MA.xxl.auto): folgt dem Navi, hält Spur und Tempo, lenkt in den Kurven mit. */
 function xxlAuto(p, ctl) {
@@ -2623,11 +2630,12 @@ if (DEBUG) {
     },
   };
   installDebug(window.__MA, xxl, () => game.player, {
-    afterWarp: () => { traffic.reset(); pickups.reset(); scenery.reset(); },
+    afterWarp: () => { traffic.reset(); gegen.reset(); pickups.reset(); scenery.reset(); },
     // ein Sprung plant den Kurs unterwegs wie eine Fahrt mit 30 m/s (ohne die Tabelle des Shaders zu schreiben)
     eachStep: (s, step) => course.fill(xxl.trip, s, null, step / 30),
   });
   window.__MA.kit = { ...window.__MA.kit, nature: createNatureKit(W) };
+  window.__MA.gegen = gegen;
 }
 
 /** Prüfstand: den Spieler an die Stelle s setzen (Verkehr, Sammelsachen und Landschaft neu). */
