@@ -34,6 +34,13 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   box-shadow: 0 0 0 4px rgba(120, 170, 255, 0.25), 0 0 40px rgba(80, 140, 255, 0.35); display: flex; align-items: center; justify-content: center; gap: 16px; }
 .nomi-orb .eye { width: 22px; height: 30px; border: 4px solid #fff; border-radius: 9px; animation: blink 3.2s infinite; box-shadow: 0 0 12px rgba(255,255,255,0.6); }
 @keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+/* Ladeanzeige am unteren Rand: wächst, bis der Titel steht (eine Animation des Compositors – sie läuft auch weiter,
+   während das Script den Rechner beschäftigt), in zehn Stufen statt fließend: Jede Änderung ist ein neues Bild des
+   ganzen Ladebilds, und fließend nahm das dem Übersetzen der Shader Sekunden; dann blendet das Ladebild aus */
+.load-bar { position: absolute; left: 0; right: 0; bottom: env(safe-area-inset-bottom, 0px); height: 3px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
+.load-bar i { position: absolute; inset: 0; background: var(--live); transform-origin: 0 50%; transform: scaleX(0.03); animation: loadcreep 16s step-end forwards; }
+@keyframes loadcreep { 0% { transform: scaleX(0.03); } 5% { transform: scaleX(0.15); } 12% { transform: scaleX(0.28); } 20% { transform: scaleX(0.4); } 30% { transform: scaleX(0.51); }
+  42% { transform: scaleX(0.61); } 56% { transform: scaleX(0.7); } 72% { transform: scaleX(0.78); } 88% { transform: scaleX(0.85); } 100% { transform: scaleX(0.9); } }
 
 /* --- HUD ---------------------------------------------------------------- */
 .hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; font-size: 15px; }

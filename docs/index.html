@@ -21,6 +21,8 @@
         <p class="load-sub">Navi ferngesteuert BrunnenTV XXL</p>
         <p class="load-status">OMI wird geweckt … alle Handynetze werden gebündelt …</p>
       </div>
+      <!-- Ladeanzeige am unteren Rand: kriecht, bis der Titel steht (dann blendet das Ladebild aus) -->
+      <div class="load-bar" aria-hidden="true"><i></i></div>
     </div>
     <noscript><div class="load-card"><p>Für dieses Spiel wird JavaScript benötigt.</p></div></noscript>
   </div>
@@ -29,6 +31,7 @@
     requestAnimationFrame(function () {
       setTimeout(function () {
         var s = document.createElement('script');
+        if (self.performance && performance.mark) performance.mark('ma:inject');
         s.src = 'game.js';
         s.onerror = function () {
           document.querySelector('.load-status').textContent = 'Das Spiel konnte nicht geladen werden (game.js fehlt).';

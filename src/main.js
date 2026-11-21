@@ -54,6 +54,10 @@ import { albumBadges } from './ui/album.js';
 import { thinLine } from './ui/routemap.js';
 import { clamp, lerp, damp, easeInOut, smoothstep, mulberry32 } from './util.js';
 
+// Ladezeit: Marken für die Messung (performance.mark ma:…, zu lesen mit performance.getEntriesByType('mark')): alle
+// Module ausgewertet
+performance.mark('ma:main');
+
 const QUALITY = {
   hoch: { pr: 1.5, msaa: 4, shadows: true, shadowSize: 2048, mirrorEvery: 1 },
   mittel: { pr: 1.0, msaa: 4, shadows: true, shadowSize: 1024, mirrorEvery: 2 },
@@ -121,7 +125,6 @@ const traffic = new Traffic(scene, rain);
 // Gegenverkehr auf Orts- und Landstraßen (eigener kleiner Vorrat und eigener Zufall, gesetzt wie der Verkehr: xxlStep)
 const gegen = new Gegenverkehr(scene, { rnd: mulberry32(1121) });
 const pickups = new Pickups(scene);
-prewarmVehicles();
 const tesla = buildTesla();
 // Schaden außen: Dellen, Schrammen, Pflaster, Leuchten, Dampf (baut nur neu, wenn sich der Schaden ändert)
 const teslaDamage = new TeslaDamage(tesla.damageHooks);
@@ -667,6 +670,7 @@ function toTitle() {
 }
 
 function startRun() {
+  performance.mark('ma:start');
   audio.init();
   menus.hide();
   paused = false;
@@ -685,6 +689,7 @@ function startRun() {
   if (!chargeBegin()) toDrive();
   // die Taste, die „Losfahren“ ausgelöst hat, soll die Startszene nicht gleich überspringen
   input.endFrame();
+  performance.mark('ma:started');
 }
 
 function resume() {
@@ -2512,22 +2517,32 @@ function xxlAuto(p, ctl) {
   autoDrive(ctl, p, autoTarget(xxl.trip, xxl.choice), xxlLimits.vmax, k);
 }
 
+/** Start: Welt der Titelfahrt, Shader, Titel (die Marken ma:… messen die Ladezeit). */
 function boot() {
+  performance.mark('ma:init');
   applyCosmetics();
   applyDrive();
   game.startTitle();
   xxlStart(true);
+  performance.mark('ma:world');
   // Ein paar Bilder vorab rendern (Shader kompilieren), dann Titel zeigen
   updateCarMatrix();
   placeDrone(0.016, 'orbit');
   try {
+    // jedes Programm so, wie das erste Bild es braucht: Welt und Facecam zeichnen in ein Render-Ziel (ohne Tone-Mapping,
+    // linear – ohne das gebundene Ziel übersetzte das erste Bild die ganze Welt noch einmal), Cockpit und Quads direkt
+    renderer.setRenderTarget(worldRT);
     renderer.compile(scene, camera);
-    renderer.compile(cockpit.scene, camera);
+    renderer.setRenderTarget(facecam.rt);
     renderer.compile(facecam.scene, facecam.camera);
+    renderer.setRenderTarget(null);
+    renderer.compile(cockpit.scene, camera);
     renderer.compile(facecam.quadScene, facecam.quadCam);
+    renderer.compile(compScene, compCam);
   } catch (e) {
-    /* egal */
+    renderer.setRenderTarget(null);
   }
+  performance.mark('ma:compiled');
   state = 'title';
   menus.show('title', save);
   loadingEl.classList.add('done');
@@ -2535,6 +2550,10 @@ function boot() {
   requestAnimationFrame((t) => {
     last = t;
     frame(t);
+    performance.mark('ma:frame');
+    // die Netze aller Fahrzeuge vorab (gegen Ruckler beim ersten Auftauchen) erst nach dem ersten Bild des Titels: bis
+    // dahin baut jedes Fahrzeug, was es braucht, selbst
+    setTimeout(prewarmVehicles, 300);
   });
 }
 

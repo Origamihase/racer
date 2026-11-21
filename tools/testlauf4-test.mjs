@@ -1,4 +1,10 @@
 // Testlauf 4 (die Probefahrt des Besitzers vom 21.11.2026 abends), ohne Grafik: node tools/testlauf4-test.mjs
+// 9. „Der Spielstart benötigt viel Zeit beim Laden“: Am unteren Rand des Ladebilds wächst eine Ladeanzeige in zehn
+//    Stufen, bis der Titel steht (fließend zeichnete sie das ganze Ladebild in jedem Takt neu und kostete das erste
+//    Bild Sekunden); die Shader der Welt und der Facecam werden für ihr Render-Ziel übersetzt (sonst übersetzt das erste
+//    Bild alles noch einmal), die Fahrzeugnetze entstehen erst nach dem ersten Titelbild, und die Marken ma:… messen
+//    jeden Abschnitt (Laden, Übersetzen, Module, Aufbau, Welt, Shader, erstes Bild, Start einer Fahrt). Geprüft an
+//    index.html, style.css, build.mjs und main.js.
 // 8. „Gegenverkehr außerhalb der Autobahn“: Auf Orts- und Landstraßen kommen in der Gegenspur Autos entgegen
 //    (world/xxl/gegenverkehr.js), im Ort 40–50 km/h, draußen 70–95 km/h, ab und zu ein Transporter; nie auf der
 //    Autobahn, nie an einer Brunneninsel, höchstens GEGEN.max zugleich. Wer in seiner Spur bleibt, wird nie berührt;
@@ -689,6 +695,37 @@ console.log('8. Gegenverkehr:');
     ok(hits.length >= 1 && hits[0].type === 'crash' && hits[0].car.oncoming && hits[0].ds > 0 && D2.stats.crashes === 1, `hineingefahren: ${hits.length} Ereignisse, ${D2.stats.crashes} Rempler`);
     console.log(`  ${(st.km.stadt + st.km.land).toFixed(1)} km mit Gegenspur (Ort ${st.km.stadt.toFixed(1)} km, draußen ${st.km.land.toFixed(1)} km): ${nS} Entgegenkommende im Ort (${(nS / Math.max(0.01, st.km.stadt)).toFixed(1)} je km), ${nL} draußen (${(nL / Math.max(0.01, st.km.land)).toFixed(1)} je km), höchstens ${st.max} zugleich · Typen ${Object.entries(st.kinds).map(([k, n]) => `${k} ${Math.round((100 * n) / st.steps)} %`).join(', ')} · 0 Rempler in der eigenen Spur · in der Gegenspur: steht ${gap.toFixed(1)} m davor, hineingefahren ${D2.stats.crashes} Rempler`);
   }
+}
+
+// --- 9. Ladezeit: Ladeanzeige, Shader für ihr Ziel, Fahrzeugnetze später, Marken ---------------------------------
+console.log('9. Ladezeit:');
+{
+  const read = (f) => readFileSync(new URL('../' + f, import.meta.url), 'utf8');
+  const html = read('docs/index.html');
+  const css = read('docs/style.css');
+  const build = read('build.mjs');
+  const main = read('src/main.js');
+  ok(/<div class="load-bar" aria-hidden="true"><i><\/i><\/div>/.test(html) && html.indexOf('load-bar') > html.indexOf('id="loading"') && html.indexOf('load-bar') < html.indexOf('<noscript>'), 'index.html: keine Ladeanzeige im Ladebild');
+  ok(/performance\.mark\('ma:inject'\)/.test(html) && /performance\.mark\(\\'ma:run\\'\)/.test(build), 'Marken ma:inject (index.html) und ma:run (build.mjs) fehlen');
+  ok(/\.load-bar \{ position: absolute; left: 0; right: 0; bottom: env\(safe-area-inset-bottom, 0px\); height: 3px;/.test(css) && /\.load-bar i \{[^}]*transform-origin: 0 50%;[^}]*animation: loadcreep 16s step-end forwards;/.test(css), 'style.css: Ladeanzeige am Rand fehlt');
+  // in Stufen (step-end): wenige neue Bilder des Ladebilds statt eines je Bildschirmtakt, stetig wachsend bis 0,9
+  const kf = (css.match(/@keyframes loadcreep \{([\s\S]*?\} )\}/) || ['', ''])[1];
+  const steps = [...kf.matchAll(/(\d+)% \{ transform: scaleX\(([\d.]+)\); \}/g)].map((m) => [+m[1], +m[2]]);
+  ok(steps.length >= 6 && steps.length <= 12 && steps[0][0] === 0 && steps[steps.length - 1][0] === 100 && steps[steps.length - 1][1] === 0.9 && steps.every((q, i) => !i || (q[0] > steps[i - 1][0] && q[1] > steps[i - 1][1])), `style.css: Stufen der Ladeanzeige ${JSON.stringify(steps)}`);
+  const boot = main.slice(main.indexOf('function boot()'), main.indexOf('// Debug-Schnittstelle'));
+  const order = ["mark('ma:init')", 'xxlStart(true)', "mark('ma:world')", 'renderer.setRenderTarget(worldRT);', 'renderer.compile(scene, camera)', 'renderer.setRenderTarget(facecam.rt);', 'renderer.compile(facecam.scene, facecam.camera)', 'renderer.setRenderTarget(null);', 'renderer.compile(cockpit.scene, camera)', 'renderer.compile(compScene, compCam)', "mark('ma:compiled')", "state = 'title'", "mark('ma:frame')", 'setTimeout(prewarmVehicles, 300)'];
+  let at = 0;
+  const miss = order.filter((k) => {
+    const i = boot.indexOf(k, at);
+    if (i < 0) return true;
+    at = i + k.length;
+    return false;
+  });
+  ok(boot.length > 0 && miss.length === 0, `main.js boot: Schritte fehlen oder stehen anders: ${miss.join(' | ')}`);
+  ok(!/async function boot|await /.test(boot), 'main.js: der Start wartet zwischendurch (er läuft in einem Zug wie bisher)');
+  ok(/^performance\.mark\('ma:main'\);$/m.test(main) && /function startRun\(\) \{\n  performance\.mark\('ma:start'\);/.test(main) && /performance\.mark\('ma:started'\);\n\}/.test(main), 'main.js: Marken ma:main, ma:start, ma:started fehlen');
+  ok(!/^prewarmVehicles\(\);$/m.test(main), 'main.js: die Fahrzeugnetze werden noch vor dem Titel gebaut');
+  console.log(`  Ladeanzeige am unteren Rand in ${steps.length} Stufen, Shader der Welt und der Facecam für ihr Render-Ziel, Fahrzeugnetze erst nach dem ersten Titelbild, Marken ma:inject, run, main, init, world, compiled, frame, start, started`);
 }
 
 if (fails) {
