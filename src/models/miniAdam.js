@@ -364,6 +364,10 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
       if (side === waveSide(wheel) && prop && !mega) prop.visible = false;
       solveArm(arm, tg.pos, tg.pole, tg.palm);
       const waving = side === waveSide(drive ? wheel : null);
+      // beim Winken die offene Hand mit gespreizten Fingern, sonst (Lenkrad, Jubeln, Megafon, Flasche) der Fäustling
+      const open = waving && !mega && !gest.bottle && gest.wave > 0.3 && gest.cheer < 0.15;
+      const geo = open ? (side < 0 ? G.armOpenL : G.armOpenR) : side < 0 ? G.armL : G.armR;
+      if (arm.userData.skin.geometry !== geo) arm.userData.skin.geometry = geo;
       arm.userData.hand.rotation.set(0, 0, waving ? side * Math.sin(gest.t * 9 - 0.6) * 0.3 * smooth(0.7, 1, gest.wave) * (1 - gest.cheer) : 0);
     }
   };

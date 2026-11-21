@@ -591,6 +591,29 @@ function mittenSdf(x, y, z, side) {
   d = smin(d, cone(x, y, z, side * 0.026, WRIST + 0.022, 0.012, side * 0.05, WRIST - 0.012, 0.02, 0.017, 0.014), 0.018);
   return d;
 }
+/**
+ * Offene Hand zum Winken (der Eigentümer, 21.11.: „Finger beim Winken ausstrecken“), in Arm-Koordinaten wie der
+ * Fäustling: ein flacherer Handteller, vier gespreizte Finger und der Daumen schräg nach außen-vorn – Plüsch, also
+ * kurz und rund. Je Finger: Ansatz a, Richtung d (Einheitsvektor), Länge len, Radius r; side ist die Daumenseite.
+ */
+const PALM = [0, WRIST - 0.008, 0.004, 0.043, 0.04, 0.024];
+function openFingers(side) {
+  // Zeige-, Mittel-, Ring- und kleiner Finger: [x am Ansatz (Daumenseite +), Spreizung (rad), Länge, Radius]
+  const F = [[0.027, 0.42, 0.044, 0.0102], [0.009, 0.14, 0.05, 0.0106], [-0.009, -0.14, 0.046, 0.0102], [-0.027, -0.42, 0.037, 0.0093]];
+  const out = F.map(([x, a, len, r]) => ({ a: [side * x, WRIST - 0.034, 0.004], d: [side * Math.sin(a), -Math.cos(a), 0.06], len, r }));
+  out.push({ a: [side * 0.032, WRIST + 0.004, 0.008], d: [side * 0.86, -0.42, 0.28], len: 0.036, r: 0.0115 });
+  for (const f of out) {
+    const n = Math.hypot(f.d[0], f.d[1], f.d[2]);
+    f.d = f.d.map((v) => v / n);
+  }
+  return out;
+}
+const FINGERS = { [-1]: openFingers(-1), 1: openFingers(1) };
+function openHandSdf(x, y, z, side) {
+  let d = ell(x, y, z, PALM[0], PALM[1], PALM[2], PALM[3], PALM[4], PALM[5]);
+  for (const { a, d: v, len, r } of FINGERS[side]) d = smin(d, cone(x, y, z, a[0], a[1], a[2], a[0] + v[0] * len, a[1] + v[1] * len, a[2] + v[2] * len, r, r * 0.9), 0.006);
+  return d;
+}
 function sleeveSdf(x, y, z) {
   let d = cone(x, y, z, 0, 0.02, 0, 0, -0.072, 0, 0.061, 0.064);
   // Saum als kleine Wulst
@@ -896,7 +919,9 @@ export function buildAdamGeometry() {
   const legGeo = toGeometry([leg, shoe]);
 
   // ---------------- Arme -----------------
+  // je Seite zwei Netze mit denselben Knochen: mit Fäustling (am Lenkrad, beim Jubeln) und mit offener Hand (Winken)
   const arms = [];
+  const armsOpen = [];
   for (const side of [-1, 1]) {
     const arm = rayMesh(armSdf, [0, WRIST + 0.03, 0], [0, -0.01, 0], { segs: 24, ts: spacing(0, 1, 10).reverse(), caps: 6, rmax: 0.15 }).flat(C.skin, 1);
     const mitten = rayBall((x, y, z) => mittenSdf(x, y, z, side), [0, WRIST, 0.005], { thetas: spacing(0, Math.PI, 18), phis: spacing(-Math.PI, Math.PI, 30, [], true), rmax: 0.15 }).flat(C.skin, 1);
@@ -922,6 +947,26 @@ export function buildAdamGeometry() {
       o[2] = 0;
     });
     arms.push(toGeometry([sleeve, arm, mitten], { skinned: true }));
+    // die offene Hand: Handteller (Strahlen vom Mittelpunkt) und Finger als runde Schläuche mit Kuppe
+    const palm = rayBall((x, y, z) => ell(x, y, z, PALM[0], PALM[1], PALM[2], PALM[3], PALM[4], PALM[5]), [PALM[0], PALM[1], PALM[2]], { thetas: spacing(0, Math.PI, 14), phis: spacing(-Math.PI, Math.PI, 24, [], true), rmax: 0.1 }).flat(C.skin, 1);
+    const fingers = FINGERS[side].map(({ a, d, len, r }) =>
+      tubeMesh(
+        (u, o) => {
+          o[0] = a[0] + d[0] * len * u;
+          o[1] = a[1] + d[1] * len * u;
+          o[2] = a[2] + d[2] * len * u;
+        },
+        (u) => {
+          const k = (u < 0.72 ? 1 : Math.sqrt(Math.max(0, 1 - ((u - 0.72) / 0.28) ** 2))) * r * (1 - 0.08 * u);
+          return [k, k * 0.86];
+        },
+        { nu: 10, nv: 10, up: [0, 0, 1] },
+      ).flat(C.skin, 1),
+    );
+    const open = (x, y, z) => Math.min(armSdf(x, y, z), openHandSdf(x, y, z, side), sleeveSdf(x, y, z));
+    for (const p of [palm, ...fingers]) p.occlude(open, 0.45, [0.006, 0.016, 0.03]).set('skin', armWeights);
+    palm.seams(seamFn);
+    armsOpen.push(toGeometry([sleeve, arm, palm, ...fingers], { skinned: true }));
   }
 
   // ---------------- Mikrofon (in Hand-Koordinaten der Fensterhand) -----------------
@@ -948,6 +993,8 @@ export function buildAdamGeometry() {
     legR: legGeo,
     armL: arms[0],
     armR: arms[1],
+    armOpenL: armsOpen[0],
+    armOpenR: armsOpen[1],
     micFoam,
     micBody: mergeGeometries([micBody, micRing]),
   };

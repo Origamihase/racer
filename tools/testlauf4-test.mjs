@@ -1,4 +1,8 @@
 // Testlauf 4 (die Probefahrt des Besitzers vom 21.11.2026 abends), ohne Grafik: node tools/testlauf4-test.mjs
+// 6. „Finger beim Winken ausstrecken“: Die winkende Hand ist offen – Handteller, vier gespreizte Finger und der Daumen
+//    (Figur in Außenansicht und Facecam: adamSculpt.js armOpenL/R; Ich-Perspektive: hands.js openHandGeometry); sie
+//    ersetzt den Fäustling nur beim Winken, beim Jubeln, mit Megafon oder Flasche bleibt die Faust. Geprüft an den
+//    Netzen (Finger mit Lücken dazwischen, wo der Fäustling keine hat) und an der Umschaltung (miniAdam.js, cockpit.js).
 // 5. Intro: „Wenn Mini Adam im Intro winkt, soll er ‚Partypeople‘ sagen (nicht ‚Hallo Partypeople‘)“: In der Startszene
 //    sagt er, während er winkt, nur „Partypeople!“ (tiefe Stimme, Untertitel); ohne Startszene bleibt der Gruß beim
 //    Losfahren „Hallo, Partypeople!“ – je Stream genau einer. Geprüft am Code aus main.js (Gruß, Szene, Losfahren),
@@ -39,6 +43,8 @@ import { places } from '../src/map/graph.js';
 import { readFileSync } from 'node:fs';
 import { REPARATUR, CHAT, PARTYPEOPLE } from '../src/data.js';
 import { SCENE } from '../src/world/xxl/charge.js';
+import { buildAdamGeometry } from '../src/models/adamSculpt.js';
+import { openHandGeometry, mittenGeometry } from '../src/cockpit/hands.js';
 import { CHEER } from '../src/game/economy.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
 import { Menus } from '../src/ui/menus.js';
@@ -507,6 +513,64 @@ console.log('5. Intro: Partypeople beim Winken:');
     ok(c.said.length === 1 && c.said[0].text === 'Partypeople!', `übersprungen nach dem Gruß: ${JSON.stringify(c.said)}`);
     console.log(`  Startszene: „${a.said[0]?.text}“ (${a.said[0]?.voice}, Untertitel „${a.subs[0]}“) bei ${SCENE.hallo} s, gewinkt ${SCENE.wave.join('–')} s · übersprungen vor dem Gruß: „${b.said[0]?.text}“ beim Losfahren · je ein Gruß`);
   }
+}
+
+// --- 6. Finger beim Winken ----------------------------------------------------------------------------------------
+console.log('6. Finger beim Winken:');
+{
+  // Finger zählen: der Schnitt des Netzes mit der Ebene y = y0 (je Dreieck eine Strecke), ihre x-Bereiche vereinigt –
+  // jeder Finger ist ein eigener Bereich, dazwischen ist Luft
+  const fingers = (geo, axis, y0) => {
+    const p = geo.getAttribute('position');
+    const ix = geo.index ? geo.index.array : null;
+    const nT = (ix ? ix.length : p.count) / 3;
+    const seg = [];
+    const v = (k) => (ix ? ix[k] : k);
+    for (let t = 0; t < nT; t++) {
+      const xs = [];
+      for (let e = 0; e < 3; e++) {
+        const a = v(t * 3 + e);
+        const b = v(t * 3 + ((e + 1) % 3));
+        const ya = p.getY(a) - y0;
+        const yb = p.getY(b) - y0;
+        if ((ya < 0) !== (yb < 0)) xs.push(p.getX(a) + ((p.getX(b) - p.getX(a)) * ya) / (ya - yb));
+      }
+      if (xs.length === 2) seg.push([Math.min(xs[0], xs[1]), Math.max(xs[0], xs[1])]);
+    }
+    seg.sort((a, b) => a[0] - b[0]);
+    let n = 0;
+    let end = -Infinity;
+    for (const [a, b] of seg) {
+      if (a > end + 1e-4) n++;
+      end = Math.max(end, b);
+    }
+    return { n, w: seg.length ? end - seg[0][0] : 0 };
+  };
+  const G = buildAdamGeometry();
+  const res = [];
+  for (const [k, o] of [['armL', 'armOpenL'], ['armR', 'armOpenR']]) {
+    G[k].computeBoundingBox();
+    G[o].computeBoundingBox();
+    const bottom = G[k].boundingBox.min.y; // Unterkante des Fäustlings
+    const f = fingers(G[o], 'y', bottom - 0.004);
+    const m = fingers(G[k], 'y', bottom + 0.01);
+    res.push(`${o}: ${f.n} Finger auf ${(f.w * 100).toFixed(1)} cm (Fäustling ${m.n})`);
+    ok(f.n === 4 && f.w > 0.07 && m.n === 1, `${o}: ${f.n} Finger auf ${f.w.toFixed(3)} m, Fäustling ${m.n} Stück`);
+    ok(G[o].getAttribute('skinIndex') && G[o].getAttribute('position').count > G[k].getAttribute('position').count, `${o}: kein gehäutetes Netz`);
+  }
+  for (const s of [-1, 1]) {
+    const g = openHandGeometry(s);
+    const f = fingers(g, 'y', 0.08);
+    const m = fingers(mittenGeometry(s, 0.018, 0.17), 'y', 0.035);
+    res.push(`Ich-Perspektive ${s < 0 ? 'links' : 'rechts'}: ${f.n} Finger (Fäustling ${m.n})`);
+    ok(f.n === 4 && f.w > 0.06, `Ich-Perspektive ${s}: ${f.n} Finger auf ${f.w.toFixed(3)} m`);
+  }
+  // umgeschaltet wird nur beim Winken: Jubeln (die Faust wippt), Megafon und Flasche behalten den Fäustling
+  const mini = readFileSync(new URL('../src/models/miniAdam.js', import.meta.url), 'utf8');
+  ok(/const open = waving && !mega && !gest\.bottle && gest\.wave > 0\.3 && gest\.cheer < 0\.15;\s*const geo = open \? \(side < 0 \? G\.armOpenL : G\.armOpenR\) : side < 0 \? G\.armL : G\.armR;\s*if \(arm\.userData\.skin\.geometry !== geo\) arm\.userData\.skin\.geometry = geo;/.test(mini), 'miniAdam.js: die Hand wird beim Winken nicht offen');
+  const cock = readFileSync(new URL('../src/cockpit/cockpit.js', import.meta.url), 'utf8');
+  ok(/const open = up > 0\.3 && kc < 0\.2 && !g\.bottle && !\(g\.megafon > 0\);/.test(cock) && /if \(G\.mitten && hand\.geometry !== G\.mitten\) hand\.geometry = G\.mitten;/.test(cock), 'cockpit.js: die Hand der Ich-Perspektive wird beim Winken nicht offen');
+  console.log('  ' + res.join(' · '));
 }
 
 if (fails) {

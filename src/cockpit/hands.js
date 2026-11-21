@@ -108,6 +108,30 @@ export function mittenGeometry(side, rt, R) {
   });
 }
 
+/**
+ * Offene Hand zum Winken (der Eigentümer, 21.11.: „Finger beim Winken ausstrecken“), in denselben Hand-Koordinaten
+ * wie der Fäustling: der Handteller vom Handballen (beim Handgelenk) nach außen (+y), vier gespreizte runde
+ * Plüschfinger, der Daumen zur Innenseite wie beim Fäustling (x = −side). Beim Winken zeigen die Finger nach oben.
+ */
+export function openHandGeometry(side) {
+  const parts = [];
+  const ends = (u, e) => Math.sqrt(Math.max(0, 1 - (1 - Math.min(1, u / e, (1 - u) / e)) ** 2));
+  const tip = (u) => (u < 0.7 ? 1 : Math.sqrt(Math.max(0.02, 1 - ((u - 0.7) / 0.3) ** 2)));
+  const line = (a, d, len, n = 10) => Array.from({ length: n + 1 }, (_, i) => a.clone().addScaledVector(d, (len * i) / n));
+  const palm = line(v3(0, -0.006, 0.036), v3(0, 1, 0), 0.068, 12);
+  parts.push(prep(sweep(palm, (u) => ring(0.035 * (0.6 + 0.4 * ends(u, 0.3)), 0.0135 * (0.55 + 0.45 * ends(u, 0.3)), 16, 2.4), { up: v3(0, 0, 1) }), 0xffffff, { uv: PLUSH_UV }));
+  // Zeige-, Mittel-, Ring- und kleiner Finger: [x am Ansatz (Daumenseite +), Spreizung (rad, zur Daumenseite +), Länge, Radius]
+  for (const [x, a, len, r] of [[0.026, 0.38, 0.042, 0.0102], [0.0087, 0.13, 0.048, 0.0106], [-0.0087, -0.13, 0.044, 0.0102], [-0.026, -0.38, 0.035, 0.0092]]) {
+    const d = v3(-side * Math.sin(a), Math.cos(a), -0.08).normalize();
+    const path = line(v3(-side * x, 0.05, 0.036), d, len);
+    parts.push(prep(sweep(path, (u) => ring(r * tip(u), r * 0.86 * tip(u), 12, 2), { up: v3(0, 0, 1) }), 0xffffff, { uv: PLUSH_UV }));
+  }
+  const td = v3(-side * 0.82, 0.5, 0.1).normalize();
+  const thumb = line(v3(-side * 0.026, 0.012, 0.038), td, 0.034);
+  parts.push(prep(sweep(thumb, (u) => ring(0.011 * tip(u), 0.0098 * tip(u), 12, 2), { up: v3(0, 0, 1) }), 0xffffff, { uv: PLUSH_UV }));
+  return mergeGeometries(parts);
+}
+
 /** Wo der Unterarm an der Hand ansetzt (Hand-Koordinaten): am Handballen, zum Fahrer hin. */
 export const WRIST = v3(0, 0.004, 0.047);
 
