@@ -17,6 +17,7 @@ import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
 import { createNatureKit } from './world/kit/nature.js';
 import { cityKit, naviLayout } from './world/xxl/towns.js';
 import { SCENE, ROLL_T, STOP, DOCK, CHARGE, rollPose, groundAt, chargeOf } from './world/xxl/charge.js';
+import { squareOf } from './world/xxl/plan.js';
 import { buildPopping, POPPING_AT, POPPING_YAW, windowAim } from './world/xxl/popping.js';
 import { TV, tvShots, shotPose, dollyFor, shotAt, windowAt, megaphoneAt, lookAt as tvLookAt, stillShot, STILL } from './world/xxl/brunnentv.js';
 import { buildHandMegaphone } from './models/megaphone.js';
@@ -1243,18 +1244,41 @@ function slowCarAhead(p) {
   });
 }
 
+/**
+ * Was die Tipps der ersten Minuten vor sich sehen (first-tips.js): fountain – der Brunnen eines Orts auf dem Weg (nicht
+ * der des Ziels, dort beginnt die Folge von selbst) liegt höchstens TIP_SEE.brunnen Meter voraus; post – die Ladesäule
+ * eines Orts höchstens TIP_SEE.post Meter (ihr Schild steht 100 m davor).
+ */
+const TIP_SEE = { brunnen: 250, post: 160 };
+const tipSeen = { fountain: false, post: false };
+function tipSights() {
+  const T = xxl.trip;
+  tipSeen.fountain = tipSeen.post = false;
+  for (const c of T.cur.sections) {
+    if (c.s0 > T.s + TIP_SEE.brunnen) break;
+    if (c.s1 < T.s || c.kind !== 'stadt' || c.start) continue;
+    const q = c.place !== T.target ? squareOf(c) : null;
+    if (q && q.s > T.s && q.s - T.s <= TIP_SEE.brunnen) tipSeen.fountain = true;
+    const at = c.postS !== undefined && !c.charged ? c.s0 + chargeOf(c).u - T.s : -1;
+    if (at > 0 && at <= TIP_SEE.post) tipSeen.post = true;
+  }
+  return tipSeen;
+}
+
 /** Jedes Bild der Fahrt: Tipps der ersten Minuten (camera: V in diesem Bild; ctl: die übrigen Eingaben). */
 function tipsTick(dt, ctl, camera) {
   if (firstTips.done && !firstTips.cur) return;
   const p = game.player;
-  // frei: kein Halt am Brunnen oder an der Säule, und „So steuerst du“ hat den Platz geräumt
-  const free = !game.charging && !game.navi.stopping && !driveHintBusy();
+  // frei: kein Halt am Brunnen oder an der Säule, keine Folge, und „So steuerst du“ hat den Platz geräumt
+  const free = !game.charging && !game.tv && !game.navi.stopping && !driveHintBusy();
   if (free) tipT += dt;
   if (camera) firstTips.did('camera');
   if (ctl.megafon) firstTips.did('megafon');
   if (ctl.ladestopp) firstTips.did('ladestopp');
+  if (ctl.brunnen) firstTips.did('brunnen');
   if (firstTips.cur && input.take('confirm')) tipsOff();
   const ins = turnIns;
+  const see = firstTips.seen.has('brunnen') && firstTips.seen.has('laden') ? tipSeen : tipSights();
   const ev = firstTips.update(dt, {
     free,
     t: tipT,
@@ -1262,6 +1286,10 @@ function tipsTick(dt, ctl, camera) {
     exit: !!ins && ins.turn === 'exit' && !ins.calm && ins.dist > 250,
     carAhead: !firstTips.seen.has('megafon') && slowCarAhead(p),
     stop: game.stopOffer(),
+    // B: der erste Brunnen auf dem Weg kommt in Sicht (oder der Wagen steht schon daneben)
+    fountain: see.fountain || game.wayHint,
+    // L: die erste Ladesäule kommt in Sicht, der Wagen steht neben einer (oder OMI warnt: stop)
+    post: see.post || game.chargeHint,
   });
   if (!ev) return;
   showTip(ui, ev.show || null, input.lastDevice, tipsOff);

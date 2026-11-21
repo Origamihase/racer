@@ -97,7 +97,8 @@ for (const id of ORDER) {
     if (action && device !== 'touch') ok(TIPS[id].rows(device)[0][0][0] === deviceKey(action, device), `Tipp ${id} (${device}): nicht die erste Belegung`);
   }
 }
-ok(TIPS.ladestopp.rows('gamepad')[0][0][0] === padName(4) && padName(4) === 'LB', 'Ladestopp-Tipp am Gamepad: nicht LB');
+ok(TIPS.laden.rows('gamepad')[0][0][0] === padName(4) && padName(4) === 'LB', 'Laden-Tipp am Gamepad: nicht LB');
+ok(TIPS.brunnen.rows('gamepad')[0][0][0] === padName(5) && padName(5) === 'RB', 'BrunnenTV-Tipp am Gamepad: nicht RB');
 for (const device of ['keyboard', 'gamepad']) {
   const real = device === 'keyboard' ? realKeys : new Set([...realPad, 'Stick']);
   for (const ds of [{}, { tipLane: true }]) {

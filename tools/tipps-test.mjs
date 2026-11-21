@@ -1,6 +1,7 @@
 // Prüft die Tipps der ersten Minuten ohne Browser (src/ui/first-tips.js): Jeder Tipp kommt einmal je Spieler, wenn er
-// gebraucht wird – die Ausfahrt ab dem 1000-m-Schild, das Megafon hinter einem Langsameren (spätestens nach zwei
-// Minuten), der Ladestopp, sobald er sich einplanen lässt, die Kamera nach den ersten Sekunden –, nie zwei auf einmal,
+// gebraucht wird – die Ausfahrt ab dem 1000-m-Schild, BrunnenTV (B), sobald der erste Brunnen auf dem Weg in Sicht
+// kommt, Laden (L) an der ersten Ladesäule oder sobald sich ein Stopp einplanen lässt, das Megafon hinter einem
+// Langsameren (spätestens nach zwei Minuten), die Kamera nach den ersten Sekunden –, nie zwei auf einmal,
 // nie während eines Halts oder solange „So steuerst du“ den Platz hat; Enter oder ✕ schaltet alle ab, auch für die
 // nächsten Streams. Die Zeilen nennen je Gerät die richtige Taste.
 // node tools/tipps-test.mjs
@@ -38,22 +39,34 @@ function drive(tips, sec, world = () => ({}), t0 = 0) {
 {
   const tips = new FirstTips(loadTips());
   ok(!tips.done && tips.stored === '', 'Ein neuer Spieler hat schon Tipps gesehen');
-  // ein Langsamerer voraus bei 45 s, das 1000-m-Schild einer Ausfahrt bei 70 s (zehn Sekunden lang), ab 200 s lässt
-  // sich ein Ladestopp einplanen; bis 12 s steht „So steuerst du“
-  const log = drive(tips, 300, (t) => ({ free: t > 12, carAhead: t > 45 && t < 47, exit: t > 70 && t < 80, stop: t > 200 }));
+  // ein Langsamerer voraus bei 45 s, das 1000-m-Schild einer Ausfahrt bei 70 s (zehn Sekunden lang), ein Brunnen auf dem
+  // Weg in Sicht bei 120 s, ab 200 s lässt sich ein Ladestopp einplanen; bis 12 s steht „So steuerst du“
+  const log = drive(tips, 300, (t) => ({ free: t > 12, carAhead: t > 45 && t < 47, exit: t > 70 && t < 80, fountain: t > 120 && t < 130, stop: t > 200 }));
   const ids = log.map((x) => x.id);
-  ok(JSON.stringify(ids) === JSON.stringify(['kamera', 'megafon', 'ausfahrt', 'ladestopp']), `Reihenfolge ${ids.join(', ')}`);
+  ok(JSON.stringify(ids) === JSON.stringify(['kamera', 'megafon', 'ausfahrt', 'brunnen', 'laden']), `Reihenfolge ${ids.join(', ')}`);
   const at = Object.fromEntries(log.map((x) => [x.id, x]));
   ok(at.kamera && at.kamera.from >= KAMERA_AFTER && at.kamera.from < KAMERA_AFTER + 0.1, `Kamera bei ${at.kamera && at.kamera.from.toFixed(2)} s`);
   ok(at.megafon && at.megafon.from > 45 && at.megafon.from < 46, `Megafon nicht hinter dem Langsameren (${at.megafon && at.megafon.from.toFixed(2)} s)`);
   ok(at.ausfahrt && at.ausfahrt.from > 70 && at.ausfahrt.from < 71, `Ausfahrt nicht am 1000-m-Schild (${at.ausfahrt && at.ausfahrt.from.toFixed(2)} s)`);
-  ok(at.ladestopp && at.ladestopp.from > 200 && at.ladestopp.from < 206, `Ladestopp nicht, sobald er geht (${at.ladestopp && at.ladestopp.from.toFixed(2)} s)`);
+  ok(at.brunnen && at.brunnen.from > 120 && at.brunnen.from < 121, `BrunnenTV nicht, sobald der Brunnen in Sicht kommt (${at.brunnen && at.brunnen.from.toFixed(2)} s)`);
+  ok(at.laden && at.laden.from > 200 && at.laden.from < 206, `Laden nicht, sobald ein Stopp geht (${at.laden && at.laden.from.toFixed(2)} s)`);
   for (const x of log) ok(x.to !== null && Math.abs(x.to - x.from - TIPS[x.id].show) < 0.1, `${x.id} steht ${x.to && (x.to - x.from).toFixed(2)} s statt ${TIPS[x.id].show} s`);
   for (let i = 1; i < log.length; i++) ok(log[i].from >= log[i - 1].to + GAP - 0.05, `${log[i].id} kommt ${(log[i].from - log[i - 1].to).toFixed(2)} s nach ${log[i - 1].id}`);
   ok(tips.done, 'Nach allen Tipps ist noch einer offen');
   storeTips(tips);
   const again = new FirstTips(loadTips());
-  ok(again.done && drive(again, 300, () => ({ exit: true, carAhead: true, stop: true })).length === 0, 'Im zweiten Stream kommt ein Tipp noch einmal');
+  ok(again.done && drive(again, 300, () => ({ exit: true, carAhead: true, stop: true, fountain: true, post: true })).length === 0, 'Im zweiten Stream kommt ein Tipp noch einmal');
+}
+// L an der ersten Ladesäule (in Sicht oder daneben), auch ohne Warnung; ein Brunnen und eine Säule zugleich: erst B
+{
+  const tips = new FirstTips('kamera,megafon,ausfahrt,brunnen');
+  const log = drive(tips, 40, (t) => ({ post: t > 30 && t < 31 }));
+  ok(log.length === 1 && log[0].id === 'laden' && log[0].from > 30 && log[0].from < 30.1, `Laden an der ersten Säule: ${JSON.stringify(log)}`);
+  const t2 = new FirstTips('kamera,megafon,ausfahrt');
+  const l2 = drive(t2, 40, (t) => ({ fountain: t > 20, post: t > 20 }));
+  ok(l2.length === 2 && l2[0].id === 'brunnen' && l2[1].id === 'laden', `Brunnen vor Säule: ${l2.map((x) => x.id).join(', ')}`);
+  // wer schon den alten Ladestopp-Tipp gesehen hat, bekommt den neuen (L lädt jetzt auch an der Säule)
+  ok(!new FirstTips('kamera,megafon,ausfahrt,ladestopp').seen.has('laden'), 'Der alte Ladestopp-Tipp gilt als der neue');
 }
 // das Megafon ohne Anlass, nach MEGAFON[1] Sekunden; eine Ausfahrt hat Vorrang vor allem, was gerade auch fällig ist
 {
@@ -118,7 +131,7 @@ function drive(tips, sec, world = () => ({}), t0 = 0) {
 // die Zeilen: je Gerät die richtige Taste, kurz genug für die Karte am Rand
 {
   // der Ladestopp liegt am Gamepad auf LB (vorher zeigte der Tipp dort die Taste L, die es am Pad nicht gibt)
-  const KEYS = { kamera: { keyboard: 'V', touch: '🎥', gamepad: 'B' }, megafon: { keyboard: 'H', touch: '📢', gamepad: 'Y' }, ladestopp: { keyboard: 'L', gamepad: 'LB' } };
+  const KEYS = { kamera: { keyboard: 'V', touch: '🎥', gamepad: 'B' }, megafon: { keyboard: 'H', touch: '📢', gamepad: 'Y' }, laden: { keyboard: 'L', gamepad: 'LB' }, brunnen: { keyboard: 'B', gamepad: 'RB' } };
   for (const id of ORDER) {
     for (const device of ['keyboard', 'touch', 'gamepad']) {
       const rows = TIPS[id].rows(device);
@@ -130,8 +143,10 @@ function drive(tips, sec, world = () => ({}), t0 = 0) {
     }
     ok(TIPS[id].show >= 6 && TIPS[id].show <= 12, `${id}: steht ${TIPS[id].show} s`);
   }
-  const touchStop = TIPS.ladestopp.rows('touch')[0][1];
-  ok(/Ladestopp einplanen/.test(touchStop), 'Ladestopp (Touch): nennt den Knopf nicht');
+  const touchStop = TIPS.laden.rows('touch').map(([, t]) => t).join(' ');
+  ok(/Jetzt laden/.test(touchStop) && /Ladestopp einplanen/.test(touchStop), 'Laden (Touch): nennt nicht beide Knöpfe');
+  ok(TIPS.laden.rows('keyboard').length === 2 && /gleich hier laden/.test(TIPS.laden.rows('keyboard')[0][1]) && /einplanen/.test(TIPS.laden.rows('keyboard')[1][1]), 'Laden: nicht beide Bedeutungen der Taste');
+  ok(/BrunnenTV hier/.test(TIPS.brunnen.rows('touch')[0][1]) && /jedem Brunnen auf dem Weg/.test(TIPS.brunnen.rows('keyboard')[0][1]), 'BrunnenTV: Knopf oder „jeder Brunnen auf dem Weg“ fehlt');
   ok(TIPS.ausfahrt.rows('keyboard').some(([, t]) => /rechts/.test(t)) && TIPS.ausfahrt.rows('keyboard').some(([, t]) => /Navi zeigt die Spur/.test(t)), 'Ausfahrt: rechts halten oder die Spur im Navi fehlt');
 }
 

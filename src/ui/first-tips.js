@@ -1,9 +1,11 @@
 // Die ersten Minuten: Wer zum ersten Mal losfährt, bekommt nacheinander kurze Tipps am Rand – auf der Karte, auf der
 // beim ersten Start „So steuerst du“ stand (drive-hint.js: unten links an Stelle der Facecam, auf Touch-Geräten auf
 // dem Chat-Feld; nie in der freien Sicht, siehe sicht.js HOMES.steuerung). Jeder Tipp kommt, wenn er gebraucht wird:
-// die Ausfahrt am 1000-m-Schild der ersten Ausfahrt, die das Navi nehmen will, das Megafon, sobald vor dem Wagen
-// jemand langsamer fährt (spätestens nach zwei Minuten), der Ladestopp, sobald er sich einplanen lässt (Akku höchstens
-// halb voll oder OMI warnt), die Kamera nach den ersten Sekunden. Jeder Tipp erscheint einmal je Spieler
+// die Ausfahrt am 1000-m-Schild der ersten Ausfahrt, die das Navi nehmen will, BrunnenTV (B), sobald der erste Brunnen
+// auf dem Weg in Sicht kommt, Laden (L), sobald die erste Ladesäule in Sicht kommt, der Wagen neben einer steht oder
+// sich ein Ladestopp einplanen lässt (Akku höchstens halb voll oder OMI warnt), das Megafon, sobald vor dem Wagen
+// jemand langsamer fährt (spätestens nach zwei Minuten), die Kamera nach den ersten Sekunden (Besitzer, 21.11.2026:
+// „B für BrunnenTV, L für Laden sollte in die Tipps kommen“). Jeder Tipp erscheint einmal je Spieler
 // (localStorage); Enter (am Gamepad Back) oder ✕ schaltet alle ab. Diese Datei kennt kein DOM: main.js füttert
 // FirstTips, die Karte zeichnet drive-hint.js showTip, tools/tipps-test.mjs prüft den Ablauf.
 
@@ -27,6 +29,22 @@ export const TIPS = {
       [[], 'Das Navi zeigt die Spur: Die hellen Pfeile in der Ansage führen hinaus.'],
     ],
   },
+  brunnen: {
+    title: '⛲ BrunnenTV',
+    show: 9,
+    action: 'brunnen',
+    rows: (device) => [[device === 'touch' ? [] : [deviceKey('brunnen', device)], device === 'touch'
+      ? 'An jedem Brunnen auf dem Weg: daneben anhalten, dann „BrunnenTV hier“ – eine Folge BrunnenTV.'
+      : 'BrunnenTV an jedem Brunnen auf dem Weg: daneben anhalten und drücken.']],
+  },
+  laden: {
+    title: '🔌 Laden',
+    show: 10,
+    action: 'ladestopp',
+    rows: (device) => (device === 'touch'
+      ? [[[], 'An einer Ladesäule oder Bucht: „Jetzt laden“.'], [[], 'Unterwegs plant „Ladestopp einplanen“ die nächste Säule ein.']]
+      : [[[deviceKey('ladestopp', device)], 'An einer Ladesäule oder Bucht: gleich hier laden.'], [[deviceKey('ladestopp', device)], 'Unterwegs: den nächsten Ladestopp einplanen.']]),
+  },
   kamera: {
     title: '🎥 Kamera',
     show: 8,
@@ -39,14 +57,6 @@ export const TIPS = {
     action: 'megafon',
     rows: (device) => [[[deviceKey('megafon', device)], 'Eine Durchsage, und wer vor dir fährt, macht Platz.']],
   },
-  ladestopp: {
-    title: '🔌 Ladestopp',
-    show: 9,
-    action: 'ladestopp',
-    rows: (device) => [[device === 'touch' ? [] : [deviceKey('ladestopp', device)], device === 'touch'
-      ? 'Der Knopf „Ladestopp einplanen“ führt zur nächsten Ladesäule auf dem Weg, danach weiter zum Ziel.'
-      : 'Ladestopp einplanen: Das Navi führt zur nächsten Ladesäule auf dem Weg, danach weiter zum Ziel.']],
-  },
 };
 export const ORDER = Object.keys(TIPS);
 /** Ab so vielen Sekunden Fahrt kommt die Kamera; das Megafon mit Anlass ab MEGAFON[0], ohne ab MEGAFON[1]. */
@@ -57,14 +67,16 @@ export const GAP = 5;
 
 /**
  * Ist der Tipp jetzt dran? ctx: t (Sekunden freier Fahrt seit dem Losfahren), exit (die Ansage nennt ab dem
- * 1000-m-Schild eine Ausfahrt, die noch mindestens 250 m entfernt ist), carAhead (auf der eigenen Spur fährt
- * jemand langsamer voraus), stop (ein Ladestopp lässt sich einplanen).
+ * 1000-m-Schild eine Ausfahrt, die noch mindestens 250 m entfernt ist), fountain (ein Brunnen auf dem Weg ist in Sicht),
+ * post (eine Ladesäule ist in Sicht oder neben dem Wagen), carAhead (auf der eigenen Spur fährt jemand langsamer
+ * voraus), stop (ein Ladestopp lässt sich einplanen).
  */
 function due(id, ctx) {
   if (id === 'ausfahrt') return !!ctx.exit;
+  if (id === 'brunnen') return !!ctx.fountain;
   if (id === 'kamera') return ctx.t >= KAMERA_AFTER;
   if (id === 'megafon') return (!!ctx.carAhead && ctx.t >= MEGAFON[0]) || ctx.t >= MEGAFON[1];
-  return !!ctx.stop;
+  return !!ctx.post || !!ctx.stop;
 }
 
 export class FirstTips {
@@ -115,7 +127,7 @@ export class FirstTips {
     this.gap = GAP;
   }
 
-  /** Der Spieler hat getan, wozu der Tipp rät (Kamera, Megafon, Ladestopp): Er blendet bald aus. */
+  /** Der Spieler hat getan, wozu der Tipp rät (Kamera, Megafon, BrunnenTV, Laden): Er blendet bald aus. */
   did(action) {
     if (this.cur && TIPS[this.cur].action === action) this.left = Math.min(this.left, 1.2);
   }
