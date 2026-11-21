@@ -2,7 +2,8 @@
 // jeder Touch-Knopf steht in der Übersicht bei seiner Aktion, und dort steht nichts, was nirgends belegt ist; die
 // Tasten der Tipps der ersten Minuten und von „So steuerst du“ sind echte Belegungen; das Gamepad löst die Aktionen
 // seiner Tabelle wirklich aus; die Übersicht ist auch aus der Pause erreichbar. Feedback: ein Link zu GitHub im Titel
-// und in der Pause, und das Spiel selbst sendet nichts.
+// und in der Pause, und das Spiel selbst sendet nichts. Abspann: Jeder, der in einem simulierten Stream gespendet,
+// geboten, Abos verschenkt hat, VIP wurde oder geraidet hat, steht unter „Danke an“ mit seiner Summe.
 // node tools/menues-test.mjs
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,6 +15,10 @@ import { controlRows, keyName, padName, touchOf, deviceKey } from '../src/ui/con
 import { TIPS, ORDER } from '../src/ui/first-tips.js';
 import { hintRows } from '../src/ui/drive-hint.js';
 import { FEEDBACK } from '../src/ui/menus.js';
+import { thanksGroups } from '../src/ui/abspann.js';
+import { fmtBetrag } from '../src/data.js';
+import { fmtNum } from '../src/util.js';
+import { makeStream, DRIVERS } from './stream-sim.mjs';
 
 let fails = 0;
 let checks = 0;
@@ -160,5 +165,84 @@ for (const device of ['keyboard', 'gamepad']) {
   ok(files.length > 50 && !talk.length, `das Spiel spricht mit dem Netz: ${talk.join(', ')}`);
 }
 
-console.log(fails ? `menues-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `menues-test: alles grün (${checks} Prüfungen: Steuerung aus ${rows.length} Zeilen, jede Belegung genannt; Feedback als Link zu GitHub)`);
+// ---------- Abspann: „Danke an“ ----------
+// Ein simulierter endloser Stream (das echte Spiel, tools/stream-sim.mjs): Mitgeschrieben wird von außen – jede Spende
+// beim Aufruf, jedes Gebot an der Kasse, Abos, VIPs und Raids aus den Zeilen von James und den Hinweisen am Rand. Im
+// Abspann steht jeder Name genau einmal in seiner Gruppe, mit seiner Summe oder Anzahl, und kein Name, der nichts gab.
+let credits = '';
+{
+  const sim = makeStream({ driver: DRIVERS.mittel, seed: 11, endless: true });
+  const g = sim.game;
+  const want = { spenden: new Map(), gebote: new Map(), abos: new Map(), vips: new Map(), raids: new Map() };
+  const add = (m, name, v, n = 1) => {
+    const e = m.get(name) || { sum: 0, n: 0 };
+    e.sum = Math.round((e.sum + v) * 100) / 100;
+    e.n += n;
+    m.set(name, e);
+  };
+  let biggest = 0;
+  const donate = g.donate;
+  g.donate = function (name, amount, ...rest) {
+    add(want.spenden, name, amount);
+    biggest = Math.max(biggest, amount);
+    return donate.call(this, name, amount, ...rest);
+  };
+  const earn = g.earn;
+  g.earn = function (amount, label, ...rest) {
+    if (label === 'Navi-Gebote') add(want.gebote, this.navi.bidder, amount);
+    return earn.call(this, amount, label, ...rest);
+  };
+  for (let i = 0; i < 50 && sim.step(60); i++);
+  for (const m of sim.log.chat) {
+    if (m.bot !== 'james') continue;
+    const gift = /^(.+) verschenkt (?:ein Abo|(\d+) Abos) an den Chat! 🎁$/.exec(m.text);
+    if (gift) add(want.abos, gift[1], +(gift[2] || 1));
+    const vip = /^Neuer VIP im Live-Bereich: (.+?) (?:– und legt|\()/.exec(m.text);
+    if (vip) add(want.vips, vip[1], 0);
+  }
+  for (const t of sim.log.toast) {
+    const raid = /^👑 Raid von (.+): \+([\d.]+) Zuschauer$/.exec(t.text);
+    if (raid) add(want.raids, raid[1], +raid[2].replace(/\./g, ''));
+  }
+  const F = g.supporters();
+  const groups = thanksGroups(F);
+  const byId = Object.fromEntries(groups.map((x) => [x.id, x]));
+  const what = {
+    spenden: (e) => fmtBetrag(e.sum),
+    gebote: (e) => fmtBetrag(e.sum),
+    abos: (e) => fmtNum(e.sum),
+    vips: () => '',
+    raids: (e) => `${fmtNum(e.n)}\u00a0${e.n === 1 ? 'Raid' : 'Raids'}, ${fmtNum(e.sum)}\u00a0${e.sum === 1 ? 'Gast' : 'Gäste'}`,
+  };
+  for (const id of Object.keys(want)) {
+    const grp = byId[id];
+    const m = want[id];
+    ok(m.size > 0, `Danke an: im simulierten Stream gab es keine ${id}`);
+    ok(grp && grp.names.length === m.size, `Danke an, ${id}: ${grp ? grp.names.length : 0} Namen statt ${m.size}`);
+    if (!grp) continue;
+    const seen = new Map(grp.names.map((x) => [x.name, x.what]));
+    ok(seen.size === grp.names.length, `Danke an, ${id}: ein Name steht zweimal`);
+    let miss = 0;
+    for (const [name, e] of m) {
+      if (!seen.has(name)) ok(++miss > 3, `Danke an, ${id}: ${name} fehlt`);
+      else ok(seen.get(name) === what[id](e), `Danke an, ${id}: ${name} mit ${seen.get(name)} statt ${what[id](e)}`);
+    }
+    ok(!miss, `Danke an, ${id}: ${miss} Namen fehlen`);
+    for (const x of grp.names) ok(m.has(x.name), `Danke an, ${id}: ${x.name} hat nichts gegeben`);
+    // höchste Summe zuerst
+    ok(grp.names.every((x, i) => i === 0 || id === 'vips' || id === 'abos' || m.get(grp.names[i - 1].name).sum >= m.get(x.name).sum), `Danke an, ${id}: nicht nach Summe geordnet`);
+  }
+  ok(byId.raids?.names.every((x) => x.name === 'König Knolli'), 'Raids: nur König Knolli raidet');
+  ok(F.top && F.top.amount === biggest && want.spenden.has(F.top.name), `Größte Spende: ${F.top && F.top.amount} statt ${biggest}`);
+  const sum = (m) => [...m.values()].reduce((a, e) => a + e.sum, 0);
+  ok(byId.spenden.sub.endsWith(fmtBetrag(Math.round(sum(want.spenden) * 100) / 100)), `Spenden: Summe ${byId.spenden.sub}`);
+  // der Abspann zeigt jede Gruppe ganz (kein „und N weitere“), danach als Letztes die Zeile des Gedenkens
+  const m = src('src/ui/menus.js');
+  const over = m.slice(m.indexOf('  render_over('), m.indexOf('\n  }\n', m.indexOf('  render_over(')));
+  ok(/for \(const g of groups\)/.test(over) && /for \(const x of g\.names\)/.test(over) && !/weitere/.test(over), 'Abspann: nicht alle Namen');
+  ok(/el\('p', 'gedenken', card, GEDENKEN\);\s*$/.test(over), 'Abspann: das Gedenken steht nicht am Ende');
+  credits = `Danke an aus ${fmtNum(g.t / 60)} min Stream: ${groups.map((x) => `${x.title} ${x.names.length}`).join(', ')}`;
+}
+
+console.log(fails ? `menues-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `menues-test: alles grün (${checks} Prüfungen: Steuerung aus ${rows.length} Zeilen, jede Belegung genannt; Feedback als Link zu GitHub; ${credits})`);
 process.exit(fails ? 1 : 0);

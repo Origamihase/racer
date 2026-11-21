@@ -634,6 +634,12 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 /* „Danke an“: die Unterstützenden als eigener Abschnitt unter der Crew, die Überschrift über die ganze Breite */
 .crew.thanks { margin-top: 14px; }
 .crew.thanks h3 { grid-column: 1 / -1; margin: 0 0 2px; }
+/* je Art (src/ui/abspann.js) alle Namen in Spalten, mit Summe oder Anzahl; lange Listen scrollen mit der Karte */
+.thanks-group { margin-top: 8px; }
+.thanks-sum { text-transform: none; letter-spacing: 0; font-weight: 600; }
+.thanks-names { list-style: none; margin: 3px 0 0; padding: 0; columns: 4 180px; column-gap: 18px; }
+.thanks-names li { break-inside: avoid; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
+.thanks-what { font-weight: 500; color: var(--sub); white-space: nowrap; }
 /* Abspann der Reise: ganz am Ende eine leise Zeile des Gedenkens, allein, mit einem kurzen Strich davor */
 .gedenken { margin: 26px auto 2px; max-width: 560px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--sub); font-style: italic; text-wrap: balance; }
 .gedenken::before { content: ''; display: block; width: 48px; height: 1px; margin: 0 auto 14px; background: var(--line); }

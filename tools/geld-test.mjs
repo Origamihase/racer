@@ -24,7 +24,7 @@ import { Economy, BONTANA } from '../src/game/economy.js';
 import { Satisfaction, ZUFRIEDEN } from '../src/game/satisfaction.js';
 import { clamp } from '../src/util.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
-import { CHAT, REPARATUR, CREW, CREW_LINES, ABSPANN_REISE, GEDENKEN } from '../src/data.js';
+import { CHAT, REPARATUR, CREW, CREW_LINES, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN } from '../src/data.js';
 
 const STREAMS = Number(process.argv[2]) || 4;
 const MINUTES = Number(process.argv[3]) || 30;
@@ -470,10 +470,13 @@ console.log('Die Leute des Streams (Reise):');
   console.log(`  ${all.length} Streams, ${fmt(n.minutes / 60, 1)} h: je Stunde Raids ${per('raid')}, Knolli danach ${per('knolli')}, Mod-Zeilen ${per('mod')}, Discord ${per('discord')}, Herzen ${per('heart')} · nach ${n.funkloch} Funklöchern ${n.back}× „läuft wieder“`);
   // der Abspann der Reise: die Leute mit ihren Berufen, und am Ende die Zeile des Gedenkens im Wortlaut
   const names = ABSPANN_REISE.map(([, v]) => v).join(' | ');
-  const want = ['Elti und IceBonbon', '?CF und IceDrache', 'Arno Nühm', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'Wils und DomZe', 'BontanaBack', 'König Knolli'];
+  const want = ['Elti und IceBonbon', 'Arno Nühm', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'Wils und DomZe', 'BontanaBack', 'König Knolli'];
   ok(want.every((w) => ABSPANN_REISE.some(([, v]) => v === w)), `Abspann: ${names}`);
+  // das Sprachstudio steht genau einmal im Abspann, mit seinen beiden Leuten (Wunsch des Eigentümers)
+  const studio = [...ABSPANN_CREW, ...ABSPANN_REISE].filter(([k, v]) => /Sprachstudio/.test(k + v));
+  ok(studio.length === 1 && studio[0][0] === 'Sprachstudio' && studio[0][1] === '?CF und IceBonbon', `Sprachstudio im Abspann: ${studio.map((r) => r.join(': ')).join(' | ')}`);
   ok(GEDENKEN === 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte', `Gedenken nicht im Wortlaut: ${GEDENKEN}`);
-  console.log(`  Abspann: ${ABSPANN_REISE.map(([k, v]) => `${k}: ${v}`).join(' · ')} · am Ende: „${GEDENKEN}“`);
+  console.log(`  Abspann: ${[...ABSPANN_CREW, ...ABSPANN_REISE].map(([k, v]) => `${k}: ${v}`).join(' · ')} · am Ende: „${GEDENKEN}“`);
 }
 
 console.log(fails ? `geld-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `geld-test: alles grün (${checks} Prüfungen)`);

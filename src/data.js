@@ -999,7 +999,7 @@ export const ABSPANN_CREW = [
   ['Fahrer', 'Mini Adam'],
   ['Kamera', 'stationär'],
   ['Drohne', 'die Drohne'],
-  ['Sprachstudio', 'das Sprachstudio'],
+  ['Sprachstudio', '?CF und IceBonbon'],
   ['Scheibenwischer', 'Auto-Wischer (Beta)'],
   ['Navigation', 'ferngesteuert vom Chat'],
 ];
@@ -1010,7 +1010,6 @@ export const ABSPANN_CREW = [
  */
 export const ABSPANN_REISE = [
   ['Musik', 'Elti und IceBonbon'],
-  ['Stimmen im Sprachstudio', '?CF und IceDrache'],
   ['Geek im Hintergrund', 'Arno Nühm'],
   ['Discord', 'Wils und DomZe'],
   ['Großbieter vom Dienst', 'BontanaBack'],

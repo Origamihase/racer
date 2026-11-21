@@ -1999,6 +1999,9 @@ function pollMenuPad(active) {
     if (active && (dir || edge('a') || edge('b') || edge('start'))) {
       menus.pad(dir, edge('a') || (edge('start') && menus.current !== 'pause'), edge('b') || (edge('start') && menus.current === 'pause'));
     }
+    // der rechte Stick scrollt lange Karten (der Abspann dankt jedem mit Namen)
+    const ry = pd.axes[3] || 0;
+    if (active && Math.abs(ry) > 0.25) menus.scroll(Math.sign(ry) * (Math.abs(ry) - 0.25) * 24);
     menuPad.prev = now;
     return;
   }

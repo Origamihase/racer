@@ -14,6 +14,7 @@ import { drawQuote } from './quotechart.js';
 import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
 import { canFullscreen, fullscreenLabel, toggleFullscreen, onFullscreenChange, homeScreenHint } from './fullscreen.js';
 import { controlRows, keysOf, padOf } from './controls.js';
+import { thanksGroups } from './abspann.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -317,6 +318,12 @@ export class Menus {
     }
   }
 
+  /** Gamepad: Der rechte Stick scrollt die offene Karte (lange Listen: Abspann mit „Danke an“, Shop, Steuerung). */
+  scroll(dy) {
+    const card = this.current && this.current !== 'karte' ? this.screens[this.current].querySelector('.card') : null;
+    if (card) card.scrollTop += dy;
+  }
+
   // --- Bildschirme -------------------------------------------------------------
   render_title(s, d) {
     s.textContent = '';
@@ -476,16 +483,26 @@ export class Menus {
     // die Leute des Streams, mit ausgedachten Berufen, und die BrunnenTV-Folgen der Reise
     const folgen = st.brunnenTV === 1 ? '1 Folge' : fmtNum(st.brunnenTV || 0) + ' Folgen';
     for (const [k, v, wide] of ABSPANN_REISE) if (st.brunnenTV || !v.includes('{folgen}')) credit(crew, k, [fillTemplate(v, { folgen })], wide === 'wide');
-    // Wie im echten Abspann danach die Unterstützenden: größte Spende, Abo-Verschenker (die meisten zuerst), neue VIPs
+    // Wie im echten Abspann danach die Unterstützenden, alle mit Namen: die größte Spende, dann je Art (src/ui/abspann.js)
+    // jeder, der gespendet, geboten, Abos verschenkt hat, neu VIP wurde oder geraidet hat – die Karte scrollt, so weit es
+    // nötig ist
     const F = o.fans;
-    if (F && (F.top || F.gifters.length || F.vips.length)) {
+    const groups = thanksGroups(F);
+    if (F?.top || groups.length) {
       const thanks = el('div', 'crew thanks', card);
       el('h3', '', thanks, 'Danke an');
       if (F.top) credit(thanks, 'Größte Spende', [`${nameBreak(F.top.name)} (${fmtCent(F.top.amount)})`]);
-      // je Abschnitt höchstens drei Zeilen: bei mehr Namen die ersten zwei und „und N weitere“
-      const top3 = (list, fmt) => (list.length > 3 ? [...list.slice(0, 2).map(fmt), `und ${list.length - 2} weitere`] : list.map(fmt));
-      if (F.gifters.length) credit(thanks, 'Abos verschenkt', top3(F.gifters, (x) => `${nameBreak(x.name)} (${x.count})`));
-      if (F.vips.length) credit(thanks, 'Neue VIPs', top3(F.vips, nameBreak));
+      for (const g of groups) {
+        const box = el('div', 'crew-row wide thanks-group', thanks);
+        box.dataset.group = g.id;
+        const k = el('span', 'k', box, g.title);
+        el('span', 'thanks-sum', k, ' · ' + g.sub);
+        const names = el('ul', 'thanks-names', box);
+        for (const x of g.names) {
+          const li = el('li', '', names, nameBreak(x.name));
+          if (x.what) el('span', 'thanks-what', li, ' ' + x.what);
+        }
+      }
     }
     // ganz am Ende, allein und leise
     el('p', 'gedenken', card, GEDENKEN);
