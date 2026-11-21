@@ -38,6 +38,7 @@ import { TeslaDamage } from './models/damage-fx.js';
 import { CabinDamage } from './cockpit/damage-cabin.js';
 import { loadSave, storeSave, resetSave, refundMegafon, megafonNoteSeen, storePicture, loadPictures, PIC_MAX } from './save.js';
 import { Game } from './game/game.js';
+import { WAVE, walkerToWave } from './game/wave.js';
 import { Chassis, CHASSIS } from './game/chassis.js';
 import { Pickups } from './game/pickups.js';
 import { UI } from './ui/ui.js';
@@ -406,18 +407,24 @@ function adamSay(dur, inSec = 0) {
   c.talkUntil = Math.max(c.talkUntil, from + dur);
 }
 /** Stimmung aus dem Spiel (MOODS in adamMimic.js) oder ein Auftritt: wave, donation, cheer, wiper, megafon. */
-function adamMood(name, k = 1) {
+function adamMood(name, k = 1, o = null) {
   adamCtl.quiet = 0;
   switch (name) {
-    case 'wave':
-      // Begrüßung zum Start: in die Kamera schauen, winken, „Hallo Chat!“
+    case 'wave': {
+      // winken, nur aus den Anlässen der Regel (game/wave.js: Intro, Fußgänger am Gehweg, „Wink mal!“ im Chat, nach
+      // einem Rempler): in die Kamera schauen und „Hallo!“ – zum Fußgänger hin (o.look) still; k < 1 ist der kleine,
+      // verlegene Gruß nach einem Rempler
+      const small = k < 1;
+      const look = o && o.look;
       adamDo((a) => {
-        a.gesture('wave');
-        a.setMood('happy', 2.4, 0.6);
+        a.gesture('wave', k);
+        a.setMood('happy', small ? 1.6 : 2.4, small ? 0.3 : 0.6);
+        if (look) a.lookAt(look, 2.2);
       });
-      adamToCamera(2.6);
-      adamSay(1.6, 0.5);
+      if (!look) adamToCamera(small ? 1.8 : 2.6);
+      if (!look && !small) adamSay(1.6, 0.5);
       break;
+    }
     case 'donation':
       // kurz aufs Handy mit dem Chat, freuen, bedanken; bei großen Spenden jubelt er
       adamDo((a) => {
@@ -453,6 +460,20 @@ function adamMood(name, k = 1) {
   }
 }
 game.onMood = adamMood;
+
+// Fußgänger auf dem Gehweg eines Orts: alle 0,25 s nachsehen, ob gleich einer vorbeizieht – dann winkt Mini Adam ihm
+// zu (zum Gehweg hin geschaut), höchstens alle WAVE.cool Sekunden und nur bei Stadttempo (game/wave.js)
+let walkerT = 0;
+function waveAtWalkers(dt, p) {
+  walkerT -= dt;
+  if (walkerT > 0) return;
+  walkerT = 0.25;
+  const sec = xxl.trip.section;
+  if (!sec || sec.kind !== 'stadt') return;
+  const town = xxl.town(sec);
+  const who = town && town.plan ? walkerToWave(game.waves, game.t, p.speed, town.plan.items, p.s - sec.s0) : null;
+  if (who) game.waveAt('gehsteig', { look: who.side > 0 ? 'side' : 'window' });
+}
 
 /** Pro Bild: Sprechen, Zuhören und Müdigkeit (leerer Akku) zu den Animationswerten o dazurechnen. */
 function adamFrame(dt, o) {
@@ -1225,8 +1246,9 @@ function toDrive() {
   stateT = 0;
   ui.show(true);
   if (!chargeRun.hello) streamHello();
-  // die Facecam geht an: Mini Adam schaut hinein und winkt
-  adamMood('wave');
+  // die Facecam geht an: hat er in der Startszene nicht schon gewinkt (übersprungen, kein Ladepark), winkt er jetzt
+  // hinein – das ist sein Gruß zum Intro (game/wave.js)
+  game.waveAt('intro');
   // die Tipps der ersten Minuten zählen ab hier (first-tips.js); keiner steht noch vom letzten Stream
   firstTips.restart();
   tipT = 0;
@@ -1346,6 +1368,8 @@ function chargeStep(dt) {
     audio.nomiChime();
   }
   if (t >= S.hallo && !run.hello) streamHello();
+  // sein Gruß im Intro (game/wave.js): ab hier winkt er aus dem Fenster, beim Losfahren nicht noch einmal
+  if (t >= S.wave[0]) game.waves.ask('intro', game.t);
   const where = placeScene(dt, CHARGE_KEYS, t, S.inside, S.end);
   const sw = S.inside;
   const fade = t < 0.6 ? 1 - t / 0.6 : t > sw - 0.25 && t < sw ? (t - (sw - 0.25)) / 0.25 : t >= sw && t < sw + 0.35 ? 1 - (t - sw) / 0.35 : 0;
@@ -1566,7 +1590,7 @@ function stopTick() {
   if (r.skipT >= 0 && t - r.skipT >= 0.25) game.skipCharge();
 }
 
-/** Nach der Welt: Wagen und Kamera dieses Bilds. Ergebnis: { inside (Kamera im Cockpit), wave, look (Mini Adam) }. */
+/** Nach der Welt: Wagen und Kamera dieses Bilds. Ergebnis: { inside (Kamera im Cockpit), look (Mini Adam) }. */
 function stopPlace(dt) {
   const r = stopRun;
   const P = r.c.plan;
@@ -1612,10 +1636,9 @@ function stopPlace(dt) {
   }
   fxState.fade = Math.max(fade, r.skipT >= 0 ? (t - r.skipT) / 0.25 : 0);
   r.inside = inside;
-  // Mini Adam winkt aus dem Fenster, wenn der Stecker sitzt, und schaut zur Säule, bis er sich löst
+  // Mini Adam schaut zur Säule, bis der Stecker sich löst (winken tut er hier nicht: game/wave.js)
   return {
     inside,
-    wave: smoothstep(1.2, 1.6, tb) * (1 - smoothstep(2.8, 3.2, tb)),
     look: smoothstep(0.6, 1.4, tb) * (1 - smoothstep(-0.6, 0, te)),
   };
 }
@@ -2076,7 +2099,6 @@ function step(dt, { render = true } = {}) {
         updateCarMatrix();
         placeDrone(dt, 'orbit');
       }
-      adamWave = smoothstep(0.72, 0.9, Math.sin(simT * 0.5));
       adamLook = Math.sin(simT * 0.4) * 0.6;
       break;
     }
@@ -2184,6 +2206,7 @@ function step(dt, { render = true } = {}) {
       p.lawful = !!(DEBUG && window.__MA.xxl && window.__MA.xxl.auto);
       if (p.lawful) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
+      waveAtWalkers(dt, p);
       if (stopBtn) stopBtn.classList.toggle('show', game.stopOffer());
       wayBtn.classList.toggle('show', game.wayHint);
       driveHintTick(dt, ctl);
@@ -2225,8 +2248,9 @@ function step(dt, { render = true } = {}) {
       chassis.update(dt, p.latAcc, p.firm);
       updateCarMatrix();
       placeDrone(dt, 'orbit');
-      adamWave = smoothstep(0.9, 1.5, stateT);
       adamLook = Math.sin(stateT * 0.5) * 0.8;
+      // nach dem letzten Rempler (Werkstatt) der kleine, verlegene Gruß (game/wave.js); sonst winkt er im Abspann nicht
+      if (state === 'ending' && game.over && game.over.reason === 'werkstatt' && stateT >= WAVE.afterCrash && stateT - dt < WAVE.afterCrash) game.waveAt('unfall');
       if (state === 'ending' && stateT > 2.6) {
         state = 'over';
         ui.show(false);
@@ -2251,7 +2275,6 @@ function step(dt, { render = true } = {}) {
     if (stopRun.on) {
       const a = stopPlace(dt);
       cockpitOn = a.inside;
-      adamWave = a.wave;
       adamLook = a.look;
     }
     // BrunnenTV: Fenster, Megafon und Kamera der Folge

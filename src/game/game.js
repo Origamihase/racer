@@ -3,7 +3,7 @@
 // Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
 import {
   CHAT, BOTS, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, JOB_TEMPLATES, REISE_AKKU, REPARATUR, CREW, CREW_LINES, INCOME, SPENDEN_ZWECKE, AKTIONEN,
-  MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag,
+  MEGAFON_WUENSCHE, SAMMELAKTIONEN, STUDIO, viewerName, viewerNameAt, fillTemplate, alterReaction, berufFor, fmtBetrag,
   BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, PARTYPEOPLE,
 } from '../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, damp, fmtCent, fmtEuro, fmtNum, fmtClock } from '../util.js';
@@ -27,6 +27,7 @@ import { places } from '../map/graph.js';
 import { goalName } from '../world/kit/layout.js';
 import { RouteLog } from './routelog.js';
 import { estimateSpeech } from '../speech.js';
+import { WaveRule, WAVE, chatGap } from './wave.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
 // „5 Cent, wenn du …“: Nur bei einem Teil der Angebote (LAGE_SHARE) achtet der Chat auf die Lage, die übrigen kommen
@@ -204,6 +205,8 @@ export class Game {
     this.offAutobahn = false;
     // Mini Adams Mimik (main.js hängt sich ein): onMood(name, Stärke 0 … 1) bei Spenden, Schreck, Rempler, Ziel …
     this.onMood = () => {};
+    // wann Mini Adam winkt (wave.js): Intro, Fußgänger am Gehweg, „Wink mal!“ im Chat, nach einem Rempler
+    this.waves = new WaveRule();
     // BrunnenTV am Navi-Ziel: Hier hängt sich die Szene ein (siehe startBrunnenTV)
     this.onBrunnenTV = () => {};
     // Ladestopp im Park: Hier hängt sich die Szene ein (siehe startCharge)
@@ -249,6 +252,9 @@ export class Game {
     this.megafonCd = 0;
     this.chatT = 1.5;
     this.chatSeen = [];
+    this.waves.reset();
+    this.waveChatN = 0;
+    this.waveChatT = chatGap(0);
     // wann zuletzt eine Gutschrift aufgeblitzt ist, die Leitplanke gekratzt hat, OMI das Navi angesagt hat
     this.popT = -9;
     this.scrapeT = -9;
@@ -396,6 +402,16 @@ export class Game {
   chat(text, name = viewerName(), opts = {}) {
     if (!text) return; // (kein Satz des Vorrats passte gerade: chatLine)
     if (this.ui.chat) this.ui.chat({ name, text: fillTemplate(text), ...opts });
+  }
+
+  /**
+   * Mini Adam winkt – nur aus einem Anlass der Regel (wave.js WAVE.why). o.look: Blickziel (zum Gehweg hin).
+   * Ergebnis: Stärke des Grußes, 0 wenn er jetzt nicht winkt.
+   */
+  waveAt(why, o = null) {
+    const k = this.waves.ask(why, this.t);
+    if (k > 0) this.onMood('wave', k, o);
+    return k;
   }
 
   bot(key, text) {
@@ -2388,6 +2404,19 @@ export class Game {
               : this.zufriedenPool() || CHAT.ambient;
       this.chat(this.chatLine(pool) || this.chatLine(CHAT.ambient));
     }
+    // ab und zu will jemand einen Gruß: „Wink mal!“, kurz danach winkt er (wave.js; nicht in einer Szene am Brunnen
+    // oder an der Ladesäule – dort hat er anderes zu tun, der Wunsch kommt dann etwas später)
+    this.waveChatT -= dt;
+    if (this.waveChatT <= 0) {
+      if (this.tv || this.charging) this.waveChatT = 10;
+      else {
+        // (ohne Zufall: Satz, Name und Abstand folgen dem Zähler – der Gruß ändert nichts am übrigen Stream)
+        const n = this.waveChatN++;
+        this.waveChatT = chatGap(n + 1);
+        this.chat(CHAT.winkMal[n % CHAT.winkMal.length], viewerNameAt(n));
+        this.later(WAVE.chatDelay, () => this.waveAt('chat'));
+      }
+    }
   }
 
   // --- „5 Cent, wenn du …“ ------------------------------------------------------------------
@@ -2644,9 +2673,12 @@ export class Game {
     if (e.car.behavior === 'polizei') this.chat('Ausgerechnet die Polizei Gifhorn 😱');
     this.burst(CHAT.crash, 3, 2);
     if (left <= 0) {
+      // (den verlegenen Gruß nach dem letzten Rempler gibt es im Abspann: main.js)
       this.end('werkstatt');
       return;
     }
+    // nach dem Schreck ein kleiner, verlegener Gruß in die Kamera (wave.js)
+    this.later(WAVE.afterCrash, () => this.waveAt('unfall'));
     this.ui.toast(left === 1 ? '🧸 Rempler! Nur noch ein Karosserie-Punkt!' : `🧸 Rempler! Noch ${left} Karosserie-Punkte`, 'bad');
   }
 

@@ -6,6 +6,11 @@
 // 2. Ausfahrten besser ausgeschildert: Jede Anschlussstelle hat eine Nummer (je Autobahn eindeutig), die Vorwegweiser
 //    1000 und 500 m tragen sie im Kästchen, und das Navi (nextExit, Ansage, OMI) nennt dieselbe Nummer und denselben
 //    Namen wie die Tafel.
+// 3. Winken: „Mini Adam winkt zu viel. Soll nur Menschen in der Stadt am Gehsteig, im Intro, wenn der Chat es will und
+//    nach einem Unfall winken.“ Die Regel (game/wave.js) kennt genau diese vier Anlässe; an Fußgängern echter Orte
+//    winkt er bei Stadttempo höchstens alle WAVE.cool Sekunden, beim Rasen nie; im Spiel winkt er nur nach „Wink mal!“
+//    im Chat und nach einem Rempler (verlegen, kleiner), und kein anderer Weg im Code lässt ihn winken.
+import { readFileSync } from 'node:fs';
 import * as G from '../src/map/graph.js';
 import * as shapes from '../src/map/shapes.js';
 import { Trip, J, PROFILES } from '../src/game/trip.js';
@@ -17,6 +22,11 @@ import { parkAt } from '../src/map/parks.js';
 import { signsAlong, BOARD_D } from '../src/world/xxl/signplan.js';
 import { exitLine } from '../src/game/game.js';
 import { NavModel } from '../src/map/navroute.js';
+import { WAVE, WaveRule, pedestrianAhead, walkerToWave } from '../src/game/wave.js';
+import { STREET, TOWN_LEN } from '../src/world/kit/layout.js';
+import { Game } from '../src/game/game.js';
+import { CHAT } from '../src/data.js';
+import { PerspectiveCamera } from 'three';
 
 let fails = 0;
 let checks = 0;
@@ -208,6 +218,169 @@ const kinds = (o) => [...o.over].map(([k, v]) => `${k} ${v.limit}: +${f0(v.max)}
   }
   ok(boards >= 20 && calls >= 20, `zu wenig geprüft: ${boards} Tafeln, ${calls} Sätze`);
   console.log(`2. Nummern der Ausfahrten: ${numbered} Anschlussstellen nummeriert, ${boards} Tafeln und ${calls} OMI-Sätze mit derselben Nummer wie das Navi`);
+}
+
+/** Ein Spiel ohne Grafik wie in tools/geld-test.mjs (Reise, Stream ohne Ende); chat sammelt den Chat, ui erweitert die UI. */
+function newGame(seed, { ui = {}, world = {} } = {}) {
+  const NONE = [];
+  const noop = () => {};
+  const loose = (base = {}) => new Proxy(base, { get: (t, k) => (k in t ? t[k] : noop) });
+  Math.random = rng(seed);
+  const trip = new Trip({ rng: Math.random });
+  const arrival = new Arrival();
+  const chat = [];
+  const said = [];
+  let ids = 0;
+  const game = new Game({
+    traffic: loose({ cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
+    scenery: loose({ request: () => ++ids, landmarkSpot: (x) => x, placed: () => null }),
+    road: loose(), sky: loose(), rain: loose(), fx: loose(), audio: loose(),
+    windshield: loose({ firmware: 0, manual: () => 'wipe' }),
+    cockpit: loose({ nomi: loose() }),
+    speech: loose({ say: (text, voice) => (said.push({ t: game.t, text, voice }), 2.5), busy: false, queue: NONE, current: null }),
+    ui: loose({ chat: (m) => chat.push({ t: game.t, ...m }), ...ui }),
+    pickups: loose({ update: () => NONE }),
+    world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null, ...world },
+  });
+  game.endless = true;
+  game.start({ upgrades: {}, best: {} });
+  return { game, trip, arrival, chat, said };
+}
+
+let stream12 = [];
+
+// --- 3. Winken nur zu vier Anlässen ---------------------------------------------------------------------------------
+{
+  // die Regel selbst
+  const r = new WaveRule();
+  ok(WAVE.why.join() === 'intro,gehsteig,chat,unfall', `Anlässe: ${WAVE.why.join()}`);
+  for (const why of ['titel', 'ladestopp', 'abspann', 'spende', 'ziel', 'losfahren', 'start', 'wave', 'brunnen']) ok(r.ask(why, 100) === 0 && !r.may(why, 100), `winkt zu „${why}“`);
+  ok(r.ask('intro', 0) === 1 && r.ask('intro', 60) === 0 && r.ask('intro', 600) === 0, 'Intro: genau einmal je Stream');
+  ok(r.ask('gehsteig', 10) === 0, 'Fußgänger 10 s nach dem Intro-Gruß');
+  ok(r.ask('gehsteig', WAVE.cool) === 1 && r.ask('gehsteig', WAVE.cool + 20) === 0 && r.ask('gehsteig', 2 * WAVE.cool) === 1, `Fußgänger: höchstens alle ${WAVE.cool} s`);
+  const kc = r.ask('chat', 2 * WAVE.cool + 1);
+  const ku = r.ask('unfall', 2 * WAVE.cool + 2);
+  ok(kc === 1 && ku === WAVE.small && ku > 0.5 && ku < 1, `Chat ${kc}, Unfall ${ku} (klein und verlegen)`);
+  ok(r.ask('gehsteig', 2 * WAVE.cool + 10) === 0, 'Fußgänger gleich nach dem Gruß an den Chat');
+  r.reset();
+  ok(r.may('intro', 0) && r.ask('gehsteig', 0) === 1, 'neuer Stream: Intro wieder offen, Fußgänger frei');
+
+  // wer gilt als Mensch am Gehweg
+  const u = 100;
+  const R = STREET.curbR + STREET.strip + 1;
+  const Lx = STREET.curbL - STREET.strip - 1;
+  const at = (name, x, d) => ({ name, x, y: 0, z: -(u + d), ry: 0 });
+  ok(pedestrianAhead([at('frau_walk', R, 20)], u)?.side === 1, 'Fußgängerin rechts am Gehweg, 20 m voraus');
+  ok(pedestrianAhead([at('opa_walk', Lx, 12)], u)?.side === -1, 'Fußgänger links am Gehweg, 12 m voraus');
+  ok(!pedestrianAhead([at('frau_walk', R, 45)], u) && !pedestrianAhead([at('frau_walk', R, 3)], u) && !pedestrianAhead([at('frau_walk', R, -8)], u), 'zu weit, zu nah oder schon vorbei');
+  ok(!pedestrianAhead([at('kind_wave', 26, 15)], u) && !pedestrianAhead([at('mann_stand', STREET.lane, 15)], u), 'auf dem Platz oder auf der Fahrbahn');
+  ok(!pedestrianAhead([at('bench', R, 15), at('dog', R, 16), at('streetTree', R, 17)], u), 'Bank, Hund, Baum');
+  ok(pedestrianAhead([at('mann_walk', R, 25), at('oma_walk', R, 9)], u)?.name === 'oma_walk', 'der nächste zuerst');
+
+  // echte Orte aus dem Stadtbaukasten: einmal mit 50 km/h hindurch, einmal mit 100 km/h
+  if (!globalThis.document) {
+    const ctx = new Proxy({}, {
+      get(t, k) {
+        if (k === 'measureText') return (x) => ({ width: String(x).length * 10 });
+        if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => ({ addColorStop() {} });
+        if (k === 'getImageData') return (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) });
+        if (k in t) return t[k];
+        return () => {};
+      },
+      set(t, k, v) {
+        t[k] = v;
+        return true;
+      },
+    });
+    globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx, style: {} }) };
+  }
+  const { W } = await import('../src/curve.js');
+  const { createCityKit } = await import('../src/world/kit/city.js');
+  const city = createCityKit(W);
+  const towns = G.places.filter((pl) => pl.pop > 20000).slice(0, 24);
+  let slowWaves = 0;
+  let fastWaves = 0;
+  let people = 0;
+  let minGap = Infinity;
+  for (const [i, pl] of towns.entries()) {
+    const size = ['klein', 'stadt', 'gross'][i % 3];
+    const plan = city.planTown(pl, { size, seed: 7 + i });
+    people += plan.items.filter((it) => /_(walk|wave|stand)$/.test(it.name)).length;
+    for (const kmh of [50, 100]) {
+      const rule = new WaveRule();
+      rule.ask('intro', -100);
+      const v = kmh / 3.6;
+      let last = -Infinity;
+      for (let t = 0, uu = 0; uu < TOWN_LEN[size]; t += 0.25, uu += v * 0.25) {
+        const who = walkerToWave(rule, t, v, plan.items, uu);
+        if (!who || !rule.ask('gehsteig', t)) continue;
+        const d = -who.z - uu;
+        ok(d >= WAVE.near[0] && d <= WAVE.near[1] && Math.abs(who.side) === 1, `${pl.name}: winkt ${who.name} in ${d.toFixed(1)} m (x ${who.x})`);
+        if (kmh === 50) {
+          slowWaves++;
+          minGap = Math.min(minGap, t - last);
+          last = t;
+        } else fastWaves++;
+      }
+    }
+  }
+  ok(slowWaves >= towns.length && minGap >= WAVE.cool, `mit 50 km/h durch ${towns.length} Orte: ${slowWaves} Grüße, kürzester Abstand ${minGap.toFixed(1)} s`);
+  ok(fastWaves === 0, `mit 100 km/h durch den Ort: ${fastWaves} Grüße`);
+
+  // im Spiel: „Wink mal!“ im Chat, dann winkt er; nach einem Rempler ein kleiner Gruß; sonst nie
+  const { game, trip, arrival, chat, said } = newGame(31);
+  stream12 = said;
+  const waves = [];
+  game.onMood = (name, k, o) => {
+    if (name === 'wave') waves.push({ t: game.t, k, o });
+  };
+  const p = game.player;
+  p.s = trip.s;
+  p.x = trip.x;
+  p.speed = 40 / 3.6;
+  p.lawful = true;
+  const lim = {};
+  const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 3000);
+  const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
+  let crashT = -1;
+  for (let i = 0; i < Math.round(720 / DT) && !game.over; i++) {
+    limitsFor(trip, lim, arrival.stop(trip));
+    p.setLimits(lim);
+    const want = autoTarget(trip);
+    const dx = want - (p.x + p.vx * AUTO.look);
+    ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
+    ctl.throttle = p.speed < Math.min(lim.vmax, 120 / 3.6) - 0.5 ? 1 : 0;
+    game.offAutobahn = trip.section.kind !== 'ab';
+    game.update(DT, ctl, camera);
+    p.battery = 100;
+    // nach fünf Minuten ein Rempler von hinten auf ein langsames Auto
+    if (crashT < 0 && game.t > 300 && !game.tv && !game.charging) {
+      crashT = game.t;
+      game.onCrash({ type: 'crash', car: { s: p.s + 4.6, len: 4.4, speed: p.speed - 4, behavior: 'normal' }, ds: 4.6, lonOverlap: 0.4, latOverlap: 1.5 });
+    }
+    const evs = trip.update(p.s, p.x);
+    for (const e of evs) game.onTrip(e);
+    const rest = arrival.update(trip, evs, p.speed);
+    if (rest) game.onTrip(rest);
+  }
+  const asks = chat.filter((m) => CHAT.winkMal.includes(m.text));
+  const chatWaves = waves.filter((w) => w.k === 1);
+  const crashWaves = waves.filter((w) => w.k < 1);
+  ok(asks.length >= 2 && chatWaves.length === asks.length, `12 Minuten Stream: ${asks.length}× „Wink mal!“, ${chatWaves.length} Grüße`);
+  for (const w of chatWaves) ok(asks.some((m) => Math.abs(w.t - m.t - WAVE.chatDelay) < 0.05), `Gruß bei ${w.t.toFixed(1)} s ohne „Wink mal!“ ${WAVE.chatDelay} s vorher`);
+  ok(crashT > 0 && crashWaves.length === 1 && Math.abs(crashWaves[0].t - crashT - WAVE.afterCrash) < 0.05 && crashWaves[0].k === WAVE.small, `Rempler bei ${crashT.toFixed(1)} s: ${crashWaves.map((w) => w.t.toFixed(1) + ' s Stärke ' + w.k).join(', ') || 'kein Gruß'}`);
+  ok(waves.length === chatWaves.length + crashWaves.length, `weitere Grüße: ${waves.length - chatWaves.length - crashWaves.length}`);
+
+  // kein anderer Weg im Code: winken nur über die Regel
+  const src = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8');
+  const main = src('main.js');
+  const gameSrc = src('game/game.js');
+  const reasons = [...main.matchAll(/waveAt\('(\w+)'/g), ...gameSrc.matchAll(/waveAt\('(\w+)'/g), ...main.matchAll(/waves\.ask\('(\w+)'/g)].map((m) => m[1]);
+  ok(reasons.length >= 5 && reasons.every((x) => WAVE.why.includes(x)), `Anlässe im Code: ${reasons.join(', ')}`);
+  ok((gameSrc.match(/onMood\('wave'/g) || []).length === 1 && !/adamMood\('wave'/.test(main), 'winken nur über Game.waveAt');
+  ok((main.match(/adamWave = /g) || []).length === 2 && main.includes('adamWave = c.wave;'), 'äußeres Winken nur in der Startszene (Intro)');
+  ok(!/wave:/.test(main.slice(main.indexOf('function stopPlace'), main.indexOf('function stopPlace') + 3000)), 'Ladestopp: kein Winken');
+  console.log(`3. Winken: ${slowWaves} Grüße an Fußgänger in ${towns.length} Orten (${people} Menschen, kürzester Abstand ${minGap.toFixed(0)} s, mit 100 km/h ${fastWaves}), im Stream ${asks.length}× „Wink mal!“ → ${chatWaves.length} Grüße, Rempler → ${crashWaves.length} kleiner Gruß`);
 }
 
 console.log(`${checks} Prüfungen, ${fails} Fehler`);

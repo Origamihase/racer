@@ -41,6 +41,11 @@ export function viewerName() {
   return pick(NAME_A) + pick(NAME_B);
 }
 
+/** Der n-te Name einer festen Folge (ohne Zufall: wer ihn nimmt, ändert nichts an dem, was der Zufall sonst bringt). */
+export function viewerNameAt(n) {
+  return NAME_A[(n * 7 + 3) % NAME_A.length] + NAME_B[(n * 5 + 1) % NAME_B.length];
+}
+
 /**
  * Für schmale Chats (Handy hochkant): eine Umbruchstelle zwischen den beiden Namensteilen, damit ein langer Name
  * wie „Superchargerprinzessin“ als „Supercharger-“ / „prinzessin“ umbricht statt irgendwo mitten im Wort. Ein
@@ -402,6 +407,8 @@ export const CHAT = {
   gifhornOrt: ['Gifhorn! Historisch bedeutsam 😂', 'Polizei Gifhorn grüßt bestimmt gleich 👮', 'Wo ist der Supermarkt-Parkplatz?'],
   crash: ['Rezeption!', 'Uff 🙈', 'Das gibt Ärger', 'Hat das die Polizei Gifhorn gesehen? 🚓', 'Blechschaden!', 'Hoffentlich hat das keiner gesehen',
     'Eskalation! 😂', 'Das war die falsche Spur'],
+  // der Chat will einen Gruß – kurz danach winkt Mini Adam (game/wave.js, Anlass „chat“)
+  winkMal: ['Wink mal! 👋', 'Mini Adam, wink mal!', 'Einmal winken bitte! 👋', 'Wink mal in die Kamera!'],
   nearMiss: ['WAS WAR DAS 😱', 'Knapp!!!', 'Millimeterarbeit', 'CLIP!', 'Clip it!', 'Puh…', 'Mutig!'],
   rainStart: ['Regen 🌧', 'Jetzt wird es spannend', 'Wischer.exe reagiert nicht', 'Auto-Wischer (Beta) 😂',
     'Der Herr mit den Schirmen freut sich', 'Regen! Jetzt wird der Chat wach', 'Alle ans Fenster, es regnet 👀'],
