@@ -294,7 +294,8 @@ const touchEl = document.createElement('div');
 touchEl.className = 'touch';
 // Lenken, Bremse und Strom kommen aus src/ui/touch.js (Daumen-Zug oder Lenkknöpfe), die Knöpfe am Rand aus dessen
 // Liste TOUCH_BUTTONS: „Ladestopp einplanen“ (wie Taste L) ist zu sehen, wenn der Akku halb leer ist oder OMI gewarnt
-// hat, „BrunnenTV hier“ (wie Taste B), solange der Wagen neben einem Brunnen auf dem Weg steht (Game.wayOffer)
+// hat, und heißt „Jetzt laden“, solange der Wagen neben einer Ladesäule oder Bucht steht (Game.chargeOffer); „BrunnenTV
+// hier“ (wie Taste B), solange der Wagen neben einem Brunnen auf dem Weg steht (Game.wayOffer)
 const touchBtn = {};
 for (const t of TOUCH_BUTTONS) {
   const b = document.createElement('button');
@@ -310,6 +311,16 @@ for (const t of TOUCH_BUTTONS) {
 }
 const stopBtn = touchBtn.ladestopp;
 const wayBtn = touchBtn.brunnen;
+/** Der Knopf der Taste L sagt, was er gerade tut: neben einer Säule oder Bucht „Jetzt laden“, sonst „Ladestopp einplanen“. */
+let stopNow = false;
+function stopLabel(now) {
+  if (!stopBtn || now === stopNow) return;
+  stopNow = now;
+  const t = TOUCH_BUTTONS.find((b) => b.action === 'ladestopp');
+  const label = now ? t.now : t.label;
+  stopBtn.setAttribute('aria-label', label);
+  stopBtn.lastChild.textContent = ' ' + label;
+}
 app.appendChild(touchEl);
 const touch = new TouchControls(touchEl, input);
 const jolt = new Jolt();
@@ -370,6 +381,9 @@ const gameWorld = {
   trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec),
   // BrunnenTV unterwegs: der Wagen bleibt stehen, wo er steht, bis release()
   hold: (sec) => (xxl.arrival.held = { s: xxl.trip.s + 0.3, sec, place: sec.place, park: -1 }),
+  // Laden ohne Plan: der Ladeplatz neben dem Wagen (Tempo v) und Taste L dort (plan.js Arrival.chargeSpot, charge)
+  chargeSpot: (v) => xxl.arrival.chargeSpot(xxl.trip, v),
+  charge: (v) => xxl.arrival.charge(xxl.trip, v),
   // die Bezahlschranke eines Orts (gags.js, world/xxl/schranke.js): 0 zu … 1 offen
   gate: (sec, k) => xxl.towns.gate(sec, k),
 };
@@ -2216,7 +2230,10 @@ function step(dt, { render = true } = {}) {
       if (p.lawful) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
       waveAtWalkers(dt, p);
-      if (stopBtn) stopBtn.classList.toggle('show', game.stopOffer());
+      if (stopBtn) {
+        stopBtn.classList.toggle('show', game.stopOffer());
+        stopLabel(game.chargeHint);
+      }
       wayBtn.classList.toggle('show', game.wayHint);
       driveHintTick(dt, ctl);
       tipsTick(dt, ctl, camKey);

@@ -36,8 +36,9 @@
 //    OMIs vor der Folge und ein anderer Untertitel mitten im Ruf – und mit dem echten Untertitel-Stapel (ui.js).
 // 1. „An der Tanke in der Stadt kann nicht geladen werden“: Ein Mensch am Steuer (kein braver Autopilot) fährt den echten
 //    Stream von Erlensee nach Hanau und hält an der Ladesäule des Orts – mit Plan (Taste L) neben der Bucht, ohne Plan
-//    neben der Bucht und ohne Plan ein Stück dahinter; jedes Mal beginnt der Ladestopp (dieselbe Szene wie im Park), der
-//    Akku ist danach voll, und es geht weiter zum Brunnen. Der Weg der Szene rollt dafür ohne Sprung erst vor bis an den
+//    neben der Bucht und ohne Plan ein Stück dahinter; mit Plan beginnt der Ladestopp von selbst, ohne Plan mit Taste L
+//    (laden2: ein manuelles Triggern wie bei BrunnenTV mit B) – dieselbe Szene wie im Park, der Akku ist danach voll,
+//    und es geht weiter zum Brunnen. Der Weg der Szene rollt dafür ohne Sprung erst vor bis an den
 //    Haltepunkt und setzt dann rückwärts in die Bucht (charge.js stopPlan, creepPath).
 import { PerspectiveCamera } from 'three';
 import { Trip, J } from '../src/game/trip.js';
@@ -90,10 +91,11 @@ console.log('1. Ladesäule im Ort:');
 /**
  * Ein Stream mit dem echten Spiel, der echten Fahrt und dem Halt der Welt (Arrival mit Spielzeit, wie world.js), am
  * Steuer ein Mensch: 130 km/h auf der Autobahn, 50 im Ort; im Ort Hanau bremst er ab u = brakeAt voll und bleibt stehen.
- * plan: mit Taste L (game.planStop) den Stopp an der Säule eingeplant. Ergebnis: wo er stand, wann und mit welchem
+ * plan: mit Taste L (game.planStop) den Stopp an der Säule eingeplant; key: so viele Sekunden nach dem Halt drückt er
+ * dort L (ohne Plan lädt nur L, laden2: „wie bei BrunnenTV mit B“). Ergebnis: wo er stand, wann und mit welchem
  * Fahrplan der Ladestopp begann, Akku danach, Ankunft am Brunnen.
  */
-function postRun({ plan, brakeAt }) {
+function postRun({ plan, brakeAt, key }) {
   Math.random = mulberry32(11);
   const trip = new Trip({ rng: Math.random });
   const arrival = new Arrival();
@@ -106,7 +108,7 @@ function postRun({ plan, brakeAt }) {
     road: loose(), sky: loose(), rain: loose(), windshield: loose({ firmware: 0, manual: () => 'wipe' }),
     cockpit: loose({ nomi: loose() }), audio: loose(), speech: loose({ say: () => 2.5, busy: false, queue: NONE, current: null }),
     ui: loose(), fx: loose(), pickups: loose({ update: () => NONE }),
-    world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.release(), square: () => null, town: () => null, hold: (sec) => (arrival.held = { s: trip.s + 0.3, sec, place: sec.place, park: -1 }) },
+    world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.release(), square: () => null, town: () => null, hold: (sec) => (arrival.held = { s: trip.s + 0.3, sec, place: sec.place, park: -1 }), chargeSpot: (v) => arrival.chargeSpot(trip, v), charge: (v) => arrival.charge(trip, v) },
   });
   game.start({ upgrades: {}, best: {} });
   const town = findPlace('Hanau');
@@ -147,6 +149,8 @@ function postRun({ plan, brakeAt }) {
     if (braking && p.speed < 0.15 && !out.stood) out.stood = { u: +u.toFixed(2), t: game.t };
     const was = !!game.charging;
     game.offAutobahn = trip.section.kind !== 'ab';
+    ctl.ladestopp = key !== undefined && !!out.stood && !out.pressed && game.t - out.stood.t >= key;
+    if (ctl.ladestopp) out.pressed = game.t - out.stood.t;
     game.update(DT, ctl, camera);
     if (was && !game.charging) {
       out.battery = p.battery;
@@ -155,11 +159,12 @@ function postRun({ plan, brakeAt }) {
     const evs = trip.update(p.s, p.x);
     for (const ev of evs) game.onTrip(ev);
     const rest = arrival.update(trip, evs, p.speed, game.t);
-    if (rest && rest.type === 'charge') {
-      out.charge = { u: +(p.s - rest.sec.s0).toFixed(2), name: rest.name, post: rest.post, park: rest.park, dt: +(game.t - (out.stood ? out.stood.t : game.t)).toFixed(2) };
-      game.onTrip(rest);
-      const c = game.charging;
-      out.plan = c ? c.plan : null;
+    if (rest && rest.type === 'charge') game.onTrip(rest);
+    // (begonnen mit L oder von selbst an der geplanten Säule)
+    const c = game.charging;
+    if (c && !out.charge) {
+      out.charge = { u: +(p.s - c.sec.s0).toFixed(2), name: c.name, post: c.post, park: c.park, dt: +(game.t - (out.stood ? out.stood.t : game.t)).toFixed(2) };
+      out.plan = c.plan;
       out.held = !!arrival.held;
     }
     if (rest && rest.type === 'rest') {
@@ -170,16 +175,19 @@ function postRun({ plan, brakeAt }) {
   out.town = town;
   return out;
 }
+const KEY_AFTER = 2;
 const runs = {
   'mit Plan, neben der Bucht': postRun({ plan: true, brakeAt: 60 }),
-  'ohne Plan, neben der Bucht': postRun({ plan: false, brakeAt: 60 }),
-  'ohne Plan, an der Säule': postRun({ plan: false, brakeAt: 52 }),
-  'ohne Plan, hinter der Bucht': postRun({ plan: false, brakeAt: 78 }),
+  'ohne Plan, neben der Bucht, L': postRun({ plan: false, brakeAt: 60, key: KEY_AFTER }),
+  'ohne Plan, an der Säule, L': postRun({ plan: false, brakeAt: 52, key: KEY_AFTER }),
+  'ohne Plan, hinter der Bucht, L': postRun({ plan: false, brakeAt: 78, key: KEY_AFTER }),
 };
 for (const [name, R] of Object.entries(runs)) {
   const s = R.stood;
   ok(s && s.u >= POST.u - POST_ZONE.back && s.u <= POST.halt + POST_ZONE.ahead, `${name}: stand bei ${s ? s.u : '–'} m außerhalb der Zone der Säule`);
-  ok(R.charge && R.charge.post === R.town && R.charge.park === -1 && R.charge.name === postName(R.town) && near(R.charge.dt, POST_ZONE.still, 0.2) && R.held, `${name}: Ladestopp ${JSON.stringify(R.charge)} (gehalten ${R.held})`);
+  // geplant: von selbst nach POST_ZONE.still; ohne Plan erst mit L (vorher nichts), dann sofort
+  const when = R.pressed ?? POST_ZONE.still;
+  ok(R.charge && R.charge.post === R.town && R.charge.park === -1 && R.charge.name === postName(R.town) && near(R.charge.dt, when, 0.2) && R.held, `${name}: Ladestopp ${JSON.stringify(R.charge)} (gehalten ${R.held})`);
   ok(R.battery === 100 && R.charges === 1, `${name}: nach dem Stopp Akku ${R.battery}, ${R.charges} Ladestopps`);
   ok(R.rest && R.rest.place === R.town, `${name}: danach am Brunnen ${JSON.stringify(R.rest)}`);
   if (R.plan && R.charge) {
@@ -209,7 +217,7 @@ for (const [name, R] of Object.entries(runs)) {
 }
 // Fahrplan: dieselben Zeiten wie im Park, nur um das Vorrollen später
 {
-  const R = runs['ohne Plan, neben der Bucht'];
+  const R = runs['ohne Plan, neben der Bucht, L'];
   const sec = { s0: 0, kind: 'stadt', place: R.town };
   const a = stopPlan(sec, dockHalt(chargeOf(sec).u), 9);
   const b = stopPlan(sec, 64, 9);

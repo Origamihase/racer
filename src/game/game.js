@@ -310,6 +310,9 @@ export class Game {
     this.wayDone = new WeakSet();
     this.wayHint = false;
     this.wayNoteT = 0;
+    // neben einer Ladesäule oder Bucht: Laden mit L wird angeboten (chargeOffer), der Hinweis kam zuletzt bei chargeNoteT
+    this.chargeHint = false;
+    this.chargeNoteT = 0;
     // Reise: Ladestopp im Ladepark ({ t0, from, park, name, sec, plan, … }, startCharge) oder null; Verbrauch seit dem
     // letzten Laden (meterAkku: Meter Straße und Akku je Art der Straße, für OMIs Warnung) und wann sie wieder misst;
     // sugarDue: der Zuckerschub des Bananensafts kommt, sobald der Wagen nach dem Stopp wieder auf der Autobahn ist
@@ -707,7 +710,8 @@ export class Game {
     if (ctl.horn) this.honk();
     if (ctl.wiper) this.manualWiper();
     if (ctl.megafon) this.useMegafon();
-    if (ctl.ladestopp) this.planStop();
+    // Taste L: neben einer Ladesäule oder Bucht gleich dort laden, sonst den nächsten Ladestopp einplanen
+    if (ctl.ladestopp && !this.chargeHere()) this.planStop();
     if (ctl.brunnen) this.wayEpisode();
     // BrunnenTV unterwegs: steht der Wagen neben einem Brunnen auf dem Weg, sagt es der Rand oben (Taste B; auf dem
     // Handy steht dazu der Knopf „BrunnenTV hier“ bei den kleinen Knöpfen, main.js)
@@ -718,6 +722,15 @@ export class Game {
       this.ui.toast(this.touchUI ? '⛲ BrunnenTV hier: Knopf unten' : '⛲ BrunnenTV hier: Taste B', 'info', 'brunnenHier');
     } else if (!offer && this.wayHint) this.ui.dropKey('brunnenHier');
     this.wayHint = offer;
+    // Laden ohne Plan: steht (oder kriecht) der Wagen neben einer Ladesäule oder Bucht, bietet es der Rand oben an –
+    // Taste L, auf dem Handy der Knopf „Jetzt laden“ (Besitzer, 21.11.2026: „Es sollte ein manuelles Triggern des Ladens
+    // (wie bei BrunnenTV mit B) möglich sein.“), wie bei BrunnenTV alle WAY.remind Sekunden wieder
+    const here = !!this.chargeOffer();
+    if (here && (!this.chargeHint || this.t - this.chargeNoteT >= WAY.remind)) {
+      this.chargeNoteT = this.t;
+      this.ui.toast(this.touchUI ? '🔌 Ladesäule: Knopf „Jetzt laden“' : '🔌 Ladesäule: Jetzt laden mit Taste L', 'info', 'ladenHier');
+    } else if (!here && this.chargeHint) this.ui.dropKey('ladenHier');
+    this.chargeHint = here;
 
     // --- Verkehr ---------------------------------------------------------------
     const tev = this.traffic.update(dt, this.t, p, { difficulty: clamp(p.s / 16000, 0, 1), leftOpen: this.left.open, rain: W.level, dim: W.sky || 0 });
@@ -883,13 +896,39 @@ export class Game {
     return a.m >= REISE_AKKU.measure ? a.pct / a.m : (REISE_AKKU.perM[k] * 75) / this.player.capacity;
   }
 
-  /** Soll der Touch-Knopf „Ladestopp einplanen“ zu sehen sein? (kein Stopp geplant, Akku halb leer oder Warnung) */
+  /**
+   * Soll der Touch-Knopf zu sehen sein? Neben einer Ladesäule oder Bucht als „Jetzt laden“ (chargeHint), sonst als
+   * „Ladestopp einplanen“ (kein Stopp geplant, Akku halb leer oder Warnung).
+   */
   stopOffer() {
     if (!this.running || this.charging) return false;
+    if (this.chargeHint) return true;
     const trip = this.world.trip();
     // im Park selbst nicht: dort hält der Wagen ohnehin an der Säule
     if (trip.section && trip.section.kind === 'park') return false;
     return trip.stop < 0 && trip.post < 0 && (this.player.battery <= 50 || this.batteryWarned > 0);
+  }
+
+  /**
+   * Ladeplatz neben dem Wagen ({ sec, park, post, name }, plan.js Arrival.chargeSpot) oder null: nicht in einer Szene
+   * (Folge, Ladestopp, Halt am Brunnen). Ein Funkloch stört nicht: Sonst plante L dort einen Stopp oder striche ihn.
+   */
+  chargeOffer() {
+    if (!this.running || this.over || this.tv || this.charging || this.halt || !this.world.chargeSpot) return null;
+    return this.world.chargeSpot(this.player.speed);
+  }
+
+  /**
+   * Taste L neben einer Ladesäule oder Bucht (chargeOffer): Der Ladestopp beginnt hier, auch ohne Plan – steht der
+   * Wagen, gleich; kriecht er noch, bremst die Welt ihn sanft zum Stand und meldet dann 'charge' (onTrip). false: hier
+   * gibt es nichts zu laden (dann plant L den nächsten Stopp).
+   */
+  chargeHere() {
+    if (!this.chargeOffer()) return false;
+    this.ui.dropKey('ladenHier');
+    const e = this.world.charge(this.player.speed);
+    if (e) this.startCharge(e);
+    return true;
   }
 
   /**

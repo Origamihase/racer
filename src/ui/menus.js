@@ -715,7 +715,7 @@ export class Menus {
       'Die Ausfahrt kündigt das Navi an: Halte dich ab dem 1000-m-Schild rechts und nimm den Streifen, der abgeht. Wer vorbeifährt, bekommt einfach eine neue Route.',
       'Blitzer kündigt niemand an. Wer vorher gewarnt werden will, kauft im Shop den Radarwarner.',
       'Das Sprachstudio (🎧) sagt dir ab und zu ins Ohr, wie der Chat gerade drauf ist.',
-      `Geladen wird an den Ladesäulen: in jedem Ort auf dem Weg und in den Ladeparks an den Ausfahrten. Warnt OMI vor dem Akku, plant ${keysOf('ladestopp')[0]} (am Gamepad ${padOf('ladestopp')[0]}, auf dem Handy der Knopf „Ladestopp einplanen“) die nächste ein, das Navi führt hin und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.`,
+      `Geladen wird an den Ladesäulen: in jedem Ort auf dem Weg und in den Ladeparks an den Ausfahrten. Halt neben einer Säule oder Bucht, dann lädt ${keysOf('ladestopp')[0]} (am Gamepad ${padOf('ladestopp')[0]}, auf dem Handy „Jetzt laden“) gleich dort. Unterwegs plant dieselbe Taste (auf dem Handy „Ladestopp einplanen“) die nächste Säule ein, das Navi führt hin und danach weiter zum Ziel. Koriander liegt trotzdem auf der Straße.`,
       'Wer gut fährt, bekommt Regen – dann wird der Chat erst richtig wach. Der automatische Wischer ist allerdings noch in der Beta.',
       `In den ersten Minuten erklären kurze Tipps am Bildrand, was gerade dran ist – jeder kommt nur einmal. ${keysOf('confirm')[0]} (am Gamepad ${padOf('confirm')[0]}) oder ✕ schaltet sie ab.`,
     ]) el('p', '', tips, '• ' + t);

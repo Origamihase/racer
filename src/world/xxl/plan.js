@@ -4,7 +4,7 @@
 import { J, PROFILES } from '../../game/trip.js';
 import { places } from '../../map/graph.js';
 import { islandRadius } from '../kit/layout.js';
-import { PARKS, PARK_STOP_AFTER, POST, postName } from '../../map/parks.js';
+import { PARKS, PARK, PARK_STOP_AFTER, POST, postName } from '../../map/parks.js';
 
 /** So weit hinter dem Spieler gibt es Welt (Boden, Straßen, Autobahn); dahinter beginnt der Himmel wie bisher. */
 export const XXL_BEHIND = 300;
@@ -230,9 +230,10 @@ export function squareWeight(sq, s) {
  * Ebenso im Ladepark (geplanter Ladestopp oder rechts hinein, ohne Plan): Halt PARK_STOP_AFTER hinter dem Haltepunkt,
  * neben der freien Heldenbucht, dann {type: 'charge', park, post: −1, name, sec}. Einen Park hat der eigene Weg erst,
  * wenn der Wagen an seiner Ausfahrt abgefahren ist. Und an der Ladesäule eines Orts, wenn dort ein Stopp geplant ist
- * (trip.post): Halt hinter ihrem Haltepunkt postS, dann {type: 'charge', park: −1, post: Ort, name, sec}. Geplant oder
- * nicht: Wer an der Säule eines Orts anhält (POST_ZONE), lädt dort genauso (Besitzer, 21.11.2026: „An der Tanke in der
- * Stadt kann nicht geladen werden“).
+ * (trip.post): Halt hinter ihrem Haltepunkt postS, dann {type: 'charge', park: −1, post: Ort, name, sec}. Wer an der
+ * geplanten Säule schon vor dem Haltepunkt anhält, lädt dort genauso (atPost). Ohne Plan entscheidet der Spieler: Steht
+ * oder kriecht der Wagen neben einer Säule oder Bucht (chargeSpot), lädt Taste L gleich dort (charge; Besitzer,
+ * 21.11.2026: „Es sollte ein manuelles Triggern des Ladens (wie bei BrunnenTV mit B) möglich sein.“).
  */
 export class Arrival {
   constructor() {
@@ -289,19 +290,17 @@ export class Arrival {
     for (let i = 0; i < events.length; i++) {
       const e = events[i];
       if (e.type === 'arrive' && !e.sec.start) this.pending = { s: e.sec.spotS + STOP_AFTER_SPOT, sec: e.sec, place: e.place, park: -1, square: squareOf(e.sec) };
-      if (e.type === 'park') this.pending = { s: e.sec.spotS + PARK_STOP_AFTER, sec: e.sec, place: -1, park: e.park, square: null };
+      // (hier schon mit L geladen: kein zweiter Halt an der Säule)
+      if (e.type === 'park' && !e.sec.charged) this.pending = { s: e.sec.spotS + PARK_STOP_AFTER, sec: e.sec, place: -1, park: e.park, square: null };
       if (e.type === 'post') this.pending = { s: e.sec.postS + PARK_STOP_AFTER, sec: e.sec, place: -1, park: -1, post: e.place, square: null };
     }
     const p = this.pending;
     if (!p) return this.atPost(trip, speed, t);
     if (speed < 0.15 && Math.abs(trip.s - p.s) < 2) {
       this.pending = null;
+      if (p.park >= 0) return this.chargeAt(trip, { sec: p.sec, park: p.park, post: -1, name: PARKS[p.park].name });
+      if (p.post >= 0) return this.chargeAt(trip, { sec: p.sec, park: -1, post: p.post, name: postName(p.post) });
       if (this.hold) this.held = { s: trip.s + 0.3, sec: p.sec, place: p.place, park: p.park };
-      if (p.park >= 0) return { type: 'charge', park: p.park, post: -1, name: PARKS[p.park].name, sec: p.sec };
-      if (p.post >= 0) {
-        p.sec.charged = true;
-        return { type: 'charge', park: -1, post: p.post, name: postName(p.post), sec: p.sec };
-      }
       return { type: 'rest', place: p.place, sec: p.sec, square: p.square };
     }
     if (trip.s > p.s + 5 || trip.section !== p.sec) this.pending = null;
@@ -309,36 +308,79 @@ export class Arrival {
   }
 
   /**
-   * An der Ladesäule eines Orts, ob geplant oder nicht: Steht der Wagen POST_ZONE.still Sekunden in ihrer Zone (in der
+   * An der geplanten Ladesäule eines Orts (trip.post): Steht der Wagen POST_ZONE.still Sekunden in ihrer Zone (in der
    * eigenen Spur neben der Bucht bis kurz hinter den Haltepunkt), beginnt der Ladestopp – einmal je Durchfahrt
-   * (sec.charged). Ein anderswo geplanter Stopp ist damit erledigt; der Wagen setzt von hier in die Bucht (charge.js
-   * stopPlan rollt ihn dafür erst vor bis an den Haltepunkt).
+   * (sec.charged); der Wagen setzt von hier in die Bucht (charge.js stopPlan rollt ihn dafür erst vor bis an den
+   * Haltepunkt). Ohne Plan nie von selbst: Wer dort nur hält (zum Winken, für einen Mitleidskauf, für den
+   * Gegenverkehr), entscheidet mit L (charge). Ampeln und Verkehr in der eigenen Spur gibt es in den Orten nicht.
    */
   atPost(trip, speed, t) {
     const c = trip.section;
     const Z = POST_ZONE;
     const u = c ? trip.s - c.s0 : 0;
-    if (t === undefined || this.held || !c || c.kind !== 'stadt' || c.start || c.postS === undefined || c.charged || speed >= 0.15 || u < POST.u - Z.back || u > POST.halt + Z.ahead || trip.x < Z.x) {
+    if (t === undefined || this.held || !c || c.kind !== 'stadt' || c.start || c.postS === undefined || c.charged || c.place !== trip.post || speed >= 0.15 || u < POST.u - Z.back || u > POST.halt + Z.ahead || trip.x < Z.x) {
       this.stillT = null;
       return null;
     }
     if (this.stillT === null) this.stillT = t;
     if (t - this.stillT < Z.still) return null;
+    return this.chargeAt(trip, { sec: c, park: -1, post: c.place, name: postName(c.place) });
+  }
+
+  /**
+   * Ladeplatz neben dem Wagen oder null: Er steht oder kriecht vorwärts (unter POST_ZONE.crawl) in der eigenen Spur in
+   * der Zone der Ladesäule eines Orts (POST) oder der freien Heldenbucht eines Ladeparks (PARK, dieselbe Zone um Mitte
+   * und Halt), und dort wurde in dieser Durchfahrt noch nicht geladen. Ergebnis { sec, park, post, name }: derselbe
+   * Ladestopp wie geplant (Game.chargeOffer bietet ihn am Rand an, Taste L startet ihn mit charge).
+   */
+  chargeSpot(trip, speed) {
+    const c = trip.section;
+    const Z = POST_ZONE;
+    if (this.held || !c || c.charged || speed <= -0.15 || speed >= Z.crawl || trip.x < Z.x) return null;
+    if (this.pending && this.pending.sec !== c) return null;
+    const park = c.kind === 'park' && c.spotS !== undefined && c.park >= 0;
+    if (!park && (c.kind !== 'stadt' || c.start || c.postS === undefined)) return null;
+    const u = trip.s - c.s0;
+    const mid = park ? PARK.u : POST.u;
+    const halt = park ? PARK.halt : POST.halt;
+    if (u < mid - Z.back || u > halt + Z.ahead) return null;
+    return park ? { sec: c, park: c.park, post: -1, name: PARKS[c.park].name } : { sec: c, park: -1, post: c.place, name: postName(c.place) };
+  }
+
+  /**
+   * Taste L am Ladeplatz (chargeSpot): Steht der Wagen, beginnt der Ladestopp jetzt (Ereignis 'charge' als Ergebnis);
+   * kriecht er noch, bremst ihn der Begrenzer sanft zum Stand (Halt nach dem Bremsweg mit BRAKE_PLAN, wie am Ziel), und
+   * dort meldet update das Ereignis. null: hier gibt es nichts zu laden, oder es beginnt erst nach dem Bremsen.
+   */
+  charge(trip, speed) {
+    const o = this.chargeSpot(trip, speed);
+    if (!o) return null;
+    if (speed < 0.15) return this.chargeAt(trip, o);
+    this.pending = { s: trip.s + 0.3 + (speed * speed) / (2 * BRAKE_PLAN), sec: o.sec, place: -1, park: o.park, post: o.post, square: null };
+    return null;
+  }
+
+  /** Der Ladestopp am Platz o beginnt hier: einmal je Durchfahrt, ein anderswo geplanter Stopp ist damit erledigt. */
+  chargeAt(trip, o) {
+    const c = o.sec;
+    this.pending = null;
     this.stillT = null;
     c.charged = true;
-    c.postDone = true;
+    if (o.post >= 0) c.postDone = true;
     if (trip.post >= 0) trip.setPost(-1);
     if (trip.stop >= 0) trip.setStop(-1);
     if (this.hold) this.held = { s: trip.s + 0.3, sec: c, place: -1, park: -1 };
-    return { type: 'charge', park: -1, post: c.place, name: postName(c.place), sec: c };
+    return { type: 'charge', park: o.park, post: o.post, name: o.name, sec: c };
   }
 }
 
 /**
- * Zone der Ladesäule eines Orts (Meter ab Abschnittsbeginn, POST): von back Metern vor der Mitte des Parks bis ahead
- * Meter hinter den Haltepunkt, in der eigenen Spur (Wagenmitte rechts von x); wer dort still Sekunden steht, lädt.
+ * Zone der Ladesäule eines Orts bzw. der Bucht eines Ladeparks (Meter ab Abschnittsbeginn, POST bzw. PARK): von back
+ * Metern vor der Mitte des Parks bis ahead Meter hinter den Haltepunkt, in der eigenen Spur (Wagenmitte rechts von x).
+ * Steht der Wagen dort still Sekunden, lädt er an der geplanten Säule von selbst; unter crawl (m/s, gut 7 km/h) bietet
+ * der Rand das Laden an (Taste L).
  */
-export const POST_ZONE = { back: 12, ahead: 15, x: 7.6, still: 0.6 };
+export const POST_ZONE = { back: 12, ahead: 15, x: 7.6, still: 0.6, crawl: 2 };
 
 /**
  * Linke Grenze der Wagenmitte neben der Brunneninsel (base: die Grenze des Profils): auf 20 m vor der Insel schiebt sie
