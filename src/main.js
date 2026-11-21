@@ -363,6 +363,8 @@ const gameWorld = {
   trip: () => xxl.trip, stopping: () => !!xxl.arrival.pending, release: () => xxl.arrival.reset(), square: (sec) => xxl.square(sec), town: (sec) => xxl.town(sec),
   // BrunnenTV unterwegs: der Wagen bleibt stehen, wo er steht, bis release()
   hold: (sec) => (xxl.arrival.held = { s: xxl.trip.s + 0.3, sec, place: sec.place, park: -1 }),
+  // die Bezahlschranke eines Orts (gags.js, world/xxl/schranke.js): 0 zu … 1 offen
+  gate: (sec, k) => xxl.towns.gate(sec, k),
 };
 // (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
 const game = new Game({ traffic, scenery, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });

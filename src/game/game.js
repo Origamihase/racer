@@ -183,7 +183,8 @@ export class Game {
    * @param {object} ctx traffic, scenery, windshield, cockpit, audio, speech, ui, fx, pickups;
    *   world: { trip(): die Fahrt über die echte Karte (trip.js), stopping(): bremst der Wagen gerade zum Halt am Brunnen
    *   des Ziels?, release(): der Wagen am Brunnen darf weiterfahren, square(sec) und town(sec): Brunnenplatz und Ort
-   *   einer Ortsdurchfahrt für die BrunnenTV-Szene }. Geboten wird auf echte Orte (WorldNavi): Jedes Gebot setzt das
+   *   einer Ortsdurchfahrt für die BrunnenTV-Szene, gate(sec, k): die Bezahlschranke eines Orts stellen (gags.js; fehlt
+   *   sie, gibt es keine) }. Geboten wird auf echte Orte (WorldNavi): Jedes Gebot setzt das
    *   Ziel der Fahrt, das Navi im Auto zeigt sie (src/map), und die Ankunft meldet onTrip am Brunnenplatz.
    *   touchUI: Das Bild zeigt Touch-Knöpfe (Handy, Tablet), der Hinweis zum Ladestopp nennt dann den Knopf.
    */
@@ -683,6 +684,8 @@ export class Game {
     // die Uhr ist die Reisezeit
     this.clock += go.secs / 60;
     this.megafonCd = Math.max(0, this.megafonCd - dt);
+    // die Running Gags (gags.js) mit eigenem Zufall: Bezahlschranke …
+    this.gags.update();
 
     // --- Eingaben ------------------------------------------------------------
     if (ctl.device) this.device = ctl.device;

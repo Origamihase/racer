@@ -3,9 +3,13 @@
 // aller Gags: Sie würfeln mit eigenem Zufall – ein Stream verläuft mit ihnen genauso wie ohne sie.
 import { readFileSync } from 'node:fs';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
-import { SCHOENNBRUN, ABSPANN_REISE } from '../src/data.js';
+import { SCHOENNBRUN, ABSPANN_REISE, GAGS } from '../src/data.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
 import { drawSchoennbrunLogo } from '../src/ui/schoennbrun.js';
+import { StreamGags, GATE } from '../src/game/gags.js';
+import { SCHRANKE, schrankeOf, buildSchranke } from '../src/world/xxl/schranke.js';
+import { places } from '../src/map/graph.js';
+import { STREET } from '../src/world/kit/layout.js';
 
 let fails = 0;
 let checks = 0;
@@ -111,6 +115,129 @@ function episodes(sim, n, secs = 1800) {
     ok(log.chat.filter((m) => m.gag && SCHOENNBRUN.gruss.includes(m.text) && !eps.some((e) => m.t >= e.t0 && m.t <= e.t1)).length === 0, `Seed ${seed}: Gruß an Herrn Schönnbrun außerhalb einer Folge`);
   }
   console.log(`  Herr Schönnbrun: ${all} Folgen mit Hymne bei ${TV.card} s, Gruß im Chat, Megafon „${SCHOENNBRUN.label}“`);
+}
+
+// --- 2. Bezahlschranke: wo sie steht --------------------------------------------------------------------------------
+{
+  const towns = places.filter((p) => schrankeOf({ kind: 'stadt', place: p.i, s0: 0, s1: 500 }));
+  ok(towns.length > places.length * 0.15 && towns.length < places.length * 0.25, `Schranke in ${towns.length} von ${places.length} Orten`);
+  ok(towns.some((p) => p.name === 'Hanau'), 'Hanau (erster Ort vieler Fahrten) ohne Schranke');
+  ok(!schrankeOf({ kind: 'stadt', place: 165, s0: 0, s1: 500, start: true }) && !schrankeOf({ kind: 'park', place: 165, s0: 0, s1: 500 }) && !schrankeOf({ kind: 'ab', s0: 0, s1: 500 }), 'Schranke im Startort, im Ladepark oder auf der Autobahn');
+  // hinter der Ortstafel (u 6), vor der ersten Laterne (ab u 14); Pfosten auf dem Streifen, Arm über der eigenen Spur
+  ok(SCHRANKE.u > 6 + 2 && SCHRANKE.u < 14 - 1, `Schranke bei u ${SCHRANKE.u}`);
+  ok(SCHRANKE.x > STREET.curbR + 0.2 && SCHRANKE.x < STREET.curbR + STREET.strip - 0.3, `Pfosten bei x ${SCHRANKE.x}`);
+  const tip = SCHRANKE.x - SCHRANKE.arm;
+  ok(tip < STREET.lane - 1.2 && tip > (STREET.lane + STREET.other) / 2, `Arm reicht bis x ${tip.toFixed(2)} (eigene Spur ${STREET.lane}, Gegenspur ${STREET.other})`);
+  const rig = buildSchranke();
+  ok(rig.k === 1, 'Schranke steht nicht offen da');
+  const tipY = () => {
+    rig.group.updateMatrixWorld(true);
+    let y = -Infinity;
+    rig.group.traverse((o) => {
+      if (!o.isMesh || o.parent === rig.group) return;
+      o.geometry.computeBoundingBox();
+      const b = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);
+      y = Math.max(y, b.max.y);
+    });
+    return y;
+  };
+  ok(tipY() > SCHRANKE.arm * 0.9, `Offen ragt der Arm nur bis ${tipY().toFixed(2)} m`);
+  rig.set(0);
+  ok(Math.abs(tipY() - SCHRANKE.h - 0.075) < 0.05, `Zu liegt der Arm nicht waagrecht (${tipY().toFixed(2)} m)`);
+  console.log(`  Bezahlschranke: in ${towns.length} Orten (u ${SCHRANKE.u} m, Arm bis x ${tip.toFixed(2)}), offen bis ${(SCHRANKE.h + SCHRANKE.arm).toFixed(1)} m hoch`);
+}
+
+/**
+ * Ein Spiel zum Prüfen der Gags ohne Welt und Grafik: Spielzeit, Warteschlange, Chat, Spenden, OMI, der Wagen auf
+ * einer geraden Fahrt durch die Abschnitte secs (mit Schranke: world.gate merkt sich die Stellung je Abschnitt).
+ */
+function fakeGame(secs, { gate = true } = {}) {
+  const g = {
+    t: 0, queue: [], chat: [], donations: [], omi: [], gates: new Map(), tv: null, charging: false,
+    player: { s: 0, speed: 0, kmh: 0 },
+    world: { trip: () => ({ cur: { sections: secs } }) },
+    ui: { chat: (m) => g.chat.push({ t: g.t, ...m }), toast() {} },
+    audio: {},
+    later: (d, fn) => g.queue.push({ at: g.t + d, fn }),
+    donate: (name, amount, what, o) => g.donations.push({ t: g.t, name, amount, what, line: o.line }),
+    say: (text, mood, o) => g.omi.push({ t: g.t, text, o }),
+  };
+  if (gate) g.world.gate = (sec, k) => g.gates.set(sec, Math.min(1, Math.max(0, k)));
+  g.gags = new StreamGags(g);
+  g.step = (dt, accel = 0) => {
+    g.t += dt;
+    const due = g.queue.filter((q) => q.at <= g.t);
+    g.queue = g.queue.filter((q) => q.at > g.t);
+    for (const q of due) q.fn();
+    g.player.speed = Math.max(0, Math.min(75, g.player.speed + accel * dt));
+    g.player.kmh = g.player.speed * 3.6;
+    g.player.s += g.player.speed * dt;
+    g.gags.update();
+  };
+  return g;
+}
+
+// --- 2. Bezahlschranke: sie hält niemanden auf, ist selten, und der Chat zahlt -------------------------------------
+{
+  const town = (s0) => ({ kind: 'stadt', place: 165, s0, s1: s0 + 500 });
+  let played = 0;
+  let worst = Infinity;
+  for (const [v0, acc] of [[3, 0], [8, 0], [14, 0], [25, 0], [40, 0], [75, 0], [4, 6], [10, 9], [0, 4]]) {
+    for (let seed = 1; seed <= 12; seed++) {
+      const sec = town(3000);
+      const g = fakeGame([sec]);
+      g.gags.reset(seed);
+      g.t = 60;
+      g.player.speed = v0;
+      g.player.s = sec.s0 + SCHRANKE.u - 2000;
+      let kAt = null;
+      let tAt = null;
+      let paid = null;
+      while (g.player.s < sec.s0 + SCHRANKE.u + 50 && g.t < 2000) {
+        g.step(1 / 30, acc);
+        if (g.player.speed === 0 && acc === 0) g.player.speed = v0;
+        if (paid === null && g.donations.length) paid = g.t;
+        // die Front des Wagens (gut 2 m vor seiner Mitte) erreicht den Arm
+        if (kAt === null && g.player.s + 2.5 >= sec.s0 + SCHRANKE.u) {
+          kAt = g.gates.has(sec) ? g.gates.get(sec) : 1;
+          tAt = g.t;
+        }
+      }
+      if (!g.gates.has(sec)) continue;
+      played++;
+      ok(kAt === 1, `Tempo ${v0} m/s (+${acc} m/s²), Saat ${seed}: Schranke bei der Ankunft ${kAt.toFixed(2)} offen`);
+      ok(paid !== null && g.donations.length === 1 && g.donations[0].amount >= 0.5 && g.donations[0].amount <= 2, `Saat ${seed}: Spende ${JSON.stringify(g.donations)}`);
+      worst = Math.min(worst, tAt - (paid + GATE.open));
+      ok(g.gates.get(sec) === 1, 'Schranke nach der Durchfahrt nicht offen');
+      const spam = g.chat.filter((m) => GAGS.schranke.spam.includes(m.text));
+      ok(spam.length >= 2 && spam.length <= 3 && spam.every((m) => m.gag), `Saat ${seed}: ${spam.length} Rufe „Bezahlschranke“`);
+      ok(g.omi.length === 1 && g.omi[0].text === GAGS.schranke.omi && g.omi[0].o.priority === false, 'OMI zur Schranke: nicht genau einmal, oder mit Vorrang');
+      ok(/Bezahlschranke – Schranke auf!/.test(g.donations[0].line) && g.donations[0].line.includes(g.donations[0].name), `James: ${g.donations[0].line}`);
+    }
+  }
+  ok(played > 60, `Schranke nur ${played}× gespielt`);
+  ok(worst > 2.5, `Schranke ist nur ${worst.toFixed(2)} s vor dem Wagen ganz offen`);
+  // selten: höchstens eine je GATE.gap Sekunden, nie in den ersten GATE.first Sekunden; ohne world.gate gibt es keine
+  {
+    const secs = [];
+    for (let i = 0; i < 40; i++) secs.push(town(1000 + i * 700));
+    const g = fakeGame(secs);
+    g.gags.reset(3);
+    g.player.speed = 14;
+    const starts = [];
+    while (g.player.s < 1000 + 40 * 700 && g.t < 5000) {
+      const n = g.donations.length;
+      g.step(1 / 10);
+      if (g.donations.length > n) starts.push(g.t);
+    }
+    const gaps = starts.slice(1).map((t, i) => t - starts[i]);
+    ok(starts.length >= 4 && starts[0] > GATE.first && gaps.every((d) => d >= GATE.gap - 1), `Schranken um ${starts.map((t) => t.toFixed(0)).join(', ')} s`);
+    const off = fakeGame(secs, { gate: false });
+    off.player.speed = 14;
+    for (let i = 0; i < 20000; i++) off.step(1 / 10);
+    ok(off.donations.length === 0 && !off.chat.some((m) => GAGS.schranke.spam.includes(m.text)), 'Ohne Schranken in der Welt spielt der Gag doch');
+    console.log(`  Bezahlschranke: ${played} Durchfahrten (3–75 m/s, auch beschleunigend) – offen spätestens ${worst.toFixed(1)} s vor dem Wagen; ${starts.length} in ${(g.t / 60).toFixed(0)} min durch 40 Schranken-Orte`);
+  }
 }
 
 // --- Grundregel: mit und ohne Gags derselbe Stream -----------------------------------------------------------------

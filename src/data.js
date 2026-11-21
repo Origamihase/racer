@@ -157,6 +157,21 @@ export const SCHOENNBRUN = {
     'Die Hymne! Gänsehaut 🎺', 'Bühne frei für Herrn Schönnbrun! 🎬'],
 };
 /**
+ * Die übrigen Running Gags aus dem Stream des Eigentümers vom 21.11.2026 (game/gags.js; Marken, Seiten und Firmen
+ * darin sind erfunden). schranke: die Bezahlschranke hinter der Ortstafel (world/xxl/schranke.js) – der Chat ruft sie
+ * aus (spam), einer zahlt ein paar Cent ({name}, {betrag}: James meldet es), OMI kommentiert.
+ */
+export const GAGS = {
+  schranke: {
+    spam: ['BEZAHLSCHRANKE! 🚧', 'BEZAHLSCHRANKE 😂', 'Bezahlschranke ist ein geiles Wort', 'Wer zahlt die Bezahlschranke?',
+      'BE-ZAHL-SCHRAN-KE 🚧', 'Schranke auf, Schranke auf! 💶', 'Bezahlschranke!! Ich zahl, ich zahl 💶'],
+    james: '{name} zahlt {betrag} an der Bezahlschranke – Schranke auf! 🚧',
+    omi: 'Bezahlschranke erkannt. Der Chat hat bezahlt. Gute Fahrt!',
+    // was ein Zuschauer einwirft (Euro)
+    betrag: [0.5, 1, 1.5, 2],
+  },
+};
+/**
  * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des
  * Besitzers); say spricht die Sprachausgabe – richtig geschrieben, damit jede Stimme es richtig ausspricht, das Lange
  * macht die Stimme 'brunnen' (tief und langsam); chat: so ruft der Chat es nach (das erste immer).
