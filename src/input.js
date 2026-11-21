@@ -5,6 +5,7 @@
 // Änderung der Lenkrichtung wird mit ihrem Zeitpunkt aufgezeichnet und an die Fahrphysik als Anteil am Bild
 // weitergegeben (steerLog): Ein Tipp wirkt im richtigen Teilschritt, egal ob der Rechner 30 oder 144 Bilder pro
 // Sekunde schafft. Fokusverlust (Alt-Tab, Klick daneben, Tab im Hintergrund) lässt alle Tasten los.
+import { escapeTaken } from './ui/fullscreen.js';
 
 // Belegung: Tastatur (e.code → Aktion), Gamepad in der Standard-Belegung des Browsers (Knopfnummer → Aktion) und die
 // Fahrt am Gamepad (PAD_DRIVE: Stick, Trigger, Steuerkreuz). Die Steuerungsübersicht (src/ui/controls.js) liest genau
@@ -127,6 +128,8 @@ export class Input {
   onKey(e, down) {
     const a = ACTIONS[e.code];
     if (down && e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+    // Esc im Vollbild beendet es (der Browser): keine Pause, kein Überspringen (ui/fullscreen.js)
+    if (down && escapeTaken(e)) return;
     const t = eventTime(e);
     // Befehlstaste (macOS): Tasten, die währenddessen losgelassen werden, melden kein keyup – also alles loslassen
     // und Kurzbefehle mit ihr nicht als Fahrtasten zählen

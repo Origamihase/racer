@@ -171,6 +171,68 @@ ok(/\(am Gamepad \$\{padOf\('confirm'\)\[0\]\}\) oder ✕ schaltet sie ab/.test(
   ok(files.length > 50 && !talk.length, `das Spiel spricht mit dem Netz: ${talk.join(', ')}`);
 }
 
+// ---------- Vollbild und Esc ----------
+// Esc im Vollbild gehört dem Browser (er beendet das Vollbild): Im Spiel ist derselbe Druck weder Pause noch „Zurück“,
+// auch wenn der Browser die Taste erst kurz danach meldet. Jeder Wechsel kommt einmal (Safari meldet ihn doppelt) und
+// sagt, wer ihn auslöste: Knopf und F (own) oder der Browser – dann hält main.js die Fahrt an, einmal.
+{
+  const fs = await import('../src/ui/fullscreen.js');
+  let t = 1000;
+  Object.defineProperty(globalThis.performance, 'now', { value: () => t * 1000, configurable: true });
+  const on = {};
+  const fire = () => ['fullscreenchange', 'webkitfullscreenchange'].forEach((k) => (on[k] || []).forEach((f) => f()));
+  const doc = {
+    fullscreenEnabled: true,
+    fullscreenElement: null,
+    documentElement: {
+      requestFullscreen: () => ((doc.fullscreenElement = doc.documentElement), fire(), Promise.resolve()),
+    },
+    exitFullscreen: () => ((doc.fullscreenElement = null), fire(), Promise.resolve()),
+    addEventListener: (k, f) => (on[k] = on[k] || []).push(f),
+  };
+  globalThis.document = doc;
+  const seen = [];
+  fs.onFullscreenChange((ev) => seen.push(ev));
+  const esc = { code: 'Escape', target: null, preventDefault() {} };
+  fs.toggleFullscreen();
+  ok(seen.length === 1 && seen[0].on && seen[0].own, `Vollbild per Knopf: ${JSON.stringify(seen)}`);
+  ok(fs.escapeTaken(esc) && !fs.escapeTaken({ code: 'KeyP' }), 'Esc im Vollbild gehört nicht dem Browser (oder P auch)');
+  const input = new Input();
+  input.onKey(esc, true);
+  ok(!input.take('pause') && !input.anyKey, 'Esc im Vollbild öffnet auch die Pause');
+  // der Browser beendet es (Esc): gemeldet als seiner, die Taste zählt kurz danach noch zu ihm
+  t += 5;
+  doc.fullscreenElement = null;
+  fire();
+  ok(seen.length === 2 && !seen[1].on && !seen[1].own, `Esc beendet das Vollbild: ${JSON.stringify(seen[1])}`);
+  input.onKey(esc, true);
+  ok(!input.take('pause'), 'Esc, gleich nachdem der Browser das Vollbild beendet hat, öffnet die Pause');
+  input.onKey({ ...esc, type: 'keyup' }, false);
+  t += fs.ESC_GRACE + 0.01;
+  input.onKey(esc, true);
+  ok(input.take('pause'), 'Esc ohne Vollbild ist keine Pause mehr');
+  input.onKey(esc, false);
+  // Knopf hinein und wieder hinaus: beides vom Spiel, Esc ist gleich wieder die Pause
+  fs.toggleFullscreen();
+  t += 2;
+  fs.toggleFullscreen();
+  ok(seen.length === 4 && seen[2].own && seen[3].own && !seen[3].on, `Vollbild per Knopf aus: ${JSON.stringify(seen.slice(2))}`);
+  ok(!fs.escapeTaken(esc), 'Esc nach dem Knopf „Vollbild beenden“ gehört noch dem Browser');
+  // ein Wechsel, den der Browser verweigert, zählt nicht als eigener
+  doc.documentElement.requestFullscreen = () => Promise.reject(new Error('verweigert'));
+  fs.toggleFullscreen();
+  await new Promise((r) => setTimeout(r, 0));
+  doc.fullscreenElement = doc.documentElement;
+  fire();
+  ok(seen.length === 5 && seen[4].on && !seen[4].own, 'verweigerter Wechsel zählt als eigener');
+  delete globalThis.performance.now;
+  delete globalThis.document;
+  // die Pause beim Verlassen durch den Browser (main.js), die Menüs lassen ihm sein Esc
+  ok(/onFullscreenChange\(\(\{ on, own \}\) => \{\n  if \(!on && !own\) pause\(\);\n\}\);/.test(src('src/main.js')), 'main.js hält die Fahrt nicht an, wenn der Browser das Vollbild beendet');
+  ok(/onKey\(e\) \{\n    if \(!this\.current\) return;\n[^\n]*\n    if \(escapeTaken\(e\)\) return;/.test(src('src/ui/menus.js')), 'Menüs: Esc im Vollbild drückt „Zurück“');
+  ok(/function pause\(\) \{\n  if \(state !== 'drive' \|\| paused\) return;/.test(src('src/main.js')), 'pause() öffnet die Pause zweimal');
+}
+
 // ---------- Abspann: „Danke an“ ----------
 // Ein simulierter endloser Stream (das echte Spiel, tools/stream-sim.mjs): Mitgeschrieben wird von außen – jede Spende
 // beim Aufruf, jedes Gebot an der Kasse, Abos, VIPs und Raids aus den Zeilen von James und den Hinweisen am Rand. Im

@@ -43,7 +43,7 @@ import { Pickups } from './game/pickups.js';
 import { UI } from './ui/ui.js';
 import * as sicht from './ui/sicht.js';
 import { Menus } from './ui/menus.js';
-import { bindFullscreenKey } from './ui/fullscreen.js';
+import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
 import { SHOP, UPGRADE_LIMITS, PARTYPEOPLE } from './data.js';
 import { NavModel } from './map/navroute.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
@@ -498,6 +498,11 @@ let lastOver = null;
 
 // Vollbild mit F, überall (Knöpfe in Titel und Pause: menus.js)
 bindFullscreenKey();
+// Vollbild beendet ohne Knopf und F (Esc, Zurück-Geste, Leiste des Browsers): Mitten in der Fahrt hält das Spiel an –
+// Esc ist hier die Pause-Taste, und das Bild springt gerade in seine neue Größe. Knopf und F wechseln ohne Pause.
+onFullscreenChange(({ on, own }) => {
+  if (!on && !own) pause();
+});
 const menus = new Menus(app, {
   click: () => {
     audio.init();

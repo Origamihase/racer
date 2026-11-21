@@ -3,19 +3,37 @@
 // und die neue Größe kommt wie jede andere über das resize-Ereignis (main.js onResize). Esc beendet das Vollbild, wie
 // der Browser es will; fullscreenchange meldet jeden Wechsel, dann heißt der Knopf wieder „Vollbild“. Ein iPhone kennt
 // die API für Seiten nicht: Dort fehlt der Knopf, und der Titel sagt in einer Zeile, wie es ohne Leisten geht.
+//
+// Esc im Vollbild gehört dem Browser: Er beendet damit das Vollbild, und manche Browser reichen die Taste trotzdem an
+// die Seite weiter. Damit derselbe Druck nicht auch noch die Pause öffnet oder schließt oder im Menü „Zurück“
+// drückt, zählt er im Spiel nicht (escapeTaken: input.js, menus.js). Stattdessen meldet jeder Wechsel, ob
+// das Spiel ihn ausgelöst hat (Knopf, F) oder der Browser (Esc, Zurück-Geste, seine Leiste) – endet das Vollbild so
+// mitten in der Fahrt, hält main.js an: einmal, in jedem Browser gleich.
 
-const doc = typeof document !== 'undefined' ? document : null;
+// das Dokument erst beim Aufruf (tools/menues-test.mjs setzt ein nachgebautes ein)
+const doc = () => (typeof document !== 'undefined' ? document : null);
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+/** So lange (s) nach dem Verlassen durch den Browser gehört Esc noch ihm (falls er die Taste erst danach meldet). */
+export const ESC_GRACE = 0.5;
+/** So lange (s) nach toggleFullscreen gilt ein Wechsel als vom Spiel ausgelöst. */
+const OWN_T = 1.5;
+let ownUntil = -Infinity;
+let escUntil = -Infinity;
+let last = null; // zuletzt gemeldeter Zustand (Safari meldet einen Wechsel mit und ohne Präfix)
+const subs = [];
 
 /** Kann diese Seite ins Vollbild? */
 export function canFullscreen() {
-  if (!doc) return false;
-  const root = doc.documentElement;
-  return !!((doc.fullscreenEnabled || doc.webkitFullscreenEnabled) && (root.requestFullscreen || root.webkitRequestFullscreen));
+  const d = doc();
+  if (!d) return false;
+  const root = d.documentElement;
+  return !!((d.fullscreenEnabled || d.webkitFullscreenEnabled) && (root.requestFullscreen || root.webkitRequestFullscreen));
 }
 
 /** Ist sie es gerade? */
 function isFullscreen() {
-  return !!(doc && (doc.fullscreenElement || doc.webkitFullscreenElement));
+  const d = doc();
+  return !!(d && (d.fullscreenElement || d.webkitFullscreenElement));
 }
 
 /** Text des Knopfs, je nach Zustand. */
@@ -27,27 +45,53 @@ export const fullscreenLabel = () => (isFullscreen() ? '⛶  Vollbild beenden' :
  */
 export function toggleFullscreen() {
   if (!canFullscreen()) return;
-  const root = doc.documentElement;
+  const d = doc();
+  const root = d.documentElement;
+  ownUntil = now() + OWN_T;
   try {
     const p = isFullscreen()
-      ? (doc.exitFullscreen || doc.webkitExitFullscreen).call(doc)
+      ? (d.exitFullscreen || d.webkitExitFullscreen).call(d)
       : root.requestFullscreen ? root.requestFullscreen({ navigationUI: 'hide' }) : root.webkitRequestFullscreen();
-    if (p && p.catch) p.catch(() => {});
+    if (p && p.catch) p.catch(() => (ownUntil = -Infinity));
   } catch (e) {
     /* verweigert */
+    ownUntil = -Infinity;
   }
 }
 
-/** Jeden Wechsel melden (auch durch Esc oder den Browser selbst). */
+function changed() {
+  const on = isFullscreen();
+  if (on === last) return;
+  last = on;
+  const ev = { on, own: now() < ownUntil };
+  ownUntil = -Infinity;
+  if (!on && !ev.own) escUntil = now() + ESC_GRACE;
+  for (const cb of subs) cb(ev);
+}
+
+/**
+ * Jeden Wechsel melden (auch durch Esc oder den Browser selbst), jeden einmal: cb({ on, own }) – on: jetzt im
+ * Vollbild, own: vom Spiel ausgelöst (Knopf, F), sonst vom Browser.
+ */
 export function onFullscreenChange(cb) {
-  if (!doc) return;
-  doc.addEventListener('fullscreenchange', cb);
-  doc.addEventListener('webkitfullscreenchange', cb);
+  const d = doc();
+  if (!d) return;
+  if (!subs.length) {
+    last = isFullscreen();
+    d.addEventListener('fullscreenchange', changed);
+    d.addEventListener('webkitfullscreenchange', changed);
+  }
+  subs.push(cb);
+}
+
+/** Gehört dieser Tastendruck dem Browser? Esc im Vollbild und kurz nachdem der Browser es beendet hat. */
+export function escapeTaken(e) {
+  return e.code === 'Escape' && (isFullscreen() || now() < escUntil);
 }
 
 /** iPhone ohne Vollbild, nicht vom Home-Bildschirm gestartet: Nur „Zum Home-Bildschirm“ nimmt die Leisten weg. */
 export function homeScreenHint() {
-  if (!doc || canFullscreen()) return false;
+  if (!doc() || canFullscreen()) return false;
   const standalone = navigator.standalone || (typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches);
   return /iPhone|iPod/.test(navigator.userAgent) && !standalone;
 }

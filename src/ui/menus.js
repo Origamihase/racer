@@ -12,7 +12,7 @@ import { places } from '../map/graph.js';
 import { goalKind, fountainName } from '../world/kit/layout.js';
 import { drawQuote } from './quotechart.js';
 import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
-import { canFullscreen, fullscreenLabel, toggleFullscreen, onFullscreenChange, homeScreenHint } from './fullscreen.js';
+import { canFullscreen, fullscreenLabel, toggleFullscreen, onFullscreenChange, homeScreenHint, escapeTaken } from './fullscreen.js';
 import { controlRows, keysOf, padOf } from './controls.js';
 import { thanksGroups } from './abspann.js';
 
@@ -271,6 +271,8 @@ export class Menus {
 
   onKey(e) {
     if (!this.current) return;
+    // Esc im Vollbild beendet nur das Vollbild (der Browser), nicht auch noch die Pause oder ein Untermenü
+    if (escapeTaken(e)) return;
     if (this.current === 'karte' && this.mapScreen.onKey(e)) return;
     // Eingabefelder behalten ihre Tasten – der Lautstärke-Regler nur ← →, mit ↑ ↓ geht es weiter
     if (e.target && /input/i.test(e.target.tagName) && e.target.type !== 'range' && e.code !== 'Escape') return;
