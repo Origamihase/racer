@@ -727,9 +727,10 @@ export class Game {
     if (this.charging) this.tickCharge(dt);
     if (this.sugarDue && !this.offAutobahn) {
       this.sugarDue = false;
-      p.sugar = 6;
+      // mit der Plüschbrause-Kiste aus dem Shop (Code ADAM, gags.js) hält er länger
+      p.sugar = this.up.brause ? 10 : 6;
       this.audio.coin();
-      this.ui.toast('🍌 Bananensaft! Zuckerschub', 'good');
+      this.ui.toast(this.up.brause ? '🍌 Bananensaft und Plüschbrause! Zuckerschub' : '🍌 Bananensaft! Zuckerschub', 'good');
     }
     if (this.tv) this.tickBrunnenTV();
     else if (this.navi.stopping) this.tickHalt(dt);

@@ -45,7 +45,7 @@ import { UI } from './ui/ui.js';
 import * as sicht from './ui/sicht.js';
 import { Menus } from './ui/menus.js';
 import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
-import { SHOP, UPGRADE_LIMITS, PARTYPEOPLE } from './data.js';
+import { SHOP, UPGRADE_LIMITS, PARTYPEOPLE, shopPrice } from './data.js';
 import { NavModel } from './map/navroute.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
@@ -563,7 +563,7 @@ const menus = new Menus(app, {
     const it = SHOP.find((x) => x.id === id);
     const lvl = save.upgrades[id] || 0;
     if (!it || lvl >= UPGRADE_LIMITS[id]) return false;
-    const price = it.prices[lvl];
+    const price = shopPrice(it, lvl);
     if (save.wallet < price) {
       audio.bad();
       return false;

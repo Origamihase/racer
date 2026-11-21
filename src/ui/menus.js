@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, MEGAFON_ERSTATTET, fmtBetrag, nameBreak, fillTemplate, shopPrice } from '../data.js';
 import { fmtNum, fmtCent, fmtEuro, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -656,7 +656,13 @@ export class Menus {
       if (lvl > 0) el('div', 'now', eff, 'Aktuell: ' + it.effect(lvl));
       if (lvl < max) el('div', 'next', eff, (lvl > 0 ? 'Nächste Stufe: ' : 'Bringt: ') + it.effect(lvl + 1));
       if (lvl < max) {
-        const price = it.prices[lvl];
+        const price = shopPrice(it, lvl);
+        // mit Rabattcode (die Plüschbrause: Code ADAM): der Code, daneben der alte Preis durchgestrichen
+        if (it.code) {
+          const code = el('div', 'shop-code', c);
+          el('span', 'shop-code-tag', code, `Code ${it.code.name} −${it.code.off}\u00a0%`);
+          el('s', '', code, fmtEuro(it.prices[lvl]));
+        }
         const ok = d.wallet >= price;
         // reicht das Guthaben nicht, steht da, wie viel noch fehlt
         const b = button(c, ok ? 'Kaufen · ' + fmtEuro(price) : fmtEuro(price) + ' · fehlt noch ' + fmtCent(price - d.wallet), 'buy', ok ? 'buy' : 'buy poor');

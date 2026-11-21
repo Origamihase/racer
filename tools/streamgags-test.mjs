@@ -3,10 +3,10 @@
 // aller Gags: Sie würfeln mit eigenem Zufall – ein Stream verläuft mit ihnen genauso wie ohne sie.
 import { readFileSync } from 'node:fs';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
-import { SCHOENNBRUN, ABSPANN_REISE, GAGS } from '../src/data.js';
+import { SCHOENNBRUN, ABSPANN_REISE, GAGS, SHOP, shopPrice } from '../src/data.js';
 import { TV } from '../src/world/xxl/brunnentv.js';
 import { drawSchoennbrunLogo } from '../src/ui/schoennbrun.js';
-import { StreamGags, GATE, VEREIN } from '../src/game/gags.js';
+import { StreamGags, GATE, VEREIN, CODE } from '../src/game/gags.js';
 import { thanksGroups } from '../src/ui/abspann.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from '../src/world/xxl/schranke.js';
 import { places } from '../src/map/graph.js';
@@ -277,6 +277,45 @@ function fakeGame(secs, { gate = true } = {}) {
   ok(/gags: this\.gags\.report\(\)/.test(read('src/game/game.js')), 'game.js: Game.end gibt den Gags nichts mit');
   ok(thanksGroups({}).length === 0 && !thanksGroups({ verein: null }).some((x) => x.id === 'verein'), 'Abspann: Verein ohne Gründung');
   console.log(`  Verein „${G.name}“: ${joins} Beitritte in 2 × 30 min, James begrüßt jeden ohne Zahl, Abrechnung und Abspann nennen sie`);
+}
+
+// --- 4. Nur mit Code ADAM: die Plüschbrause im Shop und im Chat -----------------------------------------------------
+{
+  const coded = SHOP.filter((x) => x.code);
+  const it = SHOP.find((x) => x.id === 'brause');
+  ok(coded.length === 1 && it && it.code.name === 'ADAM' && it.code.off === 10 && it.cat === 'Spaß', 'Shop: Code ADAM nicht genau an der Plüschbrause-Kiste');
+  ok(shopPrice(it, 0) === 171 && it.prices[0] === 190, `Shop: Plüschbrause kostet ${shopPrice(it, 0)} statt 171 €`);
+  ok(SHOP.filter((x) => !x.code).every((x) => x.prices.every((p, l) => shopPrice(x, l) === p)), 'Shop: ein Artikel ohne Code kostet anders');
+  const menus = read('src/ui/menus.js');
+  const main = read('src/main.js');
+  ok(/const price = shopPrice\(it, lvl\);/.test(menus) && /'shop-code-tag', code, `Code \$\{it\.code\.name\} −\$\{it\.code\.off\}\\u00a0%`/.test(menus) && /el\('s', '', code, fmtEuro\(it\.prices\[lvl\]\)\)/.test(menus), 'menus.js: der Shop zeigt den Code nicht (oder rechnet anders)');
+  ok(/const price = shopPrice\(it, lvl\);/.test(main), 'main.js: der Kauf rechnet ohne Code');
+  ok(/\.shop-code \{/.test(read('docs/style.css')), 'style.css: kein Aussehen für den Code');
+  // die Wirkung: der Zuckerschub nach dem Ladestopp hält 10 statt 6 s
+  for (const [up, want] of [[{}, 6], [{ brause: 1 }, 10]]) {
+    const sim = makeStream({ driver: DRIVERS.mittel, seed: 2, upgrades: up });
+    sim.step(5);
+    sim.game.sugarDue = true;
+    sim.game.offAutobahn = false;
+    sim.game.update(1 / 30, { steer: 0, throttle: 0, brake: 0 }, null);
+    ok(Math.abs(sim.p.sugar - want) < 0.1, `Zuckerschub mit ${JSON.stringify(up)}: ${sim.p.sugar.toFixed(2)} s statt ${want}`);
+  }
+  // im Chat: erst nach CODE.first, dann alle CODE.every Sekunden (nie in einer Szene), manchmal eine Antwort
+  const C = GAGS.code;
+  let n = 0;
+  for (const seed of [3, 8]) {
+    const sim = makeStream({ driver: DRIVERS.zuegig, seed, endless: true });
+    sim.step(2400);
+    const lines = sim.log.chat.filter((m) => m.gag && C.chat.includes(m.text));
+    const replies = sim.log.chat.filter((m) => m.gag && C.antwort.includes(m.text));
+    const gaps = lines.slice(1).map((m, i) => m.t - lines[i].t);
+    ok(lines.length >= 5 && lines.length <= 14 && lines[0].t >= CODE.first[0] && gaps.every((d) => d >= CODE.every[0] - 0.1), `Seed ${seed}: Code ADAM um ${lines.map((m) => m.t.toFixed(0)).join(', ')} s`);
+    ok(lines.every((m) => !m.at.tv && !m.at.charging), `Seed ${seed}: Code ADAM mitten in einer Szene`);
+    ok(replies.every((r) => lines.some((m) => r.t - m.t >= 1.2 - 1e-9 && r.t - m.t <= 2.6 + 0.05)) && replies.length <= lines.length, `Seed ${seed}: ${replies.length} Antworten auf ${lines.length} Erinnerungen`);
+    n += lines.length;
+  }
+  ok(C.chat.every((l) => /Code ADAM|CODE ADAM/.test(l)) && C.chat.filter((l) => /10 %/.test(l)).length >= 3, 'Code ADAM: eine Zeile ohne Code');
+  console.log(`  Code ADAM: Plüschbrause-Kiste 190 € → ${shopPrice(it, 0)} €, Zuckerschub 10 s; ${n} Erinnerungen in 2 × 40 min`);
 }
 
 // --- Grundregel: mit und ohne Gags derselbe Stream -----------------------------------------------------------------

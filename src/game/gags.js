@@ -25,6 +25,12 @@ export const GATE = { first: 45, gap: 240, play: 0.75, look: 600, room: 30, near
  */
 export const VEREIN = { found: [70, 110], join: [35, 90], echo: 0.3, wait: 4 };
 
+/**
+ * „Nur mit Code ADAM“ (GAGS.code): Der Chat erinnert erstmals nach first, dann alle every Sekunden an den Code (in
+ * einer Szene fällt die Erinnerung aus); reply: so oft antwortet jemand.
+ */
+export const CODE = { first: [150, 260], every: [180, 360], reply: 0.35 };
+
 /** Kleiner, schneller Zufall mit Saat (wie in tools/stream-sim.mjs). */
 export function mulberry32(a) {
   return () => {
@@ -53,6 +59,7 @@ export class StreamGags {
     // Verein: gegründet?, wann es weitergeht (Gründung, dann der nächste Beitritt), die Mitglieder (in der Reihenfolge
     // des Beitritts)
     this.verein = { founded: false, due: this.between(...VEREIN.found), members: [] };
+    this.codeT = this.between(...CODE.first);
   }
 
   /** Was Abrechnung und Abspann von den Gags wissen (Game.end): { verein: { name, members } | null }. */
@@ -66,6 +73,7 @@ export class StreamGags {
     if (!this.on) return;
     if (this.g.world.gate) this.updateGate();
     this.updateVerein();
+    this.updateCode();
   }
 
   // --- Zufall der Gags ------------------------------------------------------------------------------------------
@@ -201,5 +209,20 @@ export class StreamGags {
       this.james(fillTemplate(hello, { name }));
       if (echo) this.later(this.between(1.2, 2.4), () => this.say(echo, echoName));
     });
+  }
+
+  // --- 4. Nur mit Code ADAM ------------------------------------------------------------------------------------------
+  updateCode() {
+    const g = this.g;
+    if (g.t < this.codeT) return;
+    this.codeT = g.t + this.between(...CODE.every);
+    if (g.tv || g.charging) return;
+    const C = GAGS.code;
+    this.say(this.pick(C.chat));
+    if (this.chance(CODE.reply)) {
+      const text = this.pick(C.antwort);
+      const name = this.name();
+      this.later(this.between(1.2, 2.6), () => this.say(text, name));
+    }
   }
 }

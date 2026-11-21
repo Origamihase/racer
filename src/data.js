@@ -182,6 +182,13 @@ export const GAGS = {
     echo: ['Vereinsmeier 😂', 'Satzung wann? 📜', 'Erster Vereinsausflug: zum Brunnen ⛲', 'Jahresbeitrag: ein Bananensaft 🍌',
       'Ehrenmitglied: Herr Schönnbrun 🎩', 'Wann ist die Mitgliederversammlung? 😂'],
   },
+  // „Holy nur mit Code ADAM“: die ausgedachte Brause Plüschbrause; der Chat erinnert an den Code (chat), manchmal
+  // antwortet jemand (antwort); im Shop gibt es die Kiste mit Code ADAM 10 % günstiger (SHOP brause, shopPrice)
+  code: {
+    chat: ['Nur mit Code ADAM, 10 % auf alles!', 'Code ADAM nicht vergessen: 10 % auf alles bei Plüschbrause 🥤', 'Plüschbrause mit Code ADAM bestellt 😎',
+      'CODE ADAM! 10 % auf alles!', 'Gilt Code ADAM auch für Bananensaft? 🍌', 'Ohne Code ADAM kauf ich gar nix mehr', 'Holy! Plüschbrause nur mit Code ADAM 🥤'],
+    antwort: ['Holy 🥤', 'Code ADAM ist Pflicht', 'Plüschbrause > alles', '10 % sind 10 % 😂', 'Holy, nur mit Code ADAM!'],
+  },
 };
 /**
  * Der Ruf jeder BrunnenTV-Folge (Game.brunnenCall): text steht im Untertitel, wie es klingt (Lautschrift des
@@ -994,6 +1001,13 @@ export const SHOP = [
     effect: (l) => `Linke Spur ${60 + l * 10}\u00a0s offen, Pause danach ${l * 30}\u00a0% kürzer`,
   },
   {
+    // die Brause aus dem Stream (eine ausgedachte Marke, GAGS.code): nur mit Code ADAM, 10 % günstiger (shopPrice);
+    // wirkt in game.js: der Zuckerschub nach dem Ladestopp hält länger
+    id: 'brause', icon: '🥤', name: 'Plüschbrause-Kiste', cat: 'Spaß', prices: [190], code: { name: 'ADAM', off: 10 },
+    desc: 'Eine Kiste Plüschbrause für den Kofferraum: Nach dem Ladestopp hält der Zuckerschub länger. Holy – nur mit Code ADAM!',
+    effect: () => 'Zuckerschub nach dem Ladestopp 10 statt 6\u00a0s',
+  },
+  {
     id: 'elsa', icon: '👑', name: 'Wackel-Elsa', cat: 'Deko', prices: [120],
     desc: 'Das Spirit-Animal von SkylineTV LIVE als Wackelfigur fürs Armaturenbrett: die blaue Plüsch-Elsa mit Krönchen und Schärpe.',
     effect: () => 'Wackelt bei jeder Kurve mit',
@@ -1011,6 +1025,11 @@ export const SHOP = [
 ];
 
 export const UPGRADE_LIMITS = Object.fromEntries(SHOP.map((s) => [s.id, s.prices.length]));
+/** Preis eines Shop-Artikels auf Stufe lvl – mit Rabattcode (it.code: „Code ADAM −10 %“) auf den Cent gerundet. */
+export function shopPrice(it, lvl) {
+  const p = it.prices[lvl];
+  return it.code ? Math.round(p * (100 - it.code.off)) / 100 : p;
+}
 // Das Megafon ist kein Shop-Artikel mehr (save.js refundMegafon): Titel und Shop sagen es dem, der es gekauft hatte
 export const MEGAFON_ERSTATTET = (euro) => `📢 Das Megafon gehört jetzt zur Ausstattung – deine ${euro} sind zurück im Guthaben.`;
 
