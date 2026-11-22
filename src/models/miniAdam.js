@@ -7,7 +7,7 @@ import { W } from '../curve.js';
 import { liveLogoTexture } from '../textures.js';
 import { plush, eyeMaterial } from './plushMaterial.js';
 import { buildAdamGeometry, FABRIC, NECK, HEAD_C, EYE_C, EYE_R, BROW_C, JAW_C, STACHE_SMILE, STACHE_POUT, SHOULDER, UPPER_ARM, FORE_ARM, HIP } from './adamSculpt.js';
-import { Mimic, GESTURES } from './adamMimic.js';
+import { Mimic, GESTURES, GAZE } from './adamMimic.js';
 
 export { plush };
 
@@ -93,11 +93,12 @@ export function solveArm(arm, target, pole, palm) {
  * Brust, unter dem Kinn) nach oben und erst über der Gürtellinie zum Fenster hin – und seitlich am
  * Kinn vorbei, nicht quer vors Gesicht, das beim Winken zur Kamera schaut.
  */
-const WAVE_POS = new THREE.Vector3(0.27, 0.77, 0.06);
+const WAVE_POS = new THREE.Vector3(0.28, 0.75, 0.06);
 const CHEER_POS = new THREE.Vector3(0.235, 0.84, 0.15);
 const WAVE_C1 = new THREE.Vector3(0.2, 0.55, 0.22);
 const WAVE_C2 = new THREE.Vector3(0.22, 0.69, 0.1);
 const WAVE_PALM = new THREE.Vector3(0.55, -0.1, 0.83).normalize();
+const WAVE_FWD = 0.6;
 const CHEER_PALM = new THREE.Vector3(-0.35, 0.1, 0.93).normalize();
 // Ellbogen beim Hochnehmen nach unten vorne, oben dann vorne-außen
 const WAVE_POLE_UP = new THREE.Vector3(0, -1, 0.3).normalize();
@@ -168,7 +169,12 @@ export function megaphoneHold(k, from, out, mp, mq) {
   return true;
 }
 
-export function handTarget(side, wheel, { wave = 0, cheer = 0, steer = 0, t = 0 } = {}, out = { pos: V(), pole: V(), palm: V() }) {
+/**
+ * Ziel der Hand auf Seite side (siehe oben). to: wem er winkt (Körperkoordinaten, etwa GAZE.camera oder GAZE.window
+ * aus adamMimic.js) – die Handfläche der winkenden Hand zeigt oben dorthin; ohne to schräg nach vorn hinaus (WAVE_PALM,
+ * etwa zur Kamera der Startszene vor dem Fenster).
+ */
+export function handTarget(side, wheel, { wave = 0, cheer = 0, steer = 0, t = 0, to = null } = {}, out = { pos: V(), pole: V(), palm: V() }) {
   if (wheel) {
     // Griff am Kranz: Hand auf der Fensterseite bei etwa halb zehn, die andere bei halb drei; Lenken nach rechts
     // (steer > 0) dreht das Lenkrad aus Fahrersicht im Uhrzeigersinn (+x des Lenkrads zeigt zur Wagenmitte)
@@ -204,7 +210,11 @@ export function handTarget(side, wheel, { wave = 0, cheer = 0, steer = 0, t = 0 
     gripTmp.a.y += (Math.abs(Math.cos(t * 9)) * 0.008 * (1 - kc) + Math.abs(Math.sin(t * 7.5)) * 0.03 * kc) * wig;
     out.pos.copy(gripTmp.a);
     out.pole.lerp(sideV(WAVE_POLE_UP, side, gripTmp.m), smooth(0, 0.35, w)).lerp(sideV(WAVE_POLE, side, gripTmp.m), smooth(0.6, 1, w)).normalize();
-    out.palm.lerp(sideV(gripTmp.n.copy(WAVE_PALM).lerp(CHEER_PALM, kc), side, gripTmp.m), smooth(0.2, 0.9, w)).normalize();
+    // Handfläche oben: zu dem, dem er winkt (vom Ziel der Hand aus, etwas mehr nach vorn: so sieht man von hinten den
+    // ganzen gespreizten Handrücken), sonst WAVE_PALM; beim Jubeln CHEER_PALM
+    if (to) gripTmp.m.subVectors(to, gripTmp.end).normalize().z += WAVE_FWD;
+    else sideV(WAVE_PALM, side, gripTmp.m);
+    out.palm.lerp(gripTmp.m.lerp(sideV(CHEER_PALM, side, gripTmp.n), kc).normalize(), smooth(0.2, 0.9, w)).normalize();
   }
   return out;
 }
@@ -344,7 +354,8 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
   // Lenkrad (von außen gesehen): wird vom Auto gesetzt, Standard: vor der Brust
   const wheel = { m: new THREE.Matrix4().makeRotationX(0.35).setPosition(0, 0.44, 0.22), r: 0.17 };
   const targets = [{ pos: V(), pole: V(), palm: V() }, { pos: V(), pole: V(), palm: V() }];
-  const gest = { steer: 0, wave: 0, cheer: 0, t: 0, megafon: 0, bottle: false };
+  const gest = { steer: 0, wave: 0, cheer: 0, t: 0, megafon: 0, bottle: false, to: null };
+  const waveTo = V();
   // Megafon in der Fensterhand (BrunnenTV): das Modell hängt der Aufrufer an (holdMegaphone), sonst gibt es keins
   let prop = null;
   const megaFrom = V();
@@ -451,9 +462,16 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
     setMood(name, seconds, strength = 1, delay = 0) {
       mimic.setMood(name, seconds, strength, (mimic.lastT ?? 0) + delay);
     },
-    /** Geste der Fensterhand: 'wave' (winken) oder 'cheer' (jubeln), Stärke k (1 = ganz, kleiner: verlegen) */
-    gesture(name, k = 1) {
+    /**
+     * Geste der Fensterhand: 'wave' (winken) oder 'cheer' (jubeln), Stärke k (1 = ganz, kleiner: verlegen); to: wem er
+     * winkt ('camera', 'window' … wie lookAt, oder [x, y, z]) – dorthin dreht er die Handfläche.
+     */
+    gesture(name, k = 1, to = null) {
       mimic.gesture(name, undefined, k);
+      if (name === 'wave') {
+        const p = typeof to === 'string' ? GAZE[to] : to;
+        gest.to = p ? waveTo.set(p[0], p[1], p[2]) : null;
+      }
     },
     /** Prost mit Bananensaft (Ladestopp): jubelt wie 'cheer', die Flasche in der Fensterhand. */
     raiseBottle() {
@@ -499,6 +517,8 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
       applyFace(f, s.look || 0);
       gest.steer = s.steer || 0;
       gest.wave = Math.max(s.wave || 0, f.wave);
+      // (winkt er nicht, vergisst er, wem er gewinkt hat: das Winken der Startszene geht zur Kamera vor dem Fenster)
+      if (!(gest.wave > 0)) gest.to = null;
       gest.cheer = f.cheer;
       gest.t = t;
       gest.megafon = s.megafon || 0;

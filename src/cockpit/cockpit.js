@@ -81,12 +81,13 @@ const FWD = new THREE.Vector3(0, 0, 1);
 const ONE = new THREE.Vector3(1, 1, 1);
 /**
  * Die Fensterhand bei einer Geste (Rahmen des Cockpits, Hand-Koordinaten wie mittenGeometry: x entlang des Griffs,
- * y nach außen, z zum Fahrer): winken vor dem Seitenfenster knapp unter Augenhöhe, gut im Bild; jubeln höher und
+ * y nach außen, z zum Fahrer): winken vor dem Seitenfenster unter Augenhöhe, ganz im Bild (die gespreizten Finger
+ * reichen nicht hinauf unter die Anzeigen oben links, die Hand bleibt am linken Rand); jubeln höher und
  * weiter vorn; via: Umweg auf halber Strecke (die Hand hebt sich vom Kranz zum Fahrer hin, nicht durch ihn).
  * qWave: Finger nach oben, etwas nach außen gekippt; qCheer: Faust um einen senkrechten Griff (die Flasche).
  */
 const GESTURE = {
-  wave: new THREE.Vector3(-0.64, 1.13, -0.11),
+  wave: new THREE.Vector3(-0.63, 1.04, -0.17),
   cheer: new THREE.Vector3(-0.58, 1.27, -0.2),
   via: new THREE.Vector3(-0.06, 0.04, 0.12),
   qWave: new THREE.Quaternion().setFromAxisAngle(FWD, 0.3),

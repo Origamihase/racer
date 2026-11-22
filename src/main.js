@@ -441,11 +441,11 @@ function adamMood(name, k = 1, o = null) {
     case 'wave': {
       // winken, nur aus den Anlässen der Regel (game/wave.js: Intro, Fußgänger am Gehweg, „Wink mal!“ im Chat, nach
       // einem Rempler): in die Kamera schauen und „Hallo!“ – zum Fußgänger hin (o.look) still; k < 1 ist der kleine,
-      // verlegene Gruß nach einem Rempler
+      // verlegene Gruß nach einem Rempler. Die offene Hand zeigt die Handfläche dem, den er grüßt
       const small = k < 1;
       const look = o && o.look;
       adamDo((a) => {
-        a.gesture('wave', k);
+        a.gesture('wave', k, look || 'camera');
         a.setMood('happy', small ? 1.6 : 2.4, small ? 0.3 : 0.6);
         if (look) a.lookAt(look, 2.2);
       });
