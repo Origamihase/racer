@@ -447,9 +447,9 @@ export function buildMiniAdam({ curved = true, seed = 7 } = {}) {
       legL.rotation.x = legR.rotation.x = p === 'drive' ? -1.2 : 0;
       poseArms();
     },
-    /** Stimmung (siehe MOODS in adamMimic.js) für seconds Sekunden (Standard je Stimmung), Stärke 0 … 1 */
-    setMood(name, seconds, strength = 1) {
-      mimic.setMood(name, seconds, strength);
+    /** Stimmung (siehe MOODS in adamMimic.js) für seconds Sekunden (Standard je Stimmung), Stärke 0 … 1, ab delay s */
+    setMood(name, seconds, strength = 1, delay = 0) {
+      mimic.setMood(name, seconds, strength, (mimic.lastT ?? 0) + delay);
     },
     /** Geste der Fensterhand: 'wave' (winken) oder 'cheer' (jubeln), Stärke k (1 = ganz, kleiner: verlegen) */
     gesture(name, k = 1) {

@@ -444,11 +444,11 @@ export class Game {
   }
 
   /**
-   * Mini Adam winkt – nur aus einem Anlass der Regel (wave.js WAVE.why). o.look: Blickziel (zum Gehweg hin).
-   * Ergebnis: Stärke des Grußes, 0 wenn er jetzt nicht winkt.
+   * Mini Adam winkt – nur aus einem Anlass der Regel (wave.js WAVE.why). o.look: Blickziel (zum Gehweg hin),
+   * o.passage: die Ortsdurchfahrt (gehsteig). Ergebnis: Stärke des Grußes, 0 wenn er jetzt nicht winkt.
    */
   waveAt(why, o = null) {
-    const k = this.waves.ask(why, this.t);
+    const k = this.waves.ask(why, this.t, o && o.passage);
     if (k > 0) this.onMood('wave', k, o);
     return k;
   }

@@ -28,8 +28,10 @@ export const REST = { lidU: 0.84, lidL: 0.95, pupil: 1, smile: 0.21 };
  * Stimmungen als Abweichung vom Ruhegesicht (alles optional):
  * lidU/lidL: Lidkante weiter auf (+) bzw. zu (−) · brow: Brauen heben (m) · browIn: innere Brauenenden heben (rad) ·
  * smile: Schnurrbart-Enden heben (rad) · jaw: Mund auf (rad) · pupil: Pupille größer (+) · pitch/roll: Kopf (rad,
- * pitch − = Kinn hoch) · bounce: Hüpfen (Stärke) · jump: kleiner Schreck-Hüpfer · gaze: Blickziel · blink: Blinzeln
- * (0 = nie, 1 = normal, Werte > 1 langsamer) · dur: Standarddauer (s)
+ * pitch − = Kinn hoch) · bounce: Hüpfen (Stärke) · jump: kleiner Schreck-Hüpfer · nod: zweimal nicken (Stärke) ·
+ * gaze: Blickziel · blink: Blinzeln (0 = nie, 1 = normal, Werte > 1 langsamer) · dur: Standarddauer (s)
+ * Gesten mit dem Arm gibt es hier nicht: Freude zeigt er im Gesicht und auf dem Sitz (joy: hüpfen, die Hände bleiben
+ * am Lenkrad), Dank mit einem Nicken (nod) – der Arm geht in der Fahrt nur zum Winken hoch (game/wave.js).
  */
 export const MOODS = {
   happy: { lidU: 0.06, lidL: -0.34, brow: 0.005, browIn: -0.05, smile: 0.24, jaw: 0.13, pupil: 0.1, pitch: -0.05, bounce: 1, dur: 2.6 },
@@ -40,6 +42,8 @@ export const MOODS = {
   curious: { lidU: 0.1, brow: 0.004, browIn: -0.06, browTilt: 0.12, roll: -0.12, gaze: 'screen', dur: 2.4 },
   rain: { lidU: 0.12, lidL: 0.04, brow: 0.006, browIn: 0.16, pitch: -0.1, gaze: 'wiper', dur: 2.6 },
   wink: { winkL: 1, smile: 0.12, browIn: 0.05, dur: 0.7 },
+  nod: { smile: 0.08, lidL: -0.12, nod: 1, dur: 1.1 },
+  joy: { lidU: 0.08, lidL: -0.4, brow: 0.006, browIn: -0.06, smile: 0.26, jaw: 0.16, pupil: 0.12, pitch: -0.06, bounce: 2.6, dur: 3 },
 };
 
 /**
@@ -187,6 +191,8 @@ export class Mimic {
       else if (m.blink > 1) slow = Math.max(slow, 1 + (m.blink - 1) * w);
       if (m.bounce) lift += m.bounce * w * 0.012 * Math.max(0, Math.sin((t - x.t0) * 9.5)) * (1 - sstep(x.t0 + 1.2, x.t0 + 2, t));
       if (m.jump) lift += m.jump * x.k * 0.022 * Math.sin(Math.PI * clamp((t - x.t0) / 0.32, 0, 1));
+      // nicken: Kinn zweimal runter und wieder hoch (0,42 s je Nicken), dann Ruhe
+      if (m.nod) pitch += m.nod * x.k * 0.1 * Math.sin(Math.PI * clamp((t - x.t0) / 0.42, 0, 2)) ** 2;
       if (m.gaze && w > gazeW) {
         gazeMood = GAZE[m.gaze];
         gazeW = w;

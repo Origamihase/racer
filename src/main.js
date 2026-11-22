@@ -454,20 +454,18 @@ function adamMood(name, k = 1, o = null) {
       break;
     }
     case 'donation':
-      // kurz aufs Handy mit dem Chat, freuen, bedanken; bei großen Spenden jubelt er
+      // kurz aufs Handy mit dem Chat, lächeln, nicken (wenn er wieder aufschaut), bedanken – der Arm bleibt unten, auch
+      // bei großen Spenden (game/wave.js: in der Fahrt geht er nur zum Winken hoch)
       adamDo((a) => {
         a.lookAt('chat', 1.1);
         a.setMood('happy', 1.4 + 1.6 * k, 0.45 + 0.55 * k);
-        if (k >= 0.75) a.gesture('cheer');
+        a.setMood('nod', undefined, 0.5 + 0.5 * k, 1.1);
       });
       adamSay(1.2 + k, 1.2);
       break;
     case 'cheer':
-      // Ziel erreicht
-      adamDo((a) => {
-        a.gesture('cheer');
-        a.setMood('happy', 3, k);
-      });
+      // Ziel erreicht: er hüpft vor Freude auf dem Sitz, beide Hände bleiben am Lenkrad
+      adamDo((a) => a.setMood('joy', 3, k));
       adamToCamera(2.2);
       adamSay(2, 0.9);
       break;
@@ -490,7 +488,8 @@ function adamMood(name, k = 1, o = null) {
 game.onMood = adamMood;
 
 // Fußgänger auf dem Gehweg eines Orts: alle 0,25 s nachsehen, ob gleich einer vorbeizieht – dann winkt Mini Adam ihm
-// zu (zum Gehweg hin geschaut), höchstens alle WAVE.cool Sekunden und nur bei Stadttempo (game/wave.js)
+// zu (zum Gehweg hin geschaut), einmal je Durchfahrt, frühestens WAVE.cool Sekunden nach dem letzten Gruß und nur im
+// Schritttempo (game/wave.js)
 let walkerT = 0;
 function waveAtWalkers(dt, p) {
   walkerT -= dt;
@@ -499,8 +498,8 @@ function waveAtWalkers(dt, p) {
   const sec = xxl.trip.section;
   if (!sec || sec.kind !== 'stadt') return;
   const town = xxl.town(sec);
-  const who = town && town.plan ? walkerToWave(game.waves, game.t, p.speed, town.plan.items, p.s - sec.s0) : null;
-  if (who) game.waveAt('gehsteig', { look: who.side > 0 ? 'side' : 'window' });
+  const who = town && town.plan ? walkerToWave(game.waves, game.t, p.speed, town.plan.items, p.s - sec.s0, sec) : null;
+  if (who) game.waveAt('gehsteig', { look: who.side > 0 ? 'side' : 'window', passage: sec });
 }
 
 /** Pro Bild: Sprechen, Zuhören und Müdigkeit (leerer Akku) zu den Animationswerten o dazurechnen. */
