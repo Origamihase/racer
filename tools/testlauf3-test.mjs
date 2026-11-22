@@ -7,9 +7,11 @@
 //    1000 und 500 m tragen sie im Kästchen, und das Navi (nextExit, Ansage, OMI) nennt dieselbe Nummer und denselben
 //    Namen wie die Tafel.
 // 3. Winken: „Mini Adam winkt zu viel. Soll nur Menschen in der Stadt am Gehsteig, im Intro, wenn der Chat es will und
-//    nach einem Unfall winken.“ Die Regel (game/wave.js) kennt genau diese vier Anlässe; an Fußgängern echter Orte
-//    winkt er bei Stadttempo höchstens alle WAVE.cool Sekunden, beim Rasen nie; im Spiel winkt er nur nach „Wink mal!“
-//    im Chat und nach einem Rempler (verlegen, kleiner), und kein anderer Weg im Code lässt ihn winken.
+//    nach einem Unfall winken.“ Die Regel (game/wave.js) kennt genau diese vier Anlässe; Menschen am Gehweg seiner
+//    Seite, die zur Straße schauen, winkt er in echten Orten nur im Schritttempo zu, einmal je Durchfahrt und höchstens
+//    alle WAVE.cool Sekunden, bei Stadttempo nie (Winken 2, 22.11.: „winkt weiterhin viel zu oft“); im Spiel winkt er
+//    nur nach „Wink mal!“ im Chat und nach einem Rempler (verlegen, kleiner), und kein anderer Weg im Code lässt ihn
+//    winken.
 // 4. BrunnenTV lässt sich nicht überspringen: kein TV.skip, kein Game.skipBrunnenTV, keine Taste, kein Tipp aufs Bild,
 //    kein Gamepad-Knopf und kein Text dazu; die Folge (am Ziel und unterwegs) läuft TV.end Sekunden (12–20 s), auch
 //    wenn der Spieler alles drückt.
@@ -268,28 +270,36 @@ let stream12 = [];
   ok(WAVE.why.join() === 'intro,gehsteig,chat,unfall', `Anlässe: ${WAVE.why.join()}`);
   for (const why of ['titel', 'ladestopp', 'abspann', 'spende', 'ziel', 'losfahren', 'start', 'wave', 'brunnen']) ok(r.ask(why, 100) === 0 && !r.may(why, 100), `winkt zu „${why}“`);
   ok(r.ask('intro', 0) === 1 && r.ask('intro', 60) === 0 && r.ask('intro', 600) === 0, 'Intro: genau einmal je Stream');
-  ok(r.ask('gehsteig', 10) === 0, 'Fußgänger 10 s nach dem Intro-Gruß');
-  ok(r.ask('gehsteig', WAVE.cool) === 1 && r.ask('gehsteig', WAVE.cool + 20) === 0 && r.ask('gehsteig', 2 * WAVE.cool) === 1, `Fußgänger: höchstens alle ${WAVE.cool} s`);
-  const kc = r.ask('chat', 2 * WAVE.cool + 1);
-  const ku = r.ask('unfall', 2 * WAVE.cool + 2);
+  ok(r.ask('gehsteig', 10, 'A') === 0, 'Fußgänger 10 s nach dem Intro-Gruß');
+  ok(r.ask('gehsteig', WAVE.cool, 'A') === 1 && r.ask('gehsteig', WAVE.cool + 20, 'B') === 0 && r.ask('gehsteig', 2 * WAVE.cool, 'B') === 1, `Fußgänger: höchstens alle ${WAVE.cool} s`);
+  ok(r.ask('gehsteig', 4 * WAVE.cool, 'B') === 0 && r.ask('gehsteig', 4 * WAVE.cool, 'C') === 1, 'Fußgänger: einmal je Ortsdurchfahrt');
+  const t0 = 4 * WAVE.cool;
+  const kc = r.ask('chat', t0 + 1);
+  const ku = r.ask('unfall', t0 + 2);
   ok(kc === 1 && ku === WAVE.small && ku > 0.5 && ku < 1, `Chat ${kc}, Unfall ${ku} (klein und verlegen)`);
-  ok(r.ask('gehsteig', 2 * WAVE.cool + 10) === 0, 'Fußgänger gleich nach dem Gruß an den Chat');
+  ok(r.ask('unfall', t0 + 2 + WAVE.crashCool - 1) === 0 && r.ask('unfall', t0 + 2 + WAVE.crashCool) === WAVE.small, `Unfall: höchstens alle ${WAVE.crashCool} s`);
+  ok(r.ask('gehsteig', t0 + 10, 'D') === 0, 'Fußgänger gleich nach dem Gruß an den Chat');
   r.reset();
-  ok(r.may('intro', 0) && r.ask('gehsteig', 0) === 1, 'neuer Stream: Intro wieder offen, Fußgänger frei');
+  ok(r.may('intro', 0) && r.ask('gehsteig', 0, 'A') === 1, 'neuer Stream: Intro wieder offen, Fußgänger frei');
+  ok(WAVE.slow <= 30 / 3.6 + 1e-9 && WAVE.cool >= 90 && WAVE.chat[0] >= 360 && WAVE.chat[1] <= 600 && WAVE.crashCool >= 60, `Grenzen: ${(WAVE.slow * 3.6).toFixed(0)} km/h, ${WAVE.cool} s, Chat ${WAVE.chat.join('–')} s, Rempler ${WAVE.crashCool} s`);
 
   // wer gilt als Mensch am Gehweg
   const u = 100;
   const R = STREET.curbR + STREET.strip + 1;
   const Lx = STREET.curbL - STREET.strip - 1;
-  const at = (name, x, d) => ({ name, x, y: 0, z: -(u + d), ry: 0 });
-  ok(pedestrianAhead([at('frau_walk', R, 20)], u)?.side === 1, 'Fußgängerin rechts am Gehweg, 20 m voraus');
-  ok(pedestrianAhead([at('opa_walk', Lx, 12)], u)?.side === -1, 'Fußgänger links am Gehweg, 12 m voraus');
-  ok(!pedestrianAhead([at('frau_walk', R, 45)], u) && !pedestrianAhead([at('frau_walk', R, 3)], u) && !pedestrianAhead([at('frau_walk', R, -8)], u), 'zu weit, zu nah oder schon vorbei');
+  // (Blick zur Straße: links ry = π/2, rechts −π/2 wie layout.js toRoad; entlang des Gehwegs 0 oder π)
+  const at = (name, x, d, ry = x < STREET.lane ? Math.PI / 2 : -Math.PI / 2) => ({ name, x, y: 0, z: -(u + d), ry });
+  ok(pedestrianAhead([at('frau_wave', Lx, 20)], u)?.side === -1, 'Frau links am Gehweg nah am Bordstein, schaut zur Straße, 20 m voraus');
+  ok(pedestrianAhead([at('opa_stand', Lx, 12)], u)?.side === -1, 'Opa links am Gehweg, 12 m voraus');
+  ok(!pedestrianAhead([at('frau_wave', R, 20)], u), 'rechts (nicht seine Seite)');
+  ok(!pedestrianAhead([at('opa_walk', Lx, 12, 0)], u) && !pedestrianAhead([at('opa_walk', Lx, 12, Math.PI)], u) && !pedestrianAhead([at('frau_wave', Lx, 12, -Math.PI / 2)], u), 'geht den Gehweg entlang oder dreht der Straße den Rücken zu');
+  ok(!pedestrianAhead([at('frau_wave', STREET.curbL - STREET.kerb - WAVE.kerb - 0.3, 12)], u), 'hinten an der Hauswand');
+  ok(!pedestrianAhead([at('frau_wave', Lx, 45)], u) && !pedestrianAhead([at('frau_wave', Lx, 3)], u) && !pedestrianAhead([at('frau_wave', Lx, -8)], u), 'zu weit, zu nah oder schon vorbei');
   ok(!pedestrianAhead([at('kind_wave', 26, 15)], u) && !pedestrianAhead([at('mann_stand', STREET.lane, 15)], u), 'auf dem Platz oder auf der Fahrbahn');
-  ok(!pedestrianAhead([at('bench', R, 15), at('dog', R, 16), at('streetTree', R, 17)], u), 'Bank, Hund, Baum');
-  ok(pedestrianAhead([at('mann_walk', R, 25), at('oma_walk', R, 9)], u)?.name === 'oma_walk', 'der nächste zuerst');
+  ok(!pedestrianAhead([at('bench', Lx, 15), at('dog', Lx, 16), at('streetTree', Lx, 17)], u), 'Bank, Hund, Baum');
+  ok(pedestrianAhead([at('mann_wave', Lx, 25), at('oma_stand', Lx, 9)], u)?.name === 'oma_stand', 'der nächste zuerst');
 
-  // echte Orte aus dem Stadtbaukasten: einmal mit 50 km/h hindurch, einmal mit 100 km/h
+  // echte Orte aus dem Stadtbaukasten: einmal im Schritttempo (25 km/h) hindurch, einmal mit Stadttempo (50 km/h)
   if (!globalThis.document) {
     const ctx = new Proxy({}, {
       get(t, k) {
@@ -311,6 +321,7 @@ let stream12 = [];
   const city = createCityKit(W);
   const towns = G.places.filter((pl) => pl.pop > 20000).slice(0, 24);
   let slowWaves = 0;
+  let slowTowns = 0;
   let fastWaves = 0;
   let people = 0;
   let minGap = Infinity;
@@ -318,26 +329,36 @@ let stream12 = [];
     const size = ['klein', 'stadt', 'gross'][i % 3];
     const plan = city.planTown(pl, { size, seed: 7 + i });
     people += plan.items.filter((it) => /_(walk|wave|stand)$/.test(it.name)).length;
-    for (const kmh of [50, 100]) {
+    for (const kmh of [25, 50]) {
       const rule = new WaveRule();
       rule.ask('intro', -100);
       const v = kmh / 3.6;
+      let n = 0;
       let last = -Infinity;
-      for (let t = 0, uu = 0; uu < TOWN_LEN[size]; t += 0.25, uu += v * 0.25) {
-        const who = walkerToWave(rule, t, v, plan.items, uu);
-        if (!who || !rule.ask('gehsteig', t)) continue;
-        const d = -who.z - uu;
-        ok(d >= WAVE.near[0] && d <= WAVE.near[1] && Math.abs(who.side) === 1, `${pl.name}: winkt ${who.name} in ${d.toFixed(1)} m (x ${who.x})`);
-        if (kmh === 50) {
-          slowWaves++;
-          minGap = Math.min(minGap, t - last);
-          last = t;
-        } else fastWaves++;
+      // zweimal hintereinander durch denselben Ort (zwei Durchfahrten, wie nach einer Wende)
+      for (const pass of ['hin', 'nochmal']) {
+        for (let t = pass === 'hin' ? 0 : 1000, uu = 0; uu < TOWN_LEN[size]; t += 0.25, uu += v * 0.25) {
+          const who = walkerToWave(rule, t, v, plan.items, uu, pass);
+          if (!who || !rule.ask('gehsteig', t, pass)) continue;
+          const d = -who.z - uu;
+          const it = plan.items.find((x) => x.name === who.name && x.x === who.x && x.z === who.z);
+          ok(d >= WAVE.near[0] && d <= WAVE.near[1] && who.side === WAVE.side && STREET.curbL - who.x <= WAVE.kerb && Math.sin(it.ry) >= WAVE.face, `${pl.name}: winkt ${who.name} in ${d.toFixed(1)} m (x ${who.x}, ry ${it.ry.toFixed(2)})`);
+          if (kmh === 25) {
+            slowWaves++;
+            n++;
+            minGap = Math.min(minGap, t - last);
+            last = t;
+          } else fastWaves++;
+        }
+      }
+      if (kmh === 25) {
+        ok(n <= 2, `${pl.name}: ${n} Grüße in zwei Durchfahrten`);
+        if (n) slowTowns++;
       }
     }
   }
-  ok(slowWaves >= towns.length && minGap >= WAVE.cool, `mit 50 km/h durch ${towns.length} Orte: ${slowWaves} Grüße, kürzester Abstand ${minGap.toFixed(1)} s`);
-  ok(fastWaves === 0, `mit 100 km/h durch den Ort: ${fastWaves} Grüße`);
+  ok(slowTowns >= towns.length / 3 && minGap >= WAVE.cool, `im Schritttempo durch ${towns.length} Orte (je zweimal): ${slowWaves} Grüße in ${slowTowns} Orten, kürzester Abstand ${minGap.toFixed(1)} s`);
+  ok(fastWaves === 0, `mit 50 km/h durch den Ort: ${fastWaves} Grüße`);
 
   // im Spiel: „Wink mal!“ im Chat, dann winkt er; nach einem Rempler ein kleiner Gruß; sonst nie
   const { game, trip, arrival, chat, said } = newGame(31);
@@ -378,7 +399,7 @@ let stream12 = [];
   const asks = chat.filter((m) => CHAT.winkMal.includes(m.text));
   const chatWaves = waves.filter((w) => w.k === 1);
   const crashWaves = waves.filter((w) => w.k < 1);
-  ok(asks.length >= 2 && chatWaves.length === asks.length, `12 Minuten Stream: ${asks.length}× „Wink mal!“, ${chatWaves.length} Grüße`);
+  ok(asks.length >= 1 && chatWaves.length === asks.length && asks.every((m, i) => !i || m.t - asks[i - 1].t >= WAVE.chat[0]), `12 Minuten Stream: ${asks.length}× „Wink mal!“, ${chatWaves.length} Grüße`);
   for (const w of chatWaves) ok(asks.some((m) => Math.abs(w.t - m.t - WAVE.chatDelay) < 0.05), `Gruß bei ${w.t.toFixed(1)} s ohne „Wink mal!“ ${WAVE.chatDelay} s vorher`);
   ok(crashT > 0 && crashWaves.length === 1 && Math.abs(crashWaves[0].t - crashT - WAVE.afterCrash) < 0.05 && crashWaves[0].k === WAVE.small, `Rempler bei ${crashT.toFixed(1)} s: ${crashWaves.map((w) => w.t.toFixed(1) + ' s Stärke ' + w.k).join(', ') || 'kein Gruß'}`);
   ok(waves.length === chatWaves.length + crashWaves.length, `weitere Grüße: ${waves.length - chatWaves.length - crashWaves.length}`);
@@ -392,7 +413,7 @@ let stream12 = [];
   ok((gameSrc.match(/onMood\('wave'/g) || []).length === 1 && !/adamMood\('wave'/.test(main), 'winken nur über Game.waveAt');
   ok((main.match(/adamWave = /g) || []).length === 2 && main.includes('adamWave = c.wave;'), 'äußeres Winken nur in der Startszene (Intro)');
   ok(!/wave:/.test(main.slice(main.indexOf('function stopPlace'), main.indexOf('function stopPlace') + 3000)), 'Ladestopp: kein Winken');
-  console.log(`3. Winken: ${slowWaves} Grüße an Fußgänger in ${towns.length} Orten (${people} Menschen, kürzester Abstand ${minGap.toFixed(0)} s, mit 100 km/h ${fastWaves}), im Stream ${asks.length}× „Wink mal!“ → ${chatWaves.length} Grüße, Rempler → ${crashWaves.length} kleiner Gruß`);
+  console.log(`3. Winken: im Schritttempo ${slowWaves} Grüße an Fußgänger in ${slowTowns} von ${towns.length} Orten (je zweimal durch, ${people} Menschen, kürzester Abstand ${minGap.toFixed(0)} s, mit 50 km/h ${fastWaves}), im Stream ${asks.length}× „Wink mal!“ → ${chatWaves.length} Grüße, Rempler → ${crashWaves.length} kleiner Gruß`);
 }
 
 // --- 4. BrunnenTV lässt sich nicht überspringen ------------------------------------------------------------------------

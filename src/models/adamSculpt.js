@@ -592,16 +592,21 @@ function mittenSdf(x, y, z, side) {
   return d;
 }
 /**
- * Offene Hand zum Winken (der Eigentümer, 21.11.: „Finger beim Winken ausstrecken“), in Arm-Koordinaten wie der
- * Fäustling: ein flacherer Handteller, vier gespreizte Finger und der Daumen schräg nach außen-vorn – Plüsch, also
- * kurz und rund. Je Finger: Ansatz a, Richtung d (Einheitsvektor), Länge len, Radius r; side ist die Daumenseite.
+ * Offene Hand zum Winken (der Eigentümer, 21.11.: „Finger beim Winken ausstrecken“, 22.11.: „streckt seine Finger
+ * dabei auch nicht aus“), in Arm-Koordinaten wie der Fäustling: ein breiter Handteller, vier weit gefächerte Finger mit
+ * Luft dazwischen und der Daumen weit zur Seite – fünf Finger, die man auch von draußen hinter dem Wagen zählen kann.
+ * Plüsch, also dick und rund, und größer als der Fäustling (wie eine Comic-Hand). Je Finger: Ansatz a, Richtung d
+ * (Einheitsvektor), Länge len, Radius r; side ist die Daumenseite.
  */
-const PALM = [0, WRIST - 0.008, 0.004, 0.043, 0.04, 0.024];
+// (OPEN: so viel größer als ihre Grundmaße ist die winkende Hand – die Finger sollen auch hinter dem Wagen zu zählen sein)
+const OPEN = 1.15;
+const PALM = [0, WRIST - 0.012 * OPEN, 0.004, 0.05 * OPEN, 0.047 * OPEN, 0.023 * OPEN];
 function openFingers(side) {
   // Zeige-, Mittel-, Ring- und kleiner Finger: [x am Ansatz (Daumenseite +), Spreizung (rad), Länge, Radius]
-  const F = [[0.027, 0.42, 0.044, 0.0102], [0.009, 0.14, 0.05, 0.0106], [-0.009, -0.14, 0.046, 0.0102], [-0.027, -0.42, 0.037, 0.0093]];
-  const out = F.map(([x, a, len, r]) => ({ a: [side * x, WRIST - 0.034, 0.004], d: [side * Math.sin(a), -Math.cos(a), 0.06], len, r }));
-  out.push({ a: [side * 0.032, WRIST + 0.004, 0.008], d: [side * 0.86, -0.42, 0.28], len: 0.036, r: 0.0115 });
+  const F = [[0.036, 0.5, 0.054, 0.0132], [0.0125, 0.17, 0.06, 0.0138], [-0.0125, -0.17, 0.056, 0.0132], [-0.036, -0.5, 0.046, 0.012]];
+  const out = F.map(([x, a, len, r]) => ({ a: [side * x * OPEN, WRIST - 0.046 * OPEN, 0.004], d: [side * Math.sin(a), -Math.cos(a), 0.07], len: len * OPEN, r: r * OPEN }));
+  // Daumen: fast waagrecht zur Seite und etwas zur Handfläche hin
+  out.push({ a: [side * 0.04 * OPEN, WRIST - 0.004 * OPEN, 0.008], d: [side * 0.92, -0.3, 0.22], len: 0.045 * OPEN, r: 0.0145 * OPEN });
   for (const f of out) {
     const n = Math.hypot(f.d[0], f.d[1], f.d[2]);
     f.d = f.d.map((v) => v / n);

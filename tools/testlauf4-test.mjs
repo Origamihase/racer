@@ -638,7 +638,9 @@ console.log('6. Finger beim Winken:');
     G[k].computeBoundingBox();
     G[o].computeBoundingBox();
     const bottom = G[k].boundingBox.min.y; // Unterkante des Fäustlings
-    const f = fingers(G[o], 'y', bottom - 0.004);
+    // (die offene Hand ist größer als der Fäustling, ihr Handteller reicht etwas tiefer: 2 cm unter seiner Unterkante
+    // schneidet die Ebene nur noch die vier Finger; den Daumen zählt winken2-test mit)
+    const f = fingers(G[o], 'y', bottom - 0.02);
     const m = fingers(G[k], 'y', bottom + 0.01);
     res.push(`${o}: ${f.n} Finger auf ${(f.w * 100).toFixed(1)} cm (Fäustling ${m.n})`);
     ok(f.n === 4 && f.w > 0.07 && m.n === 1, `${o}: ${f.n} Finger auf ${f.w.toFixed(3)} m, Fäustling ${m.n} Stück`);
