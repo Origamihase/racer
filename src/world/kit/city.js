@@ -10,12 +10,14 @@ import { createFountainKit } from './fountains.js';
 import { createPeopleKit } from './people.js';
 import { createLandmarkKit, landmarkFor } from './landmarks.js';
 import { createRestKit, restGround } from './rest.js';
-import { planTown, planGoal, planRest, planPark, sizeOf, regionOf, goalKind, islandRadius, STREET, REST } from './layout.js';
+import { planTown, planGoal, planRest, planPark, sizeOf, regionOf, goalKind, islandRadius, fanSpot, STREET, REST } from './layout.js';
 
 // Ein Ort wird in Stücke von 100 m Straße verschmolzen: wenige Draw Calls, und was hinter der Kamera liegt, fällt weg
 const CHUNK = 100;
 // Ab dieser Entfernung zeigt ein Stück die sparsamen Fernfassungen
 const FAR_AT = 260;
+// Fangruppe am Zielbrunnen (people.js fanGroup): zehn Fans auf 7 × 3 m
+export const FAN_GROUP = { n: 10, seed: 7, w: 7, d: 3 };
 // Die Welt wird im Shader gebogen: Hüllkugeln großzügiger, damit nichts am Bildrand zu früh verschwindet
 const BEND_PAD = 14;
 
@@ -26,6 +28,18 @@ export function createCityKit(F, { bend = null } = {}) {
   const street = createStreetKit(F);
   const fountains = createFountainKit(F);
   const people = createPeopleKit(F);
+  // Grundfläche der Fangruppe um ihren Aufstellpunkt (so gedreht, wie sie steht), einmal ausgemessen
+  let fanBox = null;
+  const fanExt = () => {
+    if (fanBox) return fanBox;
+    const g = people.build('fanGroup', FAN_GROUP);
+    g.rotation.y = -Math.PI / 2;
+    g.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(g);
+    g.traverse((o) => o.isInstancedMesh && o.dispose());
+    fanBox = [b.min.x, b.max.x, b.min.z, b.max.z];
+    return fanBox;
+  };
   const landmarks = createLandmarkKit(F);
   const rest = createRestKit(F);
   const owner = new Map();
@@ -111,6 +125,7 @@ export function createCityKit(F, { bend = null } = {}) {
     street,
     fountains,
     people,
+    fanExt,
     landmarks,
     rest,
     /** Name → Baukasten, info eines beliebigen Bausteins. */
@@ -247,9 +262,10 @@ export function createCityKit(F, { bend = null } = {}) {
       // Fangruppe am Ziel: neben dem Hauptbrunnen, hinter dem Gehweg, schaut zur Straße
       const main = plan.fountains[0];
       const sq = plan.squares[0];
-      if (fans && main && sq) {
-        const g = people.build('fanGroup', { n: 10, seed: 7, w: 7, d: 3 });
-        g.position.set(STREET.curbR + sq.d0 + 2.2, STREET.top, -(sq.u1 - 4.5));
+      const spot = fans && main && sq ? fanSpot(plan, fanExt()) : null;
+      if (spot) {
+        const g = people.build('fanGroup', FAN_GROUP);
+        g.position.set(spot.x, STREET.top, spot.z);
         g.rotation.y = -Math.PI / 2;
         root.add(g);
         anim.push(g);
