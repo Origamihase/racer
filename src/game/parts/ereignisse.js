@@ -227,10 +227,15 @@ export class EreignissePart {
     if (!this.blitzer && p.s > this.S.blitzer && !this.offAutobahn && this.notBlocked('blitzer', BLITZER_END + ROADSIDE.after)) {
       const s = p.s;
       this.blitzer = { limitS: s + 520, camS: s + 1120, endS: s + BLITZER_END, announced: false, checked: false };
-      this.scenery.request('speed', this.blitzer.limitS, { limit: 120 });
-      this.scenery.request('blitzer', this.blitzer.camS);
-      this.scenery.request('speed', this.blitzer.endS, { limit: 'ende' });
+      this.blitzer.ids = [
+        this.scenery.request('speed', this.blitzer.limitS, { limit: 120 }),
+        this.scenery.request('blitzer', this.blitzer.camS),
+        this.scenery.request('speed', this.blitzer.endS, { limit: 'ende' }),
+      ];
     }
+    // Kann die Welt ein Teil davon nicht aufstellen (es fiele auf eine Rampe oder hinter das Ende der Autobahn), gibt
+    // es diesen Blitzer nicht – genauso Brunnen und Elsa (siehe unten)
+    if (this.blitzer && !this.blitzer.checked && (this.blitzer.ids || []).some((id) => this.scenery.blocked(id))) this.dropRoadside('blitzer');
     // der Tempomat hält die 120 am Blitzer: ab ZONE_LEAD Metern vor dem ersten Schild (dann ist er an der Kamera längst
     // langsam genug), bis zum Ende der Zone (Player.limits.zone; das Strompedal des Spielers kennt sie nicht)
     const zb = this.blitzer;
@@ -302,6 +307,7 @@ export class EreignissePart {
       const s = this.scenery.landmarkSpot(p.s + 1500);
       if (this.notBlocked('landmark', s - p.s + ROADSIDE.after)) this.landmark = { type, s, seen: false, greeted: false, id: this.scenery.request(type, s) };
     }
+    if (this.landmark && !this.landmark.greeted && this.scenery.blocked(this.landmark.id)) this.dropRoadside('landmark');
     if (this.landmark) {
       const lm = this.landmark;
       const d = lm.s - p.s;
@@ -388,14 +394,17 @@ export class EreignissePart {
     return false;
   }
 
-  /** Blitzer, Brunnen und Elsa der verlassenen Autobahn vergessen (sie stehen nicht mehr am Weg) und neu einplanen. */
-  dropRoadside() {
+  /**
+   * Blitzer, Brunnen und Elsa vergessen (sie stehen nicht am Weg: Autobahn verlassen, oder die Welt konnte sie nicht
+   * aufstellen) und neu einplanen. which: nur 'blitzer' oder 'landmark' (ohne Angabe: beide).
+   */
+  dropRoadside(which = null) {
     const s = this.player.s;
-    if (this.blitzer) {
+    if (this.blitzer && which !== 'landmark') {
       this.blitzer = null;
       this.S.blitzer = s + ROADSIDE.retry;
     }
-    if (this.landmark) {
+    if (this.landmark && which !== 'blitzer') {
       this.elsaToast(this.landmark, null);
       this.landmark = null;
       this.S.landmark = s + ROADSIDE.retry;

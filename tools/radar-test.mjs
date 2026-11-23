@@ -77,7 +77,7 @@ const jobTalk = (game, e) => JOB_CALLS.has(e.call) || (e.call === 'chat' && game
  * radar: Stufe des Artikels im Spielstand · kmh: so schnell fährt der Wagen die ganze Zeit · cameras: so viele Blitzer.
  * Liefert das Spiel, das Protokoll, die Zonen ({ limitS, camS, endS, bornS }) und wann das Lämpchen an war.
  */
-function stream({ radar = 0, kmh, cameras = 1, seed = 7, exitAt = null, leaveAt = null, steps = 40000, landmark = false }) {
+function stream({ radar = 0, kmh, cameras = 1, seed = 7, exitAt = null, leaveAt = null, steps = 40000, landmark = false, blocked = null }) {
   Math.random = mulberry32(seed);
   const log = [];
   let game = null;
@@ -86,7 +86,7 @@ function stream({ radar = 0, kmh, cameras = 1, seed = 7, exitAt = null, leaveAt 
   const trip = new Trip({ rng: Math.random });
   game = new Game({
     traffic: witness('traffic', log, now, { cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
-    scenery: witness('scenery', log, now, { request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
+    scenery: witness('scenery', log, now, { request: () => ++ids, landmarkSpot: (s) => s, placed: () => null, blocked: blocked || (() => false) }),
     road: witness('road', log, now),
     sky: witness('sky', log, now),
     rain: witness('rain', log, now),
@@ -336,6 +336,12 @@ ok(slowPlain.game.stats.blitzerClean === 1 && slowRadar.game.stats.blitzerClean 
   ok(g.player.limits.zone === Infinity && g.screenState().limit !== 120, 'Ausfahrt mitten in der Zone: Tempomat oder Bildschirm halten die 120');
   ok(calls(off, 'scenery', 'request').some((e) => e.args[0] === 'brunnen' || e.args[0] === 'elsa'), 'Ausfahrt: Brunnen oder Elsa wurden gar nicht bestellt');
   ok(!g.landmark && calls(off, 'ui', 'toast').every((e) => !/Ein Brunnen!|Elsa!/.test(e.args[0])), 'Ausfahrt: Brunnen oder Elsa werden abseits der Autobahn gemeldet');
+  // c) Die Welt kann Blitzer oder Brunnen nicht aufstellen (sie fielen auf eine Rampe: scenery.blocked): Es gibt sie
+  //    nicht – kein Blitz, keine Ansage, keine 120, keine Meldung
+  const lost = stream({ radar: 1, kmh: 150, steps: 30 * 120, landmark: true, blocked: () => true });
+  const h = lost.game;
+  ok(flashes(lost) === 0 && h.stats.fines === 0 && spoken(lost).length === 0 && lost.limitShown === 0, 'Blitzer, den die Welt nicht aufstellen kann: Es blitzt, piept oder zeigt 120');
+  ok(calls(lost, 'ui', 'toast').every((e) => !/Ein Brunnen!|Elsa!/.test(e.args[0])), 'Brunnen oder Elsa, die die Welt nicht aufstellen kann, werden gemeldet');
   console.log(`  Ausfahrt: Blitzer erst hinter der Ausfahrt bestellt (bei ${near.zones[0] && near.zones[0].bornS.toFixed(0)} m), nach dem Verlassen der Autobahn verworfen`);
 }
 
