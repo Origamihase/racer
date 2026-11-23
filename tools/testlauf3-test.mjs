@@ -21,6 +21,7 @@
 //    Desktop, Handy und Tablet, nie in der freien Sicht, nie auf dem eigenen Wagen, dem Chat, den Touch-Knöpfen oder
 //    dem Blitzerfoto; es zeigt Ausschnitte des Mittelbildschirms (dieselben Zahlen), der dafür weiterzeichnet, ohne
 //    hochzuladen – und es ist nur in der Drohnenansicht während der Fahrt an, im Cockpit nie.
+import { mainSource } from './lib/main-source.mjs';
 import { readFileSync } from 'node:fs';
 import * as G from '../src/map/graph.js';
 import * as shapes from '../src/map/shapes.js';
@@ -406,7 +407,7 @@ let stream12 = [];
 
   // kein anderer Weg im Code: winken nur über die Regel
   const src = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8');
-  const main = src('main.js');
+  const main = mainSource();
   const gameSrc = src('game/game.js');
   const reasons = [...main.matchAll(/waveAt\('(\w+)'/g), ...gameSrc.matchAll(/waveAt\('(\w+)'/g), ...main.matchAll(/waves\.ask\('(\w+)'/g)].map((m) => m[1]);
   ok(reasons.length >= 5 && reasons.every((x) => WAVE.why.includes(x)), `Anlässe im Code: ${reasons.join(', ')}`);
@@ -419,11 +420,12 @@ let stream12 = [];
 // --- 4. BrunnenTV lässt sich nicht überspringen ------------------------------------------------------------------------
 {
   const src = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8');
-  const main = src('main.js');
+  const main = mainSource();
   ok(TV.skip === undefined && typeof Game.prototype.skipBrunnenTV === 'undefined', 'BrunnenTV: TV.skip oder Game.skipBrunnenTV gibt es noch');
   ok(TV.end >= 12 && TV.end <= 20, `Folge dauert ${TV.end} s (gewünscht etwa 12–20 s)`);
   ok(!/sceneSkip\(tvRun/.test(main) && !/tvRun\.skipT/.test(main), 'main.js: Tasten oder Gamepad überspringen die Folge');
-  const tap = main.slice(main.indexOf("addEventListener('pointerdown'"), main.indexOf("addEventListener('pointerdown'") + 160);
+  const at = main.indexOf("domElement.addEventListener('pointerdown'");
+  const tap = main.slice(at, at + 160);
   ok(tap.includes('stopRun.on') && !tap.includes('tvRun'), `main.js: ein Tipp aufs Bild überspringt die Folge (${tap.split('\n')[1]})`);
   // kein Text, kein Tipp, keine Taste spricht mehr vom Überspringen der Folge (Startszene und Ladestopp schon)
   const texts = ['ui/controls.js', 'ui/first-tips.js', 'ui/drive-hint.js', 'ui/menus.js', 'data.js', 'world/xxl/brunnentv.js'].map((f) => [f, src(f)]);
@@ -597,7 +599,7 @@ let stream12 = [];
   ok(fake.drawn === 2 && got === 1 && fake.texture.needsUpdate, 'Cockpit: zeichnen und hochladen, das Kärtchen bekommt nichts');
 
   // nur in der Drohnenansicht während der Fahrt (main.js), im Cockpit nie (style.css); HUD und Kärtchen nennen dieselbe Zahl
-  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const main = mainSource();
   const css = readFileSync(new URL('../docs/style.css', import.meta.url), 'utf8');
   const uiSrc = readFileSync(new URL('../src/ui/ui.js', import.meta.url), 'utf8');
   ok(/const droneHudOn = state === 'drive' && view === 'drone' && !cockpitOn && !stopRun\.on && !tvRun\.on;/.test(main) && main.includes('ui.droneHud.show(droneHudOn);') && main.includes('cockpit.screen.hudOut = ui.droneHud.on;') && main.includes('cockpit.screen.onDraw = (c, navi) => ui.droneHud.copy(c, navi);'), 'main.js schaltet das Kärtchen nur in der Drohnenansicht ein');

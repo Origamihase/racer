@@ -122,6 +122,8 @@ Spiel in Chromium, startet eine Fahrt, pausiert sie und simuliert einen Grafikve
 | Ordner | Inhalt |
 | --- | --- |
 | `src/main.js` | Renderer, Kameras, Zustände (Titel, Startszene, Fahrt, Halt am Brunnen, Abspann), Hauptschleife |
+| `src/scenes/` | Szenen-Regie: Startszene am Supercharger, Ladestopp im Park, BrunnenTV am Ziel (Kontext aus `main.js`) |
+| `src/camera/` | Orbit-Kamera der Drohne (Abspann), ohne Browser prüfbar |
 | `src/game/` | Spiellogik: Fahrt über die Karte (`trip.js`), Fahrphysik, Navi-Auktion, Stream-Kasse und Chat-Stimmung (`economy.js`), Ereignisse, Album |
 | `src/map/` | Karte (Knoten, Straßen, Orte), Routen, Navi-Bildschirm, große Karte, Kartendaten |
 | `src/world/` | Autobahn, Himmel, Verkehr (mit Spurwechseln); `xxl/`: die Welt der Reise (Ausfahrten, Landstraßen, Orte, Tafeln, Ladeparks); `kit/`: Stadtbaukasten und Brunnen |
