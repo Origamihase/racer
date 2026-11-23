@@ -105,14 +105,19 @@ npm install
 npm run build   # baut docs/game.js
 npm run dev     # baut bei jeder Änderung neu (mit Sourcemap)
 npm run serve   # startet einen kleinen Webserver auf Port 8080
+npm test        # alle Prüfstände, parallel (npm test -- xxl geld: nur diese)
+npm run smoke   # Browser-Probe: lädt docs/index.html in Chromium und fährt kurz an
 ```
+
+Für `npm run smoke` braucht es einmal `npx playwright install chromium`.
 
 `docs/game.js` ist eingecheckt, damit GitHub Pages ohne Build-Schritt funktioniert.
 Nach Änderungen in `src/` bitte `npm run build` ausführen und die neue `docs/game.js` mit committen.
 
 Die CI (`.github/workflows/ci.yml`) prüft jeden Pull Request und jeden Stand von `main`: `docs/game.js` muss
 genau dem Build aus `src/` entsprechen, `src/map/data.js` und `shapes.js` genau der Ausgabe von `npm run map`, und
-`npm test` (alle Prüfstände) muss durchlaufen. Fällt einer der Schritte durch, nennt die CI den Befehl, der fehlt.
+`npm test` (alle Prüfstände) muss durchlaufen. Parallel dazu lädt die Browser-Probe (`npm run smoke`) das gebaute
+Spiel in Chromium, startet eine Fahrt, pausiert sie und simuliert einen Grafikverlust. Fällt einer der Schritte durch, nennt die CI den Befehl, der fehlt.
 
 | Ordner | Inhalt |
 | --- | --- |

@@ -1,7 +1,8 @@
 # Prüft jeden Pull Request und jeden Stand von main, bevor GitHub Pages ihn ausliefert:
 # - die Kartendaten (src/map/data.js, shapes.js) sind genau das, was `npm run map` aus tools/map/netz.json erzeugt,
 # - das Spiel-Bundle docs/game.js ist genau das, was `npm run build` aus src/ baut (Pages hat keinen Build-Schritt),
-# - alle Prüfstände (`npm test`) laufen durch.
+# - alle Prüfstände (`npm test`) laufen durch,
+# - und, als eigener Job daneben, das gebaute Spiel startet in Chromium und fährt (`npm run smoke`).
 name: CI
 
 on:
@@ -53,3 +54,32 @@ jobs:
 
       - name: Prüfstände
         run: npm test
+
+  browser:
+    name: Browser-Probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhängigkeiten
+        run: npm ci
+
+      - name: Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Spiel im Browser anfahren
+        run: SMOKE_BILD=browser-probe.png npm run smoke
+
+      - name: Bild der Probe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-probe
+          path: browser-probe.png
+          if-no-files-found: ignore
