@@ -38,7 +38,7 @@ import { FirstTips, loadTips, storeTips } from './ui/first-tips.js';
 import { Jolt } from './fx/jolt.js';
 import { TeslaDamage } from './models/damage-fx.js';
 import { CabinDamage } from './cockpit/damage-cabin.js';
-import { loadSave, storeSave, resetSave, refundMegafon, megafonNoteSeen, storePicture, loadPictures, PIC_MAX } from './save.js';
+import { loadSave, storeSave, resetSave, refundMegafon, megafonNoteSeen, storePicture, loadPictures, PIC_MAX, settleStream, settlePending } from './save.js';
 import { Game } from './game/game.js';
 import { WAVE, walkerToWave } from './game/wave.js';
 import { Chassis, CHASSIS } from './game/chassis.js';
@@ -69,7 +69,10 @@ const save = loadSave();
 // Das Megafon gehört jetzt zur Ausstattung: Wer es gekauft hatte, bekommt den Preis einmal zurück (save.js); der Titel
 // sagt es bis zum ersten Besuch im Shop (save.megafonNote), der Shop dann in dieser Sitzung (shopRefund)
 const megafonBack = refundMegafon(save);
-if (megafonBack) storeSave(save);
+// Endete die Seite zuletzt mitten im Stream (Tab zu, Absturz, Handy-Akku), bucht der Start ihn jetzt: Der Titel sagt bis
+// zur nächsten Fahrt, was er gebracht hat (save.streamNote)
+const recovered = settlePending(save);
+if (megafonBack || recovered) storeSave(save);
 let shopRefund = 0;
 let mapHudT = 0; // die Navi-Zeile des HUD folgt der Fahrt viermal je Sekunde
 let turnIns = null; // ihre letzte Ansage (NavModel.instruction), auch für die Tipps der ersten Minuten
@@ -685,9 +688,30 @@ function toTitle() {
   menus.show('title', save);
 }
 
+/** Läuft gerade ein Stream (Fahrt oder Startszene), der noch nicht abgerechnet ist? */
+const streamOpen = () => (state === 'drive' || state === 'charge') && game.running && !game.over;
+
+/**
+ * Zwischenstand des laufenden Streams in den Spielstand (Game.interim): alle INTERIM_EVERY Sekunden und beim Verlassen
+ * der Seite. Endet die Seite, bevor der Stream abgerechnet ist, bucht ihn der nächste Start (settlePending).
+ */
+const INTERIM_EVERY = 15;
+let interimT = INTERIM_EVERY;
+function storeInterim() {
+  if (!streamOpen()) return;
+  interimT = INTERIM_EVERY;
+  save.pending = game.interim();
+  storeSave(save);
+}
+
 function startRun() {
   performance.mark('ma:start');
   audio.init();
+  // „Neustart“ aus der Pause: Der laufende Stream wird abgerechnet wie beim Beenden (Einnahmen und Schäden zählen)
+  if (streamOpen()) settleStream(save, game.interim());
+  save.streamNote = null;
+  storeSave(save);
+  interimT = INTERIM_EVERY;
   menus.hide();
   paused = false;
   game.start(save);
@@ -729,19 +753,8 @@ function pause() {
 
 function finishRun() {
   const o = game.over;
-  const km = o.distance / 1000;
-  // Rekord und Summe in Reisemetern bzw. Reisekilometern
-  const best = save.best.reise || 0;
-  const newRecord = o.distance > best && o.distance > 50;
-  // (ein Stream im Minus – die Schäden – geht vom Guthaben ab, unter null fällt es nie)
-  save.wallet = Math.max(0, Math.round((save.wallet + o.money) * 100) / 100);
-  save.best.reise = Math.max(best, o.distance);
-  save.best.earned = Math.max(save.best.earned || 0, o.money);
-  save.best.viewers = Math.max(save.best.viewers || 0, o.peakViewers);
-  save.stats.runs++;
-  save.stats.reiseKm = (save.stats.reiseKm || 0) + km;
-  save.stats.naviReached += o.stats.naviReached;
-  save.stats.crashes += o.stats.crashes;
+  // Guthaben, Rekord (Reisemeter) und Statistik; der Zwischenstand des Streams ist damit erledigt (save.js)
+  const { newRecord } = settleStream(save, { money: o.money, distance: o.distance, peakViewers: o.peakViewers, naviReached: o.stats.naviReached, crashes: o.stats.crashes });
   storeSave(save);
   if (newRecord) adamMood('proud');
   // zur Route des Streams der gefahrene Weg des Navis (Kartenpunkte, ausgedünnt), für die Karte im Abspann
@@ -2283,6 +2296,7 @@ function step(dt, { render = true } = {}) {
       p.lawful = !!(DEBUG && window.__MA.xxl && window.__MA.xxl.auto);
       if (p.lawful) xxlAuto(p, ctl);
       game.update(dt, ctl, camera);
+      if ((interimT -= dt) <= 0) storeInterim();
       waveAtWalkers(dt, p);
       if (stopBtn) {
         stopBtn.classList.toggle('show', game.stopOffer());
@@ -2499,8 +2513,11 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     pause();
     audio.suspend();
+    storeInterim();
   } else audio.resume();
 });
+// (pagehide kommt auch dort, wo die Seite ohne visibilitychange endet, etwa beim Neuladen)
+window.addEventListener('pagehide', storeInterim);
 
 // --- XXL-Welt ------------------------------------------------------------------
 const xxlLimits = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, hold: Infinity, holdDecel: 0, posted: 0, slack: 0, closing: 0 };

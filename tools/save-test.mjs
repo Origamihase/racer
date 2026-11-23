@@ -34,7 +34,7 @@ globalThis.localStorage = {
     box.delete(k);
   },
 };
-const { DEFAULT_SAVE, loadSave, storeSave, resetSave } = await import('../src/save.js');
+const { DEFAULT_SAVE, loadSave, storeSave, resetSave, settleStream, settlePending } = await import('../src/save.js');
 const put = (v) => box.set(KEY, typeof v === 'string' ? v : JSON.stringify(v));
 /** Felder der klassischen Autobahn, die kein geladener Stand mehr trägt (save.js RETIRED). */
 const RETIRED = { top: ['mode', 'seenIntro'], best: ['distance'], stats: ['totalKm', 'leftLaneEuro'] };
@@ -137,6 +137,55 @@ for (const [what, raw] of [
   locked = false;
   put(AUSBAU);
   ok(same(resetSave(), DEFAULT_SAVE) && !box.has(KEY), 'Zurücksetzen lässt etwas übrig');
+}
+
+// --- Zwischenstand eines Streams: Endet die Seite mitten im Stream, bucht ihn der nächste Start ----------------------
+{
+  box.clear();
+  const a = loadSave();
+  a.wallet = 100;
+  a.best.reise = 5000;
+  // ein Stream läuft, der Zwischenstand steht im Speicher; dann geht die Seite zu
+  a.pending = { money: 42.5, distance: 12000, peakViewers: 900, naviReached: 2, crashes: 1 };
+  storeSave(a);
+  const b = loadSave();
+  ok(same(b.pending, a.pending), 'Der Zwischenstand übersteht Speichern und Laden nicht');
+  const got = settlePending(b);
+  ok(got && got.money === 42.5, 'settlePending liefert den gebuchten Stream nicht');
+  ok(b.pending === null, 'Nach dem Buchen steht der Zwischenstand noch da');
+  ok(b.wallet === 142.5 && b.best.reise === 12000 && b.stats.runs === 1 && b.stats.naviReached === 2 && b.stats.crashes === 1 && b.best.viewers === 900, `Gebucht wird falsch: ${JSON.stringify({ w: b.wallet, best: b.best, stats: b.stats })}`);
+  ok(Math.abs(b.stats.reiseKm - 12) < 1e-9, 'Reisekilometer des abgebrochenen Streams fehlen');
+  ok(same(b.streamNote, { money: 42.5, distance: 12000 }), 'Der Titel erfährt nicht, was der abgebrochene Stream gebracht hat');
+  ok(settlePending(b) === null && b.wallet === 142.5, 'Ein Zwischenstand wird zweimal gebucht');
+  storeSave(b);
+  const c = loadSave();
+  ok(c.pending === null && same(c.streamNote, b.streamNote), 'Hinweis oder erledigter Zwischenstand gehen beim Speichern verloren');
+  // ein abgebrochener Stream im Minus: Der Titel nennt, was wirklich vom Guthaben abging
+  const m = loadSave();
+  m.wallet = 120;
+  m.pending = { money: -325, distance: 23400, peakViewers: 1, naviReached: 0, crashes: 3 };
+  settlePending(m);
+  ok(m.wallet === 0 && same(m.streamNote, { money: -120, distance: 23400 }), `Abbruch im Minus: Guthaben ${m.wallet}, Hinweis ${JSON.stringify(m.streamNote)}`);
+  // ein Stream im Minus (Schäden): Das Guthaben fällt nie unter null
+  const d = loadSave();
+  d.wallet = 10;
+  settleStream(d, { money: -325, distance: 800, peakViewers: 300, naviReached: 0, crashes: 3 });
+  ok(d.wallet === 0, `Stream im Minus: Guthaben ${d.wallet} statt 0`);
+  // der Rekord zählt erst ab 50 Reisemetern
+  const e = loadSave();
+  e.best.reise = 0;
+  ok(settleStream(e, { money: 0, distance: 40, peakViewers: 0, naviReached: 0, crashes: 0 }).newRecord === false, 'Ein Stream von 40 m ist ein neuer Rekord');
+  ok(settleStream(e, { money: 0, distance: 9000, peakViewers: 0, naviReached: 0, crashes: 0 }).newRecord === true, 'Ein Stream von 9 km ist kein neuer Rekord');
+  // kaputte Zwischenstände: nichts wird gebucht, nichts wirft
+  for (const bad of [{ money: 'viel', distance: 1 }, { money: 5 }, [], 7, 'x', { money: NaN, distance: 3 }]) {
+    put({ ...DEFAULT_SAVE, wallet: 7, pending: bad });
+    const f = loadSave();
+    ok(f.pending === null, `Kaputter Zwischenstand ${JSON.stringify(bad)} wird nicht verworfen`);
+    ok(settlePending(f) === null && f.wallet === 7, `Kaputter Zwischenstand ${JSON.stringify(bad)} ändert das Guthaben`);
+  }
+  put({ ...DEFAULT_SAVE, streamNote: { money: 'x' } });
+  ok(loadSave().streamNote === null, 'Kaputter Titel-Hinweis wird nicht verworfen');
+  console.log('Zwischenstand: Buchen nach Abbruch, Minus, Rekordgrenze und kaputte Stände geprüft');
 }
 
 // --- Kartendaten: die Hinweise der Höhenquellen gegen die Karte ---------------------------------------------------------

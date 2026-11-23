@@ -16,6 +16,13 @@ export const DEFAULT_SAVE = {
   // BrunnenTV-Album der Reise (src/game/album.js): n = Nummer der letzten Folge, list = die Folgen; die Bilder dazu
   // stehen unter eigenem Schlüssel (storePicture)
   album: { n: 0, list: [] },
+  // der laufende Stream, wie die Abrechnung ihn zuletzt gebucht hätte (interimStream, alle paar Sekunden und beim
+  // Verlassen der Seite): Endet die Seite mitten im Stream (Tab zu, Absturz, Handy-Akku), bucht ihn der nächste Start
+  // (settlePending); null: kein Stream offen
+  pending: null,
+  // so viel änderte der zuletzt abgebrochene Stream am Guthaben (settlePending), bis zur nächsten Fahrt sagt es der Titel;
+  // null: nichts
+  streamNote: null,
 };
 
 /** Ein gespeicherter Teil-Spielstand (best, stats, …) – oder nichts, wenn dort etwas anderes steht als ein Objekt. */
@@ -48,6 +55,8 @@ export function loadSave() {
       upgrades: { ...part(data.upgrades) },
       visits: { ...part(data.visits) },
       album: cleanAlbum(data.album),
+      pending: cleanStream(data.pending),
+      streamNote: cleanNote(data.streamNote),
     };
     for (const k of RETIRED.top) delete save[k];
     for (const k of RETIRED.best) delete save.best[k];
@@ -56,6 +65,61 @@ export function loadSave() {
   } catch (e) {
     return structuredClone(DEFAULT_SAVE);
   }
+}
+
+// --- Abrechnung eines Streams -----------------------------------------------------------------------------------------
+const num = (v) => (Number.isFinite(v) ? v : 0);
+
+/**
+ * Ein Stream für die Abrechnung: { money (Euro, mit Vorzeichen), distance (Reisemeter), peakViewers, naviReached,
+ * crashes } – oder null, wenn dort nichts Brauchbares steht (Geld und Strecke müssen Zahlen sein).
+ */
+export function cleanStream(raw) {
+  if (!raw || typeof raw !== 'object' || !Number.isFinite(raw.money) || !Number.isFinite(raw.distance)) return null;
+  return {
+    money: Math.round(raw.money * 100) / 100,
+    distance: Math.max(0, raw.distance),
+    peakViewers: Math.max(0, num(raw.peakViewers)),
+    naviReached: Math.max(0, Math.round(num(raw.naviReached))),
+    crashes: Math.max(0, Math.round(num(raw.crashes))),
+  };
+}
+const cleanNote = (raw) => (raw && typeof raw === 'object' && Number.isFinite(raw.money) && Number.isFinite(raw.distance) ? { money: raw.money, distance: raw.distance } : null);
+
+/**
+ * Einen Stream ins Guthaben, die Rekorde und die Statistik buchen (am Ende jedes Streams, und für einen abgebrochenen
+ * beim nächsten Start). Ein Stream im Minus (die Schäden) geht vom Guthaben ab, unter null fällt es nie. Der offene
+ * Zwischenstand ist danach erledigt. Ergebnis: { newRecord, best } (Rekord der Strecke in Reisemetern).
+ */
+export function settleStream(save, r) {
+  const s = cleanStream(r);
+  save.pending = null;
+  if (!s) return { newRecord: false, best: save.best.reise || 0 };
+  const best = save.best.reise || 0;
+  const newRecord = s.distance > best && s.distance > 50;
+  save.wallet = Math.max(0, Math.round((save.wallet + s.money) * 100) / 100);
+  save.best.reise = Math.max(best, s.distance);
+  save.best.earned = Math.max(save.best.earned || 0, s.money);
+  save.best.viewers = Math.max(save.best.viewers || 0, s.peakViewers);
+  save.stats.runs = (save.stats.runs || 0) + 1;
+  save.stats.reiseKm = (save.stats.reiseKm || 0) + s.distance / 1000;
+  save.stats.naviReached = (save.stats.naviReached || 0) + s.naviReached;
+  save.stats.crashes = (save.stats.crashes || 0) + s.crashes;
+  return { newRecord, best: save.best.reise };
+}
+
+/**
+ * Beim Laden: Steht noch ein Zwischenstand da, endete die Seite mitten im Stream. Er wird jetzt gebucht, und der Titel
+ * sagt bis zur nächsten Fahrt, was er gebracht hat (streamNote). Ergebnis: der gebuchte Stream oder null.
+ */
+export function settlePending(save) {
+  const s = save.pending;
+  if (!s) return null;
+  const before = save.wallet;
+  settleStream(save, s);
+  // (der Hinweis nennt, was sich am Guthaben getan hat: Ein Minus zieht es nie unter null)
+  save.streamNote = { money: Math.round((save.wallet - before) * 100) / 100, distance: s.distance };
+  return s;
 }
 
 // Das Megafon gehört zur Ausstattung und ist kein Shop-Artikel mehr. Wer es gekauft hat, bekommt den Preis einmal
