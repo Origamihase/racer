@@ -835,8 +835,10 @@ function fakeGame(secs, { gate = true } = {}) {
   ok(/p\.setLimits\(\{ zone: zb && p\.s > zb\.limitS - ZONE_LEAD && p\.s < zb\.endS \? 120 \/ 3\.6 : Infinity \}\);/.test(gameSource()), 'game.js gibt dem Tempomaten die Zone am Blitzer nicht');
   // im Spiel: die Zone steht, solange der Wagen in ihr (oder ZONE_LEAD davor) ist
   const sim = makeStream({ seed: 3 });
-  sim.step(2);
+  // auf der Autobahn (abseits von ihr gibt es keine Blitzer: dropRoadside)
+  for (let i = 0; i < 600 && (sim.step(1) && sim.game.offAutobahn); i++);
   const g = sim.game;
+  ok(!g.offAutobahn, 'Spiel: Der Wagen erreicht die Autobahn nicht');
   const s0 = g.player.s;
   g.blitzer = { limitS: s0 + 100, camS: s0 + 700, endS: s0 + 880, announced: false, checked: false };
   sim.step(1 / 30);
