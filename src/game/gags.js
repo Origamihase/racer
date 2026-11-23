@@ -6,7 +6,7 @@
 // Chats) und rührt Geld und Stimmung nur an, wo die Welt mitspielt (Schranke, Laden). So verläuft ein Stream mit den
 // Gags genauso wie ohne sie – die Prüfstände mit festem Zufall (journey-, geld-, ansagen-test) bleiben, wie sie sind.
 import { BOTS, SCHOENNBRUN, GAGS, viewerNameAt, fillTemplate } from '../data.js';
-import { fmtCent, fmtNum } from '../util.js';
+import { fmtCent, fmtNum, mulberry32 } from '../util.js';
 import { schrankeOf } from '../world/xxl/schranke.js';
 import { places } from '../map/graph.js';
 import { STREET } from '../world/kit/layout.js';
@@ -68,16 +68,6 @@ export const MITLEID = { stand: 1.5, kmh: 1, reach: 9, gap: 45, side: STREET.cur
  * Löst Dringendes sie vor dem Aufspringen ab, kommt dieselbe Box noch einmal.
  */
 export const MYSTERY = { first: [240, 420], every: [480, 840], wait: 10, retry: 1, shake: 1.6, read: 2.4, show: 5.5 };
-
-/** Kleiner, schneller Zufall mit Saat (wie in tools/stream-sim.mjs). */
-export function mulberry32(a) {
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 export class StreamGags {
   /** game: das Spiel (ui, later, t, …); reset() sät den Zufall neu und setzt alle Gags zurück. on = false schaltet alle ab. */

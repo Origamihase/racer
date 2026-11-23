@@ -121,6 +121,24 @@ for (const [what, raw] of [
   const s = loadSave();
   ok(s.wallet === 0 && s.best.earned === MAIN.best.earned, 'Ein Guthaben, das keine Zahl ist, wird nicht zu 0 – oder reißt den Rest mit');
 }
+// Einstellungen mit falschem Typ oder Wert: nur diese fallen auf den Standard, die übrigen und unbekannte bleiben
+{
+  const settings = { sound: 'ja', speech: false, chat: 1, facecam: false, quality: 7, volume: 'laut', steerSens: 0.4, hud: 'klein' };
+  put(JSON.stringify({ ...MAIN, settings }));
+  const s = loadSave().settings;
+  const d = DEFAULT_SAVE.settings;
+  ok(s.sound === d.sound && s.chat === d.chat && s.quality === d.quality && s.volume === d.volume, `Kaputte Einstellungen bleiben stehen: ${JSON.stringify(s)}`);
+  ok(s.speech === false && s.facecam === false && s.steerSens === 0.4 && s.hud === 'klein', `Gültige oder unbekannte Einstellungen gehen verloren: ${JSON.stringify(s)}`);
+  for (const [volume, keep] of [[0, true], [1, true], [0.35, true], [-0.1, false], [1.5, false], [null, false], [NaN, false]]) {
+    put(JSON.stringify({ ...MAIN, settings: { ...MAIN.settings, volume } }));
+    const v = loadSave().settings.volume;
+    ok(keep ? v === volume : v === d.volume, `Lautstärke ${volume}: geladen ${v}`);
+  }
+  for (const quality of ['auto', 'hoch', 'mittel', 'niedrig']) {
+    put(JSON.stringify({ ...MAIN, settings: { ...MAIN.settings, quality } }));
+    ok(loadSave().settings.quality === quality, `Qualität ${quality} geht verloren`);
+  }
+}
 // gesperrter Speicher: Standard laden, Speichern meldet false, nichts wirft
 {
   locked = true;

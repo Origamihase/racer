@@ -36,6 +36,25 @@ const part = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
  */
 const RETIRED = { top: ['mode', 'seenIntro'], best: ['distance'], stats: ['totalKm', 'leftLaneEuro'] };
 
+/**
+ * Die Einstellungen aus dem Speicher: Jede bekannte Einstellung muss den richtigen Typ und einen erlaubten Wert haben
+ * (sonst gilt der Standard, etwa bei volume: "laut" oder quality: 7). Unbekannte bleiben erhalten; die Fahr-Einstellungen
+ * prüft driveSettings (src/ui/drive-settings.js) selbst.
+ */
+const SETTING_OK = {
+  sound: (v) => typeof v === 'boolean',
+  speech: (v) => typeof v === 'boolean',
+  chat: (v) => typeof v === 'boolean',
+  facecam: (v) => typeof v === 'boolean',
+  quality: (v) => ['auto', 'hoch', 'mittel', 'niedrig'].includes(v),
+  volume: (v) => Number.isFinite(v) && v >= 0 && v <= 1,
+};
+export function cleanSettings(raw) {
+  const s = { ...DEFAULT_SAVE.settings, ...part(raw) };
+  for (const [k, ok] of Object.entries(SETTING_OK)) if (!ok(s[k])) s[k] = DEFAULT_SAVE.settings[k];
+  return s;
+}
+
 export function loadSave() {
   try {
     const raw = localStorage.getItem(KEY);
@@ -51,7 +70,7 @@ export function loadSave() {
       wallet: Number.isFinite(data.wallet) ? data.wallet : DEFAULT_SAVE.wallet,
       best: { ...DEFAULT_SAVE.best, ...part(data.best) },
       stats: { ...DEFAULT_SAVE.stats, ...part(data.stats) },
-      settings: { ...DEFAULT_SAVE.settings, ...part(data.settings) },
+      settings: cleanSettings(data.settings),
       upgrades: { ...part(data.upgrades) },
       visits: { ...part(data.visits) },
       album: cleanAlbum(data.album),
