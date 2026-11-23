@@ -22,7 +22,7 @@
 //   oder Ereignis), nichts aus der Sperrliste der Recherche.
 // - Handy hochkant: Wo der Mittelbildschirm rechts aus dem Bild ragt, steht seine Akku-Karte als kleine Kopie oben in
 //   der zweiten Reihe (statt des Spur-Balkens), sonst nirgends.
-import { mainSource } from './lib/main-source.mjs';
+import { mainSource, gameSource } from './lib/main-source.mjs';
 import { readFileSync } from 'node:fs';
 import * as DATA from '../src/data.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
@@ -69,7 +69,13 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   ok(texts.length > 1000, `nur ${texts.length} Texte in data.js gefunden`);
   for (const t of texts) ok(!/NOMI/.test(t), `data.js nennt NOMI: „${t.slice(0, 80)}“`);
   // Zeichenketten im Quelltext von Spiel, Oberfläche und Cockpit (Kommentare dürfen den alten Namen tragen)
-  for (const f of ['src/data.js', 'src/game/game.js', 'src/ui/ui.js', 'src/ui/menus.js', 'src/ui/first-tips.js', 'src/ui/drive-hint.js', 'src/cockpit/screen.js', 'src/main.js', 'src/world/xxl/charge.js', 'src/game/damage.js']) {
+  const files = [
+    'src/data.js', 'src/game/game.js', 'src/game/parts/akku.js', 'src/game/parts/spur-wetter.js',
+    'src/game/parts/ziel.js', 'src/game/parts/ereignisse.js', 'src/game/parts/stream.js', 'src/ui/ui.js',
+    'src/ui/menus.js', 'src/ui/first-tips.js', 'src/ui/drive-hint.js', 'src/cockpit/screen.js', 'src/main.js',
+    'src/scenes/start.js', 'src/scenes/stop.js', 'src/scenes/tv.js', 'src/world/xxl/charge.js', 'src/game/damage.js',
+  ];
+  for (const f of files) {
     read(f).split('\n').forEach((line, i) => {
       const code = line.replace(/^\s*(\/\/|\*|\/\*).*$/, '').replace(/\/\/.*$/, '');
       const strings = code.match(/'[^']*'|`[^`]*`|"[^"]*"/g) || [];
@@ -399,7 +405,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   }
   ok(!CHAT.crash.some((l) => /ist unterwegs/.test(l)), 'Nach dem Rempler kündigt der Chat die Polizei an, die nie kommt');
   // Stichworte nur in Vorräten, die über chatLine/fresh laufen (sonst stünde „[ab]“ im Chat)
-  const src = read('src/game/game.js') + mainSource();
+  const src = gameSource() + mainSource();
   for (const [name, pool] of Object.entries(CHAT)) {
     if (!Array.isArray(pool) || !pool.some((l) => l.startsWith('['))) continue;
     ok(!new RegExp(`pick\\(CHAT\\.${name}\\)`).test(src), `CHAT.${name} hat Stichworte, wird aber mit pick() gezogen`);
