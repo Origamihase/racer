@@ -411,12 +411,12 @@ export class ZielPart {
     else if (e.type === 'rest') {
       // (hat tickHalt den Halt schon selbst festgestellt, ist die Ankunft längst gefeiert)
       if (this.navi.stopping) this.arriveAtFountain();
-    } else if (e.type === 'charge') this.startCharge(e);
+    } else if (e.type === 'charge') this.akku.start(e);
     else if (e.type === 'fork') {
       // anders gefahren als angesagt: Die Fahrt plant von dort neu, und OMI sagt es (am geplanten Ladestopp vorbei:
       // der Stopp ist weg, die nächste Warnung bietet den nächsten Park an)
       if (e.wrong) this.say(e.stop ? REISE_AKKU.missed : 'Route wird neu berechnet.', 'think', { priority: false });
-      if (e.wrong && e.stop) this.batteryWarned = 0;
+      if (e.wrong && e.stop) this.akku.warned = 0;
       // ein Umweg mit Ziel: Der Chat stöhnt, und die Zeit des Umwegs zählt (satisfaction.js)
       if (e.wrong && this.navi.target) this.zufrieden.detour();
       if (e.wrong && e.planned === 'exit') {

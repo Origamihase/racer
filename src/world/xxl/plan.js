@@ -331,7 +331,7 @@ export class Arrival {
    * Ladeplatz neben dem Wagen oder null: Er steht oder kriecht vorwärts (unter POST_ZONE.crawl) in der eigenen Spur in
    * der Zone der Ladesäule eines Orts (POST) oder der freien Heldenbucht eines Ladeparks (PARK, dieselbe Zone um Mitte
    * und Halt), und dort wurde in dieser Durchfahrt noch nicht geladen. Ergebnis { sec, park, post, name }: derselbe
-   * Ladestopp wie geplant (Game.chargeOffer bietet ihn am Rand an, Taste L startet ihn mit charge).
+   * Ladestopp wie geplant (Akku.chargeOffer bietet ihn am Rand an, Taste L startet ihn mit charge).
    */
   chargeSpot(trip, speed) {
     const c = trip.section;

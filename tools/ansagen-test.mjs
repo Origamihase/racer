@@ -70,7 +70,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   for (const t of texts) ok(!/NOMI/.test(t), `data.js nennt NOMI: „${t.slice(0, 80)}“`);
   // Zeichenketten im Quelltext von Spiel, Oberfläche und Cockpit (Kommentare dürfen den alten Namen tragen)
   const files = [
-    'src/data.js', 'src/game/game.js', 'src/game/parts/akku.js', 'src/game/parts/spur-wetter.js',
+    'src/data.js', 'src/game/game.js', 'src/game/akku.js', 'src/game/parts/spur-wetter.js',
     'src/game/parts/ziel.js', 'src/game/parts/ereignisse.js', 'src/game/parts/stream.js', 'src/ui/ui.js',
     'src/ui/menus.js', 'src/ui/first-tips.js', 'src/ui/drive-hint.js', 'src/cockpit/screen.js', 'src/main.js',
     'src/scenes/start.js', 'src/scenes/stop.js', 'src/scenes/tv.js', 'src/world/xxl/charge.js', 'src/game/damage.js',
@@ -492,7 +492,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   ok(cut(390, 844) && cut(360, 780) && cut(412, 915) && !cut(1280, 720) && !cut(844, 390) && !cut(1920, 1080), 'Mittelbildschirm: Er ragt nicht genau hochkant aus dem Bild');
   const ui = read('src/ui/ui.js');
   const css = read('docs/style.css');
-  ok(/toggle\('screen-cut', cockpitParts\(W, window\.innerHeight\)\.screen\.right > W\)/.test(ui) && /this\.showAkkuCard\(g\.lowBatteryCard\(\)\)/.test(ui), 'ui.js: Akku-Kopie nicht an Mittelbildschirm und Akku-Karte gebunden');
+  ok(/toggle\('screen-cut', cockpitParts\(W, window\.innerHeight\)\.screen\.right > W\)/.test(ui) && /this\.showAkkuCard\(g\.akku\.card\(\)\)/.test(ui), 'ui.js: Akku-Kopie nicht an Mittelbildschirm und Akku-Karte gebunden');
   ok(/\.akku-mini \{ display: none;/.test(css) && /\.screen-cut \.akku-mini\.on \{ display: flex; \}/.test(css) && /\.top-row:has\(\.akku-mini\.on\) \.navi-turn \{ display: none; \}/.test(css) && HOMES.akku, 'style.css/sicht.js: Akku-Kopie nicht nur bei abgeschnittenem Mittelbildschirm oder ohne Platz');
   // derselbe Inhalt wie die Karte des Mittelbildschirms (Game.lowBatteryCard): Stufe, Prozent, Ladepark
   const sim = makeStream({ driver: DRIVERS.mittel, seed: 6 });
@@ -505,8 +505,8 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   for (const pct of [50, 9.4, 4.2, 0]) {
     g.player.battery = pct;
     g.t += 0.5;
-    g.lowBattery();
-    const b = g.lowBatteryCard();
+    g.akku.lowBattery();
+    const b = g.akku.card();
     UI.prototype.showAkkuCard.call(f, b);
     seen.push(f.akkuEl.on.has('on') ? f.akkuTitle.textContent + ' | ' + f.akkuPark.textContent : '–');
   }

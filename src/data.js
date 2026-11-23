@@ -559,7 +559,7 @@ export const CHAT = {
   elsa: ['ELSA!!! ❤🐟', 'Elsa ❤', 'Spirit-Animal gesichtet!', '👑🐟'],
   record: ['REKORD!!! 🎉', 'Neuer Zuschauerrekord!', 'Diesmal ohne Viewer-Bots 🤖', 'Hype!'],
   koriander: ['Bäh, Koriander 🤢', 'Nicht der Koriander!', 'Wer hat da Koriander bestellt?'],
-  // Reise: Ladestopp im Ladepark (Game.tickCharge), die Popcorn-Maschine an der Säule und die Saftpause
+  // Reise: Ladestopp im Ladepark (Akku.tickCharge), die Popcorn-Maschine an der Säule und die Saftpause
   popcorn: ['Popcorn-Stream! 🍿', '🍿🍿🍿', 'Haushaltsgeräte an der E-Säule testen 😂', 'Die Säule kann auch Popcorn!', 'Popcorn mit Ökostrom 🔌', 'Salzig oder süß? 🍿'],
   saftpause: ['Bananensaft-Pause! 🍌', 'Prost, Mini Adam! 🍌', 'Zucker tanken 🍌🔋', 'Erst Saft, dann Strom 😄'],
   shoulder: ['Standstreifen?! 😱', 'Polizei Gifhorn!!', 'Das ist keine Fahrspur!'],
@@ -975,7 +975,7 @@ export const JOB_TEMPLATES = [
 
 // Reise: OMIs Akku-Warnungen nennen den nächsten Ladeplatz auf dem Weg mit Entfernung (trip.js nextRest: ein Ladepark
 // oder die Ladesäule eines Orts, „Ladesäule in …“); Taste L oder der Knopf „Ladestopp einplanen“ machen ihn zum
-// Zwischenziel. Dort parkt der Wagen an der freien Säule ein und lädt im Zeitraffer voll (Game.startCharge,
+// Zwischenziel. Dort parkt der Wagen an der freien Säule ein und lädt im Zeitraffer voll (Akku.start,
 // xxl/charge.js STOP). {pct} Prozent, {park} Name, {km} Weg.
 export const REISE_AKKU = {
   warn: [25, 10], // Prozent: OMI warnt, und noch einmal, wenn es knapp wird

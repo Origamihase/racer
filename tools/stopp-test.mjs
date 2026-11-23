@@ -1,6 +1,6 @@
 // Ladestopp im Park (REISE.md A5): der Weg in die freie Heldenbucht und wieder hinaus (src/world/xxl/charge.js dockPath,
-// rollPose), der Fahrplan des Stopps (STOP, stopPlan) und was das Spiel daraus macht (src/game/game.js startCharge,
-// tickCharge, skipCharge): Der Wagen setzt ohne Sprung und ohne etwas zu streifen rückwärts in die Bucht und steht dort
+// rollPose), der Fahrplan des Stopps (STOP, stopPlan) und was das Spiel daraus macht (src/game/akku.js start,
+// tickCharge, skip): Der Wagen setzt ohne Sprung und ohne etwas zu streifen rückwärts in die Bucht und steht dort
 // parallel zu ihr, die Räder kreuzen den Bordstein nur, wo er abgesenkt ist, ausgeparkt wird bis in die Spur des Parks;
 // wer überspringt, früh oder spät, steht im selben Zustand wie nach dem ganzen Stopp, und die Fahrt geht auf dem
 // geplanten Weg weiter zur Autobahn, ohne „Bitte wenden“; wer ohne Plan rechts in einen Park fährt, bekommt denselben
@@ -17,6 +17,8 @@ import { Trip, J } from '../src/game/trip.js';
 import { findPlace } from '../src/map/graph.js';
 import { Arrival, limitsFor, AUTO } from '../src/world/xxl/plan.js';
 import { Game, AKKU_CARD, akkuLevel } from '../src/game/game.js';
+import { AKKU_HOST } from '../src/game/akku.js';
+import { readFileSync } from 'node:fs';
 import { DRIVE_DEFAULTS } from '../src/game/player.js';
 import { BOARD, REISE_AKKU, fillTemplate } from '../src/data.js';
 
@@ -246,12 +248,12 @@ function stream(skip, plan = true) {
     // keine Gebote: die Route bleibt, wie sie ist (der Zufall läuft in allen drei Streams gleich)
     game.T.bid = Math.max(game.T.bid, 60);
     if (!planned && game.t > 1) {
-      game.planStop();
+      game.akku.planStop();
       planned = trip.stop >= 0;
       ok(planned, 'Ladestopp lässt sich nicht einplanen');
     }
     const sec = trip.section;
-    if (!plan && trip.stop >= 0 && sec.kind === 'ab' && sec.fork && parkAt(sec.fork.node) === trip.stop) game.planStop();
+    if (!plan && trip.stop >= 0 && sec.kind === 'ab' && sec.fork && parkAt(sec.fork.node) === trip.stop) game.akku.planStop();
     limitsFor(trip, lim, arrival.stop(trip));
     p.setLimits(lim);
     let want = J.L0;
@@ -267,9 +269,9 @@ function stream(skip, plan = true) {
     ctl.throttle = game.charging ? 0 : p.speed < v - 0.5 ? 1 : 0;
     ctl.brake = p.speed > v + 3 ? 0.4 : 0;
     const was = !!game.charging;
-    if (game.charging && skip !== null && game.chargeT() >= skip) game.skipCharge();
+    if (game.charging && skip !== null && game.akku.sceneT() >= skip) game.akku.skip();
     // Geplauder mitten im Stopp (der Fehlalarm des Wischers) und etwas Wichtiges: OMI sagt dort nur ihren Satz
-    if (game.charging && !chatter && game.chargeT() >= 0.3) {
+    if (game.charging && !chatter && game.akku.sceneT() >= 0.3) {
       chatter = true;
       game.say(BOARD.wiperPhantom, 'think', { priority: false });
       game.say('Prüfsatz nach dem Stopp.', 'think');
@@ -277,7 +279,7 @@ function stream(skip, plan = true) {
     game.offAutobahn = trip.section.kind !== 'ab';
     game.update(DT, ctl, camera);
     if (was && !game.charging) {
-      out.charged = { battery: p.battery, charges: game.stats.parkCharges, bananas: game.stats.bananas, held: !!arrival.held, sugarDue: game.sugarDue, stop: trip.stop, t: +(game.t - halt.t).toFixed(2) };
+      out.charged = { battery: p.battery, charges: game.stats.parkCharges, bananas: game.stats.bananas, held: !!arrival.held, sugarDue: game.akku.sugarDue, stop: trip.stop, t: +(game.t - halt.t).toFixed(2) };
     }
     const evs = trip.update(p.s, p.x);
     for (const ev of evs) {
@@ -363,8 +365,8 @@ function postStream() {
     game.T.bid = Math.max(game.T.bid, 60);
     if (!out.planned && game.t > 1.5) {
       out.first = trip.restsAhead(1)[0] ?? null;
-      out.card = game.lowBatteryCard();
-      game.planStop();
+      out.card = game.akku.card();
+      game.akku.planStop();
       out.planned = { stop: trip.stop, post: trip.post };
       p.battery = 40;
     }
@@ -461,7 +463,7 @@ function emptyRun({ target = null, battery = 10.6, reach = null, secs = 600 } = 
   game.start({ upgrades: {}, best: {} });
   if (target) trip.setTarget(findPlace(target));
   // Reichweite vorgegeben (reach: Reisekilometer), statt sie aus dem gemessenen Verbrauch zu schätzen
-  if (reach !== null) game.reachable = (q) => q.km < reach;
+  if (reach !== null) game.akku.reachable = (q) => q.km < reach;
   const p = game.player;
   p.configure({ ...DRIVE_DEFAULTS, cruise: true });
   p.s = trip.s;
@@ -635,15 +637,27 @@ console.log(`Popcorn: ${fly.ok} von ${fly.n} Körnern springen aus der Tür der 
     const trip = { scale: 1, km: 0, restsAhead: (n) => rests.slice(0, n), pastTarget: () => null };
     g.world.trip = () => trip;
     g.player.battery = 60;
-    g.akku.next = 0;
-    g.batteryWarned = 0;
+    g.akku.meter.next = 0;
+    g.akku.warned = 0;
     let line = null;
     g.say = (text) => (line = text);
-    g.journeyBattery();
+    g.akku.journeyBattery();
     ok(!!line === want && (!want || line === fillTemplate(A.last, { pct: 60, park: rests[0].name, km: '30 Kilometern' }) || /liegt noch in Reichweite/.test(line)), `Frühe Akku-Warnung (${what}): ${line || 'keine'}`);
     if (line) said.push(line);
   }
   console.log(`Frühe Akku-Warnung bei 60 %: ${said.length} von ${cases.length} Lagen („${said[0] || '–'}“), Säulen bis ${A.past} km hinter dem Park zählen nicht`);
+}
+// --- Schnittstelle des Akkus ------------------------------------------------------------------------------------------
+// Die Klasse Akku (src/game/akku.js) liest vom Spiel nur, was AKKU_HOST nennt – und die Liste nennt nichts, was sie nicht braucht.
+{
+  const src = readFileSync(new URL('../src/game/akku.js', import.meta.url), 'utf8').replace(/^\s*(\/\/|\*|\/\*).*$/gm, '');
+  const used = new Set([...src.matchAll(/(?:this\.g|(?<![\w$.])g)\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]));
+  // (this.g bzw. g nur mit Punkt dahinter: das Spiel wird nicht weitergereicht und nicht mit [] gelesen)
+  const loose = src.replace(/this\.g = g;|const g = this\.g;|constructor\(g\)/g, '').match(/(?:this\.g|(?<![\w$.])g)(?!\.[A-Za-z_$])(?![\w$])/g);
+  ok(!loose, `akku.js greift auf das Spiel anders zu als über this.g.<Name> (${loose})`);
+  for (const k of used) ok(AKKU_HOST.includes(k), `akku.js liest Game.${k}, das nicht in AKKU_HOST steht`);
+  for (const k of AKKU_HOST) ok(used.has(k), `AKKU_HOST nennt ${k}, das akku.js nicht braucht`);
+  console.log(`Akku-Schnittstelle: ${used.size} Namen des Spiels (${[...used].sort().join(', ')})`);
 }
 if (fails) {
   console.log(`stopp-test: ${fails} Fehler`);

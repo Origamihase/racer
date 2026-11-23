@@ -1,4 +1,4 @@
-// Koriander auf der Fahrbahn (nein!). Akku und Bananensaft gibt es im Ladepark (Game.tickCharge).
+// Koriander auf der Fahrbahn (nein!). Akku und Bananensaft gibt es im Ladepark (Akku.tickCharge).
 import * as THREE from 'three';
 import { W, curveAt, curvePoint } from '../curve.js';
 import { ROAD, roundRect } from '../textures.js';

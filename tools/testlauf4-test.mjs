@@ -93,7 +93,7 @@ console.log('1. Ladesäule im Ort:');
 /**
  * Ein Stream mit dem echten Spiel, der echten Fahrt und dem Halt der Welt (Arrival mit Spielzeit, wie world.js), am
  * Steuer ein Mensch: 130 km/h auf der Autobahn, 50 im Ort; im Ort Hanau bremst er ab u = brakeAt voll und bleibt stehen.
- * plan: mit Taste L (game.planStop) den Stopp an der Säule eingeplant; key: so viele Sekunden nach dem Halt drückt er
+ * plan: mit Taste L (game.akku.planStop) den Stopp an der Säule eingeplant; key: so viele Sekunden nach dem Halt drückt er
  * dort L (ohne Plan lädt nur L, laden2: „wie bei BrunnenTV mit B“). Ergebnis: wo er stand, wann und mit welchem
  * Fahrplan der Ladestopp begann, Akku danach, Ankunft am Brunnen.
  */
@@ -127,7 +127,7 @@ function postRun({ plan, brakeAt, key }) {
   for (let i = 0; i < 700 / DT; i++) {
     game.T.bid = Math.max(game.T.bid, 60);
     if (plan && !out.planned && game.t > 1.5) {
-      game.planStop();
+      game.akku.planStop();
       out.planned = { post: trip.post, stop: trip.stop };
     }
     limitsFor(trip, lim, arrival.stop(trip));
