@@ -110,6 +110,10 @@ npm run serve   # startet einen kleinen Webserver auf Port 8080
 `docs/game.js` ist eingecheckt, damit GitHub Pages ohne Build-Schritt funktioniert.
 Nach Änderungen in `src/` bitte `npm run build` ausführen und die neue `docs/game.js` mit committen.
 
+Die CI (`.github/workflows/ci.yml`) prüft jeden Pull Request und jeden Stand von `main`: `docs/game.js` muss
+genau dem Build aus `src/` entsprechen, `src/map/data.js` und `shapes.js` genau der Ausgabe von `npm run map`, und
+`npm test` (alle Prüfstände) muss durchlaufen. Fällt einer der Schritte durch, nennt die CI den Befehl, der fehlt.
+
 | Ordner | Inhalt |
 | --- | --- |
 | `src/main.js` | Renderer, Kameras, Zustände (Titel, Startszene, Fahrt, Halt am Brunnen, Abspann), Hauptschleife |

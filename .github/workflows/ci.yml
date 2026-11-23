@@ -1,0 +1,55 @@
+# Prüft jeden Pull Request und jeden Stand von main, bevor GitHub Pages ihn ausliefert:
+# - die Kartendaten (src/map/data.js, shapes.js) sind genau das, was `npm run map` aus tools/map/netz.json erzeugt,
+# - das Spiel-Bundle docs/game.js ist genau das, was `npm run build` aus src/ baut (Pages hat keinen Build-Schritt),
+# - alle Prüfstände (`npm test`) laufen durch.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruefen:
+    name: Build und Prüfstände
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhängigkeiten
+        run: npm ci
+
+      - name: Kartendaten passen zu netz.json
+        run: |
+          npm run map
+          if ! git diff --quiet -- src/map/data.js src/map/shapes.js; then
+            echo "::error::src/map/data.js oder shapes.js passt nicht zu tools/map/netz.json – bitte 'npm run map' ausführen und das Ergebnis committen."
+            git diff --stat -- src/map/data.js src/map/shapes.js
+            exit 1
+          fi
+
+      - name: docs/game.js passt zu src/
+        run: |
+          npm run build
+          if ! git diff --quiet -- docs/game.js; then
+            echo "::error::docs/game.js ist nicht aus dem aktuellen src/ gebaut – bitte 'npm run build' ausführen und docs/game.js committen."
+            git diff --stat -- docs/game.js
+            exit 1
+          fi
+
+      - name: Prüfstände
+        run: npm test
