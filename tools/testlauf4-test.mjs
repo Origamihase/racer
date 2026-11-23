@@ -41,7 +41,7 @@
 //    (laden2: ein manuelles Triggern wie bei BrunnenTV mit B) – dieselbe Szene wie im Park, der Akku ist danach voll,
 //    und es geht weiter zum Brunnen. Der Weg der Szene rollt dafür ohne Sprung erst vor bis an den
 //    Haltepunkt und setzt dann rückwärts in die Bucht (charge.js stopPlan, creepPath).
-import { mainSource } from './lib/main-source.mjs';
+import { mainSource, gameSource } from './lib/main-source.mjs';
 import { PerspectiveCamera } from 'three';
 import { Trip, J } from '../src/game/trip.js';
 import { findPlace } from '../src/map/graph.js';
@@ -373,7 +373,7 @@ console.log('2. Schöner Brunnen in jeder Folge:');
     ok(echo.length === 1, `${name}: Chat ruft ${echo.length}× nach`);
   }
   // der Megafon-Wunsch (eine Aktion, 1 s nach dem Kauf gerufen) platzt nicht in eine Folge
-  const gameSrc = readFileSync(new URL('../src/game/game.js', import.meta.url), 'utf8');
+  const gameSrc = gameSource();
   ok(/this\.later\(1, \(\) => \{\s*\/\/[^\n]*\n\s*if \(this\.tv \|\| this\.charging\) return;\s*this\.audio\.megafon\(\);/.test(gameSrc), 'game.js: Megafon-Wunsch ohne Prüfung auf eine Szene');
   const sp = engine.log.filter((e) => e.text === SCHOENER_BRUNNEN.say);
   console.log(`  ${episodes.length} Folgen (${episodes.filter((e) => e.way).length} unterwegs): Ruf ab ${sp.map((e) => { const ep = episodes.find((q) => e.start >= q.t0 + offset && e.start < q.t0 + offset + TV.end); return ep ? (e.start - offset - ep.t0).toFixed(2) : '?'; }).join(', ')} s, je ganz gesprochen (${sp.map((e) => (e.end - e.start).toFixed(1)).join(', ')} s); Untertitel oben; ${engine.log.filter((e) => e.lost).length} Sätze verschluckt, ${engine.log.filter((e) => e.cut).length} abgebrochen`);

@@ -4,6 +4,7 @@
 // Mysterybox; dazu drei Punkte der Fahrt (das kleine Navi im Kärtchen der Drohnenansicht, Meter auf den letzten 1,5 km
 // vor der Ausfahrt, der Tempomat am Blitzer) und die Grundregel aller Gags: Sie würfeln mit eigenem Zufall – ein
 // Stream verläuft mit ihnen genauso wie ohne sie.
+import { gameSource } from './lib/main-source.mjs';
 import { readFileSync } from 'node:fs';
 import { fmtNum, fmtCent } from '../src/util.js';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
@@ -285,7 +286,7 @@ function fakeGame(secs, { gate = true } = {}) {
     joins += members.length;
   }
   ok(/if \(o\.gags\?\.verein\) line\('Vereinsmitglieder', fmtNum\(o\.gags\.verein\.members\.length\)\)/.test(read('src/ui/menus.js')), 'menus.js: die Abrechnung nennt die Vereinsmitglieder nicht');
-  ok(/gags: this\.gags\.report\(\)/.test(read('src/game/game.js')), 'game.js: Game.end gibt den Gags nichts mit');
+  ok(/gags: this\.gags\.report\(\)/.test(gameSource()), 'game.js: Game.end gibt den Gags nichts mit');
   ok(thanksGroups({}).length === 0 && !thanksGroups({ verein: null }).some((x) => x.id === 'verein'), 'Abspann: Verein ohne Gründung');
   console.log(`  Verein „${G.name}“: ${joins} Beitritte in 2 × 30 min, James begrüßt jeden ohne Zahl, Abrechnung und Abspann nennen sie`);
 }
@@ -433,7 +434,7 @@ function fakeGame(secs, { gate = true } = {}) {
 
 // --- 7. Schade Schokolade: wenn etwas schiefgeht, höchstens alle SCHADE.gap Sekunden --------------------------------
 {
-  const game = read('src/game/game.js');
+  const game = gameSource();
   const at = (kind, before) => {
     const i = game.indexOf(`this.gags.fail('${kind}');`);
     return i > 0 && game.slice(Math.max(0, i - 400), i).includes(before);
@@ -831,7 +832,7 @@ function fakeGame(secs, { gate = true } = {}) {
   const brav = zoneRun(200, 'brav');
   const bravFrei = zoneRun(200, 'brav', false);
   ok(brav.atCam > 150 && brav.atCam === bravFrei.atCam && brav.after === bravFrei.after, `Brave Fahrer merken die Zone (${brav.atCam.toFixed(2)} statt ${bravFrei.atCam.toFixed(2)} km/h)`);
-  ok(/p\.setLimits\(\{ zone: zb && p\.s > zb\.limitS - ZONE_LEAD && p\.s < zb\.endS \? 120 \/ 3\.6 : Infinity \}\);/.test(read('src/game/game.js')), 'game.js gibt dem Tempomaten die Zone am Blitzer nicht');
+  ok(/p\.setLimits\(\{ zone: zb && p\.s > zb\.limitS - ZONE_LEAD && p\.s < zb\.endS \? 120 \/ 3\.6 : Infinity \}\);/.test(gameSource()), 'game.js gibt dem Tempomaten die Zone am Blitzer nicht');
   // im Spiel: die Zone steht, solange der Wagen in ihr (oder ZONE_LEAD davor) ist
   const sim = makeStream({ seed: 3 });
   sim.step(2);

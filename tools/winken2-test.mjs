@@ -9,7 +9,7 @@
 // 3. Finger gespreizt: Die winkende Hand ist offen – fünf Finger, die man einzeln sieht (der Daumen weit zur Seite, vier
 //    gefächerte Finger mit Luft dazwischen) –, außen (Figur in Außenansicht und Facecam) wie in der Ich-Perspektive,
 //    und oben zeigt die Handfläche dem, den er grüßt: der Kamera (Facecam) oder dem Menschen am Gehweg.
-import { mainSource } from './lib/main-source.mjs';
+import { mainSource, gameSource } from './lib/main-source.mjs';
 import { readFileSync } from 'node:fs';
 import { armStream, per10, RAISES } from './winken-sim.mjs';
 import { WAVE } from '../src/game/wave.js';
@@ -56,7 +56,7 @@ console.log('1. Arme im Stream:');
 console.log('2. Seltener:');
 {
   // kein Jubeln mit dem Arm mehr: weder bei Spenden noch am Ziel (nur raiseBottle am Ladestopp nutzt die Geste)
-  const gameSrc = src('game/game.js');
+  const gameSrc = gameSource();
   const mini = src('models/miniAdam.js');
   ok(!/gesture\('cheer'\)/.test(main) && RAISES.spende === null && !RAISES.ziel, 'main.js: kein Jubeln mit dem Arm');
   ok((mini.match(/gesture\('cheer'\)/g) || []).length === 1 && /raiseBottle\(\) \{[^]*?mimic\.gesture\('cheer'\);/.test(mini), 'miniAdam.js: die Faust geht nur mit dem Bananensaft hoch');

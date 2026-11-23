@@ -1,6 +1,7 @@
 // Freie Sicht ohne Browser: die Geometrie aus src/ui/sicht.js auf allen Formaten, die gekauften Abdeckungen als
 // einzige Ausnahme und die drei Sprachdurchsagen des 19.11. Aufruf: node tools/sicht-test.mjs (Teil von „npm test“).
 // Der Browser-Teil (jede Einblendung gegen dasselbe Rechteck gemessen) ist tools/sicht-check.js.
+import { gameSource } from './lib/main-source.mjs';
 import { freeView, isNarrow, isCompact, chatBottom, chatWidth, infoWidth, stripWidth, cockpitParts, droneCar, overlap, COVERS, HOMES, NARROW_MID } from '../src/ui/sicht.js';
 import { BOARD, STUDIO, MEGAFON_WUENSCHE, BRUNNEN_MEGAFON, BRUNNEN_NOMI, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP } from '../src/data.js';
 import { DAMAGE_LINES } from '../src/game/damage.js';
@@ -111,7 +112,7 @@ check(all.includes(browser.match(/const BREIT = '([^']+)';/)[1]), 'die Sprachdur
   const { EYE } = await import('../src/cockpit/cockpit.js');
   const { ELSA_STATUE } = await import('../src/world/scenery.js');
   const { ROAD } = await import('../src/textures.js');
-  const view = +readFileSync(new URL('../src/game/game.js', import.meta.url), 'utf8').match(/const ELSA_VIEW = \((\d+) \* Math\.PI\) \/ 180;/)[1];
+  const view = +gameSource().match(/const ELSA_VIEW = \((\d+) \* Math\.PI\) \/ 180;/)[1];
   const boxes = CAM_HULL.map((b) => [C.x + b[0], C.y + b[1], C.z + b[2], C.x + b[3], C.y + b[4], C.z + b[5]]);
   // Strahl o + t·d (t von 0 bis 1) gegen einen Kasten (Slab-Verfahren)
   const hits = (o, d, b) => {

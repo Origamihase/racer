@@ -21,7 +21,7 @@
 //    Desktop, Handy und Tablet, nie in der freien Sicht, nie auf dem eigenen Wagen, dem Chat, den Touch-Knöpfen oder
 //    dem Blitzerfoto; es zeigt Ausschnitte des Mittelbildschirms (dieselben Zahlen), der dafür weiterzeichnet, ohne
 //    hochzuladen – und es ist nur in der Drohnenansicht während der Fahrt an, im Cockpit nie.
-import { mainSource } from './lib/main-source.mjs';
+import { mainSource, gameSource } from './lib/main-source.mjs';
 import { readFileSync } from 'node:fs';
 import * as G from '../src/map/graph.js';
 import * as shapes from '../src/map/shapes.js';
@@ -408,7 +408,7 @@ let stream12 = [];
   // kein anderer Weg im Code: winken nur über die Regel
   const src = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8');
   const main = mainSource();
-  const gameSrc = src('game/game.js');
+  const gameSrc = gameSource();
   const reasons = [...main.matchAll(/waveAt\('(\w+)'/g), ...gameSrc.matchAll(/waveAt\('(\w+)'/g), ...main.matchAll(/waves\.ask\('(\w+)'/g)].map((m) => m[1]);
   ok(reasons.length >= 5 && reasons.every((x) => WAVE.why.includes(x)), `Anlässe im Code: ${reasons.join(', ')}`);
   ok((gameSrc.match(/onMood\('wave'/g) || []).length === 1 && !/adamMood\('wave'/.test(main), 'winken nur über Game.waveAt');
