@@ -107,6 +107,10 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.domElement.id = 'view';
 app.prepend(renderer.domElement);
+// Grafikkarte zurückgesetzt (Treiber, Energiesparen, zu viele Tabs): three.js wartet auf den neuen Kontext und lädt
+// danach alles von selbst wieder hoch. Bis dahin bleibt das Bild stehen – also hält das Spiel an, statt blind
+// weiterzufahren; weiter geht es wie nach jeder Pause.
+renderer.domElement.addEventListener('webglcontextlost', () => pause());
 setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
 
 // --- Welt ----------------------------------------------------------------------
