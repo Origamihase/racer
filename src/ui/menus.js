@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, MEGAFON_ERSTATTET, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, MEGAFON_ERSTATTET, STREAM_GEBUCHT, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice } from '../data.js';
 import { fmtNum, fmtCent, fmtEuro, fmtSpan } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -363,6 +363,11 @@ export class Menus {
     el('span', '', stats, '❤️ ' + visitLine(d.visits));
     // das gekaufte Megafon ist erstattet worden (save.js refundMegafon): die Zeile steht bis zum ersten Besuch im Shop
     if (d.megafonNote) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.megafonNote)));
+    // der letzte Stream endete ohne Abspann (Seite zu, Absturz): Er ist gebucht, bis zur nächsten Fahrt steht es hier
+    const sn = d.streamNote;
+    if (sn) el('p', 'refund-note', card, STREAM_GEBUCHT(fmtOdo(sn.distance / 1000).replace(/ /g, '\u00a0'), fmtCent(Math.abs(sn.money)), sn.money < 0));
+    // mit einem Hinweis wird die Karte höher: Der Tastenhinweis am unteren Rand macht ihr Platz (style.css)
+    s.classList.toggle('has-note', !!(d.megafonNote || sn));
     el('div', 'title-hint', s, 'Enter: Losfahren · Pfeiltasten oder WASD: fahren · Esc: Pause' + (canFullscreen() ? ' · F: Vollbild' : ''));
     // Vollbild: oben rechts in der Ecke (die Liste darunter bleibt kurz); ein iPhone kann es nur vom Home-Bildschirm
     if (canFullscreen()) button(s, fullscreenLabel(), 'vollbild', 'fs-btn fs-corner');

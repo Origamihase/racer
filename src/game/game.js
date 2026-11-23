@@ -2865,6 +2865,24 @@ export class Game {
     if (reason !== 'quit') this.onMood(reason === 'werkstatt' ? 'ouch' : 'sleepy', 1);
   }
 
+  /**
+   * Der laufende Stream, wie end() ihn jetzt abrechnen würde (für den Zwischenstand im Spielstand, save.js
+   * settleStream): Geld abzüglich der Schäden, die noch nicht gebucht sind (die Rechnung unterwegs und die laufende
+   * Runde), Strecke, Zuschauerspitze, erreichte Ziele und Rempler. Ändert nichts am Spiel.
+   */
+  interim() {
+    const cost = (hits, marks) => Math.max(0, REPARATUR.bump * hits + REPARATUR.mark * marks);
+    let open = cost(this.tally.hits, scratchMarks(this.player.damage) - this.tally.marks);
+    if (this.billDue) open += cost(this.billDue.hits, this.billDue.marks);
+    return {
+      money: Math.round((this.money - open) * 100) / 100,
+      distance: this.odometer,
+      peakViewers: Math.round(this.peakViewers),
+      naviReached: this.stats.naviReached,
+      crashes: this.stats.crashes,
+    };
+  }
+
   /** Für den Abspann mitschreiben: kind donors, bids (v: Betrag) oder raids (v: Leute) – Summe und Anzahl je Name. */
   thank(kind, name, v) {
     if (!name) return;

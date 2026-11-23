@@ -1099,6 +1099,11 @@ export function shopPrice(it, lvl) {
   return it.code ? Math.round(p * (100 - it.code.off)) / 100 : p;
 }
 // Das Megafon ist kein Shop-Artikel mehr (save.js refundMegafon): Titel und Shop sagen es dem, der es gekauft hatte
+/** Titel nach einem Stream, der ohne Abspann endete (Seite zu, Absturz): was er gebracht hat (save.js settlePending). */
+export const STREAM_GEBUCHT = (km, euro, minus) =>
+  minus
+    ? `📼 Letzter Stream ohne Abspann gebucht: ${km}, Werkstatt −${euro}.`
+    : `📼 Letzter Stream ohne Abspann gebucht: ${km}, +${euro} im Guthaben.`;
 export const MEGAFON_ERSTATTET = (euro) => `📢 Das Megafon gehört jetzt zur Ausstattung – deine ${euro} sind zurück im Guthaben.`;
 
 // Abspann-Crew
