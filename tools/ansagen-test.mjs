@@ -22,6 +22,7 @@
 //   oder Ereignis), nichts aus der Sperrliste der Recherche.
 // - Handy hochkant: Wo der Mittelbildschirm rechts aus dem Bild ragt, steht seine Akku-Karte als kleine Kopie oben in
 //   der zweiten Reihe (statt des Spur-Balkens), sonst nirgends.
+import { mainSource } from './lib/main-source.mjs';
 import { readFileSync } from 'node:fs';
 import * as DATA from '../src/data.js';
 import { ZUFRIEDEN } from '../src/game/satisfaction.js';
@@ -83,7 +84,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
 {
   ok(DATA.PARTYPEOPLE.say === 'Partypeople!', `Gruß zum Start: ${DATA.PARTYPEOPLE.say}`);
   ok(DATA.VOICES.adam.pitch < 0.6, 'Mini Adams Stimme ist tief');
-  const main = read('src/main.js');
+  const main = mainSource();
   // erst „Wir sind live.“ (Sprachstudio), dann sein Gruß in seiner Stimme mit Untertitel, beides mit Vorrang der Reihe nach
   ok(/function streamStart\(\) \{[\s\S]*?speech\.say\(CHARGE_LINES\.live, game\.studioVoice\(\), \{ priority: true[\s\S]*?speech\.say\(text, 'adam', \{\s*priority: true[\s\S]*?ui\.adam\(text, /.test(main), 'main.js: „Wir sind live.“ und danach der Gruß in Mini Adams Stimme mit Untertitel');
   ok(/if \(!chargeRun\.hello\) streamStart\(\)/.test(main), 'main.js: ohne Startszene beginnt der Stream beim Losfahren');
@@ -398,7 +399,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   }
   ok(!CHAT.crash.some((l) => /ist unterwegs/.test(l)), 'Nach dem Rempler kündigt der Chat die Polizei an, die nie kommt');
   // Stichworte nur in Vorräten, die über chatLine/fresh laufen (sonst stünde „[ab]“ im Chat)
-  const src = read('src/game/game.js') + read('src/main.js');
+  const src = read('src/game/game.js') + mainSource();
   for (const [name, pool] of Object.entries(CHAT)) {
     if (!Array.isArray(pool) || !pool.some((l) => l.startsWith('['))) continue;
     ok(!new RegExp(`pick\\(CHAT\\.${name}\\)`).test(src), `CHAT.${name} hat Stichworte, wird aber mit pick() gezogen`);
@@ -540,7 +541,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
 
 // Nach dem Stopp, Neustart oder Ende des Streams: geplante Ansagen, Abspann im Ladestopp, Zeiten des neuen Streams
 {
-  const main = read('src/main.js');
+  const main = mainSource();
   ok(/if \(!game\.charging \|\| game\.over\) \{/.test(main), 'main.js: Endet der Stream im Ladestopp, bleibt die Szene stehen (stopTick)');
   ok(/function toTitle\(\) \{[^}]*liveOff\(\);/.test(main) && /state = 'ending';\n\s*stateT = 0;\n\s*liveOff\(\);/.test(main), 'main.js: „Wir sind live.“ kommt noch nach dem Ende');
   const sim = makeStream({ driver: DRIVERS.zuegig, seed: 3 });

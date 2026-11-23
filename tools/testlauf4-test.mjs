@@ -41,6 +41,7 @@
 //    (laden2: ein manuelles Triggern wie bei BrunnenTV mit B) – dieselbe Szene wie im Park, der Akku ist danach voll,
 //    und es geht weiter zum Brunnen. Der Weg der Szene rollt dafür ohne Sprung erst vor bis an den
 //    Haltepunkt und setzt dann rückwärts in die Bucht (charge.js stopPlan, creepPath).
+import { mainSource } from './lib/main-source.mjs';
 import { PerspectiveCamera } from 'three';
 import { Trip, J } from '../src/game/trip.js';
 import { findPlace } from '../src/map/graph.js';
@@ -460,7 +461,7 @@ console.log('3. Schäden werden abgezogen:');
     const c = acc(10);
     settleStream(c, { money: o.money, distance: o.distance });
     ok(a.wallet === 0 && b.wallet === 195 && c.wallet === Math.max(0, Math.round((10 + o.money) * 100) / 100), `Guthaben nach dem Stream: ${a.wallet}, ${b.wallet}, ${c.wallet}`);
-    ok(/settleStream\(save, \{ money: o\.money/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')), 'main.js bucht den Stream nicht über settleStream');
+    ok(/settleStream\(save, \{ money: o\.money/.test(mainSource()), 'main.js bucht den Stream nicht über settleStream');
   }
   console.log(`  Runde 1: ${b1 ? `${b1.hits} Rempler + ${b1.marks} Kratzer = ${b1.amount} €, Kasse ${b1.before} → ${b1.after} €, „${b1.toast.text}“` : '–'} · Ende: ${open} Rempler offen gebucht · Abspann „${row && row.children[0].textContent} ${row && row.children[1].textContent}“, Ergebnis ${mon && mon.children[0].textContent}`);
 }
@@ -521,7 +522,7 @@ console.log('4. BrunnenTV macht die Zuschauer glücklich:');
 // --- 5. Intro: „Wir sind live.“, dann „Partypeople!“ beim Winken -------------------------------------------------------
 console.log('5. Intro: erst Wir sind live, dann Partypeople beim Winken:');
 {
-  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const main = mainSource();
   ok(PARTYPEOPLE.say === 'Partypeople!' && !('wave' in PARTYPEOPLE), `Gruß: ${PARTYPEOPLE.say}`);
   // die Stellen aus main.js: der Beginn des Streams, sein Aufruf in der Szene und beim Losfahren, das Winken danach
   const fn = main.match(/function streamStart\(\) \{[\s\S]*?\n\}/);
@@ -785,7 +786,7 @@ console.log('9. Ladezeit:');
   const html = read('docs/index.html');
   const css = read('docs/style.css');
   const build = read('build.mjs');
-  const main = read('src/main.js');
+  const main = mainSource();
   ok(/<div class="load-bar" aria-hidden="true"><i><\/i><\/div>/.test(html) && html.indexOf('load-bar') > html.indexOf('id="loading"') && html.indexOf('load-bar') < html.indexOf('<noscript>'), 'index.html: keine Ladeanzeige im Ladebild');
   ok(/performance\.mark\('ma:inject'\)/.test(html) && /performance\.mark\(\\'ma:run\\'\)/.test(build), 'Marken ma:inject (index.html) und ma:run (build.mjs) fehlen');
   ok(/\.load-bar \{ position: absolute; left: 0; right: 0; bottom: env\(safe-area-inset-bottom, 0px\); height: 3px;/.test(css) && /\.load-bar i \{[^}]*transform-origin: 0 50%;[^}]*animation: loadcreep 16s step-end forwards;/.test(css), 'style.css: Ladeanzeige am Rand fehlt');

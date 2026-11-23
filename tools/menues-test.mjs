@@ -5,6 +5,7 @@
 // und in der Pause, und das Spiel selbst sendet nichts. Abspann: Jeder, der in einem simulierten Stream gespendet,
 // geboten, Abos verschenkt hat, VIP wurde oder geraidet hat, steht unter „Danke an“ mit seiner Summe.
 // node tools/menues-test.mjs
+import { mainSource } from './lib/main-source.mjs';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,7 +74,7 @@ if (PAD_DRIVE.stick === 0 || PAD_DRIVE.stick === 2) realPad.add(PAD_DRIVE.stick 
 const realTouch = new Set([...TOUCH_BUTTONS.map((t) => touchOf(t.action)), ...TOUCH_BUTTONS.filter((t) => t.now).map((t) => touchNowOf(t.action)), ...Object.values(TOUCH_LABELS), '⛶ im Menü', '✕ am Tipp']);
 ok(/⛶/.test(src('src/ui/fullscreen.js')) && /fs-btn/.test(src('src/ui/menus.js')), 'Vollbild-Knopf ⛶ im Menü fehlt');
 ok(/hint-close', card, '✕'/.test(src('src/ui/drive-hint.js')), 'das ✕ am Tipp fehlt');
-ok(/renderer\.domElement\.addEventListener\('pointerdown'[\s\S]{0,120}anyKey = true/.test(src('src/main.js')), 'Tipp aufs Bild überspringt keine Szene mehr');
+ok(/renderer\.domElement\.addEventListener\('pointerdown'[\s\S]{0,120}anyKey = true/.test(mainSource()), 'Tipp aufs Bild überspringt keine Szene mehr');
 for (const r of rows) {
   ok(r.text && r.text.length <= 40, `„${r.text}“: Text fehlt oder ist zu lang`);
   ok(!r.note || r.note.length <= 160, `„${r.text}“: Erklärung zu lang für das Handy`);
@@ -138,7 +139,7 @@ for (const device of ['keyboard', 'gamepad']) {
 // Back schaltet die Tipps der ersten Minuten ab wie Enter (main.js: take('confirm')); die Übersicht, „So steuerst du“
 // und der Tipp in der Steuerung nennen den Knopf
 ok(deviceKey('confirm', 'gamepad') === 'Back' && rowOf('confirm')[0].pad.includes('Back'), 'Gamepad: kein Knopf schaltet die Tipps ab');
-ok(/firstTips\.cur && input\.take\('confirm'\)\) tipsOff\(\)/.test(src('src/main.js')), 'Tipps: confirm schaltet sie nicht ab');
+ok(/firstTips\.cur && input\.take\('confirm'\)\) tipsOff\(\)/.test(mainSource()), 'Tipps: confirm schaltet sie nicht ab');
 ok(/deviceKey\('confirm', device\)/.test(src('src/ui/drive-hint.js')), 'So steuerst du: nennt die Taste zum Abschalten nicht');
 ok(/\(am Gamepad \$\{padOf\('confirm'\)\[0\]\}\) oder ✕ schaltet sie ab/.test(src('src/ui/menus.js')), 'Steuerung: Tipp nennt Back nicht');
 
@@ -229,9 +230,9 @@ ok(/\(am Gamepad \$\{padOf\('confirm'\)\[0\]\}\) oder ✕ schaltet sie ab/.test(
   delete globalThis.performance.now;
   delete globalThis.document;
   // die Pause beim Verlassen durch den Browser (main.js), die Menüs lassen ihm sein Esc
-  ok(/onFullscreenChange\(\(\{ on, own \}\) => \{\n  if \(!on && !own\) pause\(\);\n\}\);/.test(src('src/main.js')), 'main.js hält die Fahrt nicht an, wenn der Browser das Vollbild beendet');
+  ok(/onFullscreenChange\(\(\{ on, own \}\) => \{\n  if \(!on && !own\) pause\(\);\n\}\);/.test(mainSource()), 'main.js hält die Fahrt nicht an, wenn der Browser das Vollbild beendet');
   ok(/onKey\(e\) \{\n    if \(!this\.current\) return;\n[^\n]*\n    if \(escapeTaken\(e\)\) return;/.test(src('src/ui/menus.js')), 'Menüs: Esc im Vollbild drückt „Zurück“');
-  ok(/function pause\(\) \{\n  if \(state !== 'drive' \|\| paused\) return;/.test(src('src/main.js')), 'pause() öffnet die Pause zweimal');
+  ok(/function pause\(\) \{\n  if \(state !== 'drive' \|\| paused\) return;/.test(mainSource()), 'pause() öffnet die Pause zweimal');
 }
 
 // ---------- Abspann: „Danke an“ ----------

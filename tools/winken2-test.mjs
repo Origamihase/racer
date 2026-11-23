@@ -9,6 +9,7 @@
 // 3. Finger gespreizt: Die winkende Hand ist offen – fünf Finger, die man einzeln sieht (der Daumen weit zur Seite, vier
 //    gefächerte Finger mit Luft dazwischen) –, außen (Figur in Außenansicht und Facecam) wie in der Ich-Perspektive,
 //    und oben zeigt die Handfläche dem, den er grüßt: der Kamera (Facecam) oder dem Menschen am Gehweg.
+import { mainSource } from './lib/main-source.mjs';
 import { readFileSync } from 'node:fs';
 import { armStream, per10, RAISES } from './winken-sim.mjs';
 import { WAVE } from '../src/game/wave.js';
@@ -27,7 +28,7 @@ const ok = (cond, msg) => {
   console.log('FEHLER:', msg);
 };
 const src = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8');
-const main = src('main.js');
+const main = mainSource();
 
 // --- 1. Jeder Arm, der hochgeht, mit seinem Anlass ------------------------------------------------------------------
 console.log('1. Arme im Stream:');
