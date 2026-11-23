@@ -1862,6 +1862,7 @@ function xxlStep(p, w, dt) {
     traffic.reset();
     pickups.reset();
     scenery.reset();
+    game.dropRoadside();
     if (v && v.role === 'ahead') traffic.populate(p.s, p.speed);
   } else if (xxl.zonesChanged) scenery.invalidate(p.s + 1300);
   xxl.zonesChanged = false;
