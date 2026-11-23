@@ -15,6 +15,12 @@ import { goalName } from '../world/kit/layout.js';
 const NODE_XY = nodes.map((n) => project(n.lat, n.lon));
 /** Kilometer → Karteneinheiten in der Kartenhöhe y. */
 const ku = (km, y) => km / kmPerUnit(y);
+/**
+ * Gefahrener Weg (NavModel.trail): ein Punkt je km Kilometer, höchstens max Zahlen (x und y je Punkt); darüber wird er
+ * vor den letzten tail Zahlen (gut 60 km, dicht für die Nahansicht des Navis) gleichmäßig ausgedünnt, bis höchstens
+ * keep davon übrig sind.
+ */
+export const TRAIL = { km: 0.04, max: 12000, keep: 0.6, tail: 3000 };
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 function unit(x, y) {
   const l = Math.hypot(x, y);
@@ -591,6 +597,7 @@ export class NavModel {
     this.cur = new Line(); // eigener Weg (mit s-Zuordnung)
     this.route = null; // geplanter Weg bis zum Ziel: {line, a0 (Auto), stops, dest, kmTotal}
     this.trail = []; // gefahrener Weg (Kartenpunkte)
+    this.trailKm = TRAIL.km; // Mindestabstand seiner älteren Punkte (wächst, wenn das Ausdünnen nicht reicht, thinTrail)
     this.pose = { x: 0, y: 0, dx: 0, dy: -1, a: 0, kind: 'ab' };
     this.heading = null; // geglättete Fahrtrichtung [dx, dy]
     this.hop = null; // laufende Überfahrt {line, a0, a1, t, dur, kind}
@@ -917,31 +924,56 @@ export class NavModel {
     P.dy = this.heading[1];
     P.a = a;
     P.kind = trip.section.kind;
-    // gefahrener Weg: ein Punkt je gut 40 m (die Karte zeigt ihn bis in die Weltansicht)
-    const T = this.trail;
-    const n = T.length;
-    if (!this.hop && (!n || Math.hypot(T[n - 2] - p[0], T[n - 1] - p[1]) > ku(0.04, p[1]))) {
-      if (n && Math.hypot(T[n - 2] - p[0], T[n - 1] - p[1]) > ku(5, p[1])) T.push(NaN, NaN); // Sprung (Überfahrt)
-      T.push(p[0], p[1]);
-      if (T.length > 12000) this.thinTrail();
-    }
+    // gefahrener Weg: ein Punkt je gut 40 m (die Karte zeigt ihn bis in die Weltansicht; nach langer Fahrt seltener)
+    if (!this.hop) this.addTrail(p[0], p[1]);
     return ev;
   }
   secKindAt(m) {
     const sec = this.trip.cur.sections.find((c) => c.s0 === m.s0 && c.kind === 'term' && c.arrival);
     return sec ? sec.transit : 'faehre';
   }
-  /** Alte Hälfte des gefahrenen Wegs ausdünnen (jeder zweite Punkt), Sprünge bleiben. */
+  /** Punkt (x, y) des Autos an den gefahrenen Weg hängen, wenn er weit genug vom letzten entfernt ist. */
+  addTrail(x, y) {
+    const T = this.trail;
+    const n = T.length;
+    if (n && Math.hypot(T[n - 2] - x, T[n - 1] - y) <= ku(TRAIL.km, y)) return;
+    if (n && Math.hypot(T[n - 2] - x, T[n - 1] - y) > ku(5, y)) T.push(NaN, NaN); // Sprung (Überfahrt)
+    T.push(x, y);
+    if (T.length > TRAIL.max) this.thinTrail();
+  }
+
+  /**
+   * Den gefahrenen Weg gleichmäßig ausdünnen: Vor den letzten TRAIL.tail Zahlen (dort bleibt er dicht, das Navi zeigt
+   * ihn aus der Nähe) verdoppelt sich der Mindestabstand der Punkte, bis höchstens TRAIL.keep der Grenze übrig sind.
+   * Gleichmäßig über den ganzen älteren Teil, damit der Anfang einer langen Fahrt nicht bei jedem Mal wieder dran ist
+   * (er schrumpfte sonst zu einer Geraden über Hunderte Kilometer). Sprünge (NaN-Paare, Überfahrten) bleiben samt den
+   * Punkten an ihren Enden.
+   */
   thinTrail() {
     const T = this.trail;
-    const half = (T.length / 4) | 0;
-    const out = [];
-    for (let i = 0; i < half; i++) {
-      const j = i * 2;
-      if (i % 2 === 0 || Number.isNaN(T[j]) || Number.isNaN(T[j + 2])) out.push(T[j], T[j + 1]);
+    const cut = Math.max(0, T.length - TRAIL.tail);
+    // der kleinste Abstand (der bisherige oder ein Vielfaches davon), mit dem der Weg wieder unter die Grenze passt
+    for (;;) {
+      const out = [];
+      let lx = NaN;
+      let ly = NaN;
+      for (let j = 0; j < cut; j += 2) {
+        const x = T[j];
+        const y = T[j + 1];
+        const edge = Number.isNaN(x) || j === 0 || j + 2 >= cut || Number.isNaN(T[j - 2]) || Number.isNaN(T[j + 2]);
+        if (edge || Number.isNaN(lx) || Math.hypot(x - lx, y - ly) >= ku(this.trailKm, y)) {
+          out.push(x, y);
+          lx = x;
+          ly = y;
+        }
+      }
+      for (let j = cut; j < T.length; j++) out.push(T[j]);
+      if (out.length <= TRAIL.max * TRAIL.keep || this.trailKm > 1e4) {
+        this.trail = out;
+        return;
+      }
+      this.trailKm *= 2;
     }
-    for (let j = half * 2; j < T.length; j++) out.push(T[j]);
-    this.trail = out;
   }
 
   /** Punkt des Autos, während es über das Wasser (oder durch die Luft) hüpft: {x, y, dx, dy, f (0…1)} oder null. */
