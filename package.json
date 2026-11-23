@@ -9,7 +9,8 @@
     "dev": "node build.mjs --watch",
     "serve": "python3 -m http.server 8080 --directory docs",
     "map": "node tools/map/export.mjs",
-    "test": "node tools/save-test.mjs && node tools/zwischenstand-test.mjs && node tools/album-test.mjs && node tools/trip-test.mjs && node tools/course-test.mjs && node tools/steer-test.mjs && node tools/verkehr-test.mjs && node tools/xxl-test.mjs && node tools/wiper-test.mjs && node tools/shape-test.mjs && node tools/map-test.mjs && node tools/citykit-test.mjs && node tools/journey-test.mjs && node tools/brunnen-test.mjs && node tools/sicht-test.mjs && node tools/tipps-test.mjs && node tools/menues-test.mjs && node tools/radar-test.mjs && node tools/rueckwaerts-test.mjs && node tools/stopp-test.mjs && node tools/geld-test.mjs && node tools/ansagen-test.mjs && node tools/testlauf3-test.mjs && node tools/streamgags-test.mjs && node tools/testlauf4-test.mjs && node tools/laden2-test.mjs && node tools/winken2-test.mjs"
+    "test": "node tools/pruefstaende.mjs",
+    "smoke": "node tools/browser-smoke.mjs"
   },
   "repository": {
     "type": "git",
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "esbuild": "0.24.0",
+    "playwright": "1.63.0",
     "three": "0.170.0"
   }
 }
