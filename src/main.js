@@ -192,7 +192,8 @@ const SIDE = { w: 384, h: 72, hfov: 100 };
 const sideCam = new THREE.PerspectiveCamera((2 * Math.atan(Math.tan((SIDE.hfov * Math.PI) / 360) / (SIDE.w / SIDE.h)) * 180) / Math.PI, SIDE.w / SIDE.h, 0.4, 700);
 const sideRT = new THREE.WebGLRenderTarget(SIDE.w, SIDE.h, { type: THREE.HalfFloatType, depthBuffer: true });
 facecam.setSideView(sideRT.texture);
-const sideOn = () => settings.quality !== 'niedrig';
+// (in „Auto“ schaltet adaptResolution es auf langsamen Geräten ab, bevor das Bild unschärfer wird)
+const sideOn = () => settings.quality !== 'niedrig' && !(quality.auto && autoLevel >= 2);
 const compMat = createCompositeMaterial(worldRT.texture, windshield);
 const compScene = new THREE.Scene();
 const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compMat);
@@ -649,6 +650,7 @@ function applySettings(key) {
   if (!key || key === 'quality') {
     const before = quality;
     quality = qualityPreset();
+    autoLevel = 0;
     pixelRatio = quality.pr;
     if (before.shadows !== quality.shadows) {
       renderer.shadowMap.enabled = quality.shadows;
@@ -1907,6 +1909,15 @@ function onResize() {
 window.addEventListener('resize', onResize);
 onResize();
 
+/**
+ * Qualität „Auto“: Wird das Bild zu langsam (unter 45 Bildern je Sekunde), spart das Spiel zuerst, wo man es kaum sieht
+ * – die Welt im Rückspiegel nur jedes zweite, dann jedes dritte Bild (AUTO_MIRROR) und das Seitenfenster der Facecam
+ * gemalt statt gefilmt (sideOn) –, und erst danach an der Schärfe des ganzen Bilds (pixelRatio). Läuft es wieder
+ * flüssig (über 75 je Sekunde), kommt alles in umgekehrter Reihenfolge zurück.
+ */
+const AUTO_MIRROR = [1, 2, 3];
+let autoLevel = 0;
+const mirrorEvery = () => (quality.auto ? AUTO_MIRROR[autoLevel] : quality.mirrorEvery);
 const perf = { acc: 0, n: 0, cool: 3 };
 function adaptResolution(dt) {
   if (!quality.auto || state === 'loading') return;
@@ -1919,14 +1930,24 @@ function adaptResolution(dt) {
   perf.n = 0;
   if (perf.cool > 0) return;
   const maxPR = Math.min(window.devicePixelRatio || 1, 1.5);
-  if (avg > 1 / 45 && pixelRatio > 0.55) {
-    pixelRatio = Math.max(0.55, pixelRatio - 0.12);
-    perf.cool = 1.5;
-    onResize();
-  } else if (avg < 1 / 75 && pixelRatio < maxPR) {
-    pixelRatio = Math.min(maxPR, pixelRatio + 0.06);
-    perf.cool = 3;
-    onResize();
+  if (avg > 1 / 45) {
+    if (autoLevel < AUTO_MIRROR.length - 1) {
+      autoLevel++;
+      perf.cool = 1.5;
+    } else if (pixelRatio > 0.55) {
+      pixelRatio = Math.max(0.55, pixelRatio - 0.12);
+      perf.cool = 1.5;
+      onResize();
+    }
+  } else if (avg < 1 / 75) {
+    if (pixelRatio < maxPR) {
+      pixelRatio = Math.min(maxPR, pixelRatio + 0.06);
+      perf.cool = 3;
+      onResize();
+    } else if (autoLevel > 0) {
+      autoLevel--;
+      perf.cool = 3;
+    }
   }
 }
 
@@ -1951,7 +1972,7 @@ function renderWorld(cam, { cockpitOn, drops }) {
 function renderFrame(cockpitOn) {
   frameNo++;
   // Innen- und Außenspiegel: immer das Spiegelbild der Straße (die Kofferraum-Kamera zeigt der Mittelbildschirm)
-  if (cockpitOn && frameNo % quality.mirrorEvery === 0) {
+  if (cockpitOn && frameNo % mirrorEvery() === 0) {
     // Rückspiegel: Blick nach hinten
     rearCam.position.copy(localToWorld(tmpV2.set(0, 1.32, 0.9)));
     rearCam.lookAt(localToWorld(tmpV2.set(0, 1.05, 40)));
@@ -1993,7 +2014,7 @@ function renderFrame(cockpitOn) {
     const fc = facecamBox;
     if (fc) {
       // (nach einem Zeitsprung – Pause, Test – sofort, damit nie ein altes Bild stehen bleibt)
-      const due = !paused && (frameNo % Math.max(2, quality.mirrorEvery) === 0 || Math.abs(simT - facecam.shotT) > 0.3);
+      const due = !paused && (frameNo % Math.max(2, mirrorEvery()) === 0 || Math.abs(simT - facecam.shotT) > 0.3);
       if (!facecam.ready || due) {
         if (sideOn()) renderSide();
         facecam.render(renderer, fc, settings.quality === 'auto' ? 'hoch' : settings.quality);
@@ -2659,6 +2680,10 @@ if (DEBUG) {
     },
     get state() {
       return state;
+    },
+    // Qualität „Auto“ (adaptResolution): Sparstufe (Rückspiegel-Takt, Seitenfenster) und Schärfe
+    get autoQuality() {
+      return { level: autoLevel, mirrorEvery: mirrorEvery(), side: sideOn(), pixelRatio };
     },
     // der Ladestopp im Park (stopBegin … stopTick): on, c (game.charging), q (Lage des Wagens), skipT
     get stop() {
