@@ -63,6 +63,7 @@ import { openHandGeometry, mittenGeometry } from '../src/cockpit/hands.js';
 import { LAMP_OFF } from '../src/world/kit/street.js';
 import { PAL } from '../src/world/kit/palette.js';
 import { Gegenverkehr, GEGEN, twoWay, oncomingX } from '../src/world/xxl/gegenverkehr.js';
+import { APPEAR } from '../src/world/traffic.js';
 import { CAR_TYPES } from '../src/models/vehicles.js';
 import { autoTarget, squareOf } from '../src/world/xxl/plan.js';
 import { Group } from 'three';
@@ -700,7 +701,7 @@ console.log('8. Gegenverkehr:');
   trip.setTarget(goals[gi]);
   const G = new Gegenverkehr(null, { rnd: mulberry32(5), make });
   const P = { s: trip.s, x: trip.x, speed: 0, len: 4.7, w: 1.92 };
-  const st = { steps: 0, wrong: 0, fast: 0, lane: 0, crash: 0, max: 0, km: { stadt: 0, land: 0 }, seen: { stadt: new Set(), land: new Set() }, kinds: {}, ab: 0, island: 0 };
+  const st = { steps: 0, wrong: 0, fast: 0, lane: 0, crash: 0, max: 0, km: { stadt: 0, land: 0 }, seen: { stadt: new Set(), land: new Set() }, kinds: {}, ab: 0, island: 0, born: [], grown: [] };
   let t = 0;
   for (let i = 0; i < (30 * 60) / DT; i++) {
     const sec = trip.section;
@@ -731,8 +732,13 @@ console.log('8. Gegenverkehr:');
       if (Math.abs(c.x - oncomingX(csec)) > 0.45) st.lane++;
       st.seen[twoWay(csec) || 'stadt'].add(c);
       st.kinds[c.kind] = (st.kinds[c.kind] || 0) + 1;
+      // er wächst aus der Straße (traffic.js APPEAR), statt im Ort vor dem Nebel aus dem Nichts aufzutauchen
+      if (c.v.group.visible && c.age <= DT + 1e-9) st.born.push(c.v.group.scale.x);
+      if (c.v.group.visible && c.age >= APPEAR) st.grown.push(c.v.group.scale.x);
     }
   }
+  ok(st.born.length >= 5 && st.born.every((k) => k < 0.05), `Gegenverkehr erscheint gleich in voller Größe (${st.born.length} Fälle, größter ${Math.max(...st.born).toFixed(2)})`);
+  ok(st.grown.length && st.grown.every((k) => k === 1), 'Gegenverkehr wird nicht voll groß');
   const nS = st.seen.stadt.size;
   const nL = st.seen.land.size;
   ok(nS >= 5 && nL >= 5, `zu wenig Gegenverkehr: ${nS} im Ort, ${nL} draußen`);

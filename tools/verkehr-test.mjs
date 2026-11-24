@@ -221,6 +221,53 @@ const real = {};
   }
 }
 
+// --- Auftauchen und Ausfahrt (zweites Audit M4, M5) -----------------------------------------------------------------
+// Neue Autos wachsen in APPEAR Sekunden aus der Straße, statt aus dem Nichts aufzutauchen; der erste Verkehr einer
+// Autobahn (populate) steht gleich ganz da. Ist der Spieler schon auf der Ausfahrt (passive), bremst niemand mehr vor
+// ihm auf der rechten Spur.
+{
+  const { Traffic, APPEAR, appearScale } = await import('../src/world/traffic.js');
+  const { ROAD } = await import('../src/textures.js');
+  ok(appearScale(0) === 0 && appearScale(APPEAR) === 1 && appearScale(APPEAR / 2) > 0.4 && appearScale(APPEAR / 2) < 0.6, 'Auftauchen: Kurve stimmt nicht');
+  const tr = new Traffic({ add() {} });
+  const P = { s: 5000, x: ROAD.laneCenter(1), speed: 30, v: 30, len: 4.7, w: 1.9 };
+  const env = { difficulty: 0, leftOpen: false, rain: 0 };
+  let t = 100;
+  tr.update(1 / 30, t, P, env);
+  tr.populate(P.s, P.speed);
+  ok([...tr.cars, ...tr.oncoming].every((c) => c.v.group.scale.x === 1), 'Auftauchen: Der erste Verkehr der Autobahn wächst erst');
+  const old = new Set(tr.cars);
+  let fresh = null;
+  env.difficulty = 1; // dichter Verkehr: es kommt Nachschub voraus
+  for (let i = 0; i < 30 * 60 && !fresh; i++) {
+    P.s += 1;
+    tr.update(1 / 30, (t += 1 / 30), P, env);
+    fresh = tr.cars.find((c) => !old.has(c) && c.s > P.s + 300);
+    for (const c of tr.cars) old.add(c);
+  }
+  ok(fresh && fresh.v.group.scale.x < 0.1, `Auftauchen: Neues Auto voraus steht gleich ganz da (${fresh && fresh.v.group.scale.x})`);
+  for (let i = 0; i < 30; i++) {
+    P.s += 1;
+    tr.update(1 / 30, (t += 1 / 30), P, env);
+  }
+  ok(fresh && fresh.v.group.scale.x === 1, `Auftauchen: nach 1 s erst ${fresh && fresh.v.group.scale.x.toFixed(2)}`);
+  env.difficulty = 0;
+  // Ausfahrt: der Spieler steht (für diese Autobahn) auf der rechten Spur, 40 m vor einem Auto
+  const brakeFor = (passive) => {
+    tr.reset();
+    tr.passive = passive;
+    const Q = { s: 9000, x: ROAD.laneCenter(3), speed: 0, v: 0, len: 4.7, w: 1.9 };
+    const c = tr.spawn(Q.s - 40, 3, { kind: 'kompakt', speed: 25 });
+    c.v0 = 25;
+    for (let i = 0; i < 60; i++) tr.update(1 / 30, (t += 1 / 30), Q, env);
+    return c;
+  };
+  const real = brakeFor(false);
+  const ghost = brakeFor(true);
+  ok(real.speed < 20 || real.lane !== 3 || real.change, `Ausfahrt: Ohne passive bremst niemand vor dem Spieler (${real.speed.toFixed(1)} m/s)`);
+  ok(ghost.speed > 24 && !ghost.change && ghost.lane === 3, `Ausfahrt: Autos bremsen oder weichen vor dem Spieler, der schon abgefahren ist (${ghost.speed.toFixed(1)} m/s, Spur ${ghost.lane}${ghost.change ? ', wechselt' : ''})`);
+}
+
 console.log(`Verkehr: Rücklicht ${LIGHTS.tail.join(' … ')}, Bremslicht ${LIGHTS.brake}; Bremslicht in der Kolonne ${J.flips} Wechsel in 20 s (${(J.lit * 100).toFixed(0)} % an); Elefantenrennen nur echt (${ELEPHANTS.near}–${ELEPHANTS.far} m voraus, höchstens ${ELEPHANTS.side} m versetzt), alle ${ELEFANT.every.map((m) => m / 1000).join('–')} km bestellt, Ansage höchstens alle ${ELEFANT.cool} s, Ende nach Spielzeit (${real.mid} → ${real.end}), Polizei nie vor dem Beginn der Autobahn`);
 console.log(fails ? `${fails} FEHLER (${checks} Prüfungen)` : `verkehr-test: alles grün (${checks} Prüfungen)`);
 process.exit(fails ? 1 : 0);
