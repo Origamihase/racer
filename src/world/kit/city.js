@@ -197,12 +197,13 @@ export function createCityKit(F, { bend = null } = {}) {
       for (const it of plan.items) {
         // der Brunnen auf der Insel der Straße gehört dem Straßenbau (layout.js planTown, island)
         if (it.external) continue;
-        if (!kitOf(it.name).geo(it.name)) {
-          solo.push(it);
-          continue;
-        }
+        // Wahrzeichen zuerst: ihre nahe Fassung entsteht erst in ihrem eigenen Schritt (nearJobs), nicht schon hier
         if (info(it.name).kind === 'landmark') {
           marks.push(it);
+          continue;
+        }
+        if (!kitOf(it.name).geo(it.name)) {
+          solo.push(it);
           continue;
         }
         const ci = Math.floor(-it.z / CHUNK);

@@ -67,8 +67,32 @@ export function renderAlbum(s, d) {
   if (tab === 'fehlen') button(menu, '🗺️ Auf der Karte', 'karte');
 }
 
+/**
+ * Gezeichnete Karten entstehen erst, wenn ihr Platz ins Bild kommt (300 px Vorlauf): Bis zu 1.000 Folgen ohne Bild
+ * wären sonst bei jedem Öffnen 1.000 Zeichnungen und Leinwände, rund 175 MB. Ein Beobachter für das ganze Album; jede
+ * neue Liste beginnt von vorn (die alte ist dann schon aus der Seite).
+ */
+let cardWatch = null;
+function lazyCard(fig, o) {
+  if (typeof IntersectionObserver === 'undefined') {
+    fig.append(fountainCard(o));
+    return;
+  }
+  cardWatch ??= new IntersectionObserver((seen) => {
+    for (const e of seen) {
+      if (!e.isIntersecting || !e.target.cardOf) continue;
+      cardWatch.unobserve(e.target);
+      e.target.append(fountainCard(e.target.cardOf));
+      e.target.cardOf = null;
+    }
+  }, { rootMargin: '300px 0px' });
+  fig.cardOf = o;
+  cardWatch.observe(fig);
+}
+
 /** Die Folgen, neueste zuerst; ohne Folge ein freundlicher Hinweis, wie die erste entsteht. */
-function episodeList(card, album, pics) {
+export function episodeList(card, album, pics) {
+  cardWatch?.disconnect();
   if (!album.list.length) {
     el('p', 'album-empty', card, 'Noch keine Folge im Album. Steh am Brunnen eines Navi-Ziels, bevor jemand überbietet – dann macht Mini Adam BrunnenTV aus dem Auto, und die Folge landet hier, mit Bild.');
     return;
@@ -91,7 +115,7 @@ function episodeCard(grid, e, pic) {
     img.src = pic;
   } else {
     // gezeichnete Karte: der Brunnen dieser Folge in Gestalt und Stein seiner Art, der Ort, die Nummer
-    fig.append(fountainCard({ kind: e.k, place: name, n: e.n }));
+    lazyCard(fig, { kind: e.k, place: name, n: e.n });
   }
   const tx = el('div', 'ep-text', art);
   const top = el('div', 'ep-top', tx);

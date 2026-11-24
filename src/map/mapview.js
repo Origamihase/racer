@@ -849,6 +849,8 @@ function measureText(text, font, spacing = 0) {
   return MEASURE.measureText(text).width;
 }
 
+/** Höchstens so viele Bytes Kacheln der großen Karte (64 MB: 64 Kacheln zu 512², 256 zu 256²; das Bild geht vor). */
+export const TILE_BYTES = 64 * 1024 * 1024;
 function newCanvas(w, h) {
   const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : document.createElement('canvas');
   c.width = w;
@@ -1097,7 +1099,7 @@ export class MapPainter {
   setTheme(theme) {
     if (theme === this.theme) return;
     this.theme = theme;
-    this.tiles.clear();
+    this.trim(0);
     this.cache = null;
     this.lv = [null, null];
     this.jobs = [null, null];
@@ -1536,13 +1538,25 @@ export class MapPainter {
         }
       }
     }
-    // alte Kacheln verwerfen: höchstens gut zwei Bildschirme voll im Speicher
-    const keep = Math.max(24, Math.ceil((i1 - i0 + 3) * (j1 - j0 + 3) * 2.5));
-    if (this.tiles.size > keep + 8) {
-      const old = [...this.tiles].sort((a, c) => a[1].used - c[1].used).slice(0, this.tiles.size - keep);
-      for (const [key] of old) this.tiles.delete(key);
-    }
+    // alte Kacheln verwerfen: gut zwei Bildschirme voll, aber höchstens TILE_BYTES (bei 512er-Kacheln auf einem großen
+    // Bildschirm wären das sonst über 200 MB); das Bild samt Ring bleibt immer
+    const ring = (i1 - i0 + 3) * (j1 - j0 + 3);
+    const keep = Math.max(24, ring, Math.min(Math.ceil(ring * 2.5), Math.floor(TILE_BYTES / (size * size * 4))));
+    if (this.tiles.size > keep + 8) this.trim(keep);
     return done;
+  }
+
+  /**
+   * Kacheln freigeben, bis n übrig sind (die zuletzt gebrauchten bleiben). Die Leinwand einer verworfenen Kachel wird
+   * sofort leer: Safari zählt den Speicher jeder Leinwand gegen eine feste Grenze, bis sie aufgeräumt ist.
+   */
+  trim(n = 0) {
+    if (this.tiles.size <= n) return;
+    const old = [...this.tiles].sort((a, c) => a[1].used - c[1].used).slice(0, this.tiles.size - n);
+    for (const [key, t] of old) {
+      this.tiles.delete(key);
+      t.canvas.width = t.canvas.height = 0;
+    }
   }
   fillGap(ctx, ps, size, b, wx, wy, tw, sx, sy) {
     for (const db of [-1, 1, -2, 2, -3, 3, -4, 4]) {

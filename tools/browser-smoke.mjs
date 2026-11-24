@@ -41,6 +41,9 @@ try {
   await page.waitForFunction(() => window.__MA && __MA.state === 'title', null, { timeout: 60_000 });
   pruefe(await page.isVisible('.screen-title'), 'Titelbild ist nicht sichtbar');
   console.log(`✓ Titelbild nach ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+  // Shader-Programme nach dem Laden (boot übersetzt sie vorab; später darf keins mehr mitten in der Fahrt entstehen)
+  const programme = () => page.evaluate(() => __MA.renderer.info.programs.map((p) => p.cacheKey));
+  const geladen = new Set(await programme());
 
   schritt = 'Fahrt starten';
   await page.evaluate(() => {
@@ -58,6 +61,25 @@ try {
   const b = await lies();
   pruefe(b.state === 'drive', `Zustand nach der Fahrt: ${b.state}`);
   console.log(`✓ Spielschleife fährt (5 m in ${((Date.now() - t0) / 1000).toFixed(1)} s)`);
+
+  schritt = 'Shader vorgewärmt';
+  // was es sonst erst beim ersten Mal gibt: Rempler (Aufkleber, Wölkchen), offenes Fahrerfenster, Polizei, Regen
+  // auf der Scheibe (Vorpass), die Drohnensicht – je ein paar Bilder; danach kein neues Programm
+  await page.evaluate(() => {
+    __MA.game.player.damage.hit('front');
+    __MA.tesla.setWindow(0.5);
+    __MA.traffic.police(__MA.game.player.s, 'PROBE');
+    __MA.rain(1);
+    for (let i = 0; i < 4; i++) __MA.step(1 / 30);
+    __MA.view = 'drone';
+    for (let i = 0; i < 4; i++) __MA.step(1 / 30);
+    __MA.view = 'cockpit';
+    __MA.tesla.setWindow(0);
+    __MA.rain(0);
+  });
+  const neu = (await programme()).filter((k) => !geladen.has(k));
+  pruefe(!neu.length, `${neu.length} Shader erst in der Fahrt übersetzt: ${neu.map((k) => k.slice(-40)).join(' · ')}`);
+  console.log('✓ alle Shader beim Laden übersetzt');
 
   schritt = 'Zwischenstand';
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));

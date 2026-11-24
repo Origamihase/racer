@@ -1178,6 +1178,11 @@ export class Windshield {
     if (need) this.prepass(renderer);
   }
 
+  /** Beim Laden: das Programm des Vorpasses übersetzen (sonst ruckelt der erste Regen). */
+  warm(renderer) {
+    if (!this.soft && this.uniforms) this.prepass(renderer);
+  }
+
   /**
    * Vorpass in Viertelauflösung (zwei Bilder auf einmal, mit Mipmaps): das Weltbild weichgezeichnet (für die
    * Ferne hinter dem Wasserfilm, das Streulicht und die Tropfen) und nur seine Lichter – das kräftige Rot der

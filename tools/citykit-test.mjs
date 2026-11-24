@@ -621,10 +621,30 @@ const { Towns } = await import('../src/world/xxl/towns.js');
   const u = towns.of(sec);
   ok(u && u.group.visible && u.group.pending === 0, 'XXL-Ort: mitten im Ort nicht sofort fertig');
   const textsBuilt = towns.kit.core.textMats.size;
+  // die Instanzen (Arme der Fangruppe) gehen mit: three.js gibt ihre Puffer nur beim dispose frei
+  const inst = [];
+  root.traverse((o) => o.isInstancedMesh && inst.push(o));
+  let instFreed = 0;
+  for (const o of inst) o.addEventListener('dispose', () => instFreed++);
+  const keep0 = towns.kit.core.textKeep.size;
+  const freed = [];
+  for (const m of towns.kit.core.textMats.values()) m.addEventListener('dispose', () => freed.push(m));
   towns.reset();
   ok(towns.items.size === 0 && root.children.length === 0, 'XXL-Ort: nach reset nicht leer');
   // abgeräumt gehen auch seine Schilder (Ortstafel, Wegweiser …), die niemand sonst nutzt
   ok(textsBuilt > texts0 && towns.kit.core.textMats.size === texts0, `XXL-Ort: Textmaterialien vor dem Ort ${texts0}, gebaut ${textsBuilt}, abgeräumt ${towns.kit.core.textMats.size}`);
+  ok(inst.length > 0 && instFreed === inst.length, `XXL-Ort: ${instFreed} von ${inst.length} InstancedMesh entsorgt`);
+  // … aber je Seite bleibt eins ohne Leinwand, sonst warfe three.js das Programm der Tafeln weg (Neuübersetzung im
+  // nächsten Ort, mitten in der Fahrt)
+  const kept = [...towns.kit.core.textKeep.values()];
+  ok(kept.length > 0 && kept.every((m) => !freed.includes(m) && m.map && !m.map.image), `XXL-Ort: kein Textmaterial hält das Programm (${kept.length} behalten)`);
+  ok(freed.length === textsBuilt - texts0 - (kept.length - keep0), `XXL-Ort: freigegeben ${freed.length}, gebaut ${textsBuilt - texts0}, neu behalten ${kept.length - keep0}`);
+  const keptBefore = kept.slice();
+  towns.begin();
+  towns.need(sec, null);
+  towns.update(S0 + 300, new Map([[7, { a: 0, b: 0 }]]), 0, 0);
+  towns.reset();
+  ok([...towns.kit.core.textKeep.values()].every((m, i) => m === keptBefore[i]) && towns.kit.core.textMats.size === texts0, 'XXL-Ort: beim zweiten Ort wächst der Vorrat der behaltenen Textmaterialien');
   xxl.parts = total;
 }
 
@@ -838,6 +858,48 @@ console.log(`Hauptbrunnen frei zu sehen ab: mindestens ${stats.sight.min} m, im 
 console.log('Lageplan gegen Meshes:', meshChecks.join(' · '));
 console.log('Rastanlagen:', restChecks.join(' · '));
 console.log(`Bausteine: ${blocks} Fassungen, Geometrie im Rahmen von info (Ursprung, w, d, h); ${terrainEdges.length} Gelände ohne offene Ränder`);
+// Wahrzeichen: Ihre Maße stehen in landmark-dims.js, der Ortsplan baut sie nicht (Frankfurt sonst 40–70 ms am Stück)
+{
+  const { createLandmarkKit } = await import('../src/world/kit/landmarks.js');
+  const fresh = createLandmarkKit(W);
+  const names = fresh.list('landmark');
+  const told = names.map((n) => fresh.info(n));
+  ok(names.every((n) => !fresh.built(n) && !fresh.built(n, true)), `Wahrzeichen: kit.info baut (${names.filter((n) => fresh.built(n)).join(', ')})`);
+  const stale = names.filter((n, i) => {
+    const { tris, ...built } = fresh.geo(n).info;
+    return JSON.stringify(Object.entries(built).sort()) !== JSON.stringify(Object.entries(told[i]).sort());
+  });
+  ok(!stale.length, `Wahrzeichen: Maße in landmark-dims.js passen nicht zum Bau (${stale.join(', ')}): node tools/landmark-dims.mjs`);
+  // ein Ort mit Wahrzeichen in Raten: planen und alle Fernfassungen bauen, ohne dass die nahe entsteht
+  const town = createCityKit(W);
+  const ffm = places.find((q) => q.name === 'Frankfurt am Main');
+  const plan = town.planTown(ffm, { len: townLen(ffm.pop), goal: 200 });
+  const marks = plan.items.filter((it) => town.landmarks.list('landmark').includes(it.name)).map((it) => it.name);
+  const g = town.buildTown(plan, { lazy: true });
+  while (g.pendingFar > 0) g.step();
+  ok(marks.length > 0 && marks.every((n) => town.landmarks.built(n, true) && !town.landmarks.built(n)), `Wahrzeichen: Plan und Ferne bauen schon die nahe Fassung (${marks.filter((n) => town.landmarks.built(n)).join(', ')})`);
+  while (g.step());
+  ok(marks.every((n) => town.landmarks.built(n)), 'Wahrzeichen: aus der Nähe fehlt die nahe Fassung');
+  // abgeräumt verlassen sie den Cache – aber erst, wenn kein anderes Stück mehr steht
+  const other = town.landmarks.build(marks[0]);
+  town.release(g);
+  ok(town.landmarks.built(marks[0]) && marks.slice(1).every((n) => !town.landmarks.built(n) && !town.landmarks.built(n, true)), `Wahrzeichen: nach dem Abräumen noch im Cache (${marks.filter((n) => town.landmarks.built(n) || town.landmarks.built(n, true)).join(', ')})`);
+  town.release(other);
+  ok(!town.landmarks.built(marks[0]) && !town.landmarks.built(marks[0], true), `Wahrzeichen: ${marks[0]} bleibt nach dem letzten Stück im Cache`);
+  // mit drehenden Teilen (Riesenrad, Mühle): auch die Teile gehen
+  let spun = "";
+  const spinner = town.landmarks.list('landmark').find((n) => town.landmarks.list('part').some((p) => p.startsWith(n + ':spin')));
+  if (spinner) {
+    const sg = town.landmarks.build(spinner);
+    const parts = town.landmarks.list('part').filter((p) => p.startsWith(spinner + ':spin'));
+    const builtParts = parts.filter((p) => town.landmarks.built(p));
+    town.release(sg);
+    spun = `${spinner} mit ${builtParts.length} drehenden Teilen`;
+    ok(builtParts.length > 0 && parts.every((p) => !town.landmarks.built(p)), `Wahrzeichen: drehende Teile von ${spinner} bleiben im Cache`);
+  }
+  console.log(`Wahrzeichen: ${names.length} mit Maßen ohne Bauen; Frankfurt in Raten (${marks.join(', ')}): nah erst bei der Anfahrt; abgeräumt aus dem Cache, auch ${spun}`);
+}
+
 console.log('Zielbrunnen-Arten:', Object.entries(goalKinds).map(([k, v]) => `${k} ${v}`).join(', '));
 console.log(`Orte in der XXL-Welt: ${xxl.towns} mit Insel und als Startort, ${xxl.houses} Häuser, ${xxl.fountains} Brunnen, je einer davon das Ziel auf der Insel, ${xxl.posts} Ladesäulen mit Popcorn-Maschine, am Halt im Seitenfenster bei ${xxl.side.map((d) => d.toFixed(1)).join('–')}°; Lebenslauf: ${xxl.parts} Teile in Schritten gebaut, starr im gescherten Rahmen; Plan in Raten: ${xxl.calls} Aufrufe für Hanau, derselbe Plan`);
 console.log('Hauptbrunnen der Orte (auf der Insel am Ziel):', Object.entries(islands).map(([k, v]) => `${k} ${v}`).join(', '));

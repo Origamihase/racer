@@ -11,6 +11,7 @@
 // Alles liegt in den Eimern F (matt) und G (Scheiben, Bänder, Gold), Wasser in W: höchstens vier Draw Calls je Stück.
 // Jedes Stück hat eine Fernfassung (kit.build(name, { far: true })) mit weniger Teilung und ohne Kleinteile.
 // Sakralbauten und Denkmäler erscheinen neutral und respektvoll als Architektur; nichts wird verulkt.
+import { LANDMARK_DIMS } from './landmark-dims.js';
 import * as THREE from 'three';
 import { PAL, CITY, mix, makeKit, compose } from './citycore.js';
 import { arch, archWin, clock } from './town.js';
@@ -257,6 +258,15 @@ const QUAY = 0xc7b9a6;
 const defs = {};
 /** Ortsschlüssel → Namen der Wahrzeichen, die zu ihm gehören (in der Reihenfolge der Anmeldung). */
 const BY_PLACE = new Map();
+/**
+ * Was make(b, lod) selbst meldet (Breite, Tiefe, Höhe …), ohne die Angaben, die der Baukasten und landmark() dazutun:
+ * so steht es in landmark-dims.js (tools/landmark-dims.mjs).
+ */
+const ADDED = new Set(['name', 'kind', 'tints', 'weight', 'far', 'places', 'slot', 'title', 'animated', 'tris']);
+export function landmarkDims(info) {
+  return Object.fromEntries(Object.entries(info).filter(([k]) => !ADDED.has(k)));
+}
+
 /** Name → { places, slot, far, title }: ohne Bauen abfragbar (für Ortsplan und Node-Test). */
 const META = {};
 /** Name des Wahrzeichens, das gerade gebaut wird (für terrainEdges). */
@@ -288,6 +298,8 @@ function landmark(name, meta, make) {
       }
     },
     extras: meta.extras,
+    // Maße ohne Bauen (kit.info): der Ortsplan fragt danach, die nahe Fassung entsteht erst, wenn man hinfährt
+    dims: LANDMARK_DIMS[name] && { ...LANDMARK_DIMS[name], places: meta.places, slot: meta.slot, far: !!meta.far, title: meta.title, animated: !!meta.spins },
   };
   if (!meta.spins) return;
   meta.spins.forEach((sp, i) => {

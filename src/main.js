@@ -1697,7 +1697,13 @@ function step(dt, { render = true } = {}) {
     tesla.cabinLight.intensity = cockpitOn ? 0 : stopRun.on || tvRun.on || state === 'title' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
-    const scr = game.screenState ? safeScreen() : null;
+    // Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js): der Mittelbildschirm zeichnet dafür weiter, und jedes
+    // neue Bild landet dort (onDraw) – im Cockpit, in Szenen und außerhalb der Fahrt ist das Kärtchen aus
+    const droneHudOn = state === 'drive' && view === 'drone' && !cockpitOn && !stopRun.on && !tvRun.on;
+    ui.droneHud.show(droneHudOn);
+    cockpit.screen.hudOut = ui.droneHud.on;
+    // den Zustand des Mittelbildschirms nur bauen, wenn er in diesem Bild zeichnet (höchstens 15-mal je Sekunde)
+    const scr = game.screenState && cockpit.screen.due(dt, cockpitOn) ? safeScreen() : null;
     // Ladestopp: das Display zeigt den Gang des Wagens der Szene (in R mit dem Bild der Rückfahrkamera)
     if (scr && stopRun.on) scr.gear = stopRun.gear;
     if (scr && tvRun.on) scr.gear = 'P';
@@ -1719,21 +1725,16 @@ function step(dt, { render = true } = {}) {
       xxlScreenRoad.autobahn = !game.offAutobahn;
       scr.road = xxlScreenRoad;
       scr.nav.visited = save.visits;
-      if ((mapHudT -= dt) <= 0) {
-        mapHudT = 0.25;
-        turnIns = state === 'drive' ? scr.nav.model.instruction() : null;
-        ui.setTurn(turnIns);
-      }
     }
-    // Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js): der Mittelbildschirm zeichnet dafür weiter, und jedes
-    // neue Bild landet dort (onDraw) – im Cockpit, in Szenen und außerhalb der Fahrt ist das Kärtchen aus
-    const droneHudOn = state === 'drive' && view === 'drone' && !cockpitOn && !stopRun.on && !tvRun.on;
-    ui.droneHud.show(droneHudOn);
-    cockpit.screen.hudOut = ui.droneHud.on;
+    if ((mapHudT -= dt) <= 0) {
+      mapHudT = 0.25;
+      turnIns = state === 'drive' ? xxlNav.instruction() : null;
+      ui.setTurn(turnIns);
+    }
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
       sunDir: sky.sunDir, overcast: cloud, adam: adamOpts, gesture: tesla.adam.pose === 'drive' ? tesla.adam.gestures : null,
-      screen: scr, radar: game.radarAlarm, rear: cockpitOn && (p.gear === 'R' || stopRun.rev),
+      screen: scr, radar: game.radarAlarm, rear: cockpitOn && (p.gear === 'R' || stopRun.rev), visible: cockpitOn,
     });
     if (fxState.trunk > 0) fxState.trunk = Math.max(0, fxState.trunk - dt);
   }
@@ -1896,20 +1897,33 @@ function boot() {
   // Ein paar Bilder vorab rendern (Shader kompilieren), dann Titel zeigen
   updateCarMatrix();
   placeDrone(0.016, 'orbit');
+  // compile geht auch an unsichtbaren Teilen vorbei (Schadensbild, Wölkchen); nur was erst später entsteht, muss
+  // hier kurz da sein: das offene Fahrerfenster (eigenes Programm, BrunnenTV) und der Vorpass der nassen Scheibe
+  tesla.setWindow(0.01);
   try {
     // jedes Programm so, wie das erste Bild es braucht: Welt und Facecam zeichnen in ein Render-Ziel (ohne Tone-Mapping,
     // linear – ohne das gebundene Ziel übersetzte das erste Bild die ganze Welt noch einmal), Cockpit und Quads direkt
     renderer.setRenderTarget(worldRT);
     renderer.compile(scene, camera);
+    // Spiegel, Seitenfenster und Rückfahrkamera zeigen die Welt ohne den eigenen Wagen, also ohne seine
+    // Innenraumleuchte: eine Lichtquelle weniger, für three.js je Material ein anderes Programm
+    const shown = tesla.root.visible;
+    tesla.root.visible = false;
+    renderer.setRenderTarget(mirrorRT);
+    renderer.compile(scene, rearCam);
+    tesla.root.visible = shown;
     renderer.setRenderTarget(facecam.rt);
     renderer.compile(facecam.scene, facecam.camera);
     renderer.setRenderTarget(null);
     renderer.compile(cockpit.scene, camera);
     renderer.compile(facecam.quadScene, facecam.quadCam);
     renderer.compile(compScene, compCam);
+    renderer.compile(postScene, compCam);
+    windshield.warm(renderer);
   } catch (e) {
     renderer.setRenderTarget(null);
   }
+  tesla.setWindow(0);
   performance.mark('ma:compiled');
   state = 'title';
   menus.show('title', save);

@@ -689,6 +689,8 @@ export function cityCore(F) {
       glow: F.basic({ vertexColors: true }),
       uWater,
       textMats: new Map(),
+      // je Seite (vorn / beidseitig) das zuletzt freigegebene Textmaterial, ohne Leinwand (siehe release)
+      textKeep: new Map(),
       /** Wasser bewegen: t = Zeit in Sekunden (steht sie, steht das Wasser), rain = Regenstärke 0 … 1. */
       setWater(t, rain = 0) {
         uWater.value.set(t % 3600, rain);
@@ -715,7 +717,7 @@ export function textMaterial(core, key, w, h, draw, { side = THREE.FrontSide } =
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 8;
     m = soften(core.F.lambert({ map: t, side, ...FRONT }));
-    Object.assign(m.userData, { textKey: key, textMats: core.textMats, users: 0 });
+    Object.assign(m.userData, { textKey: key, textMats: core.textMats, textKeep: core.textKeep, users: 0 });
     core.textMats.set(key, m);
   }
   m.userData.users++;
@@ -1883,15 +1885,34 @@ export function compose(core, items, { shadows = true } = {}) {
 export function release(obj) {
   obj.traverse((o) => {
     if (o.geometry && o.geometry.userData.merged) o.geometry.dispose();
+    // Fangruppe, Riesenrad: die Puffer der Instanzen (Lage, Farbe) gibt three.js nur beim dispose frei; die
+    // Geometrie selbst teilen sie mit allen anderen
+    if (o.isInstancedMesh) o.dispose();
+    // ein Wahrzeichen weniger in der Welt (kit.build): beim letzten verlässt es den Cache des Baukastens
+    if (o.userData.unref) {
+      const unref = o.userData.unref;
+      o.userData.unref = null;
+      unref();
+    }
     const m = o.material;
     if (!m || !m.userData || !m.userData.textMats || o.userData.textFreed) return;
     o.userData.textFreed = true;
     if (--m.userData.users > 0) return;
     if (m.userData.textMats.get(m.userData.textKey) === m) m.userData.textMats.delete(m.userData.textKey);
     m.map.dispose();
+    // Das Programm der Texttafeln (lambert + Bild + Kurve) nutzt sonst keiner: Ginge das letzte Material, warfe
+    // three.js es weg und übersetzte es im nächsten Ort mitten in der Fahrt neu. Eins je Seite bleibt deshalb,
+    // mit einem leeren Bild statt der Leinwand (dasselbe Programm, kein Speicher).
+    const keep = m.userData.textKeep;
+    if (keep && !keep.has(m.side)) {
+      m.map = KEEP_MAP;
+      keep.set(m.side, m);
+      return;
+    }
     m.dispose();
   });
 }
+const KEEP_MAP = new THREE.Texture();
 
 /**
  * Baukasten aus einer Tabelle von Bausteinen. defs[name] = { kind, tints, weight, far, fade, make(b, lod) → info,
@@ -1900,6 +1921,7 @@ export function release(obj) {
 export function makeKit(F, defs) {
   const core = cityCore(F);
   const cache = new Map();
+  const refs = new Map(); // Wahrzeichen → Zahl der gebauten, noch nicht freigegebenen Stücke (build / release)
   const kit = {
     core,
     matte: core.matte,
@@ -1928,7 +1950,15 @@ export function makeKit(F, defs) {
     info(name) {
       const def = defs[name];
       if (!def) throw new Error('Baustein fehlt: ' + name);
-      return def.make ? kit.geo(name).info : { name, kind: def.kind, ...def.info };
+      if (!def.make) return { name, kind: def.kind, ...def.info };
+      // bekannte Maße (Wahrzeichen, landmark-dims.js): dieselben Angaben wie nach dem Bau, ohne zu bauen
+      if (def.dims) return { name, kind: def.kind, tints: def.tints ?? [0xffffff], weight: def.weight ?? 1, far: !!def.far, ...def.dims };
+      return kit.geo(name).info;
+    },
+    /** Ist die Fassung schon gebaut (im Cache)? */
+    built(name, far = false) {
+      const def = defs[name];
+      return cache.has(name + '|' + (far && def && def.far ? 1 : 0));
     },
     /** Namen aller Bausteine einer Art (ohne Angabe: alle). */
     list(kind) {
@@ -1948,7 +1978,25 @@ export function makeKit(F, defs) {
       }
       group.name = name;
       group.userData.info = { name, kind: def.kind, ...group.userData.info };
+      if (def.kind === 'landmark') {
+        refs.set(name, (refs.get(name) || 0) + 1);
+        group.userData.unref = () => kit.unref(name);
+      }
       return group;
+    },
+    /**
+     * Ein Stück des Wahrzeichens name freigegeben (release): Steht keins mehr in der Welt, gehen seine Fassungen
+     * (nah, fern, drehende Teile) aus dem Cache. Ein Wahrzeichen gehört einem Ort, die nächste Gegend braucht es nicht
+     * (Frankfurt allein hält rund 2 MB); kommt man wieder hin, entsteht es neu.
+     */
+    unref(name) {
+      const n = (refs.get(name) || 0) - 1;
+      if (n > 0) {
+        refs.set(name, n);
+        return;
+      }
+      refs.delete(name);
+      for (const key of [...cache.keys()]) if (key.startsWith(name + '|') || key.startsWith(name + ':spin')) cache.delete(key);
     },
     /** Zusätzliche Meshes eines Bausteins (Tafeln mit freiem Text), in dessen eigenen Koordinaten. */
     extras(name, opts = {}) {

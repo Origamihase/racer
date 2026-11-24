@@ -59,11 +59,22 @@ export class CenterScreen {
     this.edges = []; // Linien der Spuransicht in der XXL-Welt (roadEdges), wiederverwendet
   }
 
+  /**
+   * Zeichnet der Bildschirm in diesem Bild (live: das Cockpit ist zu sehen)? Nur dann baut main.js den Zustand dafür
+   * (sonst entstünden in jedem Bild Zustand, Autoliste und Texte für nichts).
+   */
+  due(dt, live) {
+    this.live = live;
+    return this.acc + dt >= 1 / 15 && (live || this.hudOut);
+  }
+
+  /** st: Zustand des Spiels (game.screenState) oder null, wenn in diesem Bild nicht gezeichnet wird (due). */
   update(dt, st) {
     this.acc += dt;
     this.spin += dt;
     // zeichnen und hochladen nur, solange das Cockpit zu sehen ist (live: dann zeigt das HUD die Zahl des Tachos hier,
     // this.kmh, damit beide in jedem Bild dieselbe Geschwindigkeit nennen); in der Drohnenansicht nur zeichnen (hudOut)
+    if (!st) return;
     this.live = st.nav.visible !== false;
     if (this.acc < 1 / 15) return;
     if (!this.live && !this.hudOut) return;
