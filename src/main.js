@@ -11,6 +11,7 @@ import { Road } from './world/road.js';
 import { XxlWorld, ROAD_OPTS, autoTarget, autoDrive, AUTO } from './world/xxl/world.js';
 import { installDebug } from './world/xxl/debug.js';
 import { Gegenverkehr } from './world/xxl/gegenverkehr.js';
+import { camerasAlong } from './world/xxl/blitzer.js';
 import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
@@ -171,7 +172,8 @@ const curveSigns = new CurveSigns(scene, {
   busy(s) {
     if (gridBusy(s)) return true;
     for (const r of scenery.requests) if (EDGE_REQUESTS.has(r.type) && Math.abs(r.s - s) < 8) return true;
-    return false;
+    // und von den Blitzern auf Landstraßen und in Orten (world/xxl/blitzer.js)
+    return courseTrip ? camerasAlong(courseTrip.cur.sections, s - 8, s + 8).length > 0 : false;
   },
   // jede neue Bestellung kommt hinten an die Liste
   edge: () => (scenery.requests.length ? scenery.requests[scenery.requests.length - 1].id : ''),
@@ -380,8 +382,8 @@ const uiFacade = {
   damage: () => ui.damage(),
   jobs: (j) => ui.jobs(j),
   jobDone: (text) => ui.jobDone(text),
-  photo: (kmh, clock) => {
-    photoRequest = { kmh, clock };
+  photo: (kmh, clock, limit) => {
+    photoRequest = { kmh, clock, limit };
   },
   brunnenTV: (n, name) => ui.brunnenTV(n, name),
 };
@@ -398,6 +400,8 @@ const gameWorld = {
   charge: (v) => xxl.arrival.charge(xxl.trip, v),
   // die Bezahlschranke eines Orts (gags.js, world/xxl/schranke.js): 0 zu … 1 offen
   gate: (sec, k) => xxl.towns.gate(sec, k),
+  // Blitz an den Blitzern im Ort und auf der Landstraße (world/xxl/blitzer.js, gebaut von signs.js)
+  flashCamera: (on) => xxl.signs.flashCameras(on),
 };
 // (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
 const game = new Game({ traffic, scenery, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
@@ -1313,8 +1317,8 @@ function postPass() {
   renderer.render(postScene, compCam);
 }
 
-/** Blitzerfoto: der Tesla von vorne, Mini Adam hinterm Steuer, im Blitzlicht. */
-function takePhoto({ kmh, clock }) {
+/** Blitzerfoto: der Tesla von vorne, Mini Adam hinterm Steuer, im Blitzlicht (limit: das Tempolimit am Blitzer). */
+function takePhoto({ kmh, clock, limit = 120 }) {
   // immer 4:3 (wie das Polaroid), auch auf dem Handy hochkant: das Bild wird dafür verzerrt gerendert
   // und beim Kopieren ins 4:3-Foto wieder entzerrt
   photoCam.aspect = 4 / 3;
@@ -1336,7 +1340,7 @@ function takePhoto({ kmh, clock }) {
   photoCtx.fillStyle = '#ffd21f';
   photoCtx.font = 'bold 17px "Courier New", monospace';
   photoCtx.textAlign = 'left';
-  photoCtx.fillText(`${kmh} km/h   ${clock}   ERLAUBT 120`, 10, 260);
+  photoCtx.fillText(`${kmh} km/h   ${clock}   ERLAUBT ${limit}`, 10, 260);
   let url = null;
   try {
     url = photoCanvas.toDataURL('image/jpeg', 0.82);

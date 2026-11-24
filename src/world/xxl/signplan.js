@@ -24,6 +24,7 @@ import { J, R as rampR } from '../../game/trip.js';
 import { nodes, places, deTo, deEdge, deRoad, deTowards, straight, edgeLen, routeFrom, stateOfNode, excursion, COST } from '../../map/graph.js';
 import { parkBoard, POST } from '../../map/parks.js';
 import { steleOf } from './charge.js';
+import { camerasOf } from './blitzer.js';
 
 /** Vorwegweiser: so viele Meter vor der Gabelung (wie guidance().dist). */
 export const BOARD_D = [1000, 500];
@@ -263,6 +264,8 @@ function sectionSigns0(trip, secs, sec, out, opts) {
     if (st) push('ladestele', sec.s0 + st.u, st.x, 1, ['Ladesäule', 'Einfahrt'], { keyPart: k, place: sec.place });
     push('ortsende', sec.s1 - TOWN_SIGN_IN, TOWN_SIGN_X, 1, [name], { keyPart: k, place: sec.place });
   }
+  // Blitzer im Ort und auf der Landstraße (blitzer.js): fest an seinem Ort, ohne Schild davor
+  for (const c of camerasOf(sec)) push('blitzer', c.s, c.x, 1, [], { y: c.y, limit: c.limit });
   return out;
 }
 

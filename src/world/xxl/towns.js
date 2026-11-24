@@ -12,6 +12,7 @@ import { ISLAND_H } from './roadkit.js';
 import { CHARGE, chargeOf, steleOf } from './charge.js';
 import { buildChargeRig } from './chargerig.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from './schranke.js';
+import { camerasOf } from './blitzer.js';
 import { PARKS, PARK } from '../../map/parks.js';
 
 let kit = null;
@@ -63,6 +64,7 @@ export function townPlan(K, sec, budget = Infinity) {
   const p = places[sec.place];
   const island = islandOf(sec);
   const charge = chargeOf(sec);
+  const cameras = camerasOf(sec).map((c) => ({ u: c.u, x: c.x }));
   return K.planTown(p, {
     budget, len: sec.s1 - sec.s0, mainKind: goalKind(p), pavement: false, signs: false, signName: p.name,
     ...(island ? { island } : sec.start ? { goal: START_GOAL - sec.s0 } : {}),
@@ -70,6 +72,8 @@ export function townPlan(K, sec, budget = Infinity) {
     // Kabel bringt der Ort mit (Towns.lay, chargerig.js), auf der Ortsdurchfahrt steht die Popcorn-Maschine auf der Säule
     // und vor dem Park die Stele (der Plan hält ihr Platz und Sichtlinie frei)
     ...(charge ? { charge: { u: charge.u, kind: CHARGE.kindStart, stop: !charge.start, stele: steleOf(sec) } } : {}),
+    // der Blitzer des Orts (blitzer.js; die Säule stellt der Schilderplan): sein Platz im Streifen bleibt frei
+    ...(cameras.length ? { cameras } : {}),
   });
 }
 

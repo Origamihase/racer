@@ -189,6 +189,9 @@ export class Game {
     this.S = { blitzer: rand(3000, 3800), elefant: rand(ELEFANT.first[0], ELEFANT.first[1]), landmark: rand(1400, 2000), koriander: rand(2200, 2800) };
     this.elefantT = 0;
     this.blitzer = null;
+    // Blitzer im Ort und auf der Landstraße (roadCameras): schon passierte und schon angesagte, wo der Wagen zuletzt
+    // war, vor welchem der Radarwarner gerade warnt
+    this.cam = { seen: new Set(), warned: new Set(), prev: null, alarm: null };
     this.landmark = null;
     this.funkloch = 0;
     this.funklochT = -99; // wann das letzte Funkloch begann (FACTS.netz)
@@ -436,7 +439,7 @@ export class Game {
   /** Warnt der Radarwarner gerade? Von seiner Ansage bis zum Blitzer – und nie, wenn die Fahrt vorbei ist. */
   get radarAlarm() {
     const b = this.blitzer;
-    return this.running && !!b && b.announced && !b.checked;
+    return this.running && ((!!b && b.announced && !b.checked) || !!this.cam.alarm);
   }
 
   /** Einnahme verbuchen. label: Zeile der Abrechnung (siehe INCOME) · silent: ohne Einblendung am Guthaben */

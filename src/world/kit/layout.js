@@ -367,6 +367,23 @@ export function steleBlockers(plan, st, infoOf, points = steleViews(st)) {
   return out;
 }
 
+/**
+ * Was auf dem Platz eines Blitzers (cm = { u, x }, xxl/blitzer.js) steht: Indizes in plan.items – alles Hohe, dessen
+ * Grundriss (bei Bäumen die Krone, sonst der Mast) in seine 1,8 × 2 m reicht.
+ */
+export function cameraBlockers(plan, cm, infoOf) {
+  const spot = [cm.x - 0.9, cm.x + 0.9, -cm.u - 1.0, -cm.u + 1.0];
+  const out = [];
+  for (let i = 0; i < plan.items.length; i++) {
+    const it = plan.items[i];
+    const fp = it.fp;
+    if (it.external || fp.h <= STREET.top + 0.01) continue;
+    const body = infoOf(it.name).kind === 'tree' ? fp : (fp.thin ?? fp);
+    if (touches(spot, aabb(body))) out.push(i);
+  }
+  return out;
+}
+
 /** Wie weit vor dem Brunnen (in Metern, bis max) ist seine Mitte vom Fahrersitz aus ununterbrochen frei zu sehen? */
 export function sightDistance(plan, f, max = 120) {
   let free = 0;
@@ -802,6 +819,12 @@ export function planTown(place, opts = {}) {
   const st = opts.charge && opts.charge.stele;
   if (st) {
     const drop = new Set(steleBlockers(plan, st, infoOf));
+    if (drop.size) plan.items = plan.items.filter((_, i) => !drop.has(i));
+  }
+  // --- 8. Blitzer (opts.cameras = [{ u, x }], xxl/blitzer.js): auf ihrem Platz im Streifen steht nichts anderes (Regel,
+  // nicht Zufall: der Plan bleibt sonst derselbe)
+  for (const cm of opts.cameras || []) {
+    const drop = new Set(cameraBlockers(plan, cm, infoOf));
     if (drop.size) plan.items = plan.items.filter((_, i) => !drop.has(i));
   }
   plan.layout = townLayout(plan, infoOf);

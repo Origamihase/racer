@@ -11,6 +11,7 @@ import { roundRect } from '../../textures.js';
 import { sectionSigns } from './signplan.js';
 import { CHARGE } from './charge.js';
 import { drawTurnIcon } from '../../map/symbols.js';
+import { cityKit } from './towns.js';
 
 const FONT = '"DIN Alternate", "Arial Narrow", Arial, sans-serif';
 const BLUE = '#1452a8';
@@ -494,7 +495,24 @@ function textureOf(e, L) {
 }
 
 /** Arten, die diese Klasse selbst baut (die übrigen stehen nur im Log). */
-const BUILDS = new Set(['vorweg', 'tafel', 'ladepark', 'ausfahrt', 'auffahrt', 'ort', 'ortsende', 'ladesaeule', 'ladestele']);
+const BUILDS = new Set(['vorweg', 'tafel', 'ladepark', 'ausfahrt', 'auffahrt', 'ort', 'ortsende', 'ladesaeule', 'ladestele', 'blitzer']);
+
+/**
+ * Blitzer im Ort und auf der Landstraße (blitzer.js): die Säule des Stadtbaukastens (kit/street.js speedCamera, zwei
+ * Kameraaugen, gelbes Schildchen), etwas zur Straße gedreht wie der an der Autobahn, und vor dem oberen Auge die
+ * Blitzlinse, die nur beim Blitz leuchtet (flashCameras). Säule und Linse teilen sich alle Blitzer.
+ */
+const CAM = { ry: -0.35, lens: [0, 2.3, 0.262], r: 0.085 };
+let camParts = null;
+function cameraParts() {
+  if (camParts) return camParts;
+  const K = cityKit();
+  const body = K.compose([{ g: K.kitOf('speedCamera').geo('speedCamera'), x: 0, y: 0, z: 0, ry: 0 }]);
+  const lensMat = W.basic({ color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
+  lensMat.color.setScalar(30);
+  camParts = { body, lensGeo: new THREE.CircleGeometry(CAM.r, 16), lensMat };
+  return camParts;
+}
 
 export class Signs {
   constructor(world) {
@@ -508,6 +526,11 @@ export class Signs {
     for (const it of this.items.values()) this.drop(it);
     this.items.clear();
     this.entries = [];
+  }
+
+  /** Blitz an den Blitzern im Ort und auf der Landstraße (an ist kurz, das Spiel schaltet ihn wieder aus). */
+  flashCameras(on) {
+    for (const it of this.items.values()) if (it.lens) it.lens.visible = on;
   }
 
   drop(it) {
@@ -568,6 +591,7 @@ export class Signs {
 
   /** Eine Tafel auf zwei Pfosten, Vorderseite zum heranfahrenden Wagen (+z), Ursprung am Boden unter der Mitte. */
   build(e) {
+    if (e.kind === 'blitzer') return this.buildCamera(e);
     const L = layout(e);
     const g = new THREE.Group();
     g.name = 'XXL-Tafel ' + e.kind;
@@ -579,6 +603,21 @@ export class Signs {
     board.receiveShadow = true;
     g.add(board);
     return { entry: e, frame: e.frame, group: g, mat };
+  }
+
+  /** Ein Blitzer (Teile geteilt, nichts davon wird beim Abräumen freigegeben). */
+  buildCamera(e) {
+    const P = cameraParts();
+    const g = new THREE.Group();
+    g.name = 'XXL-Blitzer';
+    g.position.set(e.x, e.y, -e.s);
+    g.rotation.y = CAM.ry;
+    g.add(P.body.clone());
+    const lens = new THREE.Mesh(P.lensGeo, P.lensMat);
+    lens.position.set(...CAM.lens);
+    lens.visible = false;
+    g.add(lens);
+    return { entry: e, frame: e.frame, group: g, mat: null, lens };
   }
 
   /** Schilder-Log: alles, was gerade im Sichtbereich steht (Einträge wie signplan, dazu built: von hier gebaut). */
