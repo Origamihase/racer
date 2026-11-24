@@ -880,8 +880,24 @@ console.log(`Bausteine: ${blocks} Fassungen, Geometrie im Rahmen von info (Urspr
   ok(marks.length > 0 && marks.every((n) => town.landmarks.built(n, true) && !town.landmarks.built(n)), `Wahrzeichen: Plan und Ferne bauen schon die nahe Fassung (${marks.filter((n) => town.landmarks.built(n)).join(', ')})`);
   while (g.step());
   ok(marks.every((n) => town.landmarks.built(n)), 'Wahrzeichen: aus der Nähe fehlt die nahe Fassung');
-  town.release?.(g);
-  console.log(`Wahrzeichen: ${names.length} mit Maßen ohne Bauen; Frankfurt in Raten (${marks.join(', ')}): nah erst bei der Anfahrt`);
+  // abgeräumt verlassen sie den Cache – aber erst, wenn kein anderes Stück mehr steht
+  const other = town.landmarks.build(marks[0]);
+  town.release(g);
+  ok(town.landmarks.built(marks[0]) && marks.slice(1).every((n) => !town.landmarks.built(n) && !town.landmarks.built(n, true)), `Wahrzeichen: nach dem Abräumen noch im Cache (${marks.filter((n) => town.landmarks.built(n) || town.landmarks.built(n, true)).join(', ')})`);
+  town.release(other);
+  ok(!town.landmarks.built(marks[0]) && !town.landmarks.built(marks[0], true), `Wahrzeichen: ${marks[0]} bleibt nach dem letzten Stück im Cache`);
+  // mit drehenden Teilen (Riesenrad, Mühle): auch die Teile gehen
+  let spun = "";
+  const spinner = town.landmarks.list('landmark').find((n) => town.landmarks.list('part').some((p) => p.startsWith(n + ':spin')));
+  if (spinner) {
+    const sg = town.landmarks.build(spinner);
+    const parts = town.landmarks.list('part').filter((p) => p.startsWith(spinner + ':spin'));
+    const builtParts = parts.filter((p) => town.landmarks.built(p));
+    town.release(sg);
+    spun = `${spinner} mit ${builtParts.length} drehenden Teilen`;
+    ok(builtParts.length > 0 && parts.every((p) => !town.landmarks.built(p)), `Wahrzeichen: drehende Teile von ${spinner} bleiben im Cache`);
+  }
+  console.log(`Wahrzeichen: ${names.length} mit Maßen ohne Bauen; Frankfurt in Raten (${marks.join(', ')}): nah erst bei der Anfahrt; abgeräumt aus dem Cache, auch ${spun}`);
 }
 
 console.log('Zielbrunnen-Arten:', Object.entries(goalKinds).map(([k, v]) => `${k} ${v}`).join(', '));

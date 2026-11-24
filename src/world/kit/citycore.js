@@ -1888,6 +1888,12 @@ export function release(obj) {
     // Fangruppe, Riesenrad: die Puffer der Instanzen (Lage, Farbe) gibt three.js nur beim dispose frei; die
     // Geometrie selbst teilen sie mit allen anderen
     if (o.isInstancedMesh) o.dispose();
+    // ein Wahrzeichen weniger in der Welt (kit.build): beim letzten verlässt es den Cache des Baukastens
+    if (o.userData.unref) {
+      const unref = o.userData.unref;
+      o.userData.unref = null;
+      unref();
+    }
     const m = o.material;
     if (!m || !m.userData || !m.userData.textMats || o.userData.textFreed) return;
     o.userData.textFreed = true;
@@ -1915,6 +1921,7 @@ const KEEP_MAP = new THREE.Texture();
 export function makeKit(F, defs) {
   const core = cityCore(F);
   const cache = new Map();
+  const refs = new Map(); // Wahrzeichen → Zahl der gebauten, noch nicht freigegebenen Stücke (build / release)
   const kit = {
     core,
     matte: core.matte,
@@ -1971,7 +1978,25 @@ export function makeKit(F, defs) {
       }
       group.name = name;
       group.userData.info = { name, kind: def.kind, ...group.userData.info };
+      if (def.kind === 'landmark') {
+        refs.set(name, (refs.get(name) || 0) + 1);
+        group.userData.unref = () => kit.unref(name);
+      }
       return group;
+    },
+    /**
+     * Ein Stück des Wahrzeichens name freigegeben (release): Steht keins mehr in der Welt, gehen seine Fassungen
+     * (nah, fern, drehende Teile) aus dem Cache. Ein Wahrzeichen gehört einem Ort, die nächste Gegend braucht es nicht
+     * (Frankfurt allein hält rund 2 MB); kommt man wieder hin, entsteht es neu.
+     */
+    unref(name) {
+      const n = (refs.get(name) || 0) - 1;
+      if (n > 0) {
+        refs.set(name, n);
+        return;
+      }
+      refs.delete(name);
+      for (const key of [...cache.keys()]) if (key.startsWith(name + '|') || key.startsWith(name + ':spin')) cache.delete(key);
     },
     /** Zusätzliche Meshes eines Bausteins (Tafeln mit freiem Text), in dessen eigenen Koordinaten. */
     extras(name, opts = {}) {
