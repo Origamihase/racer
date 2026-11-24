@@ -101,7 +101,7 @@ const DRIVERS = [
 const DUELLIST = { name: 'zügig, Duell im Zielort', cruise: 185, miss: 0, duel: true };
 /**
  * Ladestopps (REISE.md A5): Dieser Fahrer lädt nur an Ladesäulen (in den Ladeparks und an der Säule eines Orts auf dem
- * Weg). Er folgt dem Navi und plant bei jeder Warnung OMIs den Ladestopp ein, den sie nennt (Game.planStop, wie Taste
+ * Weg). Er folgt dem Navi und plant bei jeder Warnung OMIs den Ladestopp ein, den sie nennt (Akku.planStop, wie Taste
  * L); sein Akku wird nicht aufgefüllt. In LADE_MIN Minuten Stream läuft er nie leer, und jeder Halt lädt den Akku ganz.
  */
 const LADER = { name: 'Lader (plant Ladestopps)', cruise: 150, miss: 0, stops: true };

@@ -494,7 +494,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   const css = read('docs/style.css');
   ok(/toggle\('screen-cut', cockpitParts\(W, window\.innerHeight\)\.screen\.right > W\)/.test(ui) && /this\.showAkkuCard\(g\.akku\.card\(\)\)/.test(ui), 'ui.js: Akku-Kopie nicht an Mittelbildschirm und Akku-Karte gebunden');
   ok(/\.akku-mini \{ display: none;/.test(css) && /\.screen-cut \.akku-mini\.on \{ display: flex; \}/.test(css) && /\.top-row:has\(\.akku-mini\.on\) \.navi-turn \{ display: none; \}/.test(css) && HOMES.akku, 'style.css/sicht.js: Akku-Kopie nicht nur bei abgeschnittenem Mittelbildschirm oder ohne Platz');
-  // derselbe Inhalt wie die Karte des Mittelbildschirms (Game.lowBatteryCard): Stufe, Prozent, Ladepark
+  // derselbe Inhalt wie die Karte des Mittelbildschirms (Akku.card): Stufe, Prozent, Ladepark
   const sim = makeStream({ driver: DRIVERS.mittel, seed: 6 });
   sim.step(20);
   const g = sim.game;
