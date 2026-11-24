@@ -1,7 +1,7 @@
 // Teil der Regie einer Fahrt (Game, game.js): Ereignisse unterwegs: Blitzer, Polizei Gifhorn, Durchsagen, Rahmen, Elsa,
 // Funkloch, Elefantenrennen.
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
-import { CHAT, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, CREW, CREW_LINES, AKTIONEN, MEGAFON_WUENSCHE, SAMMELAKTIONEN, viewerName, fillTemplate } from '../../data.js';
+import { CHAT, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, CREW, CREW_LINES, AKTIONEN, MEGAFON_WUENSCHE, SAMMELAKTIONEN, BUSSGELD, viewerName, fillTemplate } from '../../data.js';
 import { clamp, rand, randInt, chance, pick, fmtEuro, fmtClock } from '../../util.js';
 import { Vector3 } from 'three';
 import { elephantPair } from '../../world/traffic.js';
@@ -263,7 +263,7 @@ export class EreignissePart {
           const kmh = Math.round(p.kmh);
           const clock = fmtClock(this.clock);
           this.later(0.6, () => {
-            this.fine(15, 'Bußgeld');
+            this.fine(BUSSGELD.blitzer, 'Bußgeld');
             this.ui.photo(kmh, clock);
           });
           this.burst(CHAT.blitzer, 3, 2);

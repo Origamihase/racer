@@ -57,7 +57,8 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
   nächsten Stopp ein, das Navi führt hinein und danach weiter zum Ziel; nur an der geplanten Säule beginnt das Laden
   von selbst. Bei 10 und bei 5 % warnt der Mittelbildschirm mit einer roten Karte; ist der Akku
   leer, rollt der Wagen aus, und die Fahrt ist zu Ende. Rempler kosten Karosserie-Punkte, die Werkstatt rechnet sie
-  am Brunnen ab; zu viel Blechschaden beendet die Fahrt ebenfalls.
+  am Brunnen ab (210 € je Rempler, 35 € je Kratzer; frontal in den Gegenverkehr je nach Annäherung bis über 1.000 € und
+  ab 90 km/h zwei Punkte); zu viel Blechschaden beendet die Fahrt ebenfalls.
 - **Live-Chat und Live-Bereich:** Spenden mit Alter-Skala, Sprachdurchsagen, gekaufte Rahmen
   (Rosen, Sonnenblumen, Pappkartons …), Funklöcher, Polizei Gifhorn, Blitzer mit Polaroid,
   Brunnen und die blaue Plüsch-Elsa mit Krönchen und Schärpe am Straßenrand, Bananensaft und Koriander – und ab und zu ein lächerliches

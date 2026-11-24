@@ -5,7 +5,7 @@
 // und hängen ihre Methoden an Game an (attachParts, unten). Der Akku ist eine eigene Klasse (akku.js, this.akku).
 import {
   CHAT, BOTS, BOARD, JOB_TEMPLATES, REPARATUR, CREW, INCOME, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag, PARTYPEOPLE,
-  frontalCost, damageCost,
+  frontalCost, damageCost, BUSSGELD,
 } from '../data.js';
 import { clamp, rand, chance, pick, shuffle, fmtCent, fmtEuro, fmtClock } from '../util.js';
 import { Player } from './player.js';
@@ -627,9 +627,9 @@ export class Game {
     }
     if (p.shoulderTime > 4.5) {
       p.shoulderTime = 0;
-      this.fine(10, 'Verwarngeld');
+      this.fine(BUSSGELD.verwarn, 'Verwarngeld');
       this.eco.cheer('fine');
-      this.ui.toast('🚓 Standstreifen: 10\u00a0€ Verwarngeld', 'bad');
+      this.ui.toast(`🚓 Standstreifen: ${BUSSGELD.verwarn}\u00a0€ Verwarngeld`, 'bad');
       this.callPolice('STANDSTREIFEN? NEIN!');
     }
     if (p.shoulderTime <= 0) this.shoulderWarned = false;

@@ -24,7 +24,7 @@
 //    (CHEER.brunnenTV), die Zuschauerzahl steigt sichtbar (oben links leuchtet sie, am Ende der Folge steht am Rand
 //    „📈 BrunnenTV: +N Zuschauer“), die Zufriedenheit steigt (ZUFRIEDEN.tv), und der Chat feiert. Gemessen gegen
 //    denselben Stream ohne diesen Schub (gleicher Zufall).
-// 3. „Die Schäden werden nicht abgezogen“: Jeder Rempler kostet 150 €, jeder Kratzer 25 € – ganz, auch wenn die Kasse
+// 3. „Die Schäden werden nicht abgezogen“: Jeder Rempler kostet REPARATUR.bump, jeder Kratzer .mark – ganz, auch wenn die Kasse
 //    dafür ins Minus geht, und auch über die drei gezeichneten Kratzer je Seite hinaus. Die Zeile der Runde am Rand hat
 //    dafür eine eigene rote Zeile „Schäden −… € (N Rempler · M Kratzer)“, das Guthaben sinkt um genau so viel, und am
 //    Ende bucht der Stream, was noch offen ist; die Abrechnung im Abspann führt „Schäden (N Rempler · M Kratzer)“ mit
@@ -419,7 +419,7 @@ console.log('3. Schäden werden abgezogen:');
   if (b1) {
     ok(near(b1.before - b1.after, b1.amount, 1e-9) && b1.after < 0, `Runde 1: Kasse ${b1.before} → ${b1.after} € (soll −${b1.amount} €, ins Minus)`);
     ok(b1.shown.length === 1 && b1.shown[0].v === -b1.amount && b1.shown[0].label === 'Schäden', `Runde 1 am Guthaben: ${JSON.stringify(b1.shown)}`);
-    ok(b1.toast && /Schäden −425\s€ \(2 Rempler · 5 Kratzer\)$/.test(b1.toast.text), `Runde 1 am Rand: ${b1.toast && b1.toast.text}`);
+    ok(b1.toast && new RegExp(`Schäden −${2 * R.bump + 5 * R.mark}\\s€ \\(2 Rempler · 5 Kratzer\\)$`).test(b1.toast.text), `Runde 1 am Rand: ${b1.toast && b1.toast.text}`);
     ok(g.player.damage.scratches.left === 3, `gezeichnet ${g.player.damage.scratches.left} Kratzer links (höchstens drei)`);
   }
   // Ende des Streams: Der Rempler der offenen Runde wird noch gebucht

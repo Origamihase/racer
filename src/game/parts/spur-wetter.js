@@ -1,6 +1,6 @@
 // Teil der Regie einer Fahrt (Game, game.js): Linke Spur (Sperrung und Freigabe) und Wetter (Regen, Wischer).
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
-import { CHAT, BOARD, viewerName, fillTemplate } from '../../data.js';
+import { CHAT, BOARD, BUSSGELD, viewerName, fillTemplate } from '../../data.js';
 import { clamp, rand, chance, pick, damp } from '../../util.js';
 
 
@@ -53,9 +53,9 @@ export class SpurWetterPart {
       if (L.rg > 15) {
         L.rg = 0;
         L.rgWarned = false;
-        this.fine(10, 'Verwarngeld');
+        this.fine(BUSSGELD.verwarn, 'Verwarngeld');
         this.eco.cheer('fine');
-        this.ui.toast('🚓 Rechtsfahrgebot missachtet: 10\u00a0€ Verwarngeld', 'bad');
+        this.ui.toast(`🚓 Rechtsfahrgebot missachtet: ${BUSSGELD.verwarn}\u00a0€ Verwarngeld`, 'bad');
       }
     } else {
       L.rg = Math.max(0, L.rg - dt * 2);
