@@ -474,8 +474,7 @@ export class Menus {
     line('Rempler', fmtNum(st.crashes));
     line('Höchstgeschwindigkeit', fmtNum(Math.round(st.maxSpeedKmh)) + ' km/h');
     line('Zuschauer-Spitze', fmtNum(o.peakViewers));
-    // die Running Gags (game/gags.js): die Zahl der Vereinsmitglieder steht nur hier, ihre Namen im Abspann
-    if (o.gags?.verein) line('Vereinsmitglieder', fmtNum(o.gags.verein.members.length));
+    // die Running Gags (game/gags.js); der Verein steht weder hier noch im Abspann (Eigentümer, 24.11.2026)
     if (o.gags?.mitleid.n) line('Mitleidskäufe', fmtNum(o.gags.mitleid.n) + ' · ' + fmtCent(o.gags.mitleid.sum));
     line('Wischer: gezuckt / gewischt', fmtNum(st.twitches) + ' / ' + fmtNum(st.wipes));
     line('Sendezeit', fmtSpan(o.air) + ' (bis ' + o.clock + ' Uhr)');
