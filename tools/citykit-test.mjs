@@ -251,6 +251,24 @@ for (const row of PLACES) {
 // Park. Am Start (nur Erlensee hat dort den Supercharger) steht keine Popcorn-Maschine.
 const { places, townLen } = await import('../src/map/graph.js');
 const { townPlan, islandOf, naviLayout } = await import('../src/world/xxl/towns.js');
+const fans = { n: 0, ok: 0 };
+function fansFree(plan, where) {
+  if (!plan.squares[0]) return;
+  fans.n++;
+  const spot = L.fanSpot(plan, city.fanExt());
+  ok(spot, `${where}: kein Platz für die Fangruppe`);
+  if (!spot) return;
+  const e = city.fanExt();
+  const fb = [spot.x + e[0], spot.x + e[1], spot.z + e[2], spot.z + e[3]];
+  const bad = plan.items.filter((it) => it.fp && it.fp.h > 0.3 && !/^(pavement|plaza)/.test(it.name) && overlap(fb, box(it.fp), 0.05));
+  ok(!bad.length, `${where}: Fangruppe steht in ${bad.map((it) => it.name).join(', ')}`);
+  // und sie verstellt den Brunnen nicht: von jeder Stelle der Anfahrt aus frei zu sehen (layout.js viewPoints)
+  const f = plan.fountains[0];
+  const fp = { cx: (fb[0] + fb[1]) / 2, cz: (fb[2] + fb[3]) / 2, hw: (fb[1] - fb[0]) / 2, hd: (fb[3] - fb[2]) / 2, ang: 0 };
+  const hides = L.viewPoints(f).some(([x, z]) => L.segHitsBox(x, z, f.x, -f.u, fp, 0));
+  ok(!hides, `${where}: Fangruppe verstellt den Brunnen`);
+  if (!bad.length && !hides) fans.ok++;
+}
 const { squareOf, SIDE_VIEW } = await import('../src/world/xxl/plan.js');
 const { J } = await import('../src/game/trip.js');
 const { POST } = await import('../src/map/parks.js');
@@ -353,6 +371,27 @@ for (const p of places) {
   const ns = naviLayout(first, { plan: sp });
   ok(naviLayout(first) === null && ns && near(ns.fountain.s, first.s0 + sm.u) && near(ns.fountain.x, sm.x), `${where}: am Start zeigt das Navi den Brunnen woanders`);
   ok(ns && ns.square.x - ns.square.r >= L.STREET.curbR - 0.01 && Math.hypot(ns.fountain.s - ns.square.s, ns.fountain.x - ns.square.x) + sm.r <= ns.square.r + 0.01, `${where}: am Start liegt der Platz des Navis nicht um den Brunnen rechts der Straße`);
+  // die Fangruppe am Brunnen steht frei: in keinem Café, keiner Laterne, keinem Kind, keiner Bank (am Start und am Ziel)
+  for (const [pl, what] of [[sp, 'am Start'], [plan, 'am Ziel']]) fansFree(pl, `${where} ${what}`);
+}
+// Die Fangruppe im gebauten Ort steht genau dort, wo fanSpot sie plant (Erlensee am Start)
+{
+  const p = places.find((q) => q.key === 'Erlensee');
+  const sec = { kind: 'stadt', place: p.i, s0: -300, s1: -300 + Math.max(townLen(p.pop), 500), start: true, spotS: 0 };
+  const plan = townPlan(city, sec);
+  const g = city.buildTown(plan, { lazy: true });
+  const fan = g.children.find((c) => c.name === 'fanGroup');
+  const spot = L.fanSpot(plan, city.fanExt());
+  ok(fan && spot && near(fan.position.x, spot.x, 1e-9) && near(fan.position.z, spot.z, 1e-9), 'Fangruppe in Erlensee nicht an ihrem geplanten Platz');
+  if (fan) {
+    fan.updateMatrixWorld(true);
+    const { Box3 } = await import('three');
+    const b = new Box3().setFromObject(fan);
+    const e = city.fanExt();
+    ok(near(b.min.x - fan.position.x, e[0], 1e-6) && near(b.max.z - fan.position.z, e[3], 1e-6), 'Fangruppe: ausgemessene Grundfläche passt nicht zur gebauten');
+  }
+  city.release(g);
+  console.log(`Fangruppe: frei an ${fans.ok} von ${fans.n} Brunnen (Erlensee bei x ${spot && spot.x.toFixed(1)}, u ${spot && (-spot.z).toFixed(1)})`);
 }
 ok(xxl.posts === xxl.towns && xxl.posts > 400, `Ladesäulen: ${xxl.posts} in ${xxl.towns} Orten`);
 

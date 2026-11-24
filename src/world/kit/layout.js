@@ -222,6 +222,37 @@ export function aabb(fp) {
   const hz = fp.hw * s + fp.hd * c;
   return [fp.cx - hx, fp.cx + hx, fp.cz - hz, fp.cz + hz];
 }
+/**
+ * Platz der Fangruppe am Zielbrunnen (buildTown): auf dem Platz neben dem Brunnen, so nah wie möglich an ihrer alten
+ * Stelle (2,2 m hinter dem Gehweg, 4,5 m vor dem Ende des Platzes), aber in nichts, was der Plan dort aufgestellt hat
+ * (Café, Laterne, Kind, Bank, Brunnen), und nie vor dem Brunnen: Sie steht hinter ihm (in Fahrtrichtung oder von der
+ * Straße aus gesehen), damit er von der Straße aus frei zu sehen bleibt. ext: ihre Grundfläche [x0, x1, z0, z1] um den
+ * Aufstellpunkt. Liefert {x, z} (z = −u) oder null ohne Platz.
+ */
+export function fanSpot(plan, ext) {
+  const sq = plan.squares[0];
+  const f = plan.fountains[0];
+  if (!sq || !f) return null;
+  const solid = plan.items.filter((it) => it.fp && it.fp.h > FAN_CLEAR && !/^(pavement|plaza)/.test(it.name)).map((it) => aabb(it.fp));
+  const x0 = STREET.curbR + sq.d0;
+  const home = [x0 + 2.2, sq.u1 - 4.5];
+  let best = null;
+  let bestD = Infinity;
+  for (let dd = 2.2; x0 + dd + ext[1] <= STREET.curbR + sq.d1; dd += 0.5) {
+    for (let u = sq.u1 + ext[2]; u - ext[3] >= sq.u0; u -= 0.5) {
+      const x = x0 + dd;
+      const b = [x + ext[0], x + ext[1], -u + ext[2], -u + ext[3]];
+      // hinter dem Brunnen: ganz nach ihm (u) oder ganz weiter weg von der Straße (x)
+      if (!(-b[3] >= f.u + f.r + 0.3 || b[0] >= f.x + f.r + 0.3)) continue;
+      if (solid.some((a) => touches(a, b))) continue;
+      const d = Math.hypot(x - home[0], u - home[1]);
+      if (d < bestD) [best, bestD] = [{ x, z: -u }, d];
+    }
+  }
+  return best;
+}
+// so hoch darf etwas sein, in dem die Fangruppe stehen darf (Pflaster, Beet, Tauben)
+const FAN_CLEAR = 0.3;
 const touches = (a, b) => a[0] < b[1] - 0.05 && b[0] < a[1] - 0.05 && a[2] < b[3] - 0.05 && b[2] < a[3] - 0.05;
 
 /** Schneidet die Strecke (ax, az)–(bx, bz) den gedrehten Grundriss f? (Liang–Barsky im Rahmen des Grundrisses) */
