@@ -185,12 +185,12 @@ export const GAGS = {
     echo: ['Vereinsmeier 😂', 'Satzung wann? 📜', 'Erster Vereinsausflug: zum Brunnen ⛲', 'Jahresbeitrag: ein Bananensaft 🍌',
       'Ehrenmitglied: Herr Schönnbrun 🎩', 'Wann ist die Mitgliederversammlung? 😂'],
   },
-  // „Holy nur mit Code ADAM“: die ausgedachte Brause Plüschbrause; der Chat erinnert an den Code (chat), manchmal
+  // „… nur mit Code ADAM“ aus dem Stream: die ausgedachte, zuckerfreie Brause Plüschbrause (kein Markenname); der Chat erinnert an den Code (chat), manchmal
   // antwortet jemand (antwort); im Shop gibt es die Kiste mit Code ADAM 10 % günstiger (SHOP brause, shopPrice)
   code: {
     chat: ['Nur mit Code ADAM, 10 % auf alles!', 'Code ADAM nicht vergessen: 10 % auf alles bei Plüschbrause 🥤', 'Plüschbrause mit Code ADAM bestellt 😎',
-      'CODE ADAM! 10 % auf alles!', 'Gilt Code ADAM auch für Bananensaft? 🍌', 'Ohne Code ADAM kauf ich gar nix mehr', 'Holy! Plüschbrause nur mit Code ADAM 🥤'],
-    antwort: ['Holy 🥤', 'Code ADAM ist Pflicht', 'Plüschbrause > alles', '10 % sind 10 % 😂', 'Holy, nur mit Code ADAM!'],
+      'CODE ADAM! 10 % auf alles!', 'Gilt Code ADAM auch für Bananensaft? 🍌', 'Ohne Code ADAM kauf ich gar nix mehr', 'Plüschbrause nur mit Code ADAM 🥤', 'Plüschbrause, null Zucker, nur mit Code ADAM 🥤'],
+    antwort: ['Plüschbrause 🥤', 'Code ADAM ist Pflicht', 'Plüschbrause > alles', '10 % sind 10 % 😂', 'Zuckerfrei und nur mit Code ADAM!'],
   },
   // Tracker: ein Zuschauer mit Geo-Tracker kündigt den nächsten Ort an ({ort}, wahr: Stichwort gleich), Zahlen zum
   // Stream kommen von der ausgedachten Statistikseite Glotzometer ({n}: die Zuschauer gerade, Stichwort glotz); die
@@ -1070,10 +1070,10 @@ export const SHOP = [
   },
   {
     // die Brause aus dem Stream (eine ausgedachte Marke, GAGS.code): nur mit Code ADAM, 10 % günstiger (shopPrice);
-    // wirkt in game.js: der Zuckerschub nach dem Ladestopp hält länger
+    // wirkt in akku.js: der Schub nach dem Ladestopp hält länger (die Brause ist zuckerfrei, Eigentümer 24.11.2026)
     id: 'brause', icon: '🥤', name: 'Plüschbrause-Kiste', cat: 'Spaß', prices: [190], code: { name: 'ADAM', off: 10 },
-    desc: 'Eine Kiste Plüschbrause für den Kofferraum: Nach dem Ladestopp hält der Zuckerschub länger. Holy – nur mit Code ADAM!',
-    effect: () => 'Zuckerschub nach dem Ladestopp 10 statt 6\u00a0s',
+    desc: 'Eine Kiste zuckerfreie Plüschbrause für den Kofferraum: Nach dem Ladestopp hält der Schub länger. Nur mit Code ADAM!',
+    effect: () => 'Schub nach dem Ladestopp 10 statt 6\u00a0s',
   },
   {
     id: 'elsa', icon: '👑', name: 'Wackel-Elsa', cat: 'Deko', prices: [120],
@@ -1161,7 +1161,7 @@ export const ABSPANN_REISE = [
   ['Discord', 'Wils und DomZe'],
   ['Raid-Kommando', 'König Knolli'],
   ['Moderation', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'wide'],
-  ['BrunnenTV', '{folgen} mit Herrn Schönnbrun (Mini Adam am Megafon)', 'wide'],
+  ['BrunnenTV', '{folgen} mit Herrn Schönnbrun', 'wide'],
 ];
 /** Ganz am Ende des Abspanns der Reise, allein und leise (Wortlaut des Eigentümers, unverändert). */
 export const GEDENKEN = 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte';
