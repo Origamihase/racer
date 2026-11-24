@@ -1,7 +1,7 @@
 // Teil der Regie einer Fahrt (Game, game.js): Navi-Ziel: Ausfahrten, die Auktion ums Ziel, Ankunft, Halt am Brunnen,
 // Rechnung und BrunnenTV.
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
-import { CHAT, BOARD, VOICES, REISE_AKKU, REPARATUR, damageCount, viewerName, fillTemplate, BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, SCHOENNBRUN } from '../../data.js';
+import { CHAT, BOARD, VOICES, REISE_AKKU, damageCost, damageCount, viewerName, fillTemplate, BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, SCHOENNBRUN } from '../../data.js';
 import { rand, chance, pick, fmtCent, fmtEuro, fmtNum } from '../../util.js';
 import { damageLine } from '../damage.js';
 import { BONTANA } from '../economy.js';
@@ -458,10 +458,10 @@ export class ZielPart {
     const T = this.tally;
     const sum = gifts.reduce((a, v) => a + v, 0);
     const marks = scratchMarks(this.player.damage);
-    const bill = { n, income: T.income + sum, hits: T.hits, marks: marks - T.marks };
-    bill.amount = REPARATUR.bump * bill.hits + REPARATUR.mark * bill.marks;
+    const bill = { n, income: T.income + sum, hits: T.hits, marks: marks - T.marks, front: T.front, extra: T.extra };
+    bill.amount = damageCost(bill.hits, bill.marks, bill.extra);
     // (die Ortsspenden dieser Ankunft buchen sich gleich noch, gehören aber zu dieser Runde)
-    this.tally = { income: -sum, hits: 0, marks };
+    this.tally = { income: -sum, hits: 0, marks, front: 0, extra: 0 };
     this.billDue = bill;
     this.later(3.2, () => this.payBill(bill));
   }
@@ -470,14 +470,15 @@ export class ZielPart {
    * Schäden abbuchen, immer ganz (REPARATUR je Rempler und Kratzer): Die Stream-Kasse darf dafür ins Minus gehen. Die
    * Abrechnung führt sie unter „Schäden“ (mit der Zahl der Rempler und Kratzer im Abspann), am Guthaben steht der Abzug.
    */
-  chargeDamage(hits, marks) {
-    const amount = REPARATUR.bump * hits + REPARATUR.mark * marks;
+  chargeDamage(hits, marks, extra = 0, front = 0) {
+    const amount = damageCost(hits, marks, extra);
     if (amount <= 0) return 0;
     this.money -= amount;
     this.breakdown.Schäden = (this.breakdown.Schäden || 0) - amount;
     const D = this.damageBill;
     D.hits += hits;
     D.marks += marks;
+    D.front += front;
     D.amount += amount;
     if (!this.over) this.ui.money(-amount, 'Schäden');
     return amount;
@@ -491,19 +492,19 @@ export class ZielPart {
   payBill(b) {
     if (this.billDue !== b) return;
     this.billDue = null;
-    const paid = this.chargeDamage(b.hits, b.marks);
+    const paid = this.chargeDamage(b.hits, b.marks, b.extra, b.front);
     // Teile mit Klasse bleiben beisammen, umbrochen wird nur an den Trennern ohne Klasse (auf dem Handy hochkant) – und
     // nie vor einem „·“ (geschütztes Leerzeichen davor); die Schäden stehen in einer eigenen Zeile (schaden)
     const dot = '\u00a0· ';
     const parts = [[`🧾 Runde ${b.n}`, 'runde'], [dot], [`Einnahmen +${fmtEuro(b.income)}`, 'plus']];
     if (!paid) parts.push([dot], ['keine Schäden ✨', 'plus']);
-    else parts.push([' '], [`Schäden −${fmtEuro(paid)} (${damageCount(b.hits, b.marks)})`, 'minus schaden']);
+    else parts.push([' '], [`Schäden −${fmtEuro(paid)} (${damageCount(b.hits, b.marks, b.front)})`, 'minus schaden']);
     this.ui.toast(parts.map((x) => x[0]).join(''), paid ? 'info' : 'good', 'rechnung', parts);
     if (!paid) {
       if (chance(0.6)) this.later(1, () => this.chat(this.chatLine(CHAT.heil)));
       return;
     }
-    const what = damageCount(b.hits, b.marks).replace(' · ', ' und ');
+    const what = damageCount(b.hits, b.marks, b.front).replace(/ · ([^·]*)$/, ' und $1').replaceAll(' · ', ', ');
     const left = this.money < 0 ? ` – die Stream-Kasse steht jetzt bei −${fmtCent(-this.money)}.` : ' – bezahlt aus der Stream-Kasse.';
     this.bot('james', `Werkstatt-Rechnung für Runde ${b.n}: ${fmtEuro(paid)} für ${what}` + left);
     this.later(1.2, () => this.chat(this.chatLine(CHAT.reparatur)));

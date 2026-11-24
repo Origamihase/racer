@@ -44,6 +44,12 @@ export function brakeDecel(level, wet) {
  * bremst er mit soft m/s² weich bis zum Stand.
  */
 export const REVERSE = { press: 0.9, hold: 0.5, still: 0.1, vmax: 4.2, acc: 1.5, brake: 6, coast: 1.2, back: 200, soft: 1.2 };
+/**
+ * Frontal in den Gegenverkehr (collide, ev.headOn): Der Wagen steht sofort und federt zurück – mit k m/s je m/s
+ * Annäherung (mindestens min, höchstens max), abklingend mit decel m/s²; so lange zieht das Strompedal nicht. Ab hard
+ * km/h Annäherung kostet der Stoß zwei Karosserie-Punkte statt einem.
+ */
+export const RECOIL = { k: 0.08, min: 1.5, max: 4, decel: 7, hard: 90 };
 
 export class Player {
   constructor() {
@@ -110,6 +116,7 @@ export class Player {
     this.battery = 100;
     this.hits = 0;
     this.cooldown = 0;
+    this.recoil = 0; // m/s rückwärts nach einem Frontal-Rempler (RECOIL)
     this.len = TESLA.length;
     this.w = TESLA.width;
     this.shoulderTime = 0;
@@ -380,6 +387,15 @@ export class Player {
   /** Ein Teilschritt der Längsdynamik (Strom, Bremse, Tempomat, Steigung, Tempo-Obergrenzen). */
   longStep(throttleIn, brake, wet, grade, H) {
     if (this.gear === 'R') return this.reverseStep(throttleIn, brake, wet, grade, H);
+    // nach einem Frontal-Rempler: zurückfedern, solange zieht nichts nach vorn (nie hinter das Ende des Rückwegs)
+    if (this.recoil > 0) {
+      this.s = Math.max(Math.min(this.s, this.revFloor), this.s - this.recoil * H);
+      this.recoil = Math.max(0, this.recoil - RECOIL.decel * H);
+      this.speed = 0;
+      this.aAuto = 0;
+      this.throttle += (0 - this.throttle) * (1 - Math.exp(-8 * H));
+      return;
+    }
     const v = this.speed;
     // steil bergauf etwas weniger Höchsttempo (bei 6 % gut 3 %, bei 8 % 6 %)
     const vmax = this.vmax * (1 - 1.2 * Math.max(0, grade - 0.03));
@@ -499,7 +515,17 @@ export class Player {
     const counts = this.cooldown <= 0;
     const c = ev.car;
     const sideHit = ev.lonOverlap > ev.latOverlap * 1.6;
-    if (!sideHit && ev.ds > 0) {
+    if (c.oncoming && ev.headOn) {
+      // frontal in den Gegenverkehr: kein Durchfahren – zurück an die Stoßstelle, Stillstand, Zurückfedern; der
+      // Tempomat hält danach 0 (er führe sonst gleich wieder hinein)
+      ev.zone = 'front';
+      ev.power = ev.closing;
+      this.s = Math.min(this.s, c.s - (c.len + this.len) / 2 - 0.35);
+      this.speed = 0;
+      this.aAuto = 0;
+      if (this.cruiseSet !== null) this.cruiseSet = 0;
+      if (counts) this.recoil = clamp(RECOIL.k * ev.closing, RECOIL.min, RECOIL.max);
+    } else if (!sideHit && ev.ds > 0) {
       // Auffahren: hinter dem Fahrzeug bleiben
       ev.zone = 'front';
       ev.power = Math.max(0, this.speed - c.speed);
@@ -543,6 +569,8 @@ export class Player {
     }
     if (!counts) return false;
     this.damage.hit(ev.zone);
+    // ein harter Frontal-Rempler kostet zwei Punkte
+    if (c.oncoming && ev.headOn && ev.closing * 3.6 >= RECOIL.hard) this.damage.hit(ev.zone);
     this.hits = this.damage.hits;
     this.cooldown = 1.6;
     return true;

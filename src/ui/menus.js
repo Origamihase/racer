@@ -452,7 +452,7 @@ export class Menus {
     for (const [k, v] of breakdownRows(o.breakdown)) {
       const row = el('div', 'bd' + (v < 0 ? ' minus' : ''), left);
       // die Schäden mit ihrer Zahl: „Schäden (2 Rempler · 1 Kratzer)“
-      const count = k === 'Schäden' && o.damage ? damageCount(o.damage.hits, o.damage.marks) : '';
+      const count = k === 'Schäden' && o.damage ? damageCount(o.damage.hits, o.damage.marks, o.damage.front || 0) : '';
       el('span', '', row, count ? `${k} (${count})` : k);
       el('span', '', row, (v < 0 ? '−' : '+') + fmtCent(Math.abs(v)));
     }

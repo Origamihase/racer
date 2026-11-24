@@ -102,8 +102,22 @@ export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Mitleidskäufe'];
  * mehr), bleibt, wie es ist.
  */
 export const REPARATUR = { bump: 150, mark: 25 };
-/** „2 Rempler · 1 Kratzer“: was eine Werkstatt-Rechnung zählt (Rundenzeile, James, Abrechnung im Abspann). */
-export const damageCount = (hits, marks) => [hits ? `${hits} Rempler` : '', marks ? `${marks} Kratzer` : ''].filter(Boolean).join(' · ');
+/**
+ * Frontal in den Gegenverkehr (der Besitzer am 24.11.: „eine bessere Lösung mit mehr Schaden“): Ein Frontal-Rempler
+ * kostet base Rempler und je km/h Annäherung perKmh Rempler mehr (gerundet auf 5 €) – bei 30 km/h gut das Doppelte
+ * eines gewöhnlichen, frontal auf der Landstraße (100 + 85 km/h) gut das Fünffache: der teuerste Rempler des Spiels.
+ * Ab Player RECOIL.hard km/h (90) kostet er dazu zwei Karosserie-Punkte.
+ */
+export const FRONTAL = { base: 1.5, perKmh: 1 / 50 };
+export const frontalCost = (kmh) => Math.round((REPARATUR.bump * (FRONTAL.base + Math.max(0, kmh) * FRONTAL.perKmh)) / 5) * 5;
+/** Werkstatt-Rechnung: hits Rempler (frontale mitgezählt), marks Kratzer, extra = was frontale mehr kosten. */
+export const damageCost = (hits, marks, extra = 0) => REPARATUR.bump * hits + REPARATUR.mark * marks + extra;
+/**
+ * „1 Frontal-Rempler · 2 Rempler · 1 Kratzer“: was eine Werkstatt-Rechnung zählt (Rundenzeile, James, Abrechnung im
+ * Abspann); hits zählt alle Rempler, front die frontalen darunter.
+ */
+export const damageCount = (hits, marks, front = 0) =>
+  [front ? `${front} Frontal-Rempler` : '', hits - front ? `${hits - front} Rempler` : '', marks ? `${marks} Kratzer` : ''].filter(Boolean).join(' · ');
 
 // Wofür gespendet wird (etwa jede dritte Spende nennt einen Zweck)
 export const SPENDEN_ZWECKE = [
@@ -522,6 +536,10 @@ export const CHAT = {
   gifhornOrt: ['Gifhorn! Historisch bedeutsam 😂', 'Polizei Gifhorn grüßt bestimmt gleich 👮', 'Wo ist der Supermarkt-Parkplatz?'],
   crash: ['Rezeption!', 'Uff 🙈', 'Das gibt Ärger', 'Hat das die Polizei Gifhorn gesehen? 🚓', 'Blechschaden!', 'Hoffentlich hat das keiner gesehen',
     'Eskalation! 😂', 'Das war die falsche Spur'],
+  // frontal in den Gegenverkehr (Game.onCrash, ev.headOn): Schreck und Werkstatt, nie Verletzungen
+  frontal: ['FRONTAL 😱', 'Gegenverkehr heißt GEGEN-Verkehr 😅', 'Rechts fahren, Adam!!!', 'Das wird eine teure Werkstatt 💸',
+    'Stoßstange an Stoßstange 🙈', 'Der kam doch entgegen!', 'Werkstatt-Termin ist gebucht 😂', 'Die Spur gehört dem anderen!',
+    'Pflaster für den Tesla! 🩹', 'James schreibt schon die Rechnung'],
   // der Chat will einen Gruß – kurz danach winkt Mini Adam (game/wave.js, Anlass „chat“)
   winkMal: ['Wink mal! 👋', 'Mini Adam, wink mal!', 'Einmal winken bitte! 👋', 'Wink mal in die Kamera!'],
   nearMiss: ['WAS WAR DAS 😱', 'Knapp!!!', 'Millimeterarbeit', 'CLIP!', 'Clip it!', 'Puh…', 'Mutig!'],

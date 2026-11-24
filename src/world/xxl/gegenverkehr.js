@@ -9,7 +9,13 @@
 //   (dort ist die Gegenspur gesperrt, plan.js squareXmin): Vor dem Brunnenplatz kommen sie nur zwischen Wagen und
 //   Platz, dahinter erst, wenn er passiert ist.
 // - Steht oder fährt der Spieler in ihrer Spur, bremsen sie (GEGEN.brake) und warten; wer dann doch hineinfährt,
-//   rempelt (Ereignis 'crash' wie im Verkehr der Autobahn, Game.onCrash). Sonst berühren sie ihn nie.
+//   rempelt (Ereignis 'crash' wie im Verkehr der Autobahn, Game.onCrash). Sonst berühren sie ihn nie, und sie lenken nie
+//   in seine Spur: Ihre Spurmitte ist die der Gegenspur (laneX), ihr rechter Rand bleibt links der eigenen Spur.
+// - Kommt die Berührung von vorn (ein Bild zuvor lagen beide der Länge nach noch nicht übereinander), ist es ein
+//   Frontal-Rempler (headOn, der Besitzer am 24.11.: „fährt man einfach durch das entgegenkommende Auto“): Beide stehen
+//   sofort, der Entgegenkommende federt ein Stück zurück (GEGEN.crash) und wartet, der Spieler ebenso (Player.collide);
+//   das Ereignis nennt die Annäherung (closing, m/s), nach der die Werkstatt rechnet. Seitlich gestreift (beide waren
+//   schon nebeneinander) bleibt es ein seitlicher Rempler.
 // - Höchstens GEGEN.max zugleich (je Fahrzeug etwa sieben Zeichenaufrufe), aus einem eigenen kleinen Vorrat.
 // Gesetzt werden sie wie der Verkehr: im Rahmen ihres Abschnitts (trip.locate), mit dessen Scherung zum Spieler.
 import * as THREE from 'three';
@@ -37,6 +43,9 @@ export const GEGEN = {
   look: 90, // so weit voraus achten sie auf ihn
   clear: 0.1, // seitlicher Abstand, unter dem der Spieler als in ihrer Spur gilt (m, zusätzlich zu den halben Breiten)
   taper: 40, // Übergang der Spurmitte zwischen zwei Abschnitten (wie J.taper)
+  // nach einem Frontal-Rempler: so lange steht der Entgegenkommende mindestens (s), so federt er zurück (m/s je m/s
+  // Annäherung, höchstens back, abklingend mit decel m/s²)
+  crash: { stop: 2.5, k: 0.05, back: 2.5, decel: 7 },
 };
 
 /** Hat dieser Abschnitt eine Gegenspur, auf der Gegenverkehr fährt? 'stadt', 'land' oder null. */
@@ -90,7 +99,8 @@ export class Gegenverkehr {
     this.cars = [];
     this.events = [];
     this.next = 0; // nächster Abstand (m), ab dem einer nachkommt
-    this.stats = { spawned: 0, crashes: 0, max: 0 };
+    this.pPrev = null; // wo der Spieler ein Bild zuvor war (von vorn oder von der Seite?)
+    this.stats = { spawned: 0, crashes: 0, headOn: 0, max: 0 };
   }
 
   acquire(kind) {
@@ -118,6 +128,7 @@ export class Gegenverkehr {
     this.cars = [];
     this.events.length = 0;
     this.next = 0;
+    this.pPrev = null;
   }
 
   /**
@@ -165,7 +176,7 @@ export class Gegenverkehr {
     const pace = rnd();
     const car = {
       v, kind: k, s, sec, x: oncomingX(sec), len: v.length, w: v.width, pace,
-      speed: (a + (b - a) * pace) * KMH, stop: 0, hit: false, frame: sec.frame, age: 0,
+      speed: (a + (b - a) * pace) * KMH, stop: 0, back: 0, hit: false, frame: sec.frame, age: 0, sPrev: s,
     };
     this.cars.push(car);
     this.stats.spawned++;
@@ -180,6 +191,8 @@ export class Gegenverkehr {
     this.events.length = 0;
     const path = trip.cur;
     const sP = player.s;
+    const sPrev = this.pPrev ?? sP;
+    this.pPrev = sP;
     // Nachschub: der nächste weit voraus, wenn der vorige weit genug herangekommen ist
     const here = twoWay(trip.section);
     if (here && this.cars.length < GEGEN.max) {
@@ -231,7 +244,13 @@ export class Gegenverkehr {
       }
       const dv = vmax - c.speed;
       c.speed = Math.max(0, c.speed + Math.max(-GEGEN.brake * dt, Math.min(GEGEN.accel * dt, dv)));
+      c.sPrev = c.s;
       c.s -= c.speed * dt;
+      // nach einem Frontal-Rempler federt er ein Stück zurück
+      if (c.back > 0) {
+        c.s += c.back * dt;
+        c.back = Math.max(0, c.back - GEGEN.crash.decel * dt);
+      }
       c.x = this.laneX(path, sec, c.s);
       c.v.setBrake?.(dv < -0.3 || c.speed < 0.5);
       c.v.updateLights?.(t);
@@ -249,16 +268,25 @@ export class Gegenverkehr {
     for (const c of this.cars) {
       const dx = c.x - player.x;
       const ds = c.s - sP;
+      const half = (c.len + player.len) / 2;
       const latOverlap = (c.w + player.w) / 2 - Math.abs(dx);
-      const lonOverlap = (c.len + player.len) / 2 - Math.abs(ds);
+      const lonOverlap = half - Math.abs(ds);
       if (latOverlap > 0.08 && lonOverlap > 0.05) {
-        // der Entgegenkommende steht danach still, bis der Spieler aus seiner Spur ist (stop)
-        c.stop = 1.5;
+        // von vorn: Ein Bild zuvor war er noch voraus und lag der Länge nach nicht über dem Wagen
+        const before = c.sPrev - sPrev;
+        const headOn = before > 0 && half - before <= 0.05;
+        const closing = Math.max(0, player.speed) + c.speed;
         const proxy = { s: c.s, speed: -c.speed, len: c.len, w: c.w, x: c.x, behavior: 'normal', oncoming: true };
+        // der Entgegenkommende steht danach still, bis der Spieler aus seiner Spur ist (stop)
+        c.stop = Math.max(c.stop, headOn ? GEGEN.crash.stop : 1.5);
+        if (headOn) {
+          c.back = Math.min(GEGEN.crash.back, GEGEN.crash.k * closing);
+          this.stats.headOn++;
+        }
         c.speed = 0;
         if (!c.hit) this.stats.crashes++;
         c.hit = true;
-        this.events.push({ type: 'crash', car: proxy, ds, dx, latOverlap, lonOverlap });
+        this.events.push({ type: 'crash', car: proxy, ds, dx, latOverlap, lonOverlap, headOn, closing });
       } else c.hit = false;
     }
     this.place(trip, sP, shears);

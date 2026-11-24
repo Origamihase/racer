@@ -21,6 +21,8 @@ export const DAMAGE_LINES = {
   first: ['Kleine Delle, großes Herz. Weiter geht’s!', 'Huch! Nur eine Schramme {wo}. Ich puste mal.', 'Das war ein Küsschen, kein Unfall.'],
   more: ['Der Tesla sammelt Andenken, jetzt auch {wo}.', 'Ich notiere: {teil} braucht später eine Umarmung.', 'Kurz durchatmen. Wir fahren ganz entspannt weiter.'],
   last: ['Letzter Karosserie-Punkt! Ab jetzt fahren wir wie auf rohen Eiern.', 'Es dampft ein bisschen. Das ist nur die Aufregung.', 'Ganz vorsichtig jetzt, sonst ruft die Werkstatt an.'],
+  // frontal in den Gegenverkehr (Game.onCrash, ev.headOn)
+  frontal: ['Uff! Frontal in den Gegenverkehr. Ab jetzt bleiben wir schön rechts.', 'Stoßstange an Stoßstange! Das wird eine teure Werkstatt.', 'Die Gegenspur gehört dem Gegenverkehr. Ich notiere: {teil} braucht eine Umarmung.'],
   repair: ['Pflaster drauf, schon viel besser!', 'Repariert! Die Stelle bekommt ein hübsches Pflaster.', 'Einmal Klebeband, einmal Liebe: geht wieder.'],
   scrape: ['Kratz, kratz – die Leitplanke wollte kuscheln.', 'Neue Zierlinie {wo}. Ganz modern.'],
   understeer: ['Huch, die Kurve war schneller als wir. Kurz vom Strom!', 'Die Reifen singen! Etwas langsamer, dann klappt die Kurve.', 'Uiii, wir schieben nach außen. Bremsen hilft!'],
