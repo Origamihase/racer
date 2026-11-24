@@ -155,7 +155,7 @@ export function streamStart() {
   run.hello = true;
   const id = run.id;
   const now = () => id === run.id;
-  m.speech.say(CHARGE_LINES.live, m.game.studioVoice(), { priority: true, onStart: (d) => now() && m.ui.studio(CHARGE_LINES.live, d + 0.8) });
+  m.speech.say(CHARGE_LINES.live, m.game.studio.voice(), { priority: true, onStart: (d) => now() && m.ui.studio(CHARGE_LINES.live, d + 0.8) });
   const text = PARTYPEOPLE.say;
   m.speech.say(text, 'adam', {
     priority: true,

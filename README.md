@@ -124,7 +124,7 @@ Spiel in Chromium, startet eine Fahrt, pausiert sie und simuliert einen Grafikve
 | `src/main.js` | Renderer, Kameras, Zustände (Titel, Startszene, Fahrt, Halt am Brunnen, Abspann), Hauptschleife |
 | `src/scenes/` | Szenen-Regie: Startszene am Supercharger, Ladestopp im Park, BrunnenTV am Ziel (Kontext aus `main.js`) |
 | `src/camera/` | Orbit-Kamera der Drohne (Abspann), ohne Browser prüfbar |
-| `src/game/` | Spiellogik: Fahrt über die Karte (`trip.js`), Fahrphysik, Navi-Auktion, Stream-Kasse und Chat-Stimmung (`economy.js`), Ereignisse, Album; `game.js` mit seinen Teilen in `parts/` (Spur und Wetter, Ziel, Ereignisse, Stream); Akku und Ladestopps als eigene Klasse (`akku.js`), die vom Spiel nur `AKKU_HOST` liest |
+| `src/game/` | Spiellogik: Fahrt über die Karte (`trip.js`), Fahrphysik, Navi-Auktion, Stream-Kasse und Chat-Stimmung (`economy.js`), Ereignisse, Album; `game.js` mit seinen Teilen in `parts/` (Spur und Wetter, Ziel, Ereignisse, Stream); eigene Klassen für Akku und Ladestopps (`akku.js`) und das Sprachstudio (`studio.js`), die vom Spiel nur ihre Liste (`AKKU_HOST`, `STUDIO_HOST`) lesen |
 | `src/map/` | Karte (Knoten, Straßen, Orte), Routen, Navi-Bildschirm, große Karte, Kartendaten |
 | `src/world/` | Autobahn, Himmel, Verkehr (mit Spurwechseln); `xxl/`: die Welt der Reise (Ausfahrten, Landstraßen, Orte, Tafeln, Ladeparks); `kit/`: Stadtbaukasten und Brunnen |
 | `src/models/` | Tesla, Mini Adam, Elsa, Fahrzeuge |

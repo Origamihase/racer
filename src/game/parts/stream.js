@@ -1,7 +1,7 @@
 // Teil der Regie einer Fahrt (Game, game.js): Zuschauer, Spenden und Chat: Zufriedenheit, Trödeladam, Sammelaktionen,
-// Crew, „5 Cent, wenn du …“, Sprachstudio, Jobs.
+// Crew, „5 Cent, wenn du …“, Jobs.
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
-import { CHAT, CREW, CREW_LINES, SPENDEN_ZWECKE, STUDIO, viewerName, viewerNameAt, fillTemplate, fmtBetrag } from '../../data.js';
+import { CHAT, CREW, CREW_LINES, SPENDEN_ZWECKE, viewerName, viewerNameAt, fillTemplate, fmtBetrag } from '../../data.js';
 import { clamp, rand, randInt, chance, pick, shuffle, fmtCent, fmtEuro, fmtNum } from '../../util.js';
 import { ZUFRIEDEN } from '../satisfaction.js';
 import { WAVE, chatGap } from '../wave.js';
@@ -205,8 +205,7 @@ export class StreamPart {
       case 'level':
         // die Stimmung ist deutlich umgeschlagen: Das Sprachstudio sagt es bald an (frühestens eine halbe Minute nach
         // der letzten Ansage, damit es bei einer Laune an der Kante nicht ständig hin und her meldet)
-        this.studio.trend = e.level > e.from ? 'up' : 'down';
-        this.T.studio = Math.min(this.T.studio, Math.max(2.5, 30 - (this.t - this.studio.moodT)));
+        this.studio.turned(e.level > e.from);
         // steigt sie, freut sich Mini Adam mit (sein Gesicht hängt an diesem Ereignis, nie am Stimmungswert selbst)
         if (e.level > e.from) this.onMood('happy', 0.6);
         break;
@@ -422,103 +421,6 @@ export class StreamPart {
     if (this.weather.level > 0.4) return 'regen';
     if (this.cent5.straightS > STRAIGHT_RUN) return 'gerade';
     return null;
-  }
-
-  // --- Sprachstudio ---------------------------------------------------------------------
-  /**
-   * Die ruhige Stimme in Mini Adams Ohr liest den Chat mit und sagt, wie er drauf ist: der einzige Weg, auf dem die
-   * heimliche Chat-Stimmung nach außen kommt (als Satz, nie als Zahl oder Balken). Etwa einmal pro Minute und wenn
-   * die Stimmung deutlich umschlägt – aber nie, während OMI oder eine Sprachdurchsage zu hören ist. Dazwischen gibt
-   * es höchstens einmal etwas anderes weiter (den Dank für eine große Spende, einen Kassensturz) und begrüßt, wer neu
-   * im Chat Hallo sagt.
-   */
-  updateStudio() {
-    const S = this.studio;
-    const T = this.T;
-    // Kassensturz bei jeder runden Summe, und ab und zu ein Gruß an jemanden, der neu im Chat ist
-    if (this.money >= S.mark) {
-      const step = S.mark < 2000 ? 500 : 1000;
-      S.mark = (Math.floor(this.money / step) + 1) * step;
-      S.extra = S.extra || { kind: 'total', until: this.t + 30 };
-    }
-    if (T.greet <= 0) {
-      T.greet = rand(150, 240);
-      // wer neu ist, meldet sich erst im Chat – und das Sprachstudio begrüßt genau ihn, sobald es Luft hat
-      if (!S.greet) {
-        const name = viewerName();
-        S.greet = { name, until: this.t + 40 };
-        this.chat(this.chatLine(CHAT.newViewer), name);
-      }
-    }
-    if (S.extra && this.t > S.extra.until) S.extra = null;
-    if (S.greet && this.t > S.greet.until) S.greet = null;
-    const x = S.extra;
-    // Außer der Reihe nur mit Abstand: zur letzten Zugabe, zum letzten Satz und zur nächsten Stimmungsansage. Nur ein
-    // „Alter!“ muss gleich raus, sobald niemand spricht – die Stimmungsansage wartet dann einen Moment (und hält auch
-    // sonst ein paar Sekunden Abstand zum letzten Satz, etwa wenn die Stufe gleich nach einem Dank wechselt). Ein Gruß
-    // wartet nicht auf die Pause zwischen den Zugaben: Der Neue hat ja schon Hallo gesagt.
-    const alter = x?.kind === 'alter' && this.t - S.last > 3;
-    const mood = !alter && T.studio <= 0 && this.t - S.last > 8;
-    const greet = !alter && !mood && S.greet && this.t - S.last > 10 && T.studio > 6;
-    if (!alter && !mood && !greet && !(x && this.t - S.extraT > 75 && this.t - S.last > 15 && T.studio > 10)) return;
-    // (in einer Szene – Folge, Ladestopp – schweigt das Studio und spricht danach)
-    if (this.funkloch > 0 || this.tv || this.charging || this.t < this.voiceUntil + 0.6 || this.t < this.studioUntil || this.speech.busy || this.speech.queue.length) return;
-    let text;
-    if (mood) {
-      // Woran es liegt, sagt es gern dazu: bei guter Laune das Schöne, bei schlechter den Kummer – und in der Mitte
-      // das, was die Stimmung gerade dorthin gebracht hat.
-      const lv = this.eco.level;
-      const dir = lv > 2 ? 'up' : lv < 2 ? 'down' : S.trend;
-      const why = dir && chance(0.75) ? this.eco.why(dir, S.why, (k) => this.causeTrue(k)) : null;
-      if (lv === 2 && S.trend) text = this.fresh(STUDIO.turn[S.trend], 'turn' + S.trend);
-      else text = why ? this.fresh(STUDIO.short[lv], 'short' + lv) : this.fresh(STUDIO.levels[lv], 'level' + lv);
-      if (why) {
-        text += ' ' + this.fresh(STUDIO.why[dir][why], dir + why);
-        S.why = why;
-      }
-      S.trend = null;
-      S.moodT = this.t;
-      T.studio = rand(52, 72);
-    } else if (greet) {
-      text = fillTemplate(this.fresh(STUDIO.greet, 'greet'), { name: S.greet.name });
-      S.greet = null;
-    } else {
-      S.extra = null;
-      S.extraT = this.t;
-      if (alter) {
-        text = fillTemplate(this.fresh(STUDIO.alter, 'alter'), { name: x.name, betrag: fmtCent(x.amount) });
-        T.studio = Math.max(T.studio, 12);
-      } else if (x.kind === 'thanks') text = fillTemplate(this.fresh(STUDIO.thanks, 'thanks'), { name: x.name, betrag: fmtCent(x.amount) });
-      else text = fillTemplate(this.fresh(STUDIO.total, 'total'), { summe: fmtEuro(Math.floor(this.money)) });
-    }
-    // ein leiser Zweiklang, damit man hört, dass jetzt nicht OMI spricht
-    this.audio.tone(659.25, 0.16, 'sine', 0.05);
-    this.audio.tone(523.25, 0.24, 'sine', 0.05, 0.13);
-    let line = null;
-    const dur = this.speech.say(text.replace(/_/g, ' '), this.studioVoice(), { onStart: (d) => (line = this.ui.studio(text, d + 0.8)), onDrop: () => line && (line.t = 0) });
-    S.last = this.t;
-    this.studioUntil = this.t + dur + 0.8;
-  }
-
-  /**
-   * Die Stimme des nächsten Studio-Satzes: abwechselnd die Frau (sprachstudio) und der Mann (sprachstudioM) – so hört
-   * man beide (speech.js studioVoices). „Wir sind live.“ zu Beginn (main.js) spricht die Frau, danach der Mann.
-   */
-  studioVoice() {
-    const key = this.studio.voices % 2 ? 'sprachstudioM' : 'sprachstudio';
-    this.studio.voices++;
-    return key;
-  }
-
-  /** Ein Satz aus der Liste, aber keiner der beiden zuletzt gesagten (key: je Liste ein Gedächtnis). */
-  fresh(list, key) {
-    const used = this.studio.used[key] || (this.studio.used[key] = []);
-    // (nur Sätze, die gerade stimmen: FACTS – und davon einer, der nicht eben erst dran war)
-    const fit = list.map((_, n) => n).filter((n) => this.fits(list[n]));
-    const i = pick(fit.filter((n) => !used.includes(n))) ?? pick(fit);
-    used.push(i);
-    if (used.length > Math.min(2, list.length - 1)) used.shift();
-    return untag(list[i]);
   }
 
   // --- Jobs ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ import { RouteLog } from './routelog.js';
 import { WaveRule, WAVE, chatGap } from './wave.js';
 import { StreamGags } from './gags.js';
 import { Akku } from './akku.js';
+import { Studio } from './studio.js';
 import { SpurWetterPart } from './parts/spur-wetter.js';
 import { ZielPart, scratchMarks, WAY } from './parts/ziel.js';
 import { EreignissePart, ELEFANT, FACTS } from './parts/ereignisse.js';
@@ -61,6 +62,8 @@ export class Game {
     this.gags = new StreamGags(this);
     // Akku und Ladestopps (akku.js): eigener Zustand, liest vom Spiel nur AKKU_HOST
     this.akku = new Akku(this);
+    // das Sprachstudio (studio.js): eigener Zustand, liest vom Spiel nur STUDIO_HOST
+    this.studio = new Studio(this);
     // BrunnenTV am Navi-Ziel: Hier hängt sich die Szene ein (siehe startBrunnenTV)
     this.onBrunnenTV = () => {};
     // Ladestopp im Park: Hier hängt sich die Szene ein (siehe akku.js start)
@@ -131,13 +134,8 @@ export class Game {
     this.trafficT = 0;
     this.stuck = false;
     this.stuckChatT = 0;
-    // Stimmen: bis wann OMI oder eine Durchsage zu hören ist und bis wann das Sprachstudio (Spielzeit)
+    // Stimmen: bis wann OMI oder eine Durchsage zu hören ist (Spielzeit; das Sprachstudio: studio.until)
     this.voiceUntil = 0;
-    this.studioUntil = 0;
-    // Sprachstudio: wann es zuletzt gesprochen und zuletzt die Stimmung angesagt hat, wohin sie gerade gekippt ist
-    // (trend), der zuletzt genannte Anlass (why), was es sonst noch loswerden will (extra), wen es gleich begrüßt
-    // (greet), die nächste runde Summe für den Kassensturz (mark) und welche Sätze gerade erst dran waren (used)
-    this.studio = { last: -99, moodT: -99, trend: null, why: null, extra: null, extraT: -99, greet: null, mark: 500, used: {}, voices: 0 };
     this.sammel = null;
     this.duel = null;
     // für den Abspann: die größte Spende, wer wie viel gespendet und geboten hat (Summe und Anzahl je Name), wer wie
@@ -174,11 +172,15 @@ export class Game {
     // Wetter: der erste Schauer kommt erst nach einem trockenen Start (cool, siehe updateWeather)
     this.weather = { level: 0, target: 0, active: false, dur: 0, cool: rand(100, 140), announced: false, twitches: 0, laughT: 0, sky: 0, front: 0, next: 0, calm: 0, crashes: 0 };
     // Ereignis-Uhren (Sekunden) und Strecken-Marken (Meter); das erste Navi-Gebot plant die Stream-Kasse (siehe unten)
-    this.T = {
+    // (die beiden Uhren des Sprachstudios laufen bei ihm, studio.js countdown; gewürfelt werden sie hier zwischen den
+    // anderen, damit der Zufall des Streams derselbe bleibt)
+    const { studio, greet, ...T } = {
       bid: 0, durchsage: rand(28, 40), rahmen: rand(70, 100), funkloch: rand(110, 170), frog: rand(160, 260),
       trunk: rand(120, 200), numbers: rand(80, 130), police: rand(200, 300), wiperChat: 0, sammel: rand(75, 110),
       studio: rand(26, 34), greet: rand(100, 170), cent5: rand(100, 160),
     };
+    this.T = T;
+    this.studio.reset(studio, greet);
     // „5 Cent, wenn du …“: welche Angebote in diesem Stream schon kamen (keins doppelt), wer zuletzt geboten hat, wie
     // lange die Straße schon geradeaus läuft (Meter) und wann zuletzt ein Ziel erreicht wurde (für Angebote zur Lage)
     this.cent5 = { used: new Set(), name: '', straightS: 0, arrivedT: -99, lage: chance(LAGE_SHARE) };
@@ -396,10 +398,7 @@ export class Game {
     // OMI hat das Wort: Das Sprachstudio verstummt mitten im Satz und wartet, bis sie fertig ist – sein Untertitel
     // geht mit (wie bei jedem abgebrochenen Satz), statt nach ihrem halb gesagt wieder dazustehen
     this.voiceUntil = Math.max(this.voiceUntil, this.t + 1.2);
-    if (this.t < this.studioUntil) {
-      this.studioUntil = this.t;
-      if (/^sprachstudio/.test(this.speech.current?.voiceKey || '')) this.speech.cancelCurrent(true);
-    }
+    this.studio.hush();
     if (this.running) this.later(0.35, go);
     else go();
   }
@@ -481,10 +480,8 @@ export class Game {
     else if (amount === 4 && chance(0.5)) this.later(0.7, () => this.chat(this.chatLine(CHAT.einblendung)));
     this.eco.donated(amount);
     this.onMood('donation', clamp(amount / 20, 0.25, 1));
-    // eine richtig große Spende gibt das Sprachstudio gern weiter, sobald es Luft hat (die größte zuerst) – und ab
-    // 100 € ruft es sofort „Alter!“, so wie das echte Sprachstudio
-    const S = this.studio;
-    if (amount >= 50 && !(S.extra?.amount >= amount)) S.extra = { kind: amount >= 100 ? 'alter' : 'thanks', name, amount, until: this.t + 20 };
+    // eine richtig große Spende gibt das Sprachstudio gern weiter (studio.js donated)
+    this.studio.donated(name, amount);
     return amount;
   }
 
@@ -611,11 +608,12 @@ export class Game {
     else if (this.navi.stopping) this.tickHalt(dt);
     this.updateNavi(dt);
     this.exitCall();
+    this.studio.countdown(dt);
     this.updateEvents(dt, camera);
     this.updatePickups(dt, camera);
     this.updateViewers(dt);
     this.updateChat(dt, ctl.kappa || 0);
-    this.updateStudio();
+    this.studio.update();
     this.updateJobs();
 
     // Standstreifen
