@@ -306,7 +306,7 @@ const touchEl = document.createElement('div');
 touchEl.className = 'touch';
 // Lenken, Bremse und Strom kommen aus src/ui/touch.js (Daumen-Zug oder Lenkknöpfe), die Knöpfe am Rand aus dessen
 // Liste TOUCH_BUTTONS: „Ladestopp einplanen“ (wie Taste L) ist zu sehen, wenn der Akku halb leer ist oder OMI gewarnt
-// hat, und heißt „Jetzt laden“, solange der Wagen neben einer Ladesäule oder Bucht steht (Game.chargeOffer); „BrunnenTV
+// hat, und heißt „Jetzt laden“, solange der Wagen neben einer Ladesäule oder Bucht steht (Akku.chargeOffer); „BrunnenTV
 // hier“ (wie Taste B), solange der Wagen neben einem Brunnen auf dem Weg steht (Game.wayOffer)
 const touchBtn = {};
 for (const t of TOUCH_BUTTONS) {
@@ -998,11 +998,11 @@ function tipsTick(dt, ctl, camera) {
     // die Ansage nennt ab dem 1000-m-Schild eine Ausfahrt, die noch nicht zu nah ist
     exit: !!ins && ins.turn === 'exit' && !ins.calm && ins.dist > 250,
     carAhead: !firstTips.seen.has('megafon') && slowCarAhead(p),
-    stop: game.stopOffer(),
+    stop: game.akku.stopOffer(),
     // B: der erste Brunnen auf dem Weg kommt in Sicht (oder der Wagen steht schon daneben)
     fountain: see.fountain || game.wayHint,
     // L: die erste Ladesäule kommt in Sicht, der Wagen steht neben einer (oder OMI warnt: stop)
-    post: see.post || game.chargeHint,
+    post: see.post || game.akku.hint,
   });
   if (!ev) return;
   showTip(ui, ev.show || null, input.lastDevice, tipsOff);
@@ -1511,7 +1511,7 @@ function step(dt, { render = true } = {}) {
       if (stopRun.on) {
         // Ladestopp: jede Taste überspringt ihn (wie die Startszene); das Spiel läuft weiter, der Spieler steht an
         // seinem Halt (Wagen und Kamera stellt stopPlace nach der Welt)
-        sceneSkip(stopRun, game.chargeT(), SCENE.skip);
+        sceneSkip(stopRun, game.akku.sceneT(), SCENE.skip);
         STOP_CTL.device = input.lastDevice;
         p.speed = 0;
         game.update(dt, STOP_CTL, camera);
@@ -1578,8 +1578,8 @@ function step(dt, { render = true } = {}) {
       if ((interimT -= dt) <= 0) storeInterim();
       waveAtWalkers(dt, p);
       if (stopBtn) {
-        stopBtn.classList.toggle('show', game.stopOffer());
-        stopLabel(game.chargeHint);
+        stopBtn.classList.toggle('show', game.akku.stopOffer());
+        stopLabel(game.akku.hint);
       }
       wayBtn.classList.toggle('show', game.wayHint);
       driveHintTick(dt, ctl);

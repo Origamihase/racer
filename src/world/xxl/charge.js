@@ -239,7 +239,7 @@ export function dockPath(u, u0, x0 = lane) {
 }
 
 /**
- * Der Ladestopp im Park (main.js, Spiel: Game.startCharge) in Sekunden ab dem Einparken (Ende von dockPath().T, dock):
+ * Der Ladestopp im Park (main.js, Spiel: Akku.start) in Sekunden ab dem Einparken (Ende von dockPath().T, dock):
  * Klappe auf (flap), Stecker aus dem Halter in die Buchse (plug: rig.set 1 → 0), Zeitraffer, in dem sich der Akku füllt
  * (fill) und Mini Adam Popcorn macht (pop) und Bananensaft holt (juice), OMIs Satz (nomi), dann ab unplug die Startszene
  * von Erlensee (SCENE, ihr t = 0): Stecker heraus, Klappe zu, Ausparken bis zur Übergabe in der Spur (end). shift: so
@@ -250,7 +250,7 @@ STOP.roll = STOP.unplug + SCENE.roll;
 STOP.end = STOP.unplug + SCENE.end;
 
 /**
- * Fahrplan eines Ladestopps (Game.startCharge, main.js): Der Wagen steht in der Spur des Parks sec mit seiner Mitte bei
+ * Fahrplan eines Ladestopps (Akku.start, main.js): Der Wagen steht in der Spur des Parks sec mit seiner Mitte bei
  * s (Meter der Fahrt) und x. Ergebnis: { u (Mitte des Parks im Abschnitt), creep (creepPath oder null), c (seine Dauer
  * oder 0), dock (dockPath), d0 (Sekunden bis zum Stand in der Bucht: vorrollen, R einlegen und einparken), at(k)
  * (Zeitpunkt k aus STOP in Sekunden ab dem Halt), roll, end (Ausparken und Übergabe in der Spur) }.

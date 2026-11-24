@@ -101,7 +101,7 @@ const DRIVERS = [
 const DUELLIST = { name: 'zügig, Duell im Zielort', cruise: 185, miss: 0, duel: true };
 /**
  * Ladestopps (REISE.md A5): Dieser Fahrer lädt nur an Ladesäulen (in den Ladeparks und an der Säule eines Orts auf dem
- * Weg). Er folgt dem Navi und plant bei jeder Warnung OMIs den Ladestopp ein, den sie nennt (Game.planStop, wie Taste
+ * Weg). Er folgt dem Navi und plant bei jeder Warnung OMIs den Ladestopp ein, den sie nennt (Akku.planStop, wie Taste
  * L); sein Akku wird nicht aufgefüllt. In LADE_MIN Minuten Stream läuft er nie leer, und jeder Halt lädt den Akku ganz.
  */
 const LADER = { name: 'Lader (plant Ladestopps)', cruise: 150, miss: 0, stops: true };
@@ -647,11 +647,11 @@ function stream(driver, hours, seed, firstRound = false) {
     game.offAutobahn = sec.kind !== 'ab';
     // der Lader plant bei jeder neuen Warnung den Ladestopp ein, den OMI nennt
     if (driver.stops) {
-      if (game.batteryWarned > warned) {
+      if (game.akku.warned > warned) {
         m.warns++;
         if (trip.stop < 0 && trip.post < 0 && !game.charging) {
-          const r = trip.nextRest((q) => game.reachable(q));
-          game.planStop();
+          const r = trip.nextRest((q) => game.akku.reachable(q));
+          game.akku.planStop();
           // (der Weg führt jetzt über den Park: Was das Navi hinter dem Horizont versprach, galt dem alten Weg)
           promised.clear();
           if (r && (r.post >= 0 ? trip.post === r.post : trip.stop === r.park)) {
@@ -660,7 +660,7 @@ function stream(driver, hours, seed, firstRound = false) {
           }
         }
       }
-      warned = game.batteryWarned;
+      warned = game.akku.warned;
     }
     const tvBefore = game.tv;
     game.update(DT, ctl, camera);

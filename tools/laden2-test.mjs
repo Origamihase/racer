@@ -108,14 +108,14 @@ function run({ target, park = -1, planPost = false, at, crawl = 0, key, secs = 9
     const from = crawl ? out.reached : out.stood;
     if (key !== undefined && from && !out.pressed && !game.charging && game.t - from.t >= key) {
       ctl.ladestopp = true;
-      out.pressed = { t: game.t, u: +u.toFixed(2), kmh: +(p.speed * 3.6).toFixed(1), offer: game.chargeHint, button: game.stopOffer() };
+      out.pressed = { t: game.t, u: +u.toFixed(2), kmh: +(p.speed * 3.6).toFixed(1), offer: game.akku.hint, button: game.akku.stopOffer() };
     }
     const was = !!game.charging;
     game.offAutobahn = trip.section.kind !== 'ab';
     game.update(DT, ctl, camera);
     if (here && !game.charging) {
-      out.offer.push(game.chargeHint);
-      out.label.push(game.stopOffer());
+      out.offer.push(game.akku.hint);
+      out.label.push(game.akku.stopOffer());
     }
     if (was && !game.charging) {
       out.battery = p.battery;

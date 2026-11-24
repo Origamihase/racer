@@ -258,7 +258,7 @@ export class UI {
   }
 
   /**
-   * Die Akku-Karte des Mittelbildschirms (Game.lowBatteryCard, screen.js drawLowBattery) als kleine Kopie in der
+   * Die Akku-Karte des Mittelbildschirms (Akku.card, screen.js drawLowBattery) als kleine Kopie in der
    * zweiten Reihe oben – zu sehen nur, wo der Mittelbildschirm aus dem Bild ragt (style.css .screen-cut). b: null = keine.
    */
   showAkkuCard(b) {
@@ -894,7 +894,7 @@ export class UI {
     this.batteryEl.textContent = Math.round(p.battery) + ' %';
     this.batteryFill.style.width = clamp(p.battery, 0, 100) + '%';
     this.batteryFill.className = 'battery-fill' + (p.battery < 15 ? ' low' : p.battery < 30 ? ' mid' : '');
-    if (g.lowBatteryCard) this.showAkkuCard(g.lowBatteryCard());
+    if (g.akku) this.showAkkuCard(g.akku.card());
     this.dmgBadge.update(p.damage);
     this.cruiseBadge.update(p);
     // linke Spur: Der Balken erscheint mit der Freischaltung und zählt herunter; in den letzten zehn Sekunden warnt er
