@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { Vehicle } from '../../models/vehicles.js';
 import { PROFILES } from '../../game/trip.js';
 import { squareOf } from './plan.js';
+import { appearScale } from '../traffic.js';
 
 const KMH = 1 / 3.6;
 export const GEGEN = {
@@ -164,7 +165,7 @@ export class Gegenverkehr {
     const pace = rnd();
     const car = {
       v, kind: k, s, sec, x: oncomingX(sec), len: v.length, w: v.width, pace,
-      speed: (a + (b - a) * pace) * KMH, stop: 0, hit: false, frame: sec.frame,
+      speed: (a + (b - a) * pace) * KMH, stop: 0, hit: false, frame: sec.frame, age: 0,
     };
     this.cars.push(car);
     this.stats.spawned++;
@@ -198,6 +199,7 @@ export class Gegenverkehr {
     this.cars.sort((a, b) => a.s - b.s);
     for (let i = 0; i < this.cars.length; i++) {
       const c = this.cars[i];
+      c.age += dt;
       const sec = this.allowed(path, c.s - 1) || c.sec;
       c.sec = sec;
       const kind = twoWay(sec) || 'stadt';
@@ -274,6 +276,9 @@ export class Gegenverkehr {
       if (!vis) continue;
       c.v.group.position.set(loc.x + sh.a + sh.b * d, 0, -d);
       c.v.group.rotation.y = Math.PI - Math.atan(sh.b + (loc.slope || 0));
+      // im Ort taucht er 190–280 m voraus auf, vor dem Nebel (der beginnt bei klarem Wetter erst bei 300 m): er wächst
+      // aus der Straße, statt sichtbar aus dem Nichts zu erscheinen
+      c.v.group.scale.setScalar(appearScale(c.age));
     }
   }
 }

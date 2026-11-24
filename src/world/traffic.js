@@ -54,6 +54,19 @@ const _cf = { x: 0, z: 0, th: 0, y: 0, k: 0, dk: 0, xr: 0, g: 0 };
 let nextId = 1;
 
 const NONE = Object.freeze([]);
+// der Spieler, solange er nicht auf dieser Autobahn fährt (passive): weit hinter allen und neben der Fahrbahn
+const AWAY = Object.freeze({ s: -1e9, x: -1e4, speed: 0, len: 0, w: 0, isPlayer: true });
+/**
+ * Wie lange ein neues Fahrzeug braucht, bis es ganz da ist (s): Es wächst aus der Straße, statt im Nebel oder ganz
+ * deutlich aus dem Nichts aufzutauchen (beim Nachschub voraus, von hinten und auf der Gegenfahrbahn; der erste
+ * Verkehr einer Autobahn, populate, steht gleich ganz da).
+ */
+export const APPEAR = 0.7;
+/** Größe eines Fahrzeugs age Sekunden nach dem Auftauchen (0…1, weich). */
+export const appearScale = (age) => {
+  const k = Math.min(1, Math.max(0, age / APPEAR));
+  return k * k * (3 - 2 * k);
+};
 
 /**
  * Gierwinkel eines Fahrzeugs in unserer Richtung: Spurwechsel, dazu die Scherung seines Rahmens (XXL) und hinter dem
@@ -85,6 +98,7 @@ export class Traffic {
     // Spieler gerade woanders fährt (passive: kein Nachschub, keine Begegnungen mit dem Spieler)
     this.shear = null;
     this.passive = false;
+    this.growing = true; // neue Fahrzeuge wachsen aus der Straße (APPEAR), außer beim ersten Füllen (populate)
     // XXL-Welt: Ende dieser Autobahn ({fs: Gabelung, s1: Ende der Fahrbahn, openLeft(s): linke Kante des offenen
     // Teils, rampX(u): Versatz der Rampe u Meter hinter der Gabelung}) bzw. ihr Anfang (s), sonst null
     this.end = null;
@@ -158,6 +172,7 @@ export class Traffic {
       wobble: Math.random() * 10,
     };
     car.v0 = car.speed;
+    car.born = this.growing ? this.t : -Infinity;
     if (behavior === 'polizei') v.setPoliceText?.(this.policeText);
     this.cars.push(car);
     // relativ zum Spieler (Stand des letzten update()), sonst stünde es bis dahin ein Bild lang auf dem Tesla
@@ -179,7 +194,7 @@ export class Traffic {
       v.group.rotation.y = 0;
       return false;
     }
-    const o = { v, s, x: ONCOMING(ROAD.laneCenter(truck ? 2 + Math.round(Math.random()) : lane)), speed, v0: speed, truck, len: v.length };
+    const o = { v, s, x: ONCOMING(ROAD.laneCenter(truck ? 2 + Math.round(Math.random()) : lane)), speed, v0: speed, truck, len: v.length, born: this.growing ? this.t : -Infinity };
     // gleich an seinen Platz, sonst steht es ein Bild lang mitten auf dem eigenen Auto
     this.placeOncoming(o, sPlayer);
     this.oncoming.push(o);
@@ -189,6 +204,8 @@ export class Traffic {
   populate(sPlayer, playerSpeed) {
     this.reset();
     this.sPlayer = sPlayer;
+    // der erste Verkehr steht gleich ganz da (die Autobahn beginnt neu, niemand sah zu)
+    this.growing = false;
     for (let i = 0; i < 18; i++) {
       const lane = pickLane();
       const s = sPlayer + 40 + i * 45 + rand(0, 30);
@@ -196,6 +213,7 @@ export class Traffic {
       if (this.laneFree(lane, s, 30) && !(this.begin !== null && s < this.begin + 40) && !(this.end && s > this.end.fs - END_ROOM)) this.spawn(s, lane);
     }
     for (let i = 0; i < 10; i++) this.spawnOncoming(sPlayer, false);
+    this.growing = true;
   }
 
   laneFree(lane, s, gap) {
@@ -216,6 +234,7 @@ export class Traffic {
     const sh = this.shear;
     c.v.group.position.set(c.x + (sh ? sh.a + sh.b * d : 0), 0, -d);
     c.v.group.rotation.y = carYaw(c, sh, this.end);
+    c.v.group.scale.setScalar(appearScale(this.t - c.born));
   }
 
   placeOncoming(o, sPlayer) {
@@ -223,6 +242,7 @@ export class Traffic {
     const sh = this.shear;
     o.v.group.position.set(o.x + (sh ? sh.a + sh.b * d : 0), 0, -d);
     o.v.group.rotation.y = Math.PI - (sh ? Math.atan(sh.b) : 0);
+    o.v.group.scale.setScalar(appearScale(this.t - o.born));
   }
 
   /** XXL: alle Fahrzeuge mit der aktuellen Scherung neu setzen (nach dem Abgleich der Welt in diesem Bild). */
@@ -259,8 +279,10 @@ export class Traffic {
     }
 
     const objs = this.cars;
-    // Spieler als Hindernis für die KI (rückwärts mit negativem Tempo: wer dahinter fährt, bremst entsprechend früher)
-    const P = { s: player.s, x: player.x, speed: player.v ?? player.speed, len: player.len, w: player.w, isPlayer: true };
+    // Spieler als Hindernis für die KI (rückwärts mit negativem Tempo: wer dahinter fährt, bremst entsprechend früher);
+    // fährt er woanders (passive: schon auf der Ausfahrt), ist er für diese Autobahn weg – sonst bremsten die Autos
+    // dahinter noch Hunderte Meter hinter der Gabelung vor einem Phantom auf der rechten Spur und wichen ihm aus
+    const P = this.passive ? AWAY : { s: player.s, x: player.x, speed: player.v ?? player.speed, len: player.len, w: player.w, isPlayer: true };
 
     for (const c of objs) {
       if (c.elefantUntil !== undefined && this.t >= c.elefantUntil) {
