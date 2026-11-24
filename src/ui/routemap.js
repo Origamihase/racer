@@ -3,7 +3,7 @@
 // Weg des Navis), der Start in Erlensee, jede BrunnenTV-Folge mit ihrer Nummer, jeder Ladestopp mit dem Stecker wie im
 // Navi und das Auto am Ende. Der Ausschnitt passt sich der Route an, in einer Maßstabsstufe der großen Karte (gleiche
 // Punkte, gleiche Namen wie dort).
-import { MapPainter, THEMES, bucketScale, project, spotBox, dotRadius, PLACE_BY_INDEX, menuLayoutOf, isCity } from '../map/mapview.js';
+import { MapPainter, THEMES, bucketScale, project, spotBox, dotRadius, PLACE_BY_INDEX, menuLayoutOf, isCity, placeLabel } from '../map/mapview.js';
 import { drawCar, drawTurnIcon, FONT } from '../map/symbols.js';
 
 const PAD = 30; // Rand um die Route (CSS-Bildpunkte): Platz für Marken und Auto
@@ -183,6 +183,31 @@ export function routeLabels(v, layout) {
   return out;
 }
 
+/**
+ * Was die Karte zeigen muss, damit der Weg auf Straßen liegt (route.secs, RouteLog): die Orte, durch die der Wagen fuhr
+ * (Punkt, Zubringer, Name), und die Landstraßen, auf denen er fuhr – auch wo die Stufe sie sonst weglässt. Ohne sie lief
+ * der Weg zu einem kleinen Ort quer übers Land und endete im Nichts (Hammersbach neben Erlensee).
+ */
+export function routeKeep(route) {
+  const places = new Set();
+  const edges = new Set();
+  for (const c of route.secs || []) {
+    if ((c.kind === 'stadt' || c.kind === 'zub') && c.place >= 0 && PLACE_BY_INDEX[c.place]) places.add(c.place);
+    if (c.kind === 'land' && c.edge >= 0) edges.add(c.edge);
+  }
+  return { places, edges };
+}
+
+/**
+ * Beschriftung einer Stufe samt den Namen der Orte aus keep, die sie nicht beschriftet (placeLabel; nach den Großstädten
+ * vor den übrigen Namen, routeLabels setzt in dieser Reihenfolge). Ergebnis wie menuLayout, dazu extra: die neuen Namen.
+ */
+function withKeep(layout, keep, b, measure) {
+  const extra = [...keep.places].filter((i) => !layout.shown.has(i)).map((i) => placeLabel(i, b, measure));
+  if (!extra.length) return { ...layout, extra };
+  return { labels: [...extra, ...layout.labels], shown: new Set([...layout.shown, ...keep.places]), extra };
+}
+
 // Richtungen, in die verschobene Marken zuerst ausweichen (routePlan): 0 wie bisher, dann je zwei Schritte weiter
 const TURNS = [0, 2, 4, 6, 8, 10];
 
@@ -190,18 +215,20 @@ const TURNS = [0, 2, 4, 6, 8, 10];
  * Ausschnitt und Namen zusammen (drawRouteMap): Bleibt eine Großstadt im Bild ohne Namen, weil eine verschobene Marke
  * auf ihren Plätzen liegt (Hanaus Folge unter Frankfurt am Main), weichen die Marken in eine andere Richtung aus.
  * Gewählt wird, was die wenigsten Großstädte ohne Namen lässt, bei Gleichstand das mit den meisten Namen. layoutOf:
- * Stufe → menuLayout (unter Node mit eigener Textmessung). Ergebnis: { v, names, lost: Großstädte im Bild ohne Namen }.
+ * Stufe → menuLayout (unter Node mit eigener Textmessung, measure dieselbe für die Namen aus routeKeep). Ergebnis:
+ * { v, names, lost: Großstädte im Bild ohne Namen, keep: routeKeep, layout: die Beschriftung samt Namen aus keep }.
  */
-export function routePlan(route, w, h, layoutOf = menuLayoutOf) {
+export function routePlan(route, w, h, layoutOf = menuLayoutOf, measure = undefined) {
   let best = null;
+  const keep = routeKeep(route);
   for (const turn of TURNS) {
     const v = routeView(route, w, h, { turn });
-    const layout = layoutOf(v.b);
+    const layout = withKeep(layoutOf(v.b), keep, v.b, measure);
     const names = routeLabels(v, layout);
     const shown = new Set([...names.keys()].filter((l) => l.kind === 'place').map((l) => l.i));
     const seen = (l) => v.X(l.x) > 0 && v.Y(l.y) > 0 && v.X(l.x) < w && v.Y(l.y) < h;
     const lost = layout.labels.filter((l) => l.kind === 'place' && isCity(PLACE_BY_INDEX[l.i]) && seen(l) && !shown.has(l.i)).length;
-    if (!best || lost < best.lost || (lost === best.lost && names.size > best.names.size)) best = { v, names, lost };
+    if (!best || lost < best.lost || (lost === best.lost && names.size > best.names.size)) best = { v, names, lost, keep, layout };
     // ohne verschobene Marke ändert eine andere Richtung nichts
     if (!lost || v.items.every((it) => it.x === it.x0 && it.y === it.y0)) break;
   }
@@ -215,13 +242,16 @@ export function routePlan(route, w, h, layoutOf = menuLayoutOf) {
 export function drawRouteMap(canvas, route, w, h, ps) {
   painter = painter || new MapPainter({ theme: 'light', look: 'menu', labels: false });
   const T = THEMES.light;
-  const { v, names } = routePlan(route, w, h);
+  const { v, names, keep, layout } = routePlan(route, w, h);
   const { X, Y } = v;
   canvas.width = Math.max(1, Math.round(w * ps));
   canvas.height = Math.max(1, Math.round(h * ps));
   const ctx = canvas.getContext('2d');
   // Land, Straßen und Ortspunkte wie in der großen Karte; die Namen kommen erst über den Weg
+  // dazu die gefahrenen Landstraßen und die Orte, durch die der Wagen fuhr (routeKeep), auch wo die Stufe sie weglässt
+  painter.keep = keep;
   painter.renderStatic(ctx, v.wx, v.wy, v.s * ps, canvas.width, canvas.height, ps, v.b);
+  painter.keep = null;
   ctx.setTransform(ps, 0, 0, ps, 0, 0);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -248,7 +278,7 @@ export function drawRouteMap(canvas, route, w, h, ps) {
   painter.renderLabels(ctx, v.wx, v.wy, v.s * ps, canvas.width, canvas.height, ps, v.b, 0, 0, (l) => {
     const q = names.get(l);
     return q ? [q[0] * ps, q[1] * ps] : null;
-  });
+  }, layout.extra);
   ctx.setTransform(ps, 0, 0, ps, 0, 0);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';

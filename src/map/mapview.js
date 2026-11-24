@@ -586,6 +586,22 @@ export function placeLabels(view, cands, { dots = [], avoid = [], pad = 4, gap =
 export function placeFont(p) {
   return p.imp >= 8 ? [14, 700] : p.imp >= 7 ? [13, 700] : p.imp >= 5.5 ? [12, 600] : [11, 500];
 }
+/** Name eines Orts als Kasten für die Beschriftung (Maßstab bs der Stufe, measure wie bei menuLayout); r: Punkt. */
+function placeCand(p, bs, measure) {
+  const [size, weight] = placeFont(p);
+  const font = `${weight} ${size}px ${FONT}`;
+  return { kind: 'place', i: p.i, text: p.name, font, x: p.x, y: p.y, w: measure(p.name, font) + 2, h: size + 3, r: dotRadius(p, bs) };
+}
+/**
+ * Ortsname wie in menuLayout.labels für einen Ort, den die Stufe nicht beschriftet (die Route des Tages zeigt die Orte,
+ * durch die der Wagen fuhr): rechts neben dem Punkt, ausweichen muss, wer ihn setzt. measure: Standard Browser.
+ */
+export function placeLabel(i, bucket, measure = measureText) {
+  const p = PLACE_BY_INDEX[i];
+  const c = placeCand(p, bucketScale(bucket), measure);
+  const [x0, y0] = spotBox(0, 0, c.r, 3, c.w, c.h, 0);
+  return { kind: 'place', text: c.text, font: c.font, x: c.x, y: c.y, dx: x0, dy: y0, w: c.w, h: c.h, i: c.i };
+}
 const SHIELD_H = 16; // Höhe der Autobahnschilder in der großen Karte
 const BADGE_R = 10; // Halbmesser der Bildzeichen an Fähren, Autozügen und Flügen
 const layoutCache = new Map();
@@ -634,9 +650,7 @@ export function menuLayout(bucket, measure) {
   const place = (p) => {
     const box = dotBox(p);
     if (taken.hits(...box)) return; // ein wichtigerer Name liegt schon hier
-    const [size, weight] = placeFont(p);
-    const font = `${weight} ${size}px ${FONT}`;
-    const c = { kind: 'place', i: p.i, text: p.name, font, x: p.x, y: p.y, w: measure(p.name, font) + 2, h: size + 3, r: dotRadius(p, bs) };
+    const c = placeCand(p, bs, measure);
     if (put(c, true) || put(c, false)) {
       taken.add(...box);
       shown.add(p.i);
@@ -795,8 +809,29 @@ const MARGIN = 40; // Rand um einen Ausschnitt in CSS-Bildpunkten: Striche an de
 const TILT_TILE = 512;
 
 /** Bildpunkte je Kilometer bei Maßstab s (Bildpunkte je Einheit) in der Kartenhöhe y. */
-const pxPerKm = (s, y) => s / kmPerUnit(y);
+export const pxPerKm = (s, y) => s / kmPerUnit(y);
 /** Linienbreite einer Straßenart in Bildpunkten bei k Bildpunkten je Kilometer (look 'navi' etwas kräftiger). */
+/** Breite (Bildpunkte) einer Straße, die MapPainter.keep zeichnet, wo ihre Stufe sie weglässt. */
+const KEEP_W = 1;
+/**
+ * Welche Straßen renderStatic zeichnet, bei k Bildpunkten je km und den Orten mit Punkt (vis): Breiten wa, wl, wz
+ * (Autobahn, Landstraße, Zubringer) und je ein Filter für Landstraßen (land(l), l.edge = Kante) und Zubringer (zub(l),
+ * l.place = Ort), null: keine. Autobahnen immer. Zubringer nur zu Orten, deren Punkt oder Fläche zu sehen ist; was keep
+ * verlangt (MapPainter.keep), auch wo die Stufe es weglässt, dann mindestens KEEP_W breit.
+ */
+export function roadsShown(k, vis, keep = null, navi = false) {
+  const wa = roadWidth('ab', k, navi);
+  let wl = roadWidth('land', k, navi);
+  let wz = roadWidth('zub', k, navi);
+  const kz = (l) => !!keep && keep.places.has(l.place);
+  const zub = wz > 0.7 ? (l) => kz(l) || vis.has(l.place) || townKm(PLACE_BY_INDEX[l.place].pop) * k >= 2.5 : keep ? kz : null;
+  const land = wl > 0.5 ? () => true : keep ? (l) => keep.edges.has(l.edge) : null;
+  if (keep) {
+    wz = Math.max(wz, KEEP_W);
+    wl = Math.max(wl, KEEP_W);
+  }
+  return { wa, wl, wz, zub, land };
+}
 export function roadWidth(kind, k, navi = false) {
   const z = Math.log2(Math.max(k, 1e-3));
   const f = navi ? 1.35 : 1;
@@ -950,7 +985,7 @@ function netGeo() {
   if (NETGEO) return NETGEO;
   const N = netData();
   const by = { ab: [], land: [], faehre: [], zug: [], flug: [], zub: [] };
-  for (const l of N.lines) by[l.kind].push(chunked(l.pts));
+  for (const l of N.lines) by[l.kind].push(Object.assign(chunked(l.pts), { edge: l.i }));
   for (const f of N.feeders) by.zub.push(Object.assign(chunked(f.pts), { place: f.place }));
   NETGEO = by;
   return by;
@@ -1051,6 +1086,10 @@ export class MapPainter {
     this.jobs = [null, null]; // … und die nächsten im Bau
     this.jobCanvas = [null, null];
     this.stats = { tiles: 0, cache: 0, ms: 0 };
+    // Was renderStatic auf jeden Fall zeichnet, auch wo die Stufe es weglässt (die Route des Tages, routemap.js): die
+    // Orte, durch die der Wagen fuhr, mit Punkt und Zubringer, und die Landstraßen, auf denen er fuhr
+    // ({ places: Set Ortsindex, edges: Set Kante } oder null)
+    this.keep = null;
   }
   get T() {
     return THEMES[this.theme];
@@ -1126,9 +1165,9 @@ export class MapPainter {
     // Verkehrswege: Fähren, Züge (und in der Weltansicht Flüge) gestrichelt, dann Straßen (erst alle Ränder)
     const NG = netGeo();
     const vis = this.navi ? visiblePlaces(b) : menuLayout(b, measureText).shown;
-    const wa = roadWidth('ab', k, this.navi);
-    const wl = roadWidth('land', k, this.navi);
-    const wz = roadWidth('zub', k, this.navi);
+    const keep = this.keep;
+    const R = roadsShown(k, vis, keep, this.navi);
+    const { wa, wl, wz } = R;
     ctx.lineWidth = clamp(1 + 0.3 * Math.log2(k * 8), 1, 2.4) * u;
     ctx.setLineDash([5 * u, 4 * u]);
     ctx.strokeStyle = T.ferry;
@@ -1144,9 +1183,8 @@ export class MapPainter {
       ctx.globalAlpha = 1;
     }
     ctx.setLineDash([]);
-    // Zubringer nur zu Orten, deren Punkt oder Fläche zu sehen ist
-    const zub = wz > 0.7 ? solidPath(NG.zub, r, (l) => vis.has(l.place) || townKm(PLACE_BY_INDEX[l.place].pop) * k >= 2.5) : null;
-    const lan = wl > 0.5 ? solidPath(NG.land, r) : null;
+    const zub = R.zub ? solidPath(NG.zub, r, R.zub) : null;
+    const lan = R.land ? solidPath(NG.land, r, R.land) : null;
     const ab = solidPath(NG.ab, r);
     if (zub) {
       ctx.strokeStyle = T.roadCase;
@@ -1179,7 +1217,8 @@ export class MapPainter {
     // Ortspunkte
     const bs = bucketScale(b);
     const big = this.navi ? 1.3 : 1;
-    for (const i of vis) {
+    const dots = keep ? [...vis, ...[...keep.places].filter((i) => !vis.has(i))] : vis;
+    for (const i of dots) {
       const p = PLACE_BY_INDEX[i];
       const rr = dotRadius(p, bs) * big * u;
       if (p.x + rr < wx || p.y + rr < wy || p.x - rr > wx + cw / s || p.y - rr > wy + ch / s) continue;
@@ -1200,14 +1239,15 @@ export class MapPainter {
 
   /**
    * Eingebrannte Beschriftung der großen Karte (menuLabels), soweit sie in das Rechteck ragt. at(l, x0, y0) → [x0, y0]
-   * oder null darf einen Kasten verschieben oder weglassen (linke obere Ecke in Bildpunkten der Leinwand).
+   * oder null darf einen Kasten verschieben oder weglassen (linke obere Ecke in Bildpunkten der Leinwand); extra: weitere
+   * Namen (placeLabel).
    */
-  renderLabels(ctx, wx, wy, s, cw, ch, ps, b, dx = 0, dy = 0, at = null) {
+  renderLabels(ctx, wx, wy, s, cw, ch, ps, b, dx = 0, dy = 0, at = null, extra = []) {
     const T = this.T;
     ctx.lineJoin = 'round';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    for (const l of menuLayout(b, measureText).labels) {
+    for (const l of [...menuLayout(b, measureText).labels, ...extra]) {
       let x0 = (l.x - wx) * s + l.dx * ps;
       let y0 = (l.y - wy) * s + l.dy * ps;
       if (x0 > cw || y0 > ch || x0 + l.w * ps < 0 || y0 + l.h * ps < 0) continue;

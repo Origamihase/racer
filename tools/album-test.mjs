@@ -7,7 +7,8 @@
 // - Streitfragen des Wikis, Datum und Uhr wie im HUD.
 // - Route (src/game/routelog.js): Abschnitte in der Reihenfolge des Fahrens, Marken mit Zählerstand, Summe gleich
 //   Kilometerzähler (die Fahrt im Spiel prüft tools/journey-test.mjs).
-// - Karte der Route im Abspann (src/ui/routemap.js): Marken, Namen im Bild und frei von Marken und Auto.
+// - Karte der Route im Abspann (src/ui/routemap.js): Marken, Namen im Bild und frei von Marken und Auto; echte Fahrten
+//   liegen auf gezeichneten Straßen, jeder Ort der Fahrt hat seinen Punkt.
 // node tools/album-test.mjs
 let fails = 0;
 let checks = 0;
@@ -316,6 +317,96 @@ const pic = (n, len) => 'data:image/webp;base64,' + String(n % 10).repeat(len - 
     }
   }
   ok(names > 100, `Routenkarten mit zusammen nur ${names} Namen`);
+}
+
+// --- Route des Tages auf den Straßen der Karte (routemap.js routeKeep, mapview.js roadsShown) ------------------------------
+// Echte Fahrten (Trip, Navi und RouteLog wie im Spiel, auch über Landstraßen): Jeder Punkt des gefahrenen Wegs liegt auf
+// einer Straße, die die Routenkarte zeichnet (höchstens 5 Bildpunkte daneben: Die Route, 7 Bildpunkte breit, deckt die Straße noch; im Ort zählt seine Fläche), und jeder Ort,
+// durch den der Wagen fuhr, hat Punkt und Namen (Michaels Testlauf endete in Hammersbach ohne beides; über Landstraßen lief
+// der Weg in der Deutschlandansicht neben jeder gezeichneten Straße).
+{
+  const { routePlan, routeKeep } = await import('../src/ui/routemap.js');
+  const { menuLayout, roadsShown, pxPerKm, netData, townKm, kmPerUnit, PLACE_BY_INDEX } = await import('../src/map/mapview.js');
+  const { Trip, J } = await import('../src/game/trip.js');
+  const { NavModel } = await import('../src/map/navroute.js');
+  const { findPlace } = await import('../src/map/graph.js');
+  const measure = (text, font, spacing = 0) => text.length * (parseFloat(/(\d+)px/.exec(font)[1]) * 0.6 + spacing);
+  const FPS = 10;
+  const drive = (...targets) => {
+    let seed = 3;
+    const trip = new Trip({ rng: () => ((seed = (seed * 16807) % 2147483647) / 2147483647) });
+    const nav = new NavModel(trip);
+    const log = new RouteLog();
+    let ti = 0;
+    trip.setTarget(findPlace(targets[0]));
+    let x = J.L0;
+    for (let f = 0; f < FPS * 3600 * 3; f++) {
+      const sec = trip.section;
+      const s = trip.s + (sec.kind === 'stadt' ? 13 : sec.kind === 'ab' ? 36 : 24) / FPS;
+      if (sec.kind === 'ab') {
+        const fk = sec.fork;
+        if (fk && !fk.taken && fk.s - s < J.decel - 20) x = trip.planFor(fk) === 'exit' ? J.L0 : 5.625;
+        else if (s - sec.s0 > J.accel) x = 5.625;
+      } else x = J.L0;
+      const p = trip.profile(s);
+      const ev = trip.update(s, Math.min(Math.max(x, p.xmin), p.xmax)) || [];
+      nav.update(1 / FPS);
+      log.add(trip.section, 1);
+      if (ev.some((e) => e.type === 'arrive') && ++ti < targets.length) trip.setTarget(findPlace(targets[ti]));
+      if (ti >= targets.length) break;
+    }
+    ok(ti === targets.length, `Fahrt ${targets.join(', ')}: nur ${ti} Ziele erreicht`);
+    return { line: nav.trail.slice(), marks: [], secs: log.finish(log.m).secs };
+  };
+  const N = netData();
+  // Abstand (Karteneinheiten) eines Punkts zur nächsten Strecke der Linienzüge
+  const near = (P, px, py) => {
+    let d = Infinity;
+    for (let i = 0; i + 3 < P.length; i += 2) {
+      const [ax, ay, dx, dy] = [P[i], P[i + 1], P[i + 2] - P[i], P[i + 3] - P[i + 1]];
+      const L = dx * dx + dy * dy;
+      const t = L ? Math.min(1, Math.max(0, ((px - ax) * dx + (py - ay) * dy) / L)) : 0;
+      d = Math.min(d, Math.hypot(ax + t * dx - px, ay + t * dy - py));
+    }
+    return d;
+  };
+  const DRIVES = { hammersbach: ['Aschaffenburg', 'Friedrichsdorf', 'Hammersbach'], landstrassen: ['Marburg', 'Hameln', 'Celle', 'Lörrach'] };
+  for (const [what, targets] of Object.entries(DRIVES)) {
+    const route = drive(...targets);
+    const keep = routeKeep(route);
+    for (const t of ['Erlensee', ...targets]) ok(keep.places.has(findPlace(t)), `Route ${what}: ${t} fehlt unter den Orten der Fahrt`);
+    if (what === 'landstrassen') ok(keep.edges.size >= 3, `Route ${what}: nur ${keep.edges.size} Landstraßen gefahren`);
+    for (const [w, h] of [[730, 290], [332, 230]]) {
+      const tag = `Route ${what} ${w}×${h}`;
+      const P = routePlan(route, w, h, (b) => menuLayout(b, measure), measure);
+      const v = P.v;
+      // wie renderStatic: Straßen der Stufe samt keep, Punkte der Stufe samt keep
+      const R = roadsShown(pxPerKm(v.s, v.wy + h / v.s / 2), menuLayout(v.b, measure).shown, P.keep);
+      const lines = [...N.lines.filter((l) => l.kind === 'ab' || (l.kind === 'land' && R.land && R.land({ edge: l.i }))).map((l) => l.pts), ...N.feeders.filter((f) => R.zub && R.zub(f)).map((f) => f.pts)];
+      const towns = [...P.keep.places].map((i) => PLACE_BY_INDEX[i]);
+      let off = 0;
+      let worst = '';
+      const L = route.line;
+      for (let i = 0; i < L.length; i += 2) {
+        if (!Number.isFinite(L[i])) continue;
+        const [px, py] = [L[i], L[i + 1]];
+        if (towns.some((p) => Math.hypot(p.x - px, p.y - py) * kmPerUnit(py) < townKm(p.pop) * 1.2 + 0.3)) continue;
+        const d = Math.min(...lines.map((Q) => near(Q, px, py))) * v.s;
+        if (d > 5) {
+          off++;
+          worst = `${d.toFixed(1)} Bildpunkte bei Punkt ${i / 2}`;
+        }
+      }
+      ok(!off, `${tag}: ${off} Punkte des Wegs neben den gezeichneten Straßen (${worst})`);
+      for (const p of towns) {
+        const inside = v.X(p.x) > 0 && v.Y(p.y) > 0 && v.X(p.x) < w && v.Y(p.y) < h;
+        ok(!inside || P.layout.shown.has(p.i), `${tag}: ${p.name} ohne Punkt`);
+      }
+      const named = new Set([...P.names.keys()].filter((l) => l.kind === 'place').map((l) => l.i));
+      const end = towns.find((p) => p.name === targets[targets.length - 1]);
+      if (w > 332) ok(named.has(end.i), `${tag}: ${end.name} (Ende der Fahrt) ohne Namen`);
+    }
+  }
 }
 
 // --- Gezeichnete Karte einer Folge ohne Standbild (src/ui/fountaincard.js) und Name ihres Brunnens ---------------------
