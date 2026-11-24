@@ -9,7 +9,7 @@ import { clamp, smoothstep } from '../util.js';
 import { CHARGE_KEYS, chargeM, chargePose } from './start.js';
 import { m } from './context.js';
 
-// --- Ladestopp im Park (world/xxl/charge.js STOP, Game.startCharge) -------------------------------------------------
+// --- Ladestopp im Park (world/xxl/charge.js STOP, Akku.start) -------------------------------------------------
 // Das Spiel läuft weiter (Uhr, Chat, Akku, Gebote, Spenden) und führt die Zeit; der Spieler wartet an seinem Halt in der
 // Spur, während der Wagen der Szene rückwärts in die freie Heldenbucht setzt, lädt und ausparkt (die Wege rechnet
 // charge.js im Rahmen des Parks). Passiert der ausparkende Wagen den Halt, folgt ihm der Spieler: Die Übergabe am Ende
@@ -137,7 +137,7 @@ export function stopTick() {
     }
     return;
   }
-  const t = m.game.chargeT();
+  const t = m.game.akku.sceneT();
   const te = t - P.at(STOP.unplug);
   // (an der Säule eines Orts vor dem Haltepunkt angehalten: erst vorrollen, P.creep, dann R)
   const q = t < P.c ? P.creep.pose(t, r.q) : t < P.d0 ? P.dock.pose(t - P.c - STOP.shift, r.q) : rollPose(P.u, clamp(te - SCENE.roll, 0, ROLL_T), r.q);
@@ -182,14 +182,14 @@ export function stopTick() {
   once('out', P.at(STOP.unplug + S.plug[0]), () => m.audio.unplug());
   once('d', P.roll, () => m.audio.gear('D'));
   // übersprungen: erst abblenden, dann beendet das Spiel den Stopp (im nächsten Bild die Übergabe)
-  if (r.skipT >= 0 && t - r.skipT >= 0.25) m.game.skipCharge();
+  if (r.skipT >= 0 && t - r.skipT >= 0.25) m.game.akku.skip();
 }
 
 /** Nach der Welt: Wagen und Kamera dieses Bilds. Ergebnis: { inside (Kamera im Cockpit), look (Mini Adam) }. */
 export function stopPlace(dt) {
   const r = stopRun;
   const P = r.c.plan;
-  const t = m.game.chargeT();
+  const t = m.game.akku.sceneT();
   const te = t - P.at(STOP.unplug);
   const tb = t - P.d0;
   stopPose(r.q);

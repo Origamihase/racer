@@ -1,8 +1,8 @@
 // Eine Fahrt: Regie für alle Ereignisse (linke Spur, Navi-Gebote, Regen, Blitzer, Polizei Gifhorn,
 // Sprachdurchsagen, Rahmen, Funkloch, Zuschauer, Spenden, Jobs) und die Abrechnung am Ende.
 // Geld kommt nur vom Publikum: Die Stream-Kasse und die heimliche Chat-Stimmung rechnet economy.js.
-// Hier stehen Aufbau, Schritt, Hilfen und Ende; die Themen (Akku, Spur und Wetter, Ziel, Ereignisse, Stream) stehen in
-// parts/ und hängen ihre Methoden an Game an (attachParts, unten).
+// Hier stehen Aufbau, Schritt, Hilfen und Ende; die Themen Spur und Wetter, Ziel, Ereignisse und Stream stehen in parts/
+// und hängen ihre Methoden an Game an (attachParts, unten). Der Akku ist eine eigene Klasse (akku.js, this.akku).
 import {
   CHAT, BOTS, BOARD, JOB_TEMPLATES, REPARATUR, CREW, INCOME, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag, PARTYPEOPLE,
 } from '../data.js';
@@ -15,13 +15,13 @@ import { Satisfaction } from './satisfaction.js';
 import { RouteLog } from './routelog.js';
 import { WaveRule, WAVE, chatGap } from './wave.js';
 import { StreamGags } from './gags.js';
-import { AkkuPart, meterAkku } from './parts/akku.js';
+import { Akku } from './akku.js';
 import { SpurWetterPart } from './parts/spur-wetter.js';
 import { ZielPart, scratchMarks, WAY } from './parts/ziel.js';
 import { EreignissePart, ELEFANT, FACTS } from './parts/ereignisse.js';
 import { StreamPart, LAGE_SHARE, QUOTE_DT, untag } from './parts/stream.js';
 // (Konstanten der Teile, wie bisher auch über game.js erreichbar)
-export { AKKU_CARD, akkuLevel } from './parts/akku.js';
+export { AKKU_CARD, akkuLevel } from './akku.js';
 export { fountainIn, EXIT_CALL, exitLine, TOWN_HOLD, AUKTION, WAY } from './parts/ziel.js';
 export { ELEFANT, FACTS, RADAR, ZONE_LEAD } from './parts/ereignisse.js';
 export { QUOTE_DT, TROEDEL, untag } from './parts/stream.js';
@@ -59,12 +59,19 @@ export class Game {
     this.waves = new WaveRule();
     // die Running Gags aus dem Stream des Eigentümers (gags.js): mit eigenem Zufall, damit der Stream sonst gleich verläuft
     this.gags = new StreamGags(this);
+    // Akku und Ladestopps (akku.js): eigener Zustand, liest vom Spiel nur AKKU_HOST
+    this.akku = new Akku(this);
     // BrunnenTV am Navi-Ziel: Hier hängt sich die Szene ein (siehe startBrunnenTV)
     this.onBrunnenTV = () => {};
-    // Ladestopp im Park: Hier hängt sich die Szene ein (siehe startCharge)
+    // Ladestopp im Park: Hier hängt sich die Szene ein (siehe akku.js start)
     this.onCharge = () => {};
     // Reise: eine Marke der Route des Streams (Folge, Ladestopp); main.js trägt ihre Lage auf der Karte nach
     this.onRouteMark = () => {};
+  }
+
+  /** Der laufende Ladestopp (akku.js start) oder null: Szenen, Ereignisse und Gags ruhen, solange er läuft. */
+  get charging() {
+    return this.akku.charging;
   }
 
   // ------------------------------------------------------------------------
@@ -148,15 +155,8 @@ export class Game {
     this.wayDone = new WeakSet();
     this.wayHint = false;
     this.wayNoteT = 0;
-    // neben einer Ladesäule oder Bucht: Laden mit L wird angeboten (chargeOffer), der Hinweis kam zuletzt bei chargeNoteT
-    this.chargeHint = false;
-    this.chargeNoteT = 0;
-    // Reise: Ladestopp im Ladepark ({ t0, from, park, name, sec, plan, … }, startCharge) oder null; Verbrauch seit dem
-    // letzten Laden (meterAkku: Meter Straße und Akku je Art der Straße, für OMIs Warnung) und wann sie wieder misst;
-    // sugarDue: der Zuckerschub des Bananensafts kommt, sobald der Wagen nach dem Stopp wieder auf der Autobahn ist
-    this.charging = null;
-    this.sugarDue = false;
-    this.akku = meterAkku();
+    // Akku: Ladestopp, Verbrauch, Warnungen, Akku-Karte, Hinweis an der Ladesäule, Zuckerschub (akku.js reset)
+    this.akku.reset();
     // was OMI in einer Szene sagen wollte und erst danach sagt ([Satz, Stimmung], say)
     this.heldSay = [];
     // zwischen Zielpunkt und Halt am Brunnen: { sec: Ortsdurchfahrt, still: so lange steht der Wagen schon }
@@ -191,8 +191,6 @@ export class Game {
     this.said = { t: -99, voice: null }; // die letzte Sprachdurchsage (FACTS.durchsage)
     this.policeCar = null;
     this.shoulderWarned = false;
-    this.batteryWarned = 0;
-    this.lowBat = { lvl: 0, t: 0 };
     // Trödeladam (TROEDEL): Sekunden im Stand und unter dem Tempo des Navis, wann der Chat ihn zuletzt so nannte
     this.troedel = { standT: 0, slowT: 0, lastT: -99, n: 0 };
     this.lastHugo = 0;
@@ -573,7 +571,7 @@ export class Game {
     if (ctl.wiper) this.manualWiper();
     if (ctl.megafon) this.useMegafon();
     // Taste L: neben einer Ladesäule oder Bucht gleich dort laden, sonst den nächsten Ladestopp einplanen
-    if (ctl.ladestopp && !this.chargeHere()) this.planStop();
+    if (ctl.ladestopp && !this.akku.chargeHere()) this.akku.planStop();
     if (ctl.brunnen) this.wayEpisode();
     // BrunnenTV unterwegs: steht der Wagen neben einem Brunnen auf dem Weg, sagt es der Rand oben (Taste B; auf dem
     // Handy steht dazu der Knopf „BrunnenTV hier“ bei den kleinen Knöpfen, main.js)
@@ -584,15 +582,8 @@ export class Game {
       this.ui.toast(this.touchUI ? '⛲ BrunnenTV hier: Knopf unten' : '⛲ BrunnenTV hier: Taste B', 'info', 'brunnenHier');
     } else if (!offer && this.wayHint) this.ui.dropKey('brunnenHier');
     this.wayHint = offer;
-    // Laden ohne Plan: steht (oder kriecht) der Wagen neben einer Ladesäule oder Bucht, bietet es der Rand oben an –
-    // Taste L, auf dem Handy der Knopf „Jetzt laden“ (Besitzer, 21.11.2026: „Es sollte ein manuelles Triggern des Ladens
-    // (wie bei BrunnenTV mit B) möglich sein.“), wie bei BrunnenTV alle WAY.remind Sekunden wieder
-    const here = !!this.chargeOffer();
-    if (here && (!this.chargeHint || this.t - this.chargeNoteT >= WAY.remind)) {
-      this.chargeNoteT = this.t;
-      this.ui.toast(this.touchUI ? '🔌 Ladesäule: Knopf „Jetzt laden“' : '🔌 Ladesäule: Jetzt laden mit Taste L', 'info', 'ladenHier');
-    } else if (!here && this.chargeHint) this.ui.dropKey('ladenHier');
-    this.chargeHint = here;
+    // Laden ohne Plan: neben einer Ladesäule oder Bucht bietet es der Rand oben an (Taste L, Knopf „Jetzt laden“)
+    this.akku.offerHint();
 
     // --- Verkehr ---------------------------------------------------------------
     const tev = this.traffic.update(dt, this.t, p, { difficulty: clamp(p.s / 16000, 0, 1), leftOpen: this.left.open, rain: W.level, dim: W.sky || 0 });
@@ -614,14 +605,8 @@ export class Game {
 
     this.updateLeftLane(dt);
     this.updateWeather(dt, ds);
-    if (this.charging) this.tickCharge(dt);
-    if (this.sugarDue && !this.offAutobahn) {
-      this.sugarDue = false;
-      // mit der Plüschbrause-Kiste aus dem Shop (Code ADAM, gags.js) hält er länger
-      p.sugar = this.up.brause ? 10 : 6;
-      this.audio.coin();
-      this.ui.toast(this.up.brause ? '🍌 Bananensaft und Plüschbrause! Zuckerschub' : '🍌 Bananensaft! Zuckerschub', 'good');
-    }
+    // der Ladestopp und danach der Zuckerschub des Bananensafts
+    this.akku.tick();
     if (this.tv) this.tickBrunnenTV();
     else if (this.navi.stopping) this.tickHalt(dt);
     this.updateNavi(dt);
@@ -648,10 +633,9 @@ export class Game {
     }
     if (p.shoulderTime <= 0) this.shoulderWarned = false;
 
-    // Akku: OMI nennt den nächsten Ladepark (journeyBattery), der Mittelbildschirm zeigt die Akku-Karte (lowBattery);
+    // Akku: OMI nennt den nächsten Ladepark, der Mittelbildschirm zeigt die Akku-Karte (akku.js watch);
     // leer hält der Tempomat nichts mehr (Player.longStep): Der Wagen rollt aus, im Stand ist die Fahrt zu Ende
-    this.journeyBattery();
-    this.lowBattery();
+    this.akku.watch();
     if (p.empty && p.speed < 1.5) this.end('akku');
   }
 
@@ -848,7 +832,7 @@ export class Game {
       funkloch: this.funkloch > 0 ? 1 : 0,
       wiperOn: W.level > 0.05,
       damage: p.damage,
-      lowBattery: this.lowBatteryCard(),
+      lowBattery: this.akku.card(),
     };
   }
 }
@@ -863,4 +847,4 @@ function attachParts(cls, parts) {
     }
   }
 }
-attachParts(Game, [AkkuPart, SpurWetterPart, ZielPart, EreignissePart, StreamPart]);
+attachParts(Game, [SpurWetterPart, ZielPart, EreignissePart, StreamPart]);

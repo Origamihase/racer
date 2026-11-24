@@ -306,7 +306,7 @@ function fakeGame(secs, { gate = true } = {}) {
   for (const [up, want] of [[{}, 6], [{ brause: 1 }, 10]]) {
     const sim = makeStream({ driver: DRIVERS.mittel, seed: 2, upgrades: up });
     sim.step(5);
-    sim.game.sugarDue = true;
+    sim.game.akku.sugarDue = true;
     sim.game.offAutobahn = false;
     sim.game.update(1 / 30, { steer: 0, throttle: 0, brake: 0 }, null);
     ok(Math.abs(sim.p.sugar - want) < 0.1, `Zuckerschub mit ${JSON.stringify(up)}: ${sim.p.sugar.toFixed(2)} s statt ${want}`);
