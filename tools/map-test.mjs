@@ -6,7 +6,7 @@ import {
   bucketMin, bucketScale, visiblePlaces, dotRadius, useEdgeShapes, countryName, kmPerUnit,
 } from '../src/map/mapview.js';
 import { places, nodes, edges, deRev, deRoad, deTowards } from '../src/map/graph.js';
-import { Line, fmtRoad, fmtKm, fmtOdo, fmtDistance } from '../src/map/navroute.js';
+import { Line, fmtRoad, fmtKm, fmtOdo, fmtDistance, NavModel, TRAIL } from '../src/map/navroute.js';
 import { MapDemo } from './mapdemo.mjs';
 import { goalName } from '../src/world/kit/layout.js';
 import { Persp, TiltView, ribbon } from '../src/map/persp.js';
@@ -997,6 +997,58 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
   const again = loadSave();
   const sum = visitSummary(again.visits);
   ok(sum.idx.length === 2 && sum.countries === 2, 'Besuche nach dem Laden: ' + JSON.stringify(sum));
+}
+
+// --- Gefahrener Weg (NavModel.trail) über einen langen Stream: gleichmäßig ausgedünnt, der Anfang bleibt erhalten ---
+{
+  const nav = Object.create(NavModel.prototype);
+  nav.trail = [];
+  nav.trailKm = TRAIL.km;
+  // 3.000 km in Schlangenlinien nach Norden, alle 20 m ein Bild; bei 1.000 und 2.000 km je eine Überfahrt (Sprung)
+  let x = 0;
+  let y = 0;
+  let km = 0;
+  const pts = [];
+  const STEP = 0.02;
+  let worst = 0;
+  let worstAt = 0;
+  let lenMax = 0;
+  while (km < 3000) {
+    const dir = 0.6 * Math.sin(km / 7) + 0.3 * Math.sin(km / 61);
+    const u = STEP / kmPerUnit(y);
+    x += Math.sin(dir) * u;
+    y -= Math.cos(dir) * u;
+    km += STEP;
+    if (Math.abs(km - 1000) < STEP / 2 || Math.abs(km - 2000) < STEP / 2) y -= 30 / kmPerUnit(y); // 30 km übers Wasser
+    nav.addTrail(x, y);
+    lenMax = Math.max(lenMax, nav.trail.length);
+    if (Math.abs(km - 60) < STEP / 2) pts.push([x, y]);
+  }
+  const T = nav.trail;
+  let jumps = 0;
+  for (let i = 2; i < T.length; i += 2) {
+    if (Number.isNaN(T[i]) || Number.isNaN(T[i - 2])) {
+      if (Number.isNaN(T[i])) jumps++;
+      continue;
+    }
+    const g = Math.hypot(T[i] - T[i - 2], T[i + 1] - T[i - 1]) * kmPerUnit(T[i + 1]);
+    if (g > worst) [worst, worstAt] = [g, i / 2];
+  }
+  ok(lenMax <= TRAIL.max + 6, `gefahrener Weg: ${lenMax} Zahlen, Grenze ${TRAIL.max}`);
+  ok(jumps === 2, `gefahrener Weg: ${jumps} Sprünge statt 2`);
+  // gleichmäßig: keine Lücke weit über dem Mindestabstand – auch nicht am Anfang
+  // und nicht gröber als nötig: 3.000 km in die Punkte, die vor dem dichten Ende Platz haben
+  const need = 3000 / ((TRAIL.max * TRAIL.keep - TRAIL.tail) / 2);
+  ok(nav.trailKm <= 2 * need, `gefahrener Weg: Mindestabstand ${nav.trailKm.toFixed(2)} km, nötig wären ${need.toFixed(2)} km`);
+  ok(worst <= nav.trailKm * 2.5, `gefahrener Weg: Lücke ${worst.toFixed(1)} km (Punkt ${worstAt}), Mindestabstand ${nav.trailKm.toFixed(2)} km`);
+  // und der Weg nach 60 km ist noch da (ein Punkt höchstens einen Mindestabstand entfernt)
+  const near = Math.min(...Array.from({ length: T.length / 2 }, (_, i) => (Number.isNaN(T[2 * i]) ? Infinity : Math.hypot(T[2 * i] - pts[0][0], T[2 * i + 1] - pts[0][1]) * kmPerUnit(T[2 * i + 1]))));
+  ok(near <= nav.trailKm * 1.5, `gefahrener Weg: Bei km 60 liegt der nächste Punkt ${near.toFixed(1)} km weg`);
+  // die letzten Kilometer bleiben dicht (das Navi zeigt sie aus der Nähe)
+  let tailGap = 0;
+  for (let i = T.length - 2; i >= T.length - 1000; i -= 2) tailGap = Math.max(tailGap, Math.hypot(T[i] - T[i - 2], T[i + 1] - T[i - 1]) * kmPerUnit(T[i + 1]));
+  ok(tailGap <= TRAIL.km * 1.5, `gefahrener Weg: hinter dem Wagen Lücken bis ${tailGap.toFixed(2)} km`);
+  console.log(`  Gefahrener Weg: 3.000 km in ${T.length / 2} Punkten, Mindestabstand ${nav.trailKm.toFixed(2)} km, größte Lücke ${worst.toFixed(2)} km, ${jumps} Überfahrten`);
 }
 
 if (fails) {
