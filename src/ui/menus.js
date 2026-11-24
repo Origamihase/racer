@@ -15,6 +15,7 @@ import { MAP_SOURCES, TERRAIN_NOTICES } from '../map/credits.js';
 import { canFullscreen, fullscreenLabel, toggleFullscreen, onFullscreenChange, homeScreenHint, escapeTaken } from './fullscreen.js';
 import { controlRows, keysOf, padOf } from './controls.js';
 import { thanksGroups } from './abspann.js';
+import { nextStart, startName } from '../game/starts.js';
 
 function el(tag, cls, parent, text) {
   const e = document.createElement(tag);
@@ -361,6 +362,8 @@ export class Menus {
     el('span', '', stats, '🏆 Rekord ' + fmtOdo((d.best.reise || 0) / 1000));
     el('span', '', stats, '🛣️ ' + fmtOdo(d.stats.reiseKm || 0) + ' gesamt');
     el('span', '', stats, '❤️ ' + visitLine(d.visits));
+    // wo der nächste Stream beginnt (game/starts.js; dort steht der Wagen schon im Ladepark)
+    el('span', '', stats, '📍 Start ' + startName(nextStart(d.start)));
     // das gekaufte Megafon ist erstattet worden (save.js refundMegafon): die Zeile steht bis zum ersten Besuch im Shop
     if (d.megafonNote) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.megafonNote)));
     // der letzte Stream endete ohne Abspann (Seite zu, Absturz): Er ist gebucht, bis zur nächsten Fahrt steht es hier
@@ -549,7 +552,7 @@ export class Menus {
       el('i', 'lg-' + cls, e, mark);
       e.append(text);
     };
-    lg('start', '', 'Start Erlensee');
+    lg('start', '', places[R.home] ? 'Start ' + places[R.home].name : 'Start');
     lg('tv', '1', 'BrunnenTV-Folge');
     lg('park', '', 'Ladestopp');
     const tv = R.marks.filter((m) => m.type === 'brunnen');
@@ -783,7 +786,7 @@ export class Menus {
     const card = el('div', 'card about-card', s);
     el('h2', '', card, 'ℹ️ Über das Spiel');
     const p = (t) => el('p', '', card, t);
-    p(`„${GAME_NAME}“ ist ein liebevolles, nicht-kommerzielles Fan-Spiel rund um SkylineTV LIVE. Mini Adam – der Plüsch-Adam mit Kappe, Bart und LIVE-Shirt – fährt den schwarzen Tesla Model 3 Long Range AWD mit 75-kWh-Akku vom Supercharger in Erlensee über echte Autobahnen, Landstraßen und Ortsdurchfahrten, während der Chat das Navi fernsteuert.`);
+    p(`„${GAME_NAME}“ ist ein liebevolles, nicht-kommerzielles Fan-Spiel rund um SkylineTV LIVE. Mini Adam – der Plüsch-Adam mit Kappe, Bart und LIVE-Shirt – fährt den schwarzen Tesla Model 3 Long Range AWD mit 75-kWh-Akku vom Supercharger in Erlensee (und jeden weiteren Stream von einem anderen Ort) über echte Autobahnen, Landstraßen und Ortsdurchfahrten, während der Chat das Navi fernsteuert.`);
     p('Jedes Navi-Ziel ist der Hauptbrunnen eines echten Orts, und jedes Gebot legt mindestens einen Zehner drauf. Steht Mini Adam am Brunnen, bevor wieder jemand überbietet, kurbelt er das Fenster herunter und macht mit dem Megafon BrunnenTV aus dem Auto – jede Folge kommt ins Album. Geladen wird in den Ladeparks an den Ausfahrten.');
     p('Fast alle Witze stammen aus dem SkylineTV LIVE Wiki: die freigeschaltete linke Spur, das Navi-Bieten, BrunnenTV mit Herrn Schönnbrun, Elsa, die Polizei Gifhorn, Meister Pünktlich (kommt gleich), Walte, die Farbe der Bank, Rahmen aus dem Live-Bereich, Sprachdurchsagen von Fräulein Kassandra und Brüll-William, das Sprachstudio in Mini Adams Ohr, Bananensaft statt Koriander, „You had 5 Jobs“ und die erlogenen Berufsbezeichnungen im Abspann.');
     p('Geld gibt es wie im echten Stream nur vom Publikum: Spenden, Ortsspenden, Abos, VIPs und Navi-Gebote. Wie der Chat gerade gelaunt ist, steht nirgends – das Sprachstudio sagt es Mini Adam ins Ohr.');

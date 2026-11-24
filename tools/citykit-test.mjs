@@ -403,7 +403,8 @@ ok(xxl.posts === xxl.towns && xxl.posts > 400, `Ladesäulen: ${xxl.posts} in ${x
   const { chargeOf, rollPose, ROLL_T, CHARGE } = await import('../src/world/xxl/charge.js');
   // Maße des Wagens (models/tesla.js TESLA; das Modell selbst braucht WebGL): Spur, halbe Breite, halbe Länge
   const CAR = { track: 0.79, half: 0.93, front: 2.345 };
-  const p = places.find((q) => q.key === CHARGE.place);
+  // (Erlensee: dort beginnt der erste Stream, game/starts.js; die anderen Startorte haben denselben Park)
+  const p = places.find((q) => q.key === 'Erlensee');
   const len = townLen(p.pop);
   const info = city.info(CHARGE.kind);
   ok(near(info.bays[info.hero][0], CHARGE.bay[0], 1e-9) && near(info.bays[info.hero][1], CHARGE.bay[1], 1e-9) && near(info.posts[info.heroPost][0], CHARGE.post[0], 1e-9) && near(info.posts[info.heroPost][1], CHARGE.post[1], 1e-9) && info.w === 2 * CHARGE.half, 'Ladepark: Bucht oder Säule anders als im Baustein');

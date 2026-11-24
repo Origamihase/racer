@@ -23,6 +23,8 @@ export const DEFAULT_SAVE = {
   // so viel änderte der zuletzt abgebrochene Stream am Guthaben (settlePending), bis zur nächsten Fahrt sagt es der Titel;
   // null: nichts
   streamNote: null,
+  // Startort des letzten Streams (Kennung aus game/starts.js STARTS): der nächste beginnt im Ort danach; null: noch keiner
+  start: null,
 };
 
 /** Ein gespeicherter Teil-Spielstand (best, stats, …) – oder nichts, wenn dort etwas anderes steht als ein Objekt. */
@@ -76,6 +78,7 @@ export function loadSave() {
       album: cleanAlbum(data.album),
       pending: cleanStream(data.pending),
       streamNote: cleanNote(data.streamNote),
+      start: typeof data.start === 'string' ? data.start : null,
     };
     for (const k of RETIRED.top) delete save[k];
     for (const k of RETIRED.best) delete save.best[k];

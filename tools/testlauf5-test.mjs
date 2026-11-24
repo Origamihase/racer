@@ -13,6 +13,10 @@
 //    derselben Stelle, im Mittel höchstens etwa einer je 15 km. Die Welt stellt ihn auf (Schilderplan 'blitzer'), der
 //    Ortsplan hält seinen Platz frei, und das Spiel misst genau dort: zu schnell blitzt es wie an der Autobahn (Blitz,
 //    Bußgeld, Foto, Chat), langsam genug gibt es das Lob. Vorher warnt nur der Radarwarner.
+// 4. „Jeder Stream sollte an einem anderen Ort starten“: Der erste Stream beginnt in Erlensee, jeder weitere im nächsten
+//    Ort der Liste (game/starts.js, der letzte steht im Spielstand) – nie zweimal hintereinander im selben. Aus jedem
+//    Startort beginnt die Fahrt im Ladepark (Startszene), der Ortsplan stellt Park und Brunnenplatz, die Fahrt findet
+//    auf die Autobahn, und im Spiel kommt das erste Gebot auf einen Ort in der Nähe (nie den Startort).
 import { Group } from 'three';
 import { Trip, PROFILES } from '../src/game/trip.js';
 import { findPlace } from '../src/map/graph.js';
@@ -28,6 +32,9 @@ import { squareOf } from '../src/world/xxl/plan.js';
 import { places } from '../src/map/graph.js';
 import { DAMAGE_LINES } from '../src/game/damage.js';
 import { mulberry32, makeStream, DRIVERS } from './stream-sim.mjs';
+import { STARTS, nextStart, startNode, startPlace } from '../src/game/starts.js';
+import { ROLL_T, rollPose } from '../src/world/xxl/charge.js';
+import { STREET } from '../src/world/kit/layout.js';
 
 let fails = 0;
 let checks = 0;
@@ -358,6 +365,78 @@ console.log('3. Blitzer im Ort und auf der Landstraße:');
     if (radar) ok(warned && warnS !== null && cam.s - warnS > 100, `${what}: Warnung ${warned ? Math.round(cam.s - (warnS ?? cam.s)) + ' m vorher' : 'fehlt'}`);
     else ok(!warned, `${what}: OMI warnt ohne Radarwarner`);
     console.log(`  ${what}: Limit ${cam.limit} mit ${kmhAt && kmhAt.toFixed(0)} km/h → ${flashed ? `Blitz, Bußgeld ${-fine} €` : 'Lob'}${radar ? `, Warnung ${Math.round(cam.s - warnS)} m vorher` : ', keine Warnung'}`);
+  }
+}
+
+// --- 4. Jeder Stream an einem anderen Ort ------------------------------------------------------------------------------
+console.log('4. Startorte:');
+{
+  // die Reihe: zuerst Erlensee, dann nie zweimal hintereinander derselbe, und jeder kommt dran
+  ok(nextStart(null) === 'Erlensee' && nextStart(undefined) === 'Erlensee' && nextStart('Atlantis') === 'Erlensee', 'der erste Stream beginnt nicht in Erlensee');
+  let last = null;
+  const seen = new Set();
+  for (let i = 0; i < 2 * STARTS.length; i++) {
+    const n = nextStart(last);
+    ok(n !== last, `zweimal hintereinander ${n}`);
+    seen.add(n);
+    last = n;
+  }
+  ok(seen.size === STARTS.length && STARTS.length >= 8, `nur ${seen.size} verschiedene Startorte`);
+  // der Spielstand merkt sich den letzten (save.js), Unsinn darin fällt auf den Anfang der Reihe zurück
+  const { loadSave } = await import('../src/save.js');
+  const stored = (v) => {
+    globalThis.localStorage = { getItem: () => JSON.stringify(v), setItem() {} };
+    return loadSave();
+  };
+  ok(nextStart(stored({ start: 'Gelnhausen' }).start) === STARTS[STARTS.indexOf('Gelnhausen') + 1], 'Spielstand: Startort nach Gelnhausen');
+  ok(stored({ start: 42 }).start === null && nextStart(stored({}).start) === 'Erlensee', 'Spielstand: unbrauchbarer Startort');
+  delete globalThis.localStorage;
+
+  // jeder Startort: Ort in Deutschland, Fahrt beginnt im Ladepark (das Ausparken endet am Startpunkt in der Spur), der
+  // Ortsplan stellt Park und Brunnenplatz, und der Autopilot findet auf die Autobahn
+  const { W } = await import('../src/curve.js');
+  const { createCityKit } = await import('../src/world/kit/city.js');
+  const { townPlan } = await import('../src/world/xxl/towns.js');
+  const K = createCityKit(W);
+  const rows = [];
+  for (const id of STARTS) {
+    const ni = startNode(id);
+    ok(ni >= 0 && startPlace(id) >= 0, `Startort ${id}: kein Knoten mit Ort`);
+    if (ni < 0) continue;
+    const trip = new Trip({ start: ni, rng: mulberry32(3) });
+    const sec = trip.section;
+    const name = places[sec.place] ? places[sec.place].name : id;
+    ok(sec.kind === 'stadt' && sec.start && sec.place === startPlace(id) && trip.home === sec.place && places[sec.place].cc === 'DE', `${name}: Fahrt beginnt nicht im Ort`);
+    const c = chargeOf(sec);
+    ok(c && c.start && c.u > 40 && c.u < sec.s1 - sec.s0 - 40, `${name}: kein Ladepark am Start`);
+    if (!c) continue;
+    const pose = rollPose(c.u, ROLL_T);
+    ok(Math.abs(pose.u + sec.s0) < 0.05 && Math.abs(pose.x - STREET.lane) < 0.05, `${name}: Ausparken endet bei u ${pose.u.toFixed(2)}, x ${pose.x.toFixed(2)}`);
+    const plan = townPlan(K, sec);
+    ok(plan.charge && Math.abs(plan.charge.u - c.u) < 1e-6 && plan.goal, `${name}: Ortsplan ohne Park oder Brunnenplatz`);
+    let s = trip.s;
+    for (let i = 0; i < 1200 && trip.section.kind !== 'ab'; i++) {
+      s += 5;
+      trip.update(s, autoTarget(trip));
+    }
+    ok(trip.section.kind === 'ab', `${name}: nach ${(s / 1000).toFixed(1)} km nicht auf der Autobahn`);
+    rows.push(`${name} (${places[sec.place].pop} Einw., Park bei ${c.u.toFixed(0)} m, Autobahn nach ${(s / 1000).toFixed(1)} km)`);
+  }
+  console.log('  ' + rows.join(' · '));
+
+  // im Spiel aus drei Startorten: das erste Gebot gilt einem Ort in der Nähe (nie dem Startort), der erste Brunnen kommt
+  for (const id of ['Gelnhausen', 'Idstein', 'Wetzlar']) {
+    const S = makeStream({ seed: 4, start: startNode(id), endless: true });
+    const g = S.game;
+    let first = null;
+    for (let i = 0; i < 15 * 60 && !g.over && !S.log.tv.length; i++) {
+      S.step(1);
+      if (first === null && g.navi.target) first = g.navi.target.place;
+    }
+    const home = places[startPlace(id)].name;
+    ok(first !== null && first !== S.trip.home, `${home}: erstes Gebot ${first === null ? 'fehlt' : 'auf den Startort'}`);
+    ok(S.log.tv.length >= 1, `${home}: in 15 Minuten keine BrunnenTV-Folge`);
+    console.log(`  Stream ab ${home}: erstes Ziel ${first !== null ? places[first].name : '–'}, Folge nach ${S.log.tv.length ? (S.log.tv[0].t / 60).toFixed(1) + ' min' : '–'}`);
   }
 }
 

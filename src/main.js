@@ -48,6 +48,7 @@ import { Menus } from './ui/menus.js';
 import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
 import { SHOP, UPGRADE_LIMITS, shopPrice } from './data.js';
 import { NavModel } from './map/navroute.js';
+import { nextStart, startNode } from './game/starts.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
 import { albumBadges } from './ui/album.js';
@@ -77,6 +78,8 @@ const megafonBack = refundMegafon(save);
 // zur nächsten Fahrt, was er gebracht hat (save.streamNote)
 const recovered = settlePending(save);
 if (megafonBack || recovered) storeSave(save);
+// Startort des nächsten Streams (game/starts.js): nie der vom letzten Mal; im Titel wartet der Wagen schon dort
+let startId = nextStart(save.start);
 let shopRefund = 0;
 let mapHudT = 0; // die Navi-Zeile des HUD folgt der Fahrt viermal je Sekunde
 let turnIns = null; // ihre letzte Ansage (NavModel.instruction), auch für die Tipps der ersten Minuten
@@ -590,7 +593,7 @@ const menus = new Menus(app, {
     if (name === 'settings') return { ...settings, speechSupported: speech.supported };
     if (name === 'title') return save;
     if (name === 'pause') return game;
-    if (name === 'karte') return { save, nav: xxlNav, odo: paused ? game.odometer : null };
+    if (name === 'karte') return { save, nav: xxlNav, odo: paused ? game.odometer : null, home: startId };
     // BrunnenTV-Album: Folgen aus dem Spielstand, Bilder unter ihrem eigenen Schlüssel (frisch gelesen)
     if (name === 'album') return { save, pics: loadPictures(), tab: 'folgen' };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
@@ -695,6 +698,7 @@ function toTitle() {
   ui.show(false);
   speech.stopAll();
   game.startTitle();
+  startId = nextStart(save.start);
   xxlStart(true);
   applyCosmetics();
   menus.hide();
@@ -723,6 +727,9 @@ function startRun() {
   // „Neustart“ aus der Pause: Der laufende Stream wird abgerechnet wie beim Beenden (Einnahmen und Schäden zählen)
   if (streamOpen()) settleStream(save, game.interim());
   save.streamNote = null;
+  // der Stream beginnt im Startort, den der Titel zeigt (nach einem Neustart aus der Pause im nächsten)
+  startId = nextStart(save.start);
+  save.start = startId;
   storeSave(save);
   interimT = INTERIM_EVERY;
   menus.hide();
@@ -736,7 +743,7 @@ function startRun() {
   fxState.fade = 1;
   cockpit.shake = 0;
   chassis.reset();
-  // jede Fahrt beginnt mit der Startszene am Supercharger in Erlensee (ohne Ladepark gleich am Steuer)
+  // jede Fahrt beginnt mit der Startszene im Ladepark des Startorts (ohne Ladepark gleich am Steuer)
   Object.assign(chargeRun, { hello: false, said: false, waveT: -1, greetT: Infinity });
   chargeRun.id++;
   state = 'charge';
@@ -770,8 +777,9 @@ function finishRun() {
   const { newRecord } = settleStream(save, { money: o.money, distance: o.distance, peakViewers: o.peakViewers, naviReached: o.stats.naviReached, crashes: o.stats.crashes });
   storeSave(save);
   if (newRecord) adamMood('proud');
-  // zur Route des Streams der gefahrene Weg des Navis (Kartenpunkte, ausgedünnt), für die Karte im Abspann
-  const route = { ...o.route, line: thinLine(xxlNav.trail, 3000) };
+  // zur Route des Streams der gefahrene Weg des Navis (Kartenpunkte, ausgedünnt) und der Startort, für die Karte im
+  // Abspann
+  const route = { ...o.route, line: thinLine(xxlNav.trail, 3000), home: xxl.trip.home };
   lastOver = { ...o, route, newRecord, best: save.best.reise, wallet: save.wallet, photos: ui.photos.slice() };
 }
 
@@ -1468,7 +1476,7 @@ function step(dt, { render = true } = {}) {
 
   switch (state) {
     case 'title': {
-      // (ohne Ladepark – den hat Erlensee immer – steht der Wagen am Start, die Kamera kreist um ihn)
+      // (ohne Ladepark – den hat jeder Startort – steht der Wagen am Start, die Kamera kreist um ihn)
       if (chargeRun.parked) chargeTitle();
       else {
         updateCarMatrix();
@@ -1814,10 +1822,10 @@ let xxlNav = null;
 const xxlScreenNav = { model: null, bidder: '', bid: '', bar: '', wait: '', clockMin: 0, visible: false, visited: null };
 // und von der Straße für die Spuransicht (st.road, src/cockpit/screen.js)
 const xxlScreenRoad = { lanes: null, extraLane: null, autobahn: true };
-/** Neue Fahrt (Erlensee) bzw. Titel: der Titel fährt gleich auf der ersten Autobahn (die Kamera kreist dort). */
+/** Neue Fahrt bzw. Titel im Startort startId (game/starts.js): im Titel wartet der Wagen schon in dessen Ladepark. */
 function xxlStart(title) {
   const p = game.player;
-  xxl.reset();
+  xxl.reset(startNode(startId));
   // am Navi-Ziel bleibt der Wagen am Brunnen stehen, bis das Spiel ihn weiterfahren lässt (BrunnenTV)
   xxl.arrival.hold = !title;
   courseTrip = xxl.trip;
@@ -1826,7 +1834,7 @@ function xxlStart(title) {
   gegen.reset();
   pickups.reset();
   xxlTrafficFrame = null;
-  // die Fahrt beginnt am Supercharger in Erlensee: Dort wartet der Wagen schon im Titel
+  // die Fahrt beginnt im Ladepark des Startorts (die erste am Supercharger in Erlensee): Dort wartet der Wagen schon im Titel
   const atCharger = title && !!chargeOf(xxl.trip.section);
   chargeRun.parked = false;
   stopRun.on = false;

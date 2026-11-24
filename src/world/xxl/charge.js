@@ -1,6 +1,7 @@
-// Der Ladepark in Erlensee: Hier beginnt jede Fahrt, am Supercharger, an dem Adams Streams begannen. Rein rechnerisch
-// (ohne three.js, auch für die Node-Tests): wo der Park im Ort steht, wo der Straßenbau davor den Bordstein zur Einfahrt
-// absenkt und auf welchem Weg der Wagen in der Startszene aus seiner Bucht in die Spur rollt.
+// Der Ladepark am Start: Hier beginnt jede Fahrt – die erste in Erlensee, am Supercharger, an dem Adams Streams
+// begannen, jede weitere in einem anderen Ort (game/starts.js), immer im selben Park. Rein rechnerisch (ohne three.js,
+// auch für die Node-Tests): wo der Park im Ort steht, wo der Straßenbau davor den Bordstein zur Einfahrt absenkt und
+// auf welchem Weg der Wagen in der Startszene aus seiner Bucht in die Spur rollt.
 //
 // Ortskoordinaten wie im Stadtbaukasten (kit/layout.js): u = Meter ab Ortsbeginn, x seitlich wie im Profil „stadt“
 // (eigene Spur 9,0, Bordstein rechts 11,0, Häuserflucht 16,0). Der Park (kit/rest.js ladepark, 24 × 11 m) steht rechts
@@ -12,7 +13,6 @@ import { places } from '../../map/graph.js';
 import { PARK, POST } from '../../map/parks.js';
 
 export const CHARGE = {
-  place: 'Erlensee',
   kind: 'ladepark',
   kindStart: 'ladepark_start', // Startort und Ladeparks: Heldensäule ohne Stecker und Kabel (die bringt chargerig.js)
   front: STREET.curbR + STREET.pave, // Vorderkante des Parks auf der Häuserflucht
@@ -84,8 +84,8 @@ export function groundAt(x) {
 }
 
 /**
- * Ladepark eines Abschnitts oder null: jede Ortsdurchfahrt (die Ladesäule des Orts, Mitte bei POST.u; in Erlensee,
- * wo die Fahrt beginnt, auch der Start), die Abschnitte 'park' hinter den Ausfahrten (src/map/parks.js, Mitte bei
+ * Ladepark eines Abschnitts oder null: jede Ortsdurchfahrt (die Ladesäule des Orts, Mitte bei POST.u), der Ort, in
+ * dem die Fahrt beginnt (am Start), die Abschnitte 'park' hinter den Ausfahrten (src/map/parks.js, Mitte bei
  * PARK.u). u = Mitte des Parks (Ortskoordinaten), am Start so weit vor dem Startpunkt,
  * dass das Ausparken genau dort in der Spur endet; drive = abgesenkter Bordstein (s0 … s1 in Metern der Fahrt, voll
  * abgesenkt; ramp davor und dahinter), start: der Abschnitt, in dem die Fahrt beginnt.
@@ -93,7 +93,7 @@ export function groundAt(x) {
 export function chargeOf(sec) {
   if (!sec) return null;
   const park = sec.kind === 'park';
-  if (!park && (sec.kind !== 'stadt' || !places[sec.place] || (sec.start && places[sec.place].key !== CHARGE.place))) return null;
+  if (!park && (sec.kind !== 'stadt' || !places[sec.place])) return null;
   const u = park ? PARK.u : sec.start ? -sec.s0 + PARK_FROM_START : CHARGE.pass;
   // Einfahrt: über die Räder hinaus, die den Bordstein beim Ausparken kreuzen (Bucht bis Ende des Bogens, je 1,2 m Rand)
   const y = u - CHARGE.bay[0] + CHARGE.off;

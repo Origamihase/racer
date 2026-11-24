@@ -320,7 +320,7 @@ console.log('2. Eine Ladesäule in jedem Ort, von weitem zu sehen:');
     list.push(`${p.name}\t${size}\t${free}`);
   }
   // am Start in Erlensee: der Supercharger, keine Stele und keine Tafel davor
-  const erl = places.find((p) => p.key === CHARGE.place);
+  const erl = places.find((p) => p.key === 'Erlensee');
   const first = { kind: 'stadt', place: erl.i, node: 1, frame: 1, s0: -300, s1: 200, start: true, spotS: 0 };
   const fs = [];
   sectionSigns(null, [first], first, fs, { tables: false });

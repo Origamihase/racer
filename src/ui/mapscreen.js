@@ -11,14 +11,15 @@ import {
   MapPainter, View, THEMES, PLACE_BY_INDEX, bucketOf, bucketScale, dotRadius, menuLayoutOf, pickPlace, project,
   countryName, badgesAt, badgeTotals, badgesVersion,
 } from '../map/mapview.js';
-import { places, nodes, routeFrom, stateOfNode } from '../map/graph.js';
+import { places, routeFrom, stateOfNode } from '../map/graph.js';
 import { drawCar, drawFlag, drawHeart } from '../map/symbols.js';
 import { fmtNum } from '../util.js';
 import { fmtKm, fmtOdo } from '../map/navroute.js';
+import { startNode, startName } from '../game/starts.js';
 
 const MIN_SCALE = 2.6; // ganze Welt
 const MAX_SCALE = 9000; // Straßen in den Orten
-const HOME = 'Erlensee'; // Start jeder Fahrt: von hier misst die Ortskarte ohne laufende Fahrt
+const HOME = 'Erlensee'; // Start, falls keiner genannt ist: von hier misst die Ortskarte ohne laufende Fahrt
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 
 function el(tag, cls, parent, text) {
@@ -125,6 +126,8 @@ export class MapScreen {
   mount(s, d) {
     this.save = d.save;
     this.nav = d.nav || null;
+    // Startort des Streams (game/starts.js, Kennung des Knotens): ohne laufende Fahrt misst die Ortskarte von dort
+    this.start = d.home || HOME;
     this.dist = null; // Straßenkilometer ab hier: beim nächsten Antippen neu
     // kein Schwung, kein Flug und kein halber Doppeltipp vom letzten Öffnen
     this.vel = [0, 0];
@@ -446,7 +449,7 @@ export class MapScreen {
     row('📺', p.n === 1 ? '1 Stream laut Wiki' : `${fmtNum(p.n)} Streams laut Wiki`);
     row(n ? '❤️' : '🤍', n ? (n === 1 ? 'Einmal besucht' : `${fmtNum(n)}-mal besucht`) : 'Noch nicht besucht', n ? 'mc-visited' : '');
     const km = this.roadKm(i);
-    if (km !== null) row('🛣️', km < 1 ? 'Du bist hier' : `${fmtKm(km)} Straßenweg ${this.nav ? 'von hier' : 'ab ' + HOME}`);
+    if (km !== null) row('🛣️', km < 1 ? 'Du bist hier' : `${fmtKm(km)} Straßenweg ${this.nav ? 'von hier' : 'ab ' + startName(this.start)}`);
     for (const b of badgesAt(i)) row(b.icon, b.text);
     // Ort nicht unter der Karte verstecken
     requestAnimationFrame(() => {
@@ -472,7 +475,7 @@ export class MapScreen {
     try {
       if (!this.dist) {
         const trip = this.nav && this.nav.trip;
-        this.dist = trip ? trip.distances() : routeFrom(stateOfNode(nodes.findIndex((n) => n.id === HOME)));
+        this.dist = trip ? trip.distances() : routeFrom(stateOfNode(startNode(this.start)));
       }
       // zum Navi-Ziel dieselbe Zahl wie im Navi (trip.reach), zu anderen Orten die Schätzung der Karte
       const trip = this.nav && this.nav.trip;
