@@ -6,17 +6,17 @@
 // läuft auch unter Node (tools/album-test.mjs).
 export class RouteLog {
   constructor() {
-    this.secs = []; // [{ kind, place, km }]: genommene Abschnitte, aufeinanderfolgend gleiche zusammen
+    this.secs = []; // [{ kind, place, edge, km }]: genommene Abschnitte (edge: Kante einer Landstraße), gleiche zusammen
     this.marks = []; // [{ type: 'brunnen' | 'laden', km, … }]
     this.m = 0; // gezählte Reisemeter
     this.sec = null; // Abschnitt der Fahrt, auf dem zuletzt gezählt wurde
   }
 
-  /** Reisemeter m eines Schritts auf dem Abschnitt sec der Fahrt ({ kind, place, id }) zählen. */
+  /** Reisemeter m eines Schritts auf dem Abschnitt sec der Fahrt ({ kind, place, de }) zählen. */
   add(sec, m) {
     if (sec !== this.sec || !this.secs.length) {
       this.sec = sec;
-      this.secs.push({ kind: sec.kind, place: sec.place ?? -1, km: 0 });
+      this.secs.push({ kind: sec.kind, place: sec.place ?? -1, edge: sec.kind === 'land' && sec.de >= 0 ? sec.de >> 1 : -1, km: 0 });
     }
     if (m > 0) {
       this.secs[this.secs.length - 1].km += m / 1000;
