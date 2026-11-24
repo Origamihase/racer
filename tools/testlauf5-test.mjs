@@ -17,6 +17,10 @@
 //    Ort der Liste (game/starts.js, der letzte steht im Spielstand) – nie zweimal hintereinander im selben. Aus jedem
 //    Startort beginnt die Fahrt im Ladepark (Startszene), der Ortsplan stellt Park und Brunnenplatz, die Fahrt findet
 //    auf die Autobahn, und im Spiel kommt das erste Gebot auf einen Ort in der Nähe (nie den Startort).
+// 5. „Gestalte die Orte noch unterschiedlicher, damit sie nicht alle gleich aussehen“: Jeder Ort hat ein Ortsbild
+//    (kit/layout.js lookOf aus Land, Lage, Name und Größe, sonst aus dem Namen gezogen – nie je Besuch neu): Fachwerk,
+//    Schiefer, Kurort, Gründerzeit, Backstein, Alpenland oder bunt gemischt. Die Häuser tragen die Kleidung ihres
+//    Ortsbilds (town.js name@ortsbild), Laternen und das Grün zwischen ihnen folgen ihm.
 import { Group } from 'three';
 import { Trip, PROFILES } from '../src/game/trip.js';
 import { findPlace } from '../src/map/graph.js';
@@ -438,6 +442,54 @@ console.log('4. Startorte:');
     ok(S.log.tv.length >= 1, `${home}: in 15 Minuten keine BrunnenTV-Folge`);
     console.log(`  Stream ab ${home}: erstes Ziel ${first !== null ? places[first].name : '–'}, Folge nach ${S.log.tv.length ? (S.log.tv[0].t / 60).toFixed(1) + ' min' : '–'}`);
   }
+}
+
+// --- 5. Verschiedene Ortsbilder ----------------------------------------------------------------------------------------
+console.log('5. Ortsbilder:');
+{
+  const { lookOf, LOOKS, goalKind } = await import('../src/world/kit/layout.js');
+  const { townLen } = await import('../src/map/graph.js');
+  const { W } = await import('../src/curve.js');
+  const { createCityKit } = await import('../src/world/kit/city.js');
+  const K = createCityKit(W);
+  // je Ortsbild die Orte der Karte (in Deutschland und überall), immer dasselbe für denselben Ort
+  const byLook = new Map();
+  for (const p of places) {
+    const look = lookOf(p);
+    ok(look === lookOf({ ...p }), `${p.name}: Ortsbild nicht fest`);
+    if (!byLook.has(look)) byLook.set(look, []);
+    byLook.get(look).push(p);
+  }
+  const de = new Set(places.filter((p) => p.cc === 'DE').map(lookOf));
+  ok(de.size >= 6, `nur ${de.size} Ortsbilder in Deutschland: ${[...de].join(', ')}`);
+  for (const look of Object.keys(LOOKS)) ok(byLook.has(look), `Ortsbild ${look} kommt nirgends vor`);
+  console.log('  ' + Object.keys(LOOKS).map((k) => `${LOOKS[k].title} ${(byLook.get(k) || []).length}`).join(' · ') + ` (Deutschland: ${de.size} Ortsbilder)`);
+  // Beispiele: Bad Vilbel ist ein Kurort, Gelnhausen Fachwerk, Siegen Schiefer, Hamburg Backstein
+  const want = { 'Bad Vilbel': 'kurort', Gelnhausen: 'fachwerk', Siegen: 'schiefer', Hamburg: 'brick' };
+  for (const [name, look] of Object.entries(want)) {
+    const p = places.find((q) => q.name === name);
+    ok(p && lookOf(p) === look, `${name}: Ortsbild ${p && lookOf(p)} statt ${look}`);
+  }
+  // die Pläne: die Häuser tragen die Kleidung ihres Ortsbilds, ein Ort bleibt bei seinen Häusern
+  const isHouse = (it) => ['village', 'shop', 'town', 'city'].includes(K.info(it.name).kind) && !K.info(it.name).centre;
+  const rows = [];
+  for (const look of Object.keys(LOOKS)) {
+    const p = (byLook.get(look) || []).filter((q) => q.cc === 'DE' || look === 'alpine').sort((a, b) => a.pop - b.pop)[Math.floor(((byLook.get(look) || []).length - 1) / 2)] || (byLook.get(look) || [])[0];
+    if (!p) continue;
+    const plan = K.planTown(p, { len: townLen(p.pop), mainKind: goalKind(p), pavement: false, signs: false });
+    const houses = plan.items.filter(isHouse);
+    const dressed = houses.filter((it) => it.name.endsWith('@' + look)).length;
+    const bad = plan.items.filter((it) => { const i = K.info(it.name); return !(i.w > 0 && i.d > 0 && i.h > 0 && Number.isFinite(i.h)); });
+    ok(plan.look === look && bad.length === 0, `${p.name}: Plan ${plan.look}, ${bad.length} Bausteine ohne Maße`);
+    if (look === 'default') ok(dressed === 0 && houses.every((it) => !it.name.includes('@')), `${p.name}: gemischter Ort mit Kleidung`);
+    else ok(houses.length > 0 && dressed / houses.length > 0.5, `${p.name} (${look}): nur ${dressed} von ${houses.length} Häusern im Ortsbild`);
+    const again = K.planTown(p, { len: townLen(p.pop), mainKind: goalKind(p), pavement: false, signs: false });
+    ok(again.items.length === plan.items.length && again.items.every((it, i) => it.name === plan.items[i].name && it.x === plan.items[i].x && it.z === plan.items[i].z), `${p.name}: zweiter Plan anders`);
+    const trees = plan.items.filter((it) => /^streetTree/.test(it.name)).length;
+    const cars = plan.items.filter((it) => /^car/.test(it.name)).length;
+    rows.push(`${LOOKS[look].title}: ${p.name} (${dressed}/${houses.length} Häuser, ${trees} Bäume, ${cars} Autos)`);
+  }
+  console.log('  ' + rows.join(' · '));
 }
 
 if (fails) {

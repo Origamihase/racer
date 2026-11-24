@@ -44,6 +44,41 @@ export function regionOf(place) {
   return 'default';
 }
 
+/**
+ * Ortsbilder (der Besitzer am 24.11.2026: „Gestalte die Orte noch unterschiedlicher, damit sie nicht alle gleich
+ * aussehen“): wie die Häuser eines Orts gekleidet sind (town.js DRESS, name@ortsbild) und was zwischen den Laternen
+ * steht. Ein Ort hat immer dasselbe – aus seinen Daten (Land, Lage, Name, Größe), sonst aus seinem Namen gezogen.
+ * cars: Anteil der Laternenfelder mit parkenden Autos statt eines Baums, old: alte Laternen auch in der Stadt.
+ */
+export const LOOKS = {
+  default: { title: 'Bunt gemischt', cars: 0.55, old: false },
+  fachwerk: { title: 'Fachwerk', cars: 0.45, old: true },
+  schiefer: { title: 'Schiefer', cars: 0.5, old: true },
+  kurort: { title: 'Kurort', cars: 0.25, old: true },
+  gruenderzeit: { title: 'Gründerzeit', cars: 0.8, old: false },
+  brick: { title: 'Backstein', cars: 0.55, old: false },
+  alpine: { title: 'Alpenland', cars: 0.45, old: true },
+};
+// Fachwerkstädte der Karte (ihre Altstadt ist berühmt dafür), Schiefer im Bergischen Land, Siegerland und Sauerland
+const FACHWERK = new Set(['Gelnhausen', 'Idstein', 'Alsfeld', 'Schlüchtern', 'Marburg', 'Fritzlar', 'Celle', 'Wetzlar', 'Bensheim']);
+const SCHIEFER = { s: 50.4, n: 51.5, w: 7.0, e: 8.45 };
+
+/** Ortsbild eines Orts (Schlüssel in LOOKS bzw. town.js REGIONS): außerhalb Deutschlands die Gegend (regionOf). */
+export function lookOf(place) {
+  const region = regionOf(place);
+  if (place.cc !== 'DE' || region !== 'default') return region;
+  const name = place.name ?? place.key ?? '';
+  const size = sizeOf(place.pop ?? 0);
+  const lat = place.lat ?? 50;
+  const lon = place.lon ?? 9;
+  if (/^Bad /.test(name)) return 'kurort';
+  if (FACHWERK.has(name)) return 'fachwerk';
+  if (size !== 'gross' && lat > SCHIEFER.s && lat < SCHIEFER.n && lon > SCHIEFER.w && lon < SCHIEFER.e) return 'schiefer';
+  const h = hashKey('Ortsbild ' + (place.key ?? name));
+  if (size === 'stadt' || size === 'gross') return h % 4 === 0 ? 'default' : 'gruenderzeit';
+  return h % 5 < 2 ? 'fachwerk' : 'default';
+}
+
 // Plätze je Größe: Breite entlang der Straße (S) und Tiefe hinter dem Gehweg (D), beides Vielfache der 8-m-Pflasterkachel
 const SQUARE = { dorf: [24, 16], klein: [32, 16], stadt: [40, 24], gross: [48, 24] };
 // Hauptbrunnen je Größe (Auswahl nach Zufall des Ortes), dazu weitere in größeren Orten
@@ -419,12 +454,13 @@ export function planTown(place, opts = {}) {
   const len = opts.len ?? TOWN_LEN[size];
   const rnd = rng(opts.seed ?? hashKey(place.key ?? place.name ?? 'Ort'));
   const top = STREET.top;
-  const plan = { place: { key: place.key, name: place.name ?? place.key, cc: place.cc }, size, region: regionOf(place), len, items: [], fountains: [], squares: [], texts: [], goal: opts.goal ?? opts.island?.u ?? null, landmarks: [] };
+  const plan = { place: { key: place.key, name: place.name ?? place.key, cc: place.cc }, size, region: regionOf(place), look: lookOf(place), len, items: [], fountains: [], squares: [], texts: [], goal: opts.goal ?? opts.island?.u ?? null, landmarks: [] };
+  const look = LOOKS[plan.look] ?? LOOKS.default;
   const marks = opts.landmarks ?? [];
-  // regionale Spielart eines Hauses, wenn es sie gibt (town.js: name@gegend)
+  // Spielart eines Hauses nach dem Ortsbild, wenn es sie gibt (town.js: name@ortsbild)
   const reg = (name) => {
-    if (plan.region === 'default' || !opts.has) return name;
-    const r = name + '@' + plan.region;
+    if (plan.look === 'default' || !opts.has) return name;
+    const r = name + '@' + plan.look;
     return opts.has(r) ? r : name;
   };
   const squareMark = marks.find((m) => m.slot === 'square');
@@ -501,7 +537,7 @@ export function planTown(place, opts = {}) {
   else add(reg(pick(rnd, ROWS[size].mid)), sx(1, sq.d1), 0, -uc, toRoad(1));
 
   // Laternen am Brunnen: hinter ihm (weiter weg von der Straße) und nach ihm (in Fahrtrichtung)
-  const lamp = size === 'dorf' || size === 'klein' ? 'lampOld' : 'lampModern';
+  const lamp = size === 'dorf' || size === 'klein' || look.old ? 'lampOld' : 'lampModern';
   const fx = centre ? sx(1, md) : main.f.x;
   add(lamp, fx + mr + 1.4, top, -(uc - mr * 0.7), 0);
   add(lamp, fx - mr * 0.5, top, -(uc + mr + 1.6), 0);
@@ -761,7 +797,7 @@ export function planTown(place, opts = {}) {
         // zwischen zwei Laternen: Straßenbahnhalt (Großstadt), Baum oder Autos (ab Kleinstadt), sonst Grün
         if (size === 'gross' && TRAM_AT.has(lampNo++) && !onSquare(u + 10) && !onSquare(u + 16) && u + 20 < len - 3) {
           add('tramStop', sx(side, 1.15), top, -(u + 13), toRoad(side));
-        } else if (size !== 'dorf' && rnd() < 0.55) {
+        } else if (size !== 'dorf' && rnd() < look.cars) {
           let cu = a + 1;
           while (cu + 4.6 < b) {
             const car = pick(rnd, ['carSmall', 'carCompact', 'carCompact', 'carVan']);
