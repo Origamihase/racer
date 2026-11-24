@@ -492,8 +492,10 @@ console.log('Die Leute des Streams (Reise):');
   console.log(`  ${all.length} Streams, ${fmt(n.minutes / 60, 1)} h: je Stunde Raids ${per('raid')}, Knolli danach ${per('knolli')}, Mod-Zeilen ${per('mod')}, Discord ${per('discord')}, Herzen ${per('heart')} · nach ${n.funkloch} Funklöchern ${n.back}× „läuft wieder“`);
   // der Abspann der Reise: die Leute mit ihren Berufen, und am Ende die Zeile des Gedenkens im Wortlaut
   const names = ABSPANN_REISE.map(([, v]) => v).join(' | ');
-  const want = ['Elti und IceBonbon', 'Arno Nühm', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'Wils und DomZe', 'BontanaBack', 'König Knolli'];
+  const want = ['Elti und IceBonbon', 'Arno Nühm', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'Wils und DomZe', 'König Knolli'];
   ok(want.every((w) => ABSPANN_REISE.some(([, v]) => v === w)), `Abspann: ${names}`);
+  // nicht im Abspann (Eigentümer, 23.11.2026): kein „Großbieter vom Dienst“ (BontanaBack steht bei den Navi-Geboten), keine Drohne
+  ok(![...ABSPANN_CREW, ...ABSPANN_REISE].some(([k, v]) => /Großbieter|Drohne/.test(k) || v === 'BontanaBack' || v === 'die Drohne'), `Abspann mit Großbieter oder Drohne: ${names}`);
   // das Sprachstudio steht genau einmal im Abspann, mit seinen beiden Leuten (Wunsch des Eigentümers)
   const studio = [...ABSPANN_CREW, ...ABSPANN_REISE].filter(([k, v]) => /Sprachstudio/.test(k + v));
   ok(studio.length === 1 && studio[0][0] === 'Sprachstudio' && studio[0][1] === '?CF und IceBonbon', `Sprachstudio im Abspann: ${studio.map((r) => r.join(': ')).join(' | ')}`);
