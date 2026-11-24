@@ -302,7 +302,17 @@ function fakeGame(secs, { gate = true } = {}) {
   ok(/const price = shopPrice\(it, lvl\);/.test(menus) && /'shop-code-tag', code, `Code \$\{it\.code\.name\} −\$\{it\.code\.off\}\\u00a0%`/.test(menus) && /el\('s', '', code, fmtEuro\(it\.prices\[lvl\]\)\)/.test(menus), 'menus.js: der Shop zeigt den Code nicht (oder rechnet anders)');
   ok(/const price = shopPrice\(it, lvl\);/.test(main), 'main.js: der Kauf rechnet ohne Code');
   ok(/\.shop-code \{/.test(read('docs/style.css')), 'style.css: kein Aussehen für den Code');
-  // die Wirkung: der Zuckerschub nach dem Ladestopp hält 10 statt 6 s
+  // Plüschbrause ist zuckerfrei (Eigentümer, 24.11.2026) und heißt nie wie die echte Marke: kein Text verbindet sie mit
+  // Zucker (außer „zuckerfrei“), und „Holy“ steht nirgends im Spiel
+  {
+    const toast = read('src/game/akku.js').match(/g\.up\.brause \? '([^']+)'/);
+    const texts = [...GAGS.code.chat, ...GAGS.code.antwort, it.name, it.desc, it.effect(0), toast ? toast[1] : 'kein Brause-Hinweis'];
+    const sweet = texts.filter((t) => /zucker/i.test(t.replace(/zuckerfrei|null Zucker/gi, '')) || t === 'kein Brause-Hinweis');
+    ok(!sweet.length, `Plüschbrause mit Zucker: ${sweet.join(' | ')}`);
+    const holy = ['src/data.js', 'src/game/akku.js', 'src/game/gags.js'].filter((f) => /\bHoly\b/.test(read(f)));
+    ok(!holy.length, `der echte Markenname steht im Spiel: ${holy.join(', ')}`);
+  }
+  // die Wirkung: der Schub nach dem Ladestopp hält 10 statt 6 s (Bananensaft macht ihn, die Brause verlängert ihn)
   for (const [up, want] of [[{}, 6], [{ brause: 1 }, 10]]) {
     const sim = makeStream({ driver: DRIVERS.mittel, seed: 2, upgrades: up });
     sim.step(5);
@@ -326,7 +336,7 @@ function fakeGame(secs, { gate = true } = {}) {
     n += lines.length;
   }
   ok(C.chat.every((l) => /Code ADAM|CODE ADAM/.test(l)) && C.chat.filter((l) => /10 %/.test(l)).length >= 3, 'Code ADAM: eine Zeile ohne Code');
-  console.log(`  Code ADAM: Plüschbrause-Kiste 190 € → ${shopPrice(it, 0)} €, Zuckerschub 10 s; ${n} Erinnerungen in 2 × 40 min`);
+  console.log(`  Code ADAM: Plüschbrause-Kiste (zuckerfrei) 190 € → ${shopPrice(it, 0)} €, Schub 10 s; ${n} Erinnerungen in 2 × 40 min`);
 }
 
 // --- 5. Geo-Tracker und Glotzometer: was sie sagen, stimmt ----------------------------------------------------------
