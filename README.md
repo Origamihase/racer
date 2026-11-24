@@ -12,8 +12,9 @@ Jedes Ziel ist der Hauptbrunnen eines echten Orts.
 ## Spielen
 
 - **Online:** Nach dem Merge über GitHub Pages: <https://origamihase.github.io/racer/>
-  (Pages-Quelle: Branch `main`, Ordner `/docs`).
-- **Lokal:** `docs/index.html` einfach im Chrome öffnen (Doppelklick genügt, kein Server nötig).
+  (Pages-Quelle: „GitHub Actions“; die CI baut `main` und veröffentlicht `docs/`, sobald alle Prüfungen grün sind).
+- **Lokal:** einmal `npm install && npm run build`, dann `docs/index.html` einfach im Chrome öffnen (Doppelklick
+  genügt, kein Server nötig).
   Alternativ `npm run serve` und <http://localhost:8080> aufrufen.
 
 Gebaut für aktuelle Versionen von Google Chrome (Desktop). Tastatur, Gamepad und Touch werden unterstützt. Vollbild gibt
@@ -111,13 +112,16 @@ npm run smoke   # Browser-Probe: lädt docs/index.html in Chromium und fährt ku
 
 Für `npm run smoke` braucht es einmal `npx playwright install chromium`.
 
-`docs/game.js` ist eingecheckt, damit GitHub Pages ohne Build-Schritt funktioniert.
-Nach Änderungen in `src/` bitte `npm run build` ausführen und die neue `docs/game.js` mit committen.
+`docs/game.js` wird **nicht** eingecheckt (steht in `.gitignore`): Es ist ein gebautes Bundle, und als eine einzige
+große Datei im Repo hat es fast jedem zweiten Pull Request nach einem fremden Merge einen Konflikt beschert. Lokal
+baut `npm run build` es, für GitHub Pages baut es die CI.
 
-Die CI (`.github/workflows/ci.yml`) prüft jeden Pull Request und jeden Stand von `main`: `docs/game.js` muss
-genau dem Build aus `src/` entsprechen, `src/map/data.js` und `shapes.js` genau der Ausgabe von `npm run map`, und
+Die CI (`.github/workflows/ci.yml`) prüft jeden Pull Request und jeden Stand von `main`: Sie baut `docs/game.js` aus
+`src/`, `src/map/data.js` und `shapes.js` müssen genau der Ausgabe von `npm run map` entsprechen, und
 `npm test` (alle Prüfstände) muss durchlaufen. Parallel dazu lädt die Browser-Probe (`npm run smoke`) das gebaute
 Spiel in Chromium, startet eine Fahrt, pausiert sie und simuliert einen Grafikverlust. Fällt einer der Schritte durch, nennt die CI den Befehl, der fehlt.
+Auf `main` veröffentlicht der Job „Pages“ danach genau dieses gebaute `docs/` – nur, wenn alles grün ist. Dafür steht
+unter *Settings → Pages → Build and deployment* die Source auf „GitHub Actions“.
 
 | Ordner | Inhalt |
 | --- | --- |
