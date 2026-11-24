@@ -852,6 +852,32 @@ console.log(`Hauptbrunnen frei zu sehen ab: mindestens ${stats.sight.min} m, im 
 console.log('Lageplan gegen Meshes:', meshChecks.join(' · '));
 console.log('Rastanlagen:', restChecks.join(' · '));
 console.log(`Bausteine: ${blocks} Fassungen, Geometrie im Rahmen von info (Ursprung, w, d, h); ${terrainEdges.length} Gelände ohne offene Ränder`);
+// Wahrzeichen: Ihre Maße stehen in landmark-dims.js, der Ortsplan baut sie nicht (Frankfurt sonst 40–70 ms am Stück)
+{
+  const { createLandmarkKit } = await import('../src/world/kit/landmarks.js');
+  const fresh = createLandmarkKit(W);
+  const names = fresh.list('landmark');
+  const told = names.map((n) => fresh.info(n));
+  ok(names.every((n) => !fresh.built(n) && !fresh.built(n, true)), `Wahrzeichen: kit.info baut (${names.filter((n) => fresh.built(n)).join(', ')})`);
+  const stale = names.filter((n, i) => {
+    const { tris, ...built } = fresh.geo(n).info;
+    return JSON.stringify(Object.entries(built).sort()) !== JSON.stringify(Object.entries(told[i]).sort());
+  });
+  ok(!stale.length, `Wahrzeichen: Maße in landmark-dims.js passen nicht zum Bau (${stale.join(', ')}): node tools/landmark-dims.mjs`);
+  // ein Ort mit Wahrzeichen in Raten: planen und alle Fernfassungen bauen, ohne dass die nahe entsteht
+  const town = createCityKit(W);
+  const ffm = places.find((q) => q.name === 'Frankfurt am Main');
+  const plan = town.planTown(ffm, { len: townLen(ffm.pop), goal: 200 });
+  const marks = plan.items.filter((it) => town.landmarks.list('landmark').includes(it.name)).map((it) => it.name);
+  const g = town.buildTown(plan, { lazy: true });
+  while (g.pendingFar > 0) g.step();
+  ok(marks.length > 0 && marks.every((n) => town.landmarks.built(n, true) && !town.landmarks.built(n)), `Wahrzeichen: Plan und Ferne bauen schon die nahe Fassung (${marks.filter((n) => town.landmarks.built(n)).join(', ')})`);
+  while (g.step());
+  ok(marks.every((n) => town.landmarks.built(n)), 'Wahrzeichen: aus der Nähe fehlt die nahe Fassung');
+  town.release?.(g);
+  console.log(`Wahrzeichen: ${names.length} mit Maßen ohne Bauen; Frankfurt in Raten (${marks.join(', ')}): nah erst bei der Anfahrt`);
+}
+
 console.log('Zielbrunnen-Arten:', Object.entries(goalKinds).map(([k, v]) => `${k} ${v}`).join(', '));
 console.log(`Orte in der XXL-Welt: ${xxl.towns} mit Insel und als Startort, ${xxl.houses} Häuser, ${xxl.fountains} Brunnen, je einer davon das Ziel auf der Insel, ${xxl.posts} Ladesäulen mit Popcorn-Maschine, am Halt im Seitenfenster bei ${xxl.side.map((d) => d.toFixed(1)).join('–')}°; Lebenslauf: ${xxl.parts} Teile in Schritten gebaut, starr im gescherten Rahmen; Plan in Raten: ${xxl.calls} Aufrufe für Hanau, derselbe Plan`);
 console.log('Hauptbrunnen der Orte (auf der Insel am Ziel):', Object.entries(islands).map(([k, v]) => `${k} ${v}`).join(', '));

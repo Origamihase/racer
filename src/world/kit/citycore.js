@@ -1940,7 +1940,15 @@ export function makeKit(F, defs) {
     info(name) {
       const def = defs[name];
       if (!def) throw new Error('Baustein fehlt: ' + name);
-      return def.make ? kit.geo(name).info : { name, kind: def.kind, ...def.info };
+      if (!def.make) return { name, kind: def.kind, ...def.info };
+      // bekannte Maße (Wahrzeichen, landmark-dims.js): dieselben Angaben wie nach dem Bau, ohne zu bauen
+      if (def.dims) return { name, kind: def.kind, tints: def.tints ?? [0xffffff], weight: def.weight ?? 1, far: !!def.far, ...def.dims };
+      return kit.geo(name).info;
+    },
+    /** Ist die Fassung schon gebaut (im Cache)? */
+    built(name, far = false) {
+      const def = defs[name];
+      return cache.has(name + '|' + (far && def && def.far ? 1 : 0));
     },
     /** Namen aller Bausteine einer Art (ohne Angabe: alle). */
     list(kind) {
