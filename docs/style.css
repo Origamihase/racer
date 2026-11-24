@@ -573,6 +573,11 @@ body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top)
    iPhone stattdessen eine Zeile unter den Zahlen */
 .fs-corner { position: absolute; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); padding: 8px 14px; font-size: 15px;
   background: rgba(10, 11, 14, 0.55); backdrop-filter: blur(4px); }
+/* im Titel liegt der Knopf auf dem hellen Himmel: dunkel und deckend mit hellem Rand, sonst ist er fast weiß auf weiß
+   (Eigentümer, 24.11.2026); .btn steht weiter unten und setzt sonst den durchscheinenden Grund */
+.btn.fs-corner { background: rgba(14, 15, 19, 0.86); border: 2px solid rgba(255, 255, 255, 0.85); font-weight: 700; padding: 9px 16px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+.btn.fs-corner:hover:not([disabled]), .btn.fs-corner:focus-visible { background: rgba(14, 15, 19, 0.95); border-color: #fff; }
 .pause-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 6px; }
 .pause-head h2 { margin: 0; }
 .pause-head .fs-btn { padding: 7px 13px; font-size: 15px; }
