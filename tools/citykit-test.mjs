@@ -621,10 +621,24 @@ const { Towns } = await import('../src/world/xxl/towns.js');
   const u = towns.of(sec);
   ok(u && u.group.visible && u.group.pending === 0, 'XXL-Ort: mitten im Ort nicht sofort fertig');
   const textsBuilt = towns.kit.core.textMats.size;
+  const keep0 = towns.kit.core.textKeep.size;
+  const freed = [];
+  for (const m of towns.kit.core.textMats.values()) m.addEventListener('dispose', () => freed.push(m));
   towns.reset();
   ok(towns.items.size === 0 && root.children.length === 0, 'XXL-Ort: nach reset nicht leer');
   // abgeräumt gehen auch seine Schilder (Ortstafel, Wegweiser …), die niemand sonst nutzt
   ok(textsBuilt > texts0 && towns.kit.core.textMats.size === texts0, `XXL-Ort: Textmaterialien vor dem Ort ${texts0}, gebaut ${textsBuilt}, abgeräumt ${towns.kit.core.textMats.size}`);
+  // … aber je Seite bleibt eins ohne Leinwand, sonst warfe three.js das Programm der Tafeln weg (Neuübersetzung im
+  // nächsten Ort, mitten in der Fahrt)
+  const kept = [...towns.kit.core.textKeep.values()];
+  ok(kept.length > 0 && kept.every((m) => !freed.includes(m) && m.map && !m.map.image), `XXL-Ort: kein Textmaterial hält das Programm (${kept.length} behalten)`);
+  ok(freed.length === textsBuilt - texts0 - (kept.length - keep0), `XXL-Ort: freigegeben ${freed.length}, gebaut ${textsBuilt - texts0}, neu behalten ${kept.length - keep0}`);
+  const keptBefore = kept.slice();
+  towns.begin();
+  towns.need(sec, null);
+  towns.update(S0 + 300, new Map([[7, { a: 0, b: 0 }]]), 0, 0);
+  towns.reset();
+  ok([...towns.kit.core.textKeep.values()].every((m, i) => m === keptBefore[i]) && towns.kit.core.textMats.size === texts0, 'XXL-Ort: beim zweiten Ort wächst der Vorrat der behaltenen Textmaterialien');
   xxl.parts = total;
 }
 

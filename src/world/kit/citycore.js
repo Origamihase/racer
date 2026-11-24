@@ -689,6 +689,8 @@ export function cityCore(F) {
       glow: F.basic({ vertexColors: true }),
       uWater,
       textMats: new Map(),
+      // je Seite (vorn / beidseitig) das zuletzt freigegebene Textmaterial, ohne Leinwand (siehe release)
+      textKeep: new Map(),
       /** Wasser bewegen: t = Zeit in Sekunden (steht sie, steht das Wasser), rain = Regenstärke 0 … 1. */
       setWater(t, rain = 0) {
         uWater.value.set(t % 3600, rain);
@@ -715,7 +717,7 @@ export function textMaterial(core, key, w, h, draw, { side = THREE.FrontSide } =
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 8;
     m = soften(core.F.lambert({ map: t, side, ...FRONT }));
-    Object.assign(m.userData, { textKey: key, textMats: core.textMats, users: 0 });
+    Object.assign(m.userData, { textKey: key, textMats: core.textMats, textKeep: core.textKeep, users: 0 });
     core.textMats.set(key, m);
   }
   m.userData.users++;
@@ -1889,9 +1891,19 @@ export function release(obj) {
     if (--m.userData.users > 0) return;
     if (m.userData.textMats.get(m.userData.textKey) === m) m.userData.textMats.delete(m.userData.textKey);
     m.map.dispose();
+    // Das Programm der Texttafeln (lambert + Bild + Kurve) nutzt sonst keiner: Ginge das letzte Material, warfe
+    // three.js es weg und übersetzte es im nächsten Ort mitten in der Fahrt neu. Eins je Seite bleibt deshalb,
+    // mit einem leeren Bild statt der Leinwand (dasselbe Programm, kein Speicher).
+    const keep = m.userData.textKeep;
+    if (keep && !keep.has(m.side)) {
+      m.map = KEEP_MAP;
+      keep.set(m.side, m);
+      return;
+    }
     m.dispose();
   });
 }
+const KEEP_MAP = new THREE.Texture();
 
 /**
  * Baukasten aus einer Tabelle von Bausteinen. defs[name] = { kind, tints, weight, far, fade, make(b, lod) → info,
