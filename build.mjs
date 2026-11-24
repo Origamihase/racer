@@ -1,5 +1,6 @@
 // Baut src/ zu docs/game.js (ein einziges klassisches Script, damit das Spiel
-// auch per Doppelklick auf docs/index.html im Chrome läuft – ganz ohne Server).
+// auch per Doppelklick auf docs/index.html im Chrome läuft – ganz ohne Server). docs/game.js liegt nicht im Repo
+// (.gitignore): Für GitHub Pages baut die CI es bei jedem Stand von main selbst.
 import * as esbuild from 'esbuild';
 
 const watch = process.argv.includes('--watch');

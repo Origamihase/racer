@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 *.log
+
+# gebaut von npm run build; GitHub Pages baut es selbst (Workflow CI, Job Pages)
+docs/game.js

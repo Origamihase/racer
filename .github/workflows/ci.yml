@@ -1,8 +1,11 @@
-# Prüft jeden Pull Request und jeden Stand von main, bevor GitHub Pages ihn ausliefert:
+# Prüft jeden Pull Request und jeden Stand von main – und veröffentlicht main auf GitHub Pages:
 # - die Kartendaten (src/map/data.js, shapes.js) sind genau das, was `npm run map` aus tools/map/netz.json erzeugt,
-# - das Spiel-Bundle docs/game.js ist genau das, was `npm run build` aus src/ baut (Pages hat keinen Build-Schritt),
+# - das Spiel-Bundle docs/game.js wird hier aus src/ gebaut (`npm run build`); es liegt nicht im Repo,
+#   damit Pull Requests sich nicht mehr gegenseitig in dieser einen großen Datei in die Quere kommen,
 # - alle Prüfstände (`npm test`) laufen durch,
 # - und, als eigener Job daneben, das gebaute Spiel startet in Chromium und fährt (`npm run smoke`).
+# Nur wenn beides auf main grün ist, geht genau dieses gebaute docs/ live (Job Pages).
+# Dafür muss unter Settings → Pages → Build and deployment die Source auf „GitHub Actions“ stehen.
 name: CI
 
 on:
@@ -16,7 +19,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Pull Requests: ein neuer Push bricht den alten Lauf ab. main: jeder Merge läuft zu Ende und geht live.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   pruefen:
@@ -43,17 +47,17 @@ jobs:
             exit 1
           fi
 
-      - name: docs/game.js passt zu src/
-        run: |
-          npm run build
-          if ! git diff --quiet -- docs/game.js; then
-            echo "::error::docs/game.js ist nicht aus dem aktuellen src/ gebaut – bitte 'npm run build' ausführen und docs/game.js committen."
-            git diff --stat -- docs/game.js
-            exit 1
-          fi
+      - name: Spiel bauen (docs/game.js)
+        run: npm run build
 
       - name: Prüfstände
         run: npm test
+
+      - name: docs/ für GitHub Pages bereitlegen
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
 
   browser:
     name: Browser-Probe
@@ -70,6 +74,9 @@ jobs:
       - name: Abhängigkeiten
         run: npm ci
 
+      - name: Spiel bauen (docs/game.js)
+        run: npm run build
+
       - name: Chromium
         run: npx playwright install --with-deps chromium
 
@@ -83,3 +90,24 @@ jobs:
           name: browser-probe
           path: browser-probe.png
           if-no-files-found: ignore
+
+  pages:
+    name: Pages
+    needs: [pruefen, browser]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    # nie zwei Veröffentlichungen gleichzeitig; eine wartende wird von der nächsten ersetzt, eine laufende läuft zu Ende
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Veröffentlichen
+        id: deploy
+        uses: actions/deploy-pages@v4
