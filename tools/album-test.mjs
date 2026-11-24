@@ -462,6 +462,56 @@ const pic = (n, len) => 'data:image/webp;base64,' + String(n % 10).repeat(len - 
 }
 
 console.log(`Album und Route: ${checks} Prüfungen`);
+// --- Das Album zeichnet die Karten erst, wenn sie ins Bild kommen (bis zu 1.000 Folgen) ------------------------------
+{
+  let canvases = 0;
+  const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : k === 'measureText' ? () => ({ width: 10 }) : k === 'createLinearGradient' ? () => ({ addColorStop() {} }) : () => {}), set: (t, k, v) => ((t[k] = v), true) });
+  const node = (tag) => {
+    const e = { tag, children: [], dataset: {}, style: {}, setAttribute() {}, appendChild: (c) => (e.children.push(c), c), append: (...c) => e.children.push(...c) };
+    if (tag === 'canvas') {
+      canvases++;
+      Object.assign(e, { width: 0, height: 0, getContext: () => ctx });
+    }
+    return e;
+  };
+  let watch = null;
+  const doc0 = globalThis.document;
+  const io0 = globalThis.IntersectionObserver;
+  globalThis.document = { createElement: node };
+  globalThis.IntersectionObserver = class {
+    constructor(cb) {
+      this.cb = cb;
+      this.on = new Set();
+      watch = this;
+    }
+    observe(t) {
+      this.on.add(t);
+    }
+    unobserve(t) {
+      this.on.delete(t);
+    }
+    disconnect() {
+      this.on.clear();
+    }
+  };
+  const { episodeList } = await import('../src/ui/album.js');
+  const big = { list: Array.from({ length: ALBUM_MAX }, (_, i) => ({ n: i + 1, p: 'Hanau', k: 'fountainMarket', t: T1, u: 1100 })) };
+  const card = node('div');
+  episodeList(card, big, new Map([[ALBUM_MAX, pic(1, 200)]]));
+  ok(canvases === 0 && watch && watch.on.size === ALBUM_MAX - 1, `Album: ${canvases} Karten beim Öffnen gezeichnet (${watch ? watch.on.size : 0} warten)`);
+  const first = [...watch.on].slice(0, 6);
+  watch.cb(first.map((target, i) => ({ target, isIntersecting: i < 5 })));
+  ok(canvases === 5 && watch.on.size === ALBUM_MAX - 6 && first.slice(0, 5).every((f) => f.children.length === 1 && f.children[0].width === 288), `Album: im Bild ${canvases} Karten gezeichnet`);
+  watch.cb(first.slice(0, 5).map((target) => ({ target, isIntersecting: true })));
+  ok(canvases === 5, 'Album: eine Karte doppelt gezeichnet');
+  // ein neues Öffnen (oder Reiterwechsel) vergisst die alte Liste
+  episodeList(node('div'), { list: big.list.slice(0, 3) }, new Map());
+  ok(watch.on.size === 3, `Album: der Beobachter hält noch ${watch.on.size - 3} Plätze der alten Liste`);
+  globalThis.document = doc0;
+  globalThis.IntersectionObserver = io0;
+  console.log(`  Album mit ${ALBUM_MAX} Folgen: beim Öffnen keine Karte gezeichnet, im Bild 5 von 5`);
+}
+
 if (fails) {
   console.log(`${fails} Fehler`);
   process.exit(1);
