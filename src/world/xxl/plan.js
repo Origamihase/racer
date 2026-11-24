@@ -259,8 +259,10 @@ export class Arrival {
     const L = trip.cur.sections;
     for (let i = 0; i < L.length; i++) {
       const c = L[i];
-      // geplanter Ladestopp an der Säule des Orts: Halt dort (vor dem Brunnen des Orts)
-      if (c.kind === 'stadt' && trip.post >= 0 && c.place === trip.post && c.postS !== undefined && !c.postDone && c.postS + PARK_STOP_AFTER >= trip.s && c.postS - trip.s <= 1500) {
+      // geplanter Ladestopp an der Säule des Orts: Halt dort – steht sie im Zielort hinter dem Brunnenplatz (parks.js
+      // postAt), erst am Brunnen, dann an der Säule
+      const spotFirst = c.place === trip.target && trip.target >= 0 && c.spotS !== undefined && !c.spotDone && c.spotS < c.postS;
+      if (c.kind === 'stadt' && trip.post >= 0 && c.place === trip.post && c.postS !== undefined && !c.postDone && !spotFirst && c.postS + PARK_STOP_AFTER >= trip.s && c.postS - trip.s <= 1500) {
         const o = this.stopOut;
         o.s = c.postS + PARK_STOP_AFTER;
         o.sec = c;
@@ -318,7 +320,8 @@ export class Arrival {
     const c = trip.section;
     const Z = POST_ZONE;
     const u = c ? trip.s - c.s0 : 0;
-    if (t === undefined || this.held || !c || c.kind !== 'stadt' || c.start || c.postS === undefined || c.charged || c.place !== trip.post || speed >= 0.15 || u < POST.u - Z.back || u > POST.halt + Z.ahead || trip.x < Z.x) {
+    const pa = c && c.postAt ? c.postAt : POST;
+    if (t === undefined || this.held || !c || c.kind !== 'stadt' || c.start || c.postS === undefined || c.charged || c.place !== trip.post || speed >= 0.15 || u < pa.u - Z.back || u > pa.halt + Z.ahead || trip.x < Z.x) {
       this.stillT = null;
       return null;
     }
@@ -341,8 +344,9 @@ export class Arrival {
     const park = c.kind === 'park' && c.spotS !== undefined && c.park >= 0;
     if (!park && (c.kind !== 'stadt' || c.start || c.postS === undefined)) return null;
     const u = trip.s - c.s0;
-    const mid = park ? PARK.u : POST.u;
-    const halt = park ? PARK.halt : POST.halt;
+    const pa = c.postAt || POST;
+    const mid = park ? PARK.u : pa.u;
+    const halt = park ? PARK.halt : pa.halt;
     if (u < mid - Z.back || u > halt + Z.ahead) return null;
     return park ? { sec: c, park: c.park, post: -1, name: PARKS[c.park].name } : { sec: c, park: -1, post: c.place, name: postName(c.place) };
   }

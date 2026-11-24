@@ -30,7 +30,7 @@ import { curveTable, curveAt } from '../src/curve.js';
 import { forestRanges, limitsFor, autoTarget, autoDrive, AUTO, Arrival, squareOf, eachPiece, FOREST_IN, FOREST_OUT, AHEAD, XXL_BEHIND } from '../src/world/xxl/plan.js';
 import { sectionSigns, signsAlong, tableAt, BOARD_D, BEACON_D, NEAR_ROAD, POST_SIGN_D, TOWN_SIGN_X } from '../src/world/xxl/signplan.js';
 import { crossSection } from '../src/world/xxl/roadkit.js';
-import { PARKS, parkAt, PARK_STOP_AFTER, POST } from '../src/map/parks.js';
+import { PARKS, parkAt, PARK_STOP_AFTER, POST, POST_AFTER } from '../src/map/parks.js';
 
 let fails = 0;
 const kinds = new Map(); // Art des Fehlers (Meldung ohne Zahlen) → Anzahl; jede Art wird höchstens dreimal gezeigt
@@ -424,21 +424,30 @@ const sig = { trips: 0, km: 0, forks: 0, said: 0, boards: 0, parks: 0, tables: 0
           ok(z && Math.abs(z.s - g.sec.spotS) < 1e-6 && Math.abs(trip.s + g.dist - z.s) < 1e-6, `Navi-Ziel ${G.places[g.sec.place].name}: kein Platz bei spotS`);
           ok(list.some((e) => e.kind === 'ort' && e.texts[0] === G.places[g.sec.place].name), `keine Ortstafel ${G.places[g.sec.place].name}`);
         }
-        // jede Ortsdurchfahrt (außer am Start) kündigt ihre Ladesäule an: eine Tafel POST_SIGN_D vor der Mitte des
-        // Parks, am Rand wie die Ortstafel und noch vor ihr – auf der Straße davor, im selben Rahmen
+        // jede Ortsdurchfahrt (außer am Start) kündigt ihre Ladesäule an: eine Tafel pa.sign vor der Mitte des Parks,
+        // am Rand wie die Ortstafel. Steht die Säule vor dem Brunnen, steht die Tafel noch vor der Ortstafel auf der
+        // Straße davor (im selben Rahmen), steht sie dahinter, im Ort hinter dem Brunnenplatz (parks.js postAt).
         const tw = trip.section;
         if (tw.kind === 'stadt' && !tw.start && tw.place >= 0 && !checked.has('l' + tw.id)) {
           checked.add('l' + tw.id);
           sig.posts = (sig.posts || 0) + 1;
+          const name = G.places[tw.place].name;
+          const pa = tw.postAt;
+          ok(pa && (pa.after ? pa.sign === POST_AFTER.sign : pa.u === POST.u && pa.sign === POST_SIGN_D), `Ladesäule in ${name}: Platz ${JSON.stringify(pa)}`);
           const list = sectionSigns(trip, trip.cur.sections, tw, [], { tables: false });
           const ls = list.filter((e) => e.kind === 'ladesaeule');
           const ort = list.find((e) => e.kind === 'ort');
-          const at = tw.s0 + POST.u - POST_SIGN_D;
-          ok(ls.length === 1 && Math.abs(ls[0].s - at) < 1e-6 && ls[0].x === TOWN_SIGN_X && ls[0].side === 1 && ls[0].texts.join(' ') === `Ladesäule ${POST_SIGN_D} m`, `Ladesäule in ${G.places[tw.place].name}: Tafel ${JSON.stringify(ls.map((e) => [e.s, e.texts]))}`);
-          ok(ort && ls.length && ls[0].s < ort.s - 20, `Ladesäule in ${G.places[tw.place].name}: Tafel nicht vor der Ortstafel`);
-          const before = trip.cur.sections.find((c) => c.s0 <= at && at < c.s1);
-          ok(before && before.frame === tw.frame, `Ladesäule in ${G.places[tw.place].name}: vor dem Ort keine Straße im selben Rahmen`);
-          ok(ls.length && signsAlong(trip, trip.cur, at - 1, at + 1, { tables: false }).some((e) => e.key === ls[0].key), `Ladesäule in ${G.places[tw.place].name}: signsAlong findet die Tafel nicht`);
+          const at = tw.s0 + pa.u - pa.sign;
+          ok(ls.length === 1 && Math.abs(ls[0].s - at) < 1e-6 && ls[0].x === TOWN_SIGN_X && ls[0].side === 1 && ls[0].texts.join(' ') === `Ladesäule ${pa.sign} m`, `Ladesäule in ${name}: Tafel ${JSON.stringify(ls.map((e) => [e.s, e.texts]))}`);
+          if (pa.after) {
+            sig.postsAfter = (sig.postsAfter || 0) + 1;
+            ok(ls.length && ls[0].s >= tw.spotS + POST_AFTER.square && tw.s0 + pa.halt < tw.s1, `Ladesäule in ${name}: Tafel nicht hinter dem Brunnenplatz`);
+          } else {
+            ok(ort && ls.length && ls[0].s < ort.s - 20, `Ladesäule in ${name}: Tafel nicht vor der Ortstafel`);
+            const before = trip.cur.sections.find((c) => c.s0 <= at && at < c.s1);
+            ok(before && before.frame === tw.frame, `Ladesäule in ${name}: vor dem Ort keine Straße im selben Rahmen`);
+          }
+          ok(ls.length && signsAlong(trip, trip.cur, at - 1, at + 1, { tables: false }).some((e) => e.key === ls[0].key), `Ladesäule in ${name}: signsAlong findet die Tafel nicht`);
         }
         // Tafeln, an denen der Wagen gerade vorbeifährt
         const sec = trip.section;
@@ -468,7 +477,7 @@ const sig = { trips: 0, km: 0, forks: 0, said: 0, boards: 0, parks: 0, tables: 0
       }
     }
   }
-  ok(sig.trips >= 50 && sig.forks > 150 && sig.tables > 200 && sig.arrive > 5 && sig.posts > 5, `zu wenig geprüft: ${JSON.stringify(sig)}`);
+  ok(sig.trips >= 50 && sig.forks > 150 && sig.tables > 200 && sig.arrive > 5 && sig.posts > 5 && sig.postsAfter > 2, `zu wenig geprüft: ${JSON.stringify(sig)}`);
 }
 // Lärmschutzwand am Dorf: die Szenerie (ohne Grafik, Leinwand als Attrappe) baut die ersten beiden Wandabschnitte
 const wall = {};
@@ -525,7 +534,7 @@ const wall = {};
   sc.keepOut = null;
   sc.reset();
 }
-console.log(`Schilder gegen Navi: ${sig.trips} Fahrten, ${sig.km.toFixed(0)} km, ${sig.forks} angesagte Gabelungen (${sig.boards} Vorwegweiser, ${sig.parks} davon mit Ladepark-Zeile, ${sig.said} Ansagen genau an einer Tafel), ${sig.arrive} Ziele, ${sig.tables} Entfernungstafeln und ${sig.gantries} Schilderbrücken mit ${sig.rows} Zeilen (größte Abweichung zum Navi ${sig.maxDev.toFixed(2)} km), ${sig.towns} Ortstafeln`);
+console.log(`Schilder gegen Navi: ${sig.trips} Fahrten, ${sig.km.toFixed(0)} km, ${sig.forks} angesagte Gabelungen (${sig.boards} Vorwegweiser, ${sig.parks} davon mit Ladepark-Zeile, ${sig.said} Ansagen genau an einer Tafel), ${sig.arrive} Ziele, ${sig.tables} Entfernungstafeln und ${sig.gantries} Schilderbrücken mit ${sig.rows} Zeilen (größte Abweichung zum Navi ${sig.maxDev.toFixed(2)} km), ${sig.towns} Ortstafeln, ${sig.posts} Ladesäulen (${sig.postsAfter} hinter dem Brunnen)`);
 console.log(`XXL-Planung: ${(stats.metres / 1000).toFixed(1)} km gefahren, ${stats.forks} Gabelungen, ${stats.entries} Einfahrten mit Limit (${stats.over} über +4 km/h, höchstens +${stats.maxOver.toFixed(1)} km/h), ${stats.forests} Waldstücke, ${stats.rests} Halte am Ziel, ${stats.charges} in einem Ladepark, ${stats.island} Bilder neben einer Brunneninsel, ${stats.shears} Scherungsvergleiche, ${stats.pieces} Stückabgleiche (${stats.rebuilt} Neubauten, alle jenseits des Dunsts), ${stats.seams} Nähte zwischen Abschnitten, ${stats.rails} Plankenstöße; Kurven: ${(stats.bendM / 1000).toFixed(1)} km gelenkt (${(stats.tightM / 1000).toFixed(1)} km enger als R 450), höchstens ${stats.maxOff.toFixed(2)} m neben der Linie, Querbeschleunigung bis ${stats.maxLat.toFixed(1)} m/s², ${stats.links} Bilder an Knotenpunkten gerade`);
 for (const [k, n] of kinds) if (n > 3) console.log(`  … ${n}× ${k}`);
 console.log(`Lärmschutzwand: Abschnitte ${wall.k} und ${wall.k + 1} gebaut, ${wall.verts} Eckpunkte, eine Textur für beide`);

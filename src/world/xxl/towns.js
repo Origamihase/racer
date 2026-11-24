@@ -13,6 +13,7 @@ import { CHARGE, chargeOf, steleOf } from './charge.js';
 import { buildChargeRig } from './chargerig.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from './schranke.js';
 import { camerasOf } from './blitzer.js';
+import { TOWN_SIGN_X } from './signplan.js';
 import { PARKS, PARK } from '../../map/parks.js';
 
 let kit = null;
@@ -64,7 +65,9 @@ export function townPlan(K, sec, budget = Infinity) {
   const p = places[sec.place];
   const island = islandOf(sec);
   const charge = chargeOf(sec);
-  const cameras = camerasOf(sec).map((c) => ({ u: c.u, x: c.x }));
+  const poles = camerasOf(sec).map((c) => ({ u: c.u, x: c.x }));
+  // die Tafel der Ladesäule, wenn sie hinter dem Brunnenplatz im Ort steht (parks.js postAt, signplan.js)
+  if (sec.postAt && sec.postAt.after) poles.push({ u: sec.postAt.u - sec.postAt.sign, x: TOWN_SIGN_X });
   return K.planTown(p, {
     budget, len: sec.s1 - sec.s0, mainKind: goalKind(p), pavement: false, signs: false, signName: p.name,
     ...(island ? { island } : sec.start ? { goal: START_GOAL - sec.s0 } : {}),
@@ -72,8 +75,9 @@ export function townPlan(K, sec, budget = Infinity) {
     // Kabel bringt der Ort mit (Towns.lay, chargerig.js), auf der Ortsdurchfahrt steht die Popcorn-Maschine auf der Säule
     // und vor dem Park die Stele (der Plan hält ihr Platz und Sichtlinie frei)
     ...(charge ? { charge: { u: charge.u, kind: CHARGE.kindStart, stop: !charge.start, stele: steleOf(sec) } } : {}),
-    // der Blitzer des Orts (blitzer.js; die Säule stellt der Schilderplan): sein Platz im Streifen bleibt frei
-    ...(cameras.length ? { cameras } : {}),
+    // der Blitzer des Orts (blitzer.js) und die Tafel einer Säule hinter dem Brunnen (die stellt der Schilderplan): ihr
+    // Platz im Streifen bleibt frei
+    ...(poles.length ? { poles } : {}),
   });
 }
 

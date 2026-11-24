@@ -21,6 +21,10 @@
 //    (kit/layout.js lookOf aus Land, Lage, Name und Größe, sonst aus dem Namen gezogen – nie je Besuch neu): Fachwerk,
 //    Schiefer, Kurort, Gründerzeit, Backstein, Alpenland oder bunt gemischt. Die Häuser tragen die Kleidung ihres
 //    Ortsbilds (town.js name@ortsbild), Laternen und das Grün zwischen ihnen folgen ihm.
+// 6. „Gib auch die Ladesäule manchmal vor und manchmal hinter dem Brunnen“: Je Ort fest (map/parks.js postAt) steht der
+//    Park mit der Säule vor dem Brunnenplatz am Ortsanfang oder dahinter vor dem Ortsende (in Dörfern immer davor). Park,
+//    Stele, Tafel („Ladesäule 50 m“ hinter dem Platz), geplanter Halt (postS), Navi und Ortsplan folgen ihm; nichts davon
+//    liegt auf dem Brunnenplatz. (Halt erst am Brunnen, dann an der Säule: stopp-test; Laden mit L dort: laden2-test.)
 import { Group } from 'three';
 import { Trip, PROFILES } from '../src/game/trip.js';
 import { findPlace } from '../src/map/graph.js';
@@ -300,13 +304,13 @@ console.log('3. Blitzer im Ort und auf der Landstraße:');
     const { W } = await import('../src/curve.js');
     const { createCityKit } = await import('../src/world/kit/city.js');
     const { townPlan } = await import('../src/world/xxl/towns.js');
-    const { cameraBlockers, aabb } = await import('../src/world/kit/layout.js');
+    const { poleBlockers, aabb } = await import('../src/world/kit/layout.js');
     const K = createCityKit(W);
     const towns = list.filter((c) => c.kind === 'stadt').slice(0, 4);
     let blocked = 0;
     for (const c of towns) {
       const plan = townPlan(K, c.sec);
-      blocked += cameraBlockers(plan, { u: c.u, x: c.x }, (n) => K.info(n)).length;
+      blocked += poleBlockers(plan, { u: c.u, x: c.x }, (n) => K.info(n)).length;
     }
     ok(towns.length && blocked === 0, `Ortsplan: ${blocked} Dinge auf dem Platz eines Blitzers (${towns.length} Orte)`);
     console.log(`  Ortsplan: Platz frei in ${towns.map((c) => places[c.sec.place].name).join(', ')}`);
@@ -490,6 +494,76 @@ console.log('5. Ortsbilder:');
     rows.push(`${LOOKS[look].title}: ${p.name} (${dressed}/${houses.length} Häuser, ${trees} Bäume, ${cars} Autos)`);
   }
   console.log('  ' + rows.join(' · '));
+}
+
+// --- 6. Ladesäule vor oder hinter dem Brunnen -------------------------------------------------------------------------
+console.log('6. Ladesäule vor oder hinter dem Brunnen:');
+{
+  const { postAt, POST, POST_AFTER } = await import('../src/map/parks.js');
+  const { townLen, spotIn } = await import('../src/map/graph.js');
+  const { W } = await import('../src/curve.js');
+  const { createCityKit } = await import('../src/world/kit/city.js');
+  const { townPlan } = await import('../src/world/xxl/towns.js');
+  const { poleBlockers } = await import('../src/world/kit/layout.js');
+  const { TOWN_SIGN_X } = await import('../src/world/xxl/signplan.js');
+  const K = createCityKit(W);
+  // je Ort fest; hinter dem Platz nur in Orten ab 500 m, dort etwa die Hälfte
+  let after = 0;
+  let long = 0;
+  const bad = [];
+  for (const p of places) {
+    const len = townLen(p.pop);
+    const spot = spotIn(len);
+    const pa = postAt(p.i, len, spot);
+    if (JSON.stringify(pa) !== JSON.stringify(postAt(p.i, len, spot))) bad.push(`${p.name}: nicht fest`);
+    if (len >= 500) long++;
+    if (!pa.after) {
+      if (pa.u !== POST.u || pa.sign !== POST.sign) bad.push(`${p.name}: vor dem Brunnen bei ${pa.u}`);
+      continue;
+    }
+    after++;
+    if (len < 500) bad.push(`${p.name}: hinter dem Brunnen in einem Dorf`);
+    // der Platz (plan.js squareOf) endet vor Tafel und Stele, der Park vor dem Ortsende
+    const sec = { kind: 'stadt', place: p.i, s0: 0, s1: len, spotS: spot, postAt: pa };
+    const q = squareOf(sec);
+    const st = steleOf(sec);
+    if (!(pa.u - pa.sign > q.s1 + 2 && st.u > q.s1 + 2 && pa.u + 12 < len - 30 && Math.abs(pa.halt - pa.u - (POST.halt - POST.u)) < 1e-9)) bad.push(`${p.name}: Säule bei ${pa.u}, Tafel ${pa.u - pa.sign}, Platz bis ${q.s1.toFixed(0)}, Ort ${len}`);
+  }
+  ok(bad.length === 0, `Säulen falsch: ${bad.slice(0, 4).join(' | ')} (${bad.length})`);
+  ok(after > 0.3 * long && after < 0.7 * long, `hinter dem Brunnen ${after} von ${long} Orten ab 500 m`);
+  console.log(`  hinter dem Brunnen: ${after} von ${long} Orten ab 500 m (Dörfer immer davor)`);
+
+  // auf der Fahrt: Park, Stele, Tafel und Halt folgen der Säule; der Ortsplan stellt den Park dort und hält der Tafel
+  // ihren Platz frei
+  // (Hammersbach ist ein Dorf: die Säule steht davor; in Würzburg steht sie dahinter)
+  for (const target of ['Hammersbach', 'Würzburg']) {
+    Math.random = mulberry32(5);
+    const trip = new Trip({ rng: Math.random });
+    const want = findPlace(target);
+    trip.setTarget(want);
+    let sAt = trip.s;
+    let sec = null;
+    for (let i = 0; i < 60000 && !sec; i++) {
+      sAt += 5;
+      trip.update(sAt, autoTarget(trip));
+      sec = trip.cur.sections.find((c) => c.kind === 'stadt' && c.place === want && !c.start) || null;
+    }
+    ok(!!(sec && sec.postAt), `${target}: Ort nicht erreicht`);
+    if (!sec || !sec.postAt) continue;
+    const k = sec.postAt.after ? 'hinter' : 'vor';
+    ok(k === (target === 'Würzburg' ? 'hinter' : 'vor'), `${target}: Säule ${k} dem Brunnen`);
+    const pa = sec.postAt;
+    const name = places[sec.place].name;
+    const c = chargeOf(sec);
+    const st = steleOf(sec);
+    ok(c && c.u === pa.u && st.u === pa.u - 14 && Math.abs(sec.postS - (sec.s0 + pa.halt - 2)) < 1e-9, `${name}: Park ${c && c.u}, Stele ${st && st.u}, Halt ${sec.postS - sec.s0} statt bei ${pa.u}`);
+    const signs = signsAlong(trip, trip.cur, sec.s0 - 200, sec.s1).filter((e) => e.kind === 'ladesaeule' && e.place === sec.place);
+    ok(signs.length === 1 && Math.abs(signs[0].s - (sec.s0 + pa.u - pa.sign)) < 1e-6 && signs[0].texts[1] === pa.sign + ' m', `${name}: Tafel ${JSON.stringify(signs.map((e) => [e.s - sec.s0, e.texts]))}`);
+    const plan = townPlan(K, sec);
+    ok(plan.charge && plan.charge.u === pa.u, `${name}: Ortsplan ohne Park bei ${pa.u}`);
+    if (pa.after) ok(poleBlockers(plan, { u: pa.u - pa.sign, x: TOWN_SIGN_X }, (n) => K.info(n)).length === 0, `${name}: Ortsplan stellt etwas auf die Tafel der Säule`);
+    console.log(`  ${name}: Säule ${k} dem Brunnen bei u ${pa.u} (Brunnen bei ${(sec.spotS - sec.s0).toFixed(0)}, Tafel „Ladesäule ${pa.sign} m“ bei ${pa.u - pa.sign}, Halt bei ${(sec.postS - sec.s0).toFixed(2)})`);
+  }
 }
 
 if (fails) {

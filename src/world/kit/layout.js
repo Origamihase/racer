@@ -403,10 +403,11 @@ export function steleBlockers(plan, st, infoOf, points = steleViews(st)) {
 }
 
 /**
- * Was auf dem Platz eines Blitzers (cm = { u, x }, xxl/blitzer.js) steht: Indizes in plan.items – alles Hohe, dessen
- * Grundriss (bei Bäumen die Krone, sonst der Mast) in seine 1,8 × 2 m reicht.
+ * Was auf dem Platz eines Masts im Streifen steht (cm = { u, x }: ein Blitzer, xxl/blitzer.js, oder die Tafel einer
+ * Ladesäule): Indizes in plan.items – alles Hohe, dessen Grundriss (bei Bäumen die Krone, sonst der Mast) in seine
+ * 1,8 × 2 m reicht.
  */
-export function cameraBlockers(plan, cm, infoOf) {
+export function poleBlockers(plan, cm, infoOf) {
   const spot = [cm.x - 0.9, cm.x + 0.9, -cm.u - 1.0, -cm.u + 1.0];
   const out = [];
   for (let i = 0; i < plan.items.length; i++) {
@@ -857,10 +858,11 @@ export function planTown(place, opts = {}) {
     const drop = new Set(steleBlockers(plan, st, infoOf));
     if (drop.size) plan.items = plan.items.filter((_, i) => !drop.has(i));
   }
-  // --- 8. Blitzer (opts.cameras = [{ u, x }], xxl/blitzer.js): auf ihrem Platz im Streifen steht nichts anderes (Regel,
-  // nicht Zufall: der Plan bleibt sonst derselbe)
-  for (const cm of opts.cameras || []) {
-    const drop = new Set(cameraBlockers(plan, cm, infoOf));
+  // --- 8. Masten im Streifen (opts.poles = [{ u, x }]: Blitzer, xxl/blitzer.js, und die Tafel einer Ladesäule hinter
+  // dem Brunnenplatz, xxl/signplan.js): auf ihrem Platz steht nichts anderes (Regel, nicht Zufall: der Plan bleibt sonst
+  // derselbe)
+  for (const cm of opts.poles || []) {
+    const drop = new Set(poleBlockers(plan, cm, infoOf));
     if (drop.size) plan.items = plan.items.filter((_, i) => !drop.has(i));
   }
   plan.layout = townLayout(plan, infoOf);

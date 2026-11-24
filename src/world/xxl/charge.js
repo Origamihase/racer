@@ -26,7 +26,7 @@ export const CHARGE = {
   v1: 5, // Tempo im Bogen (18 km/h)
   vEnd: 40 / 3.6, // so rollt jede Fahrt los (main.js xxlStart): die Übergabe an das Spiel
   acc: 5, // höchste Beschleunigung in der Spur
-  pass: POST.u, // Mitte des Parks in jedem Ort auf dem Weg (am Ortsanfang, fern vom Brunnenplatz: die Ladesäule des Orts)
+  pass: POST.u, // Mitte des Parks in einem Ort ohne eigene Angabe (am Ortsanfang; sonst sec.postAt, map/parks.js postAt)
   drop: 0.04, // Höhe des abgesenkten Bordsteins an der Einfahrt
   ramp: 1, // Übergang des Bordsteins auf beiden Seiten der Einfahrt
   keep: 1, // so weit über den Park hinaus bleiben Streifen und Gehweg leer
@@ -84,9 +84,9 @@ export function groundAt(x) {
 }
 
 /**
- * Ladepark eines Abschnitts oder null: jede Ortsdurchfahrt (die Ladesäule des Orts, Mitte bei POST.u), der Ort, in
- * dem die Fahrt beginnt (am Start), die Abschnitte 'park' hinter den Ausfahrten (src/map/parks.js, Mitte bei
- * PARK.u). u = Mitte des Parks (Ortskoordinaten), am Start so weit vor dem Startpunkt,
+ * Ladepark eines Abschnitts oder null: jede Ortsdurchfahrt (die Ladesäule des Orts, Mitte bei sec.postAt.u: vor oder
+ * hinter dem Brunnenplatz, map/parks.js postAt), der Ort, in dem die Fahrt beginnt (am Start), die Abschnitte 'park'
+ * hinter den Ausfahrten (src/map/parks.js, Mitte bei PARK.u). u = Mitte des Parks (Ortskoordinaten), am Start so weit vor dem Startpunkt,
  * dass das Ausparken genau dort in der Spur endet; drive = abgesenkter Bordstein (s0 … s1 in Metern der Fahrt, voll
  * abgesenkt; ramp davor und dahinter), start: der Abschnitt, in dem die Fahrt beginnt.
  */
@@ -94,7 +94,7 @@ export function chargeOf(sec) {
   if (!sec) return null;
   const park = sec.kind === 'park';
   if (!park && (sec.kind !== 'stadt' || !places[sec.place])) return null;
-  const u = park ? PARK.u : sec.start ? -sec.s0 + PARK_FROM_START : CHARGE.pass;
+  const u = park ? PARK.u : sec.start ? -sec.s0 + PARK_FROM_START : sec.postAt ? sec.postAt.u : CHARGE.pass;
   // Einfahrt: über die Räder hinaus, die den Bordstein beim Ausparken kreuzen (Bucht bis Ende des Bogens, je 1,2 m Rand)
   const y = u - CHARGE.bay[0] + CHARGE.off;
   const d0 = y - 0.79 - 1.2;

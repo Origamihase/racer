@@ -1,7 +1,7 @@
 // Prüft Karte, Routen und Streckenlogik ohne Grafik: node tools/trip-test.mjs [Anzahl Zufallsfahrten]
 import * as G from '../src/map/graph.js';
 import { Trip, J, R, dR, BETA, PROFILES } from '../src/game/trip.js';
-import { PARKS, PARK, PARK_STOP_AFTER, parkAt, placeParks, parkCandidate, parkZub } from '../src/map/parks.js';
+import { PARKS, PARK, PARK_STOP_AFTER, parkAt, placeParks, parkCandidate, parkZub, postAt } from '../src/map/parks.js';
 
 let fails = 0;
 const ok = (cond, msg) => {
@@ -272,8 +272,12 @@ function drive(trip, metres, decide, opts = {}) {
     },
   });
   ok(m.missed === 1 && trip.stop === -1 && m.wende === 0 && Math.abs(m.arrive - r0.km) < 0.01, `Stopp verpasst: ${JSON.stringify(m)}`);
-  // die Ladesäule im Zielort zählt mit; in der Sperrzone vor der Ausfahrt nach Würzburg führt der Zweig schon in den Ort:
-  // der Park an dieser Ausfahrt liegt dann nicht mehr am Weg, die Ladesäule im Ort schon
+  // die Ladesäule im Zielort zählt mit (in Würzburg steht sie hinter dem Brunnenplatz, map/parks.js postAt: nach dem
+  // Park an der Ausfahrt); in der Sperrzone vor der Ausfahrt nach Würzburg führt der Zweig schon in den Ort: der Park an
+  // dieser Ausfahrt liegt dann nicht mehr am Weg, die Ladesäule im Ort schon
+  const wue = G.findPlace('Würzburg');
+  const wueLen = G.townLen(G.places[wue].pop);
+  const order = postAt(wue, wueLen, G.spotIn(wueLen)).after ? 'Ladepark Aschaffenburg,Ladepark Würzburg,Ladesäule in Würzburg' : 'Ladepark Aschaffenburg,Ladesäule in Würzburg,Ladepark Würzburg';
   trip = start();
   const names0 = trip.restsAhead(3).map((r) => r.name);
   let locked = null;
@@ -282,7 +286,7 @@ function drive(trip, metres, decide, opts = {}) {
     const f = trip.cur.sections.map((c) => c.fork).find((q) => q && !q.taken && q.branch && q.s > trip.s && q.s - trip.s < J.lock && parkAt(q.node) >= 0 && q.branch.sections.some((c) => c.kind === 'stadt'));
     if (f) locked = { park: PARKS[parkAt(f.node)].name, names: trip.restsAhead(3).map((r) => r.name) };
   }
-  ok(names0.join() === 'Ladepark Aschaffenburg,Ladesäule in Würzburg,Ladepark Würzburg' && locked && locked.park === 'Ladepark Würzburg' && !locked.names.includes(locked.park) && locked.names[0] === 'Ladesäule in Würzburg', `Ladeplätze nach Würzburg ${JSON.stringify(names0)}, in der Sperrzone ${JSON.stringify(locked)}`);
+  ok(names0.join() === order && locked && locked.park === 'Ladepark Würzburg' && !locked.names.includes(locked.park) && locked.names[0] === 'Ladesäule in Würzburg', `Ladeplätze nach Würzburg ${JSON.stringify(names0)}, in der Sperrzone ${JSON.stringify(locked)}`);
   console.log(`Ladestopp Erlensee → Würzburg: ${nr.name} nach ${pm.toFixed(2)} km (${(nr.m / 1000).toFixed(2)} km Straße), Würzburg ${r0.km.toFixed(2)} km ohne, ${r1.km.toFixed(2)} km mit Stopp`);
 }
 

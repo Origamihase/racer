@@ -330,10 +330,10 @@ for (const [name, r] of runs) {
 
 // --- 3b. An der Ladesäule eines Orts ----------------------------------------------------------------------------------
 // Ein Stream ab Erlensee mit dem Ziel Hanau und 9,5 % Akku: Der nächste Ladeplatz auf dem Weg ist die Ladesäule in Hanau
-// (vor dem Brunnen des Orts); OMI und die Akku-Karte nennen sie mit Entfernung, Taste L plant sie ein (und keinen Park).
-// Für die Fahrt dorthin bekommt der Akku 40 %; hinter der Ausfahrt zeigt das Navi den Halt mit ihrem Namen. Der Wagen hält
-// in der Spur bei POST.halt, lädt im selben Stopp wie im Park und fährt danach zum Brunnen weiter: Ankunft am Ziel, ohne
-// „wenden“ und ohne falschen Abzweig.
+// (in Hanau hinter dem Brunnenplatz, map/parks.js postAt); OMI und die Akku-Karte nennen sie mit Entfernung, Taste L
+// plant sie ein (und keinen Park). Für die Fahrt dorthin bekommt der Akku 40 %; hinter der Ausfahrt zeigt das Navi den
+// Halt mit ihrem Namen. Der Wagen hält erst am Brunnen (Ankunft am Ziel), dann in der Spur beim Halt der Säule und lädt
+// im selben Stopp wie im Park (stünde sie vor dem Brunnen, umgekehrt) – ohne „wenden“ und ohne falschen Abzweig.
 function postStream() {
   Math.random = mulberry32(11);
   const trip = new Trip({ rng: Math.random });
@@ -404,7 +404,7 @@ function postStream() {
     }
     const rest = arrival.update(trip, evs, p.speed);
     if (rest && rest.type === 'charge') {
-      out.halt = { t: game.t, u: p.s - rest.sec.s0, place: rest.sec.place, post: rest.post, park: rest.park, name: rest.name };
+      out.halt = { t: game.t, u: p.s - rest.sec.s0, place: rest.sec.place, post: rest.post, park: rest.park, name: rest.name, want: (rest.sec.postAt || POST).halt, after: !!out.rest };
       game.onTrip(rest);
       const c = game.charging;
       out.scene = c ? { post: c.post, park: c.park, name: c.name, end: c.plan.end } : null;
@@ -414,9 +414,12 @@ function postStream() {
       if (g.then && g.then.wende) out.wende++;
     }
     if (rest && rest.type === 'rest') {
-      out.rest = { place: rest.place, u: p.s - rest.sec.s0, spot: rest.sec.spotS - rest.sec.s0 };
-      break;
+      out.rest = { place: rest.place, u: p.s - rest.sec.s0, spot: rest.sec.spotS - rest.sec.s0, after: (rest.sec.postAt || POST).u > rest.sec.spotS - rest.sec.s0 };
+      if (out.halt) break;
+      // die Säule steht hinter dem Brunnen: nach der Ankunft weiter zu ihr
+      arrival.release();
     }
+    if (out.rest && out.charged) break;
   }
   out.town = town;
   return out;
@@ -431,7 +434,7 @@ let postRun = null;
   const set = R.said.find((e) => e.text.startsWith('Ladestopp eingeplant:'));
   ok(R.planned && R.planned.post === R.town && R.planned.stop === -1 && set && set.text.startsWith(`Ladestopp eingeplant: ${name}, in `), `Ladesäule: eingeplant ${JSON.stringify(R.planned)}, OMI „${set ? set.text : '–'}“`);
   ok(R.guide && R.guide.type === 'stop' && R.guide.post === R.town && R.ins && R.ins.turn === 'stop' && R.ins.head === name, `Ladesäule: Navi ${JSON.stringify(R.guide)} ${JSON.stringify(R.ins)}`);
-  ok(R.halt && R.halt.place === R.town && R.halt.post === R.town && R.halt.park === -1 && R.halt.name === name && near(R.halt.u, POST.halt, 0.6), `Ladesäule: Halt ${JSON.stringify(R.halt)} statt bei u ${POST.halt}`);
+  ok(R.halt && R.halt.place === R.town && R.halt.post === R.town && R.halt.park === -1 && R.halt.name === name && near(R.halt.u, R.halt.want, 0.6) && R.halt.after === !!(R.rest && R.rest.after), `Ladesäule: Halt ${JSON.stringify(R.halt)} statt bei u ${R.halt && R.halt.want}`);
   ok(R.scene && R.scene.post === R.town && R.scene.park === -1 && R.scene.name === name, `Ladesäule: Stopp ${JSON.stringify(R.scene)}`);
   ok(R.charged && R.charged.battery === 100 && R.charged.charges === 1 && R.charged.bananas === 1 && R.charged.post < 0 && R.charged.stop < 0 && R.scene && near(R.charged.t, R.scene.end, 0.05), `Ladesäule: nach dem Stopp ${JSON.stringify(R.charged)}`);
   const during = R.said.filter((e) => e.during).map((e) => e.text);
@@ -607,7 +610,7 @@ console.log(
 );
 if (postRun) {
   const R = postRun;
-  console.log(`Ladesäule: ${R.first ? R.first.name + ' nach ' + R.first.km.toFixed(1) + ' km' : '–'} als nächster Ladeplatz, eingeplant mit L, Halt bei u ${R.halt ? R.halt.u.toFixed(2) : '–'} m (POST.halt ${POST.halt}), Stopp ${R.charged ? R.charged.t : '?'} s, danach am Brunnen bei u ${R.rest ? R.rest.u.toFixed(1) : '–'} m`);
+  console.log(`Ladesäule: ${R.first ? R.first.name + ' nach ' + R.first.km.toFixed(1) + ' km' : '–'} als nächster Ladeplatz, eingeplant mit L, Halt bei u ${R.halt ? R.halt.u.toFixed(2) : '–'} m (Halt der Säule ${R.halt ? R.halt.want.toFixed(2) : '–'}, ${R.halt && R.halt.after ? 'hinter' : 'vor'} dem Brunnen), Stopp ${R.charged ? R.charged.t : '?'} s, danach am Brunnen bei u ${R.rest ? R.rest.u.toFixed(1) : '–'} m`);
 }
 console.log(`Popcorn: ${fly.ok} von ${fly.n} Körnern springen aus der Tür der Maschine oben auf der Säule (bis ${fly.apex.toFixed(2)} m hoch) und fliegen durchs offene Fahrerfenster, mindestens ${fly.margin.toFixed(3)} m vom Rahmen`);
 
