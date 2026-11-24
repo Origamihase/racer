@@ -903,5 +903,46 @@ function fakeGame(secs, { gate = true } = {}) {
   ok(mesh.count === 0 && ck.confettiNext === 0, 'Konfetti: Leeren setzt den Ring nicht zurück');
 }
 
+// --- 10d. OMI zeichnet nur, wenn man sie sieht und sich etwas ändert --------------------------------------------------
+{
+  const { Nomi } = await import('../src/cockpit/nomi.js');
+  let draws = 0;
+  const ctx = new Proxy({}, {
+    get: (t, k) => (k in t ? t[k] : k === 'clearRect' ? () => draws++ : k === 'createRadialGradient' ? () => ({ addColorStop() {} }) : () => {}),
+    set: (t, k, v) => ((t[k] = v), true),
+  });
+  const doc0 = globalThis.document;
+  globalThis.document = { createElement: () => ({ getContext: () => ctx, width: 0, height: 0 }) };
+  const n = new Nomi();
+  globalThis.document = doc0;
+  const run = (sec, visible) => {
+    const d0 = draws;
+    const steps = Math.round(sec * 60);
+    for (let i = 0; i < steps; i++) n.update(1 / 60, (tt += 1 / 60), -0.16, visible);
+    return draws - d0;
+  };
+  let tt = 0;
+  n.nextBlink = 99; // kein Blinzeln dazwischen
+  run(2, true); // eingeschwungen
+  const hidden = run(3, false);
+  ok(hidden === 0, `OMI: in der Drohnenansicht ${hidden}-mal gezeichnet`);
+  const still = run(3, true);
+  ok(still <= 1, `OMI: ruhig im Cockpit ${still}-mal in 3 s gezeichnet (nichts hat sich geändert)`);
+  n.speak(1);
+  const talking = run(1, true);
+  ok(talking >= 25, `OMI: beim Sprechen nur ${talking}-mal in 1 s gezeichnet`);
+  run(2, true);
+  n.nextBlink = 0;
+  const blink = run(0.5, true);
+  ok(blink >= 3, `OMI: Blinzeln nur ${blink}-mal gezeichnet`);
+  n.setMood('love', 1);
+  ok(run(0.5, true) >= 12, 'OMI: das pochende Herz steht still');
+  n.setMood('happy', 5);
+  run(0.2, true);
+  ok(run(1, true) === 0, 'OMI: fröhliche Augen werden ohne Änderung neu gezeichnet');
+  ok(/visible: cockpitOn,/.test(read('src/main.js')) && /this\.nomi\.update\(dt, t, -0\.16, st\.visible !== false\)/.test(read('src/cockpit/cockpit.js')), 'OMI erfährt nicht, ob das Cockpit zu sehen ist');
+  console.log(`  OMI: unsichtbar ${hidden}, ruhig ${still} in 3 s, sprechend ${talking} in 1 s`);
+}
+
 console.log(fails ? `streamgags-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `streamgags-test: alle ${checks} Prüfungen bestanden`);
 process.exit(fails ? 1 : 0);

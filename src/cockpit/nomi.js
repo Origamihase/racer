@@ -92,7 +92,19 @@ export class Nomi {
     this.glanceTimer = dur;
   }
 
-  update(dt, t, driverYaw) {
+  /**
+   * Was das Bild zeigt, als Schlüssel: gleich → das letzte Bild gilt noch. null, solange es sich von selbst bewegt
+   * (Herz, Spirale, Sprechen).
+   */
+  drawKey() {
+    const m = this.mood;
+    if (m === 'love' || m === 'dizzy' || this.talk > 0.01) return null;
+    const blink = m === 'idle' || m === 'talk' ? Math.round(this.blink * 50) : 0;
+    return `${m}|${blink}|${Math.round(this.lookX * 34 * 4)}`;
+  }
+
+  /** visible: Cockpit zu sehen (sonst sieht OMI keiner, und die Leinwand bleibt, wie sie ist). */
+  update(dt, t, driverYaw, visible = true) {
     if (this.moodTimer > 0) {
       this.moodTimer -= dt;
       if (this.moodTimer <= 0) this.mood = 'idle';
@@ -120,11 +132,16 @@ export class Nomi {
     }
     this.blink = Math.max(0, this.blink - dt * 7);
 
-    // ~30 fps neu zeichnen
-    if (t - this.lastDraw > 1 / 30) {
+    // höchstens ~30-mal je Sekunde neu zeichnen, und nur, wenn man es sieht und sich etwas geändert hat (der
+    // Weichzeichner der Augen ist teuer)
+    if (visible && t - this.lastDraw > 1 / 30) {
       this.lastDraw = t;
-      this.draw(t);
-      this.tex.needsUpdate = true;
+      const key = this.drawKey();
+      if (key === null || key !== this.drawnKey) {
+        this.drawnKey = key;
+        this.draw(t);
+        this.tex.needsUpdate = true;
+      }
     }
   }
 

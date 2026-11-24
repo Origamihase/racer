@@ -900,7 +900,7 @@ export class Cockpit {
     // Mit eigener envMap gilt die Drehung des Materials, nicht die der Szene: mit dem Kurs mitdrehen wie die Welt
     for (const m of this.mirrorish) m.envMapRotation.copy(this.scene.environmentRotation);
     if (this.driver && this.driver.root.visible) this.driver.animate(t, st.adam || { steer: st.steer });
-    this.nomi.update(dt, t, -0.16);
+    this.nomi.update(dt, t, -0.16, st.visible !== false);
     this.screen.update(dt, st.screen);
     this.rear.update(dt, !!st.rear, st.steer);
   }
