@@ -1885,6 +1885,9 @@ export function compose(core, items, { shadows = true } = {}) {
 export function release(obj) {
   obj.traverse((o) => {
     if (o.geometry && o.geometry.userData.merged) o.geometry.dispose();
+    // Fangruppe, Riesenrad: die Puffer der Instanzen (Lage, Farbe) gibt three.js nur beim dispose frei; die
+    // Geometrie selbst teilen sie mit allen anderen
+    if (o.isInstancedMesh) o.dispose();
     const m = o.material;
     if (!m || !m.userData || !m.userData.textMats || o.userData.textFreed) return;
     o.userData.textFreed = true;

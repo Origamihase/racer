@@ -621,6 +621,11 @@ const { Towns } = await import('../src/world/xxl/towns.js');
   const u = towns.of(sec);
   ok(u && u.group.visible && u.group.pending === 0, 'XXL-Ort: mitten im Ort nicht sofort fertig');
   const textsBuilt = towns.kit.core.textMats.size;
+  // die Instanzen (Arme der Fangruppe) gehen mit: three.js gibt ihre Puffer nur beim dispose frei
+  const inst = [];
+  root.traverse((o) => o.isInstancedMesh && inst.push(o));
+  let instFreed = 0;
+  for (const o of inst) o.addEventListener('dispose', () => instFreed++);
   const keep0 = towns.kit.core.textKeep.size;
   const freed = [];
   for (const m of towns.kit.core.textMats.values()) m.addEventListener('dispose', () => freed.push(m));
@@ -628,6 +633,7 @@ const { Towns } = await import('../src/world/xxl/towns.js');
   ok(towns.items.size === 0 && root.children.length === 0, 'XXL-Ort: nach reset nicht leer');
   // abgeräumt gehen auch seine Schilder (Ortstafel, Wegweiser …), die niemand sonst nutzt
   ok(textsBuilt > texts0 && towns.kit.core.textMats.size === texts0, `XXL-Ort: Textmaterialien vor dem Ort ${texts0}, gebaut ${textsBuilt}, abgeräumt ${towns.kit.core.textMats.size}`);
+  ok(inst.length > 0 && instFreed === inst.length, `XXL-Ort: ${instFreed} von ${inst.length} InstancedMesh entsorgt`);
   // … aber je Seite bleibt eins ohne Leinwand, sonst warfe three.js das Programm der Tafeln weg (Neuübersetzung im
   // nächsten Ort, mitten in der Fahrt)
   const kept = [...towns.kit.core.textKeep.values()];
