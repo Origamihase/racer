@@ -134,6 +134,27 @@ for (const device of ['keyboard', 'gamepad']) {
   buttons[PAD_DRIVE.gas[0]].value = 1;
   input.poll((t += 16));
   ok(input.throttle === 1, 'RT gibt keinen Strom');
+  buttons[PAD_DRIVE.gas[0]].value = 0;
+  // Steuerkreuz gehalten, dann das Pad getrennt: die Lenkung lässt los (es kommt kein Loslassen mehr vom Pad)
+  buttons[PAD_DRIVE.left].pressed = true;
+  input.poll((t += 16));
+  input.poll((t += 16));
+  ok(input.steer === -1, 'Steuerkreuz links lenkt nicht');
+  pad.connected = false;
+  input.poll((t += 16));
+  input.poll((t += 16));
+  ok(input.steer === 0 && !Object.keys(input.padSteer).length, `Pad getrennt bei gehaltenem Steuerkreuz: lenkt weiter (${input.steer})`);
+  // wieder verbunden, Steuerkreuz noch gehalten: lenkt wieder; releaseAll lässt es los, gehalten lenkt es danach weiter
+  pad.connected = true;
+  input.poll((t += 16));
+  input.poll((t += 16));
+  ok(input.steer === -1, 'Pad wieder verbunden: Steuerkreuz lenkt nicht');
+  input.releaseAll(t);
+  ok(!Object.keys(input.padSteer).length, 'releaseAll: Steuerkreuz bleibt gemerkt');
+  buttons[PAD_DRIVE.left].pressed = false;
+  input.poll((t += 16));
+  input.poll((t += 16));
+  ok(input.steer === 0, 'Steuerkreuz losgelassen: lenkt weiter');
   delete globalThis.navigator.getGamepads;
 }
 // Back schaltet die Tipps der ersten Minuten ab wie Enter (main.js: take('confirm')); die Übersicht, „So steuerst du“

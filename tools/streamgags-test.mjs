@@ -881,5 +881,27 @@ function fakeGame(secs, { gate = true } = {}) {
   console.log(`  Grundregel: 15 Minuten mit ${gags} Gag-Zeilen, sonst Zeile für Zeile derselbe Stream (${pa.length} Zeilen, ${a.tv} Folgen)`);
 }
 
+// --- Konfetti an der Scheibe (cockpit.js addConfetti) ----------------------------------------------------------------
+// Nach gut sechs Zielen ist die Scheibe voll (400 Schnipsel). Danach ersetzen neue Schnipsel die ältesten, statt dass
+// jede weitere Kanone und jedes Ziel ohne Konfetti bleibt; das Leeren beim Fahrtstart fängt wieder vorn an.
+{
+  const THREE = await import('three');
+  const { Cockpit } = await import('../src/cockpit/cockpit.js');
+  const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.012, 0.008), new THREE.MeshBasicMaterial(), 400);
+  mesh.count = 0;
+  const ck = { confetti: mesh, confettiNext: 0, rigOnGlass: [] };
+  const at = (i) => mesh.instanceMatrix.array.slice(i * 16, i * 16 + 16).join();
+  for (let k = 0; k < 7; k++) Cockpit.prototype.addConfetti.call(ck, 70);
+  ok(mesh.count === 400, `Konfetti: ${mesh.count} Schnipsel nach 7 Zielen`);
+  const next = ck.confettiNext ?? 0;
+  const slots = Array.from({ length: 30 }, (_, i) => (next + i) % 400);
+  const before = slots.map(at);
+  Cockpit.prototype.addConfetti.call(ck, 30);
+  ok(mesh.count === 400 && slots.every((j, i) => at(j) !== before[i]), 'Konfetti: Bei voller Scheibe kommt nichts mehr dazu (die ältesten bleiben)');
+  ok(ck.confettiNext === (next + 30) % 400, `Konfetti: Ring steht bei ${ck.confettiNext} statt ${(next + 30) % 400}`);
+  Cockpit.prototype.clearConfetti.call(ck);
+  ok(mesh.count === 0 && ck.confettiNext === 0, 'Konfetti: Leeren setzt den Ring nicht zurück');
+}
+
 console.log(fails ? `streamgags-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `streamgags-test: alle ${checks} Prüfungen bestanden`);
 process.exit(fails ? 1 : 0);

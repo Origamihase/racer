@@ -572,5 +572,61 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   console.log(`  Studio-Schnittstelle: ${used.size} Namen des Spiels (${[...used].sort().join(', ')})`);
 }
 
+// --- Hängende Sprachausgabe ------------------------------------------------------------------------------------------
+// Meldet die Sprachausgabe einen Satz nie fertig (Netzstimmen in Chrome), bricht das Sicherheitsnetz ihn ab: Der nächste
+// Satz spricht, statt sich stumm hinter den hängenden zu stellen und später mit allen anderen auf einmal zu kommen.
+{
+  const saved = { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout, now: Date.now, window: globalThis.window, utt: globalThis.SpeechSynthesisUtterance };
+  const clock = { t: 0, timers: [], id: 0 };
+  globalThis.setTimeout = (fn, ms = 0) => {
+    clock.timers.push({ id: ++clock.id, at: clock.t + ms, fn });
+    return clock.id;
+  };
+  globalThis.clearTimeout = (id) => (clock.timers = clock.timers.filter((x) => x.id !== id));
+  Date.now = () => clock.t;
+  // Chrome mit hängender Stimme: speak() stellt an, nichts endet; erst cancel() leert die Schlange
+  const engine = {
+    queue: [],
+    spoken: [],
+    cancels: 0,
+    getVoices: () => [{ name: 'Google Deutsch', lang: 'de-DE' }],
+    speak(u) {
+      this.queue.push(u);
+      if (this.queue.length === 1 && !this.hung) this.spoken.push(u.text);
+    },
+    cancel() {
+      this.cancels++;
+      this.queue = [];
+      this.hung = false;
+    },
+    pause() {},
+    resume() {},
+  };
+  engine.hung = true;
+  globalThis.window = { speechSynthesis: engine };
+  globalThis.SpeechSynthesisUtterance = class {
+    constructor(text) {
+      this.text = text;
+    }
+  };
+  try {
+    const sp = new Speech();
+    sp.say('Erster Satz, der hängen bleibt.', 'board');
+    sp.say('Zweiter Satz.', 'board');
+    for (let ms = 0; ms < 30000; ms += 50) {
+      clock.t = ms;
+      for (const x of clock.timers.filter((q) => q.at <= ms).sort((a, b) => a.at - b.at)) {
+        clock.timers = clock.timers.filter((q) => q !== x);
+        x.fn();
+      }
+    }
+    ok(engine.cancels >= 1, 'Hängende Sprachausgabe: Das Sicherheitsnetz bricht den Satz nicht ab');
+    ok(engine.spoken.includes('Zweiter Satz.') && engine.queue.length <= 1, `Hängende Sprachausgabe: Der zweite Satz spricht nicht (gesprochen ${JSON.stringify(engine.spoken)}, ${engine.queue.length} in der Schlange)`);
+  } finally {
+    Object.assign(globalThis, { setTimeout: saved.setTimeout, clearTimeout: saved.clearTimeout, window: saved.window, SpeechSynthesisUtterance: saved.utt });
+    Date.now = saved.now;
+  }
+}
+
 console.log(`ansagen-test: ${checks} Prüfungen, ${fails} Fehler`);
 if (fails) process.exit(1);

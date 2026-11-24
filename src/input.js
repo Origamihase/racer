@@ -112,6 +112,7 @@ export class Input {
     this.map = ACTIONS;
     this.padPrev = {};
     this.padSteer = {};
+    this.padSeen = new Set(); // Pads dieses poll (Index als Text)
     if (typeof window === 'undefined') return;
     window.addEventListener('keydown', (e) => this.onKey(e, true));
     window.addEventListener('keyup', (e) => this.onKey(e, false));
@@ -172,6 +173,9 @@ export class Input {
     this.codes.clear();
     this.keys.clear();
     this.sk.releaseAll(t);
+    // das Steuerkreuz ist damit auch los (noch gehalten, lenkt es beim nächsten poll wieder); padPrev bleibt, sonst
+    // zählte ein gehaltener Knopf als neuer Druck
+    this.padSteer = {};
     this.touch.left = this.touch.right = this.touch.gas = this.touch.brake = false;
     this.touch.analog = 0;
     if (this.onReleaseAll) this.onReleaseAll();
@@ -210,8 +214,11 @@ export class Input {
     let brake = this.keys.has('brake') || this.touch.brake ? 1 : 0;
     let analog = this.touch.analog || 0;
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+    const seen = this.padSeen;
+    seen.clear();
     for (const p of pads) {
       if (!p || !p.connected) continue;
+      seen.add(String(p.index));
       // Stick: Totzone und sanfte Kennlinie; der Stick hat Vorrang vor dem Touch-Zug
       const ax = stickCurve(p.axes[PAD_DRIVE.stick] || 0);
       if (ax !== 0) {
@@ -252,6 +259,14 @@ export class Input {
         this.padPrev[key] = down;
       });
     }
+    // ein getrenntes Pad (Kabel gezogen, Akku leer) meldet kein Loslassen mehr: seine Tasten jetzt loslassen, sonst
+    // lenkt ein gehaltenes Steuerkreuz für immer weiter
+    for (const id in this.padSteer) {
+      if (seen.has(id.slice(3, id.indexOf(':')))) continue;
+      if (this.padSteer[id]) this.sk.release(id, t);
+      delete this.padSteer[id];
+    }
+    for (const key in this.padPrev) if (!seen.has(key.slice(0, key.indexOf(':')))) delete this.padPrev[key];
     this.sk.take(this.lastPoll, t, this.steerLog);
     this.lastPoll = t;
     this.analog = Math.max(-1, Math.min(1, analog));
