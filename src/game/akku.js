@@ -91,7 +91,7 @@ export class Akku {
       // mit der Plüschbrause-Kiste aus dem Shop (Code ADAM, gags.js) hält er länger
       g.player.sugar = g.up.brause ? 10 : 6;
       g.audio.coin();
-      g.ui.toast(g.up.brause ? '🍌 Bananensaft und Plüschbrause! Zuckerschub' : '🍌 Bananensaft! Zuckerschub', 'good');
+      g.ui.toast(g.up.brause ? '🍌 Bananensaft und zuckerfreie Plüschbrause! Extra-Schub' : '🍌 Bananensaft! Zuckerschub', 'good');
     }
   }
 

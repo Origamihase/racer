@@ -556,7 +556,7 @@ const mega = { says: [], toasts: [] };
   ok(src.includes('shopRefund = megafonNoteSeen(save)') && src.includes('if (d.megafonNote)') && src.includes('if (d.refund)'), 'Titel oder Shop lesen die Zeile zur Erstattung nicht aus dem Spielstand');
   // der Abspann der Reise: die letzte Zeile zählt die Folgen (menus.js setzt {folgen} ein; ohne Folge fehlt sie)
   const row = ABSPANN_REISE[ABSPANN_REISE.length - 1];
-  ok(row[0] === 'BrunnenTV' && row[2] === 'wide' && fillTemplate(row[1], { folgen: '3 Folgen' }) === '3 Folgen mit Herrn Schönnbrun (Mini Adam am Megafon)' && ABSPANN_REISE.filter((r) => r[1].includes('{folgen}')).length === 1, `Abspann: ${row.join(' | ')}`);
+  ok(row[0] === 'BrunnenTV' && row[2] === 'wide' && fillTemplate(row[1], { folgen: '3 Folgen' }) === '3 Folgen mit Herrn Schönnbrun' && ABSPANN_REISE.filter((r) => r[1].includes('{folgen}')).length === 1, `Abspann: ${row.join(' | ')}`);
   ok(src.includes("st.brunnenTV === 1 ? '1 Folge'") && src.includes("fillTemplate(v, { folgen })"), 'Der Abspann zählt die Folgen nicht');
   // ein später noch einmal gekauftes Megafon (ein alter Stand in einem anderen Fenster): kein zweites Geld
   b.upgrades.megafon = 1;
