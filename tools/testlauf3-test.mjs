@@ -597,6 +597,24 @@ let stream12 = [];
   fake.hudOut = false;
   up(true);
   ok(fake.drawn === 2 && got === 1 && fake.texture.needsUpdate, 'Cockpit: zeichnen und hochladen, das Kärtchen bekommt nichts');
+  // den Zustand dafür baut main.js nur, wenn der Bildschirm in diesem Bild zeichnet (due): bei 60 Bildern je Sekunde
+  // 15-mal im Cockpit, nie ohne Cockpit und Kärtchen; sonst bekommt update null und zählt nur die Zeit
+  const scr = new CenterScreen();
+  scr.draw = () => {};
+  const second = (live, hudOut) => {
+    scr.hudOut = hudOut;
+    let built = 0;
+    for (let i = 0; i < 60; i++) {
+      const st = scr.due(1 / 60, live) ? (built++, { nav: { visible: live } }) : null;
+      scr.update(1 / 60, st);
+    }
+    return built;
+  };
+  const builtCockpit = second(true, false);
+  const builtHud = second(false, true);
+  const builtNone = second(false, false);
+  ok(builtCockpit >= 14 && builtCockpit <= 15 && builtHud >= 14 && builtHud <= 15 && builtNone === 0 && !scr.live, `Zustand des Mittelbildschirms je Sekunde: Cockpit ${builtCockpit}, Kärtchen ${builtHud}, ohne beides ${builtNone}`);
+  ok(/const scr = game\.screenState && cockpit\.screen\.due\(dt, cockpitOn\) \? safeScreen\(\) : null;/.test(mainSource()), 'main.js baut den Zustand des Mittelbildschirms in jedem Bild');
 
   // nur in der Drohnenansicht während der Fahrt (main.js), im Cockpit nie (style.css); HUD und Kärtchen nennen dieselbe Zahl
   const main = mainSource();

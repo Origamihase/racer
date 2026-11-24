@@ -1697,7 +1697,13 @@ function step(dt, { render = true } = {}) {
     tesla.cabinLight.intensity = cockpitOn ? 0 : stopRun.on || tvRun.on || state === 'title' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
-    const scr = game.screenState ? safeScreen() : null;
+    // Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js): der Mittelbildschirm zeichnet dafür weiter, und jedes
+    // neue Bild landet dort (onDraw) – im Cockpit, in Szenen und außerhalb der Fahrt ist das Kärtchen aus
+    const droneHudOn = state === 'drive' && view === 'drone' && !cockpitOn && !stopRun.on && !tvRun.on;
+    ui.droneHud.show(droneHudOn);
+    cockpit.screen.hudOut = ui.droneHud.on;
+    // den Zustand des Mittelbildschirms nur bauen, wenn er in diesem Bild zeichnet (höchstens 15-mal je Sekunde)
+    const scr = game.screenState && cockpit.screen.due(dt, cockpitOn) ? safeScreen() : null;
     // Ladestopp: das Display zeigt den Gang des Wagens der Szene (in R mit dem Bild der Rückfahrkamera)
     if (scr && stopRun.on) scr.gear = stopRun.gear;
     if (scr && tvRun.on) scr.gear = 'P';
@@ -1719,17 +1725,12 @@ function step(dt, { render = true } = {}) {
       xxlScreenRoad.autobahn = !game.offAutobahn;
       scr.road = xxlScreenRoad;
       scr.nav.visited = save.visits;
-      if ((mapHudT -= dt) <= 0) {
-        mapHudT = 0.25;
-        turnIns = state === 'drive' ? scr.nav.model.instruction() : null;
-        ui.setTurn(turnIns);
-      }
     }
-    // Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js): der Mittelbildschirm zeichnet dafür weiter, und jedes
-    // neue Bild landet dort (onDraw) – im Cockpit, in Szenen und außerhalb der Fahrt ist das Kärtchen aus
-    const droneHudOn = state === 'drive' && view === 'drone' && !cockpitOn && !stopRun.on && !tvRun.on;
-    ui.droneHud.show(droneHudOn);
-    cockpit.screen.hudOut = ui.droneHud.on;
+    if ((mapHudT -= dt) <= 0) {
+      mapHudT = 0.25;
+      turnIns = state === 'drive' ? xxlNav.instruction() : null;
+      ui.setTurn(turnIns);
+    }
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
       sunDir: sky.sunDir, overcast: cloud, adam: adamOpts, gesture: tesla.adam.pose === 'drive' ? tesla.adam.gestures : null,
