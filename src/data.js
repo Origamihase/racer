@@ -358,7 +358,7 @@ export const CHAT = {
   // (Stichworte: game.js FACTS) – sonst plaudert der Chat wie immer (Game.updateChat, MEME_SHARE)
   meme: [
     '[offen] Summe bereinigt, minus 19 %, wie immer 🤓', '[offen] Jetzt wird es eng da oben 👀',
-    '[offen] Nein, bei MIR zuhause! 🏠', '[offen] Was mit Malte, egal was! 🙌', '[offen] 10,01 schlägt 10,00, Mathe ist brutal',
+    '[offen] Nein, bei MIR zuhause! 🏠', '[offen] Was mit Walte, egal was! 🙌', '[offen] 10,01 schlägt 10,00, Mathe ist brutal',
     '[offen] Wer bietet auf „irgendwo mit Schatten“? 😎', '[offen] Früher zu Fuß, heute per Navi 😂',
     '[donnerstag] ENDLICH DONNERSTAG 🎉', '[start] Schon live? Rekordpünktlich ⏰',
     '[studio] Gruß an die ruhige Stimme im Ohr 🎧', '[studio] Wer hat heute Dienst am Mikro? 🎙️',

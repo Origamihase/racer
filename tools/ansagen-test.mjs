@@ -70,6 +70,8 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   walk(DATA);
   ok(texts.length > 1000, `nur ${texts.length} Texte in data.js gefunden`);
   for (const t of texts) ok(!/NOMI/.test(t), `data.js nennt NOMI: „${t.slice(0, 80)}“`);
+  // der Moderator heißt im Spiel Walte (Crew-Liste des Eigentümers), nirgends Malte (intern darf er 'malte' heißen)
+  for (const t of texts) ok(!/Malte/.test(t), `data.js nennt Malte statt Walte: „${t.slice(0, 80)}“`);
   // Zeichenketten im Quelltext von Spiel, Oberfläche und Cockpit (Kommentare dürfen den alten Namen tragen)
   const files = [
     'src/data.js', 'src/game/game.js', 'src/game/akku.js', 'src/game/parts/spur-wetter.js',
@@ -82,9 +84,10 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
       const code = line.replace(/^\s*(\/\/|\*|\/\*).*$/, '').replace(/\/\/.*$/, '');
       const strings = code.match(/'[^']*'|`[^`]*`|"[^"]*"/g) || [];
       for (const s of strings) ok(!/NOMI/.test(s), `${f}:${i + 1} zeigt NOMI: ${s.slice(0, 80)}`);
+      for (const s of strings) ok(!/Malte/.test(s), `${f}:${i + 1} zeigt Malte statt Walte: ${s.slice(0, 80)}`);
     });
   }
-  for (const f of ['README.md', 'INSIDER.md', 'docs/index.html']) ok(!/NOMI/.test(read(f)), `${f} nennt NOMI`);
+  for (const f of ['README.md', 'INSIDER.md', 'docs/index.html']) ok(!/NOMI|Malte/.test(read(f)), `${f} nennt NOMI oder Malte`);
   ok(DATA.VOICES.board.label === 'OMI', `Stimme des Boardcomputers heißt ${DATA.VOICES.board.label}`);
 }
 
