@@ -77,7 +77,7 @@ const jobTalk = (game, e) => JOB_CALLS.has(e.call) || (e.call === 'chat' && game
  * radar: Stufe des Artikels im Spielstand · kmh: so schnell fährt der Wagen die ganze Zeit · cameras: so viele Blitzer.
  * Liefert das Spiel, das Protokoll, die Zonen ({ limitS, camS, endS, bornS }) und wann das Lämpchen an war.
  */
-function stream({ radar = 0, kmh, cameras = 1, seed = 7 }) {
+function stream({ radar = 0, kmh, cameras = 1, seed = 7, exitAt = null, leaveAt = null, steps = 40000, landmark = false, blocked = null }) {
   Math.random = mulberry32(seed);
   const log = [];
   let game = null;
@@ -86,7 +86,7 @@ function stream({ radar = 0, kmh, cameras = 1, seed = 7 }) {
   const trip = new Trip({ rng: Math.random });
   game = new Game({
     traffic: witness('traffic', log, now, { cars: NONE, update: () => NONE, nearby: () => NONE, police: () => null, megafon: () => 0 }),
-    scenery: witness('scenery', log, now, { request: () => ++ids, landmarkSpot: (s) => s, placed: () => null }),
+    scenery: witness('scenery', log, now, { request: () => ++ids, landmarkSpot: (s) => s, placed: () => null, blocked: blocked || (() => false) }),
     road: witness('road', log, now),
     sky: witness('sky', log, now),
     rain: witness('rain', log, now),
@@ -100,6 +100,10 @@ function stream({ radar = 0, kmh, cameras = 1, seed = 7 }) {
     world: { trip: () => trip, stopping: () => false, release: () => {}, square: () => null, town: () => null },
   });
   game.start({ upgrades: radar ? { radar } : {}, best: {} });
+  // Brunnen oder Elsa gleich am Anfang bestellen
+  if (landmark) game.S.landmark = 0;
+  // eine Ausfahrt bei exitAt (Meter der Straße): Das Navi meldet sie, bis der Wagen dort ist
+  if (exitAt !== null) trip.nextExit = () => (game.player.s < exitAt ? { dist: exitAt - game.player.s, kind: 'ausfahrt' } : null);
   // die Stimmung der Stream-Kasse mitschreiben (cheer), ohne sie zu ändern
   const cheer = game.eco.cheer.bind(game.eco);
   game.eco.cheer = (key, ...rest) => {
@@ -115,7 +119,9 @@ function stream({ radar = 0, kmh, cameras = 1, seed = 7 }) {
   let limitShown = 0;
   // genug Geld in der Kasse, damit das Bußgeld ganz abgebucht werden kann
   game.money = 100;
-  for (let i = 0; i < 40000 && zones.length <= cameras; i++) {
+  for (let i = 0; i < steps && zones.length <= cameras; i++) {
+    // ab leaveAt hat der Wagen die Autobahn verlassen (main.js: offAutobahn)
+    if (leaveAt !== null) game.offAutobahn = p.s > leaveAt;
     // der nächste Blitzer kommt gleich (sonst erst nach drei Kilometern)
     if (!game.blitzer && !zone && zones.length < cameras) game.S.blitzer = Math.min(game.S.blitzer, p.s + 50);
     p.speed = kmh / 3.6;
@@ -310,6 +316,34 @@ for (const [a, b, what] of [[fastPlain, fastRadar, '150'], [slowPlain, slowRadar
 }
 // Der Job „An einem Blitzer vorbei, ohne geblitzt zu werden“ zählt wie immer (stat blitzerClean)
 ok(slowPlain.game.stats.blitzerClean === 1 && slowRadar.game.stats.blitzerClean === 1 && fastRadar.game.stats.blitzerClean === 0, 'Der Blitzer-Job zählt anders');
+
+// --- 7. Ausfahrt: Ein Blitzer gilt nur auf der Autobahn, auf der er steht -------------------------------------------------
+{
+  // a) Eine Ausfahrt liegt vor dem Ende der Zone: kein Blitzer, solange sie näher ist; danach kommt er wie sonst
+  const near = stream({ radar: 1, kmh: 150, exitAt: 900 });
+  ok(near.zones.length === 1 && near.zones[0].bornS >= 900, `Ausfahrt nah: Blitzer bestellt bei ${near.zones[0] && near.zones[0].bornS.toFixed(0)} m, vor der Ausfahrt bei 900 m`);
+  ok(near.zones.every((z) => z.endS + 100 <= 900 || z.bornS >= 900), 'Ausfahrt nah: Die Zone reicht über die Ausfahrt');
+  flashed(near, 'Ausfahrt nah, hinter ihr', 150);
+  // b) Der Wagen verlässt die Autobahn in der Zone, bevor der Radarwarner anschlägt: kein Blitz, kein Bußgeld, keine
+  //    Ansage, kein Lämpchen, die 120 verschwindet, der Tempomat lässt die Zone los – und Brunnen oder Elsa, die schon
+  //    bestellt waren, werden weder gemeldet noch gegrüßt
+  const off = stream({ radar: 1, kmh: 150, leaveAt: 300, steps: 30 * 120, landmark: true });
+  const g = off.game;
+  ok(off.zones.length === 1 && off.zones[0].bornS < 300, `Ausfahrt mitten in der Zone: ${off.zones.length} Zonen`);
+  ok(!g.blitzer, 'Ausfahrt mitten in der Zone: Der Blitzer bleibt nach der Ausfahrt bestehen');
+  ok(flashes(off) === 0 && g.stats.photos === 0 && g.stats.fines === 0, 'Ausfahrt mitten in der Zone: Es blitzt abseits der Autobahn');
+  ok(spoken(off).length === 0 && calls(off, 'audio', 'radar').length === 0 && off.lamp.length === 0, 'Ausfahrt mitten in der Zone: Der Radarwarner meldet einen Blitzer, der nicht mehr am Weg steht');
+  ok(g.player.limits.zone === Infinity && g.screenState().limit !== 120, 'Ausfahrt mitten in der Zone: Tempomat oder Bildschirm halten die 120');
+  ok(calls(off, 'scenery', 'request').some((e) => e.args[0] === 'brunnen' || e.args[0] === 'elsa'), 'Ausfahrt: Brunnen oder Elsa wurden gar nicht bestellt');
+  ok(!g.landmark && calls(off, 'ui', 'toast').every((e) => !/Ein Brunnen!|Elsa!/.test(e.args[0])), 'Ausfahrt: Brunnen oder Elsa werden abseits der Autobahn gemeldet');
+  // c) Die Welt kann Blitzer oder Brunnen nicht aufstellen (sie fielen auf eine Rampe: scenery.blocked): Es gibt sie
+  //    nicht – kein Blitz, keine Ansage, keine 120, keine Meldung
+  const lost = stream({ radar: 1, kmh: 150, steps: 30 * 120, landmark: true, blocked: () => true });
+  const h = lost.game;
+  ok(flashes(lost) === 0 && h.stats.fines === 0 && spoken(lost).length === 0 && lost.limitShown === 0, 'Blitzer, den die Welt nicht aufstellen kann: Es blitzt, piept oder zeigt 120');
+  ok(calls(lost, 'ui', 'toast').every((e) => !/Ein Brunnen!|Elsa!/.test(e.args[0])), 'Brunnen oder Elsa, die die Welt nicht aufstellen kann, werden gemeldet');
+  console.log(`  Ausfahrt: Blitzer erst hinter der Ausfahrt bestellt (bei ${near.zones[0] && near.zones[0].bornS.toFixed(0)} m), nach dem Verlassen der Autobahn verworfen`);
+}
 
 // --- 6. Der Artikel und der Spielstand ---------------------------------------------------------------------------------------
 {

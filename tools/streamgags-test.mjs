@@ -279,16 +279,15 @@ function fakeGame(secs, { gate = true } = {}) {
       if (i) ok(a.t - asks[i - 1].t >= VEREIN.join[0] * (1 - 0.44) - 0.1, `Seed ${seed}: Beitritte nach ${(a.t - asks[i - 1].t).toFixed(1)} s`);
     });
     ok(asks.every((a) => !a.at.tv && !a.at.charging), `Seed ${seed}: Beitritt mitten in einer Szene`);
-    // die Zahl steht erst in der Abrechnung, die Namen im Abspann
+    // die Zahl steht in der Abrechnung; im Abspann steht der Verein nicht (Eigentümer, 23.11.2026)
     const F = game.supporters();
-    const grp = thanksGroups(F).find((x) => x.id === 'verein');
-    ok(grp && grp.title === G.name && grp.names.map((x) => x.name).join() === members.join() && grp.sub === `${members.length}\u00a0Mitglieder`, `Seed ${seed}: Abspann ${grp && JSON.stringify(grp.sub)}`);
+    ok(!thanksGroups(F).some((x) => x.id === 'verein' || x.title === G.name), `Seed ${seed}: der Verein steht im Abspann`);
     joins += members.length;
   }
   ok(/if \(o\.gags\?\.verein\) line\('Vereinsmitglieder', fmtNum\(o\.gags\.verein\.members\.length\)\)/.test(read('src/ui/menus.js')), 'menus.js: die Abrechnung nennt die Vereinsmitglieder nicht');
   ok(/gags: this\.gags\.report\(\)/.test(gameSource()), 'game.js: Game.end gibt den Gags nichts mit');
   ok(thanksGroups({}).length === 0 && !thanksGroups({ verein: null }).some((x) => x.id === 'verein'), 'Abspann: Verein ohne Gründung');
-  console.log(`  Verein „${G.name}“: ${joins} Beitritte in 2 × 30 min, James begrüßt jeden ohne Zahl, Abrechnung und Abspann nennen sie`);
+  console.log(`  Verein „${G.name}“: ${joins} Beitritte in 2 × 30 min, James begrüßt jeden ohne Zahl, die Abrechnung nennt die Zahl, der Abspann nicht`);
 }
 
 // --- 4. Nur mit Code ADAM: die Plüschbrause im Shop und im Chat -----------------------------------------------------
@@ -835,8 +834,10 @@ function fakeGame(secs, { gate = true } = {}) {
   ok(/p\.setLimits\(\{ zone: zb && p\.s > zb\.limitS - ZONE_LEAD && p\.s < zb\.endS \? 120 \/ 3\.6 : Infinity \}\);/.test(gameSource()), 'game.js gibt dem Tempomaten die Zone am Blitzer nicht');
   // im Spiel: die Zone steht, solange der Wagen in ihr (oder ZONE_LEAD davor) ist
   const sim = makeStream({ seed: 3 });
-  sim.step(2);
+  // auf der Autobahn (abseits von ihr gibt es keine Blitzer: dropRoadside)
+  for (let i = 0; i < 600 && (sim.step(1) && sim.game.offAutobahn); i++);
   const g = sim.game;
+  ok(!g.offAutobahn, 'Spiel: Der Wagen erreicht die Autobahn nicht');
   const s0 = g.player.s;
   g.blitzer = { limitS: s0 + 100, camS: s0 + 700, endS: s0 + 880, announced: false, checked: false };
   sim.step(1 / 30);

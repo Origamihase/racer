@@ -1146,7 +1146,6 @@ export const CREW_LINES = {
 export const ABSPANN_CREW = [
   ['Fahrer', 'Mini Adam'],
   ['Kamera', 'stationär'],
-  ['Drohne', 'die Drohne'],
   ['Sprachstudio', '?CF und IceBonbon'],
   ['Scheibenwischer', 'Auto-Wischer (Beta)'],
   ['Navigation', 'ferngesteuert vom Chat'],
@@ -1160,7 +1159,6 @@ export const ABSPANN_REISE = [
   ['Musik', 'Elti und IceBonbon'],
   ['Geek im Hintergrund', 'Arno Nühm'],
   ['Discord', 'Wils und DomZe'],
-  ['Großbieter vom Dienst', 'BontanaBack'],
   ['Raid-Kommando', 'König Knolli'],
   ['Moderation', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'wide'],
   ['BrunnenTV', '{folgen} mit Herrn Schönnbrun (Mini Adam am Megafon)', 'wide'],

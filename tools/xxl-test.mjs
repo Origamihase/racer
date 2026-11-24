@@ -504,6 +504,26 @@ const wall = {};
   sc.update(1, 0);
   const after = ['brunnen', 'elsaStatue', 'blitzer'].map(have);
   ok(before.join() === '1,1,1' && after.join() === '1,1,1', `Wahrzeichen nach dem Neubau der Abschnitte: vorher ${before}, nachher ${after} (Brunnen, Elsa, Blitzer)`);
+  // Bestellungen des Spiels auf fremdem Gebiet (Rampe rechts zwischen 1000 und 1200 m): Die Welt stellt sie nicht auf
+  // und meldet sie als blocked (das Spiel sagt sie dann nicht an); landmarkSpot sucht gleich einen freien Platz
+  sc.reset();
+  let ramp = (x, s) => x > 0 && s > 1000 && s < 1200;
+  sc.keepOut = (x, s) => ramp(x, s);
+  sc.update(0, 0);
+  const objOf = (id) => sc.slots.flatMap((sl) => sl.items).find((o) => o.userData.requestId === id && o.visible);
+  const spot = sc.landmarkSpot(1010);
+  ok(spot >= 1200, `landmarkSpot wählt ${spot} m, mitten im Gebiet der Rampe`);
+  const onRamp = ['brunnen', 'elsa', 'blitzer', 'speed'].map((type) => sc.request(type, 1100, { limit: 120 }));
+  ok(onRamp.every((id) => sc.blocked(id) && !objOf(id)), 'Bestellung auf der Rampe steht trotzdem oder gilt nicht als blocked');
+  const free = sc.request('brunnen', 1400);
+  ok(!sc.blocked(free) && objOf(free), 'Bestellung auf freiem Gebiet fehlt');
+  // ein Knotenpunkt taucht erst später auf (invalidate): Der schon stehende Brunnen verschwindet und gilt als blocked
+  ramp = (x, s) => x > 0 && s > 1000 && s < 1500;
+  sc.invalidate(1300);
+  sc.update(1, 0);
+  ok(sc.blocked(free) && !objOf(free), 'Brunnen auf einer später erkannten Rampe bleibt stehen oder gilt nicht als blocked');
+  sc.keepOut = null;
+  sc.reset();
 }
 console.log(`Schilder gegen Navi: ${sig.trips} Fahrten, ${sig.km.toFixed(0)} km, ${sig.forks} angesagte Gabelungen (${sig.boards} Vorwegweiser, ${sig.parks} davon mit Ladepark-Zeile, ${sig.said} Ansagen genau an einer Tafel), ${sig.arrive} Ziele, ${sig.tables} Entfernungstafeln und ${sig.gantries} Schilderbrücken mit ${sig.rows} Zeilen (größte Abweichung zum Navi ${sig.maxDev.toFixed(2)} km), ${sig.towns} Ortstafeln`);
 console.log(`XXL-Planung: ${(stats.metres / 1000).toFixed(1)} km gefahren, ${stats.forks} Gabelungen, ${stats.entries} Einfahrten mit Limit (${stats.over} über +4 km/h, höchstens +${stats.maxOver.toFixed(1)} km/h), ${stats.forests} Waldstücke, ${stats.rests} Halte am Ziel, ${stats.charges} in einem Ladepark, ${stats.island} Bilder neben einer Brunneninsel, ${stats.shears} Scherungsvergleiche, ${stats.pieces} Stückabgleiche (${stats.rebuilt} Neubauten, alle jenseits des Dunsts), ${stats.seams} Nähte zwischen Abschnitten, ${stats.rails} Plankenstöße; Kurven: ${(stats.bendM / 1000).toFixed(1)} km gelenkt (${(stats.tightM / 1000).toFixed(1)} km enger als R 450), höchstens ${stats.maxOff.toFixed(2)} m neben der Linie, Querbeschleunigung bis ${stats.maxLat.toFixed(1)} m/s², ${stats.links} Bilder an Knotenpunkten gerade`);

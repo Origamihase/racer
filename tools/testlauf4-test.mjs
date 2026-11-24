@@ -515,7 +515,9 @@ console.log('4. BrunnenTV macht die Zuschauer glücklich:');
     ok(e.toast && /^📈 BrunnenTV: \+[\d.]+ Zuschauer$/.test(e.toast.text), `Rand am Ende der Folge: ${e.toast && e.toast.text}`);
   }
   ok(a.eps.length >= 2 && a.eps.every((x) => x.post - x.pre >= 0.2 * (1 - x.pre)), `Stimmung je Folge: ${a.eps.map((x) => `${x.pre.toFixed(2)}→${x.post.toFixed(2)}`).join(' ')}`);
-  const m = (k) => a.eps.reduce((s, x, i) => s + x[k] - b.eps[i][k], 0) / Math.min(a.eps.length, b.eps.length);
+  // (beide Streams können verschieden viele Folgen schaffen: verglichen werden die ersten, die beide haben)
+  const both = Math.min(a.eps.length, b.eps.length);
+  const m = (k) => a.eps.slice(0, both).reduce((s, x, i) => s + x[k] - b.eps[i][k], 0) / both;
   console.log(`  ${a.eps.length} Folgen: Stimmung beim Ruf ${a.eps.map((x) => `${x.pre.toFixed(2)} → ${x.post.toFixed(2)}`).join(', ')} · Zuschauer gegenüber ohne Schub +${Math.round(m('v10'))} nach 10 s, +${Math.round(m('v30'))} nach 30 s (Folge 1: ${Math.round(e.v0)} → ${Math.round(e.v10)}) · Zufriedenheit +${ZUFRIEDEN.tv} · Chat feiert ${e.chat.length} Zeilen in 9 s · „${e.toast && e.toast.text}“`);
 }
 

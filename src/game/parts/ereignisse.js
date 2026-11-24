@@ -19,6 +19,13 @@ const elsaTmp = new Vector3();
  * 130 gut vier bis sechs Minuten), nur mit room Metern Autobahn ohne Ausfahrt voraus; OMI sagt es höchstens alle
  * cool Sekunden an, und nur, wenn es wirklich vor dem Wagen fährt (traffic.js elephantPair).
  */
+/** Blitzer: Zonenende so weit hinter der Bestellung. */
+const BLITZER_END = 1300;
+/**
+ * Was am Autobahnrand bestellt wird, braucht bis after Meter hinter sich keine Ausfahrt; ist eine näher, wird es retry
+ * Meter später noch einmal versucht.
+ */
+export const ROADSIDE = { after: 100, retry: 400 };
 export const ELEFANT = { first: [6000, 9000], every: [9000, 14000], room: 1500, cool: 240 };
 /**
  * Was ein Satz über den Moment behauptet, muss stimmen (der Eigentümer: „Wir sind auf der Autobahn und streamen in
@@ -212,14 +219,23 @@ export class EreignissePart {
       this.callPolice(pick(POLICE_TEXTS));
     }
 
-    // Blitzer mit Tempo-120-Zone
-    if (!this.blitzer && p.s > this.S.blitzer && !this.offAutobahn) {
+    // Was am Rand der Autobahn bestellt ist (Blitzer, Brunnen, Elsa), gilt nur, solange der Wagen auf ihr bleibt: Nach
+    // der Ausfahrt oder dem Wechsel auf eine andere Autobahn steht es nicht mehr an seinem Weg (dropRoadside)
+    if (this.offAutobahn && (this.blitzer || this.landmark)) this.dropRoadside();
+
+    // Blitzer mit Tempo-120-Zone – nur, wo bis hinter ihr Ende keine Ausfahrt kommt, die der Wagen nehmen könnte
+    if (!this.blitzer && p.s > this.S.blitzer && !this.offAutobahn && this.notBlocked('blitzer', BLITZER_END + ROADSIDE.after)) {
       const s = p.s;
-      this.blitzer = { limitS: s + 520, camS: s + 1120, endS: s + 1300, announced: false, checked: false };
-      this.scenery.request('speed', this.blitzer.limitS, { limit: 120 });
-      this.scenery.request('blitzer', this.blitzer.camS);
-      this.scenery.request('speed', this.blitzer.endS, { limit: 'ende' });
+      this.blitzer = { limitS: s + 520, camS: s + 1120, endS: s + BLITZER_END, announced: false, checked: false };
+      this.blitzer.ids = [
+        this.scenery.request('speed', this.blitzer.limitS, { limit: 120 }),
+        this.scenery.request('blitzer', this.blitzer.camS),
+        this.scenery.request('speed', this.blitzer.endS, { limit: 'ende' }),
+      ];
     }
+    // Kann die Welt ein Teil davon nicht aufstellen (es fiele auf eine Rampe oder hinter das Ende der Autobahn), gibt
+    // es diesen Blitzer nicht – genauso Brunnen und Elsa (siehe unten)
+    if (this.blitzer && !this.blitzer.checked && (this.blitzer.ids || []).some((id) => this.scenery.blocked(id))) this.dropRoadside('blitzer');
     // der Tempomat hält die 120 am Blitzer: ab ZONE_LEAD Metern vor dem ersten Schild (dann ist er an der Kamera längst
     // langsam genug), bis zum Ende der Zone (Player.limits.zone; das Strompedal des Spielers kennt sie nicht)
     const zb = this.blitzer;
@@ -289,8 +305,9 @@ export class EreignissePart {
       const type = chance(0.55) ? 'brunnen' : 'elsa';
       // hinten in einem Abschnitt ohne Lärmschutzwand und ohne Brücke davor
       const s = this.scenery.landmarkSpot(p.s + 1500);
-      this.landmark = { type, s, seen: false, greeted: false, id: this.scenery.request(type, s) };
+      if (this.notBlocked('landmark', s - p.s + ROADSIDE.after)) this.landmark = { type, s, seen: false, greeted: false, id: this.scenery.request(type, s) };
     }
+    if (this.landmark && !this.landmark.greeted && this.scenery.blocked(this.landmark.id)) this.dropRoadside('landmark');
     if (this.landmark) {
       const lm = this.landmark;
       const d = lm.s - p.s;
@@ -365,6 +382,35 @@ export class EreignissePart {
   }
 
   /** Hinweis, der mit Elsa verschwindet (null: den bisherigen wegnehmen). */
+  /**
+   * Ist auf den nächsten len Metern Autobahn Platz für etwas am Rand (keine Gabelung, an der der Wagen abfahren könnte,
+   * kein Autobahnende)? Wenn nicht, fragt key (S.blitzer, S.landmark) erst ROADSIDE.retry Meter später wieder.
+   */
+  notBlocked(key, len) {
+    // (abseits der Autobahn fragt niemand: offAutobahn hält dort alles zurück)
+    const nx = this.world.trip().nextExit();
+    if (!nx || nx.dist > len) return true;
+    this.S[key] = this.player.s + ROADSIDE.retry;
+    return false;
+  }
+
+  /**
+   * Blitzer, Brunnen und Elsa vergessen (sie stehen nicht am Weg: Autobahn verlassen, oder die Welt konnte sie nicht
+   * aufstellen) und neu einplanen. which: nur 'blitzer' oder 'landmark' (ohne Angabe: beide).
+   */
+  dropRoadside(which = null) {
+    const s = this.player.s;
+    if (this.blitzer && which !== 'landmark') {
+      this.blitzer = null;
+      this.S.blitzer = s + ROADSIDE.retry;
+    }
+    if (this.landmark && which !== 'blitzer') {
+      this.elsaToast(this.landmark, null);
+      this.landmark = null;
+      this.S.landmark = s + ROADSIDE.retry;
+    }
+  }
+
   elsaToast(lm, t) {
     if (lm.toast && lm.toast !== t) lm.toast.drop?.();
     lm.toast = t;

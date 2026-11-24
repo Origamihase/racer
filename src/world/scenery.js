@@ -29,6 +29,11 @@ const ELSA_FAR = { x: ROAD.right + 8, scale: 1 }; // wo am Rand kein Platz ist: 
 const ELSA_ROOM = 12; // so viel Abstand (m) braucht sie am Rand zu Schildern, Blitzern und anderen Orten
 // Freier Platz im Abschnitt: hinter Notrufsäule (30 m), Tafeln (40 m) und Brücken (50 m)
 const LANDMARK_OFFSET = 75;
+// Wo die Bestellungen des Spiels am Rand stehen (x quer zur Fahrbahn; placeRequest): Brunnen, Elsa (nah oder weiter
+// draußen), Blitzer, Tempo-Schild (zwei Pfosten: rechts und am Mittelstreifen)
+const FOUNTAIN_X = ROAD.right + 9;
+const LANDMARK_X = [FOUNTAIN_X, ELSA_STATUE.x, ELSA_FAR.x];
+const REQUEST_X = { brunnen: [FOUNTAIN_X], elsa: [ELSA_STATUE.x, ELSA_FAR.x], blitzer: [ROAD.right + 1.6], speed: [ROAD.right + 1.3, MEDIAN_X] };
 const WAVE_T = 2.6; // so lange winkt Elsa zurück (s)
 
 // Bildseiten von Schildern, Tafeln und Fenstern vor einer Fläche: Die Tiefenauflösung reicht in 450 m
@@ -450,7 +455,15 @@ export class Scenery {
     }
 
     // XXL: was auf fremdem Gebiet stünde (Schilder, Windräder, Wahrzeichen …), bleibt unsichtbar
-    if (this.keepOut) for (const it of slot.items) if (this.keepOut(it.position.x, -it.position.z)) it.visible = false;
+    if (this.keepOut) {
+      for (const it of slot.items) {
+        if (!this.keepOut(it.position.x, -it.position.z)) continue;
+        it.visible = false;
+        // eine Bestellung des Spiels: Es soll sie nicht mehr ansagen (blocked)
+        const r = it.userData.requestId && this.requests.find((q) => q.id === it.userData.requestId);
+        if (r) r.blocked = true;
+      }
+    }
 
     for (const name of Object.keys(this.inst)) {
       const def = this.inst[name];
@@ -512,9 +525,23 @@ export class Scenery {
     for (let k = k0; k < k0 + 12; k++) {
       const at = k * SEG + LANDMARK_OFFSET;
       const furn = this.furniture(k);
-      if (!furn && this.statueFree(at) && !this.requests.some((q) => Math.abs(q.s - at) < 40)) return at;
+      if (!furn && this.statueFree(at) && !this.requests.some((q) => Math.abs(q.s - at) < 40) && this.edgeFree(LANDMARK_X, at)) return at;
     }
     return s;
+  }
+
+  /** Steht an Strecke s an keiner der Stellen xs fremdes Gebiet (Rampe, hinter dem Ende der Autobahn, Tafel)? */
+  edgeFree(xs, s) {
+    return !this.keepOut || !xs.some((x) => this.keepOut(x, s));
+  }
+
+  /**
+   * Konnte die Bestellung id nicht stehen (fremdes Gebiet, siehe keepOut)? Dann weiß das Spiel, dass es sie nicht
+   * ansagen und nicht prüfen darf (ein Brunnen, den niemand sieht; ein Blitzer auf einer Rampe).
+   */
+  blocked(id) {
+    const r = this.requests.find((q) => q.id === id);
+    return !!(r && r.blocked);
   }
 
   /** Lage { x, scale } einer schon aufgestellten Statue (null, solange sie noch nicht steht). */
@@ -634,11 +661,16 @@ export class Scenery {
   placeRequest(slot, r) {
     r.built = true;
     const z = -r.s;
+    // auf fremdem Gebiet (Rampe, hinter dem Ende der Autobahn) steht nichts – wie alles andere am Rand (buildSlot)
+    if (!this.edgeFree(REQUEST_X[r.type] || [0], r.s)) {
+      r.blocked = true;
+      return;
+    }
     let obj = null;
     switch (r.type) {
       case 'brunnen':
         obj = this.acquire('brunnen', () => this.makeFountain());
-        obj.position.set(ROAD.right + 9, 0, z);
+        obj.position.set(FOUNTAIN_X, 0, z);
         this.animated.add(obj);
         break;
       case 'elsa': {
