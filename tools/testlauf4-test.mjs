@@ -552,7 +552,7 @@ console.log('5. Intro: erst Wir sind live, dann Partypeople beim Winken:');
         chargeRun: { hello: false, said: false, waveT: -1, id: 1, greetT: Infinity },
         speech: { say: (text, voice, opts) => (q.push({ text, voice, opts, dur: estimateSpeech(text, VOICES[voice].rate) * slow }), log.push({ t: env.stateT, what: 'queue', text, prio: !!opts.priority }), 1) },
         ui: { studio: (text) => log.push({ t: env.stateT, what: 'studio', text }), adam: (text) => log.push({ t: env.stateT, what: 'adam', text }) },
-        game: { t: 0, studioVoice: () => 'sprachstudio', greet: () => log.push({ t: env.stateT, what: 'greet' }), waves: { ask: () => log.push({ t: env.stateT, what: 'wave-scene' }) }, waveAt: () => log.push({ t: env.stateT, what: 'wave-drive' }) },
+        game: { t: 0, studio: { voice: () => 'sprachstudio' }, greet: () => log.push({ t: env.stateT, what: 'greet' }), waves: { ask: () => log.push({ t: env.stateT, what: 'wave-scene' }) }, waveAt: () => log.push({ t: env.stateT, what: 'wave-drive' }) },
       };
       const streamStart = new Function('env', `with (env) { ${fn[0]}; return streamStart; }`)(env);
       const tick = new Function('t', 'S', 'run', 'streamStart', scene[0]);

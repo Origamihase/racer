@@ -33,6 +33,8 @@ import { Speech } from '../src/speech.js';
 import { UI } from '../src/ui/ui.js';
 import { cockpitParts, HOMES } from '../src/ui/sicht.js';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
+import { STUDIO_HOST } from '../src/game/studio.js';
+import { checkHost } from './lib/host.mjs';
 
 let fails = 0;
 let checks = 0;
@@ -72,7 +74,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   const files = [
     'src/data.js', 'src/game/game.js', 'src/game/akku.js', 'src/game/parts/spur-wetter.js',
     'src/game/parts/ziel.js', 'src/game/parts/ereignisse.js', 'src/game/parts/stream.js', 'src/ui/ui.js',
-    'src/ui/menus.js', 'src/ui/first-tips.js', 'src/ui/drive-hint.js', 'src/cockpit/screen.js', 'src/main.js',
+    'src/game/studio.js', 'src/ui/menus.js', 'src/ui/first-tips.js', 'src/ui/drive-hint.js', 'src/cockpit/screen.js', 'src/main.js',
     'src/scenes/start.js', 'src/scenes/stop.js', 'src/scenes/tv.js', 'src/world/xxl/charge.js', 'src/game/damage.js',
   ];
   for (const f of files) {
@@ -92,7 +94,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   ok(DATA.VOICES.adam.pitch < 0.6, 'Mini Adams Stimme ist tief');
   const main = mainSource();
   // erst „Wir sind live.“ (Sprachstudio), dann sein Gruß in seiner Stimme mit Untertitel, beides mit Vorrang der Reihe nach
-  ok(/function streamStart\(\) \{[\s\S]*?speech\.say\(CHARGE_LINES\.live, game\.studioVoice\(\), \{ priority: true[\s\S]*?speech\.say\(text, 'adam', \{\s*priority: true[\s\S]*?ui\.adam\(text, /.test(main), 'main.js: „Wir sind live.“ und danach der Gruß in Mini Adams Stimme mit Untertitel');
+  ok(/function streamStart\(\) \{[\s\S]*?speech\.say\(CHARGE_LINES\.live, game\.studio\.voice\(\), \{ priority: true[\s\S]*?speech\.say\(text, 'adam', \{\s*priority: true[\s\S]*?ui\.adam\(text, /.test(main), 'main.js: „Wir sind live.“ und danach der Gruß in Mini Adams Stimme mit Untertitel');
   ok(/if \(!chargeRun\.hello\) streamStart\(\)/.test(main), 'main.js: ohne Startszene beginnt der Stream beim Losfahren');
   const avg = { fast: 0, slow: 0, start: 0 };
   const seeds = [1, 2, 3];
@@ -553,8 +555,18 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
   const sim = makeStream({ driver: DRIVERS.zuegig, seed: 3 });
   const g = sim.game;
   g.understeerSaid = g.reverseSaid = g.reverseChat = 7200;
+  Object.assign(g.studio, { voices: 5, last: 7000, until: 7200, mark: 3000, extra: { kind: 'total', until: 7300 } });
   g.start(g.save);
   ok(g.understeerSaid === -99 && g.reverseSaid === -99 && g.reverseChat === -99, 'Game.start: Sperrzeiten der Ansagen aus dem vorigen Stream bleiben');
+  const S = g.studio;
+  ok(S.voices === 0 && S.last === -99 && S.until === 0 && S.mark === 500 && !S.extra && S.due >= 26 && S.due <= 34 && S.greetIn >= 100 && S.greetIn <= 170 && !('studio' in g.T), 'Game.start: Das Sprachstudio behält den vorigen Stream');
+}
+
+// --- Schnittstelle des Sprachstudios ---------------------------------------------------------------------------------
+// Die Klasse Studio (src/game/studio.js) liest vom Spiel nur, was STUDIO_HOST nennt – und die Liste nennt nichts Überflüssiges.
+{
+  const used = checkHost('game/studio.js', STUDIO_HOST, ok);
+  console.log(`  Studio-Schnittstelle: ${used.size} Namen des Spiels (${[...used].sort().join(', ')})`);
 }
 
 console.log(`ansagen-test: ${checks} Prüfungen, ${fails} Fehler`);

@@ -89,7 +89,7 @@ export class EreignissePart {
     T.trunk -= eager;
 
     // Sprachdurchsage (wartet, bis das Sprachstudio ausgeredet hat und keine Szene läuft: Folge, Ladestopp)
-    if (T.durchsage <= 0 && this.t >= this.studioUntil && !this.tv && !this.charging) {
+    if (T.durchsage <= 0 && this.t >= this.studio.until && !this.tv && !this.charging) {
       T.durchsage = rand(48, 85);
       const pool = this.weather.level > 0.3 && chance(0.5) ? DURCHSAGEN_REGEN : DURCHSAGEN;
       const d = pick(pool.filter((x) => !x.when || x.when.split(' ').every((k) => FACTS[k](this))));

@@ -18,7 +18,7 @@ import { findPlace } from '../src/map/graph.js';
 import { Arrival, limitsFor, AUTO } from '../src/world/xxl/plan.js';
 import { Game, AKKU_CARD, akkuLevel } from '../src/game/game.js';
 import { AKKU_HOST } from '../src/game/akku.js';
-import { readFileSync } from 'node:fs';
+import { checkHost } from './lib/host.mjs';
 import { DRIVE_DEFAULTS } from '../src/game/player.js';
 import { BOARD, REISE_AKKU, fillTemplate } from '../src/data.js';
 
@@ -650,13 +650,7 @@ console.log(`Popcorn: ${fly.ok} von ${fly.n} Körnern springen aus der Tür der 
 // --- Schnittstelle des Akkus ------------------------------------------------------------------------------------------
 // Die Klasse Akku (src/game/akku.js) liest vom Spiel nur, was AKKU_HOST nennt – und die Liste nennt nichts, was sie nicht braucht.
 {
-  const src = readFileSync(new URL('../src/game/akku.js', import.meta.url), 'utf8').replace(/^\s*(\/\/|\*|\/\*).*$/gm, '');
-  const used = new Set([...src.matchAll(/(?:this\.g|(?<![\w$.])g)\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]));
-  // (this.g bzw. g nur mit Punkt dahinter: das Spiel wird nicht weitergereicht und nicht mit [] gelesen)
-  const loose = src.replace(/this\.g = g;|const g = this\.g;|constructor\(g\)/g, '').match(/(?:this\.g|(?<![\w$.])g)(?!\.[A-Za-z_$])(?![\w$])/g);
-  ok(!loose, `akku.js greift auf das Spiel anders zu als über this.g.<Name> (${loose})`);
-  for (const k of used) ok(AKKU_HOST.includes(k), `akku.js liest Game.${k}, das nicht in AKKU_HOST steht`);
-  for (const k of AKKU_HOST) ok(used.has(k), `AKKU_HOST nennt ${k}, das akku.js nicht braucht`);
+  const used = checkHost('game/akku.js', AKKU_HOST, ok);
   console.log(`Akku-Schnittstelle: ${used.size} Namen des Spiels (${[...used].sort().join(', ')})`);
 }
 if (fails) {
