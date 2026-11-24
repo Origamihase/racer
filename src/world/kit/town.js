@@ -1795,11 +1795,11 @@ defs.cityGate = {
 // Jede Haus-Variante (addHouse, shopHouse) gibt es auch als name@gegend: gleiche Breite, gleiche Rolle (Dorfhaus,
 // Reihenhaus, Laden), aber Wände, Dach, Giebel, Fenster und Zutaten der Gegend. Der Ortsplan nimmt sie nach dem
 // Ortsbild des Orts (layout.js lookOf). Norddeutscher Backstein nach research/landmarks/stil-backstein
-// (Treppengiebel, Bremer Haus, Reetdach), die anderen nach allgemeinem Wissen, liebevoll vereinfacht. Dazu vier
+// (Treppengiebel, Bremer Haus, Reetdach), die anderen nach allgemeinem Wissen, liebevoll vereinfacht. Dazu fünf
 // Ortsbilder aus der Mitte Deutschlands (der Besitzer am 24.11.2026: „Gestalte die Orte noch unterschiedlicher, damit
-// sie nicht alle gleich aussehen“): Fachwerk, Schiefer (Bergisches Land, Siegerland, Westerwald), Kurort und
-// Gründerzeit.
-export const REGIONS = ['brick', 'dutch', 'alpine', 'med', 'nordic', 'british', 'american', 'japanese', 'fachwerk', 'schiefer', 'kurort', 'gruenderzeit'];
+// sie nicht alle gleich aussehen“): Fachwerk, Schiefer (Bergisches Land, Siegerland, Westerwald), Kurort, Gründerzeit
+// und roter Sandstein (Main, Neckar, Rhein).
+export const REGIONS = ['brick', 'dutch', 'alpine', 'med', 'nordic', 'british', 'american', 'japanese', 'fachwerk', 'schiefer', 'kurort', 'gruenderzeit', 'sandstein'];
 const R_FRAME = 0xf3ecdd; // cremeweiße Fensterrahmen (nie reinweiß)
 const R_CREAM = 0xeadfcb;
 const R_PANTILE = 0xc8694a;
@@ -1808,6 +1808,7 @@ const R_COPPER = 0x86ac9e;
 const R_SLATE = 0x5f656d;
 const R_TILE_DARK = 0x4a5058;
 const R_TERRACOTTA = 0xc4673f;
+const R_SANDSTONE = 0xead2bc; // helle Gewände um rote Sandsteinfassaden
 const R_GERANIUM = [0xd8453a, 0xf06a8a, 0xd8453a];
 const R_TINTS = {
   brick: [0xc0613f, 0xb65c42, 0xa95640, 0x9c4f3b, 0x8a4636],
@@ -1835,6 +1836,8 @@ const R_TINTS = {
   kurort: [0xf6efe0, 0xf3e2b8, 0xeed6d2, 0xdfe8dc, 0xf4f0ea, 0xdde6ee],
   // Stuck und Sandstein der Gründerzeit
   gruenderzeit: [0xe8d8b8, 0xd9c7a6, 0xcfc2b0, 0xe6d2c0, 0xd6cfc4, 0xf0e4cc],
+  // roter Buntsandstein
+  sandstein: [0xa9574a, 0xb4644f, 0x9d5143, 0xbc6f5a, 0xa65e4e],
 };
 const GB_DOORS = [0xb33a3a, 0x2f3f66, 0x2f5d4a, 0xe0b83a, 0x2e3036];
 const hashName = (n) => {
@@ -1963,6 +1966,15 @@ const DRESS = {
       return { tints: R_TINTS.gruenderzeit, p: { ...PLAIN, roof: 'hip', rh: Math.min(p.w, d) * 0.3, roofCol: R_SLATE, frame: R_FRAME, winH: 1.6, flowers: undefined } };
     }
     return { tints: R_TINTS.gruenderzeit, p: { ...PLAIN, floors: Math.min(4, (p.floors ?? 3) + 1), roof: 'mansard', rh: 3.2, roofCol: pickN(h, [R_SLATE, 0x4f555c]), cornice: 0xf1e7d2, frame: R_FRAME, winW: 1.05, winH: 1.9, base: 0.6, balc: h % 2 ? 'iron' : undefined, flowers: undefined, chimney: false } };
+  },
+  sandstein(role, p, h) {
+    // Sandstein: rote Fassaden mit hellen Gewänden über einem dunkelroten Sockel, steile Ziegeldächer – im Dorf mit dem
+    // Giebel zur Straße und Geranien, in der Stadt längs mit Gauben, Läden mit hellem Erdgeschoss
+    const d = p.d ?? 9;
+    if (role === 'cottage' || role === 'house') {
+      return { tints: R_TINTS.sandstein, p: { ...PLAIN, roof: 'front', rh: p.w * 0.66, roofCol: pickN(h, [0x8b3e2c, 0x6b3a32, 0x7a4436]), frame: R_SANDSTONE, base: 0.6, baseCol: 0x7e4034, gableWin: 'win', flowers: R_GERANIUM } };
+    }
+    return { tints: R_TINTS.sandstein, p: { ...PLAIN, roof: 'side', rh: d * 0.5, roofCol: pickN(h, [0x6b3a32, R_TILE_DARK, 0x7a4436]), frame: R_SANDSTONE, base: 0.9, baseCol: 0x7e4034, lowerCol: role === 'shop' ? R_SANDSTONE : undefined, dormers: 2, winH: 1.7, flowers: undefined, chimney: false } };
   },
   japanese(role, p, h) {
     const d = p.d ?? 9;

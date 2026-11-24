@@ -468,8 +468,9 @@ console.log('5. Ortsbilder:');
   ok(de.size >= 6, `nur ${de.size} Ortsbilder in Deutschland: ${[...de].join(', ')}`);
   for (const look of Object.keys(LOOKS)) ok(byLook.has(look), `Ortsbild ${look} kommt nirgends vor`);
   console.log('  ' + Object.keys(LOOKS).map((k) => `${LOOKS[k].title} ${(byLook.get(k) || []).length}`).join(' · ') + ` (Deutschland: ${de.size} Ortsbilder)`);
-  // Beispiele: Bad Vilbel ist ein Kurort, Gelnhausen Fachwerk, Siegen Schiefer, Hamburg Backstein
-  const want = { 'Bad Vilbel': 'kurort', Gelnhausen: 'fachwerk', Siegen: 'schiefer', Hamburg: 'brick' };
+  // Beispiele: Bad Vilbel ist ein Kurort, Gelnhausen Fachwerk, Siegen Schiefer, Hamburg Backstein, Hanau Gründerzeit,
+  // Aschaffenburg und Mainz Sandstein
+  const want = { 'Bad Vilbel': 'kurort', Gelnhausen: 'fachwerk', Siegen: 'schiefer', Hamburg: 'brick', Hanau: 'gruenderzeit', Aschaffenburg: 'sandstein', Mainz: 'sandstein' };
   for (const [name, look] of Object.entries(want)) {
     const p = places.find((q) => q.name === name);
     ok(p && lookOf(p) === look, `${name}: Ortsbild ${p && lookOf(p)} statt ${look}`);

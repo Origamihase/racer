@@ -56,12 +56,16 @@ export const LOOKS = {
   schiefer: { title: 'Schiefer', cars: 0.5, old: true },
   kurort: { title: 'Kurort', cars: 0.25, old: true },
   gruenderzeit: { title: 'Gründerzeit', cars: 0.8, old: false },
+  sandstein: { title: 'Sandstein', cars: 0.5, old: true },
   brick: { title: 'Backstein', cars: 0.55, old: false },
   alpine: { title: 'Alpenland', cars: 0.45, old: true },
 };
-// Fachwerkstädte der Karte (ihre Altstadt ist berühmt dafür), Schiefer im Bergischen Land, Siegerland und Sauerland
+// Fachwerkstädte der Karte (ihre Altstadt ist berühmt dafür), Schiefer im Bergischen Land, Siegerland und Sauerland,
+// roter Buntsandstein an Main, Neckar und Rhein (Aschaffenburg, Mainz, Heidelberg, Speyer, Würzburg)
 const FACHWERK = new Set(['Gelnhausen', 'Idstein', 'Alsfeld', 'Schlüchtern', 'Marburg', 'Fritzlar', 'Celle', 'Wetzlar', 'Bensheim']);
 const SCHIEFER = { s: 50.4, n: 51.5, w: 7.0, e: 8.45 };
+const SANDSTEIN = { s: 49.0, n: 50.05, w: 7.5, e: 10.0 };
+const inBox = (b, lat, lon) => lat > b.s && lat < b.n && lon > b.w && lon < b.e;
 
 /** Ortsbild eines Orts (Schlüssel in LOOKS bzw. town.js REGIONS): außerhalb Deutschlands die Gegend (regionOf). */
 export function lookOf(place) {
@@ -73,10 +77,12 @@ export function lookOf(place) {
   const lon = place.lon ?? 9;
   if (/^Bad /.test(name)) return 'kurort';
   if (FACHWERK.has(name)) return 'fachwerk';
-  if (size !== 'gross' && lat > SCHIEFER.s && lat < SCHIEFER.n && lon > SCHIEFER.w && lon < SCHIEFER.e) return 'schiefer';
+  if (size !== 'gross' && inBox(SCHIEFER, lat, lon)) return 'schiefer';
   const h = hashKey('Ortsbild ' + (place.key ?? name));
-  if (size === 'stadt' || size === 'gross') return h % 4 === 0 ? 'default' : 'gruenderzeit';
-  return h % 5 < 2 ? 'fachwerk' : 'default';
+  // im Sandsteinland statt der Gründerzeit (Städte) bzw. neben Fachwerk (kleine Orte)
+  const red = inBox(SANDSTEIN, lat, lon);
+  if (size === 'stadt' || size === 'gross') return h % 4 === 0 ? 'default' : red ? 'sandstein' : 'gruenderzeit';
+  return h % 5 < 2 ? 'fachwerk' : red && h % 5 === 2 ? 'sandstein' : 'default';
 }
 
 // Plätze je Größe: Breite entlang der Straße (S) und Tiefe hinter dem Gehweg (D), beides Vielfache der 8-m-Pflasterkachel
