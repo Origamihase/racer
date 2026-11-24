@@ -343,6 +343,22 @@ console.log('Werkstatt-Rechnung (Reise):');
   }
   const paid = run.bills.reduce((a, b) => a + b.paid, 0);
   ok(Math.abs((g.breakdown.Schäden || 0) + paid) < 1e-6 && g.damageBill.amount === paid, `Abrechnung: Schäden ${g.breakdown.Schäden} €, bezahlt ${paid} €`);
+  // ein Bußgeld im Minus (nach der Werkstattrechnung) holt nichts und schreibt erst recht nichts gut
+  {
+    const keep = g.money;
+    const row = g.breakdown.Verwarngeld || 0;
+    const fines = g.stats.fines;
+    g.money = -110;
+    g.fine(10, 'Verwarngeld');
+    ok(g.money === -110 && (g.breakdown.Verwarngeld || 0) === row && g.stats.fines === fines, `Verwarngeld bei −110 €: Kasse ${g.money} €, Abrechnung ${g.breakdown.Verwarngeld}`);
+    g.money = 4;
+    g.fine(10, 'Verwarngeld');
+    ok(g.money === 0 && g.breakdown.Verwarngeld === row - 4, `Verwarngeld bei 4 €: Kasse ${g.money} €, Abrechnung ${g.breakdown.Verwarngeld}`);
+    if (row) g.breakdown.Verwarngeld = row;
+    else delete g.breakdown.Verwarngeld;
+    g.stats.fines = fines;
+    g.money = keep;
+  }
   // das Ende des Streams bucht die offene Runde (ein Rempler kurz davor) und eine Rechnung, die noch unterwegs war
   {
     const before = g.money;

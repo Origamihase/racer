@@ -268,8 +268,10 @@ export class Speech {
         // stünde bis zum Sicherheitsnetz (geschätzte Dauer + 4 s) – der nächste Satz käme Sekunden zu spät
         item.u = u;
         window.speechSynthesis.speak(u);
-        // Sicherheitsnetz, falls onend nie kommt
-        this.arm(item, done, item.dur + 4);
+        // Sicherheitsnetz, falls onend nie kommt: Dann hängt die Sprachausgabe (Netzstimmen wie „Google Deutsch“), der
+        // Satz steckt noch in ihr, und jeder weitere stellte sich stumm dahinter an, bis alle auf einmal kämen –
+        // also abbrechen, nicht nur weiterzählen
+        this.arm(item, () => this.current === item && this.cancelCurrent(), item.dur + 4);
         return;
       } catch (e) {
         /* weiter ohne Ton */

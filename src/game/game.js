@@ -451,7 +451,8 @@ export class Game {
   }
 
   fine(amount, label) {
-    const v = Math.min(this.money, amount);
+    // im Minus (nach einer Werkstattrechnung) gibt es nichts zu holen: nie Geld gutschreiben
+    const v = Math.min(Math.max(this.money, 0), amount);
     this.money -= v;
     this.breakdown[label] = (this.breakdown[label] || 0) - v;
     this.stats.fines += v;

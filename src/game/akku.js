@@ -29,6 +29,8 @@ export function akkuLevel(pct) {
  * Strecke und echter Straße; s und b sind Bandmeter und Akku der letzten Messung (NaN: noch keine); park: der nächste
  * Ladepark für die Akku-Karte (Name, Kilometerstand der Reise dort, eingeplant?), sobald sie kommen kann.
  */
+/** So viele Meter je Sekunde muss der Wagen fahren, damit die Akku-Messung die Sekunde zählt (journeyBattery). */
+export const AKKU_MOVING = 2;
 export const meterAkku = () => ({ next: 0, s: NaN, b: 0, open: { m: 0, pct: 0 }, real: { m: 0, pct: 0 }, park: null });
 /** Ein Weg, den kein Akku schafft (Akku.reachable): kein Ziel oder kein Park dahinter. */
 const NOWHERE = { m: Infinity, realM: 0 };
@@ -118,9 +120,10 @@ export class Akku {
     const trip = this.g.world.trip();
     a.next = this.g.t + 1;
     // gemessen wird, wo der Wagen fährt: auf der offenen Strecke (Zeitraffer) oder auf echter Straße (1:1); ein Sprung auf
-    // dem Band zählt nicht
+    // dem Band zählt nicht, der Stand auch nicht (Stream-Technik bei BrunnenTV, im Bieterfenster oder an der Ampel
+    // kostet Akku ohne einen Meter – je Meter gerechnet, hielte die Prognose jeden Ladeplatz für zu weit)
     const ds = p.s - a.s;
-    if (ds < 120) {
+    if (ds >= AKKU_MOVING && ds < 120) {
       const k = trip.scale > 1 ? a.open : a.real;
       k.m += Math.max(0, ds);
       k.pct += Math.max(0, a.b - p.battery);

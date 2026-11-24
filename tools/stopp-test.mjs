@@ -653,6 +653,29 @@ console.log(`Popcorn: ${fly.ok} von ${fly.n} Körnern springen aus der Tür der 
   const used = checkHost('game/akku.js', AKKU_HOST, ok);
   console.log(`Akku-Schnittstelle: ${used.size} Namen des Spiels (${[...used].sort().join(', ')})`);
 }
+// Verbrauch je Meter für OMIs Reichweite (akku.js journeyBattery, perM): nur gezählt, solange der Wagen fährt. Im Stand
+// (BrunnenTV, Bieterfenster) sinkt der Akku auch, aber ohne Meter – das machte die Prognose ein Viertel zu hoch.
+{
+  const { Akku } = await import('../src/game/akku.js');
+  const player = { s: 0, battery: 90, capacity: 75 };
+  const trip = { scale: 3, km: 0, restsAhead: () => [], pastTarget: () => null };
+  const g = { t: 0, player, world: { trip: () => trip }, say() {}, chat() {}, ui: { toast() {} }, touchUI: false };
+  const ak = new Akku(g);
+  const DRIVE = 0.01 / 30; // Prozent je Meter beim Fahren (30 m/s, 0,01 %/s)
+  for (let i = 0; i < 3 * 600; i++) {
+    // je zehn Minuten fahren, dann fünf Minuten stehen (Folge), im Stand 0,004 %/s für Kamera und Stream
+    const moving = i % 900 < 600;
+    g.t = i;
+    if (moving) {
+      player.s += 30;
+      player.battery -= 0.01;
+    } else player.battery -= 0.004;
+    ak.journeyBattery();
+  }
+  const got = ak.perM('open');
+  ok(Math.abs(got / DRIVE - 1) < 0.02, `Akku je Meter: ${(got / DRIVE).toFixed(2)} × der Fahrt (der Stand zählt mit)`);
+}
+
 if (fails) {
   console.log(`stopp-test: ${fails} Fehler`);
   process.exit(1);

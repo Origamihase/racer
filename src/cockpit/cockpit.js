@@ -763,6 +763,7 @@ export class Cockpit {
     const cGeo = new THREE.PlaneGeometry(0.012, 0.008);
     this.confetti = new THREE.InstancedMesh(cGeo, new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.6 }), 400);
     this.confetti.count = 0;
+    this.confettiNext = 0; // nächster Platz im Ring: Ist die Scheibe voll, ersetzen neue Schnipsel die ältesten
     this.confetti.frustumCulled = false;
     this.root.add(this.confetti);
   }
@@ -784,7 +785,8 @@ export class Cockpit {
       ...this.rigOnGlass,
     ];
     const blocked = (x, u) => busy.some(([x0, x1, u0, u1]) => x > x0 && x < x1 && u > u0 && u < u1);
-    for (let i = 0, tries = 0; i < n && this.confetti.count < 400 && tries < n * 4; tries++) {
+    const max = this.confetti.instanceMatrix.count;
+    for (let i = 0, tries = 0; i < n && tries < n * 4; tries++) {
       const u = Math.random() * W.length * 0.9 + 0.03;
       const half = W.halfBase + (W.halfTop - W.halfBase) * (u / W.length) - 0.05;
       const x = (Math.random() * 2 - 1) * half;
@@ -796,7 +798,10 @@ export class Cockpit {
       zq.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.random() * Math.PI);
       q.copy(qBase).multiply(zq);
       m.compose(p, q, new THREE.Vector3(1, 1, 1).multiplyScalar(0.7 + Math.random() * 0.8));
-      const idx = this.confetti.count++;
+      // voll (nach gut sechs Zielen): weiter im Ring über die ältesten, damit jede Kanone und jedes Ziel sichtbar bleibt
+      const idx = this.confettiNext;
+      this.confettiNext = (idx + 1) % max;
+      this.confetti.count = Math.min(max, this.confetti.count + 1);
       this.confetti.setMatrixAt(idx, m);
       this.confetti.setColorAt(idx, c.setHex(colors[idx % colors.length]));
     }
@@ -806,6 +811,7 @@ export class Cockpit {
 
   clearConfetti() {
     this.confetti.count = 0;
+    this.confettiNext = 0;
   }
 
   setElsa(v) {
