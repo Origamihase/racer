@@ -1896,20 +1896,33 @@ function boot() {
   // Ein paar Bilder vorab rendern (Shader kompilieren), dann Titel zeigen
   updateCarMatrix();
   placeDrone(0.016, 'orbit');
+  // compile geht auch an unsichtbaren Teilen vorbei (Schadensbild, Wölkchen); nur was erst später entsteht, muss
+  // hier kurz da sein: das offene Fahrerfenster (eigenes Programm, BrunnenTV) und der Vorpass der nassen Scheibe
+  tesla.setWindow(0.01);
   try {
     // jedes Programm so, wie das erste Bild es braucht: Welt und Facecam zeichnen in ein Render-Ziel (ohne Tone-Mapping,
     // linear – ohne das gebundene Ziel übersetzte das erste Bild die ganze Welt noch einmal), Cockpit und Quads direkt
     renderer.setRenderTarget(worldRT);
     renderer.compile(scene, camera);
+    // Spiegel, Seitenfenster und Rückfahrkamera zeigen die Welt ohne den eigenen Wagen, also ohne seine
+    // Innenraumleuchte: eine Lichtquelle weniger, für three.js je Material ein anderes Programm
+    const shown = tesla.root.visible;
+    tesla.root.visible = false;
+    renderer.setRenderTarget(mirrorRT);
+    renderer.compile(scene, rearCam);
+    tesla.root.visible = shown;
     renderer.setRenderTarget(facecam.rt);
     renderer.compile(facecam.scene, facecam.camera);
     renderer.setRenderTarget(null);
     renderer.compile(cockpit.scene, camera);
     renderer.compile(facecam.quadScene, facecam.quadCam);
     renderer.compile(compScene, compCam);
+    renderer.compile(postScene, compCam);
+    windshield.warm(renderer);
   } catch (e) {
     renderer.setRenderTarget(null);
   }
+  tesla.setWindow(0);
   performance.mark('ma:compiled');
   state = 'title';
   menus.show('title', save);
