@@ -177,8 +177,12 @@ export class MapScreen {
     this.raf = requestAnimationFrame(this.frame);
   }
 
-  /** Aushängen: Schleife und Horcher beenden (die Kacheln bleiben für das nächste Öffnen). */
+  /**
+   * Aushängen: Schleife und Horcher beenden und die Kacheln freigeben (sie lägen sonst neben dem Spiel im Speicher,
+   * auf großen Bildschirmen bis 64 MB; beim nächsten Öffnen entstehen sie in wenigen Bildern neu).
+   */
   stop() {
+    this.painter.trim(0);
     cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.off?.();

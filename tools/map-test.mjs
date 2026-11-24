@@ -976,6 +976,45 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
   Warp.create = keep.create;
 }
 
+// --- Kacheln der großen Karte: gedeckelter Speicher, beim Schließen frei ---------------------------------------
+{
+  const { MapPainter, TILE_BYTES } = await import('../src/map/mapview.js');
+  const O = globalThis.OffscreenCanvas;
+  const made = [];
+  const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => ((t[k] = v), true) });
+  globalThis.OffscreenCanvas = class {
+    constructor(w, h) {
+      this.width = w;
+      this.height = h;
+      made.push(this);
+    }
+    getContext() {
+      return ctx;
+    }
+  };
+  const painter = new MapPainter({ theme: 'light', look: 'menu' });
+  painter.renderStatic = () => {}; // gezählt wird nur der Speicher, nicht gemalt
+  const live = () => made.reduce((a, c) => a + c.width * c.height * 4, 0);
+  // großer Bildschirm (1920 × 1080 bei doppelter Pixeldichte: 512er-Kacheln), quer über die Karte geschoben
+  const v = new View().set(0, 0, 40, 0, 1920, 1080);
+  let most = 0;
+  let screen = 0;
+  for (let f = 0; f < 400; f++) {
+    v.set(-300 + f * 1.5, -200 + (f % 50) * 2, 40, 0, 1920, 1080);
+    painter.drawTiles(ctx, v, 2, Infinity);
+    most = Math.max(most, live());
+    if (!screen) screen = painter.tiles.size;
+  }
+  const MB = (b) => (b / 1048576).toFixed(0) + ' MB';
+  ok(most <= TILE_BYTES + 8 * 512 * 512 * 4 + screen * 512 * 512 * 4, `große Karte: bis ${MB(most)} Kacheln (Bild ${screen} Kacheln)`);
+  ok(most <= 110 * 1048576, `große Karte: ${MB(most)} Kacheln auf 1920 × 1080 (Bild mit Ring rund 90 MB, vorher über 200 MB)`);
+  painter.trim(0);
+  ok(painter.tiles.size === 0 && live() === 0, `große Karte: nach dem Schließen noch ${MB(live())} Kacheln`);
+  ok(/stop\(\) \{\s*this\.painter\.trim\(0\);/.test(readFileSync(new URL('../src/ui/mapscreen.js', import.meta.url), 'utf8')), 'große Karte: stop() gibt die Kacheln nicht frei');
+  globalThis.OffscreenCanvas = O;
+  console.log(`  Kacheln der großen Karte: höchstens ${MB(most)} auf 1920 × 1080 (Bild ${screen} Kacheln), geschlossen 0`);
+}
+
 // --- Spielstand: alte Stände laden mit leeren Besuchen, Besuche zählen -----------------------------------------
 {
   const store = new Map();
