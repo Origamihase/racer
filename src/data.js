@@ -1161,7 +1161,7 @@ export const ABSPANN_REISE = [
   ['Discord', 'Wils und DomZe'],
   ['Raid-Kommando', 'König Knolli'],
   ['Moderation', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'wide'],
-  ['BrunnenTV', '{folgen} mit Herrn Schönnbrun (Mini Adam am Megafon)', 'wide'],
+  ['BrunnenTV', '{folgen} mit Herrn Schönnbrun', 'wide'],
 ];
 /** Ganz am Ende des Abspanns der Reise, allein und leise (Wortlaut des Eigentümers, unverändert). */
 export const GEDENKEN = 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte';
