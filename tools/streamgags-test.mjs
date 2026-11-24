@@ -279,15 +279,15 @@ function fakeGame(secs, { gate = true } = {}) {
       if (i) ok(a.t - asks[i - 1].t >= VEREIN.join[0] * (1 - 0.44) - 0.1, `Seed ${seed}: Beitritte nach ${(a.t - asks[i - 1].t).toFixed(1)} s`);
     });
     ok(asks.every((a) => !a.at.tv && !a.at.charging), `Seed ${seed}: Beitritt mitten in einer Szene`);
-    // die Zahl steht in der Abrechnung; im Abspann steht der Verein nicht (Eigentümer, 23.11.2026)
+    // weder Abrechnung noch Abspann nennen den Verein (Eigentümer, 23./24.11.2026: komplett raus)
     const F = game.supporters();
     ok(!thanksGroups(F).some((x) => x.id === 'verein' || x.title === G.name), `Seed ${seed}: der Verein steht im Abspann`);
     joins += members.length;
   }
-  ok(/if \(o\.gags\?\.verein\) line\('Vereinsmitglieder', fmtNum\(o\.gags\.verein\.members\.length\)\)/.test(read('src/ui/menus.js')), 'menus.js: die Abrechnung nennt die Vereinsmitglieder nicht');
+  ok(!/Vereinsmitglieder|gags\?\.verein/.test(read('src/ui/menus.js')), 'menus.js: Abrechnung oder Abspann nennen den Verein (Eigentümer, 24.11.2026: komplett raus)');
   ok(/gags: this\.gags\.report\(\)/.test(gameSource()), 'game.js: Game.end gibt den Gags nichts mit');
   ok(thanksGroups({}).length === 0 && !thanksGroups({ verein: null }).some((x) => x.id === 'verein'), 'Abspann: Verein ohne Gründung');
-  console.log(`  Verein „${G.name}“: ${joins} Beitritte in 2 × 30 min, James begrüßt jeden ohne Zahl, die Abrechnung nennt die Zahl, der Abspann nicht`);
+  console.log(`  Verein „${G.name}“: ${joins} Beitritte in 2 × 30 min, James begrüßt jeden ohne Zahl, Abrechnung und Abspann nennen ihn nicht`);
 }
 
 // --- 4. Nur mit Code ADAM: die Plüschbrause im Shop und im Chat -----------------------------------------------------
