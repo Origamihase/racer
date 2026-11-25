@@ -24,6 +24,11 @@ const THREAD = (() => {
 })();
 // Stiche: Länge, Lücke, Breite, Abstand über dem Plüsch
 const STITCH = { len: 0.0042, gap: 0.003, w: 0.0012, h: 0.0004, color: THREAD };
+// Saumstiche am T-Shirt: wie an der Figur dunkelgrauer Faden auf dem schwarzen Stoff (Faktor zur Shirtfarbe)
+const SHIRT_THREAD = (() => {
+  const p = new THREE.Color(COLORS.shirt);
+  return new THREE.Color((p.r * 1.9 + 0.05) / p.r, (p.g * 1.9 + 0.05) / p.g, (p.b * 1.9 + 0.05) / p.b);
+})();
 
 /** Punkt auf dem Kreis um den Kranz (Hand-Koordinaten: y radial nach außen, z zum Fahrer). */
 const around = (th, rho, x = 0) => v3(x, Math.sin(th) * rho, Math.cos(th) * rho);
@@ -168,7 +173,7 @@ const armShade = (p, n) => 0.76 + 0.24 * (0.5 + 0.5 * n.z);
 export function forearmGeometry(len, side) {
   // weich wie ein Plüschärmchen: schmales Handgelenk, zum Ellbogen hin rundlich
   const profile = [
-    [0, 0], [0.016, 0.003], [0.024, 0.01], [0.0268, 0.022], [0.0274, 0.034], [0.0302, 0.07], [0.0328, 0.17], [0.0345, len],
+    [0, 0], [0.016, 0.003], [0.024, 0.01], [0.0268, 0.022], [0.0274, 0.034], [0.0302, 0.07], [0.0328, Math.min(0.17, len - 0.04)], [0.0345, len],
     [0.0302, len + 0.017], [0.0186, len + 0.029], [0, len + 0.0345],
   ];
   const parts = [prep(plushTube(profile), 0xffffff, { shade: armShade, uv: 'keep' })];
@@ -214,7 +219,7 @@ export function sleeveGeometry(len) {
     [0.0565, len - 0.02], [0.058, len - 0.008], [0.0565, len - 0.001], [0.0525, len], [0.0485, len - 0.004], [0.0475, len - 0.02],
     [0.0425, len - 0.046], [0, len - 0.052],
   ], 24);
-  return prep(g, 0xffffff, {
+  const sleeve = prep(g, 0xffffff, {
     shade: (p) => {
       const r = Math.hypot(p.x, p.z);
       if (r < 0.05 && p.y > len - 0.05) return 0.32; // im Ärmel ist es dunkel
@@ -226,4 +231,14 @@ export function sleeveGeometry(len) {
     },
     uv: 'keep',
   });
+  // Steppnaht rund um den umgeschlagenen Saum, auf der Saumlinie
+  const ring = [];
+  const rn = [];
+  for (let k = 0; k <= 64; k++) {
+    const a = (k / 64) * Math.PI * 2;
+    const n = v3(Math.sin(a), 0, Math.cos(a));
+    ring.push(n.clone().multiplyScalar(0.0558).setY(len - 0.024));
+    rn.push(n);
+  }
+  return mergeGeometries([sleeve, ...stitches(ring, rn, { ...STITCH, len: 0.0048, w: 0.0013, h: 0.0006, color: SHIRT_THREAD })]);
 }
