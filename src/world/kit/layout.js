@@ -10,7 +10,10 @@
 // und wird vom Planer und vom Node-Test (tools/citykit-test.mjs) gleichermaßen benutzt.
 
 import { resolveProfile, weighted } from './steckbrief.js';
-import { STECKBRIEFE } from './steckbriefe-de.js';
+import { STECKBRIEFE as DE } from './steckbriefe-de.js';
+import { STECKBRIEFE as AUSLAND } from './steckbriefe-ausland.js';
+
+const STECKBRIEFE = { ...DE, ...AUSLAND };
 
 export const STREET = {
   lane: 9.0, // eigene Spur
@@ -51,7 +54,8 @@ export function regionOf(place) {
  * Ortsbilder (der Besitzer am 24.11.2026: „Gestalte die Orte noch unterschiedlicher, damit sie nicht alle gleich
  * aussehen“): wie die Häuser eines Orts gekleidet sind (town.js DRESS, name@ortsbild) und was zwischen den Laternen
  * steht. Ein Ort hat immer dasselbe – aus seinen Daten (Land, Lage, Name, Größe), sonst aus seinem Namen gezogen.
- * cars: Anteil der Laternenfelder mit parkenden Autos statt eines Baums, old: alte Laternen auch in der Stadt.
+ * cars: Anteil der Laternenfelder mit parkenden Autos statt eines Baums, old: alte Laternen auch in der Stadt, blocks:
+ * Anteil der Wohnblöcke und Bürohäuser, die bleiben (sonst ein Bürgerhaus der Bauweise; ohne Angabe bleiben alle).
  */
 export const LOOKS = {
   default: { title: 'Bunt gemischt', cars: 0.55, old: false },
@@ -67,7 +71,23 @@ export const LOOKS = {
   nachkrieg: { title: 'Wiederaufbau', cars: 0.7, old: false },
   baeder: { title: 'Bäderarchitektur', cars: 0.35, old: true },
   schwarzwald: { title: 'Schwarzwald', cars: 0.4, old: true },
+  dutch: { title: 'Grachten', cars: 0.35, old: true, blocks: 0.25 },
+  med: { title: 'Mittelmeer', cars: 0.5, old: true },
+  nordic: { title: 'Skandinavien', cars: 0.45, old: false },
+  british: { title: 'Britisch', cars: 0.6, old: true, blocks: 0.3 },
+  american: { title: 'Amerika', cars: 0.85, old: false },
+  japanese: { title: 'Japan', cars: 0.4, old: false, blocks: 0.4 },
+  haussmann: { title: 'Haussmann', cars: 0.7, old: true, blocks: 0.15 },
+  laube: { title: 'Lauben', cars: 0.3, old: true, blocks: 0 },
+  levante: { title: 'Levante', cars: 0.5, old: false, blocks: 0.45 },
+  kolonial: { title: 'Kolonialstil', cars: 0.55, old: true, blocks: 0.2 },
+  altstadt: { title: 'Altstadt Mitteleuropas', cars: 0.35, old: true, blocks: 0.1 },
 };
+// Ersatz für einen Block, der nicht ins Stadtbild passt (blocks = Anteil, der bleibt)
+const BLOCK_SWAP = new Map([
+  ['apartment', ['townHouse1', 'townHouse2', 'townHouse3', 'townHouse4']],
+  ['office', ['townHouse2', 'townHouse4', 'shopBank']],
+]);
 // Fachwerkstädte der Karte (ihre Altstadt ist berühmt dafür), Schiefer im Bergischen Land, Siegerland und Sauerland,
 // roter Buntsandstein an Main, Neckar und Rhein (Aschaffenburg, Mainz, Heidelberg, Speyer, Würzburg)
 const FACHWERK = new Set(['Gelnhausen', 'Idstein', 'Alsfeld', 'Schlüchtern', 'Marburg', 'Fritzlar', 'Celle', 'Wetzlar', 'Bensheim']);
@@ -503,6 +523,9 @@ export function planTown(place, opts = {}) {
   const reg = (name) => {
     const lk = weighted(prof.looks, srnd());
     if (lk === 'default' || !opts.has) return name;
+    // Wohnblöcke und Bürohäuser gibt es überall; wo sie nicht ins Stadtbild passen (Pariser Boulevard, Lauben,
+    // Altstadt), steht meist ein Bürgerhaus der Bauweise an ihrer Stelle
+    if (BLOCK_SWAP.has(name) && LOOKS[lk]?.blocks !== undefined && srnd() >= LOOKS[lk].blocks) name = pick(srnd, BLOCK_SWAP.get(name));
     const r = name + '@' + lk;
     return opts.has(r) ? r : name;
   };
