@@ -15,7 +15,7 @@
 
 // --- Wortschatz -----------------------------------------------------------------------------------------------------
 /** Bauweisen (Schlüssel der Hausvarianten name@look in town.js, 'default' = die Grundhäuser). */
-export const LOOK_KEYS = ['default', 'fachwerk', 'schiefer', 'kurort', 'gruenderzeit', 'sandstein', 'brick', 'alpine', 'barock', 'platte', 'nachkrieg', 'baeder', 'schwarzwald', 'dutch', 'med', 'nordic', 'british', 'american', 'japanese'];
+export const LOOK_KEYS = ['default', 'fachwerk', 'schiefer', 'kurort', 'gruenderzeit', 'sandstein', 'brick', 'alpine', 'barock', 'platte', 'nachkrieg', 'baeder', 'schwarzwald', 'dutch', 'med', 'nordic', 'british', 'american', 'japanese', 'haussmann', 'laube', 'levante', 'kolonial', 'altstadt'];
 
 /** Fassadenfarben je Palette (sRGB). Weich und freundlich wie die ganze Miniaturwelt, nie rein weiß. */
 export const WALLS = {
@@ -46,6 +46,12 @@ export const WALLS = {
   stein: [0xd8cfc0, 0xcfc4b2, 0xe2dacb, 0xc4b8a4],
   terrakotta: [0xd9946a, 0xe8b48a, 0xc87850, 0xe9c49a],
   mittelmeer: [0xe8c48a, 0xd9946a, 0xf2e2c4, 0xe9b9a6, 0xf3d98e, 0xf4efe6],
+  kalkstein: [0xe8cf9a, 0xdfc289, 0xf0dcae, 0xd6b67a], // Globigerinenkalk auf Malta, Kalkstein in Jordanien
+  haussmann: [0xeee3cc, 0xe6d9bd, 0xf2e9d6, 0xddcfb2], // Pariser Haustein der Haussmann-Zeit
+  tuff: [0xe7b2a0, 0xd99d8c, 0xefc4b4, 0xcf8f7f], // rosa Tuff in Jerewan
+  lehm: [0xd9a873, 0xe3bb8a, 0xc9955f, 0xeccb9c], // Lehm und Wüstensand
+  kolonial: [0x5fbfb4, 0xf2a7b8, 0xf6d06a, 0x8fc3e8, 0xf08a5d, 0xb9de8a], // Karibik und Lateinamerika
+  altstadt: [0xf2c46a, 0xe89a7a, 0x9cc4b0, 0xf0e0b0, 0xd6a0b8, 0xa8c4e0], // Bürgerhäuser in Prag, Krakau, Danzig
 };
 /** Dachfarben (sRGB). */
 export const ROOFS = {
@@ -108,10 +114,11 @@ const hash = (s) => {
  * Fehler eines Eintrags (leer = in Ordnung): unbekannte Wörter, fehlende Pflichtfelder. Für den Prüfstand und, beim
  * Laden, damit ein Tippfehler nicht still ein Grundhaus ergibt.
  */
-export function checkEntry(e) {
+export function checkEntry(e, cc = 'DE') {
   const bad = [];
   if (!e || typeof e !== 'object') return ['kein Eintrag'];
-  if (e.l !== undefined && !LANDS.includes(e.l)) bad.push('Land ' + e.l);
+  // l: in Deutschland das Bundesland, im Ausland der Ländercode des Orts
+  if (cc === 'DE' ? e.l !== undefined && !LANDS.includes(e.l) : e.l !== cc) bad.push('Land ' + e.l);
   const looks = words(e.s);
   if (!looks.length) bad.push('keine Bauweise');
   for (const w of looks) if (!LOOK_KEYS.includes(w)) bad.push('Bauweise ' + w);
@@ -129,7 +136,7 @@ export function checkEntry(e) {
   return bad;
 }
 
-// --- Gegenden im Ausland (und Rückfall, falls ein deutscher Ort fehlt) ----------------------------------------------
+// --- Gegenden im Ausland (Rückfall für einen Ort ohne Eintrag, etwa einen neu in die Karte aufgenommenen) ----------------------------------------------
 const ABROAD = {
   alpine: { s: ['alpine'], f: ['weiss', 'creme', 'pastell'], d: ['holz', 'braun', 'anthrazit'], b: ['ahorn', 'linde', 'obst'], la: 'alt', p: ['kopf', 'platten'] },
   med: { s: ['med'], f: ['mittelmeer', 'terrakotta', 'ocker', 'weiss'], d: ['moench', 'hell'], b: ['platane', 'palme', 'platane'], la: 'alt', p: ['sand', 'granit'] },
@@ -165,12 +172,12 @@ const SHARES = [[1], [0.7, 0.3], [0.6, 0.25, 0.15]];
  * Steckbrief eines Orts, aufgelöst zu Farben und Bausteinen: { looks: [[look, Anteil], …], walls: [sRGB, …] (drei bis
  * fünf Töne, je Ort aus seinen Paletten gezogen), roofs: [[sRGB, Anteil], …], trees: [Baustein, …], lamp, pave
  * ({ slab, cobble }), flag: [sRGB, sRGB] | null, cars (Anteil oder null), tram (true/false/null = nach Größe), flowers,
- * note, own (hat einen eigenen Eintrag) }. entries: die deutschen Einträge (steckbriefe-de.js), region: Gegend nach
+ * note, own (hat einen eigenen Eintrag) }. entries: die Einträge (steckbriefe-de.js und steckbriefe-ausland.js), region: Gegend nach
  * layout.js regionOf, fallbackLook: Bauweise, wenn ein deutscher Ort keinen Eintrag hat.
  */
 export function resolveProfile(place, entries, region, fallbackLook = 'default') {
   const key = place.key ?? place.name ?? '';
-  const own = place.cc === 'DE' ? entries[key] ?? entries[place.name] : null;
+  const own = entries[key] ?? entries[place.name] ?? null;
   const e = own ?? (place.cc === 'DE' ? { s: fallbackLook, f: 'pastell', d: 'ziegel' } : abroad(place, region));
   const h = hash('Ortsfarben ' + key);
   const looks = words(e.s).slice(0, 3);
