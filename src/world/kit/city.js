@@ -219,7 +219,7 @@ export function createCityKit(F, { bend = null } = {}) {
       };
       for (const [ci, list] of [...chunks].sort((a, b) => a[0] - b[0])) {
         const cz = -(ci + 0.5) * CHUNK;
-        const make = (far) => compose(core, list.map((it) => ({ g: kitOf(it.name).geo(it.name, far), x: it.x - cx, y: it.y, z: it.z - cz, ry: it.ry, tint: it.tint })));
+        const make = (far) => compose(core, list.map((it) => ({ g: kitOf(it.name).geo(it.name, far), x: it.x - cx, y: it.y, z: it.z - cz, ry: it.ry, tint: it.tint, roof: it.roof })));
         const lod = new THREE.LOD();
         lod.name = 'Ortsstück ' + ci;
         lod.position.set(cx, 0, cz);
@@ -234,7 +234,7 @@ export function createCityKit(F, { bend = null } = {}) {
           }
         });
       }
-      for (const it of solo) root.add(placeGroup(kitOf(it.name).build(it.name, { tint: it.tint }), it));
+      for (const it of solo) root.add(placeGroup(kitOf(it.name).build(it.name, { tint: it.tint, roof: it.roof }), it));
       // Wahrzeichen: eigene Stufen nah/fern, gemessen von ihrem eigenen Ursprung (sie stehen weit hinter der Zeile)
       const anim = [];
       for (const it of marks) {
@@ -293,11 +293,11 @@ export function createCityKit(F, { bend = null } = {}) {
       group.position.set(x, y, z);
       group.rotation.y = heading;
       const pieces = g.items.filter((it) => kitOf(it.name).geo(it.name));
-      const merged = compose(core, pieces.map((it) => ({ g: kitOf(it.name).geo(it.name), x: it.x, y: it.y, z: it.z, ry: it.ry, tint: it.tint })));
+      const merged = compose(core, pieces.map((it) => ({ g: kitOf(it.name).geo(it.name), x: it.x, y: it.y, z: it.z, ry: it.ry, tint: it.tint, roof: it.roof })));
       padBounds(merged);
       group.add(merged);
       for (const it of g.items) {
-        if (!kitOf(it.name).geo(it.name)) group.add(placeGroup(kitOf(it.name).build(it.name, { tint: it.tint }), it));
+        if (!kitOf(it.name).geo(it.name)) group.add(placeGroup(kitOf(it.name).build(it.name, { tint: it.tint, roof: it.roof }), it));
         const ex = extrasOf(it);
         if (ex) group.add(ex);
       }
@@ -341,7 +341,7 @@ export function createCityKit(F, { bend = null } = {}) {
       const gb = new Bau({ fade: 0.2, low: 1 });
       restGround(gb, plan.ground);
       const ground = gb.done({});
-      const make = (far) => compose(core, [{ g: ground, x: -cx, z: -cz }, ...plan.items.map((it) => ({ g: kitOf(it.name).geo(it.name, far), x: it.x - cx, y: it.y, z: it.z - cz, ry: it.ry, tint: it.tint }))]);
+      const make = (far) => compose(core, [{ g: ground, x: -cx, z: -cz }, ...plan.items.map((it) => ({ g: kitOf(it.name).geo(it.name, far), x: it.x - cx, y: it.y, z: it.z - cz, ry: it.ry, tint: it.tint, roof: it.roof }))]);
       const lod = new THREE.LOD();
       lod.name = 'Rastanlage';
       lod.position.set(cx, 0, cz);

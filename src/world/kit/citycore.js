@@ -1134,7 +1134,7 @@ class Part {
   /**
    * Vieleck pts = [[x, y], …] in der xy-Ebene, von z0 bis z1 gezogen (z1 > z0; Deckel bei z1 schaut nach +z).
    * o.holes: Löcher, o.caps: 'fb' (vorne/hinten), o.sides: false lässt die Mantelfläche weg, o.down: Farbe der Flächen, die nach
-   * unten schauen.
+   * unten schauen, o.downTo: Teil für sie (Standard dieses; die Dachflächen in b.R lassen ihre Untersicht ungefärbt in b.F).
    */
   extrude(pts, z0, z1, col, o = {}) {
     const area = (p) => {
@@ -1205,7 +1205,7 @@ class Part {
           idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
         }
         this._tris(P, N, idx, o.sideCol ?? col, o);
-        if (D.length) this._tris(D, null, dIdx, o.down, { k: o.k });
+        if (D.length) (o.downTo ?? this)._tris(D, null, dIdx, o.down, { k: o.k });
       }
     }
     return this;
@@ -1446,6 +1446,9 @@ export class Bau {
     this.G = new Part(this, true);
     this.W = new Part(this, true, true);
     this.L = new Part(this, false);
+    // Dachflächen in Weiß (nur Schattierung): ihre Farbe kommt beim Verschmelzen dazu, je Haus die Dachfarbe seines
+    // Orts (Steckbrief) oder sonst info.roofCol – so braucht nicht jede Dachfarbe eine eigene Geometrie
+    this.R = new Part(this, false);
   }
 
   shade(y) {
@@ -1684,16 +1687,18 @@ export class Bau {
     const ye = y - oe * sl + lift;
     const yr = y + rh + lift;
     const prof = [[-span - oe, ye], [0, yr], [span + oe, ye], [span + oe, ye - t], [0, yr - t * 1.1], [-span - oe, ye - t]];
+    // o.part: Teil, in das die Dachfläche kommt (b.R: Farbe erst beim Verschmelzen, col ist dann Weiß)
+    const P = o.part ?? this.F;
     this.at(x, 0, z, alongX ? Math.PI / 2 : 0, () => {
-      this.F.extrude(prof, -len - og, len + og, col, { g: [0.84, 1.05], crease: 2, down: o.soffit ?? SOFFIT });
-      if (this.lod === 0 && o.ridge !== false) this.F.rod([0, yr - 0.02, -len - og - 0.03], [0, yr - 0.02, len + og + 0.03], 0.09, col, { seg: 6, caps: true, k: 0.86 });
+      P.extrude(prof, -len - og, len + og, col, { g: [0.84, 1.05], crease: 2, down: o.soffit ?? SOFFIT, downTo: this.F });
+      if (this.lod === 0 && o.ridge !== false) P.rod([0, yr - 0.02, -len - og - 0.03], [0, yr - 0.02, len + og + 0.03], 0.09, col, { seg: 6, caps: true, k: 0.86 });
     });
     return this;
   }
 
   /** Walmdach (bei quadratischem Grundriss ein Zeltdach) über w × d um (x, z), Traufe bei y. */
   hip(x, y, z, w, d, rh, col, o = {}) {
-    const F = this.F;
+    const F = o.part ?? this.F;
     const oe = o.oe ?? 0.4;
     const t = o.t ?? 0.22;
     const a = w / 2 + oe;
@@ -1722,7 +1727,7 @@ export class Bau {
     F.quad(lo(B), lo(C), C, B, col, { k: 0.8 });
     F.quad(lo(C), lo(D), D, C, col, { k: 0.8 });
     F.quad(lo(D), lo(A), A, D, col, { k: 0.8 });
-    F.quad(lo(A), lo(D), lo(C), lo(B), o.soffit ?? SOFFIT);
+    this.F.quad(lo(A), lo(D), lo(C), lo(B), o.soffit ?? SOFFIT);
     return this;
   }
 
@@ -1741,8 +1746,9 @@ export class Bau {
     const gloss = this.G.geometry();
     const water = this.W.geometry();
     const light = this.L.geometry();
-    const tris = (this.T.p.length + this.F.p.length + this.G.p.length + this.W.p.length + this.L.p.length) / 9;
-    return { tint, fixed, gloss, water, light, info: { ...info, tris } };
+    const roof = this.R.geometry();
+    const tris = (this.T.p.length + this.F.p.length + this.G.p.length + this.W.p.length + this.L.p.length + this.R.p.length) / 9;
+    return { tint, fixed, gloss, water, light, roof, info: { ...info, tris } };
   }
 }
 
@@ -1751,7 +1757,8 @@ const ONE = [1, 1, 1];
 
 /**
  * Viele gesetzte Bausteine zu höchstens vier Geometrien verschmelzen: matt, glänzend, Wasser und Leuchtendes.
- * items: [{ g: Ergebnis von kit.geo(), x, y, z, ry, s, tint }] (tint als sRGB-Hex). Fehlt eine Art, ist sie null.
+ * items: [{ g: Ergebnis von kit.geo(), x, y, z, ry, s, tint, roof }] (tint und roof als sRGB-Hex; roof färbt die
+ * Dachflächen, Standard info.roofCol). Fehlt eine Art, ist sie null.
  */
 export function composeGeo(items) {
   let nm = 0;
@@ -1760,7 +1767,7 @@ export function composeGeo(items) {
   let nl = 0;
   const count = (g) => (g ? g.attributes.position.count : 0);
   for (const it of items) {
-    nm += count(it.g.tint) + count(it.g.fixed);
+    nm += count(it.g.tint) + count(it.g.fixed) + count(it.g.roof);
     ng += count(it.g.gloss);
     nw += count(it.g.water);
     nl += count(it.g.light);
@@ -1824,6 +1831,7 @@ export function composeGeo(items) {
   for (const it of items) {
     put(M, it.g.tint, it, lin(it.tint ?? (it.g.info.tints ? it.g.info.tints[0] : 0xffffff)));
     put(M, it.g.fixed, it, ONE);
+    put(M, it.g.roof, it, lin(it.roof ?? it.g.info.roofCol ?? 0xffffff));
     put(G, it.g.gloss, it, ONE);
     put(Wt, it.g.water, it, ONE);
     put(L, it.g.light, it, ONE);
@@ -1972,7 +1980,7 @@ export function makeKit(F, defs) {
       if (def.build) group = def.build(kit, opts);
       else {
         const g = kit.geo(name, !!opts.far);
-        group = compose(core, [{ g, tint: opts.tint }]);
+        group = compose(core, [{ g, tint: opts.tint, roof: opts.roof }]);
         group.userData.info = g.info;
         for (const m of kit.extras(name, opts)) group.add(m);
       }
