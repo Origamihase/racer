@@ -7,9 +7,9 @@
 // 2. Im Minus ist der Shop zu: der Grund steht oben, jeder Kauf-Knopf ist gesperrt, der Kauf in main.js wird abgelehnt –
 //    und ist das Guthaben wieder im Plus, geht es wieder; nichts anderes gibt Guthaben aus.
 // 3. Laden kostet Geld und geht immer: Bei 5 % Akku, −500 € Guthaben und −300 € in der Kasse beginnt der Ladestopp an
-//    der eingeplanten Säule, endet voll und bucht die geladenen kWh × 0,59 € (Rand, James, Runde, Abrechnung, Abspann);
-//    übersprungen ebenso; endet der Stream mitten im Laden, zählt der Strom bis dahin – einmal. Nichts im Laden fragt
-//    nach Geld.
+//    der eingeplanten Säule eines Orts und im Ladepark an der Autobahn, endet voll und bucht die geladenen kWh × 0,59 €
+//    (Rand, James, Runde, Abrechnung, Abspann); übersprungen ebenso; endet der Stream mitten im Laden, zählt der Strom
+//    bis dahin – einmal. Nichts im Laden fragt nach Geld.
 // node tools/minus-test.mjs
 import { readFileSync } from 'node:fs';
 
@@ -282,6 +282,7 @@ const NB = ' ';
 
 // --- 3. Laden kostet Geld und geht immer ----------------------------------------------------------------------------
 let laden = '';
+let parkLine = '';
 {
   ok(LADEN.euroPerKwh === 0.59 && /Das Laden des Autos soll auch auf die Rechnung/.test(src('src/data.js')), 'LADEN: 0,59 € je kWh mit dem Wunsch des Besitzers');
   const k95 = ladeKosten(95, 75);
@@ -292,9 +293,10 @@ let laden = '';
    * Ein Stream mit Guthaben im Minus und echtem Akku: Nach der ersten Runde plant der Fahrer den nächsten Ladeplatz ein;
    * ist der Wagen dort im Ort bzw. im Park, steht der Akku auf 5 % (bis der Stopp beginnt) und die Kasse bei −300 €.
    * mid: so viele Sekunden nach Beginn des Ladens endet der Stream (Pause → Stream beenden); skip: so viele überspringt
-   * der Spieler; after: so lange geht es nach dem Laden weiter (bis zur Rundenzeile am nächsten Ziel).
+   * der Spieler; after: so lange geht es nach dem Laden weiter (bis zur Rundenzeile am nächsten Ziel); park: statt des
+   * nächsten Ladeplatzes der nächste Ladepark an der Autobahn (wie __parkGo der Bild-Aufrufe).
    */
-  const charge = ({ seed, mid = -1, skip = -1, after = 0 }) => {
+  const charge = ({ seed, mid = -1, skip = -1, after = 0, park = false }) => {
     const S = makeStream({ driver: DRIVERS.zuegig, seed, endless: true, wallet: -500, charge: true });
     const g = S.game;
     const p = g.player;
@@ -305,7 +307,10 @@ let laden = '';
     const out = { S, g, toasts, pops, c: null, t0: -1, t1: -1, battery: null, money: null };
     // (vor dem ersten Gebot eingeplant, stürzt das erste Gebot ab – ein Fehler der Navi-Auktion von vorher, siehe NOTES)
     for (let i = 0; i < 30 * 900 && g.navi.opening; i++) S.step(1 / 30);
-    g.akku.planStop();
+    if (park) {
+      const r = S.trip.restsAhead(60).find((q) => q.park >= 0);
+      if (r) S.trip.setStop(r.park);
+    } else g.akku.planStop();
     out.post = S.trip.post;
     out.park = S.trip.stop;
     for (let i = 0; i < 30 * 600 && !g.over; i++) {
@@ -378,6 +383,15 @@ let laden = '';
   cg.akku.cutShort();
   cg.akku.finishCharge();
   ok(cg.ladeBill.n === 1 && cg.ladeBill.amount === part.euro, `c: ein zweites Buchen desselben Stopps (${JSON.stringify(cg.ladeBill)})`);
+  // d) Ladepark an der Autobahn: dieselbe Rechnung, derselbe Hinweis (die Taste L an einer Säule ohne Plan zeigt
+  // Bild-Aufruf A im Browser: die Welt der Simulation kennt keine Ladestelle neben dem Wagen)
+  const d = charge({ seed: 2, park: true });
+  const dg = d.g;
+  const dWant = d.c ? ladeKosten(100 - d.c.from, dg.player.capacity) : { kwh: 0, euro: -1 };
+  const dToast = d.toasts.find((x) => x.key === 'ladestrom');
+  ok(d.c && d.c.park >= 0 && d.c.post < 0 && d.c.from <= 5.01 && d.battery === 100 && dg.ladeBill.n === 1 && dg.ladeBill.amount === dWant.euro && dWant.euro > 40, `d: Ladepark ${JSON.stringify(d.c && { park: d.c.park, post: d.c.post, from: d.c.from, name: d.c.name })}, ${JSON.stringify(dg.ladeBill)}`);
+  ok(dToast && dToast.text.includes(`${fmtKwh(dWant.kwh)} Ladestrom −${fmtCent(dWant.euro)}`) && dg.breakdown.Ladestrom === -dWant.euro, `d: Hinweis im Ladepark ${dToast && dToast.text}`);
+  parkLine = d.c ? `${d.c.name}: ${fmtKwh(dWant.kwh)} für ${fmtCent(dWant.euro)}` : '–';
   // nichts im Laden fragt nach Geld: weder der Akku noch der Halt der Welt noch die Szene
   for (const f of ['src/game/akku.js', 'src/world/xxl/plan.js', 'src/world/xxl/charge.js', 'src/scenes/stop.js']) {
     ok(!/\.money\b|wallet|canBuy|shopLocked/.test(src(f)), `${f} fragt nach dem Kontostand`);
@@ -386,5 +400,5 @@ let laden = '';
   ok(/open \+= this\.akku\.openCharge\(\);/.test(src('src/game/game.js')), 'interim: der Strom eines laufenden Stopps fehlt');
 }
 
-console.log(fails ? `minus-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `minus-test: alles grün (${checks} Prüfungen: Schulden ganz gebucht und getragen, Spielstand im Minus, Start im Minus, Anzeige mit Minus, Shop im Minus zu, Laden immer und auf der Rechnung)\n  ${laden}`);
+console.log(fails ? `minus-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `minus-test: alles grün (${checks} Prüfungen: Schulden ganz gebucht und getragen, Spielstand im Minus, Start im Minus, Anzeige mit Minus, Shop im Minus zu, Laden immer und auf der Rechnung)\n  ${laden}\n  Ladepark: ${parkLine}`);
 process.exit(fails ? 1 : 0);
