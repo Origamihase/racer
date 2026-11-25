@@ -101,13 +101,15 @@ export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Mitleidskäufe'];
  * Ende des Streams noch offen ist, auch (Abrechnung „Schäden“). Wann die Fahrt in der Werkstatt endet (keine Punkte
  * mehr), bleibt, wie es ist.
  */
-export const REPARATUR = { bump: 210, mark: 35 };
+// Der Besitzer am 25.11.: „Ein Rempler kann ruhig 400€ bis 500€ kosten.“ (vorher 210 €, Kratzer 35 €)
+export const REPARATUR = { bump: 450, mark: 75 };
 /**
  * Bußgelder (der Besitzer am 24.11.: „Die Kosten sind generell noch ein wenig zu günstig“): geblitzt (Autobahn, Ort,
  * Landstraße) blitzer, Verwarngeld für Standstreifen und Rechtsfahrgebot verwarn. Abgebucht wird, was die Kasse hat
  * (Game.fine). Vor dem 24.11.: Rempler 150 €, Kratzer 25 €, Blitzer 15 €, Verwarngeld 10 €.
  */
-export const BUSSGELD = { blitzer: 20, verwarn: 15 };
+// der Besitzer am 25.11.: „Ein Blitzerfoto soll 100€ kosten.“ (vorher 20 €), zum Verwarngeld „Mach 50€ draus“ (vorher 15 €)
+export const BUSSGELD = { blitzer: 100, verwarn: 50 };
 /**
  * Frontal in den Gegenverkehr (der Besitzer am 24.11.: „eine bessere Lösung mit mehr Schaden“): Ein Frontal-Rempler
  * kostet base Rempler und je km/h Annäherung perKmh Rempler mehr (gerundet auf 5 €) – bei 30 km/h gut das Doppelte

@@ -23,7 +23,7 @@ import { Trip, J } from '../src/game/trip.js';
 import { Game } from '../src/game/game.js';
 import { Economy, BONTANA } from '../src/game/economy.js';
 import { Satisfaction, ZUFRIEDEN } from '../src/game/satisfaction.js';
-import { clamp } from '../src/util.js';
+import { clamp, fmtNum } from '../src/util.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { CHAT, REPARATUR, CREW, CREW_LINES, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN } from '../src/data.js';
 
@@ -333,7 +333,8 @@ console.log('Werkstatt-Rechnung (Reise):');
   ok(run.bills.length >= 3, `nur ${run.bills.length} Rechnungen in 60 Minuten`);
   if (b3) {
     ok(b1.n === 1 && b1.hits === 2 && b1.marks === 4 && b1.amount === 2 * R.bump + 4 * R.mark && b1.paid === b1.amount && g.player.damage.scratches.left === 3, `Runde 1: ${JSON.stringify(b1)}`);
-    const r1 = 2 * R.bump + 4 * R.mark;
+    // mit Tausenderpunkt wie am Rand und bei James (1.200 €)
+    const r1 = fmtNum(2 * R.bump + 4 * R.mark).replace('.', '\\.');
     ok(new RegExp(`^🧾 Runde 1\\s· Einnahmen \\+[\\d.]+\\s€ Schäden −${r1}\\s€ \\(2 Rempler · 4 Kratzer\\)$`).test(b1.toast.text) && b1.toast.key === 'rechnung', `Runde 1 am Rand: ${b1.toast.text}`);
     // die Schäden in ihrer eigenen Zeile (rot, display: block in style.css)
     const dmg = b1.toast.parts[b1.toast.parts.length - 1];
