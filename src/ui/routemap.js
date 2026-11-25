@@ -1,6 +1,6 @@
 // Die Route des Tages im Abspann der Reise: die Karte des Spiels (derselbe Zeichner wie die große Karte, mapview.js:
 // Land, Straßen, Orte und Namen), darauf der Weg, den der Wagen in diesem Stream wirklich gefahren ist (der gefahrene
-// Weg des Navis), der Start in Erlensee, jede BrunnenTV-Folge mit ihrer Nummer, jeder Ladestopp mit dem Stecker wie im
+// Weg des Navis), der Start im Startort des Streams, jede BrunnenTV-Folge mit ihrer Nummer, jeder Ladestopp mit dem Stecker wie im
 // Navi und das Auto am Ende. Der Ausschnitt passt sich der Route an, in einer Maßstabsstufe der großen Karte (gleiche
 // Punkte, gleiche Namen wie dort).
 import { MapPainter, THEMES, bucketScale, project, spotBox, dotRadius, PLACE_BY_INDEX, menuLayoutOf, isCity, placeLabel } from '../map/mapview.js';
@@ -12,7 +12,7 @@ const CORNER = 14; // … und aus ihren runden Ecken (style.css .route-map-wrap 
 const CAR_R = 12; // halbe Breite des Autos (drawCar mit 20 Bildpunkten) für die Namen, die ihm ausweichen
 const MIN_B = 4; // gröbste Stufe (ganz Europa auf einer Handbreit)
 const MAX_B = 19; // feinste Stufe: auch eine kurze Route zeigt noch die Gegend
-const START = project(50.2276, 8.9576); // Erlensee, falls der Weg leer ist
+const START = project(50.2276, 8.9576); // Erlensee, falls der Weg leer ist und kein Startort dabei steht
 // Farben der Marken: Brunnenblau wie „BrunnenTV XXL“ im Titel, Grün wie der Ladestopp im Navi
 const TV_BLUE = '#1f8fd8';
 const PARK_GREEN = '#2f8f4e';
@@ -55,13 +55,16 @@ function ends(L) {
 
 /**
  * Ausschnitt der Karte für eine Route (ohne Leinwand, läuft auch unter Node): w × h CSS-Bildpunkte; route = { line:
- * [x, y, …] Karteneinheiten (NaN: Sprung übers Wasser), marks: [{ type: 'brunnen' | 'laden', n, x, y }] }. Ergebnis:
+ * [x, y, …] Karteneinheiten (NaN: Sprung übers Wasser), marks: [{ type: 'brunnen' | 'laden', n, x, y }], home: Index
+ * des Startorts in places }. Ergebnis:
  * Maßstabsstufe b, Maßstab s (CSS-Bildpunkte je Einheit), linke obere Ecke (wx, wy), X/Y (Karte → Bild), die Marken
  * (items: Start, Ladestopps, Folgen mit Lage x, y, ihrer Stelle x0, y0 und Halbmesser r), das Auto (car, Richtung a).
  */
 export function routeView(route, w, h, { turn = 0 } = {}) {
   const L = route.line || [];
-  const box = bounds(route) || [START.x, START.y, START.x, START.y];
+  // ohne gefahrenen Weg: der Startort (route.home, Index in places), wo der Wagen noch steht
+  const home = PLACE_BY_INDEX[route.home] || START;
+  const box = bounds(route) || [home.x, home.y, home.x, home.y];
   const bw = Math.max(box[2] - box[0], 1e-4);
   const bh = Math.max(box[3] - box[1], 1e-4);
   // die feinste Stufe der großen Karte, in der die Route samt Rand ins Bild passt
@@ -93,7 +96,7 @@ export function routeView(route, w, h, { turn = 0 } = {}) {
     const r = type === 'start' ? 10.5 : type === 'brunnen' && String(data.n).length > 2 ? 14.5 : 12.5;
     items.push({ type, ...data, x0: x, y0: y, x: px, y: py, r });
   };
-  const st = first || [START.x, START.y];
+  const st = first || [home.x, home.y];
   put('start', st[0], st[1]);
   const marks = (route.marks || []).filter((m) => Number.isFinite(m.x) && Number.isFinite(m.y));
   for (const m of marks) if (m.type === 'laden') put('laden', m.x, m.y);

@@ -4,7 +4,7 @@
 // Statistik und Stream-Kasse sind mit ihm und ohne ihn dieselben.
 // node tools/radar-test.mjs
 // - Ohne Radarwarner, zu schnell: Bis zum Blitzer fällt nirgends ein Wort über ihn (Sprache, Untertitel, Hinweise,
-//   Chat, Navi), kein Piepen, kein Lämpchen – und dann blitzt es wie immer: Foto, 15 € Bußgeld, Statistik, Chat.
+//   Chat, Navi), kein Piepen, kein Lämpchen – und dann blitzt es wie immer: Foto, Bußgeld (BUSSGELD.blitzer), Statistik, Chat.
 // - Ohne Radarwarner, brav: keine Ansage; „Nicht geblitzt“ zählt und wird gelobt.
 // - Mit Radarwarner: genau eine Ansage je Blitzer, vor dem Tempo-120-Schild – erst piept das Kästchen, dann kommen
 //   OMIs Gong und ihr Satz; das Lämpchen blinkt vom Piepen bis zum Blitzer; wer zu schnell ist, wird trotzdem
@@ -17,7 +17,7 @@
 //   130 km/h über Motor, Abrollen und Wind zu liegen, die er kurz leiser macht; OMIs Gong kommt danach.
 import { Game } from '../src/game/game.js';
 import { Trip } from '../src/game/trip.js';
-import { BOARD, CHAT, SHOP, UPGRADE_LIMITS } from '../src/data.js';
+import { BOARD, CHAT, SHOP, UPGRADE_LIMITS, BUSSGELD } from '../src/data.js';
 import { loadSave, storeSave } from '../src/save.js';
 
 const DT = 1 / 30;
@@ -180,16 +180,16 @@ function unannounced(r, what) {
   }
 }
 
-/** Geblitzt wie immer: Blitz, Foto, 15 € Bußgeld, Statistik, drei Chat-Zeilen, die Kasse freut sich über das Foto. */
+/** Geblitzt wie immer: Blitz, Foto, Bußgeld (BUSSGELD.blitzer), Statistik, drei Chat-Zeilen, die Kasse freut sich über das Foto. */
 function flashed(r, what, kmh) {
   const g = r.game;
   const n = r.zones.length;
   ok(flashes(r) === n && calls(r, 'audio', 'flash').length === n, `${what}: ${flashes(r)} Blitze statt ${n}`);
   ok(calls(r, 'scenery', 'flashBlitzer').length === 2 * n, `${what}: Der Blitzer am Straßenrand leuchtet nicht auf und wieder ab`);
   ok(g.stats.photos === n && g.stats.blitzerClean === 0, `${what}: Statistik ${g.stats.photos} Fotos, ${g.stats.blitzerClean}-mal brav`);
-  ok(g.stats.fines === 15 * n && g.breakdown['Bußgeld'] === -15 * n, `${what}: Bußgeld ${g.stats.fines} € statt ${15 * n} €`);
+  ok(g.stats.fines === BUSSGELD.blitzer * n && g.breakdown['Bußgeld'] === -BUSSGELD.blitzer * n, `${what}: Bußgeld ${g.stats.fines} € statt ${BUSSGELD.blitzer * n} €`);
   const fines = calls(r, 'ui', 'money').filter((e) => e.args[1] === 'Bußgeld');
-  ok(fines.length === n && fines.every((e) => e.args[0] === -15), `${what}: Das Bußgeld wird nicht je Blitz einmal mit −15 € gezeigt`);
+  ok(fines.length === n && fines.every((e) => e.args[0] === -BUSSGELD.blitzer), `${what}: Das Bußgeld wird nicht je Blitz einmal mit −${BUSSGELD.blitzer} € gezeigt`);
   const photos = calls(r, 'ui', 'photo');
   ok(photos.length === n && photos.every((e) => Math.abs(e.args[0] - kmh) <= 2 && /^\d\d:\d\d$/.test(e.args[1])), `${what}: Foto fehlt oder trägt falsche Daten (${textOf(photos[0] || { args: [] })})`);
   ok(calls(r, 'eco', 'cheer').filter((e) => e.args[0] === 'blitzerFlash').length === n, `${what}: Der Chat freut sich nicht über das Foto`);

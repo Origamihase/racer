@@ -28,7 +28,7 @@ import {
   nodes, edges, places, K, deEdge, deTo, deFrom, deRev, deKind, deRoad, deTowards, straight, edgeLen, routeTo, routeFrom,
   stateOfNode, transitions, townLen, zubLen, spotIn, visitList, nodeTitle, exitNumber, dePos, turnAngle, PACE,
 } from '../map/graph.js';
-import { PARK, PARK_STOP_AFTER, PARKS, POST, postName, parkAt, parkZub, parkExcursion, routeToPark, nearestParks } from '../map/parks.js';
+import { PARK, PARK_STOP_AFTER, PARKS, POST, postAt, postName, parkAt, parkZub, parkExcursion, routeToPark, nearestParks } from '../map/parks.js';
 
 /** So weit (Reisekilometer) sucht nextRest geradeaus nach dem nächsten Ladepark. */
 const WALK_KM = 1500;
@@ -328,7 +328,9 @@ export class Trip {
       const tl = townLen(p.pop);
       const town = this.add(path, 'stadt', tl, { node, place: pi });
       town.spotS = town.s0 + spotIn(tl);
-      town.postS = town.s0 + POST.halt - PARK_STOP_AFTER;
+      // die Ladesäule des Orts, vor oder hinter dem Brunnenplatz (parks.js postAt)
+      town.postAt = postAt(pi, tl, spotIn(tl));
+      town.postS = town.s0 + town.postAt.halt - PARK_STOP_AFTER;
       km = p.zubKm;
     }
     this.add(path, 'zub', J.back, { node, place: visits[visits.length - 1], back: true });
@@ -461,7 +463,8 @@ export class Trip {
       const tl = townLen(places[town.place].pop);
       const sec = this.add(path, 'stadt', tl, { node: h, place: town.place, inline: true });
       sec.spotS = sec.s0 + spotIn(tl);
-      sec.postS = sec.s0 + POST.halt - PARK_STOP_AFTER;
+      sec.postAt = postAt(town.place, tl, spotIn(tl));
+      sec.postS = sec.s0 + sec.postAt.halt - PARK_STOP_AFTER;
     }
     path.frontier = { t: 'node', n: h, via: de };
   }
@@ -1147,8 +1150,10 @@ export class Trip {
       if (sec.s1 <= this.s) continue;
       // im Zweig zum geplanten Ladestopp: der Halt an der freien Säule
       if (sec.kind === 'park' && sec.park === this.stop && !sec.spotDone) return { ...base, type: 'stop', dist: sec.spotS - this.s, toKm: this.reach(sec.spotS).km, sec, park: sec.park, post: -1 };
-      // im Ort mit der geplanten Ladesäule: ihr Halt (vor dem Brunnen des Orts)
-      if (sec.kind === 'stadt' && this.post >= 0 && sec.place === this.post && sec.postS !== undefined && !sec.postDone) return { ...base, type: 'stop', dist: sec.postS - this.s, toKm: this.reach(sec.postS).km, sec, park: -1, post: sec.place };
+      // im Ort mit der geplanten Ladesäule: ihr Halt – steht sie im Zielort hinter dem Brunnenplatz (map/parks.js postAt),
+      // erst der Brunnen
+      const spotFirst = sec.place === this.target && !sec.spotDone && sec.spotS < sec.postS;
+      if (sec.kind === 'stadt' && this.post >= 0 && sec.place === this.post && sec.postS !== undefined && !sec.postDone && !spotFirst) return { ...base, type: 'stop', dist: sec.postS - this.s, toKm: this.reach(sec.postS).km, sec, park: -1, post: sec.place };
       if (sec.kind === 'stadt' && sec.place === this.target && !sec.spotDone) return { ...base, type: 'arrive', dist: sec.spotS - this.s, toKm: all.km, sec };
       const f = sec.fork;
       if (f && !f.taken && this.planFor(f) === 'exit') {

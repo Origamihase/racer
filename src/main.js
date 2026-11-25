@@ -11,6 +11,7 @@ import { Road } from './world/road.js';
 import { XxlWorld, ROAD_OPTS, autoTarget, autoDrive, AUTO } from './world/xxl/world.js';
 import { installDebug } from './world/xxl/debug.js';
 import { Gegenverkehr } from './world/xxl/gegenverkehr.js';
+import { camerasAlong } from './world/xxl/blitzer.js';
 import { Sky } from './world/sky.js';
 import { Scenery } from './world/scenery.js';
 import { CurveSigns, gridBusy, profileLayout } from './world/kit/curvesigns.js';
@@ -47,6 +48,7 @@ import { Menus } from './ui/menus.js';
 import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
 import { SHOP, UPGRADE_LIMITS, shopPrice } from './data.js';
 import { NavModel } from './map/navroute.js';
+import { nextStart, startNode } from './game/starts.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
 import { albumBadges } from './ui/album.js';
@@ -76,6 +78,8 @@ const megafonBack = refundMegafon(save);
 // zur nächsten Fahrt, was er gebracht hat (save.streamNote)
 const recovered = settlePending(save);
 if (megafonBack || recovered) storeSave(save);
+// Startort des nächsten Streams (game/starts.js): nie der vom letzten Mal; im Titel wartet der Wagen schon dort
+let startId = nextStart(save.start);
 let shopRefund = 0;
 let mapHudT = 0; // die Navi-Zeile des HUD folgt der Fahrt viermal je Sekunde
 let turnIns = null; // ihre letzte Ansage (NavModel.instruction), auch für die Tipps der ersten Minuten
@@ -171,7 +175,8 @@ const curveSigns = new CurveSigns(scene, {
   busy(s) {
     if (gridBusy(s)) return true;
     for (const r of scenery.requests) if (EDGE_REQUESTS.has(r.type) && Math.abs(r.s - s) < 8) return true;
-    return false;
+    // und von den Blitzern auf Landstraßen und in Orten (world/xxl/blitzer.js)
+    return courseTrip ? camerasAlong(courseTrip.cur.sections, s - 8, s + 8).length > 0 : false;
   },
   // jede neue Bestellung kommt hinten an die Liste
   edge: () => (scenery.requests.length ? scenery.requests[scenery.requests.length - 1].id : ''),
@@ -380,8 +385,8 @@ const uiFacade = {
   damage: () => ui.damage(),
   jobs: (j) => ui.jobs(j),
   jobDone: (text) => ui.jobDone(text),
-  photo: (kmh, clock) => {
-    photoRequest = { kmh, clock };
+  photo: (kmh, clock, limit) => {
+    photoRequest = { kmh, clock, limit };
   },
   brunnenTV: (n, name) => ui.brunnenTV(n, name),
 };
@@ -398,6 +403,8 @@ const gameWorld = {
   charge: (v) => xxl.arrival.charge(xxl.trip, v),
   // die Bezahlschranke eines Orts (gags.js, world/xxl/schranke.js): 0 zu … 1 offen
   gate: (sec, k) => xxl.towns.gate(sec, k),
+  // Blitz an den Blitzern im Ort und auf der Landstraße (world/xxl/blitzer.js, gebaut von signs.js)
+  flashCamera: (on) => xxl.signs.flashCameras(on),
 };
 // (touchUI: Auf Handy und Tablet zeigt das Bild die Touch-Knöpfe – von Anfang an, nicht erst nach dem ersten Tipp)
 const game = new Game({ traffic, scenery, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
@@ -586,7 +593,7 @@ const menus = new Menus(app, {
     if (name === 'settings') return { ...settings, speechSupported: speech.supported };
     if (name === 'title') return save;
     if (name === 'pause') return game;
-    if (name === 'karte') return { save, nav: xxlNav, odo: paused ? game.odometer : null };
+    if (name === 'karte') return { save, nav: xxlNav, odo: paused ? game.odometer : null, home: startId };
     // BrunnenTV-Album: Folgen aus dem Spielstand, Bilder unter ihrem eigenen Schlüssel (frisch gelesen)
     if (name === 'album') return { save, pics: loadPictures(), tab: 'folgen' };
     // Guthaben frisch, falls im Shop aus dem Abspann heraus eingekauft wurde
@@ -691,6 +698,7 @@ function toTitle() {
   ui.show(false);
   speech.stopAll();
   game.startTitle();
+  startId = nextStart(save.start);
   xxlStart(true);
   applyCosmetics();
   menus.hide();
@@ -719,6 +727,9 @@ function startRun() {
   // „Neustart“ aus der Pause: Der laufende Stream wird abgerechnet wie beim Beenden (Einnahmen und Schäden zählen)
   if (streamOpen()) settleStream(save, game.interim());
   save.streamNote = null;
+  // der Stream beginnt im Startort, den der Titel zeigt (nach einem Neustart aus der Pause im nächsten)
+  startId = nextStart(save.start);
+  save.start = startId;
   storeSave(save);
   interimT = INTERIM_EVERY;
   menus.hide();
@@ -732,7 +743,7 @@ function startRun() {
   fxState.fade = 1;
   cockpit.shake = 0;
   chassis.reset();
-  // jede Fahrt beginnt mit der Startszene am Supercharger in Erlensee (ohne Ladepark gleich am Steuer)
+  // jede Fahrt beginnt mit der Startszene im Ladepark des Startorts (ohne Ladepark gleich am Steuer)
   Object.assign(chargeRun, { hello: false, said: false, waveT: -1, greetT: Infinity });
   chargeRun.id++;
   state = 'charge';
@@ -766,8 +777,9 @@ function finishRun() {
   const { newRecord } = settleStream(save, { money: o.money, distance: o.distance, peakViewers: o.peakViewers, naviReached: o.stats.naviReached, crashes: o.stats.crashes });
   storeSave(save);
   if (newRecord) adamMood('proud');
-  // zur Route des Streams der gefahrene Weg des Navis (Kartenpunkte, ausgedünnt), für die Karte im Abspann
-  const route = { ...o.route, line: thinLine(xxlNav.trail, 3000) };
+  // zur Route des Streams der gefahrene Weg des Navis (Kartenpunkte, ausgedünnt) und der Startort, für die Karte im
+  // Abspann
+  const route = { ...o.route, line: thinLine(xxlNav.trail, 3000), home: xxl.trip.home };
   lastOver = { ...o, route, newRecord, best: save.best.reise, wallet: save.wallet, photos: ui.photos.slice() };
 }
 
@@ -1313,8 +1325,8 @@ function postPass() {
   renderer.render(postScene, compCam);
 }
 
-/** Blitzerfoto: der Tesla von vorne, Mini Adam hinterm Steuer, im Blitzlicht. */
-function takePhoto({ kmh, clock }) {
+/** Blitzerfoto: der Tesla von vorne, Mini Adam hinterm Steuer, im Blitzlicht (limit: das Tempolimit am Blitzer). */
+function takePhoto({ kmh, clock, limit = 120 }) {
   // immer 4:3 (wie das Polaroid), auch auf dem Handy hochkant: das Bild wird dafür verzerrt gerendert
   // und beim Kopieren ins 4:3-Foto wieder entzerrt
   photoCam.aspect = 4 / 3;
@@ -1336,7 +1348,7 @@ function takePhoto({ kmh, clock }) {
   photoCtx.fillStyle = '#ffd21f';
   photoCtx.font = 'bold 17px "Courier New", monospace';
   photoCtx.textAlign = 'left';
-  photoCtx.fillText(`${kmh} km/h   ${clock}   ERLAUBT 120`, 10, 260);
+  photoCtx.fillText(`${kmh} km/h   ${clock}   ERLAUBT ${limit}`, 10, 260);
   let url = null;
   try {
     url = photoCanvas.toDataURL('image/jpeg', 0.82);
@@ -1464,7 +1476,7 @@ function step(dt, { render = true } = {}) {
 
   switch (state) {
     case 'title': {
-      // (ohne Ladepark – den hat Erlensee immer – steht der Wagen am Start, die Kamera kreist um ihn)
+      // (ohne Ladepark – den hat jeder Startort – steht der Wagen am Start, die Kamera kreist um ihn)
       if (chargeRun.parked) chargeTitle();
       else {
         updateCarMatrix();
@@ -1810,10 +1822,10 @@ let xxlNav = null;
 const xxlScreenNav = { model: null, bidder: '', bid: '', bar: '', wait: '', clockMin: 0, visible: false, visited: null };
 // und von der Straße für die Spuransicht (st.road, src/cockpit/screen.js)
 const xxlScreenRoad = { lanes: null, extraLane: null, autobahn: true };
-/** Neue Fahrt (Erlensee) bzw. Titel: der Titel fährt gleich auf der ersten Autobahn (die Kamera kreist dort). */
+/** Neue Fahrt bzw. Titel im Startort startId (game/starts.js): im Titel wartet der Wagen schon in dessen Ladepark. */
 function xxlStart(title) {
   const p = game.player;
-  xxl.reset();
+  xxl.reset(startNode(startId));
   // am Navi-Ziel bleibt der Wagen am Brunnen stehen, bis das Spiel ihn weiterfahren lässt (BrunnenTV)
   xxl.arrival.hold = !title;
   courseTrip = xxl.trip;
@@ -1822,7 +1834,7 @@ function xxlStart(title) {
   gegen.reset();
   pickups.reset();
   xxlTrafficFrame = null;
-  // die Fahrt beginnt am Supercharger in Erlensee: Dort wartet der Wagen schon im Titel
+  // die Fahrt beginnt im Ladepark des Startorts (die erste am Supercharger in Erlensee): Dort wartet der Wagen schon im Titel
   const atCharger = title && !!chargeOf(xxl.trip.section);
   chargeRun.parked = false;
   stopRun.on = false;

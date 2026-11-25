@@ -5,6 +5,7 @@
 // und hängen ihre Methoden an Game an (attachParts, unten). Der Akku ist eine eigene Klasse (akku.js, this.akku).
 import {
   CHAT, BOTS, BOARD, JOB_TEMPLATES, REPARATUR, CREW, INCOME, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag, PARTYPEOPLE,
+  frontalCost, damageCost, BUSSGELD,
 } from '../data.js';
 import { clamp, rand, chance, pick, shuffle, fmtCent, fmtEuro, fmtClock } from '../util.js';
 import { Player } from './player.js';
@@ -45,7 +46,7 @@ export class Game {
     this.eco = new Economy();
     // die sichtbare Zufriedenheit des Chats (wie zügig es von Ziel zu Ziel geht; satisfaction.js)
     this.zufrieden = new Satisfaction();
-    this.tally = { income: 0, hits: 0, marks: 0 };
+    this.tally = { income: 0, hits: 0, marks: 0, front: 0, extra: 0 };
     this.ecoIn = { kmh: 0, limit: false, stuck: false, leftOpen: false, inLeft: false, funkloch: false };
     this.seenAhead = new WeakSet();
     this.running = false;
@@ -87,11 +88,12 @@ export class Game {
     this.t = 0;
     this.money = 0;
     this.breakdown = {};
-    // Reise: was die laufende Runde eingebracht und gekostet hat (Rempler, Kratzspuren bis dahin; settleRound)
-    this.tally = { income: 0, hits: 0, marks: 0 };
+    // Reise: was die laufende Runde eingebracht und gekostet hat (Rempler, Kratzspuren bis dahin; settleRound); front:
+    // die frontalen unter den Remplern, extra: was sie mehr kosten als ein gewöhnlicher (data.js frontalCost)
+    this.tally = { income: 0, hits: 0, marks: 0, front: 0, extra: 0 };
     // alle abgebuchten Schäden des Streams (Abrechnung im Abspann: „Schäden (N Rempler · M Kratzer)“) und die
     // Rechnung, die gerade unterwegs ist (payBill kommt 3,2 s nach der Ankunft; endet der Stream vorher, bucht end)
-    this.damageBill = { hits: 0, marks: 0, amount: 0 };
+    this.damageBill = { hits: 0, marks: 0, front: 0, amount: 0 };
     this.billDue = null;
     this.viewersUpT = -1;
     this.over = null;
@@ -187,6 +189,9 @@ export class Game {
     this.S = { blitzer: rand(3000, 3800), elefant: rand(ELEFANT.first[0], ELEFANT.first[1]), landmark: rand(1400, 2000), koriander: rand(2200, 2800) };
     this.elefantT = 0;
     this.blitzer = null;
+    // Blitzer im Ort und auf der Landstraße (roadCameras): schon passierte und schon angesagte, wo der Wagen zuletzt
+    // war, vor welchem der Radarwarner gerade warnt
+    this.cam = { seen: new Set(), warned: new Set(), prev: null, alarm: null };
     this.landmark = null;
     this.funkloch = 0;
     this.funklochT = -99; // wann das letzte Funkloch begann (FACTS.netz)
@@ -434,7 +439,7 @@ export class Game {
   /** Warnt der Radarwarner gerade? Von seiner Ansage bis zum Blitzer – und nie, wenn die Fahrt vorbei ist. */
   get radarAlarm() {
     const b = this.blitzer;
-    return this.running && !!b && b.announced && !b.checked;
+    return this.running && ((!!b && b.announced && !b.checked) || !!this.cam.alarm);
   }
 
   /** Einnahme verbuchen. label: Zeile der Abrechnung (siehe INCOME) · silent: ohne Einblendung am Guthaben */
@@ -625,9 +630,9 @@ export class Game {
     }
     if (p.shoulderTime > 4.5) {
       p.shoulderTime = 0;
-      this.fine(10, 'Verwarngeld');
+      this.fine(BUSSGELD.verwarn, 'Verwarngeld');
       this.eco.cheer('fine');
-      this.ui.toast('🚓 Standstreifen: 10\u00a0€ Verwarngeld', 'bad');
+      this.ui.toast(`🚓 Standstreifen: ${BUSSGELD.verwarn}\u00a0€ Verwarngeld`, 'bad');
       this.callPolice('STANDSTREIFEN? NEIN!');
     }
     if (p.shoulderTime <= 0) this.shoulderWarned = false;
@@ -670,18 +675,27 @@ export class Game {
     this.gags.fail('rempler');
     this.stats.crashes++;
     this.tally.hits++;
+    // frontal in den Gegenverkehr: teurer, je schneller beide aufeinander zu fuhren (Rechnung bei der Ankunft)
+    const front = !!(e.car.oncoming && e.headOn);
+    if (front) {
+      this.tally.front++;
+      this.tally.extra += frontalCost(e.closing * 3.6) - REPARATUR.bump;
+    }
     this.stats.cleanDistance = 0;
-    this.eco.cheer('crash');
+    this.eco.cheer('crash', front ? 1.5 : 1);
     this.audio.crash(e.zone, e.power);
     this.fx.shake(1, e.zone);
-    this.onMood('ouch', 1);
+    // frontal erschrickt Mini Adam (der verlegene Gruß danach folgt der Regel in wave.js wie nach jedem Rempler)
+    this.onMood(front ? 'startled' : 'ouch', 1);
     this.cockpit.nomi.setMood('dizzy', 3);
     const left = p.maxHits - p.hits;
     this.ui.damage();
-    // OMI tröstet (nie über Verletzungen): erster Rempler, weitere, der letzte Punkt
-    if (left > 0) this.later(0.6, () => this.say(damageLine(left === 1 ? 'last' : p.hits === 1 ? 'first' : 'more', e.zone), left === 1 ? 'worried' : 'talk', { priority: false }));
+    // OMI tröstet (nie über Verletzungen): erster Rempler, weitere, der letzte Punkt; frontal mit eigenen Sätzen (den
+    // letzten Punkt sagt dann der Rand)
+    const kind = front ? 'frontal' : left === 1 ? 'last' : p.hits === 1 ? 'first' : 'more';
+    if (left > 0) this.later(0.6, () => this.say(damageLine(kind, e.zone), left === 1 || front ? 'worried' : 'talk', { priority: false }));
     if (e.car.behavior === 'polizei') this.chat('Ausgerechnet die Polizei Gifhorn 😱');
-    this.burst(CHAT.crash, 3, 2);
+    this.burst(front ? CHAT.frontal : CHAT.crash, 3, 2);
     if (left <= 0) {
       // (den verlegenen Gruß nach dem letzten Rempler gibt es im Abspann: main.js)
       this.end('werkstatt');
@@ -689,7 +703,8 @@ export class Game {
     }
     // nach dem Schreck ein kleiner, verlegener Gruß in die Kamera (wave.js)
     this.later(WAVE.afterCrash, () => this.waveAt('unfall'));
-    this.ui.toast(left === 1 ? '🧸 Rempler! Nur noch ein Karosserie-Punkt!' : `🧸 Rempler! Noch ${left} Karosserie-Punkte`, 'bad');
+    const what = front ? '🧸 Frontal-Rempler!' : '🧸 Rempler!';
+    this.ui.toast(left === 1 ? `${what} Nur noch ein Karosserie-Punkt!` : `${what} Noch ${left} Karosserie-Punkte`, 'bad');
   }
 
   onNearMiss(e) {
@@ -706,11 +721,13 @@ export class Game {
     const p = this.player;
     // was noch offen ist, geht nicht verloren: die Rechnung, die gerade unterwegs war, und die Schäden der laufenden
     // Runde (auch der letzte Rempler vor der Werkstatt) stehen mit in der Abrechnung
-    if (this.billDue) this.chargeDamage(this.billDue.hits, this.billDue.marks);
+    const B = this.billDue;
+    if (B) this.chargeDamage(B.hits, B.marks, B.extra, B.front);
     this.billDue = null;
-    this.chargeDamage(this.tally.hits, scratchMarks(p.damage) - this.tally.marks);
-    this.tally.hits = 0;
-    this.tally.marks = scratchMarks(p.damage);
+    const T = this.tally;
+    this.chargeDamage(T.hits, scratchMarks(p.damage) - T.marks, T.extra, T.front);
+    T.hits = T.front = T.extra = 0;
+    T.marks = scratchMarks(p.damage);
     const km = p.s / 1000; // der Beruf des Tages richtet sich nach den Metern der Straße (keine Zahl auf dem Schirm)
     this.over = {
       reason,
@@ -746,9 +763,9 @@ export class Game {
    * Runde), Strecke, Zuschauerspitze, erreichte Ziele und Rempler. Ändert nichts am Spiel.
    */
   interim() {
-    const cost = (hits, marks) => Math.max(0, REPARATUR.bump * hits + REPARATUR.mark * marks);
-    let open = cost(this.tally.hits, scratchMarks(this.player.damage) - this.tally.marks);
-    if (this.billDue) open += cost(this.billDue.hits, this.billDue.marks);
+    const cost = (hits, marks, extra) => Math.max(0, damageCost(hits, marks, extra));
+    let open = cost(this.tally.hits, scratchMarks(this.player.damage) - this.tally.marks, this.tally.extra);
+    if (this.billDue) open += cost(this.billDue.hits, this.billDue.marks, this.billDue.extra);
     return {
       money: Math.round((this.money - open) * 100) / 100,
       distance: this.odometer,

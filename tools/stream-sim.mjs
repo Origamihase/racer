@@ -33,13 +33,14 @@ export const DRIVERS = {
 
 /**
  * Baut einen Stream. opts: driver (DRIVERS), seed, upgrades, traffic (Ersatz für den Verkehr), endless (der Stream
- * endet nicht, wenn nach einer Folge niemand bietet: Game.endless).
+ * endet nicht, wenn nach einer Folge niemand bietet: Game.endless), start (Knoten des Startorts, game/starts.js;
+ * Standard Erlensee).
  * Liefert { game, trip, p, log, step(secs), state() }; log.chat/log.say/log.toast: [{ t, text, name|voice, at }],
  * at = state() im Moment der Meldung; Chatzeilen der Running Gags (gags.js) tragen gag: true.
  */
-export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, traffic = null, endless = false } = {}) {
+export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, traffic = null, endless = false, start } = {}) {
   Math.random = mulberry32(seed);
-  const trip = new Trip({ rng: Math.random });
+  const trip = new Trip({ rng: Math.random, start });
   const arrival = new Arrival();
   arrival.hold = true;
   const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 3000);

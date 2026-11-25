@@ -1,13 +1,14 @@
 // Teil der Regie einer Fahrt (Game, game.js): Ereignisse unterwegs: Blitzer, Polizei Gifhorn, Durchsagen, Rahmen, Elsa,
 // Funkloch, Elefantenrennen.
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
-import { CHAT, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, CREW, CREW_LINES, AKTIONEN, MEGAFON_WUENSCHE, SAMMELAKTIONEN, viewerName, fillTemplate } from '../../data.js';
+import { CHAT, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, CREW, CREW_LINES, AKTIONEN, MEGAFON_WUENSCHE, SAMMELAKTIONEN, BUSSGELD, viewerName, fillTemplate } from '../../data.js';
 import { clamp, rand, randInt, chance, pick, fmtEuro, fmtClock } from '../../util.js';
 import { Vector3 } from 'three';
 import { elephantPair } from '../../world/traffic.js';
 import { EYE } from '../../cockpit/cockpit.js';
 import { ELSA_STATUE } from '../../world/scenery.js';
 import { curvePoint } from '../../curve.js';
+import { camerasAlong, triggerKmh } from '../../world/xxl/blitzer.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
 // Rechts oben deckt der Innenspiegel aus Mini Adams Sicht ab etwa 17,8° rechts der Blickrichtung ab
@@ -77,6 +78,71 @@ export const RADAR = { ahead: 180, lead: 0.7 };
 export const ZONE_LEAD = 250;
 
 export class EreignissePart {
+  /**
+   * Am Blitzer vorbei (Autobahn, Ort, Landstraße) mit dem Tempolimit limit. over: zu schnell – Blitz (flash(on)
+   * schaltet die Blitzlinse der Welt), Bußgeld, Foto (mit dem Limit in der Datenzeile), Chat; sonst ein Lob. Ein
+   * Blitzer kündigt sich nie an: das tut nur der Radarwarner.
+   */
+  passCamera(over, flash, limit) {
+    const p = this.player;
+    if (over) {
+      this.fx.flash(1);
+      this.audio.flash();
+      this.onMood('startled', 1);
+      flash(true);
+      this.later(0.15, () => flash(false));
+      this.stats.photos++;
+      this.gags.fail('blitzer');
+      // Tempo und Uhrzeit im Moment des Blitzes festhalten (danach wird meist gebremst)
+      const kmh = Math.round(p.kmh);
+      const clock = fmtClock(this.clock);
+      this.later(0.6, () => {
+        this.fine(BUSSGELD.blitzer, 'Bußgeld');
+        this.ui.photo(kmh, clock, limit);
+      });
+      this.burst(CHAT.blitzer, 3, 2);
+      // ab und zu stichelt danach jemand: ohne Radarwarner mit einem Wink zum Shop, mit ihm erst recht (pick statt
+      // chatLine: mit und ohne Kästchen gleich viele Zufallszahlen – der Stream verläuft sonst genau gleich)
+      if (chance(0.5)) this.later(rand(2.4, 3.6), () => this.chat(pick(this.hasRadar ? CHAT.radarTrotz : CHAT.radarFehlt)));
+      this.cockpit.nomi.setMood('surprised', 2);
+      // teuer für Mini Adam, aber der Chat liebt das Foto
+      this.eco.cheer('blitzerFlash');
+    } else {
+      this.stats.blitzerClean++;
+      this.thrill('blitzerClean', 'vorbildliches Fahren');
+      this.ui.toast('📸 Nicht geblitzt – vorbildlich!', 'good');
+    }
+  }
+
+  /**
+   * Blitzer im Ort und auf der Landstraße (world/xxl/blitzer.js camerasOf, dieselben, die die Welt aufstellt): Wer an
+   * einem vorbeifährt (vorwärts), wird an seinem Tempolimit gemessen. Mit dem Radarwarner piept es RADAR.ahead Meter
+   * vorher, dann sagt OMI es an, und sein Lämpchen blinkt bis zum Blitzer (roadAlarm); ohne ihn kommt nichts vorher.
+   */
+  roadCameras(p) {
+    const trip = this.world.trip();
+    const s = p.s;
+    const prev = this.cam.prev ?? s;
+    this.cam.prev = s;
+    this.cam.alarm = null;
+    if (!trip || !trip.cur || s < prev) return;
+    for (const c of camerasAlong(trip.cur.sections, prev - 1, s + RADAR.ahead)) {
+      if (this.cam.seen.has(c.key)) continue;
+      if (prev < c.s && s >= c.s) {
+        this.cam.seen.add(c.key);
+        this.passCamera(p.kmh > triggerKmh(c.limit), (on) => this.world.flashCamera?.(on), c.limit);
+        continue;
+      }
+      if (!this.hasRadar || c.s <= s) continue;
+      if (!this.cam.warned.has(c.key)) {
+        this.cam.warned.add(c.key);
+        this.audio.radar();
+        this.later(RADAR.lead, () => this.say(BOARD.blitzer, 'wink'));
+      }
+      this.cam.alarm = c;
+    }
+  }
+
   // --- Ereignisse ------------------------------------------------------------------
   updateEvents(dt, camera) {
     const p = this.player;
@@ -251,39 +317,16 @@ export class EreignissePart {
       }
       if (!b.checked && p.s > b.camS) {
         b.checked = true;
-        if (p.kmh > 126) {
-          this.fx.flash(1);
-          this.audio.flash();
-          this.onMood('startled', 1);
-          this.scenery.flashBlitzer(true);
-          this.later(0.15, () => this.scenery.flashBlitzer(false));
-          this.stats.photos++;
-          this.gags.fail('blitzer');
-          // Tempo und Uhrzeit im Moment des Blitzes festhalten (danach wird meist gebremst)
-          const kmh = Math.round(p.kmh);
-          const clock = fmtClock(this.clock);
-          this.later(0.6, () => {
-            this.fine(15, 'Bußgeld');
-            this.ui.photo(kmh, clock);
-          });
-          this.burst(CHAT.blitzer, 3, 2);
-          // ab und zu stichelt danach jemand: ohne Radarwarner mit einem Wink zum Shop, mit ihm erst recht (pick statt
-          // chatLine: mit und ohne Kästchen gleich viele Zufallszahlen – der Stream verläuft sonst genau gleich)
-          if (chance(0.5)) this.later(rand(2.4, 3.6), () => this.chat(pick(this.hasRadar ? CHAT.radarTrotz : CHAT.radarFehlt)));
-          this.cockpit.nomi.setMood('surprised', 2);
-          // teuer für Mini Adam, aber der Chat liebt das Foto
-          this.eco.cheer('blitzerFlash');
-        } else {
-          this.stats.blitzerClean++;
-          this.thrill('blitzerClean', 'vorbildliches Fahren');
-          this.ui.toast('📸 Nicht geblitzt – vorbildlich!', 'good');
-        }
+        this.passCamera(p.kmh > triggerKmh(120), (on) => this.scenery.flashBlitzer(on), 120);
       }
       if (p.s > b.endS + 50) {
         this.blitzer = null;
         this.S.blitzer = p.s + rand(2600, 4200);
       }
     }
+
+    // Blitzer im Ort und auf der Landstraße (world/xxl/blitzer.js): fest an ihrem Ort, gemessen wie der an der Autobahn
+    this.roadCameras(p);
 
     // Elefantenrennen: selten und nur auf der Autobahn mit Platz voraus (keine Ausfahrt in Sicht, die der Wagen nehmen
     // könnte). Angesagt wird es nur, wenn zwei Lkw wirklich nebeneinander vor dem Wagen fahren – ob bestellt oder von

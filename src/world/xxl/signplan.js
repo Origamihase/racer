@@ -17,13 +17,15 @@
 //             side 0): Orte geradeaus mit den Kartenkilometern, die das Navi für sie zeigt (siehe tableAt)
 //   auffahrt  Wegweiser zur Autobahn am Beginn der Auffahrt: Straße und Richtung der Autobahn dahinter
 //   ort       gelbe Ortstafel am Anfang einer Ortsdurchfahrt · ortsende: am Ende (Name genau wie places[].name)
-//   ladesaeule  kleine Tafel „Ladesäule 100 m“ am Rand, POST_SIGN_D vor der Ladesäule des Orts (noch vor der Ortstafel)
+//   ladesaeule  kleine Tafel „Ladesäule 100 m“ am Rand, POST_SIGN_D vor der Ladesäule des Orts (noch vor der Ortstafel;
+//               steht die Säule hinter dem Brunnenplatz, „Ladesäule 50 m“ im Ort, map/parks.js postAt)
 //   ladestele   hohe blaue Stele mit Stecker vorn im Streifen kurz vor dem Park der Ladesäule (charge.js CHARGE.stele)
 //   ziel      Navi-Ziel: der Brunnenplatz des Zielorts am Zielpunkt spotS (der Wagen hält 2 m dahinter)
 import { J, R as rampR } from '../../game/trip.js';
 import { nodes, places, deTo, deEdge, deRoad, deTowards, straight, edgeLen, routeFrom, stateOfNode, excursion, COST } from '../../map/graph.js';
 import { parkBoard, POST } from '../../map/parks.js';
 import { steleOf } from './charge.js';
+import { camerasOf } from './blitzer.js';
 
 /** Vorwegweiser: so viele Meter vor der Gabelung (wie guidance().dist). */
 export const BOARD_D = [1000, 500];
@@ -53,7 +55,7 @@ export const TOWN_SIGN_X = 12.35;
  * Ladesäule des Orts (map/parks.js POST, Mitte des kleinen Parks POST.u hinter dem Ortsanfang): Ihre Tafel steht so
  * viele Meter davor am Rand – sonst sähe man die Säule erst auf den letzten 30 m.
  */
-export const POST_SIGN_D = 100;
+export const POST_SIGN_D = POST.sign;
 /** Wegweiser zur Autobahn: so weit hinter dem Anfang der Auffahrt, quer hinter der Planke der Rampe. */
 export const AUF_SIGN_IN = 14;
 export const AUF_SIGN_X = 13.2;
@@ -258,11 +260,17 @@ function sectionSigns0(trip, secs, sec, out, opts) {
     const k = 'o' + sec.place + '@' + sec.node;
     if (!sec.start) push('ort', sec.s0 + TOWN_SIGN_IN, TOWN_SIGN_X, 1, [name], { keyPart: k, place: sec.place });
     // die Ladesäule am Ortsanfang (Start: der Supercharger, an dem die Fahrt beginnt, braucht keine Tafel)
-    if (!sec.start) push('ladesaeule', sec.s0 + POST.u - POST_SIGN_D, TOWN_SIGN_X, 1, ['Ladesäule', POST_SIGN_D + ' m'], { keyPart: k, place: sec.place, dist: POST_SIGN_D });
+    if (!sec.start) {
+      // vor der Säule des Orts – vor dem Brunnenplatz noch vor der Ortstafel, hinter ihm 50 m davor (parks.js postAt)
+      const pa = sec.postAt || { u: POST.u, sign: POST_SIGN_D };
+      push('ladesaeule', sec.s0 + pa.u - pa.sign, TOWN_SIGN_X, 1, ['Ladesäule', pa.sign + ' m'], { keyPart: k, place: sec.place, dist: pa.sign });
+    }
     const st = steleOf(sec);
     if (st) push('ladestele', sec.s0 + st.u, st.x, 1, ['Ladesäule', 'Einfahrt'], { keyPart: k, place: sec.place });
     push('ortsende', sec.s1 - TOWN_SIGN_IN, TOWN_SIGN_X, 1, [name], { keyPart: k, place: sec.place });
   }
+  // Blitzer im Ort und auf der Landstraße (blitzer.js): fest an seinem Ort, ohne Schild davor
+  for (const c of camerasOf(sec)) push('blitzer', c.s, c.x, 1, [], { y: c.y, limit: c.limit });
   return out;
 }
 

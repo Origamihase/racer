@@ -5,9 +5,10 @@
 Ein liebevolles, leicht verrücktes 3D-Fahrspiel für den Browser und ein Fan-Spiel rund um
 [SkylineTV LIVE](https://skylinetv.live/wiki/index.php?title=Hauptseite).
 Mini Adam (Plüsch, schwarze Cap, LIVE-Shirt, Mikrofon) sitzt am Steuer eines schwarzen
-**Tesla Model 3 Long Range AWD mit 75-kWh-Akku**. Vom Supercharger in Erlensee aus fährst du über die
-echte Karte – Autobahnen, Ausfahrten, Landstraßen und Ortsdurchfahrten –, und der Chat steuert das Navi fern:
-Jedes Ziel ist der Hauptbrunnen eines echten Orts.
+**Tesla Model 3 Long Range AWD mit 75-kWh-Akku**. Vom Supercharger in Erlensee aus (jeder weitere Stream beginnt
+in einem anderen Ort, etwa Gelnhausen, Bad Vilbel oder Idstein) fährst du über die echte Karte – Autobahnen,
+Ausfahrten, Landstraßen und Ortsdurchfahrten –, und der Chat steuert das Navi fern: Jedes Ziel ist der Hauptbrunnen
+eines echten Orts.
 
 ## Spielen
 
@@ -28,7 +29,7 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
   der Chat jubelt, OMI lobt den Brunnen, und die Folge kommt ins Album. Jede Taste überspringt sie (den Ruf gibt es
   dann beim Losfahren), und die nächste Navi-Runde geht los.
 - **Losfahren am Supercharger:** Der Stecker springt aus der Buchse, die Klappe schließt, der Tesla rollt aus dem
-  Ladepark in Erlensee, und die Kamera geht ins Cockpit. In den ersten Minuten erklären kurze Tipps am Bildrand,
+  Ladepark des Startorts (der Titel nennt ihn), und die Kamera geht ins Cockpit. In den ersten Minuten erklären kurze Tipps am Bildrand,
   was gerade dran ist (Ausfahrt nehmen, Spurpfeile im Navi, BrunnenTV mit <kbd>B</kbd>, Laden mit <kbd>L</kbd>,
   Kamera, Megafon) – jeder einmal je Spieler,
   <kbd>Enter</kbd> oder ✕ schaltet sie ab.
@@ -57,7 +58,8 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
   nächsten Stopp ein, das Navi führt hinein und danach weiter zum Ziel; nur an der geplanten Säule beginnt das Laden
   von selbst. Bei 10 und bei 5 % warnt der Mittelbildschirm mit einer roten Karte; ist der Akku
   leer, rollt der Wagen aus, und die Fahrt ist zu Ende. Rempler kosten Karosserie-Punkte, die Werkstatt rechnet sie
-  am Brunnen ab; zu viel Blechschaden beendet die Fahrt ebenfalls.
+  am Brunnen ab (210 € je Rempler, 35 € je Kratzer; frontal in den Gegenverkehr je nach Annäherung bis über 1.000 € und
+  ab 90 km/h zwei Punkte); zu viel Blechschaden beendet die Fahrt ebenfalls.
 - **Live-Chat und Live-Bereich:** Spenden mit Alter-Skala, Sprachdurchsagen, gekaufte Rahmen
   (Rosen, Sonnenblumen, Pappkartons …), Funklöcher, Polizei Gifhorn, Blitzer mit Polaroid,
   Brunnen und die blaue Plüsch-Elsa mit Krönchen und Schärpe am Straßenrand, Bananensaft und Koriander – und ab und zu ein lächerliches

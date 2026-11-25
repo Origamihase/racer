@@ -14,7 +14,7 @@
 // am ersten dahinter (dort sind die Kanten länger als das Fenster). Benannt ist er nach dem nächsten Ort der Karte
 // (Luftlinie), mit der Kürzung der Ortsschilder.
 import { nodes, edges, roads, places, deKind, deRev, straight, distKm, bearing, nodeTitle, stateOfNode, zubLen, routeGoal, COST, PACE } from './graph.js';
-import { signName } from '../world/kit/layout.js';
+import { signName, hashKey } from '../world/kit/layout.js';
 
 /** Maße in Kartenkilometern (Abstände) und Metern Straße (Abschnitte, wie gefahren). */
 export const PARK = {
@@ -31,13 +31,37 @@ export const PARK = {
 /** Der Halt liegt so weit hinter dem Haltepunkt spotS (wie am Brunnen: das Ereignis kommt, ehe der Wagen steht). */
 export const PARK_STOP_AFTER = 2;
 /**
- * Ladesäule in jedem Ort auf dem Weg (Ortsdurchfahrten, nicht der Start): derselbe kleine Park wie in Erlensee am
- * Ortsanfang rechts, Mitte u Meter hinter der Ortstafel (xxl/charge.js CHARGE.pass), Halt in der Spur wie im Park
- * (halt: xxl/charge.js dockHalt(u)); der Brunnen liegt weiter hinten im Ort (graph.js spotIn: 0,6 der Länge). near:
- * so weit voraus (m) muss die Säule mindestens liegen, damit die Fahrt sie anbietet (trip.js restsAhead) – der Wagen
- * hält dann noch vor ihr, auch mit 100 km/h von der Landstraße.
+ * Ladesäule in jedem Ort auf dem Weg (Ortsdurchfahrten, nicht der Start): derselbe kleine Park wie in Erlensee rechts
+ * an der Häuserflucht, vor dem Brunnenplatz am Ortsanfang, Mitte u Meter hinter der Ortstafel (xxl/charge.js
+ * CHARGE.pass), Halt in der Spur wie im Park (halt: xxl/charge.js dockHalt(u)); der Brunnen liegt weiter hinten im Ort
+ * (graph.js spotIn: 0,6 der Länge). In manchen Orten steht er hinter dem Brunnenplatz (postAt). near: so weit voraus
+ * (m) muss die Säule mindestens liegen, damit die Fahrt sie anbietet (trip.js restsAhead) – der Wagen hält dann noch
+ * vor ihr, auch mit 100 km/h von der Landstraße. sign: so weit vor der Säule steht ihre Tafel „Ladesäule 100 m“
+ * (xxl/signplan.js, noch vor der Ortstafel).
  */
-export const POST = { u: 70, halt: 81.02, near: 200 };
+export const POST = { u: 70, halt: 81.02, near: 200, sign: 100 };
+/**
+ * Hinter dem Brunnenplatz: Die Tafel steht sign Meter vor der Säule und wenigstens square Meter hinter dem Haltepunkt
+ * am Brunnen (der Platz mit seiner geweiteten Straße reicht höchstens etwa 40 m weiter), die Mitte des Parks end Meter
+ * vor dem Ortsende, aber nie näher als endMin.
+ */
+export const POST_AFTER = { square: 45, sign: 50, end: 70, endMin: 45 };
+
+/**
+ * Wo die Ladesäule eines Orts steht (der Besitzer am 24.11.2026: „Gib auch die Ladesäule manchmal vor und manchmal
+ * hinter dem Brunnen“): je Ort fest (aus seinem Namen gezogen) vor dem Brunnenplatz oder dahinter – dort nur, wo der
+ * Ort lang genug ist, dass Tafel, Stele und Park ganz hinter dem Platz stehen (in Dörfern immer davor). place: Index
+ * in places, len: Länge der Ortsdurchfahrt, spot: Haltepunkt am Brunnen (Meter ab Ortsbeginn). Ergebnis: { u (Mitte des
+ * Parks), halt (Wagenmitte beim Halt), sign (Abstand der Tafel vor u), after }.
+ */
+export function postAt(place, len, spot) {
+  if (places[place] && spot !== undefined && hashKey('Ladesäule ' + places[place].key) % 2 === 1) {
+    const A = POST_AFTER;
+    const u = Math.min(len - A.endMin, Math.max(spot + A.square + A.sign, len - A.end));
+    if (u - A.sign >= spot + A.square) return { u, halt: u + POST.halt - POST.u, sign: A.sign, after: true };
+  }
+  return { u: POST.u, halt: POST.halt, sign: POST.sign, after: false };
+}
 /** So nennen Navi, OMI und Akku-Karte die Ladesäule des Orts place (Index in places). */
 export function postName(place) {
   return `Ladesäule in ${places[place].name}`;

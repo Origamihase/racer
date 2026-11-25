@@ -308,8 +308,8 @@ console.log('Werkstatt-Rechnung (Reise):');
   // ein seitlicher Rempler, wie ihn der Verkehr meldet (zählt, wenn die Schonfrist vorbei ist)
   const bump = (game) => game.onCrash({ car: { s: game.player.s, speed: 20, len: 4.6, behavior: 'normal' }, lonOverlap: 3, latOverlap: 0.3, dx: 1, ds: 0 });
   // Runde 1: zwei Rempler und vier Kratzer an derselben Seite (gezeichnet sind drei, bezahlt werden vier); Runde 2:
-  // heil; Runde 3: ein Rempler, aber die Kasse ist fast leer (40,50 €: abgebucht werden trotzdem 150 €, die Kasse steht
-  // bei −109,50 €); danach ein Rempler in der offenen Runde – den bucht das Ende des Streams
+  // heil; Runde 3: ein Rempler, aber die Kasse ist fast leer (40,50 €: abgebucht wird trotzdem ein ganzer Rempler,
+  // die Kasse steht dann im Minus); danach ein Rempler in der offenen Runde – den bucht das Ende des Streams
   const plan = { done: new Set(), hits: () => 0 };
   const hook = {
     frame(game) {
@@ -333,13 +333,16 @@ console.log('Werkstatt-Rechnung (Reise):');
   ok(run.bills.length >= 3, `nur ${run.bills.length} Rechnungen in 60 Minuten`);
   if (b3) {
     ok(b1.n === 1 && b1.hits === 2 && b1.marks === 4 && b1.amount === 2 * R.bump + 4 * R.mark && b1.paid === b1.amount && g.player.damage.scratches.left === 3, `Runde 1: ${JSON.stringify(b1)}`);
-    ok(/^🧾 Runde 1\s· Einnahmen \+[\d.]+\s€ Schäden −400\s€ \(2 Rempler · 4 Kratzer\)$/.test(b1.toast.text) && b1.toast.key === 'rechnung', `Runde 1 am Rand: ${b1.toast.text}`);
+    const r1 = 2 * R.bump + 4 * R.mark;
+    ok(new RegExp(`^🧾 Runde 1\\s· Einnahmen \\+[\\d.]+\\s€ Schäden −${r1}\\s€ \\(2 Rempler · 4 Kratzer\\)$`).test(b1.toast.text) && b1.toast.key === 'rechnung', `Runde 1 am Rand: ${b1.toast.text}`);
     // die Schäden in ihrer eigenen Zeile (rot, display: block in style.css)
     const dmg = b1.toast.parts[b1.toast.parts.length - 1];
     ok(dmg[1] === 'minus schaden' && /\.toast > \.schaden \{ display: block; \}/.test(readFileSync(new URL('../docs/style.css', import.meta.url), 'utf8')), `Runde 1: Schäden nicht in eigener Zeile (${JSON.stringify(dmg)})`);
-    ok(b1.james && /Werkstatt-Rechnung für Runde 1: 400\s€ für 2 Rempler und 4 Kratzer – bezahlt aus der Stream-Kasse\./.test(b1.james.text), `Runde 1, James: ${b1.james && b1.james.text}`);
+    ok(b1.james && new RegExp(`Werkstatt-Rechnung für Runde 1: ${r1}\\s€ für 2 Rempler und 4 Kratzer – bezahlt aus der Stream-Kasse\\.`).test(b1.james.text), `Runde 1, James: ${b1.james && b1.james.text}`);
     ok(b2.n === 2 && b2.amount === 0 && b2.paid === 0 && /keine Schäden ✨$/.test(b2.toast.text) && b2.toast.kind === 'good', `Runde 2 ohne Schäden: ${b2.toast.text}`);
-    ok(b3.n === 3 && b3.amount === R.bump && b3.paid === R.bump && Math.abs(b3.left + 109.5) < 1e-9 && /Schäden −150\s€ \(1 Rempler\)$/.test(b3.toast.text) && /150\s€ für 1 Rempler – die Stream-Kasse steht jetzt bei −109,50\s€\./.test(b3.james.text), `Runde 3, Kasse fast leer: ${b3.toast.text} / ${b3.james && b3.james.text}`);
+    const left3 = 40.5 - R.bump;
+    const cent = (v) => v.toFixed(2).replace('.', ',');
+    ok(b3.n === 3 && b3.amount === R.bump && b3.paid === R.bump && Math.abs(b3.left - left3) < 1e-9 && new RegExp(`Schäden −${R.bump}\\s€ \\(1 Rempler\\)$`).test(b3.toast.text) && new RegExp(`${R.bump}\\s€ für 1 Rempler – die Stream-Kasse steht jetzt bei −${cent(-left3)}\\s€\\.`).test(b3.james.text), `Runde 3, Kasse fast leer: ${b3.toast.text} / ${b3.james && b3.james.text}`);
   }
   const paid = run.bills.reduce((a, b) => a + b.paid, 0);
   ok(Math.abs((g.breakdown.Schäden || 0) + paid) < 1e-6 && g.damageBill.amount === paid, `Abrechnung: Schäden ${g.breakdown.Schäden} €, bezahlt ${paid} €`);

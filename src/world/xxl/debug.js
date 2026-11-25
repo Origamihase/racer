@@ -5,6 +5,7 @@ import { places, nodes } from '../../map/graph.js';
 import { W } from '../../curve.js';
 import { J } from '../../game/trip.js';
 import { autoTarget } from './plan.js';
+import { camerasAlong } from './blitzer.js';
 
 const FRAME_COLORS = [0xff6b6b, 0x4dabf7, 0x51cf66, 0xfcc419, 0xcc5de8, 0xff922b, 0x22b8cf];
 
@@ -200,6 +201,16 @@ export function installDebug(M, world, getPlayer, hooks = {}) {
     signs(ahead = Infinity) {
       const s = world.s;
       return world.signsLog().filter((e) => e.s - s <= ahead).map((e) => ({ ...e, s: Math.round(e.s * 10) / 10, d: Math.round(e.s - s) }));
+    },
+    /**
+     * Blitzer im Ort und auf der Landstraße auf dem Weg voraus (blitzer.js, dieselben, die das Spiel prüft): {art, s, d
+     * (s − Wagen), x, limit, ort}. ahead: so weit voraus (der Weg reicht nur so weit, wie die Fahrt ihn schon kennt).
+     */
+    cameras(ahead = 5000) {
+      const T = world.trip;
+      return camerasAlong(T.cur.sections, T.s, T.s + ahead).map((c) => ({
+        art: c.kind, s: Math.round(c.s * 10) / 10, d: Math.round(c.s - T.s), x: c.x, limit: c.limit, ort: places[c.place] ? places[c.place].name : null,
+      }));
     },
     /**
      * Brunnenplatz des Navi-Ziels bzw. des eben erreichten Orts als einfache Daten (world.square ohne Abschnitt):

@@ -10,7 +10,7 @@ import { Trip, J } from '../src/game/trip.js';
 import { findPlace } from '../src/map/graph.js';
 import { Arrival, limitsFor, AUTO, POST_ZONE } from '../src/world/xxl/plan.js';
 import { Game } from '../src/game/game.js';
-import { PARK, PARKS, POST, parkAt, postName } from '../src/map/parks.js';
+import { PARK, PARKS, POST, postAt, parkAt, postName } from '../src/map/parks.js';
 import { dockHalt } from '../src/world/xxl/charge.js';
 import { mulberry32 } from './stream-sim.mjs';
 import { TOUCH_BUTTONS } from '../src/ui/touch.js';
@@ -97,8 +97,14 @@ function run({ target, park = -1, planPost = false, at, crawl = 0, key, secs = 9
     ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
     const u = isSpot(sec) ? p.s - sec.s0 : -1;
     const v = sec.kind === 'stadt' || sec.kind === 'park' ? 50 / 3.6 : sec.kind === 'ab' ? 130 / 3.6 : 90 / 3.6;
-    const here = !done && u >= at && u < 300;
-    const creeping = !done && crawl && u >= at - 40 && u < 300;
+    // die Säule des Zielorts steht vor oder hinter dem Brunnenplatz (map/parks.js postAt): at zählt wie vor der Säule
+    // bei POST.u
+    const pa = park < 0 && isSpot(sec) && sec.postAt ? sec.postAt : POST;
+    if (park < 0 && isSpot(sec)) out.pa = pa;
+    const from0 = park >= 0 ? at : pa.u - (POST.u - at);
+    const to0 = park >= 0 ? 300 : from0 + 240;
+    const here = !done && u >= from0 && u < to0;
+    const creeping = !done && crawl && u >= from0 - 40 && u < to0;
     if (here && !out.reached) out.reached = { u: +u.toFixed(2), t: game.t };
     const slow = here && !crawl;
     if (slow && p.speed < 0.15 && !out.stood) out.stood = { u: +u.toFixed(2), t: game.t };
@@ -134,8 +140,11 @@ function run({ target, park = -1, planPost = false, at, crawl = 0, key, secs = 9
     }
     if (rest && rest.type === 'rest') {
       out.rest = { place: rest.place };
-      break;
+      // steht die Säule hinter dem Brunnen, geht es nach der Ankunft weiter zu ihr
+      if (done || !(out.pa && out.pa.after)) break;
+      arrival.release();
     }
+    if (done && out.rest) break;
     if (done && park >= 0 && trip.section.kind === 'ab') break;
   }
   out.town = town;
@@ -146,17 +155,19 @@ function run({ target, park = -1, planPost = false, at, crawl = 0, key, secs = 9
 }
 
 const L_AFTER = 5;
-// a) ohne Plan neben der Bucht der Säule in Hanau stehen: Hinweis am Rand, nach 5 s noch kein Stopp, dann L
+// a) ohne Plan neben der Bucht der Säule in Hanau stehen (dort hinter dem Brunnenplatz: erst die Ankunft am Brunnen,
+// dann weiter zur Säule): Hinweis am Rand, nach 5 s noch kein Stopp, dann L
 const a = run({ target: 'Hanau', at: 62, key: L_AFTER });
 {
   const hint = a.toasts.filter((x) => x.key === 'ladenHier');
-  ok(a.stood && a.stood.u >= POST.u - POST_ZONE.back && a.stood.u <= POST.halt + POST_ZONE.ahead, `a: stand bei ${a.stood && a.stood.u} m, nicht in der Zone der Säule`);
+  const apa = a.pa || POST;
+  ok(a.stood && a.stood.u >= apa.u - POST_ZONE.back && a.stood.u <= apa.halt + POST_ZONE.ahead, `a: stand bei ${a.stood && a.stood.u} m, nicht in der Zone der Säule bei ${apa.u}`);
   ok(hint.length >= 1 && /Taste L/.test(hint[0].text) && hint[0].t - a.stood.t < 0.2, `a: Hinweis am Rand ${JSON.stringify(hint[0])} (Halt bei ${a.stood && a.stood.t.toFixed(2)} s)`);
   ok(a.pressed && a.pressed.offer && a.pressed.button, `a: beim Druck auf L kein Angebot ${JSON.stringify(a.pressed)}`);
   ok(a.charge && near(a.charge.t, a.pressed.t, DT + 1e-6) && a.charge.post === a.town && a.charge.park === -1 && a.charge.name === postName(a.town), `a: Ladestopp ${JSON.stringify(a.charge)} nach L bei ${a.pressed && a.pressed.t.toFixed(2)} s`);
   ok(a.charge && a.charge.t - a.stood.t >= L_AFTER - DT, `a: ohne Plan begann der Stopp von selbst nach ${a.charge && (a.charge.t - a.stood.t).toFixed(2)} s`);
   ok(a.dropped.some((d) => d.key === 'ladenHier' && near(d.t, a.charge.t, 0.05)), 'a: Hinweis bleibt nach dem Start stehen');
-  ok(a.plan && a.plan.creep && a.held, `a: Szene ohne Vorrollen oder ungehalten (u ${a.charge && a.charge.u}, Halt ${dockHalt(POST.u).toFixed(2)})`);
+  ok(a.plan && a.plan.creep && a.held, `a: Szene ohne Vorrollen oder ungehalten (u ${a.charge && a.charge.u}, Halt ${dockHalt(apa.u).toFixed(2)})`);
   ok(a.battery === 100 && a.charges === 1 && a.rest && a.rest.place === a.town, `a: danach Akku ${a.battery}, ${a.charges} Stopps, Brunnen ${JSON.stringify(a.rest)}`);
 }
 // b) kriechend (5 km/h) neben der Säule L: Der Wagen hält sanft (weniger als 1,5 m), dann beginnt der Stopp
@@ -167,7 +178,7 @@ const b = run({ target: 'Hanau', at: 60, crawl: 1.4, key: 0.5 });
   ok(b.battery === 100 && b.rest && b.rest.place === b.town, `b: danach Akku ${b.battery}, Brunnen ${JSON.stringify(b.rest)}`);
 }
 // c) ohne L: stehen bleiben neben der Säule startet nichts (nur der Hinweis kommt alle WAY.remind Sekunden wieder)
-const c = run({ target: 'Hanau', at: 66, secs: 150 });
+const c = run({ target: 'Hanau', at: 66, secs: 240 });
 {
   const hint = c.toasts.filter((x) => x.key === 'ladenHier');
   const still = c.offer.length * DT;
@@ -271,26 +282,28 @@ console.log('2. Eine Ladesäule in jedem Ort, von weitem zu sehen:');
   for (const p of places) {
     const len = townLen(p.pop);
     const sec = { kind: 'stadt', place: p.i, node: 1, frame: 1, s0: 1000, s1: 1000 + len, spotS: 1000 + Math.round(len * 0.6) };
+    // die Säule vor oder hinter dem Brunnenplatz wie auf der Fahrt (trip.js, map/parks.js postAt)
+    const pa = (sec.postAt = postAt(p.i, len, Math.round(len * 0.6)));
     const where = p.name;
     const plan = townPlan(city, sec);
     const c = chargeOf(sec);
     const st = steleOf(sec);
     const pc = plan.charge;
-    ok(c && pc && pc.u === POST.u && c.u === POST.u && pc.x === CHARGE.front, `2: ${where}: kein Park mit Säule bei POST.u (${JSON.stringify(pc && { u: pc.u, x: pc.x })})`);
+    ok(c && pc && pc.u === pa.u && c.u === pa.u && pc.x === CHARGE.front, `2: ${where}: kein Park mit Säule bei u ${pa.u} (${JSON.stringify(pc && { u: pc.u, x: pc.x })})`);
     if (!c || !pc || !st) {
       ok(false, `2: ${where}: keine Stele`);
       continue;
     }
-    ok(JSON.stringify(pc.stele) === JSON.stringify(st) && st.u === POST.u - ST.d, `2: ${where}: Stele im Plan ${JSON.stringify(pc.stele)} statt ${JSON.stringify(st)}`);
+    ok(JSON.stringify(pc.stele) === JSON.stringify(st) && st.u === pa.u - ST.d, `2: ${where}: Stele im Plan ${JSON.stringify(pc.stele)} statt ${JSON.stringify(st)}`);
     // auf dem Streifen, vor dem Park und vor der abgesenkten Einfahrt
-    ok(st.x - st.w / 2 >= S.curbR + S.kerb && st.x + st.w / 2 <= S.curbR + S.strip && st.u + st.w / 2 < POST.u - CHARGE.half - CHARGE.keep, `2: ${where}: Stele nicht im Streifen vor dem Park`);
+    ok(st.x - st.w / 2 >= S.curbR + S.kerb && st.x + st.w / 2 <= S.curbR + S.strip && st.u + st.w / 2 < pa.u - CHARGE.half - CHARGE.keep, `2: ${where}: Stele nicht im Streifen vor dem Park`);
     ok(sec.s0 + st.u + 1 < c.drive.s0 - c.drive.ramp, `2: ${where}: Stele auf der Einfahrt`);
     // Tafeln: „Ladesäule 100 m“ vor dem Ort, die Stele selbst
     const signs = [];
     sectionSigns(null, [sec], sec, signs, { tables: false });
     const board = signs.find((e) => e.kind === 'ladesaeule');
     const stele = signs.find((e) => e.kind === 'ladestele');
-    ok(board && near(board.s, sec.s0 + POST.u - POST_SIGN_D, 1e-6) && board.texts[0] === 'Ladesäule', `2: ${where}: keine Tafel „Ladesäule ${POST_SIGN_D} m“`);
+    ok(board && near(board.s, sec.s0 + pa.u - pa.sign, 1e-6) && board.texts[0] === 'Ladesäule' && board.texts[1] === pa.sign + ' m' && (pa.after ? pa.sign < POST_SIGN_D : pa.sign === POST_SIGN_D), `2: ${where}: keine Tafel „Ladesäule ${pa.sign} m“`);
     ok(stele && near(stele.s, sec.s0 + st.u, 1e-6) && stele.x === st.x && stele.texts[0] === 'Ladesäule', `2: ${where}: keine Stele unter den Schildern`);
     // als Navi-Ziel (mit dem Zielbrunnen am Ende der Fahrt) dieselben Tafeln, dazu das Ziel
     const goal = [];
@@ -320,7 +333,7 @@ console.log('2. Eine Ladesäule in jedem Ort, von weitem zu sehen:');
     list.push(`${p.name}\t${size}\t${free}`);
   }
   // am Start in Erlensee: der Supercharger, keine Stele und keine Tafel davor
-  const erl = places.find((p) => p.key === CHARGE.place);
+  const erl = places.find((p) => p.key === 'Erlensee');
   const first = { kind: 'stadt', place: erl.i, node: 1, frame: 1, s0: -300, s1: 200, start: true, spotS: 0 };
   const fs = [];
   sectionSigns(null, [first], first, fs, { tables: false });
