@@ -271,11 +271,9 @@ let credits = '';
     e.n += n;
     m.set(name, e);
   };
-  let biggest = 0;
   const donate = g.donate;
   g.donate = function (name, amount, ...rest) {
     add(want.spenden, name, amount);
-    biggest = Math.max(biggest, amount);
     return donate.call(this, name, amount, ...rest);
   };
   const earn = g.earn;
@@ -324,7 +322,7 @@ let credits = '';
     ok(grp.names.every((x, i) => i === 0 || id === 'vips' || id === 'abos' || m.get(grp.names[i - 1].name).sum >= m.get(x.name).sum), `Danke an, ${id}: nicht nach Summe geordnet`);
   }
   ok(byId.raids?.names.every((x) => x.name === 'König Knolli'), 'Raids: nur König Knolli raidet');
-  ok(F.top && F.top.amount === biggest && want.spenden.has(F.top.name), `Größte Spende: ${F.top && F.top.amount} statt ${biggest}`);
+  ok(!('top' in F), 'keine eigene Zeile „Größte Spende“ mehr (Besitzer, 25.11.)');
   const sum = (m) => [...m.values()].reduce((a, e) => a + e.sum, 0);
   ok(byId.spenden.sub.endsWith(fmtBetrag(Math.round(sum(want.spenden) * 100) / 100)), `Spenden: Summe ${byId.spenden.sub}`);
   // der Abspann zeigt jede Gruppe ganz (kein „und N weitere“), danach als Letztes die Zeile des Gedenkens
@@ -371,6 +369,16 @@ let credits = '';
   globalThis.document = keep;
   // die Karte öffnet ohne Schwung, Flug oder Doppeltipp vom letzten Mal
   ok(/mount\(s, d\) \{[^}]*this\.vel = \[0, 0\];\s*this\.fly = null;\s*this\.zoom = null;\s*this\.lastTap = null;/.test(src('src/ui/mapscreen.js')), 'Karte: mount setzt Schwung und Flug nicht zurück');
+}
+
+// Rundenbilanz (Besitzer, 25.11.): die Einnahmen nur einmal (groß oben), eine Kachel für BrunnenTV-Folgen statt zwei
+{
+  const m = src('src/ui/menus.js');
+  const route = m.slice(m.indexOf('  routeBlock(card, o) {'), m.indexOf('const draw = () =>', m.indexOf('  routeBlock(card, o) {')));
+  ok(!/'eingenommen'/.test(route), 'Rundenbilanz: keine zweite Kachel „eingenommen“');
+  ok(!/Brunnen besucht/.test(route), 'Rundenbilanz: keine Kachel „Brunnen besucht“ neben den BrunnenTV-Folgen');
+  ok((route.match(/item\(/g) || []).length === 3, 'Rundenbilanz: drei Kacheln (gefahren, Folgen, Ladestopps)');
+  ok(/over-money[\s\S]{0,120}signedCent\(o\.money\)/.test(m), 'Rundenbilanz: die Einnahmen stehen groß oben');
 }
 
 console.log(fails ? `menues-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `menues-test: alles grün (${checks} Prüfungen: Steuerung aus ${rows.length} Zeilen, jede Belegung genannt; Feedback als Link zu GitHub; ${credits})`);

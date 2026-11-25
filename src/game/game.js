@@ -145,7 +145,7 @@ export class Game {
     this.duel = null;
     // für den Abspann: die größte Spende, wer wie viel gespendet und geboten hat (Summe und Anzahl je Name), wer wie
     // viele Abos verschenkt hat, wer neu VIP geworden ist und wer mit wie vielen Leuten geraidet hat
-    this.fans = { top: null, gifts: {}, vips: [], donors: {}, bids: {}, raids: {} };
+    this.fans = { gifts: {}, vips: [], donors: {}, bids: {}, raids: {} };
     this.stats = {
       leftLaneTime: 0, naviReached: 0, nearMisses: 0, maxSpeedKmh: 0, bananas: 0, cleanDistance: 0, naviChanges: 0,
       maxViewers: 0, distance: 0, blitzerClean: 0, rainDistance: 0, crashes: 0, koriander: 0, fines: 0,
@@ -480,7 +480,6 @@ export class Game {
     this.bot('james', line || `${name} hat ${fmtCent(amount)} ${what ? 'für »' + what + '« ' : ''}gespendet!`);
     this.audio.pling();
     this.stats.donations++;
-    if (!(this.fans.top?.amount >= amount)) this.fans.top = { name, amount };
     this.thank('donors', name, amount);
     // die Alter-Skala: Ab 100 € ruft der ganze Chat, darunter kommentiert er nur ab und zu (sonst wird es ein Sprechchor –
     // bei bester Laune kommen Mittelalter im Minutentakt)
@@ -802,7 +801,7 @@ export class Game {
     const F = this.fans;
     const gifters = Object.entries(F.gifts).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
     const list = (m) => Object.entries(m).sort((a, b) => b[1].sum - a[1].sum).map(([name, e]) => ({ name, sum: e.sum, n: e.n }));
-    return { top: F.top, donors: list(F.donors), bidders: list(F.bids), gifters, vips: [...new Set(F.vips)], raids: list(F.raids), verein: this.gags.report().verein };
+    return { donors: list(F.donors), bidders: list(F.bids), gifters, vips: [...new Set(F.vips)], raids: list(F.raids), verein: this.gags.report().verein };
   }
 
   /**
