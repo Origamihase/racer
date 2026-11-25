@@ -4,6 +4,7 @@
 import { CHAT, REISE_AKKU, fillTemplate, ladeKosten } from '../data.js';
 import { clamp, pick, fmtCent, fmtKwh } from '../util.js';
 import { stopPlan, STOP } from '../world/xxl/charge.js';
+import { ladePreis } from '../map/ladepreis.js';
 import { WAY } from './parts/ziel.js';
 
 /** Entfernung für OMIs Ansage: „39 Kilometern“, unter 10 km mit einer Nachkommastelle („4,5 Kilometern“). */
@@ -277,12 +278,14 @@ export class Akku {
    * einstecken, im Zeitraffer laden, Popcorn und Bananensaft, ausstecken, ausparken. Das Spiel führt die Zeit, den Akku,
    * Chat, OMI und Spenden; main.js zeigt dazu Wagen, Kabel, Kamera (onCharge) und lässt den Wagen am Ende in die Spur
    * rollen. Ohne Szene (Node-Tests) läuft derselbe Fahrplan, der Wagen wartet bis zum Ausparken an seinem Halt.
+   * price: der Preis dieses Ladeplatzes (map/ladepreis.js, derselbe, den seine Säulen zeigen) für die Rechnung.
    */
   start(e) {
     if (this.charging) return;
     const p = this.g.player;
     const plan = stopPlan(e.sec, p.s, p.x);
-    this.charging = { t0: this.g.t, from: p.battery, park: e.park, post: e.post ?? -1, name: e.name, sec: e.sec, plan, said: 0 };
+    const post = e.post ?? -1;
+    this.charging = { t0: this.g.t, from: p.battery, park: e.park, post, name: e.name, sec: e.sec, plan, said: 0, price: ladePreis({ park: e.park, post }) };
     this.g.routeMark('laden', e.post >= 0 ? { post: e.post } : { park: e.park });
     this.g.onCharge(this.charging);
   }
@@ -349,13 +352,13 @@ export class Akku {
     const c = this.charging;
     if (!c || c.billed) return;
     c.billed = true;
-    this.g.payCharge(this.g.player.battery - c.from, { name: c.name, quiet: true });
+    this.g.payCharge(this.g.player.battery - c.from, { name: c.name, quiet: true, price: c.price });
   }
 
   /** Was der laufende Ladestopp bis jetzt an Strom gekostet hat (Euro; Game.interim), sonst 0. */
   openCharge() {
     const c = this.charging;
-    return c && !c.billed ? ladeKosten(this.g.player.battery - c.from, this.g.player.capacity).euro : 0;
+    return c && !c.billed ? ladeKosten(this.g.player.battery - c.from, this.g.player.capacity, c.price.euro).euro : 0;
   }
 
   finishCharge() {
@@ -370,7 +373,7 @@ export class Akku {
     this.warned = 0;
     // voll geladen, und der Strom kommt auf die Rechnung (Besitzer, 25.11.2026) – ohne Blick auf den Kontostand; am Rand
     // ein Hinweis für beides
-    const bill = c.billed ? { kwh: 0, euro: 0 } : this.g.payCharge(100 - c.from, { name: c.name });
+    const bill = c.billed ? { kwh: 0, euro: 0 } : this.g.payCharge(100 - c.from, { name: c.name, price: c.price });
     if (bill.euro > 0) {
       const parts = [['🔋 Akku voll', 'plus'], ['\u00a0· '], [`${fmtKwh(bill.kwh)} Ladestrom −${fmtCent(bill.euro)}`, 'minus']];
       this.g.ui.toast(parts.map((x) => x[0]).join(''), 'good', 'ladestrom', parts);

@@ -1,6 +1,6 @@
 // Alle Texte, Insider und Spieldaten an einem Ort.
 // Quellen der Insider: SkylineTV LIVE Wiki (siehe INSIDER.md im Repo).
-import { pick, randInt, chance, fmtEuro, fmtCent, fmtKwh } from './util.js';
+import { pick, randInt, chance, fmtEuro, fmtCent, fmtKwh, fmtNum } from './util.js';
 
 // Der Name des Spiels ist „Mini Adam – Navi ferngesteuert BrunnenTV XXL“ (GAME_NAME: Über das Spiel, Seitentitel und
 // README sagen es so). Auf dem Titelbildschirm steht er unter dem großen „Mini Adam“: GAME_SUBTITLE, dahinter GAME_XXL
@@ -121,19 +121,26 @@ export const FRONTAL = { base: 1.5, perKmh: 1 / 50 };
 export const frontalCost = (kmh) => Math.round((REPARATUR.bump * (FRONTAL.base + Math.max(0, kmh) * FRONTAL.perKmh)) / 5) * 5;
 /**
  * Ladestrom (Besitzer, 25.11.2026: „Das Laden des Autos soll auch auf die Rechnung. (Egal wie der Kontostand ist, laden
- * muss trotzdem gehen, um weiterspielen zu können)“): euroPerKwh je geladene Kilowattstunde – 0,59 €, ein üblicher
- * Ad-hoc-Preis an deutschen Schnellladern. Geladen sind die Prozent, die der Akku gewinnt, von seiner nutzbaren
- * Kapazität (Player.capacity: 75 kWh, je Stufe Akku-Puffer 4 mehr – dasselbe Maß, nach dem er sich leert). Gebucht wird
- * am Ende des Ladens aus der Stream-Kasse, auch ins Minus (Game.payCharge); vorher fragt niemand nach dem Kontostand.
+ * muss trotzdem gehen, um weiterspielen zu können)“): Geladen sind die Prozent, die der Akku gewinnt, von seiner
+ * nutzbaren Kapazität (Player.capacity: 75 kWh, je Stufe Akku-Puffer 4 mehr – dasselbe Maß, nach dem er sich leert),
+ * zum Preis des Ladeplatzes (map/ladepreis.js: in Deutschland 0,46 bis 0,59 €/kWh, im Ausland mehr). Gebucht wird am
+ * Ende des Ladens aus der Stream-Kasse, auch ins Minus (Game.payCharge); vorher fragt niemand nach dem Kontostand.
+ * Ladestrom für pct Prozent eines Akkus mit capacity kWh zu euroPerKwh: { kwh, euro } (Euro auf den Cent).
  */
-export const LADEN = { euroPerKwh: 0.59 };
-/** Ladestrom für pct Prozent eines Akkus mit capacity kWh: { kwh, euro } (Euro auf den Cent). */
-export function ladeKosten(pct, capacity) {
+export function ladeKosten(pct, capacity, euroPerKwh) {
   const kwh = (Math.max(0, pct) / 100) * capacity;
-  return { kwh, euro: Math.round(kwh * LADEN.euroPerKwh * 100) / 100 };
+  return { kwh, euro: Math.round(kwh * euroPerKwh * 100) / 100 };
 }
-/** „2 Ladestopps · 142,5 kWh“: was der Ladestrom einer Abrechnung zählt (Abspann). */
-export const ladeCount = (n, kwh) => `${n === 1 ? '1 Ladestopp' : n + ' Ladestopps'} · ${fmtKwh(kwh)}`;
+/**
+ * „1 Ladestopp · 71,3 kWh à 0,52 €/kWh“: was der Ladestrom einer Abrechnung zählt (Abspann); preis: ladePreisText.
+ */
+export const ladeCount = (n, kwh, preis = '') => `${n === 1 ? '1 Ladestopp' : n + ' Ladestopps'} · ${fmtKwh(kwh)}${preis ? ' ' + preis : ''}`;
+/**
+ * Der Preis zu einer Ladestrom-Rechnung bill ({ kwh, amount, preis }, Game.ladeBill): „à 0,52 €/kWh“ (im Ausland der
+ * Preis der Säule in ihrer Währung, „à 0,72 CHF/kWh“; der Betrag daneben steht in Euro); lud der Stream zu
+ * verschiedenen Preisen (preis leer), der Schnitt in Euro: „· Ø 0,55 €/kWh“.
+ */
+export const ladePreisText = (bill) => (!bill || !(bill.kwh > 0) ? '' : bill.preis ? 'à ' + bill.preis : `· Ø ${fmtNum(bill.amount / bill.kwh, 2)}\u00a0€/kWh`);
 /** Werkstatt-Rechnung: hits Rempler (frontale mitgezählt), marks Kratzer, extra = was frontale mehr kosten. */
 export const damageCost = (hits, marks, extra = 0) => REPARATUR.bump * hits + REPARATUR.mark * marks + extra;
 /**

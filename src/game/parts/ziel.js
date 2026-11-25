@@ -1,7 +1,7 @@
 // Teil der Regie einer Fahrt (Game, game.js): Navi-Ziel: Ausfahrten, die Auktion ums Ziel, Ankunft, Halt am Brunnen,
 // Rechnung und BrunnenTV.
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
-import { CHAT, BOARD, VOICES, REISE_AKKU, LADEN, damageCost, damageCount, ladeKosten, viewerName, fillTemplate, BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, SCHOENNBRUN } from '../../data.js';
+import { CHAT, BOARD, VOICES, REISE_AKKU, damageCost, damageCount, ladeKosten, viewerName, fillTemplate, BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, SCHOENNBRUN } from '../../data.js';
 import { rand, chance, pick, fmtCent, fmtEuro, fmtNum, fmtKwh, fmtKonto } from '../../util.js';
 import { damageLine } from '../damage.js';
 import { BONTANA } from '../economy.js';
@@ -9,6 +9,7 @@ import { ZUFRIEDEN } from '../satisfaction.js';
 import { TV } from '../../world/xxl/brunnentv.js';
 import { addEpisode } from '../album.js';
 import { places } from '../../map/graph.js';
+import { fmtWaehrung } from '../../map/ladepreis.js';
 import { goalName } from '../../world/kit/layout.js';
 import { estimateSpeech } from '../../speech.js';
 import { TROEDEL } from './stream.js';
@@ -486,17 +487,20 @@ export class ZielPart {
 
   /**
    * Ladestrom abbuchen (Akku am Ende des Ladens; endet der Stream mitten darin, end mit den Prozent, die es bis dahin
-   * waren): pct Prozent des Akkus zu LADEN.euroPerKwh, immer ganz und ohne Blick auf den Kontostand – auch tief im Minus
-   * (Besitzer, 25.11.2026: „Egal wie der Kontostand ist, laden muss trotzdem gehen“). Abrechnung „Ladestrom“, die Runde
-   * führt ihn in ihrer Zeile am Ziel, am Guthaben steht der Abzug; James bucht ihn im Chat (name: der Ladeplatz), und ab
-   * und zu witzelt jemand darüber. quiet: ohne Chat (am Ende des Streams). Ergebnis { kwh, euro }.
+   * waren): pct Prozent des Akkus zum Preis price des Ladeplatzes (map/ladepreis.js ladePreis: in Euro gebucht, im
+   * Ausland umgerechnet), immer ganz und ohne Blick auf den Kontostand – auch tief im Minus (Besitzer, 25.11.2026:
+   * „Egal wie der Kontostand ist, laden muss trotzdem gehen“). Abrechnung „Ladestrom“, die Runde führt ihn in ihrer
+   * Zeile am Ziel, am Guthaben steht der Abzug; James bucht ihn im Chat (name: der Ladeplatz), und ab und zu witzelt
+   * jemand darüber. quiet: ohne Chat (am Ende des Streams). Ergebnis { kwh, euro }.
    */
-  payCharge(pct, { name = '', quiet = false } = {}) {
-    const { kwh, euro } = ladeKosten(pct, this.player.capacity);
+  payCharge(pct, { name = '', quiet = false, price }) {
+    const { kwh, euro } = ladeKosten(pct, this.player.capacity, price.euro);
     if (euro <= 0) return { kwh: 0, euro: 0 };
     this.money -= euro;
     this.breakdown.Ladestrom = (this.breakdown.Ladestrom || 0) - euro;
     const L = this.ladeBill;
+    // (der Abspann nennt den Preis, solange alle Stopps des Streams denselben hatten, sonst den Schnitt)
+    L.preis = L.n === 0 || L.preis === price.label ? price.label : '';
     L.n++;
     L.kwh += kwh;
     L.amount = Math.round((L.amount + euro) * 100) / 100;
@@ -506,7 +510,9 @@ export class ZielPart {
     if (quiet) return { kwh, euro };
     const left = this.money < 0 ? ` – die Stream-Kasse steht jetzt bei ${fmtKonto(this.money)}.` : ' – auf die Stream-Rechnung.';
     const where = name ? ` (${name})` : '';
-    this.later(0.8, () => this.bot('james', `Ladestrom${where}: ${fmtKwh(kwh)} × ${fmtCent(LADEN.euroPerKwh)} = ${fmtCent(euro)}${left}`));
+    // im Ausland in der Währung der Säule und umgerechnet: „71,3 kWh × 0,72 CHF/kWh = 51,30 CHF ≈ 55,16 €“
+    const sum = price.cur === 'EUR' ? fmtCent(euro) : `${fmtWaehrung(kwh * price.local, price.cur)} ≈ ${fmtCent(euro)}`;
+    this.later(0.8, () => this.bot('james', `Ladestrom${where}: ${fmtKwh(kwh)} × ${price.label} = ${sum}${left}`));
     if (chance(0.35)) this.later(2.2, () => this.chat(this.chatLine(CHAT.ladestrom)));
     return { kwh, euro };
   }

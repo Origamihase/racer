@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, ladeCount, MEGAFON_ERSTATTET, STREAM_GEBUCHT, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice, shopLocked, canBuy, SHOP_LOCK } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, ladeCount, ladePreisText, MEGAFON_ERSTATTET, STREAM_GEBUCHT, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice, shopLocked, canBuy, SHOP_LOCK } from '../data.js';
 import { fmtNum, fmtCent, fmtEuro, fmtSpan, fmtKonto, kontoMinus } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -457,9 +457,10 @@ export class Menus {
     el('h3', '', left, 'Abrechnung');
     for (const [k, v] of breakdownRows(o.breakdown)) {
       const row = el('div', 'bd' + (v < 0 ? ' minus' : ''), left);
-      // die Schäden mit ihrer Zahl: „Schäden (2 Rempler · 1 Kratzer)“, der Ladestrom: „Ladestrom (2 Ladestopps · 142,5 kWh)“
+      // die Schäden mit ihrer Zahl: „Schäden (2 Rempler · 1 Kratzer)“, der Ladestrom mit dem Preis der Säulen:
+      // „Ladestrom (1 Ladestopp · 71,3 kWh à 0,52 €/kWh)“
       const count = k === 'Schäden' && o.damage ? damageCount(o.damage.hits, o.damage.marks, o.damage.front || 0)
-        : k === 'Ladestrom' && o.laden && o.laden.n ? ladeCount(o.laden.n, o.laden.kwh) : '';
+        : k === 'Ladestrom' && o.laden && o.laden.n ? ladeCount(o.laden.n, o.laden.kwh, ladePreisText(o.laden)) : '';
       el('span', '', row, count ? `${k} (${count})` : k);
       el('span', '', row, (v < 0 ? '−' : '+') + fmtCent(Math.abs(v)));
     }

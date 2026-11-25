@@ -99,8 +99,9 @@ export class Game {
     // Rechnung, die gerade unterwegs ist (payBill kommt 3,2 s nach der Ankunft; endet der Stream vorher, bucht end)
     this.damageBill = { hits: 0, marks: 0, front: 0, amount: 0 };
     this.billDue = null;
-    // der Ladestrom des Streams (Abrechnung im Abspann: „Ladestrom (N Ladestopps · X kWh)“, payCharge)
-    this.ladeBill = { n: 0, kwh: 0, amount: 0 };
+    // der Ladestrom des Streams (Abrechnung im Abspann: „Ladestrom (N Ladestopps · X kWh à 0,52 €/kWh)“, payCharge);
+    // preis: der Preis der Säulen, solange alle Stopps denselben hatten, sonst leer
+    this.ladeBill = { n: 0, kwh: 0, amount: 0, preis: '' };
     this.viewersUpT = -1;
     this.over = null;
     this.running = true;
