@@ -52,6 +52,8 @@ export const fmtCent = (v) => nf(2, 2).format(v) + '\u00a0€';
  */
 export const kontoMinus = (v) => v <= -0.005;
 export const fmtKonto = (v) => (kontoMinus(v) ? '−' : '') + fmtCent(Math.abs(v) < 0.005 ? 0 : Math.abs(v));
+/** Geladene Energie: „71,3 kWh“ (eine Nachkommastelle, geschütztes Leerzeichen). */
+export const fmtKwh = (v) => nf(1, 1).format(v) + '\u00a0kWh';
 
 // Tacho: ganze km/h – die eine Rundung für den Mittelbildschirm und das HUD (das zeigt die Zahl des Bildschirms)
 export const tachoKmh = (kmh) => Math.round(kmh);

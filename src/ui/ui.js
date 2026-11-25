@@ -884,7 +884,8 @@ export class UI {
     this.recordEl.textContent = odo > best && best > 0 ? '🏆 neuer Rekord!' : best > 0 ? 'Rekord ' + strecke(best) : '';
     this.recordEl.classList.toggle('record', odo > best && best > 0);
     if (tacho === null) this.showKmh(tachoKmh(p.kmh));
-    // (Schäden und Bußgelder können die Stream-Kasse ins Minus bringen: dann mit Minuszeichen in der Farbe der Abzüge)
+    // (Schäden, Bußgelder und Ladestrom können die Stream-Kasse ins Minus bringen: dann mit Minuszeichen in der Farbe der
+    // Abzüge)
     const money = fmtKonto(g.money);
     if (money !== this.moneyRow.textContent) {
       this.moneyRow.textContent = money;

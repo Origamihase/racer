@@ -56,7 +56,8 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
   oder kriecht der Wagen daneben, bietet der Bildrand das Laden an, und <kbd>L</kbd> (am Gamepad LB, auf dem Handy
   „Jetzt laden“) lädt gleich dort. Anderswo plant dieselbe Taste (der Knopf heißt dann „Ladestopp einplanen“) den
   nächsten Stopp ein, das Navi führt hinein und danach weiter zum Ziel; nur an der geplanten Säule beginnt das Laden
-  von selbst. Bei 10 und bei 5 % warnt der Mittelbildschirm mit einer roten Karte; ist der Akku
+  von selbst. Der Strom kommt auf die Rechnung (0,59 € je geladene kWh, Zeile „Ladestrom“), geladen wird aber immer,
+  auch wenn das Guthaben im Minus steht. Bei 10 und bei 5 % warnt der Mittelbildschirm mit einer roten Karte; ist der Akku
   leer, rollt der Wagen aus, und die Fahrt ist zu Ende. Rempler kosten Karosserie-Punkte, die Werkstatt rechnet sie
   am Brunnen ab (210 € je Rempler, 35 € je Kratzer; frontal in den Gegenverkehr je nach Annäherung bis über 1.000 € und
   ab 90 km/h zwei Punkte); zu viel Blechschaden beendet die Fahrt ebenfalls.

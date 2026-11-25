@@ -111,7 +111,7 @@ const cleanNote = (raw) => (raw && typeof raw === 'object' && Number.isFinite(ra
 
 /**
  * Einen Stream ins Guthaben, die Rekorde und die Statistik buchen (am Ende jedes Streams, und für einen abgebrochenen
- * beim nächsten Start). Ein Stream im Minus (Schäden, Bußgelder) geht ganz vom Guthaben ab, auch unter null
+ * beim nächsten Start). Ein Stream im Minus (Schäden, Bußgelder, Ladestrom) geht ganz vom Guthaben ab, auch unter null
  * (Besitzer, 25.11.2026: „Ich möchte, dass Schäden, Bußgelder etc das Guthaben ins Minus ziehen kann.“): Die Schulden
  * bleiben stehen, bis spätere Streams sie abtragen. Der offene Zwischenstand ist danach erledigt. Ergebnis: { newRecord,
  * best } (Rekord der Strecke in Reisemetern).

@@ -659,7 +659,7 @@ body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top)
 .over-dist .num, .over-money .num { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .over-money .num { color: #6dff9c; }
 .over-money.minus .num { color: var(--bad); }
-/* das Guthaben im Minus (Schäden und Bußgelder dürfen es unter null ziehen): Titel, Shop, Abspann, HUD */
+/* das Guthaben im Minus (Schäden, Bußgelder und Ladestrom dürfen es unter null ziehen): Titel, Shop, Abspann, HUD */
 .over-money .konto.minus, .title-stats .minus { color: #ff8a80; }
 .over-dist .lbl, .over-money .lbl { color: var(--sub); font-weight: 600; }
 .over-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }

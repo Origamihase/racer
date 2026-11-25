@@ -1,8 +1,8 @@
 // Akku und Ladestopps einer Reise: Verbrauch messen, OMIs Warnungen, Reichweite, den Stopp planen, laden, die Akku-Karte
 // des Mittelbildschirms und der Zuckerschub danach. Eine eigene Klasse mit eigenem Zustand; vom Spiel (Game, game.js)
 // liest sie nur, was AKKU_HOST nennt (die Prüfstände halten die Liste ehrlich: stopp-test).
-import { CHAT, REISE_AKKU, fillTemplate } from '../data.js';
-import { clamp, pick } from '../util.js';
+import { CHAT, REISE_AKKU, fillTemplate, ladeKosten } from '../data.js';
+import { clamp, pick, fmtCent, fmtKwh } from '../util.js';
 import { stopPlan, STOP } from '../world/xxl/charge.js';
 import { WAY } from './parts/ziel.js';
 
@@ -37,12 +37,13 @@ const NOWHERE = { m: Infinity, realM: 0 };
 
 /**
  * Was der Akku vom Spiel liest oder aufruft (und sonst nichts): der Wagen, die Welt mit der Reise, die Spielzeit, ob und
- * welche Szene läuft, OMI, Chat, Rand oben, Töne, Ökonomie, Statistik, die Hooks der Ladeszene und der Route, und ob der
- * Wagen auf der Autobahn ist (Zuckerschub). Geschrieben wird nur in player (Akku, empty, sugar) und stats.
+ * welche Szene läuft, OMI, Chat, Rand oben, Töne, Ökonomie, Statistik, die Hooks der Ladeszene und der Route, ob der
+ * Wagen auf der Autobahn ist (Zuckerschub) und die Kasse für den Ladestrom (payCharge). Geschrieben wird nur in player
+ * (Akku, empty, sugar) und stats. Nach dem Kontostand fragt der Akku nie: Laden geht immer, auch tief im Minus.
  */
 export const AKKU_HOST = [
   'player', 'world', 't', 'running', 'over', 'tv', 'halt', 'offAutobahn', 'up', 'touchUI', 'ui', 'audio', 'eco', 'stats',
-  'say', 'sayHeld', 'chat', 'burst', 'thrill', 'routeMark', 'onCharge',
+  'say', 'sayHeld', 'chat', 'burst', 'thrill', 'routeMark', 'onCharge', 'payCharge',
 ];
 
 export class Akku {
@@ -340,6 +341,23 @@ export class Akku {
     if (this.charging) this.charging.skip = true;
   }
 
+  /**
+   * Der Stream endet mitten im Ladestopp (Game.end): Der Strom, der bis dahin geflossen ist, kommt auf die Rechnung –
+   * einmal, ohne Chat. Der Stopp selbst bleibt, wie er ist (die Szene läuft in den Abspann).
+   */
+  cutShort() {
+    const c = this.charging;
+    if (!c || c.billed) return;
+    c.billed = true;
+    this.g.payCharge(this.g.player.battery - c.from, { name: c.name, quiet: true });
+  }
+
+  /** Was der laufende Ladestopp bis jetzt an Strom gekostet hat (Euro; Game.interim), sonst 0. */
+  openCharge() {
+    const c = this.charging;
+    return c && !c.billed ? ladeKosten(this.g.player.battery - c.from, this.g.player.capacity).euro : 0;
+  }
+
   finishCharge() {
     const c = this.charging;
     const p = this.g.player;
@@ -350,7 +368,13 @@ export class Akku {
     this.g.stats.parkCharges++;
     this.meter = meterAkku();
     this.warned = 0;
-    this.g.ui.toast('🔋 Akku voll', 'good');
+    // voll geladen, und der Strom kommt auf die Rechnung (Besitzer, 25.11.2026) – ohne Blick auf den Kontostand; am Rand
+    // ein Hinweis für beides
+    const bill = c.billed ? { kwh: 0, euro: 0 } : this.g.payCharge(100 - c.from, { name: c.name });
+    if (bill.euro > 0) {
+      const parts = [['🔋 Akku voll', 'plus'], ['\u00a0· '], [`${fmtKwh(bill.kwh)} Ladestrom −${fmtCent(bill.euro)}`, 'minus']];
+      this.g.ui.toast(parts.map((x) => x[0]).join(''), 'good', 'ladestrom', parts);
+    } else this.g.ui.toast('🔋 Akku voll', 'good');
     this.g.sayHeld();
     // der Zuckerschub des Bananensafts, sobald der Wagen wieder auf der Autobahn ist (im Park und auf dem Zubringer
     // gilt ohnehin ein Tempolimit)

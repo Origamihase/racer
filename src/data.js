@@ -1,6 +1,6 @@
 // Alle Texte, Insider und Spieldaten an einem Ort.
 // Quellen der Insider: SkylineTV LIVE Wiki (siehe INSIDER.md im Repo).
-import { pick, randInt, chance, fmtEuro, fmtCent } from './util.js';
+import { pick, randInt, chance, fmtEuro, fmtCent, fmtKwh } from './util.js';
 
 // Der Name des Spiels ist „Mini Adam – Navi ferngesteuert BrunnenTV XXL“ (GAME_NAME: Über das Spiel, Seitentitel und
 // README sagen es so). Auf dem Titelbildschirm steht er unter dem großen „Mini Adam“: GAME_SUBTITLE, dahinter GAME_XXL
@@ -92,7 +92,7 @@ export const INCOME = {
   Challenges: 'Challenge',
 };
 // Abzüge stehen in der Abrechnung ganz unten
-export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Mitleidskäufe'];
+export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Ladestrom', 'Mitleidskäufe'];
 
 /**
  * Reise: An jedem erreichten Ziel kommt die Werkstatt-Rechnung der Runde (game.js settleRound). bump: Euro je
@@ -119,6 +119,21 @@ export const BUSSGELD = { blitzer: 100, verwarn: 50 };
  */
 export const FRONTAL = { base: 1.5, perKmh: 1 / 50 };
 export const frontalCost = (kmh) => Math.round((REPARATUR.bump * (FRONTAL.base + Math.max(0, kmh) * FRONTAL.perKmh)) / 5) * 5;
+/**
+ * Ladestrom (Besitzer, 25.11.2026: „Das Laden des Autos soll auch auf die Rechnung. (Egal wie der Kontostand ist, laden
+ * muss trotzdem gehen, um weiterspielen zu können)“): euroPerKwh je geladene Kilowattstunde – 0,59 €, ein üblicher
+ * Ad-hoc-Preis an deutschen Schnellladern. Geladen sind die Prozent, die der Akku gewinnt, von seiner nutzbaren
+ * Kapazität (Player.capacity: 75 kWh, je Stufe Akku-Puffer 4 mehr – dasselbe Maß, nach dem er sich leert). Gebucht wird
+ * am Ende des Ladens aus der Stream-Kasse, auch ins Minus (Game.payCharge); vorher fragt niemand nach dem Kontostand.
+ */
+export const LADEN = { euroPerKwh: 0.59 };
+/** Ladestrom für pct Prozent eines Akkus mit capacity kWh: { kwh, euro } (Euro auf den Cent). */
+export function ladeKosten(pct, capacity) {
+  const kwh = (Math.max(0, pct) / 100) * capacity;
+  return { kwh, euro: Math.round(kwh * LADEN.euroPerKwh * 100) / 100 };
+}
+/** „2 Ladestopps · 142,5 kWh“: was der Ladestrom einer Abrechnung zählt (Abspann). */
+export const ladeCount = (n, kwh) => `${n === 1 ? '1 Ladestopp' : n + ' Ladestopps'} · ${fmtKwh(kwh)}`;
 /** Werkstatt-Rechnung: hits Rempler (frontale mitgezählt), marks Kratzer, extra = was frontale mehr kosten. */
 export const damageCost = (hits, marks, extra = 0) => REPARATUR.bump * hits + REPARATUR.mark * marks + extra;
 /**
@@ -589,6 +604,10 @@ export const CHAT = {
   // Reise: Ladestopp im Ladepark (Akku.tickCharge), die Popcorn-Maschine an der Säule und die Saftpause
   popcorn: ['Popcorn-Stream! 🍿', '🍿🍿🍿', 'Haushaltsgeräte an der E-Säule testen 😂', 'Die Säule kann auch Popcorn!', 'Popcorn mit Ökostrom 🔌', 'Salzig oder süß? 🍿'],
   saftpause: ['Bananensaft-Pause! 🍌', 'Prost, Mini Adam! 🍌', 'Zucker tanken 🍌🔋', 'Erst Saft, dann Strom 😄'],
+  // … und die Rechnung für den Ladestrom danach (Game.payCharge, nicht nach jedem Laden)
+  ladestrom: ['Strom ist teurer als Popcorn 😅', 'Wer zahlt den Strom? Wir! 😂', 'Die Säule schickt die Rechnung 🧾⚡',
+    'Hauptsache voll 🔋', 'Kilowattstunden-König 👑⚡', 'James rechnet schon 🤓', 'Teuer, aber der Akku ist voll 😌',
+    'Ladestrom ✔️ Popcorn ✔️ weiter!', 'Strompreis-Schock 😱', 'Volle Ladung für den Stream ⚡'],
   shoulder: ['Standstreifen?! 😱', 'Polizei Gifhorn!!', 'Das ist keine Fahrspur!'],
   fiveJobs: ['Job erledigt ✅', 'Weiter so!', 'Noch ein Job weniger', 'Versprochen ist versprochen 🤝',
     'Jetzt wird gezahlt 😂', 'Challenge geschafft!'],

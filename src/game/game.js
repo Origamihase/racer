@@ -47,7 +47,7 @@ export class Game {
     this.eco = new Economy();
     // die sichtbare Zufriedenheit des Chats (wie zügig es von Ziel zu Ziel geht; satisfaction.js)
     this.zufrieden = new Satisfaction();
-    this.tally = { income: 0, hits: 0, marks: 0, front: 0, extra: 0 };
+    this.tally = { income: 0, hits: 0, marks: 0, front: 0, extra: 0, laden: 0, kwh: 0 };
     this.ecoIn = { kmh: 0, limit: false, stuck: false, leftOpen: false, inLeft: false, funkloch: false };
     this.seenAhead = new WeakSet();
     this.running = false;
@@ -92,12 +92,15 @@ export class Game {
     this.money = 0;
     this.breakdown = {};
     // Reise: was die laufende Runde eingebracht und gekostet hat (Rempler, Kratzspuren bis dahin; settleRound); front:
-    // die frontalen unter den Remplern, extra: was sie mehr kosten als ein gewöhnlicher (data.js frontalCost)
-    this.tally = { income: 0, hits: 0, marks: 0, front: 0, extra: 0 };
+    // die frontalen unter den Remplern, extra: was sie mehr kosten als ein gewöhnlicher (data.js frontalCost); laden und
+    // kwh: der Ladestrom der Runde (payCharge)
+    this.tally = { income: 0, hits: 0, marks: 0, front: 0, extra: 0, laden: 0, kwh: 0 };
     // alle abgebuchten Schäden des Streams (Abrechnung im Abspann: „Schäden (N Rempler · M Kratzer)“) und die
     // Rechnung, die gerade unterwegs ist (payBill kommt 3,2 s nach der Ankunft; endet der Stream vorher, bucht end)
     this.damageBill = { hits: 0, marks: 0, front: 0, amount: 0 };
     this.billDue = null;
+    // der Ladestrom des Streams (Abrechnung im Abspann: „Ladestrom (N Ladestopps · X kWh)“, payCharge)
+    this.ladeBill = { n: 0, kwh: 0, amount: 0 };
     this.viewersUpT = -1;
     this.over = null;
     this.running = true;
@@ -738,6 +741,8 @@ export class Game {
     this.chargeDamage(T.hits, scratchMarks(p.damage) - T.marks, T.extra, T.front);
     T.hits = T.front = T.extra = 0;
     T.marks = scratchMarks(p.damage);
+    // mitten im Laden beendet: der Strom, der bis dahin geflossen ist
+    this.akku.cutShort();
     const km = p.s / 1000; // der Beruf des Tages richtet sich nach den Metern der Straße (keine Zahl auf dem Schirm)
     this.over = {
       reason,
@@ -751,6 +756,7 @@ export class Game {
       money: Math.round(this.money * 100) / 100,
       breakdown: { ...this.breakdown },
       damage: { ...this.damageBill },
+      laden: { ...this.ladeBill },
       jobs: this.jobs.map((j) => ({ text: j.text, done: j.done, pledge: j.pledge, pledger: j.pledger })),
       fans: this.supporters(),
       stats: { ...this.stats },
@@ -776,6 +782,8 @@ export class Game {
     const cost = (hits, marks, extra) => Math.max(0, damageCost(hits, marks, extra));
     let open = cost(this.tally.hits, scratchMarks(this.player.damage) - this.tally.marks, this.tally.extra);
     if (this.billDue) open += cost(this.billDue.hits, this.billDue.marks, this.billDue.extra);
+    // der Strom eines laufenden Ladestopps (end bucht ihn so, Akku.cutShort)
+    open += this.akku.openCharge();
     return {
       money: Math.round((this.money - open) * 100) / 100,
       distance: this.odometer,

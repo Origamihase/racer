@@ -6,6 +6,10 @@
 //    HUD zeigen ein Minus mit Minuszeichen in der Farbe der Abzüge, nie als 0.
 // 2. Im Minus ist der Shop zu: der Grund steht oben, jeder Kauf-Knopf ist gesperrt, der Kauf in main.js wird abgelehnt –
 //    und ist das Guthaben wieder im Plus, geht es wieder; nichts anderes gibt Guthaben aus.
+// 3. Laden kostet Geld und geht immer: Bei 5 % Akku, −500 € Guthaben und −300 € in der Kasse beginnt der Ladestopp an
+//    der eingeplanten Säule, endet voll und bucht die geladenen kWh × 0,59 € (Rand, James, Runde, Abrechnung, Abspann);
+//    übersprungen ebenso; endet der Stream mitten im Laden, zählt der Strom bis dahin – einmal. Nichts im Laden fragt
+//    nach Geld.
 // node tools/minus-test.mjs
 import { readFileSync } from 'node:fs';
 
@@ -65,8 +69,8 @@ globalThis.ResizeObserver = class {
 };
 
 const { DEFAULT_SAVE, loadSave, storeSave, settleStream, settlePending } = await import('../src/save.js');
-const { BUSSGELD, REPARATUR, STREAM_GEBUCHT, SHOP, UPGRADE_LIMITS, shopPrice, shopLocked, canBuy, SHOP_LOCK } = await import('../src/data.js');
-const { fmtKonto, kontoMinus } = await import('../src/util.js');
+const { BUSSGELD, REPARATUR, STREAM_GEBUCHT, SHOP, UPGRADE_LIMITS, shopPrice, shopLocked, canBuy, SHOP_LOCK, LADEN, ladeKosten, ladeCount, FINES, INCOME } = await import('../src/data.js');
+const { fmtKonto, kontoMinus, fmtKwh, fmtCent } = await import('../src/util.js');
 const { Menus } = await import('../src/ui/menus.js');
 const { makeStream, DRIVERS } = await import('./stream-sim.mjs');
 const NB = ' ';
@@ -260,5 +264,111 @@ const NB = ' ';
   ok(writes === 1 && [...saveJs.matchAll(/save\.wallet\s*=(?!=)/g)].length === 2, `Guthaben wird außerhalb von Kauf, Abrechnung und Erstattung geändert (main.js ${writes}×)`);
 }
 
-console.log(fails ? `minus-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `minus-test: alles grün (${checks} Prüfungen: Schulden ganz gebucht und getragen, Spielstand im Minus, Start im Minus, Anzeige mit Minus, Shop im Minus zu)`);
+// --- 3. Laden kostet Geld und geht immer ----------------------------------------------------------------------------
+let laden = '';
+{
+  ok(LADEN.euroPerKwh === 0.59 && /Das Laden des Autos soll auch auf die Rechnung/.test(src('src/data.js')), 'LADEN: 0,59 € je kWh mit dem Wunsch des Besitzers');
+  const k95 = ladeKosten(95, 75);
+  ok(near(k95.kwh, 71.25) && k95.euro === 42.04 && ladeKosten(0, 75).euro === 0 && ladeKosten(-3, 75).euro === 0 && ladeKosten(50, 79).euro === 23.31, `ladeKosten: ${JSON.stringify(k95)}`);
+  ok(FINES.includes('Ladestrom') && FINES.indexOf('Ladestrom') === FINES.indexOf('Schäden') + 1 && !('Ladestrom' in INCOME), `FINES: ${FINES.join(', ')}`);
+  ok(ladeCount(1, 71.25) === `1 Ladestopp · 71,3${NB}kWh` && ladeCount(2, 142.5) === `2 Ladestopps · 142,5${NB}kWh`, `ladeCount: ${ladeCount(2, 142.5)}`);
+  /**
+   * Ein Stream mit Guthaben im Minus und echtem Akku: Nach der ersten Runde plant der Fahrer den nächsten Ladeplatz ein;
+   * ist der Wagen dort im Ort bzw. im Park, steht der Akku auf 5 % (bis der Stopp beginnt) und die Kasse bei −300 €.
+   * mid: so viele Sekunden nach Beginn des Ladens endet der Stream (Pause → Stream beenden); skip: so viele überspringt
+   * der Spieler; after: so lange geht es nach dem Laden weiter (bis zur Rundenzeile am nächsten Ziel).
+   */
+  const charge = ({ seed, mid = -1, skip = -1, after = 0 }) => {
+    const S = makeStream({ driver: DRIVERS.zuegig, seed, endless: true, wallet: -500, charge: true });
+    const g = S.game;
+    const p = g.player;
+    const toasts = [];
+    const pops = [];
+    g.ui.toast = (text, kind, key, parts) => toasts.push({ text, kind, key, parts, t: g.t, tally: g.tally.laden });
+    g.ui.money = (v, label) => pops.push({ v, label, t: g.t });
+    const out = { S, g, toasts, pops, c: null, t0: -1, t1: -1, battery: null, money: null };
+    // (vor dem ersten Gebot eingeplant, stürzt das erste Gebot ab – ein Fehler der Navi-Auktion von vorher, siehe NOTES)
+    for (let i = 0; i < 30 * 900 && g.navi.opening; i++) S.step(1 / 30);
+    g.akku.planStop();
+    out.post = S.trip.post;
+    out.park = S.trip.stop;
+    for (let i = 0; i < 30 * 600 && !g.over; i++) {
+      const sec = S.trip.section;
+      const near = out.post >= 0 ? sec.kind === 'stadt' && sec.place === out.post : sec.kind === 'park';
+      if (!out.c && near) {
+        p.battery = 5;
+        g.money = -300;
+      }
+      S.step(1 / 30);
+      if (!out.c && g.charging) {
+        out.c = { ...g.charging };
+        out.t0 = g.t;
+      }
+      if (out.c && out.t1 < 0 && skip >= 0 && g.t - out.t0 >= skip && g.charging) g.akku.skip();
+      if (out.c && out.t1 < 0 && mid >= 0 && g.t - out.t0 >= mid) {
+        out.battery = p.battery;
+        out.money = g.money;
+        g.end('quit');
+        break;
+      }
+      if (out.c && out.t1 < 0 && !g.charging) {
+        out.t1 = g.t;
+        out.battery = p.battery;
+      }
+      if (out.t1 >= 0 && g.t - out.t1 >= after) break;
+    }
+    return out;
+  };
+  // a) eingeplante Säule, voll geladen, tief im Minus
+  const a = charge({ seed: 3, after: 600 });
+  const g = a.g;
+  const want = ladeKosten(100 - (a.c ? a.c.from : 0), g.player.capacity);
+  ok(a.c && a.c.from <= 5.01 && a.c.from > 4.9 && g.save.wallet === -500, `a: Ladestopp beginnt nicht bei 5 % und −500 € (${JSON.stringify(a.c && { from: a.c.from, name: a.c.name })})`);
+  ok(a.t1 > a.t0 && a.battery === 100 && g.stats.parkCharges >= 1, `a: Ladestopp endet nicht voll (Akku ${a.battery}, ${a.t0.toFixed(1)} → ${a.t1.toFixed(1)} s)`);
+  ok(Math.abs(want.kwh - 0.95 * 75) < 0.01 && want.euro === 42.04, `a: Rechnung ${JSON.stringify(want)} statt 71,25 kWh / 42,04 €`);
+  const first = g.ladeBill.n >= 1 ? g.ladeBill : null;
+  const strom = Math.round((g.breakdown.Ladestrom || 0) * 100) / 100;
+  ok(first && g.ladeBill.n === g.stats.parkCharges && strom <= -want.euro && Math.abs(strom + g.ladeBill.amount) < 0.005, `a: Abrechnung Ladestrom ${strom} €, ${JSON.stringify(g.ladeBill)}`);
+  const pop = a.pops.find((x) => x.label === 'Ladestrom');
+  ok(pop && pop.v === -want.euro && near(pop.t, a.t1, 0.05), `a: am Guthaben ${JSON.stringify(pop)}`);
+  const voll = a.toasts.find((x) => x.key === 'ladestrom');
+  ok(voll && voll.text === `🔋 Akku voll${NB}· 71,3${NB}kWh Ladestrom −42,04${NB}€` && voll.kind === 'good' && voll.parts.at(-1)[1] === 'minus' && near(voll.t, a.t1, 0.05), `a: Rand ${JSON.stringify(voll)}`);
+  const james = a.S.log.chat.find((m) => m.bot === 'james' && /^Ladestrom/.test(m.text));
+  // (die Kasse stand bei −300 €; während des Ladens kamen Spenden dazu)
+  ok(james && new RegExp(`^Ladestrom \\(${a.c.name}\\): 71,3${NB}kWh × 0,59${NB}€ = 42,04${NB}€ – die Stream-Kasse steht jetzt bei −[\\d.]+,\\d\\d${NB}€\\.$`).test(james.text), `a: James ${james && james.text}`);
+  // die Runde am nächsten Ziel nennt den Ladestrom in einer eigenen Zeile
+  const card = a.toasts.find((x) => x.key === 'rechnung' && x.t > a.t1);
+  const line = card && card.parts.find((x) => /^Ladestrom/.test(x[0]));
+  ok(card && line && line[0] === `Ladestrom −42,04${NB}€ (71,3${NB}kWh)` && line[1] === 'minus schaden', `a: Runde ${card ? card.text : '(keine Ankunft)'}`);
+  // nach der Runde zählt die nächste ohne diesen Strom
+  ok(card && card.tally === 0, `a: der Ladestrom bleibt in der nächsten Runde stehen (${card && card.tally})`);
+  // Abspann: eine eigene Zeile mit Zahl der Stopps und kWh, in der Farbe der Abzüge
+  g.end('quit');
+  const menus = Object.create(Menus.prototype);
+  const over = node('div');
+  menus.render_over(over, { ...g.over, route: null, quote: null, wallet: -500 + g.over.money, best: 0, newRecord: false, photos: [] });
+  const row = all(over).find((n) => n.classList.contains('bd') && /^Ladestrom/.test(n.kids[0]?.textContent || ''));
+  ok(row && row.classList.contains('minus') && row.kids[0].textContent === `Ladestrom (${ladeCount(g.over.laden.n, g.over.laden.kwh)})` && row.kids[1].textContent === '−' + fmtCent(g.over.laden.amount), `a: Abspann ${row && row.textContent}`);
+  laden = `Ladestopp bei ${a.c.from.toFixed(2)} %, Guthaben −500 €, Kasse −300 €: ${fmtKwh(want.kwh)} für ${fmtCent(want.euro)} (${a.c.name}, ${(a.t1 - a.t0).toFixed(1)} s)`;
+  // b) übersprungen nach 2 s: dieselbe Rechnung, voll geladen
+  const b = charge({ seed: 3, skip: 2 });
+  ok(b.c && b.battery === 100 && b.t1 - b.t0 < 3 && b.g.ladeBill.n === 1 && b.g.ladeBill.amount === ladeKosten(100 - b.c.from, 75).euro, `b: übersprungen ${JSON.stringify(b.g.ladeBill)}, Akku ${b.battery}`);
+  // c) der Stream endet mitten im Laden: der Strom bis dahin, einmal, ohne Chat
+  const c = charge({ seed: 3, mid: 9 });
+  const cg = c.g;
+  const part = ladeKosten(c.battery - c.c.from, 75);
+  ok(c.c && cg.over && c.battery > 5.5 && c.battery < 99 && cg.ladeBill.n === 1 && cg.ladeBill.amount === part.euro && near(cg.over.money, Math.round((c.money - part.euro) * 100) / 100), `c: Ende mitten im Laden bei ${c.battery && c.battery.toFixed(1)} %: ${JSON.stringify(cg.ladeBill)}, Kasse ${c.money} → ${cg.over && cg.over.money}`);
+  ok(cg.over.laden.n === 1 && !c.S.log.chat.some((m) => m.bot === 'james' && /^Ladestrom/.test(m.text)), 'c: Ende mitten im Laden: doppelt gebucht oder James spricht nach dem Ende');
+  cg.akku.cutShort();
+  cg.akku.finishCharge();
+  ok(cg.ladeBill.n === 1 && cg.ladeBill.amount === part.euro, `c: ein zweites Buchen desselben Stopps (${JSON.stringify(cg.ladeBill)})`);
+  // nichts im Laden fragt nach Geld: weder der Akku noch der Halt der Welt noch die Szene
+  for (const f of ['src/game/akku.js', 'src/world/xxl/plan.js', 'src/world/xxl/charge.js', 'src/scenes/stop.js']) {
+    ok(!/\.money\b|wallet|canBuy|shopLocked/.test(src(f)), `${f} fragt nach dem Kontostand`);
+  }
+  // und der Zwischenstand rechnet den laufenden Stopp mit (wie end)
+  ok(/open \+= this\.akku\.openCharge\(\);/.test(src('src/game/game.js')), 'interim: der Strom eines laufenden Stopps fehlt');
+}
+
+console.log(fails ? `minus-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `minus-test: alles grün (${checks} Prüfungen: Schulden ganz gebucht und getragen, Spielstand im Minus, Start im Minus, Anzeige mit Minus, Shop im Minus zu, Laden immer und auf der Rechnung)\n  ${laden}`);
 process.exit(fails ? 1 : 0);
