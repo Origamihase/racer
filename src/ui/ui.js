@@ -884,12 +884,14 @@ export class UI {
     this.recordEl.textContent = odo > best && best > 0 ? '🏆 neuer Rekord!' : best > 0 ? 'Rekord ' + strecke(best) : '';
     this.recordEl.classList.toggle('record', odo > best && best > 0);
     if (tacho === null) this.showKmh(tachoKmh(p.kmh));
-    // (Schäden, Bußgelder und Ladestrom können die Stream-Kasse ins Minus bringen: dann mit Minuszeichen in der Farbe der
-    // Abzüge)
-    const money = fmtKonto(g.money);
+    // Guthaben: das gespeicherte aus den Streams davor (save.wallet) und die Kasse dieses Streams zusammen, so viel hätte
+    // Mini Adam, endete der Stream jetzt (am Ende bucht main.js die Kasse ins gespeicherte; dann zeigt das HUD nichts
+    // mehr an). Schäden, Bußgelder und Ladestrom können es ins Minus bringen: dann mit Minuszeichen in der Farbe der Abzüge
+    const konto = g.save.wallet + g.money;
+    const money = fmtKonto(konto);
     if (money !== this.moneyRow.textContent) {
       this.moneyRow.textContent = money;
-      this.moneyRow.classList.toggle('minus', kontoMinus(g.money));
+      this.moneyRow.classList.toggle('minus', kontoMinus(konto));
       // ein längeres Guthaben lässt einer stehenden Gutschrift weniger Platz
       if (this.moneyPops.firstChild) this.fitMoneyPop();
     }
