@@ -18,6 +18,7 @@ import { arch, archWin, clock } from './town.js';
 import { ballTree } from './parts.js';
 import { sizeOf, regionOf, hashKey } from './layout.js';
 import { registerAbroad } from './abroad.js';
+import { registerHeimat } from './heimat.js';
 
 const TAU = Math.PI * 2;
 
@@ -3177,7 +3178,7 @@ landmark('langeAnna', { places: ['Helgoland'], slot: 'skyline', far: true, title
 // =============================================================================================================
 const ALP = { rock: 0x9a958d, rock2: 0xb1aba2, rockDark: 0x7b766f, snow: 0xf4f6f8, meadow: 0x8db86a, forest: 0x557e4c, cross: 0x7a5a3e };
 
-landmark('alpenGipfel', { places: [], slot: 'skyline', far: true, title: 'Gipfelkreuz' }, (b) => {
+landmark('alpenGipfel', { places: ['Schwangau'], slot: 'skyline', far: true, title: 'Gipfelkreuz' }, (b) => {
   const { F } = b;
   const near = !b.lod;
   const C = ALP;
@@ -3520,6 +3521,11 @@ registerAbroad({
   antenna, dial, galleryMill, millSails, gothicSpire, pinnacle, lancet, merlons, castleHouse, roundTower, containers, crane,
   cargoPlane, strandkorb, wheelStand, wheelRotor, robedFigure,
 });
+// die zweite Runde für Orte in Deutschland steht in heimat.js
+registerHeimat({ landmark, loft, prism, spire, chamfer, rrect, ngon, circle, lancet, flatArch, goldDial, baroqueHelm, voluteGable, roundTower, terrain, gridLines });
+// Schwangau: erst das Schloss auf seinem Fels (nah hinter der Zeile, mit Sichtlücke), dann die Alpen dahinter; in der
+// Reihenfolge der Anmeldung käme der Berg zuerst und schöbe das Schloss in eine Reihe hinter sich
+BY_PLACE.set('Schwangau', ['neuschwanstein', 'alpenGipfel']);
 
 // =============================================================================================================
 // Auswahl je Ort
@@ -3533,13 +3539,14 @@ const EXTRA = {
   'Perth (Schottland)': ['burgBerg'], Marburg: ['burgBerg'], Passau: ['burgBerg'], Landshut: ['burgBerg'], Koblenz: ['burgBerg'],
   Siegen: ['burgBerg'], Bacharach: ['burgBerg'], 'St. Goar': ['burgBerg'], 'St. Goarshausen': ['burgBerg'], 'Bingen am Rhein': ['burgBerg'],
   Lahnstein: ['burgBerg'], 'Traben-Trarbach': ['burgBerg'], 'Eltville am Rhein': ['burgBerg'], 'Rüdesheim': ['burgBerg'],
-  Eisenach: ['burgBerg'], Coburg: ['burgBerg'], 'Königstein im Taunus': ['burgBerg'], Schwangau: ['burgBerg'],
+  Eisenach: ['burgBerg'], Coburg: ['burgBerg'], 'Königstein im Taunus': ['burgBerg'],
   'Singen (Hohentwiel)': ['burgBerg'], 'Staufen im Breisgau': ['burgBerg'], 'Lörrach': ['burgBerg'], Kleve: ['burgBerg'],
   Edertal: ['burgBerg'], Schriesheim: ['burgBerg'], Hilpoltstein: ['burgBerg'], Ellwangen: ['burgBerg'], 'Bad Godesberg': ['burgBerg'],
   // Residenzschloss mit Garten
-  Potsdam: ['schloss'], Ludwigsburg: ['schloss'], Karlsruhe: ['schloss'], Mannheim: ['schloss'], Celle: ['schloss'],
-  Braunschweig: ['schloss'], Bayreuth: ['schloss'], Aschaffenburg: ['schloss'], Hanau: ['schloss'], Wolfsburg: ['schloss'],
-  Erlangen: ['schloss'], 'Saarbrücken': ['schloss'], 'Münster': ['schloss'], Bonn: ['schloss'], Darmstadt: ['schloss'],
+  // (Mannheim, Hanau und Darmstadt: das Schloss steht dort neben ihrem eigenen Wahrzeichen, siehe abroad.js schloss)
+  Potsdam: ['schloss'], Ludwigsburg: ['schloss'], Karlsruhe: ['schloss'], Celle: ['schloss'],
+  Braunschweig: ['schloss'], Bayreuth: ['schloss'], Aschaffenburg: ['schloss'], Wolfsburg: ['schloss'],
+  Erlangen: ['schloss'], 'Saarbrücken': ['schloss'], 'Münster': ['schloss'], Bonn: ['schloss'],
   Weimar: ['schloss'], 'Osnabrück': ['schloss'], Schwetzingen: ['schloss'], Bruchsal: ['schloss'], Rastatt: ['schloss'],
   'Bad Arolsen': ['schloss'], 'Jüchen': ['schloss'], Eichenzell: ['schloss'], 'Wächtersbach': ['schloss'], 'Prien am Chiemsee': ['schloss'],
   // Kurhaus, römische Arena, Hafen, Leuchtturm, Zeche, Rummel, Skyline, Karibik, Küste

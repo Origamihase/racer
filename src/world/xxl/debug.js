@@ -232,6 +232,8 @@ export function installDebug(M, world, getPlayer, hooks = {}) {
         brunnen: t.plan.fountains.map((f) => ({ art: f.kind, titel: f.title, u: Math.round(f.u), x: Math.round(f.x * 10) / 10, ziel: f.goal })),
         ziel: t.plan.layout.goal, plaetze: t.plan.layout.squares.length,
         wahrzeichen: t.plan.landmarks.filter((l) => l.placed).map((l) => l.name),
+        // wo sie stehen (u längs der Straße, view: Mitte der Sichtlücke) für Prüfbilder
+        lage: t.plan.landmarks.filter((l) => l.placed).map((l) => ({ name: l.name, slot: l.slot, u: l.u ?? null, view: l.view ?? null })),
       }));
     },
     /** Die letzten Ereignisse der Welt (Art:Ort), z. B. arrive:Hanau, rest:Hanau. */
