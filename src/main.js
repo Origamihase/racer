@@ -20,6 +20,7 @@ import { cityKit, naviLayout } from './world/xxl/towns.js';
 import { SCENE, chargeOf } from './world/xxl/charge.js';
 import { squareOf } from './world/xxl/plan.js';
 import { shotAt, windowAt, stillShot, STILL } from './world/xxl/brunnentv.js';
+import { PopStand, POP_STAND } from './world/xxl/popstand.js';
 import { Traffic } from './world/traffic.js';
 import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
@@ -206,6 +207,17 @@ const sideRT = new THREE.WebGLRenderTarget(SIDE.w, SIDE.h, { type: THREE.HalfFlo
 facecam.setSideView(sideRT.texture);
 // (in „Auto“ schaltet adaptResolution es auf langsamen Geräten ab, bevor das Bild unschärfer wird)
 const sideOn = () => settings.quality !== 'niedrig' && !(quality.auto && autoLevel >= 2);
+// Popcorn-Stand der Ladeszene (world/xxl/popstand.js): Nach der Szene geht er nur, wo ihn keine der Kameras sieht, die
+// gerade Welt zeigen – die Hauptkamera, mit Cockpit der Rückspiegel (auch in der Heckscheibe der Facecam), ihr
+// Seitenfenster und in R die Rückfahrkamera
+const popStand = new PopStand();
+const STAND_CAMS = [{ cam: camera, far: 0 }, { cam: null, far: POP_STAND.far }, { cam: null, far: POP_STAND.far }, { cam: null, far: 0 }];
+function standCams(cockpitOn) {
+  STAND_CAMS[1].cam = cockpitOn ? rearCam : null;
+  STAND_CAMS[2].cam = cockpitOn && sideOn() ? sideCam : null;
+  STAND_CAMS[3].cam = (cockpitOn && cockpit.rear.on && cockpit.rear.cam) || null;
+  return STAND_CAMS;
+}
 const compMat = createCompositeMaterial(worldRT.texture, windshield);
 const compScene = new THREE.Scene();
 const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compMat);
@@ -1100,6 +1112,9 @@ setSceneContext({
   get placeScene() {
     return placeScene;
   },
+  get popStand() {
+    return popStand;
+  },
   get renderer() {
     return renderer;
   },
@@ -1685,6 +1700,8 @@ function step(dt, { render = true } = {}) {
       skyView.mapZ = st.mapZ;
     }
     curveTable.commit(renderer);
+    // der Popcorn-Stand geht nach der Ladeszene nur, wo keine Kamera hinsieht (Kamera und Krümmung stehen jetzt)
+    popStand.tick(standCams(cockpitOn));
     // die Hügelkette am Horizont steigt und sinkt mit der Straße, wo sie im Dunst verschwindet
     skyView.hillY = clamp(curveAt(1500).y * 0.7, -90, 90);
     cockpit.scene.environmentRotation.copy(sky.envRotation);
@@ -1839,6 +1856,7 @@ function xxlStart(title) {
   chargeRun.parked = false;
   stopRun.on = false;
   stopRun.fadeT = 0;
+  popStand.reset();
   tvStop();
   p.x = xxl.trip.x;
   p.speed = title ? 0 : 40 / 3.6;

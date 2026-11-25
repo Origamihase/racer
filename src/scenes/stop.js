@@ -121,6 +121,8 @@ export function stopTick() {
     r.rig.set(1);
     r.port.set(0, 0);
     m.tesla.setWindow(0);
+    // Mini Adams Popcorn-Maschine geht wieder, sobald keine Kamera mehr hinsieht, übersprungen gleich im Schwarz
+    m.popStand.end(r.skipT >= 0);
     if (r.pop) {
       r.pop.update(0, false);
       r.pop.group.removeFromParent();
@@ -139,6 +141,9 @@ export function stopTick() {
   }
   const t = m.game.akku.sceneT();
   const te = t - P.at(STOP.unplug);
+  // Mini Adams Popcorn-Maschine samt Eimer: erst im Schwarz vor der Nahaufnahme in der Bucht (stopPlace blendet dort ab)
+  // steht sie an der Säule, beim Einparken noch nicht (world/xxl/popstand.js)
+  if (t >= P.d0) m.popStand.show(r.town.group.popcornStand || null);
   // (an der Säule eines Orts vor dem Haltepunkt angehalten: erst vorrollen, P.creep, dann R)
   const q = t < P.c ? P.creep.pose(t, r.q) : t < P.d0 ? P.dock.pose(t - P.c - STOP.shift, r.q) : rollPose(P.u, clamp(te - SCENE.roll, 0, ROLL_T), r.q);
   r.v = q.v;

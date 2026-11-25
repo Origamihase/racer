@@ -9,7 +9,7 @@ import { createStreetKit } from './street.js';
 import { createFountainKit } from './fountains.js';
 import { createPeopleKit } from './people.js';
 import { createLandmarkKit, landmarkFor } from './landmarks.js';
-import { createRestKit, restGround } from './rest.js';
+import { createRestKit, restGround, POPCORN_STAND } from './rest.js';
 import { planTown, planGoal, planRest, planPark, sizeOf, regionOf, goalKind, islandRadius, fanSpot, STREET, REST } from './layout.js';
 
 // Ein Ort wird in Stücke von 100 m Straße verschmolzen: wenige Draw Calls, und was hinter der Kamera liegt, fällt weg
@@ -180,7 +180,8 @@ export function createCityKit(F, { bend = null } = {}) {
      * Geplanten Ort aufbauen. Ergebnis: Group in Ortskoordinaten (x seitlich wie im Straßenprofil, z = −u), vom
      * Straßenbau bei z = −s0 in die Strecke gehängt. Dazu group.fountains (Brunnenliste), fountainsInView,
      * watchFountains, resetFountains (siehe attachFountains), group.update(t) für die Fangruppe am Ziel und
-     * group.layout, der Lageplan für das Navi (layout.js townLayout, im selben Rahmen).
+     * group.layout, der Lageplan für das Navi (layout.js townLayout, im selben Rahmen); an einer Säule mit Ladestopp
+     * group.popcornStand (LOD mit Maschine und Eimer, versteckt: rest.js POPCORN_STAND).
      * lazy: die verschmolzenen Stücke und die Wahrzeichen entstehen erst mit group.step() (eines je Aufruf, zuerst
      * alle Fernfassungen, dann die nahen vom Ortsbeginn an; true, solange noch etwas fehlt; group.pending zählt den
      * Rest, group.pendingFar die fehlenden Fernfassungen): eine Großstadt braucht am Stück über 100 ms, in Schritten
@@ -194,6 +195,7 @@ export function createCityKit(F, { bend = null } = {}) {
       const chunks = new Map();
       const solo = [];
       const marks = [];
+      const stand = [];
       for (const it of plan.items) {
         // der Brunnen auf der Insel der Straße gehört dem Straßenbau (layout.js planTown, island)
         if (it.external) continue;
@@ -204,6 +206,11 @@ export function createCityKit(F, { bend = null } = {}) {
         }
         if (!kitOf(it.name).geo(it.name)) {
           solo.push(it);
+          continue;
+        }
+        // Popcorn-Maschine und Eimer an der Säule bringt Mini Adam erst zum Laden mit (rest.js POPCORN_STAND)
+        if (POPCORN_STAND.has(it.name)) {
+          stand.push(it);
           continue;
         }
         const ci = Math.floor(-it.z / CHUNK);
@@ -233,6 +240,21 @@ export function createCityKit(F, { bend = null } = {}) {
             if (ex) root.add(ex);
           }
         });
+      }
+      // Popcorn-Stand: ein eigenes Stück wie ein Ortsstück (nah und fern), Ursprung in der Mitte seiner Teile; versteckt,
+      // bis die Ladeszene ihn zeigt (world/xxl/popstand.js) – so muss kein Ortsstück je neu verschmolzen werden
+      if (stand.length) {
+        const sx = stand.reduce((a, it) => a + it.x, 0) / stand.length;
+        const sz = stand.reduce((a, it) => a + it.z, 0) / stand.length;
+        const make = (far) => compose(core, stand.map((it) => ({ g: kitOf(it.name).geo(it.name, far), x: it.x - sx, y: it.y, z: it.z - sz, ry: it.ry, tint: it.tint })));
+        const lod = new THREE.LOD();
+        lod.name = 'Popcorn-Stand';
+        lod.position.set(sx, 0, sz);
+        lod.visible = false;
+        root.add(lod);
+        root.popcornStand = lod;
+        farJobs.push(() => level(lod, make(true), farAt));
+        nearJobs.push(() => level(lod, make(false), 0));
       }
       for (const it of solo) root.add(placeGroup(kitOf(it.name).build(it.name, { tint: it.tint }), it));
       // Wahrzeichen: eigene Stufen nah/fern, gemessen von ihrem eigenen Ursprung (sie stehen weit hinter der Zeile)
