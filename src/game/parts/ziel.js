@@ -250,9 +250,13 @@ export class ZielPart {
     return this.navi.candidates();
   }
 
-  /** Wohin der nächste Bieter will (nie dorthin, wo es ohnehin gerade hingeht). */
+  /**
+   * Wohin der nächste Bieter will (nie dorthin, wo es ohnehin gerade hingeht). Bliebe nichts zur Wahl, irgendein anderer
+   * Ort der Karte außer dem Startort: Ein Gebot braucht ein Ziel.
+   */
   pickBidTarget() {
-    return this.eco.pickTarget(this.bidTargets(), this.navi.target);
+    const nv = this.navi;
+    return this.eco.pickTarget(this.bidTargets(), nv.target) ?? nv.targets.find((t) => t !== nv.target && t.place !== nv.trip.home);
   }
 
   /**

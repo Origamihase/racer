@@ -9,6 +9,9 @@
 // 2. Die Bildschirme aller Säulen eines Parks (Ort, Startort, Ladepark) zeigen seinen Preis: ein Mesh je Park genau
 //    über den dunklen Flächen, aufrecht, ungespiegelt, nach vorn; ein Bild je Preis, geteilt und mit dem letzten Ort
 //    freigegeben; weiter weg als PREIS_SCREEN.far dunkel (und nie, solange das Ortsstück schon fern ist).
+// 3. Ein Gebot hat immer ein Ziel: Plant L vor dem ersten Gebot einen Ladepark hinter dem Wagen ein, fand die erste
+//    Runde keinen Ort mehr und der Stream stürzte beim Gebot ab (navi.js overbid mit undefined). Jetzt wählt sie dann
+//    nach der Entfernung, rechnet nur wenige Routen, und gäbe es gar nichts, nimmt der Bieter einen anderen Ort.
 // node tools/ladepreis-test.mjs
 import { readFileSync } from 'node:fs';
 
@@ -239,11 +242,61 @@ let screens = '';
   }
 }
 
+// --- 4. Ein Gebot hat immer ein Ziel, auch mit eingeplantem Ladepark vor dem ersten Gebot (navi.js, ziel.js) ------
+const { OPENING } = await import('../src/game/navi.js');
+let crash = '';
+{
+  // so stürzte der Stream ab (Zufall 2, zügig): nach 5 s plant L den nächsten Ladepark ein, er liegt hinter dem Wagen
+  const S = makeStream({ driver: DRIVERS.zuegig, seed: 2, endless: true });
+  const g = S.game;
+  const T = S.trip;
+  const nv = g.navi;
+  S.step(5);
+  g.akku.planStop();
+  const park = T.stop;
+  ok(park >= 0 && nv.opening && !nv.target, `Ausgangslage: Park ${park}, erste Runde ${nv.opening}, Ziel ${nv.target && nv.target.name}`);
+  // die Auswahl der ersten Runde findet hier keinen Ort ohne Wenden (das war der Absturz) …
+  const ahead = T.cur.sections.filter((c) => c.kind === 'stadt' && !c.spotDone && c.s1 > T.s).map((c) => c.place);
+  let runs = 0;
+  const whatIf = T.whatIf;
+  T.whatIf = (...a) => (runs++, whatIf.apply(T, a));
+  const near = nv.nearby(T, T.distances(true), ahead);
+  ok(near.size < OPENING.min && runs <= OPENING.pool, `erste Runde mit Park hinter dem Wagen: ${near.size} Orte, ${runs} Routen gerechnet`);
+  // … dann steht zur Wahl, was nach der Entfernung passt, ohne jede Route der Karte zu rechnen
+  runs = 0;
+  nv.listKey = '';
+  const list = nv.candidates();
+  delete T.whatIf;
+  ok(list.length >= OPENING.min && list.every((t) => t.weight > 0 && t.place !== T.home) && runs <= OPENING.pool, `Auswahl: ${list.length} Orte, ${runs} Routen gerechnet`);
+  // zehn Minuten weiter: Gebote, Ladestopp im geplanten Park, kein Absturz
+  let err = null;
+  let first = null;
+  let laden = null;
+  try {
+    for (let i = 0; i < 30 * 600 && !g.over; i++) {
+      S.step(1 / 30);
+      if (!first && nv.target) first = { t: g.t, name: nv.target.name };
+      if (!laden && g.charging) laden = { t: g.t, name: g.charging.name };
+    }
+  } catch (e) {
+    err = e;
+  }
+  ok(!err && !g.over && first && laden && laden.name === PARKS[park].name && g.stats.parkCharges === 1, `Stream mit eingeplantem Park: ${err ? 'Absturz ' + err.message : 'läuft'}, erstes Gebot ${JSON.stringify(first)}, Laden ${JSON.stringify(laden)}`);
+  // gäbe es gar nichts zur Wahl, bietet der Bieter auf einen anderen Ort als das jetzige Ziel und den Startort
+  const cand = nv.candidates;
+  nv.candidates = () => [];
+  const picks = Array.from({ length: 5 }, () => g.pickBidTarget());
+  nv.candidates = cand;
+  ok(picks.every((t) => t && t !== nv.target && t.place !== T.home && places[t.place]), `ohne Auswahl: ${picks.map((t) => t && t.name).join(', ')}`);
+  crash = `Park ${PARKS[park].name} hinter dem Wagen vor dem ersten Gebot: Auswahl ${list.length} Orte, erstes Gebot ${first ? first.name + ' nach ' + first.t.toFixed(0) + ' s' : '–'}, geladen nach ${laden ? laden.t.toFixed(0) + ' s' : '–'}, bis ${g.t.toFixed(0)} s ohne Absturz`;
+}
+
 if (fails) {
   console.error(`ladepreis-test: ${fails} von ${checks} Prüfungen fehlgeschlagen`);
   process.exit(1);
 }
-console.log(`ladepreis-test: alles grün (${checks} Prüfungen: feste Preise je Ladeplatz, Deutschland 0,46–0,59 €, Ausland 0,65–0,79 € in Landeswährung, Rechnung zum Preis der Säule, Preis auf jedem Bildschirm)`);
+console.log(`ladepreis-test: alles grün (${checks} Prüfungen: feste Preise je Ladeplatz, Deutschland 0,46–0,59 €, Ausland 0,65–0,79 € in Landeswährung, Rechnung zum Preis der Säule, Preis auf jedem Bildschirm, ein Gebot hat immer ein Ziel)`);
 console.log('  ' + summary);
 console.log('  ' + bill);
 console.log('  ' + screens);
+console.log('  ' + crash);
