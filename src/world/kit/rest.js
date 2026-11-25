@@ -861,6 +861,10 @@ function popcornBag(b, x, y, z, near) {
 // Fahrerfenster des Autos, das dort rückwärts eingeparkt lädt (dorthin fliegt beim Ladestopp das Popcorn,
 // xxl/popping.js). socket: Steckdose an der Rückwand (x, y), in der das Kabel der Maschine steckt.
 export const POST_POP = { top: 0.12 + 1.86 + 0.07, yaw: -0.33, socket: [-0.12, 1.62] };
+// Maschine samt Kabel und der Eimer gehören nicht fest zur Säule (Besitzer, 25.11.2026: „Die Popcorn-Maschine kommt
+// von Mini Adam. Sie wird erst beim Laden des Autos angeschlossen.“): city.js buildTown setzt sie in ein eigenes,
+// verstecktes Stück, das nur die Ladeszene zeigt (scenes/stop.js, world/xxl/popstand.js)
+export const POPCORN_STAND = new Set(['popcorn_post', 'popcorn_eimer']);
 defs.popcorn_post = {
   kind: 'rest', far: true,
   make(b) {

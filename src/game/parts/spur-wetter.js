@@ -76,6 +76,7 @@ export class SpurWetterPart {
     this.audio.chime();
     this.later(0.2, () => this.donate(L.donor, this.eco.laneDonation(), 'Linke Spur freischalten', { label: 'Aktionen' }));
     this.burst(CHAT.leftLane, 3, 3);
+    this.dsMoment('links');
   }
 
   closeLeftLane() {

@@ -1,7 +1,7 @@
 // Teil der Regie einer Fahrt (Game, game.js): Ereignisse unterwegs: Blitzer, Polizei Gifhorn, Durchsagen, Rahmen, Elsa,
 // Funkloch, Elefantenrennen.
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
-import { CHAT, BOARD, DURCHSAGEN, DURCHSAGEN_REGEN, RAHMEN, RAHMEN_GAP, VOICES, CREW, CREW_LINES, AKTIONEN, MEGAFON_WUENSCHE, SAMMELAKTIONEN, BUSSGELD, viewerName, fillTemplate } from '../../data.js';
+import { CHAT, BOARD, RAHMEN, RAHMEN_GAP, VOICES, CREW, CREW_LINES, AKTIONEN, MEGAFON_WUENSCHE, SAMMELAKTIONEN, BUSSGELD, viewerName, fillTemplate } from '../../data.js';
 import { clamp, rand, randInt, chance, pick, fmtEuro, fmtClock } from '../../util.js';
 import { Vector3 } from 'three';
 import { elephantPair } from '../../world/traffic.js';
@@ -9,6 +9,7 @@ import { EYE } from '../../cockpit/cockpit.js';
 import { ELSA_STATUE } from '../../world/scenery.js';
 import { curvePoint } from '../../curve.js';
 import { camerasAlong, triggerKmh } from '../../world/xxl/blitzer.js';
+import { DS, ALL as DS_ALL } from '../durchsagen.js';
 
 const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
 // Rechts oben deckt der Innenspiegel aus Mini Adams Sicht ab etwa 17,8° rechts der Blickrichtung ab
@@ -70,6 +71,20 @@ export const FACTS = {
   gleich: (g) => !!g.gags.nextTown(),
   glotz: (g) => g.viewers > 0 && g.funkloch <= 0,
   faehrt: (g) => g.player.kmh >= 3,
+  // … und für die Sprachdurchsagen (game/durchsagen.js): land auf der Landstraße · spaet ab acht Uhr abends (die Uhr des
+  // Streams) · mau schlechte Laune im Chat · links die linke Spur ist frei (kein Stichwort für den Radarwarner: mit und
+  // ohne ihn verläuft der Stream gleich, radar-test) · zum Moment, DS.moment Sekunden lang: geblitzt, rempler
+  // (gerempelt), folge (eine Folge BrunnenTV ist eben vorbei), geladen (eben geladen, mit Popcorn), spende (eine große
+  // Spende)
+  land: (g) => g.roadKind() === 'conn',
+  spaet: (g) => Math.floor(g.clock / 60) % 24 >= 20 || Math.floor(g.clock / 60) % 24 < 5,
+  mau: (g) => g.eco.level <= 1,
+  links: (g) => !!g.left && g.left.open,
+  geblitzt: (g) => g.ds.just('geblitzt'),
+  rempler: (g) => g.ds.just('rempler'),
+  folge: (g) => g.ds.just('folge'),
+  geladen: (g) => g.ds.just('geladen'),
+  spende: (g) => g.ds.just('spende'),
 };
 // Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
 // Kästchen (audio.js RADAR_BEEP, gut 0,6 s), lead Sekunden später – wenn es fertig ist – folgen OMIs Gong und ihre Ansage
@@ -93,6 +108,7 @@ export class EreignissePart {
       this.later(0.15, () => flash(false));
       this.stats.photos++;
       this.gags.fail('blitzer');
+      this.dsMoment('blitz');
       // Tempo und Uhrzeit im Moment des Blitzes festhalten (danach wird meist gebremst)
       const kmh = Math.round(p.kmh);
       const clock = fmtClock(this.clock);
@@ -143,6 +159,95 @@ export class EreignissePart {
     }
   }
 
+  // --- Sprachdurchsagen ---------------------------------------------------------------
+  /**
+   * Ein Moment, zu dem die Zuschauer gern etwas sagen (durchsagen.js MOMENTS: blitz, rempler, folge, laden, spende,
+   * links; who: wer groß gespendet hat): Die nächste Durchsage wird bald gekauft (DS.after) und passt dann zum Moment –
+   * aber nie früher als DS.soon nach der letzten (Momente machen die Durchsagen passender, kaum häufiger).
+   */
+  dsMoment(kind, who) {
+    this.ds.moment(kind, who);
+    // (große Spenden kommen bei bester Laune im Minutentakt: Sie machen die nächste passender, aber nicht früher)
+    if (kind === 'spende' || !this.T) return;
+    const wait = Math.max(this.ds.rand(DS.after[0], DS.after[1]), DS.soon - (this.t - this.ds.boughtT));
+    this.T.durchsage = Math.min(this.T.durchsage, wait);
+  }
+
+  /**
+   * Darf eine gekaufte Sprachdurchsage jetzt sprechen? Nur in einer ruhigen Lücke: keine Szene (Folge, Ladestopp, Halt am
+   * Brunnen) und nicht kurz vor dem Brunnen (DS.goal: gleich beginnt die Folge), kein Funkloch, in der Sprachausgabe
+   * spricht und wartet niemand, seit DS.quiet Sekunden keine Stimme (OMI, Studio, Megafon: voiceUntil; quietFrom, bis wann
+   * die anderen sprachen), die letzte Durchsage mindestens DS.min her, und das Sprachstudio ist nicht gleich dran (es hat
+   * Vorrang).
+   */
+  dsQuiet(quietFrom) {
+    if (this.tv || this.charging || this.halt || this.navi.stopping || this.funkloch > 0) return false;
+    if (this.navi.target && this.navi.driveSecs() < DS.goal) return false;
+    if (this.speech.busy || this.speech.queue.length) return false;
+    if (this.t - this.said.t < DS.min) return false;
+    return this.t >= quietFrom + DS.quiet && this.t >= this.studio.until + DS.quiet && !this.studio.soon(DS.studio);
+  }
+
+  /** Stimmt jedes Stichwort der Durchsage d (when, FACTS) gerade? */
+  dsFits(d) {
+    return !d.when || d.when.split(' ').every((k) => FACTS[k](this));
+  }
+
+  /**
+   * Je Bild: Ist die Uhr abgelaufen und läuft keine Szene, kauft ein Zuschauer die nächste Durchsage vom Stapel (Spende
+   * sofort, wie bisher unabhängig davon, wer gerade spricht – so verläuft der Stream mit und ohne Radarwarner gleich).
+   * Sie spricht frühestens DS.speak Sekunden später, in der ersten ruhigen Lücke (dsQuiet; nach einer Szene auch), und
+   * stimmt ihr Stichwort dann nicht mehr, kommt eine andere vom Stapel. Beginnt ein Ladestopp, endet eine laufende
+   * Durchsage (eine Folge BrunnenTV beendet sie selbst: speech.js episode).
+   */
+  updateDurchsagen() {
+    const D = this.ds;
+    const T = this.T;
+    // Szenen: ihr Ende ist ein Moment für die Zuschauer (Folge vorbei, frisch geladen)
+    if (this.charging && !D.wasCharging && this.speech.current?.opts.ds) this.speech.cancelCurrent(true);
+    if (!this.charging && D.wasCharging) this.dsMoment('laden');
+    if (!this.tv && D.wasTv) this.dsMoment('folge');
+    D.wasCharging = !!this.charging;
+    D.wasTv = !!this.tv;
+    if (T.durchsage <= 0 && !D.pending && this.t >= this.studio.until && !this.tv && !this.charging) {
+      T.durchsage = D.gap();
+      const i = D.draw((d) => this.dsFits(d));
+      if (i >= 0) {
+        const name = D.buyer();
+        this.donate(name, this.eco.durchsagePrice(), 'Sprachdurchsage', { label: 'Sprachdurchsagen' });
+        D.boughtT = this.t;
+        // bis sie spricht, hält sie die Lücke frei (das Studio wartet auf voiceUntil); wer sich dennoch dazwischen meldet
+        // (OMI, Megafon), schiebt voiceUntil über hold hinaus, und sie wartet, bis er DS.quiet Sekunden fertig ist
+        const before = this.voiceUntil;
+        this.voiceUntil = Math.max(this.voiceUntil, this.t + DS.speak);
+        D.pending = { i, name, at: this.t + DS.speak, hold: this.voiceUntil, before };
+      }
+    }
+    const P = D.pending;
+    if (!P || this.t < P.at || !this.dsQuiet(this.voiceUntil > P.hold ? this.voiceUntil : P.before)) return;
+    let d = DS_ALL[P.i];
+    if (!this.dsFits(d)) {
+      D.putBack(P.i);
+      P.i = D.draw((x) => this.dsFits(x));
+      d = DS_ALL[P.i];
+    }
+    D.pending = null;
+    if (!d) return;
+    const text = fillTemplate(d.text, D.vars());
+    const name = P.name;
+    // die Karte nur zu einer Durchsage, die auch zu hören ist: Sie kommt, wenn sie spricht, und geht, wenn OMI oder eine
+    // Folge BrunnenTV sie abbricht
+    let line = null;
+    const dur = this.speech.say(text, d.voice, {
+      ds: true,
+      onStart: (dd) => (line = this.ui.durchsage(VOICES[d.voice].label, text, dd + 1, name)),
+      onDrop: () => line && (line.t = 0),
+    });
+    if (!dur) return;
+    this.said = { t: this.t, voice: d.voice, end: this.t + dur };
+    this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + DS.quiet);
+  }
+
   // --- Ereignisse ------------------------------------------------------------------
   updateEvents(dt, camera) {
     const p = this.player;
@@ -150,34 +255,14 @@ export class EreignissePart {
     for (const k in T) T[k] -= dt;
     // ein großes, gut gelauntes Publikum bucht öfter Durchsagen, Rahmen und Aktionen
     const eager = (clamp(this.eco.activity(), 0.6, 1.8) - 1) * dt;
-    T.durchsage -= eager;
+    // (die Durchsagen nur in engeren Grenzen, DS.eager: Sie kommen ohnehin oft, und nie Schlag auf Schlag)
+    T.durchsage -= (clamp(this.eco.activity(), DS.eager[0], DS.eager[1]) - 1) * dt;
     T.rahmen -= eager;
     T.trunk -= eager;
 
-    // Sprachdurchsage (wartet, bis das Sprachstudio ausgeredet hat und keine Szene läuft: Folge, Ladestopp)
-    if (T.durchsage <= 0 && this.t >= this.studio.until && !this.tv && !this.charging) {
-      T.durchsage = rand(48, 85);
-      const pool = this.weather.level > 0.3 && chance(0.5) ? DURCHSAGEN_REGEN : DURCHSAGEN;
-      const d = pick(pool.filter((x) => !x.when || x.when.split(' ').every((k) => FACTS[k](this))));
-      const text = fillTemplate(d.text);
-      const name = viewerName();
-      this.donate(name, this.eco.durchsagePrice(), 'Sprachdurchsage', { label: 'Sprachdurchsagen' });
-      this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
-      this.later(1.2, () => {
-        // hat inzwischen eine Szene begonnen (Folge, Ladestopp), entfällt sie: dort spricht keine Durchsage
-        if (this.tv || this.charging) return;
-        // die Karte nur zu einer Durchsage, die auch zu hören ist: Sie kommt, wenn sie spricht, und geht, wenn OMI oder
-        // eine Folge BrunnenTV sie aus der Warteschlange drängt oder abbricht
-        let line = null;
-        const dur = this.speech.say(text, d.voice, {
-          onStart: (dd) => (line = this.ui.durchsage(VOICES[d.voice].label, text, dd + 1, name)),
-          onDrop: () => line && (line.t = 0),
-        });
-        if (!dur) return;
-        this.said = { t: this.t, voice: d.voice };
-        this.voiceUntil = Math.max(this.voiceUntil, this.t + dur + 1);
-      });
-    }
+    // Sprachdurchsagen (game/durchsagen.js): etwa alle halbe Minute, nur in einer ruhigen Lücke (dsQuiet) – nie über
+    // OMI, eine Folge BrunnenTV, den Ladestopp oder das Sprachstudio und nie Stimme an Stimme
+    this.updateDurchsagen();
 
     // Rahmen
     if (T.rahmen <= 0 && p.s > 1000) {
@@ -243,7 +328,8 @@ export class EreignissePart {
       } else {
         const text = pick(MEGAFON_WUENSCHE);
         this.voiceUntil = Math.max(this.voiceUntil, this.t + 3);
-        this.later(1, () => {
+        // (nicht Stimme an Stimme mit einer Sprachdurchsage: Spricht eine, wartet der Wunsch, bis sie verklungen ist)
+        this.later(Math.max(1, this.said.end + DS.quiet - this.t), () => {
           // hat inzwischen eine Szene begonnen (Folge, Ladestopp), entfällt er: Dort spricht nur die Szene
           if (this.tv || this.charging) return;
           this.audio.megafon();

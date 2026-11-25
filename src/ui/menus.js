@@ -506,15 +506,16 @@ export class Menus {
     // die Leute des Streams, mit ausgedachten Berufen, und die BrunnenTV-Folgen der Reise
     const folgen = st.brunnenTV === 1 ? '1 Folge' : fmtNum(st.brunnenTV || 0) + ' Folgen';
     for (const [k, v, wide] of ABSPANN_REISE) if (st.brunnenTV || !v.includes('{folgen}')) credit(crew, k, [fillTemplate(v, { folgen })], wide === 'wide');
-    // Wie im echten Abspann danach die Unterstützenden, alle mit Namen: die größte Spende, dann je Art (src/ui/abspann.js)
+    // Wie im echten Abspann danach die Unterstützenden, alle mit Namen, je Art (src/ui/abspann.js); eine eigene Zeile
+    // „Größte Spende“ gibt es nicht mehr (Besitzer, 25.11.: „Den Punkt sollte es auch gar nicht mehr geben“), die Spender
+    // stehen nach ihrer Summe sortiert unter „Spenden“
     // jeder, der gespendet, geboten, Abos verschenkt hat, neu VIP wurde oder geraidet hat – die Karte scrollt, so weit es
     // nötig ist
     const F = o.fans;
     const groups = thanksGroups(F);
-    if (F?.top || groups.length) {
+    if (groups.length) {
       const thanks = el('div', 'crew thanks', card);
       el('h3', '', thanks, 'Danke an');
-      if (F.top) credit(thanks, 'Größte Spende', [`${nameBreak(F.top.name)} (${fmtCent(F.top.amount)})`]);
       for (const g of groups) {
         const box = el('div', 'crew-row wide thanks-group', thanks);
         box.dataset.group = g.id;
@@ -565,11 +566,13 @@ export class Menus {
       el('span', 'rt-v', r, v);
       el('span', 'rt-k', r, k);
     };
+    // Besitzer, 25.11.: Die Einnahmen stehen schon groß oben auf der Karte, eine zweite Kachel dafür entfällt. „Brunnen
+    // besucht“ und „BrunnenTV-Folgen“ zeigten fast immer dieselbe Zahl (jede Folge spielt an einem Brunnen) – eine Kachel;
+    // nur wenn ein Brunnen zwei Folgen bekam, sagt sie, an wie vielen Brunnen es waren
     item('🛣️', fmtOdo(R.km), 'gefahren');
-    item('⛲', fmtNum(towns), 'Brunnen besucht');
-    item('📺', fmtNum(tv.length), tv.length === 1 ? 'BrunnenTV-Folge' : 'BrunnenTV-Folgen');
+    const folgen = tv.length === 1 ? 'BrunnenTV-Folge' : 'BrunnenTV-Folgen';
+    item('📺', fmtNum(tv.length), towns < tv.length ? `${folgen} an ${fmtNum(towns)} Brunnen` : folgen);
     item('🔌', fmtNum(stops), stops === 1 ? 'Ladestopp' : 'Ladestopps');
-    item('💶', signedCent(o.money), 'eingenommen');
     const draw = () => {
       const w = Math.round(wrap.clientWidth);
       const h = Math.round(wrap.clientHeight);

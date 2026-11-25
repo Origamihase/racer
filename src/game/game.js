@@ -18,6 +18,7 @@ import { WaveRule, WAVE, chatGap } from './wave.js';
 import { StreamGags } from './gags.js';
 import { Akku } from './akku.js';
 import { Studio } from './studio.js';
+import { Durchsagen, DS } from './durchsagen.js';
 import { SpurWetterPart } from './parts/spur-wetter.js';
 import { ZielPart, scratchMarks, WAY } from './parts/ziel.js';
 import { EreignissePart, ELEFANT, FACTS } from './parts/ereignisse.js';
@@ -61,6 +62,8 @@ export class Game {
     this.waves = new WaveRule();
     // die Running Gags aus dem Stream des Eigentümers (gags.js): mit eigenem Zufall, damit der Stream sonst gleich verläuft
     this.gags = new StreamGags(this);
+    // die Sprachdurchsagen der Zuschauer: Stapel, Momente und eigener Zufall je Stream (durchsagen.js)
+    this.ds = new Durchsagen(this);
     // Akku und Ladestopps (akku.js): eigener Zustand, liest vom Spiel nur AKKU_HOST
     this.akku = new Akku(this);
     // das Sprachstudio (studio.js): eigener Zustand, liest vom Spiel nur STUDIO_HOST
@@ -142,7 +145,7 @@ export class Game {
     this.duel = null;
     // für den Abspann: die größte Spende, wer wie viel gespendet und geboten hat (Summe und Anzahl je Name), wer wie
     // viele Abos verschenkt hat, wer neu VIP geworden ist und wer mit wie vielen Leuten geraidet hat
-    this.fans = { top: null, gifts: {}, vips: [], donors: {}, bids: {}, raids: {} };
+    this.fans = { gifts: {}, vips: [], donors: {}, bids: {}, raids: {} };
     this.stats = {
       leftLaneTime: 0, naviReached: 0, nearMisses: 0, maxSpeedKmh: 0, bananas: 0, cleanDistance: 0, naviChanges: 0,
       maxViewers: 0, distance: 0, blitzerClean: 0, rainDistance: 0, crashes: 0, koriander: 0, fines: 0,
@@ -195,7 +198,7 @@ export class Game {
     this.landmark = null;
     this.funkloch = 0;
     this.funklochT = -99; // wann das letzte Funkloch begann (FACTS.netz)
-    this.said = { t: -99, voice: null }; // die letzte Sprachdurchsage (FACTS.durchsage)
+    this.said = { t: -99, voice: null, end: -99 }; // die letzte Sprachdurchsage (FACTS.durchsage), end: wann sie endet
     this.policeCar = null;
     this.shoulderWarned = false;
     // Trödeladam (TROEDEL): Sekunden im Stand und unter dem Tempo des Navis, wann der Chat ihn zuletzt so nannte
@@ -243,6 +246,8 @@ export class Game {
     this.later(68, () => {
       if (!this.allJobsPaid) this.chat(`Und wenn du alle fünf Jobs schaffst, lege ich ${fmtBetrag(this.allJobs.pledge)} drauf! 🏆`, this.allJobs.pledger);
     });
+    // der Stapel der Sprachdurchsagen mit eigenem Zufall (gesät aus dem des Streams: in den Prüfständen wiederholbar)
+    this.ds.reset(Math.floor(Math.random() * 4294967296));
   }
 
   /** Eine Antwort des Chats auf Mini Adams Gruß: gleich, wenn er gegrüßt hat, sonst gleich nach seinem Gruß (greet). */
@@ -475,7 +480,6 @@ export class Game {
     this.bot('james', line || `${name} hat ${fmtCent(amount)} ${what ? 'für »' + what + '« ' : ''}gespendet!`);
     this.audio.pling();
     this.stats.donations++;
-    if (!(this.fans.top?.amount >= amount)) this.fans.top = { name, amount };
     this.thank('donors', name, amount);
     // die Alter-Skala: Ab 100 € ruft der ganze Chat, darunter kommentiert er nur ab und zu (sonst wird es ein Sprechchor –
     // bei bester Laune kommen Mittelalter im Minutentakt)
@@ -488,6 +492,8 @@ export class Game {
     this.onMood('donation', clamp(amount / 20, 0.25, 1));
     // eine richtig große Spende gibt das Sprachstudio gern weiter (studio.js donated)
     this.studio.donated(name, amount);
+    // … und die Zuschauer danken in einer Sprachdurchsage mit (nicht für die Durchsage selbst)
+    if (amount >= DS.big && what !== 'Sprachdurchsage') this.dsMoment('spende', name);
     return amount;
   }
 
@@ -696,6 +702,7 @@ export class Game {
     if (left > 0) this.later(0.6, () => this.say(damageLine(kind, e.zone), left === 1 || front ? 'worried' : 'talk', { priority: false }));
     if (e.car.behavior === 'polizei') this.chat('Ausgerechnet die Polizei Gifhorn 😱');
     this.burst(front ? CHAT.frontal : CHAT.crash, 3, 2);
+    this.dsMoment('rempler');
     if (left <= 0) {
       // (den verlegenen Gruß nach dem letzten Rempler gibt es im Abspann: main.js)
       this.end('werkstatt');
@@ -794,7 +801,7 @@ export class Game {
     const F = this.fans;
     const gifters = Object.entries(F.gifts).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
     const list = (m) => Object.entries(m).sort((a, b) => b[1].sum - a[1].sum).map(([name, e]) => ({ name, sum: e.sum, n: e.n }));
-    return { top: F.top, donors: list(F.donors), bidders: list(F.bids), gifters, vips: [...new Set(F.vips)], raids: list(F.raids), verein: this.gags.report().verein };
+    return { donors: list(F.donors), bidders: list(F.bids), gifters, vips: [...new Set(F.vips)], raids: list(F.raids), verein: this.gags.report().verein };
   }
 
   /**

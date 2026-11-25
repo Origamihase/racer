@@ -81,6 +81,11 @@ export class Speech {
       weronika: [/Hedda/i, /Petra/i, /Google Deutsch/i],
       karla: [/Katja/i, /Google Deutsch/i, /Anna/i],
       william: [/Stefan/i, /Markus/i, /Yannick/i, /Conrad/i, /Google Deutsch/i],
+      // (die drei neuen Zuschauerstimmen: andere Stimmen als ihre Nachbarn, wo das Gerät welche hat; den Rest machen
+      // Höhe, Tempo und Lautstärke, VOICES)
+      turbo: [/Petra/i, /Marlene/i, /Vicki/i, /Katja/i, /Google Deutsch/i],
+      fluester: [/Yannick/i, /Markus/i, /Conrad/i, /Stefan/i],
+      amtlich: [/Conrad/i, /Killian/i, /Stefan/i, /Markus/i, /Google Deutsch/i],
       schoennbrun: [/Stefan/i, /Markus/i, /Yannick/i, /Conrad/i],
       adam: DEEP_MALE,
       brunnen: DEEP_MALE,
@@ -261,7 +266,7 @@ export class Speech {
         if (voice) u.voice = voice;
         u.pitch = this.pitchFor(item.voiceKey);
         u.rate = v.rate;
-        u.volume = 1;
+        u.volume = v.volume ?? 1;
         u.onend = done;
         u.onerror = done;
         // festhalten, bis er fertig ist: Sammelt Chrome den Satz vorher ein, kommt sein onend nie, und die Warteschlange

@@ -72,6 +72,14 @@ export class Studio {
   }
 
   /**
+   * Ist das Studio gleich dran (die Stimmungsansage in s Sekunden fällig, ein „Alter!“ wartet)? Eine Sprachdurchsage
+   * lässt ihm dann den Vortritt (game/parts/ereignisse.js dsQuiet).
+   */
+  soon(s) {
+    return this.due <= s || this.extra?.kind === 'alter';
+  }
+
+  /**
    * OMI hat das Wort (Game.say): Das Studio verstummt mitten im Satz und wartet, bis sie fertig ist – sein Untertitel
    * geht mit (wie bei jedem abgebrochenen Satz), statt nach ihrem halb gesagt wieder dazustehen.
    */
