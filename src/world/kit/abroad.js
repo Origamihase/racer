@@ -2582,7 +2582,7 @@ export function registerAbroad(T) {
   function mansard(b, x, y, z, w, d, col) {
     loft(b.F, [[chamfer(w + 0.6, d + 0.6, 0, x, z), y], [chamfer(w - 2.4, d - 2.4, 0, x, z), y + 3.2], [chamfer(w - 6, d - 6, 0, x, z), y + 4.4]], [col, mix(col, 0x000000, 0.12)], { g: [0.9, 1.06], bottom: true });
   }
-  landmark('schloss', { places: [], slot: 'skyline', far: true, title: 'Schloss mit Garten' }, (b) => {
+  landmark('schloss', { places: ['Mannheim', 'Hanau', 'Darmstadt'], slot: 'skyline', far: true, title: 'Schloss mit Garten' }, (b) => {
     const { F, G, W } = b;
     const near = !b.lod;
     const C = SCH;
