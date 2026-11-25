@@ -389,13 +389,14 @@ export class Menus {
     if (canFullscreen()) button(tools, fullscreenLabel(), 'vollbild', 'fs-btn');
     el('p', 'sub', card, 'Kappandramäßige Zusammenfassung für alle, die gerade erst reingekommen sind:');
     const grid = el('div', 'summary-grid', card);
-    const item = (k, v) => {
+    const item = (k, v, cls = '') => {
       const r = el('div', 'sum', grid);
       el('span', 'k', r, k);
-      el('span', 'v', r, v);
+      el('span', cls ? 'v ' + cls : 'v', r, v);
     };
     item('Strecke', fmtOdo(g.odometer / 1000));
-    item('Einnahmen dieser Fahrt', signedCent(g.money).replace(/^\+/, ''));
+    // im Minus mit Minuszeichen in der Farbe der Abzüge wie die Posten der Kasse darunter (nie „−0,00 €“)
+    item('Einnahmen dieser Fahrt', fmtKonto(g.money), kontoMinus(g.money) ? 'minus' : '');
     // ein echter Ort – oder, zwischen Ankunft und erstem Gebot der Runde, was gerade gilt (WorldNavi.label)
     item('Navi-Ziel', g.navi.label);
     item('Navi-Gebote', fmtNum(g.stats.naviChanges));

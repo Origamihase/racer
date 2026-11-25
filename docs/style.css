@@ -642,6 +642,7 @@ body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top)
 .sum { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; }
 .sum .k { font-size: 12px; color: var(--sub); }
 .sum .v { font-weight: 700; font-size: 16px; }
+.sum .v.minus { color: #ff8a80; }
 /* Pause: woher das Geld bisher kam, als eine fortlaufende Zeile (Posten und Betrag bleiben zusammen) */
 .kasse { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: #cfd5e2; }
 .kasse-k { color: var(--sub); }

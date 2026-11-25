@@ -2,8 +2,8 @@
 // kann. Dann kann man nichts mehr im Shop kaufen, aber trotzdem noch spielen und auch laden.“):
 // 1. Schulden sind echt: Bußgeld, Verwarngeld und Schäden werden auch im Minus ganz gebucht (Kasse, Abrechnung,
 //    Einblendung), der Stream endet mit Vorzeichen, das Guthaben geht unter null und trägt die Schulden in den nächsten
-//    Stream; ein Spielstand im Minus lädt; ein Stream mit Guthaben im Minus startet und läuft; Titel, Shop, Abspann und
-//    HUD zeigen ein Minus mit Minuszeichen in der Farbe der Abzüge, nie als 0.
+//    Stream; ein Spielstand im Minus lädt; ein Stream mit Guthaben im Minus startet und läuft; Titel, Shop, Abspann,
+//    Pause und HUD zeigen ein Minus mit Minuszeichen in der Farbe der Abzüge, nie als 0.
 // 2. Im Minus ist der Shop zu: der Grund steht oben, jeder Kauf-Knopf ist gesperrt, der Kauf in main.js wird abgelehnt –
 //    und ist das Guthaben wieder im Plus, geht es wieder; nichts anderes gibt Guthaben aus.
 // 3. Laden kostet Geld und geht immer: Bei 5 % Akku, −500 € Guthaben und −300 € in der Kasse beginnt der Ladestopp an
@@ -201,11 +201,27 @@ const NB = ' ';
   const konto = mon && all(mon).find((n) => n.classList.contains('konto'));
   ok(mon && mon.classList.contains('minus') && /^−230,50/.test(all(mon).find((n) => n.classList.contains('num')).textContent), `Abspann: Ergebnis ${mon && mon.textContent}`);
   ok(konto && konto.textContent === `−512,34${NB}€` && konto.classList.contains('minus') && /Guthaben · jetzt −512,34/.test(mon.textContent), `Abspann: Guthaben ${mon && mon.textContent}`);
+  // Pause: „Einnahmen dieser Fahrt“ im Minus mit Minuszeichen und der Klasse minus, im Plus ohne
+  const P = makeStream({ seed: 4 });
+  P.step(10);
+  const sumOf = (money) => {
+    P.game.money = money;
+    const pause = node('div');
+    menus.render_pause(pause, P.game);
+    const it = all(pause).find((n) => n.classList.contains('sum') && /^Einnahmen dieser Fahrt/.test(n.textContent));
+    return it && all(it).find((n) => n.classList.contains('v'));
+  };
+  const pv = sumOf(-90);
+  ok(pv && pv.textContent === `−90,00${NB}€` && pv.classList.contains('minus'), `Pause im Minus: ${pv && pv.textContent} (${pv && pv.className})`);
+  const pv2 = sumOf(42.5);
+  ok(pv2 && pv2.textContent === `42,50${NB}€` && !pv2.classList.contains('minus'), `Pause im Plus: ${pv2 && pv2.textContent} (${pv2 && pv2.className})`);
+  const pv3 = sumOf(-0.001);
+  ok(pv3 && pv3.textContent === `0,00${NB}€` && !pv3.classList.contains('minus'), `Pause um null: ${pv3 && pv3.textContent}`);
   // HUD: die Stream-Kasse mit fmtKonto und der Klasse minus; die Regeln dazu stehen im Stylesheet
   const ui = src('src/ui/ui.js');
   ok(/const money = fmtKonto\(g\.money\);[\s\S]{0,200}this\.moneyRow\.classList\.toggle\('minus', kontoMinus\(g\.money\)\)/.test(ui), 'HUD: Kasse ohne fmtKonto oder ohne Klasse minus');
   const css = src('docs/style.css');
-  for (const rule of ['.stat-val.minus', '.title-stats .minus', '.wallet.minus', '.over-money .konto.minus']) ok(css.includes(rule), `style.css: Regel ${rule} fehlt`);
+  for (const rule of ['.stat-val.minus', '.title-stats .minus', '.wallet.minus', '.over-money .konto.minus', '.sum .v.minus']) ok(css.includes(rule), `style.css: Regel ${rule} fehlt`);
 }
 
 // --- 1e. Die alten Kappungen sind fort -----------------------------------------------------------------------------
