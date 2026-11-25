@@ -4,7 +4,8 @@
 // research/landmarks/stil-raststaette (Abschnitte 1, 3, 4, 6). Rahmen wie überall: Ursprung am Boden in der Mitte der
 // Vorderkante (zur Fahrbahn), der Körper reicht nach −z, +x rechts. Mast, Lkw, Säule, Picknick und Eimer stehen mit der
 // Mitte ihrer Grundfläche im Ursprung (centre). Alles hält eine Nahaufnahme aus 2–4 m in 1,2 m Höhe aus.
-import { PAL, CITY, mix, makeKit, textPanel, fitFont, FONT, Bau, compose } from './citycore.js';
+import * as THREE from 'three';
+import { PAL, CITY, mix, makeKit, textPanel, textMaterial, fitFont, FONT, Bau, compose } from './citycore.js';
 
 const TAU = Math.PI * 2;
 const C = {
@@ -604,6 +605,21 @@ function pluggedCable(b, s, xg, yg, zg, port, col) {
   cord(F, [at(-0.14), at(-0.26), [xr, 0.22, pz - 0.04], [xr, gy, pz - 0.22], [xr, gy, axle], [xr, gy, 0.42], [xg + s * 0.09, 0.2, 0.22], [xg + s * 0.02, yg - 0.2, zg + 0.03], [xg, yg + 0.03, zg]], 0.032, col, 64, 10);
 }
 
+/** Maße der Säulen (chargePost): Sockel y0, Tiefe dd; je Art Höhe hh und Breite ww des Kastens, Höhe sh des Bildschirms. */
+const POST_DIM = { y0: 0.12, dd: 0.4, dc: { hh: 1.86, ww: 0.45, sh: 0.42 }, ac: { hh: 1.3, ww: 0.32, sh: 0.3 } };
+/**
+ * Bildschirm einer Säule kind im Rahmen der Säule (chargePost): heller Rahmen frame und die dunkle Fläche darin, je
+ * Mitte x 0, Unterkante y, Ebene z (schaut nach +z), Breite w, Höhe h. Den Preis zeigt ein eigenes Mesh genau über der
+ * dunklen Fläche (priceScreens).
+ */
+export function postScreen(kind) {
+  const { hh, ww, sh } = POST_DIM[kind];
+  const sw = ww * 0.74;
+  const sy = POST_DIM.y0 + hh - 0.42 - sh;
+  const z = POST_DIM.dd / 2;
+  return { frame: { y: sy, z: z + 0.002, w: sw, h: sh }, y: sy + 0.035, z: z + 0.004, w: sw - 0.07, h: sh - 0.07 };
+}
+
 /**
  * Säule im eigenen Rahmen (Mitte der Grundfläche im Ursprung): kind 'dc' (groß, je Seite ein Kabel) oder 'ac' (klein,
  * ein Kabel auf der Seite ac). body(y, w, h, d, seg) baut den Kasten (eingefärbt oder fest); bare: diese Seite (−1 | 1)
@@ -613,22 +629,18 @@ function pluggedCable(b, s, xg, yg, zg, port, col) {
 function chargePost(b, kind, near, body, bare = 0, ports = {}, ac = 1) {
   const { F, G, L } = b;
   const dc = kind === 'dc';
-  const hh = dc ? 1.86 : 1.3;
-  const ww = dc ? 0.45 : 0.32;
-  const dd = 0.4;
-  const y0 = 0.12;
+  const { hh, ww } = POST_DIM[kind];
+  const { dd, y0 } = POST_DIM;
   const seg = near ? 2 : 1;
   F.rbox(0, 0, 0, ww + 0.16, y0, dd + 0.14, 0.06, C.footing, { seg: 1 });
   body(y0, ww, hh, dd, seg);
   L.rbox(0, y0 + hh - 0.32, 0, ww + 0.02, 0.13, dd + 0.02, 0.075, C.teal, { seg });
   F.rbox(0, y0 + hh, 0, ww + 0.04, 0.07, dd + 0.04, 0.08, C.postCap, { seg });
   if (!near) return y0 + hh + 0.07;
-  // Bildschirm im hellen Rahmen, darunter das Steckerzeichen
-  const sw = ww * 0.74;
-  const sh = dc ? 0.42 : 0.3;
-  const sy = y0 + hh - 0.42 - sh;
-  G.rect(0, sy, dd / 2 + 0.002, sw, sh, mix(C.screen, 0xffffff, 0.6));
-  G.rect(0, sy + 0.035, dd / 2 + 0.004, sw - 0.07, sh - 0.07, C.screen, { g: [1.18, 0.82] });
+  // Bildschirm im hellen Rahmen (postScreen), darunter das Steckerzeichen
+  const S = postScreen(kind);
+  G.rect(0, S.frame.y, S.frame.z, S.frame.w, S.frame.h, mix(C.screen, 0xffffff, 0.6));
+  G.rect(0, S.y, S.z, S.w, S.h, C.screen, { g: [1.18, 0.82] });
   G.sign(0, y0 + 0.3, dd / 2 + 0.003, ww * 0.44, 'y:charge');
   // Stecker im Halter an der Seitenwand, Kabel in der Schlaufe längs der Seite
   for (const s of dc ? [-1, 1] : [ac]) hose(b, s, s * ww / 2, y0 + hh * (dc ? 0.56 : 0.6), 0.07, 1, dc ? 0.19 : 0.15, dc ? 0.8 : 0.64, C.cable, s === bare, ports[s] ?? null);
@@ -946,6 +958,8 @@ defs.lade_dach_3 = {
 const BAY = 2.6;
 const BAYS = Array.from({ length: 8 }, (_, i) => -9.1 + i * BAY);
 const POSTS = [[-5.2, 'dc'], [0, 'dc'], [5.2, 'dc'], [-10.7, 'ac'], [10.7, 'ac']];
+// die Reihe der Säulen: Tiefe z im Park, Hof y (darauf stehen sie)
+const ROW = { z: -5.3, y: 0.05 };
 // Geparkte Autos (Bucht, Baustein aus kit/street.js), wie kit/layout.js sie hinstellt: vorwärts eingeparkt, 0,2 m
 // tiefer als die Buchtmitte, ihr Kabel steckt schon an der nächsten Säule. L, W, wz: Länge, Breite und Vorderachse wie
 // toyCar in street.js; die Buchse sitzt in der Flanke zur Säule hinter dem vorderen Radkasten, hoch oben auf dem
@@ -990,7 +1004,7 @@ defs.ladepark = {
     for (const [x, kind] of POSTS) {
       const bare = heroFree && x === POSTS[1][0] ? -1 : 0;
       const body = (y, w, hh, d, seg) => F.rbox(0, y, 0, w, hh, d, 0.07, C.body, { seg });
-      b.at(x, 0.05, -5.3, 0, () => chargePost(b, kind, near, body, bare, parkedPorts(x), x < 0 ? 1 : -1));
+      b.at(x, ROW.y, ROW.z, 0, () => chargePost(b, kind, near, body, bare, parkedPorts(x), x < 0 ? 1 : -1));
       F.cyl(x, 0.05, -4.6, 0.14, 0.14, 0.85, C.mustard, { seg: near ? 10 : 5 });
       if (near) F.cyl(x, 0.75, -4.6, 0.142, 0.142, 0.06, C.white, { seg: 10, top: false });
     }
@@ -1015,19 +1029,97 @@ defs.ladepark = {
     // posts: [x, z, Oberkante (ab Boden des Ladeparks), Art]. Heldenbucht 3: das Auto steht rückwärts eingeparkt (Bug zur
     // Zufahrt, wie an echten Schnellladern), die Säule 1 rechts neben der Bucht steht dann an seiner linken hinteren
     // Ecke, wo die Ladeklappe sitzt. Auf ihrem Poller hat der Popcorn-Eimer Platz (popcorn = Mitte seines Bodens).
-    const posts = POSTS.map(([x, kind]) => [x, -5.3, 0.05 + 0.12 + (kind === 'dc' ? 1.86 : 1.3) + 0.07, kind]);
+    const posts = POSTS.map(([x, kind]) => [x, ROW.z, ROW.y + POST_DIM.y0 + POST_DIM[kind].hh + 0.07, kind]);
     // parked: wo kit/layout.js welche Autos hinstellt (ihre Kabel stecken), parkedCar: deren Maße
     return { w: 24, d: 11, h: 4.5, bays: BAYS.map((x) => [x, -3.3]), hero: 3, heroPost: 1, posts, popcorn: [POSTS[1][0], 0.9, -4.6], ground: 0.05, groundD: 8, parked: PARKED, parkedCar: PARKED_CAR };
   },
-  extras(kit) {
+  // o.price: der Preis des Parks (map/ladepreis.js) für die Bildschirme seiner Säulen
+  extras(kit, o = {}) {
     const m = textPanel(kit.core, 'rast:plug', 1.2, 1.2, 256, (c, w, h) => drawBoard(c, w, h, { icons: ['plug'] }));
     m.position.set(-11.6, 3.0, -0.31);
-    return [m];
+    return o.price ? [m, priceScreens(kit, o.price)] : [m];
   },
 };
 // Der Ladepark in Erlensee, an dem jede Fahrt beginnt, und die Ladeparks der Reise: Stecker und Kabel der Heldenbucht
 // gehören der Startszene und dem Ladestopp (xxl/chargerig.js)
 defs.ladepark_start = { ...defs.ladepark, make: (b, lod) => defs.ladepark.make(b, lod, true) };
+
+/**
+ * Der Preis auf den Bildschirmen der Säulen (Besitzer, 25.11.2026: „Der Preis könnte auf der leeren Tafel, die sich auf
+ * der Ladesäule befindet, ausgeschrieben werden. x €/kWh (oder eine andere Währung im Ausland)“). far: so nah zeigt
+ * ein Park ihn, weiter weg bleiben die Bildschirme dunkel (die Schrift wäre dort ein Fleck von wenigen Pixeln, und die
+ * Fernfassung der Säulen hat gar keinen Bildschirm; die Ortsstücke wechseln erst in 260 m auf sie, city.js); lift: so
+ * weit liegt das Bild vor der dunklen Fläche (dazu der Tiefenversatz der Texttafeln); px: Breite des Bilds je Preis.
+ */
+export const PREIS_SCREEN = { far: 120, lift: 0.002, px: 256 };
+// die gebogene Welt verschiebt Ecken bis zu so weit: um so viel größer ist die Kugel für die Sichtprüfung (city.js BEND_PAD)
+const BEND_PAD = 14;
+
+/**
+ * Bildschirm mit Preis wie an einer echten Säule: die weiße Zahl groß auf dem dunklen Glas, darüber klein „Ladepreis“,
+ * darunter die Einheit („€/kWh“, im Ausland die der Landeswährung, „Kč/kWh“). price: map/ladepreis.js ({ num, unit }).
+ */
+function drawPrice(c, w, h, price) {
+  const g = c.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#45535f');
+  g.addColorStop(1, '#2e3943');
+  c.fillStyle = g;
+  c.fillRect(0, 0, w, h);
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillStyle = '#8fe0c6';
+  fitFont(c, 'Ladepreis', Math.round(h * 0.085), w * 0.8);
+  c.fillText('Ladepreis', w / 2, h * 0.17);
+  c.fillRect(w * 0.3, h * 0.245, w * 0.4, Math.max(2, Math.round(h * 0.008)));
+  c.fillStyle = '#f6fbff';
+  fitFont(c, price.num, Math.round(h * 0.3), w * 0.86);
+  c.fillText(price.num, w / 2, h * 0.5);
+  c.fillStyle = '#d4e6ee';
+  fitFont(c, price.unit, Math.round(h * 0.11), w * 0.86);
+  c.fillText(price.unit, w / 2, h * 0.76);
+}
+
+/**
+ * Die Bildschirme aller Säulen eines Ladeparks mit seinem Preis: ein Mesh mit je einem Rechteck genau über der dunklen
+ * Fläche jeder Säule (postScreen; ein Draw Call je Park, nichts wird neu verschmolzen), das Bild je Preis nur einmal
+ * (textMaterial: geteilt, mit dem letzten Ort freigegeben), in einer LOD, die es ab PREIS_SCREEN.far ausblendet.
+ * Rahmen des Parks (wie make); die Bildschirme schauen nach +z zur Straße, nie gespiegelt.
+ */
+function priceScreens(kit, price) {
+  const P = [];
+  const N = [];
+  const U = [];
+  const I = [];
+  for (const [x, kind] of POSTS) {
+    const S = postScreen(kind);
+    const y = ROW.y + S.y;
+    const z = ROW.z + S.z + PREIS_SCREEN.lift;
+    const n = P.length / 3;
+    P.push(x - S.w / 2, y, z, x + S.w / 2, y, z, x + S.w / 2, y + S.h, z, x - S.w / 2, y + S.h, z);
+    N.push(0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1);
+    U.push(0, 0, 1, 0, 1, 1, 0, 1);
+    I.push(n, n + 1, n + 2, n, n + 2, n + 3);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  geo.setIndex(I);
+  geo.computeBoundingSphere();
+  geo.boundingSphere.radius += BEND_PAD;
+  // gehört diesem Park allein: release() gibt es mit dem Ort frei
+  geo.userData.merged = true;
+  const D = postScreen('dc');
+  const px = PREIS_SCREEN.px;
+  const mat = textMaterial(kit.core, 'preis:' + price.label, px, Math.round((px * D.h) / D.w), (c, w, h) => drawPrice(c, w, h, price));
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  const lod = new THREE.LOD();
+  lod.name = 'Ladepreis ' + price.label;
+  lod.addLevel(mesh, 0);
+  lod.addLevel(new THREE.Object3D(), PREIS_SCREEN.far);
+  return lod;
+}
 
 // =================================================================================================================
 // 9. Picknickgruppe: Tisch 1,8 m mit zwei Bänken, alles mindestens 0,1 m dick, Holz in zwei Tönen

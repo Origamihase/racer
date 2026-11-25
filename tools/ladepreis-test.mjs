@@ -6,6 +6,9 @@
 //    Landeswährung; Währungen gibt es genau für die Länder, in denen Ladeplätze stehen. Die Rechnung (James, Abspann)
 //    bucht kWh × Preis in Euro und nennt den Preis der Säule, im Ausland in ihrer Währung. Eine Quelle: der Akku nimmt
 //    den Preis beim Einstecken aus map/ladepreis.js.
+// 2. Die Bildschirme aller Säulen eines Parks (Ort, Startort, Ladepark) zeigen seinen Preis: ein Mesh je Park genau
+//    über den dunklen Flächen, aufrecht, ungespiegelt, nach vorn; ein Bild je Preis, geteilt und mit dem letzten Ort
+//    freigegeben; weiter weg als PREIS_SCREEN.far dunkel (und nie, solange das Ortsstück schon fern ist).
 // node tools/ladepreis-test.mjs
 import { readFileSync } from 'node:fs';
 
@@ -120,10 +123,127 @@ let bill = '';
   bill = `${PARKS[ch].name} ${P.label}: ${fmtKwh(want.kwh)} → ${local} ≈ ${fmtCent(want.euro)}; mit ${D.label} dazu: ${ladeCount(L.n, L.kwh, ladePreisText(L))}`;
 }
 
+// --- 3. Der Preis auf den Bildschirmen der Säulen (rest.js priceScreens) -------------------------------------------
+// Minimaler DOM-Ersatz wie in citykit-test; fillText merkt sich, was auf die Bildschirme geschrieben wird
+const drawn = [];
+const ctx = new Proxy({ fillText: (t) => drawn.push(String(t)) }, {
+  get(t, k) {
+    if (k === 'measureText') return (str) => ({ width: String(str).length * 10 });
+    if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => ({ addColorStop() {} });
+    if (k in t) return t[k];
+    return () => {};
+  },
+  set(t, k, v) {
+    t[k] = v;
+    return true;
+  },
+});
+globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx, style: {} }) };
+const { postScreen, PREIS_SCREEN } = await import('../src/world/kit/rest.js');
+const { cityKit, townPlan, parkPlan } = await import('../src/world/xxl/towns.js');
+const { STREET } = await import('../src/world/kit/layout.js');
+let screens = '';
+{
+  const K = cityKit();
+  const D = postScreen('dc');
+  const A = postScreen('ac');
+  // die dunkle Fläche liegt im Rahmen und davor; die kleine Säule nimmt dasselbe Bild (höchstens 4 % gestaucht)
+  for (const S of [D, A]) ok(S.w < S.frame.w && S.h < S.frame.h && S.y > S.frame.y && S.y + S.h < S.frame.y + S.frame.h && S.z > S.frame.z, `Bildschirm nicht im Rahmen: ${JSON.stringify(S)}`);
+  ok(Math.abs(A.w / A.h / (D.w / D.h) - 1) < 0.04, `AC-Bildschirm verzerrt das Bild: ${(A.w / A.h).toFixed(3)} gegen ${(D.w / D.h).toFixed(3)}`);
+  // die Fernfassung der Ortsstücke (city.js: 260 m ab der Mitte eines 100-m-Stücks) steht nie, solange der Preis steht
+  const built = [];
+  const parkIn = (plan) => plan.items.find((it) => /^ladepark/.test(it.name));
+  const build = (plan) => {
+    const g = K.buildTown(plan, { lazy: true });
+    while (g.step());
+    g.updateMatrixWorld(true);
+    built.push(g);
+    const lods = [];
+    g.traverse((o) => {
+      if (o.isLOD && /^Ladepreis/.test(o.name)) lods.push(o);
+    });
+    return { g, lods };
+  };
+  // a) der Startort (Erlensee), ein Ladepark in Deutschland und einer in der Schweiz: der Plan trägt den Preis der Säule
+  const erl = places.find((q) => q.key === 'Erlensee');
+  const pStart = townPlan(K, { kind: 'stadt', place: erl.i, s0: -300, s1: 400, start: true, spotS: 0 });
+  const deP = PARKS.findIndex((p) => nodes[p.node].cc === 'DE');
+  const chP = PARKS.findIndex((p) => nodes[p.node].cc === 'CH');
+  const pDe = parkPlan(K, { kind: 'park', park: deP, s0: 0, s1: 250 });
+  const pCh = parkPlan(K, { kind: 'park', park: chP, s0: 0, s1: 250 });
+  const want = [[pStart, ladePreis({ post: erl.i }), 'Erlensee'], [pDe, ladePreis({ park: deP }), PARKS[deP].name], [pCh, ladePreis({ park: chP }), PARKS[chP].name]];
+  for (const [plan, P, where] of want) {
+    const it = parkIn(plan);
+    ok(it && it.extras && it.extras.price === P && !('s' in it), `${where}: der Park trägt nicht den Preis seiner Säule (${it && it.extras && it.extras.price && it.extras.price.label})`);
+    const ci = Math.floor(-it.z / 100);
+    const dChunk = Math.hypot(it.x - (STREET.curbL + STREET.curbR) / 2, it.z + (ci + 0.5) * 100);
+    ok(PREIS_SCREEN.far + dChunk + 24 / 2 < 260, `${where}: der Preis steht noch, wenn das Ortsstück schon fern ist (${PREIS_SCREEN.far} + ${dChunk.toFixed(1)} m)`);
+  }
+  // b) gebaut: eine LOD je Park (nah: ein Mesh mit einem Rechteck je Säule; ab far: leer), aufrecht und ungespiegelt
+  for (const [plan, P, where] of want) {
+    const { lods } = build(plan);
+    const lod = lods[0];
+    ok(lods.length === 1 && lod.name === 'Ladepreis ' + P.label && lod.levels.length === 2 && lod.levels[0].distance === 0 && lod.levels[1].distance === PREIS_SCREEN.far && lod.levels[1].object.children.length === 0 && !lod.levels[1].object.isMesh, `${where}: LOD der Bildschirme ${lods.map((o) => o.name)}`);
+    if (!lod) continue;
+    const mesh = lod.levels[0].object;
+    const geo = mesh.geometry;
+    const pos = geo.attributes.position;
+    const uv = geo.attributes.uv;
+    const nrm = geo.attributes.normal;
+    const idx = geo.index.array;
+    ok(mesh.isMesh && pos.count === 20 && idx.length === 30 && geo.userData.merged && geo.boundingSphere.radius > 14, `${where}: ein Mesh mit fünf Rechtecken, eigene Geometrie mit Puffer für die Krümmung`);
+    // je Säule: das Rechteck genau über ihrer dunklen Fläche, nach +z, u wächst nach rechts, v nach oben, Vorderseite +z
+    const posts = K.info('ladepark_start').posts;
+    let fine = posts.length === 5;
+    posts.forEach(([x, z, , kind], i) => {
+      const S = postScreen(kind);
+      const v = (k) => [pos.getX(4 * i + k), pos.getY(4 * i + k), pos.getZ(4 * i + k)];
+      const [a, b, c, d] = [0, 1, 2, 3].map(v);
+      const ground = K.info('ladepark_start').ground;
+      fine &&= Math.abs(a[0] - (x - S.w / 2)) < 1e-6 && Math.abs(b[0] - (x + S.w / 2)) < 1e-6 && Math.abs(a[1] - (ground + S.y)) < 1e-6 && Math.abs(c[1] - (ground + S.y + S.h)) < 1e-6;
+      fine &&= [a, b, c, d].every((q) => Math.abs(q[2] - (z + S.z + PREIS_SCREEN.lift)) < 1e-6);
+      fine &&= uv.getX(4 * i) === 0 && uv.getX(4 * i + 1) === 1 && uv.getY(4 * i) === 0 && uv.getY(4 * i + 2) === 1 && nrm.getZ(4 * i) === 1;
+      const [i0, i1, i2] = [idx[6 * i], idx[6 * i + 1], idx[6 * i + 2]];
+      const P0 = [pos.getX(i0), pos.getY(i0)];
+      const P1 = [pos.getX(i1), pos.getY(i1)];
+      const P2 = [pos.getX(i2), pos.getY(i2)];
+      fine &&= (P1[0] - P0[0]) * (P2[1] - P0[1]) - (P1[1] - P0[1]) * (P2[0] - P0[0]) > 0;
+    });
+    ok(fine, `${where}: ein Bildschirm liegt nicht genau, schaut nicht nach vorn oder ist gespiegelt`);
+    // die Gruppe der Zusätze steht wie der Park: nur gedreht, nie gespiegelt oder verzerrt
+    const ex = lod.parent;
+    const it = parkIn(plan);
+    ok(ex && ex.scale.x === 1 && ex.scale.y === 1 && ex.scale.z === 1 && ex.rotation.y === it.ry && ex.position.x === it.x && ex.position.z === it.z, `${where}: Zusätze nicht am Park`);
+    ok(mesh.material.userData.textKey === 'preis:' + P.label, `${where}: Bild ${mesh.material.userData.textKey}`);
+  }
+  ok(['Ladepreis', want[0][1].num, want[0][1].unit, want[2][1].num, want[2][1].unit].every((t) => drawn.includes(t)), `Bildschirm zeigt nicht Zahl und Einheit: ${drawn.slice(0, 8).join(' | ')}`);
+  // c) ein Bild je Preis: Parks mit demselben Preis teilen es; frei erst, wenn der letzte Ort mit ihm geht
+  const label = want[1][1].label;
+  const key = 'preis:' + label;
+  const twin = PARKS.findIndex((p, i) => i !== deP && ladePreis({ park: i }).label === label);
+  build(parkPlan(K, { kind: 'park', park: twin, s0: 0, s1: 250 }));
+  const meshOf = (g) => lodsOf(g)[0].levels[0].object;
+  const same = built.filter((g) => lodsOf(g)[0].name === 'Ladepreis ' + label);
+  const mat = meshOf(same[0]).material;
+  ok(same.length >= 2 && same.every((g) => meshOf(g).material === mat) && mat.userData.users === same.length, `${same.length} Parks mit ${label}: nicht dasselbe Bild (${mat.userData.users} Nutzer)`);
+  ok(built.filter((g) => !same.includes(g)).every((g) => meshOf(g).material !== mat), 'Parks mit verschiedenen Preisen teilen ein Bild');
+  for (const g of same.slice(0, -1)) K.release(g);
+  ok(mat.userData.users === 1 && mat.userData.textMats.get(key) === mat, 'Bild schon frei, solange ein Park es noch zeigt');
+  K.release(same.at(-1));
+  ok(mat.userData.users === 0 && mat.userData.textMats.get(key) !== mat, 'Bild bleibt nach dem letzten Park im Speicher');
+  screens = `Bildschirm DC ${(D.w * 100).toFixed(1)} × ${(D.h * 100).toFixed(1)} cm, AC ${(A.w * 100).toFixed(1)} × ${(A.h * 100).toFixed(1)} cm, Bild ${PREIS_SCREEN.px} px breit je Preis, bis ${PREIS_SCREEN.far} m; ${want.map(([, P, w]) => `${w} ${P.label}`).join(', ')}`;
+  function lodsOf(g) {
+    const out = [];
+    g.traverse((o) => o.isLOD && /^Ladepreis/.test(o.name) && out.push(o));
+    return out;
+  }
+}
+
 if (fails) {
   console.error(`ladepreis-test: ${fails} von ${checks} Prüfungen fehlgeschlagen`);
   process.exit(1);
 }
-console.log(`ladepreis-test: alles grün (${checks} Prüfungen: feste Preise je Ladeplatz, Deutschland 0,46–0,59 €, Ausland 0,65–0,79 € in Landeswährung, Rechnung zum Preis der Säule)`);
+console.log(`ladepreis-test: alles grün (${checks} Prüfungen: feste Preise je Ladeplatz, Deutschland 0,46–0,59 €, Ausland 0,65–0,79 € in Landeswährung, Rechnung zum Preis der Säule, Preis auf jedem Bildschirm)`);
 console.log('  ' + summary);
 console.log('  ' + bill);
+console.log('  ' + screens);

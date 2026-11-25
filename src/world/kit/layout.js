@@ -670,16 +670,17 @@ export function planTown(place, opts = {}) {
     }
   }
 
-  // --- 1c. Ladepark, wo der Straßenbau ihn bestellt (charge = { u: Mitte längs der Straße, kind }, siehe
+  // --- 1c. Ladepark, wo der Straßenbau ihn bestellt (charge = { u: Mitte längs der Straße, kind, price }, siehe
   // xxl/charge.js): rechts an der Häuserflucht, zur Straße gedreht wie die Häuser. Davor senkt der Straßenbau den
   // Bordstein zur Einfahrt ab; auf Streifen und Gehweg vor dem Park steht nichts (keep). Drei Buchten belegen
-  // Elektroautos, rückwärts eingeparkt; die Heldenbucht und ihre Nachbarn bleiben frei.
+  // Elektroautos, rückwärts eingeparkt; die Heldenbucht und ihre Nachbarn bleiben frei. price: der Preis, den die
+  // Bildschirme seiner Säulen zeigen (map/ladepreis.js, rest.js priceScreens).
   const keep = [];
   if (opts.charge) {
     const c = opts.charge;
     const info = infoOf(c.kind);
     const x0 = sx(1, lineD);
-    const park = add(c.kind, x0, 0, -c.u, toRoad(1));
+    const park = add(c.kind, x0, 0, -c.u, toRoad(1), c.price ? { extras: { price: c.price } } : {});
     const span = { side: 1, u0: c.u - info.w / 2 - 1, u1: c.u + info.w / 2 + 1 };
     busy.push(span);
     keep.push(span);
@@ -1272,7 +1273,8 @@ export function planPark(opts = {}) {
   const pi = infoOf('ladepark');
   // Punkt (lx, lz) im Rahmen des Parks → Ortskoordinaten
   const P = (lx, lz) => [x0 - lz, -u + lx];
-  const park = add(kind, x0, 0, -u, FACE);
+  // (die Bildschirme der Säulen zeigen den Preis des Parks, opts.price: map/ladepreis.js)
+  const park = add(kind, x0, 0, -u, FACE, opts.price ? { extras: { price: opts.price } } : {});
   for (const [i, car] of pi.parked) {
     const [bx, bz] = pi.bays[i];
     add(car, x0 - bz + 0.2, pi.ground, -(u - bx), Math.PI / 2);
