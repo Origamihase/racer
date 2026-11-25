@@ -605,6 +605,25 @@ function house(b, p) {
       G.lathe(lx, base + 1.78, 0.13, [[0.05, 0], [0.09, 0.04], [0.09, 0.2], [0.02, 0.27]], [PAL.darkMetal, 0xffe9a8, PAL.darkMetal], { seg: 6, bottom: true });
     }
   }
+  // Laubengang vor dem Erdgeschoss (Bern, Thun, Innsbruck, Turin): Pfeiler zwischen den Achsen, Bögen darüber,
+  // dunkle Decke; der Gang liegt vor der Fassade, auf dem Vorplatz des zurückgesetzten Hauses (setback = Tiefe)
+  if (p.arcade && floors > 1) {
+    const ad = p.setback ?? 2.1;
+    const aw = w / cols;
+    const ah = gh - 0.15;
+    T.box(0, base + ah, ad / 2, w, gh - ah + 0.35, ad, WHITE, { skip: 'k', g: [0.9, 1] });
+    F.box(0, base + ah - 0.02, ad / 2, w - 0.1, 0.03, ad - 0.1, 0x6a645c, { skip: 't' });
+    for (let i = 0; i <= cols; i++) {
+      const x = -w / 2 + aw * i + (i === 0 ? 0.25 : i === cols ? -0.25 : 0);
+      T.box(x, 0, ad - 0.3, 0.5, base + ah, 0.6, WHITE, { skip: 'k', g: [0.86, 1] });
+      if (near && i < cols) {
+        // Bogen: zwei Zwickel unter dem Sturz
+        const xm = -w / 2 + aw * (i + 0.5);
+        for (const sgn of [-1, 1]) T.box(xm + sgn * (aw / 2 - 0.55), base + ah - 0.45, ad - 0.05, 0.7, 0.45, 0.1, WHITE, { skip: 'k' });
+      }
+    }
+    over = Math.max(over, ad + 0.05);
+  }
   // Giebelfenster
   if (roof === 'front' && rh > 2.6 && p.gableWin !== false && !p.gable) {
     b.at(0, 0, jet, 0, () => {
@@ -1833,7 +1852,7 @@ defs.cityGate = {
 // und roter Sandstein (Main, Neckar, Rhein).
 // Dazu (25.11.2026, „Kannst du jede Stadt individualisieren?“, Steckbriefe in steckbrief.js) Barock, Plattenbau,
 // Nachkriegsbau, Bäderarchitektur und Schwarzwald.
-export const REGIONS = ['brick', 'dutch', 'alpine', 'med', 'nordic', 'british', 'american', 'japanese', 'fachwerk', 'schiefer', 'kurort', 'gruenderzeit', 'sandstein', 'barock', 'platte', 'nachkrieg', 'baeder', 'schwarzwald'];
+export const REGIONS = ['brick', 'dutch', 'alpine', 'med', 'nordic', 'british', 'american', 'japanese', 'fachwerk', 'schiefer', 'kurort', 'gruenderzeit', 'sandstein', 'barock', 'platte', 'nachkrieg', 'baeder', 'schwarzwald', 'haussmann', 'laube', 'levante', 'kolonial', 'altstadt'];
 const R_FRAME = 0xf3ecdd; // cremeweiße Fensterrahmen (nie reinweiß)
 const R_CREAM = 0xeadfcb;
 const R_PANTILE = 0xc8694a;
@@ -1883,6 +1902,16 @@ const R_TINTS = {
   // Schwarzwald: dunkles Holz über weißem Sockel; im Städtle bunter Putz
   swHolz: [0x8a5a3a, 0x7a4e33, 0x96643f, 0x6e4630],
   swStadt: [0xf3e6c4, 0xf2d0c0, 0xdfe8d2, 0xf6efe0, 0xeed79c, 0xd8e4ea],
+  // Paris: heller Haustein, kaum Unterschied von Haus zu Haus
+  haussmann: [0xeee3cc, 0xe6d9bd, 0xf2e9d6, 0xddcfb2, 0xe9dcc2],
+  // Laubenstädte: Sandstein und Putz in Grau, Ocker, Rosé
+  laube: [0xd9cbb0, 0xe8d6a8, 0xe9c9b8, 0xcfd3cc, 0xd8c49a],
+  // Levante: Kalkstein in Honig und Sand
+  levante: [0xe8cf9a, 0xdfc289, 0xf0dcae, 0xd6b67a, 0xecd8b4],
+  // Kolonialstil der Karibik und Lateinamerikas: kräftige Farben
+  kolonial: [0x5fbfb4, 0xf2a7b8, 0xf6d06a, 0x8fc3e8, 0xf08a5d, 0xb9de8a],
+  // Altstädte Mitteleuropas (Prag, Krakau, Danzig, Vilnius): bunte Bürgerhäuser
+  altstadt: [0xf2c46a, 0xe89a7a, 0x9cc4b0, 0xf0e0b0, 0xd6a0b8, 0xa8c4e0],
 };
 const MATERIAL = new Set([R_TINTS.brick, R_TINTS.dutch, R_TINTS.zaan, R_TINTS.wood, R_TINTS.nordWood, R_TINTS.gbBrick, R_TINTS.gbStone, R_TINTS.usBrown, R_TINTS.usMain, R_TINTS.schiefer, R_TINTS.sandstein, R_TINTS.swHolz]);
 const GB_DOORS = [0xb33a3a, 0x2f3f66, 0x2f5d4a, 0xe0b83a, 0x2e3036];
@@ -2068,6 +2097,47 @@ const DRESS = {
     }
     return { tints: R_TINTS.swStadt, p: { ...PLAIN, roof: 'front', rh: p.w * 0.78, roofCol: pickN(h, [0xa8452f, 0x8b3e2c, 0x6b5a52]), shutter: pickN(h >> 2, [0x3f7a4a, 0x8a3b32, 0x3f7a4a, 0x2f4f6a]), frame: R_FRAME, gableWin: 'win', flowers: R_GERANIUM, flowersAll: true } };
   },
+  haussmann(role, p, h) {
+    // Haussmann: sechs Geschosse aus hellem Haustein, durchlaufende Eisenbalkone, Mansarde aus Zink mit Gauben, hohe
+    // Fenster; im Vorort das Steinhaus mit Walmdach und grauen Läden
+    const d = p.d ?? 9;
+    if (role === 'cottage' || role === 'house') {
+      return { tints: R_TINTS.haussmann, p: { ...PLAIN, roof: 'hip', rh: Math.min(p.w, d) * 0.4, roofCol: pickN(h, [0x7d858c, 0xb5603e]), oe: 0.3, frame: R_FRAME, shutter: pickN(h >> 2, [0x9aa3a8, 0x6f8fa8, 0xd8d4c8]), winH: 1.6, flowers: undefined } };
+    }
+    return { tints: R_TINTS.haussmann, p: { ...PLAIN, floors: Math.max(4, Math.min(5, (p.floors ?? 3) + 2)), fh: 2.75, roof: 'mansard', rh: 3.0, roofCol: 0x7d858c, dormers: Math.max(1, Math.round(p.w / 3)), cornice: 0xf4ecdc, frame: R_FRAME, winW: 1.1, winH: 2.0, base: 0.5, baseCol: 0xd6c9ae, balc: 'iron', flowers: undefined, chimney: false } };
+  },
+  laube(role, p, h) {
+    // Laubenstadt: Bögen über dem Gehweg, darüber drei Geschosse Putz oder Sandstein, flaches Ziegeldach längs, Erker
+    const d = p.d ?? 9;
+    if (role === 'cottage' || role === 'house') {
+      return { tints: R_TINTS.laube, p: { ...PLAIN, roof: 'side', rh: d * 0.36, roofCol: pickN(h, [0xb5603e, 0x8b3e2c]), oe: 0.6, shutter: pickN(h, [0x55804f, 0x8a3b32]), frame: R_FRAME, flowers: R_GERANIUM } };
+    }
+    return { tints: R_TINTS.laube, p: { ...PLAIN, floors: Math.max(3, Math.min(4, (p.floors ?? 3) + 1)), roof: 'side', rh: d * 0.3, roofCol: pickN(h, [0xb5603e, 0x8b3e2c, 0x9a5440]), oe: 0.9, arcade: true, setback: 2.1, yard: 'plain', frame: R_FRAME, winH: 1.6, shutter: pickN(h >> 2, [undefined, 0x55804f, undefined]), flowers: R_GERANIUM, chimney: false } };
+  },
+  levante(role, p, h) {
+    // Levante: würfelige Häuser aus Kalkstein, Flachdach mit niedriger Brüstung, kleine Fenster ohne Läden, Holztüren
+    const flat = { ...PLAIN, roof: 'flat', parapet: 0.6, cornice: 0xf0dfba, roofCol: 0xd9c49a, frame: 0xf0dfba, cross: 0, winW: 0.8, winH: 1.05, door: pickN(h, [0x6b4a32, 0x2f6b8a, 0x5a7a4a]), flowers: undefined, chimney: false, base: 0.2, baseCol: 0xc9ae7a };
+    if (role === 'cottage' || role === 'house') return { tints: R_TINTS.levante, p: { ...flat, floors: Math.min(2, p.floors ?? 2) } };
+    return { tints: R_TINTS.levante, p: { ...flat, floors: Math.min(4, Math.max(2, p.floors ?? 3)), balcony: h % 3 === 0 ? { col: 0x6b4a32, flowers: undefined } : undefined } };
+  },
+  kolonial(role, p, h) {
+    // Kolonialstil: ein, zwei Geschosse in kräftigen Farben, hohe Fenstertüren mit Läden, Holzbalkon, Attika über dem
+    // Flachdach mit weißem Gesims
+    const shutter = pickN(h, [0x2f6b8a, 0x3f7a4a, 0xf3ecdd, 0x8a3b32]);
+    const low = role === 'cottage' || role === 'house';
+    return { tints: R_TINTS.kolonial, p: { ...PLAIN, floors: low ? 1 : 2, gh: 3.2, fh: 3.0, roof: 'flat', parapet: 0.9, cornice: R_FRAME, roofCol: 0xe8dcc6, frame: R_FRAME, cross: 0, winW: 1.0, winH: 2.1, shutter, base: 0.3, baseCol: 0xf3ecdd, balcony: !low && h % 2 === 0 ? { col: 0x6b4a32, flowers: R_GERANIUM } : undefined, flowers: undefined, chimney: false } };
+  },
+  altstadt(role, p, h) {
+    // Altstadt Mitteleuropas: schmale, hohe Bürgerhäuser in kräftigem Putz, geschweifter oder Treppengiebel zur Straße,
+    // manche mit einer Attika vor dem Dach (Krakau), weiße Gesimse
+    const d = p.d ?? 9;
+    if (role === 'cottage') {
+      return { tints: R_TINTS.altstadt, p: { ...PLAIN, roof: 'side', rh: d * 0.5, roofCol: pickN(h, [0xb5603e, 0x8b3e2c]), frame: R_FRAME, dormers: 1, flowers: undefined } };
+    }
+    const floors = Math.max(3, Math.min(4, (p.floors ?? 3) + 1));
+    if (h % 3 === 0) return { tints: R_TINTS.altstadt, p: { ...PLAIN, floors, roof: 'flat', parapet: 1.5, cornice: R_FRAME, roofCol: 0xb5603e, corners: R_FRAME, frame: R_FRAME, winH: 1.6, flowers: undefined, chimney: false } };
+    return { tints: R_TINTS.altstadt, p: { ...PLAIN, floors, roof: 'front', gable: pickN(h >> 1, ['bell', 'step', 'bell', 'neck']), rh: p.w * 0.7, roofCol: pickN(h >> 3, [0xb5603e, 0x8b3e2c, 0x86ac9e]), corners: R_FRAME, band: R_FRAME, frame: R_FRAME, winH: 1.6, flowers: undefined, chimney: false } };
+  },
   japanese(role, p, h) {
     const d = p.d ?? 9;
     const street = role === 'town' || role === 'shop';
@@ -2079,8 +2149,9 @@ const DRESS = {
 function yard(b, w, sb, kind, doorX) {
   const { F, G } = b;
   const near = b.lod === 0;
-  const lawn = kind === 'area' ? PAL.sidewalk : PAL.grass[0];
+  const lawn = kind === 'area' || kind === 'plain' ? PAL.sidewalk : PAL.grass[0];
   F.box(0, 0, -sb / 2, w, 0.12, sb, lawn, { skip: 'b' });
+  if (kind === 'plain') return; // Boden unter dem Laubengang
   if (kind !== 'area') F.box(doorX, 0.12, -sb / 2, 1.2, 0.02, sb, PAL.sidewalk);
   if (kind === 'picket') {
     // weißer Lattenzaun mit Lücke am Weg
