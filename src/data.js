@@ -912,7 +912,7 @@ export const DURCHSAGEN = [
   { voice: 'fluester', text: 'Psst. {ort} ist heute besonders schön. Aber nicht weitersagen.', when: 'ort' },
   { voice: 'karla', text: 'Grüße aus {city}! Bei uns ist es ruhig, darum schauen wir dir zu.' },
   { voice: 'william', text: 'Viele Grüße aus {city}! Bimmel hurra und gute Fahrt!' },
-  { voice: 'turbo', text: 'Grüße von König Knolli! Er sagt, der Stream ist heute königlich.' },
+  { voice: 'turbo', text: 'Grüße an König Knolli! Heute ist der Stream ganz königlich.' },
   // … harmlose Mutproben und Fragen an Mini Adam …
   { voice: 'william', text: 'Mini Adam, sag dreimal ganz schnell: Brunnenbürste!' },
   { voice: 'turbo', text: 'Mini Adam, bitte einmal laut Schöner Brunnen rufen. Nur zur Probe!' },
