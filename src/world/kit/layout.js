@@ -530,9 +530,20 @@ export function planTown(place, opts = {}) {
   // Pflaster des Platzes
   for (let u = sq.u0 + 4; u < sq.u1; u += 8) for (let d = lineD + 4; d < sq.d1; d += 8) add('plaza', sx(1, d), 0, -u, 0);
   // Vor dem Platz eine kleine Grünfläche ohne Haus: der Brunnen ist schon von weitem zu sehen
-  busy.push({ side: 1, u0: sq.u0 - 14, u1: sq.u1 });
+  // Steht ein Wahrzeichen an der Rückwand, bleibt davor ein längerer Rasen frei: aus dem Cockpit sieht man es schon
+  // beim Heranfahren schräg über den Rasen, nicht erst im Vorbeifahren (der Ortsanfang und ein Ladepark davor bleiben)
+  let sight = 0;
+  if (squareMark) {
+    const c = opts.charge;
+    const cEnd = c && c.u < sq.u0 ? c.u + infoOf(c.kind).w / 2 + 2 : 0;
+    sight = Math.max(0, Math.min(96, Math.floor((sq.u0 - 14 - Math.max(24, cEnd)) / 8) * 8));
+  }
+  const greenU0 = sq.u0 - 14 - sight;
+  busy.push({ side: 1, u0: greenU0, u1: sq.u1 });
   add('flowerBed', sx(1, lineD + 2.2), top, -(sq.u0 - 7), 0);
   add('bench', sx(1, lineD + 4.2), top, -(sq.u0 - 10.5), -Math.PI / 2);
+  for (let u = greenU0 + 4; u + 4 <= sq.u0 - 14 + 0.01; u += 8) for (const d of [4, 12]) add('lawn', sx(1, lineD + d), 0, -u, 0);
+  for (let u = greenU0 + 10; u < sq.u0 - 18; u += 16) add('flowerBed', sx(1, lineD + 2.4), top, -u, 0);
 
   // Rückwand des Platzes: ein Wahrzeichen oder ein großes Haus quer, schaut zur Straße
   const backName = pick(rnd, BACK[size]);
@@ -669,6 +680,7 @@ export function planTown(place, opts = {}) {
   // --- 3. Wahrzeichen hinter der linken Zeile, je mit einer Lücke (Grünstreifen), durch die man es sieht -------------
   const skyBoxes = [];
   const views = []; // Sichtlücken: dort kein Straßenbaum vor dem Wahrzeichen
+  if (sight) views.push({ side: 1, u0: greenU0, u1: sq.u0 });
   const free = (side, u0, u1) => busy.every((b) => b.side !== side || u1 <= b.u0 || u0 >= b.u1);
   // Reihe um Reihe: vor dem Platz beginnend in Fahrtrichtung; was hinter dem Ortsende anfinge, kommt in eine Reihe
   // weiter hinten (Türme dürfen über das Ortsende hinaus stehen, sie sind von weitem zu sehen)
@@ -699,8 +711,9 @@ export function planTown(place, opts = {}) {
     ahead += info.w + 70;
     back = Math.max(back, deep + info.d);
     inRow++;
-    // Lücke in der Zeile vor dem Stück (im Ort); liegt dort ein Nebenplatz, daneben
-    const gc = Math.min(Math.max(u, 44), len - 40);
+    // Lücke in der Zeile vor dem Stück (im Ort), so weit vor seiner Mitte, dass man es von dort schräg nach vorn sieht
+    // (knapp 30° neben der Fahrtrichtung: mitten im Bild, nicht quer zur Seite oder unter den Tafeln am Rand); liegt dort ein Nebenplatz, daneben
+    const gc = Math.min(Math.max(Math.round(u - 1.9 * (deep + info.d / 2 - 6)), 44), len - 40);
     let gu = null;
     for (const du of [0, 30, -30, 60, -60]) {
       if (free(-1, gc + du - half, gc + du + half) && gc + du - half > 20 && gc + du + half < len - 16) {
