@@ -2,6 +2,8 @@
 // 1. Die Popcorn-Maschine kommt von Mini Adam: Sie steht samt Eimer nur in der Ladeszene an der Säule (ab dem Schwarz vor
 //    der Nahaufnahme in der Bucht, nicht beim Einparken) – an einem Ladepark der Autobahn und an der Säule eines Orts,
 //    im Startort nie; sie ist kein Teil der verschmolzenen Ortsstücke und geht nach der Szene, wo keine Kamera hinsieht.
+// 2. Mehr Sprachdurchsagen und mehr Abwechslung: mindestens 60 neue, je Stream ein gemischter Stapel, viele zur Lage und
+//    zum Moment, sieben Zuschauerstimmen; im Schnitt alle 25 bis 45 s beim Fahren, nur in ruhigen Lücken.
 import { readFileSync } from 'node:fs';
 
 let fails = 0;
@@ -159,6 +161,117 @@ globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext:
   ok(/m\.popStand\.end\(r\.skipT >= 0\);/.test(stop), 'stop.js: nach der Szene geht die Maschine nicht');
   ok(/popStand\.tick\(standCams\(cockpitOn\)\);/.test(main) && /popStand\.reset\(\);/.test(main), 'main.js: kein Blick der Kameras je Bild oder kein Aufräumen beim neuen Stream');
   ok(/cockpitOn \? rearCam : null/.test(main) && /sideOn\(\) \? sideCam : null/.test(main) && /cockpit\.rear\.cam/.test(main), 'main.js: Spiegel, Seitenfenster oder Rückfahrkamera fehlen in der Prüfung');
+}
+
+// --- 2. Mehr Sprachdurchsagen, mehr Abwechslung --------------------------------------------------------------------
+{
+  console.log('2 Mehr Sprachdurchsagen, mehr Abwechslung');
+  const { DURCHSAGEN, DURCHSAGEN_REGEN, VOICES } = await import('../src/data.js');
+  const { FACTS } = await import('../src/game/game.js');
+  const { Durchsagen, DS, ALL, SLOTS, MOMENTS } = await import('../src/game/durchsagen.js');
+  const { makeStream, DRIVERS } = await import('./stream-sim.mjs');
+  const VIEWERS = ['kassandra', 'weronika', 'karla', 'william', 'turbo', 'fluester', 'amtlich'];
+  // Vorrat: alle alten bleiben (der Unterhosen-Witz vorn, „Mein Sack ist nass!“, das Tralala), mindestens 60 neue
+  ok(DURCHSAGEN.length >= 17 + 60 && DURCHSAGEN_REGEN.length >= 4, `nur ${DURCHSAGEN.length - 17} neue Durchsagen`);
+  ok(DURCHSAGEN[0].text.startsWith('Treffen sich zwei Unterhosen.') && DURCHSAGEN.some((d) => d.text === 'Mein Sack ist nass!') && DURCHSAGEN.some((d) => d.text === 'Achtung, Achtung. Das Tralala bitte nicht anfassen.'), 'eine der festen Durchsagen fehlt');
+  ok(ALL.length === DURCHSAGEN.length + DURCHSAGEN_REGEN.length && ALL.slice(DURCHSAGEN.length).every((d) => d.when.split(' ').includes('regen')), 'der Stapel hat nicht alle Durchsagen (oder Regen ohne Stichwort)');
+  // Stimmen: jede Durchsage spricht ein Zuschauer, alle sieben kommen oft vor; die drei neuen klingen anders als alle
+  const count = {};
+  for (const d of ALL) count[d.voice] = (count[d.voice] || 0) + 1;
+  ok(ALL.every((d) => VIEWERS.includes(d.voice) && VOICES[d.voice]), `Durchsage mit fremder Stimme: ${ALL.filter((d) => !VIEWERS.includes(d.voice)).map((d) => d.voice).join(', ')}`);
+  ok(VIEWERS.every((v) => count[v] >= 8), `Stimmen zu selten: ${JSON.stringify(count)}`);
+  for (const k of ['turbo', 'fluester', 'amtlich']) {
+    const v = VOICES[k];
+    ok(!!v && /^[A-ZÄÖÜ][\wäöüß -]+$/.test(v.label) && v.label !== k, `${k}: kein deutscher Name`);
+    const near = Object.entries(VOICES).filter(([o, w]) => o !== k && Math.abs(w.pitch - v.pitch) < 0.1 && Math.abs(w.rate - v.rate) < 0.1).map(([o]) => o);
+    ok(!near.length, `${k} klingt wie ${near.join(', ')}`);
+  }
+  ok(VOICES.turbo.rate >= 1.35 && VOICES.fluester.rate <= 0.8 && VOICES.fluester.volume < 1 && VOICES.amtlich.pitch < 0.9, 'neue Stimmen: nicht sehr schnell, nicht flüsternd langsam oder nicht förmlich tief');
+  const speech = read('src/speech.js');
+  ok(['turbo', 'fluester', 'amtlich'].every((k) => new RegExp(`\\n      ${k}: \\[`).test(speech)) && /u\.volume = v\.volume \?\? 1;/.test(speech), 'speech.js: keine Stimmenwahl oder Lautstärke für die neuen Stimmen');
+  // Inhalt: Stichworte bekannt, Platzhalter mit ihrem Stichwort, kurz und gut vorzulesen, nichts Verbotenes
+  const BANNED = /Jana|Vanessa|\bHoly\b|Tesla|Coca|Pepsi|McDonald|Burger King|Red Bull|Haribo|YouTube|Twitch|TikTok|Instagram|Netflix|Spotify|Amazon|Google|Apple|5 Cent|\p{Extended_Pictographic}|[0-9€%&#@/]|\b(?:z\. ?B|bzw|usw|ca|evtl|inkl|km\/h)\b/u;
+  for (const [n, d] of ALL.entries()) {
+    const keys = d.when ? d.when.split(' ') : [];
+    ok(keys.every((k) => typeof FACTS[k] === 'function'), `unbekanntes Stichwort in „${d.text}“`);
+    ok(!BANNED.test(d.text), `Verbotenes in „${d.text}“: ${(d.text.match(BANNED) || [])[0]}`);
+    if (n >= 17 && n < DURCHSAGEN.length) ok(!/Verein/.test(d.text), `der Verein gehört in den Chat: „${d.text}“`);
+    for (const [, slot] of d.text.matchAll(/\{(\w+)\}/g)) ok(slot in SLOTS && (!SLOTS[slot].length || SLOTS[slot].some((k) => keys.includes(k))), `Platzhalter {${slot}} ohne passendes Stichwort: „${d.text}“`);
+    const full = d.text.replace(/\{\w+\}/g, 'x'.repeat(24));
+    ok(full.length <= 98, `zu lang für die Karte: „${d.text}“ (${full.length})`);
+    if (n >= 17 && n < DURCHSAGEN.length) ok(full.split(/[.!?:] /).every((x) => x.length <= 78), `zu langer Satz zum Vorlesen: „${d.text}“`);
+    // Blitzer: nur hinterher – und nie eine Warnung vor einem, der noch kommt (das tut nur OMI mit dem Radarwarner)
+    if (/Blitz/.test(d.text)) ok(keys.includes('geblitzt'), `Blitzer ohne Anlass: „${d.text}“`);
+    ok(!/Blitzer (voraus|vorne|kommt)|gleich .*[Bb]litz|Fuß vom Gas/.test(d.text), `Durchsage warnt vor einem Blitzer: „${d.text}“`);
+  }
+  const lage = ALL.filter((d) => d.when).length;
+  const tags = new Set(ALL.flatMap((d) => (d.when ? d.when.split(' ') : [])));
+  const want = ['ab', 'ort', 'land', 'spaet', 'regen', 'geblitzt', 'rempler', 'folge', 'akku', 'geladen', 'party', 'mau', 'spende', 'ziel', 'nah', 'weit', 'links', 'gleich'];
+  ok(want.every((k) => tags.has(k)), `keine Durchsage zu ${want.filter((k) => !tags.has(k)).join(', ')}`);
+  ok(ALL.filter((d) => d.when && d.when.split(' ').includes('geladen')).every((d) => /Popcorn/.test(d.text)), 'nach dem Laden ohne Popcorn');
+  // der Stapel: jede passende einmal, bevor eine wiederkommt; der Moment zuerst; Platzhalter aus dem Spiel
+  const g = { t: 0, world: { trip: () => null }, gags: { nextTown: () => ({ name: 'Langen' }) }, navi: { target: { name: 'Dreieich', goal: 'Bärenbrunnen, Dreieich' } } };
+  const D = new Durchsagen(g);
+  D.reset(7);
+  const general = ALL.filter((d) => !d.when).length;
+  const seen = new Set();
+  for (let k = 0; k < general; k++) seen.add(D.draw((d) => !d.when));
+  ok(seen.size === general && !seen.has(-1), `Stapel: ${seen.size} verschiedene in ${general} Zügen`);
+  const last = D.last;
+  const again = D.draw((d) => !d.when);
+  ok(again >= 0 && again !== last && D.used.size === 1, 'Stapel: der neue Durchgang beginnt nicht oder mit der letzten');
+  g.t = 100;
+  D.moment('laden');
+  const fitsNow = (d) => !d.when || d.when.split(' ').every((k) => k === 'geladen' && D.just(k));
+  ok(ALL[D.draw(fitsNow)].when === 'geladen', 'nach dem Laden kommt nicht zuerst eine Durchsage dazu');
+  g.t = 100 + DS.moment + 1;
+  ok(!D.just('geladen') && Object.values(MOMENTS).every((k) => typeof FACTS[k] === 'function'), 'ein Moment gilt zu lange (oder ohne Stichwort)');
+  D.moment('spende', 'Akkuhesse');
+  const v = D.vars();
+  ok(v.ziel === 'Dreieich' && v.brunnen === 'Bärenbrunnen' && v.gleich === 'Langen' && v.spender === 'Akkuhesse' && !!v.city && v.ort === undefined, `Platzhalter ${JSON.stringify(v)}`);
+  // im Stream (20 Minuten, Simulator): öfter als vorher (29 je 20 min), im Schnitt alle 25 bis 45 s beim Fahren, nie
+  // in einer Szene, nie Stimme an Stimme, viele Stimmen, keine doppelt
+  const dur = (x) => Math.max(1.2, x.text.length / 14);
+  const sum = [];
+  for (const [drv, seed] of [['mittel', 11], ['gemuetlich', 12], ['zuegig', 14]]) {
+    const sim = makeStream({ driver: DRIVERS[drv], seed, endless: true });
+    sim.step(1200);
+    const ds = sim.log.speak.filter((x) => x.who === 'durchsage');
+    const voices = new Set(ds.map((x) => x.voice));
+    sum.push(`${drv} ${ds.length}`);
+    ok(ds.length >= 33 && ds.length <= 55, `${drv} ${seed}: ${ds.length} Durchsagen in 20 min`);
+    ok(new Set(ds.map((x) => x.text)).size === ds.length, `${drv} ${seed}: eine Durchsage kam doppelt`);
+    ok(voices.size >= 6, `${drv} ${seed}: nur ${voices.size} Stimmen`);
+    ok(ds.every((x) => !x.at.tv && !x.at.charging), `${drv} ${seed}: Durchsage in einer Szene`);
+    // Abstände beim Fahren (ohne Folge und Ladestopp dazwischen)
+    const scenes = [...sim.log.tv.map((x) => x.t)];
+    const gaps = [];
+    for (let k = 1; k < ds.length; k++) if (!scenes.some((t) => t > ds[k - 1].t && t < ds[k].t)) gaps.push(ds[k].t - ds[k - 1].t);
+    const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    ok(mean >= 25 && mean <= 45 && Math.min(...gaps) >= DS.min - 0.01, `${drv} ${seed}: beim Fahren alle ${mean.toFixed(1)} s, kürzester Abstand ${Math.min(...gaps).toFixed(1)} s`);
+    // still davor (jede Stimme) und danach (Studio, Megafon, nächste Durchsage; OMI darf sich vordrängeln)
+    // (OMI drängelt sich vor: Wen sie unterbricht – Studio, Durchsage –, der endet mit ihrem Einsatz, studio.js hush)
+    const said = sim.log.say;
+    const end = (y) => {
+      const omi = y.voice === 'board' ? null : said.find((z) => z.voice === 'board' && z.t > y.t);
+      return Math.min(y.t + dur(y), omi ? omi.t : Infinity);
+    };
+    for (const x of ds) {
+      const own = said.find((y) => y.t === x.t && y.text === x.text);
+      const before = said.filter((y) => y !== own && y.t <= x.t && end(y) + DS.quiet > x.t + 0.05);
+      ok(!before.length, `${drv} ${seed}: Durchsage um ${x.t.toFixed(1)} s gleich nach „${before.map((y) => y.text).join(' | ')}“`);
+      const after = said.filter((y) => y !== own && y.voice !== 'board' && y.t > x.t && y.t < x.t + dur(x) + DS.quiet - 0.05);
+      ok(!after.length, `${drv} ${seed}: gleich nach der Durchsage um ${x.t.toFixed(1)} s: „${after.map((y) => y.text).join(' | ')}“`);
+    }
+  }
+  console.log(`  ${ALL.length} Durchsagen (${DURCHSAGEN.length - 17} neu, ${lage} zur Lage), ${VIEWERS.length} Stimmen; je 20 min: ${sum.join(', ')}`);
+  // das Spiel: ruhige Lücke, Vortritt fürs Studio, Ladestopp beendet eine laufende Durchsage, der Megafon-Wunsch wartet,
+  // eigener Zufall gesät, die Karte nennt die Stimme
+  const ev = read('src/game/parts/ereignisse.js');
+  ok(/this\.updateDurchsagen\(\);/.test(ev) && /!this\.studio\.soon\(DS\.studio\)/.test(ev) && /this\.speech\.current\?\.opts\.ds\) this\.speech\.cancelCurrent\(true\)/.test(ev), 'ereignisse.js: keine ruhige Lücke oder der Ladestopp spricht über eine Durchsage');
+  ok(/this\.later\(Math\.max\(1, this\.said\.end \+ DS\.quiet - this\.t\), \(\) => \{/.test(ev), 'ereignisse.js: der Megafon-Wunsch wartet nicht, bis eine Durchsage verklungen ist');
+  ok(/this\.ui\.durchsage\(VOICES\[d\.voice\]\.label, text/.test(ev) && /\$\{voiceLabel\} · Sprachdurchsage von \$\{buyer\}/.test(read('src/ui/ui.js')), 'die Karte nennt die Stimme nicht');
+  ok(/this\.ds\.reset\(Math\.floor\(Math\.random\(\) \* 4294967296\)\);/.test(read('src/game/game.js')), 'game.js: der Stapel wird nicht je Stream gemischt');
 }
 
 if (fails) {

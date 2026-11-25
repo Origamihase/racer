@@ -675,7 +675,7 @@ export function fillTemplate(text, vars = {}) {
   return text.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : pick(CHAT_CITIES)));
 }
 
-const CHAT_CITIES = ['Fulda', 'Kassel', 'Gifhorn', 'Mainz', 'Köln', 'Siegen', 'Hanau', 'Darmstadt', 'Bielefeld',
+export const CHAT_CITIES = ['Fulda', 'Kassel', 'Gifhorn', 'Mainz', 'Köln', 'Siegen', 'Hanau', 'Darmstadt', 'Bielefeld',
   'Buxtehude', 'Konstanz', 'Augsburg', 'Bremen', 'Nürnberg', 'Hamburg', 'Lübeck', 'Trier', 'Erlensee'];
 
 /** Ein Betrag, wie ihn der Chat schreibt: runde ohne Nachkommastellen („25 €“), krumme mit („33,33 €“). */
@@ -714,6 +714,11 @@ export const VOICES = {
   weronika: { label: 'Weronika', pitch: 1.1, rate: 0.95 },
   karla: { label: 'Karla', pitch: 1.0, rate: 1.05 },
   william: { label: 'Brüll-William', pitch: 0.55, rate: 1.12 },
+  // drei weitere Zuschauerstimmen (Testfahrt 25.11.2026: mehr Abwechslung): sehr schnell, flüsternd langsam (leiser,
+  // volume) und übertrieben förmlich – jede mit eigener Höhe und eigenem Tempo (speech.js pickVoice)
+  turbo: { label: 'Turbo-Tina', pitch: 1.25, rate: 1.45 },
+  fluester: { label: 'Flüster-Fritz', pitch: 0.8, rate: 0.74, volume: 0.6 },
+  amtlich: { label: 'Amtsrat Förmlich', pitch: 0.7, rate: 0.88 },
   board: { label: 'OMI', pitch: 1.18, rate: 1.04 },
   schoennbrun: { label: 'Herr Schönnbrun', pitch: 0.45, rate: 0.82 },
   // Mini Adam bei BrunnenTV: tief und männlich (speech.js DEEP_MALE); sein Ruf „Schöner Brunnen!“ noch tiefer und
@@ -896,6 +901,101 @@ export const DURCHSAGEN = [
   { voice: 'william', text: 'Kappandramäßige Zusammenfassung bitte! Ich war beim Schwimmunterricht.' },
   { voice: 'william', text: 'Mein Sack ist nass!' },
   { voice: 'kassandra', text: 'Achtung, Achtung. Das Tralala bitte nicht anfassen.' },
+  // Testfahrt 25.11.2026: mehr und abwechslungsreicher (game/durchsagen.js mischt je Stream einen Stapel). Platzhalter:
+  // {city} ein Ort aus dem Chat · {ort} der Ort, durch den er fährt (when ort) · {gleich} der nächste auf dem Weg (when
+  // gleich) · {ziel} der Zielort und {brunnen} sein Brunnen (when ziel) · {spender} wer eben groß gespendet hat (when
+  // spende). Grüße aus Orten auf dem Weg …
+  { voice: 'karla', text: 'Liebe Grüße nach {gleich}! Mini Adam ist gleich bei euch, bitte winken.', when: 'gleich' },
+  { voice: 'turbo', text: 'Hallo {ort}! Mini Adam fährt gerade durch, also alle schnell lächeln!', when: 'ort' },
+  { voice: 'weronika', text: 'Schöne Grüße an alle in {ziel}. Haltet den Brunnen schon mal sauber!', when: 'ziel' },
+  { voice: 'amtlich', text: 'Die Stadt {ziel} bittet um pünktliches Erscheinen. Der Brunnen ist geputzt.', when: 'ziel' },
+  { voice: 'fluester', text: 'Psst. {ort} ist heute besonders schön. Aber nicht weitersagen.', when: 'ort' },
+  { voice: 'karla', text: 'Grüße aus {city}! Bei uns ist es ruhig, darum schauen wir dir zu.' },
+  { voice: 'william', text: 'Viele Grüße aus {city}! Bimmel hurra und gute Fahrt!' },
+  { voice: 'turbo', text: 'Grüße von König Knolli! Er sagt, der Stream ist heute königlich.' },
+  // … harmlose Mutproben und Fragen an Mini Adam …
+  { voice: 'william', text: 'Mini Adam, sag dreimal ganz schnell: Brunnenbürste!' },
+  { voice: 'turbo', text: 'Mini Adam, bitte einmal laut Schöner Brunnen rufen. Nur zur Probe!' },
+  { voice: 'weronika', text: 'Mini Adam, winkst du bitte einmal in die Kamera? Nur ganz kurz.' },
+  { voice: 'karla', text: 'Mini Adam, wie viele Brunnen schaffst du heute? Ich tippe auf ganz viele.' },
+  { voice: 'weronika', text: 'Mini Adam, welcher Brunnen war bisher dein liebster?' },
+  { voice: 'karla', text: 'Mini Adam, was ist eigentlich dein Lieblingsgetränk? Ich rate: Bananensaft.' },
+  { voice: 'weronika', text: 'Mini Adam, spielst du nach dem Stream noch eine Runde Ringtennis?' },
+  { voice: 'turbo', text: 'Mini Adam, wie heißt eigentlich die Drohne? Sie verdient einen Namen!' },
+  { voice: 'william', text: 'Mini Adam, die Raab-Story bitte noch mal. Ich habe den Anfang verpasst!' },
+  { voice: 'william', text: 'Mini Adam, bitte einmal hupen für alle Ehrenmenschen im Chat!' },
+  // … erfundene Bekanntmachungen …
+  { voice: 'amtlich', text: 'Bekanntmachung: Das Fundbüro meldet einen herrenlosen Plüschbären. Bitte abholen.' },
+  { voice: 'amtlich', text: 'Amtliche Mitteilung: Das Hupen ist heute ausdrücklich erlaubt. Bimmel hurra.' },
+  { voice: 'kassandra', text: 'Achtung, Achtung. Der Bananensaft im Getränkehalter ist kein Spielzeug.' },
+  { voice: 'amtlich', text: 'Sehr geehrter Herr Mini Adam, Ihr Antrag auf mehr Brunnen wurde genehmigt.' },
+  { voice: 'amtlich', text: 'Hiermit wird festgestellt: Meister Pünktlich ist noch immer nicht da.' },
+  { voice: 'amtlich', text: 'Das Ordnungsamt grüßt den Dachs. Der Efeu ist bereits informiert.' },
+  { voice: 'amtlich', text: 'Zur Kenntnisnahme: Das Tralala befindet sich weiterhin an seinem Platz.' },
+  { voice: 'amtlich', text: 'Hinweis: Der Code ADAM gilt weiterhin. Gültig für gute Laune und sonst nichts.' },
+  // … kleine Witze mit Pointe …
+  { voice: 'kassandra', text: 'Was macht ein Brunnen, wenn er traurig ist? Er lässt alles laufen.' },
+  { voice: 'weronika', text: 'Warum ist das Navi immer so entspannt? Es kennt jeden Ausweg.' },
+  { voice: 'karla', text: 'Was sagt der Akku zur Ladesäule? Du gibst mir echt Energie.' },
+  { voice: 'william', text: 'Treffen sich zwei Brunnen. Sagt der eine: Alles im Fluss? Sagt der andere: Läuft.' },
+  { voice: 'kassandra', text: 'Treffen sich zwei Leitplanken. Sagt die eine: Wir müssen zusammenhalten.' },
+  { voice: 'turbo', text: 'Was ist grün und sitzt im Navi? Ein Frosch. Er sagt immer nur: Quak, bitte wenden.' },
+  // … Werbung für Dinge, die es nicht gibt …
+  { voice: 'turbo', text: 'Werbung: Plüschbrause, jetzt zuckerfrei! Prickelt wie ein Brunnen, nur im Mund.' },
+  { voice: 'kassandra', text: 'Werbung: Der Dachs-Kalender ist da. Zwölf Monate Dachs, und jeder grüßt Efeu.' },
+  { voice: 'turbo', text: 'Kurze Werbung: Handkäs-Kaugummi. Hält länger als jede rote Ampel.' },
+  { voice: 'weronika', text: 'Werbung: das Navi-Kissen. Es sagt nach hundert Metern leise: Gute Nacht.' },
+  { voice: 'fluester', text: 'Werbung, ganz leise: die Flüsterhupe. Für alle, die niemanden wecken wollen.' },
+  { voice: 'amtlich', text: 'Werbepause: Brunnenbürste Glanz und Gloria. Für Brunnen, die glänzen wollen.' },
+  // … Wetter und Verkehr …
+  { voice: 'kassandra', text: 'Der Verkehrsbericht: Auf allen Straßen ist Mini Adam unterwegs. Bitte lächeln.' },
+  { voice: 'karla', text: 'Das Wetter: Über dem Stream zieht gute Laune auf, vereinzelt auch Brunnen.' },
+  { voice: 'amtlich', text: 'Verkehrsmeldung: Auf der Autobahn fährt ein Mini Adam. Bitte freundlich grüßen.', when: 'ab' },
+  // … Running Gags …
+  { voice: 'kassandra', text: 'Liebe Grüße an Elsa! Sie steht bestimmt wieder irgendwo am Rand.' },
+  { voice: 'weronika', text: 'Hier spricht Meister Pünktlich. Ich bin unterwegs, in Gedanken schon da.' },
+  { voice: 'karla', text: 'Dachs grüßt Efeu. Efeu grüßt zurück. Und der Chat grüßt alle beide.' },
+  { voice: 'william', text: 'Ringtennis ist der beste Sport der Welt! Wer widerspricht, muss hupen!' },
+  { voice: 'kassandra', text: 'Achtung, Achtung. Die Bank in {city} ist frisch gestrichen. Farbe: geheim.' },
+  { voice: 'turbo', text: 'Bimmel hurra, Bimmel hurra, Mini Adam ist wieder da!' },
+  { voice: 'fluester', text: 'Psst. Die Plüschbrause ist zuckerfrei. Ich habe extra nachgefragt.' },
+  { voice: 'fluester', text: 'Ich habe gehört, das Sprachstudio übt heimlich Ringtennis.' },
+  { voice: 'fluester', text: 'Ich verrate dir ein Geheimnis. Der Efeu grüßt den Dachs zurück.' },
+  { voice: 'turbo', text: 'Hallo hallo hallo! Ich wollte nur sagen: Du bist der Beste. Tschüss!' },
+  // … und zur Lage: Autobahn, Ort, Landstraße, später Abend …
+  { voice: 'william', text: 'Mini Adam, auf der Autobahn schön rechts bleiben. Die Polizei Gifhorn schaut zu!', when: 'ab' },
+  { voice: 'karla', text: 'Die Autobahn gehört heute dir, Mini Adam. Also fast. Die Laster wollen auch.', when: 'ab' },
+  { voice: 'weronika', text: 'Mini Adam, die Landstraße steht dir richtig gut.', when: 'land' },
+  { voice: 'fluester', text: 'Auf der Landstraße ist es so schön ruhig. Ich flüstere extra leise.', when: 'land' },
+  { voice: 'turbo', text: 'Mini Adam, du bist mitten in {ort}! Bitte einmal freundlich nicken!', when: 'ort' },
+  { voice: 'amtlich', text: 'Die Gemeinde {ort} begrüßt Mini Adam herzlich. Bitte Schritttempo am Brunnen.', when: 'ort' },
+  { voice: 'fluester', text: 'Es ist schon spät. Ich flüstere, damit die Brunnen schlafen können.', when: 'spaet' },
+  { voice: 'kassandra', text: 'Achtung, Achtung. Es ist spät. Der Sendeschluss wurde wieder verschoben.', when: 'spaet' },
+  // … zum Moment: geblitzt, Rempler, nach einer Folge, Akku, nach dem Laden (Popcorn!), Laune, große Spende …
+  { voice: 'william', text: 'Das Blitzerfoto bitte ausdrucken und einrahmen! Bestes Foto des Abends!', when: 'geblitzt' },
+  { voice: 'amtlich', text: 'Der Bescheid folgt per Post. Das Foto ist übrigens sehr gelungen.', when: 'geblitzt' },
+  { voice: 'weronika', text: 'Kleiner Rempler, großes Herz. Weiter geht es, Mini Adam!', when: 'rempler' },
+  { voice: 'kassandra', text: 'Achtung, Achtung. Die Werkstatt lässt grüßen. Sie hat schon Kaffee gekocht.', when: 'rempler' },
+  { voice: 'karla', text: 'Was für eine Folge BrunnenTV! Ich habe Gänsehaut bis in die Socken.', when: 'folge' },
+  { voice: 'william', text: 'Schöner Brunnen! Den nehme ich in meine Sammlung auf!', when: 'folge' },
+  { voice: 'weronika', text: 'Mini Adam, dein Akku sieht müde aus. Gönn ihm bald eine Ladesäule.', when: 'akku' },
+  { voice: 'turbo', text: 'Akku leer, Laune voll! Hauptsache, die nächste Säule kommt bald!', when: 'akku' },
+  { voice: 'kassandra', text: 'Achtung, Achtung. Popcorn an der Ladesäule ist ab sofort Pflicht.', when: 'geladen' },
+  { voice: 'fluester', text: 'Psst, Mini Adam. Hast du noch Popcorn übrig? Ich frage für einen Freund.', when: 'geladen' },
+  { voice: 'william', text: 'Akku voll, Popcorn alle! So muss ein Ladestopp aussehen!', when: 'geladen' },
+  { voice: 'turbo', text: 'Der Chat feiert, der Chat tanzt, der Chat hat heute richtig Spaß!', when: 'party' },
+  { voice: 'karla', text: 'Kopf hoch, lieber Chat. Gleich passiert bestimmt etwas Schönes.', when: 'mau' },
+  { voice: 'amtlich', text: 'Mitteilung an den Chat: Die gute Laune ist hiermit offiziell wieder eröffnet.', when: 'mau' },
+  { voice: 'william', text: 'Danke an {spender}! So eine Spende, da wackelt ja die Leitplanke!', when: 'spende' },
+  { voice: 'kassandra', text: 'Achtung, Achtung. {spender} ist ab sofort Ehrenmensch des Tages.', when: 'spende' },
+  // … Ziel und nächster Brunnen, die linke Spur (vor einem Blitzer warnt nie eine Durchsage: das tut nur OMI mit dem
+  // Radarwarner) …
+  { voice: 'weronika', text: 'Mini Adam, ich freue mich so auf den {brunnen}. Ist er wirklich so schön?', when: 'ziel' },
+  { voice: 'karla', text: 'Grüße an den {brunnen} in {ziel}! Wir kommen bald vorbei.', when: 'ziel' },
+  { voice: 'amtlich', text: 'Das Navi meldet: Der {brunnen} ist schon ganz nah. Bitte Haltung annehmen.', when: 'nah' },
+  { voice: 'fluester', text: 'Bis {ziel} ist es noch weit. Ich mache es mir schon mal gemütlich.', when: 'weit' },
+  { voice: 'william', text: 'Die linke Spur ist frei! Aber bitte trotzdem schön vorsichtig, Mini Adam!', when: 'links' },
+  { voice: 'turbo', text: 'Linke Spur frei, Chat dabei, Mini Adam fährt wie ein Profi!', when: 'links ab' },
 ];
 
 export const DURCHSAGEN_REGEN = [
@@ -903,6 +1003,9 @@ export const DURCHSAGEN_REGEN = [
   { voice: 'weronika', text: 'Mini Adam, dein Scheibenwischer winkt mir gerade zu. Ich winke zurück!' },
   { voice: 'kassandra', text: 'Achtung, Achtung. Der automatische Scheibenwischer befindet sich weiterhin in der Beta-Phase.' },
   { voice: 'kassandra', text: 'Treffen sich zwei Scheibenwischer. Fragt der eine: Na, wie läuft’s? Sagt der andere: Hin und her.' },
+  // (Testfahrt 25.11.2026: noch zwei fürs Wetter; game/durchsagen.js nimmt die Regenliste mit dem Stichwort regen)
+  { voice: 'kassandra', text: 'Der Wetterbericht: Es regnet. Der Scheibenwischer übernimmt die Moderation.' },
+  { voice: 'weronika', text: 'Mini Adam, bei diesem Regen sieht jeder Brunnen doppelt so voll aus.' },
 ];
 
 // ---------------------------------------------------------------------------
