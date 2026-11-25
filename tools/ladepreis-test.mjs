@@ -12,6 +12,7 @@
 // 3. Ein Gebot hat immer ein Ziel: Plant L vor dem ersten Gebot einen Ladepark hinter dem Wagen ein, fand die erste
 //    Runde keinen Ort mehr und der Stream stürzte beim Gebot ab (navi.js overbid mit undefined). Jetzt wählt sie dann
 //    nach der Entfernung, rechnet nur wenige Routen, und gäbe es gar nichts, nimmt der Bieter einen anderen Ort.
+// 4. Die Anleitung (README) nennt die Preise aus dem Code: Laden, Rempler, Kratzer, Blitzerfoto, Verwarngeld.
 // node tools/ladepreis-test.mjs
 import { readFileSync } from 'node:fs';
 
@@ -291,11 +292,31 @@ let crash = '';
   crash = `Park ${PARKS[park].name} hinter dem Wagen vor dem ersten Gebot: Auswahl ${list.length} Orte, erstes Gebot ${first ? first.name + ' nach ' + first.t.toFixed(0) + ' s' : '–'}, geladen nach ${laden ? laden.t.toFixed(0) + ' s' : '–'}, bis ${g.t.toFixed(0)} s ohne Absturz`;
 }
 
+// --- 5. Die Anleitung nennt die Preise aus dem Code (README) --------------------------------------------------------
+const { REPARATUR, BUSSGELD, frontalCost } = await import('../src/data.js');
+const { fmtNum } = await import('../src/util.js');
+{
+  const rd = src('README.md').replace(/\s+/g, ' ');
+  const [a, b] = LADEPREIS.de;
+  ok(rd.includes(`in Deutschland ${fmtNum(a, 2)} bis ${fmtNum(b, 2)} € je kWh, im Ausland mehr`), 'README: Ladepreis in Deutschland fehlt oder stimmt nicht');
+  const basel = ladePreis({ park: PARKS.findIndex((p) => p.name === 'Ladepark Basel') });
+  ok(rd.includes(`etwa ${basel.label.replace(NB, ' ')}; abgerechnet wird in Euro`), `README: Beispiel im Ausland ist nicht ${basel.label}`);
+  // jeder Betrag „… € je Rempler/Kratzer/Blitzerfoto“ und das Verwarngeld wie in data.js, kein alter daneben
+  const want = { Rempler: REPARATUR.bump, Kratzer: REPARATUR.mark, Blitzerfoto: BUSSGELD.blitzer };
+  const seen = [...rd.matchAll(/(\d[\d.]*) € je (Rempler|Kratzer|Blitzerfoto)/g)].map((m) => [m[2], +m[1].replace('.', '')]);
+  ok(seen.length === 3 && seen.every(([k, v]) => want[k] === v), `README: Preise ${JSON.stringify(seen)} statt ${JSON.stringify(want)}`);
+  ok(rd.includes(`${BUSSGELD.verwarn} € Verwarngeld`) && !/je geladene kWh|210 €|35 € je/.test(rd), 'README: Verwarngeld oder alte Preise');
+  // frontal auf der Landstraße (100 + 85 km/h, data.js FRONTAL)
+  const top = Math.floor(frontalCost(185) / 1000) * 1000;
+  ok(rd.includes(`bis über ${fmtNum(top)} €`), `README: frontal bis über ${fmtNum(top)} € (${frontalCost(185)} €)`);
+  ok(/ins Minus ziehen \(im HUD steht es mit den Einnahmen des laufenden Streams, im Minus rot\); dann bleibt der Shop zu/.test(rd), 'README: Guthaben im Minus und Shop zu');
+}
+
 if (fails) {
   console.error(`ladepreis-test: ${fails} von ${checks} Prüfungen fehlgeschlagen`);
   process.exit(1);
 }
-console.log(`ladepreis-test: alles grün (${checks} Prüfungen: feste Preise je Ladeplatz, Deutschland 0,46–0,59 €, Ausland 0,65–0,79 € in Landeswährung, Rechnung zum Preis der Säule, Preis auf jedem Bildschirm, ein Gebot hat immer ein Ziel)`);
+console.log(`ladepreis-test: alles grün (${checks} Prüfungen: feste Preise je Ladeplatz, Deutschland 0,46–0,59 €, Ausland 0,65–0,79 € in Landeswährung, Rechnung zum Preis der Säule, Preis auf jedem Bildschirm, ein Gebot hat immer ein Ziel, Preise im README)`);
 console.log('  ' + summary);
 console.log('  ' + bill);
 console.log('  ' + screens);
