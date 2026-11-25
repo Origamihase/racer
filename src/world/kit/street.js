@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { PAL, CITY, mix, makeKit, textMaterial, textPanel, fitFont, FONT, compose, Bau, atlasUV } from './citycore.js';
 import { bench, tub, ballTree, puffs, spruce, lantern, blossom, flowerBed, bike } from './parts.js';
+import { PAVES } from './steckbrief.js';
 
 const TAU = Math.PI * 2;
 const IRON = PAL.darkMetal;
@@ -286,6 +287,22 @@ defs.plaza = {
   },
 };
 
+// dasselbe Pflaster in den Tönen der Steckbriefe (steckbrief.js PAVES): 'plaza:kopf', 'plaza:klinker' …
+for (const [key, P] of Object.entries(PAVES)) {
+  if (key === 'platten') continue;
+  const cols = [mix(P.slab[0], 0xffffff, 0.08), P.slab[1]];
+  defs['plaza:' + key] = {
+    kind: 'ground', far: true, fade: 0.2, low: 1,
+    make(b) {
+      const near = b.lod === 0;
+      const n = near ? 4 : 1;
+      const q = 8 / n;
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) flat(b.F, -4 + i * q, -4 + j * q, -4 + (i + 1) * q, -4 + (j + 1) * q, GROUND_Y, cols[(i + j) % 2]);
+      return { w: 8, d: 8, h: GROUND_Y, r: 4 };
+    },
+  };
+}
+
 /** Rasenstück 8 × 8 m (Ursprung in der Mitte), zwei Grüntöne im Wechsel: für Grünstreifen und kleine Parks. */
 const LAWN = [mix(PAL.grass[0], PAL.grass[1], 0.35), mix(PAL.grass[1], PAL.grass[2], 0.2)];
 defs.lawn = {
@@ -310,6 +327,66 @@ prop('lampOld', 'lamp', (b) => {
   lantern(b, 0, 3.48, 0, 1.15);
   return { w: 0.5, d: 0.5, h: 4.3 };
 });
+// Gaslaterne (Berlin, Düsseldorf, Altstädte): kannelierter dunkler Mast, vierseitige Laterne mit Dachhaube
+prop('lampGas', 'lamp', (b) => {
+  const { F, G } = b;
+  const near = b.lod === 0;
+  const iron = 0x33383c;
+  F.lathe(0, 0, 0, [[0.2, 0], [0.2, 0.1], [0.14, 0.2], [0.11, 0.7], [0.08, 0.8]], iron, { seg: near ? 10 : 6, ks: [0.75, 0.82, 0.86, 0.9, 1] });
+  F.cyl(0, 0.8, 0, 0.065, 0.05, 2.6, iron, { seg: near ? 10 : 6, top: false });
+  if (near) for (const y of [1.2, 3.0]) F.torus(0, y, 0, 0.07, 0.025, iron, { seg: 10, tube: 4 });
+  // Querstange (Leiterhaken) und Laterne
+  F.box(0, 3.15, 0, 0.62, 0.04, 0.04, iron);
+  F.frust(0, 3.4, 0, 0.12, 0.12, 0.2, 0.2, 0.08, iron);
+  for (const [x, z] of [[0, 0.2], [0, -0.2], [0.2, 0], [-0.2, 0]]) {
+    b.at(x, 0, z, x ? Math.PI / 2 : 0, () => G.rect(0, 3.48, 0, 0.36, 0.62, 0xffe2a0, { k: 1.15 }));
+  }
+  for (const [x, z] of [[0.2, 0.2], [-0.2, 0.2], [0.2, -0.2], [-0.2, -0.2]]) F.box(x, 3.48, z, 0.035, 0.62, 0.035, iron);
+  F.frust(0, 4.1, 0, 0.27, 0.27, 0.04, 0.04, 0.34, iron);
+  F.ball(0, 4.47, 0, 0.05, iron, { ws: 5, hs: 3 });
+  return { w: 0.5, d: 0.5, h: 4.55 };
+});
+// Peitschenleuchte (Ostdeutschland, Nachkriegsstraßen): grauer Betonmast, langer gebogener Arm, flacher Kopf
+prop('lampDdr', 'lamp', (b) => {
+  const { F, G } = b;
+  const near = b.lod === 0;
+  const con = 0xa9a69e;
+  F.box(0, 0, 0, 0.26, 0.5, 0.26, mix(con, CITY.ink, 0.15), { skip: 'b' });
+  F.frust(0, 0.5, 0, 0.11, 0.11, 0.07, 0.07, 6.4, con);
+  const pts = [];
+  for (let i = 0; i <= 6; i++) {
+    const a = (i / 6) * (Math.PI / 2);
+    pts.push([0, 6.9 + Math.sin(a) * 0.8, (1 - Math.cos(a)) * 0.8]);
+  }
+  pts.push([0, 7.7, 2.0]);
+  for (let i = 0; i < pts.length - 1; i++) F.rod(pts[i], pts[i + 1], 0.06, con, { seg: near ? 6 : 4, caps: i === pts.length - 2 });
+  F.box(0, 7.46, 2.2, 0.36, 0.18, 0.8, mix(con, CITY.ink, 0.25));
+  G.box(0, 7.44, 2.2, 0.3, 0.02, 0.7, LIT.warm, { skip: 'k' });
+  return { w: 0.5, d: 2.6, h: 7.9, over: 2.5 };
+});
+// Fahne in den Stadtfarben an einer Laterne (eigener Baustein am Platz der Laterne, Ausleger zum Gehweg hin): die
+// obere Hälfte in der Tönung (tint), die untere in der zweiten Farbe (Dachkanal, roof)
+defs.lampBanner = {
+  kind: 'lamp', far: true, fade: 1.2, low: 0.9, tints: [0xd8332b],
+  make(b) {
+    const { F, T, R } = b;
+    const near = b.lod === 0;
+    const z0 = -0.12;
+    const L = 0.75;
+    F.box(0, 3.75, z0 - L / 2, 0.035, 0.035, L, PAL.darkMetal);
+    F.box(0, 2.35, z0 - L / 2, 0.03, 0.03, L, PAL.darkMetal);
+    if (near) F.ball(0, 3.75, z0 - L, 0.045, PAL.gold, { ws: 5, hs: 3 });
+    b.at(0, 0, z0 - L / 2, Math.PI / 2, () => {
+      for (const sgn of [1, -1]) {
+        b.at(0, 0, sgn * 0.012, sgn > 0 ? 0 : Math.PI, () => {
+          T.rect(0, 3.05, 0, L - 0.08, 0.68, 0xffffff, { flat: true });
+          R.rect(0, 2.37, 0, L - 0.08, 0.68, 0xffffff, { flat: true });
+        });
+      }
+    });
+    return { w: 0.2, d: 1.0, h: 3.8, roofCol: 0xf6f4ee };
+  },
+};
 prop('lampModern', 'lamp', (b) => {
   const { F, G } = b;
   const near = b.lod === 0;
@@ -611,6 +688,132 @@ function streetTree(b, crown, tall) {
   ballTree(b, 0, 0, 0, 1.9, 6.2, crown);
   return { w: 4.0, d: 4.0, h: 6.6, r: 2.0 };
 }
+// --- Straßenbäume der Steckbriefe (steckbrief.js TREES): jede Art mit eigener Krone, alle mit Baumscheibe und
+// höchstens 2 m Kronenradius (die Regeln des Ortsplans für Sichtlinien und Gehweg gelten wie für streetTree)
+const TREE_COL = {
+  linde: 0x6fb352, kastanie: 0x4a8f4a, platane: 0x86bf5c, kugel: 0x5aa046, birke: 0x9ccc5a, kiefer: 0x3f7d55, obst: 0x6aa84a,
+};
+/** Baumscheibe mit Gitter und Erde (wie bei streetTree). */
+function grate(b) {
+  const { F, G } = b;
+  const near = b.lod === 0;
+  F.box(0, 0, 0, 1.6, 0.06, 1.6, IRON, { skip: 'b' });
+  if (near) for (const x of [-0.6, 0.6]) G.box(x, 0.06, 0, 0.05, 0.004, 1.4, mix(IRON, 0x000000, 0.3), { skip: 'b' });
+  F.disc(0, 0.062, 0, 0.3, PAL.earth, { up: true, seg: 8 });
+}
+const shades = (c) => [c, mix(c, 0xffffff, 0.1), mix(c, 0x2f5f43, 0.14), mix(c, 0xffffff, 0.17)];
+const trunk = (b, th, col = PAL.trunk, r = 0.15) => b.F.lathe(0, 0, 0, [[r + 0.05, 0], [r, 0.3], [r * 0.8, th], [r * 1.1, th + 0.3]], col, { seg: 6, top: false, ks: [0.8, 0.9, 1, 0.9] });
+// Linde: hohe, herzförmige Krone, oben spitzer
+prop('treeLinde', 'tree', (b) => {
+  grate(b);
+  trunk(b, 3.0);
+  const near = b.lod === 0;
+  puffs(b, near ? [[0, 4.3, 0, 1.85, 0.85], [0.5, 4.0, 0.45, 1.2], [-0.55, 4.1, -0.4, 1.2], [0.05, 5.5, -0.05, 1.4, 0.9], [0, 6.5, 0.05, 0.85]] : [[0, 5.0, 0, 1.9, 1.3]], shades(TREE_COL.linde), { soft: 0.55 });
+  return { w: 4.0, d: 4.0, h: 7.4, r: 2.0 };
+});
+// Rosskastanie: breite, dichte, dunkle Kuppel mit weißen Blütenkerzen
+prop('treeKastanie', 'tree', (b) => {
+  grate(b);
+  trunk(b, 2.4, PAL.trunk, 0.18);
+  const near = b.lod === 0;
+  puffs(b, near ? [[0, 4.0, 0, 1.95, 0.78], [0.9, 3.7, 0.5, 1.15], [-0.95, 3.75, -0.4, 1.15], [0.1, 4.9, 0.1, 1.3, 0.8]] : [[0, 4.2, 0, 2.0, 0.95]], shades(TREE_COL.kastanie), { soft: 0.55 });
+  if (near) {
+    for (let i = 0; i < 9; i++) {
+      const a = i * 2.39;
+      const y = 3.7 + (i % 3) * 0.55;
+      const rr = Math.sqrt(Math.max(0, 1 - ((y - 4.0) / 1.55) ** 2)) * 1.9;
+      b.F.cyl(Math.sin(a) * rr, y, Math.cos(a) * rr, 0.11, 0.02, 0.42, 0xfaf4ea, { seg: 5 });
+    }
+  }
+  return { w: 4.0, d: 4.0, h: 6.2, r: 2.0 };
+});
+// Platane: gefleckter, heller Stamm, lichte, unregelmäßige Krone in hellem Grün
+prop('treePlatane', 'tree', (b) => {
+  grate(b);
+  const near = b.lod === 0;
+  const bark = 0xc9bfa8;
+  trunk(b, 3.4, bark, 0.17);
+  if (near) {
+    for (let i = 0; i < 7; i++) {
+      const a = i * 1.7;
+      const y = 0.5 + i * 0.4;
+      b.at(Math.sin(a) * 0.165, y, Math.cos(a) * 0.165, a, () => b.F.rect(0, 0, 0.004, 0.14, 0.22, i % 2 ? 0x9c9478 : 0xe4dcc6, { flat: true }));
+    }
+  }
+  puffs(b, near ? [[0.3, 4.6, 0.2, 1.4, 0.8], [-0.8, 4.4, -0.5, 1.15, 0.85], [0.95, 4.9, -0.7, 1.05], [-0.2, 5.4, 0.7, 1.1, 0.8], [0, 5.9, -0.1, 0.95]] : [[0, 5.0, 0, 2.0, 0.9]], shades(TREE_COL.platane), { soft: 0.5 });
+  return { w: 4.0, d: 4.0, h: 7.0, r: 2.0 };
+});
+// Kugelahorn: gerader Stamm, kleine, kugelrunde Krone (Fußgängerzone, Wohnstraße)
+prop('treeKugel', 'tree', (b) => {
+  grate(b);
+  trunk(b, 2.3, PAL.trunk, 0.12);
+  puffs(b, [[0, 3.55, 0, 1.3]], shades(TREE_COL.kugel), { soft: 0.6 });
+  return { w: 2.8, d: 2.8, h: 4.9, r: 1.4 };
+});
+// Birke: schlanker weißer Stamm mit dunklen Strichen, lichte, hängende Krone in Gelbgrün
+prop('treeBirke', 'tree', (b) => {
+  grate(b);
+  const near = b.lod === 0;
+  trunk(b, 4.2, PAL.birch, 0.11);
+  if (near) {
+    for (let i = 0; i < 8; i++) {
+      const a = i * 2.2;
+      b.at(Math.sin(a) * 0.105, 0.6 + i * 0.45, Math.cos(a) * 0.105, a, () => b.F.rect(0, 0, 0.004, 0.12, 0.04, 0x3a3a3e, { flat: true }));
+    }
+  }
+  puffs(b, near ? [[0, 4.4, 0, 1.0, 1.3], [0.55, 3.9, 0.3, 0.75, 1.2], [-0.5, 4.0, -0.3, 0.75, 1.2], [0.05, 5.6, 0, 0.7, 1.2]] : [[0, 4.7, 0, 1.1, 1.6]], shades(TREE_COL.birke), { soft: 0.6 });
+  return { w: 2.4, d: 2.4, h: 6.5, r: 1.2 };
+});
+// Kiefer: hoher, rötlicher Stamm, flache Schirmkrone in dunklem Grün (Brandenburg, Ostseebad)
+prop('treeKiefer', 'tree', (b) => {
+  grate(b);
+  const near = b.lod === 0;
+  trunk(b, 4.6, 0xa0583c, 0.14);
+  puffs(b, near ? [[0, 5.5, 0, 1.6, 0.48], [0.9, 5.2, 0.4, 0.9, 0.55], [-0.9, 5.3, -0.4, 0.95, 0.55], [0.2, 6.1, -0.2, 0.9, 0.5]] : [[0, 5.6, 0, 1.7, 0.55]], shades(TREE_COL.kiefer), { soft: 0.5 });
+  return { w: 3.6, d: 3.6, h: 6.6, r: 1.8 };
+});
+// Obstbaum (Apfel): kurzer, krummer Stamm, runde Krone mit roten Äpfeln
+prop('treeObst', 'tree', (b) => {
+  grate(b);
+  const near = b.lod === 0;
+  b.F.rod([0, 0, 0], [0.12, 1.5, 0.05], 0.15, PAL.trunk, { seg: 6, r1: 0.12 });
+  b.F.rod([0.12, 1.5, 0.05], [0, 2.1, 0], 0.12, PAL.trunk, { seg: 6, r1: 0.1 });
+  puffs(b, near ? [[0, 2.9, 0, 1.55, 0.85], [0.7, 2.7, 0.4, 0.95], [-0.7, 2.75, -0.35, 0.95], [0, 3.6, 0, 0.95]] : [[0, 3.0, 0, 1.6, 0.9]], shades(TREE_COL.obst), { soft: 0.55 });
+  if (near) for (let i = 0; i < 10; i++) {
+    const a = i * 2.39;
+    const y = 2.4 + (i % 4) * 0.35;
+    const rr = Math.sqrt(Math.max(0, 1 - ((y - 2.9) / 1.32) ** 2)) * 1.52;
+    b.F.ball(Math.sin(a) * rr, y, Math.cos(a) * rr, 0.11, PAL.red, { ws: 5, hs: 3 });
+  }
+  return { w: 3.4, d: 3.4, h: 4.4, r: 1.7 };
+});
+// Palme (Süden): gebogener, geringelter Stamm, hängende Wedel, ein paar Nüsse
+prop('treePalme', 'tree', (b) => {
+  const { F } = b;
+  const near = b.lod === 0;
+  grate(b);
+  const h = 6.4;
+  const lean = 0.35;
+  const pts = [[0, 0], [lean * 0.3, h * 0.5], [lean, h]];
+  for (let i = 0; i + 1 < pts.length; i++) F.rod([pts[i][0], pts[i][1], 0], [pts[i + 1][0], pts[i + 1][1], 0], 0.2 - i * 0.04, 0xa08362, { seg: 6, r1: 0.16 - i * 0.03 });
+  if (near) for (let k = 1; k < 8; k++) {
+    const t = k / 8;
+    F.cyl(lean * t * t, h * t, 0, 0.2 - t * 0.06, 0.2 - t * 0.06, 0.06, 0x8a6e50, { seg: 6 });
+  }
+  const n = near ? 8 : 5;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + 0.3;
+    b.xf([lean, h, 0], [0, a, 0], 1, () => b.xf([0, 0, 0], [-0.3 - (i % 2) * 0.25, 0, 0], 0.62, () => {
+      F.quad([-0.05, 0, 0], [0.05, 0, 0], [0.55, -0.35, 2.0], [-0.55, -0.35, 2.0], 0x5f9a4a, { flat: false });
+      F.quad([-0.55, -0.35, 2.0], [0.55, -0.35, 2.0], [0.05, 0, 0], [-0.05, 0, 0], 0x4f8a3e);
+      F.quad([-0.55, -0.35, 2.0], [0.55, -0.35, 2.0], [0.12, -1.2, 3.1], [-0.12, -1.2, 3.1], 0x5f9a4a);
+      F.quad([0.12, -1.2, 3.1], [0.55, -0.35, 2.0], [-0.55, -0.35, 2.0], [-0.12, -1.2, 3.1], 0x4f8a3e);
+    }));
+  }
+  if (near) for (let i = 0; i < 3; i++) F.ball(lean + Math.cos(i * 2.1) * 0.2, h - 0.22, Math.sin(i * 2.1) * 0.2, 0.13, 0x7a5a3a, { ws: 6, hs: 3 });
+  return { w: 4.0, d: 4.0, h: h + 0.6, r: 2.0 };
+});
+
 prop('streetTree', 'tree', (b) => streetTree(b, PAL.crown[1], false), { tints: [0xffffff] });
 prop('streetTree2', 'tree', (b) => streetTree(b, PAL.crown[0], false));
 prop('streetTreeTall', 'tree', (b) => streetTree(b, PAL.conifer[0], true));

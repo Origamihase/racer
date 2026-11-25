@@ -429,6 +429,11 @@ function house(b, p) {
   const span = roof === 'front' ? w : dd;
   const rh = roof === 'flat' ? 0 : p.rh ?? (roof === 'mansard' ? 2.5 : span * (roof === 'hip' ? 0.38 : 0.52));
   const roofCol = p.roofCol ?? PAL.roof[0];
+  // roofTint: die Dachflächen kommen weiß in b.R und bekommen ihre Farbe beim Verschmelzen (Dachfarbe des Orts, sonst
+  // roofCol, das als info.roofCol mitgeht); rc/rp sind Farbe und Teil für die Dachflächen
+  const RT = !!p.roofTint;
+  const rc = RT ? 0xffffff : roofCol;
+  const rp = RT ? { part: b.R } : {};
   const sideOver = p.terrace ? 0.03 : undefined;
   const style = p.style ?? 'plaster';
   const ww = p.winW ?? 1.0;
@@ -460,30 +465,31 @@ function house(b, p) {
   // Giebeldreiecke und Dach
   if (roof === 'side') {
     b.at(0, 0, zc, Math.PI / 2, () => T.extrude([[-dd / 2, H], [dd / 2, H], [0, H + rh]], -w / 2 + 0.01, w / 2 - 0.01, WHITE, { sides: false, g: [0.94, 1] }));
-    b.gable(0, H, zc, w, dd, rh, roofCol, { axis: 'x', og: sideOver, oe: p.oe, t: p.roofT });
+    b.gable(0, H, zc, w, dd, rh, rc, { axis: 'x', og: sideOver, oe: p.oe, t: p.roofT, ...rp });
   } else if (roof === 'front' && p.gable) {
     // Schaugiebel: Mauerscheibe 0,45 m stark vor dem Dach, ragt über die Dachfläche; das Dach beginnt dahinter
     const gz = 0.45;
     T.extrude([[-w / 2, H], [w / 2, H], [0, H + rh]], -d + 0.01, jet - gz, WHITE, { sides: false, g: [0.94, 1] });
     const back = -d - (p.og ?? 0.3);
-    b.gable(0, H, (back + jet - gz) / 2, w, jet - gz - back, rh, roofCol, { axis: 'z', oe: sideOver ?? p.oe, og: 0, t: p.roofT });
+    b.gable(0, H, (back + jet - gz) / 2, w, jet - gz - back, rh, rc, { axis: 'z', oe: sideOver ?? p.oe, og: 0, t: p.roofT, ...rp });
     top = showGable(b, p.gable, w, H, rh, jet, gz, { wall: WHITE, frame, cream: p.band ?? CITY.sand, hoist: p.hoist });
   } else if (roof === 'front') {
     T.extrude([[-w / 2, H], [w / 2, H], [0, H + rh]], -d + 0.01, jet - 0.01, WHITE, { sides: false, g: [0.94, 1] });
-    b.gable(0, H, zc, w, dd, rh, roofCol, { axis: 'z', oe: sideOver ?? p.oe, og: p.og, t: p.roofT });
+    b.gable(0, H, zc, w, dd, rh, rc, { axis: 'z', oe: sideOver ?? p.oe, og: p.og, t: p.roofT, ...rp });
     if (p.horse && near) {
       // gekreuzte Giebelbretter (Pferdeköpfe) über dem First
       const og = p.og ?? 0.3;
       for (const sgn of [-1, 1]) b.xf([0, H + rh - 0.25, jet + og + 0.05], [0, 0, sgn * 0.5], 1, () => F.box(0, 0, 0, 0.16, 1.5, 0.12, CITY.woodDark ?? PAL.timber));
     }
   } else if (roof === 'hip') {
-    b.hip(0, H, zc, w, dd, rh, roofCol, { oe: p.oe });
+    b.hip(0, H, zc, w, dd, rh, rc, { oe: p.oe, ...rp });
   } else if (roof === 'mansard') {
     // Mansarddach: steile Schürze zur Straße und nach hinten, oben flach
     const so = sideOver ?? 0.25;
-    b.at(0, 0, zc, Math.PI / 2, () => F.extrude([[-dd / 2 - 0.3, H], [dd / 2 + 0.3, H], [dd / 2 - MANSARD, H + rh], [-dd / 2 + MANSARD, H + rh]], -w / 2 - so, w / 2 + so, roofCol, { g: [0.84, 1.04], crease: 2 }));
+    const RF = RT ? b.R : F;
+    b.at(0, 0, zc, Math.PI / 2, () => RF.extrude([[-dd / 2 - 0.3, H], [dd / 2 + 0.3, H], [dd / 2 - MANSARD, H + rh], [-dd / 2 + MANSARD, H + rh]], -w / 2 - so, w / 2 + so, rc, { g: [0.84, 1.04], crease: 2 }));
     F.box(0, H - 0.16, zc, w + 2 * so, 0.2, dd + 0.76, p.cornice ?? PAL.frame);
-    F.box(0, H + rh, zc, w + 2 * so, 0.1, dd - 2 * MANSARD + 0.3, mix(roofCol, CITY.ink, 0.3));
+    RF.box(0, H + rh, zc, w + 2 * so, 0.1, dd - 2 * MANSARD + 0.3, mix(rc, CITY.ink, 0.3));
   } else {
     // Flachdach: dicke, leicht überstehende Platte mit runden Ecken; mit Attika ein Gesims an der Straßenseite
     F.rbox(0, H + par, zc, w + 0.24, 0.26, dd + 0.24, R + 0.1, p.roofCol ?? PAL.concrete, { prof: [[0, 0], [0, 0.2], [0.06, 0.26]], ks: [0.8, 0.95, 1] });
@@ -516,6 +522,31 @@ function house(b, p) {
     b.sides(w, d, (len) => {
       for (const s of [-1, 1]) G.rect(s * (len / 2 - 0.09 - R * 0.3), base, 0.012, 0.18, H - base, cc);
     }, p.terrace ? 'f' : 'frl');
+  }
+  // Plattenbau: Fugen der Großtafeln, waagerecht in Höhe der Geschossdecken, senkrecht zwischen den Achsen
+  if (style === 'panel') {
+    for (let f = 1; f <= floors; f++) {
+      const y = f === floors ? H - 0.05 : base + gh + (f - 1) * fh - 0.03;
+      b.sides(w, d, (len) => T.rect(0, y, 0.008, len - 2 * R, 0.06, WHITE, { k: 0.78 }), p.terrace ? 'f' : 'frl');
+    }
+    if (near) {
+      b.at(0, 0, jet, 0, () => {
+        for (let i = 1; i < cols; i++) T.rect(-w / 2 + (w / cols) * i, base, 0.008, 0.05, H - base, WHITE, { k: 0.8 });
+      });
+    }
+  }
+  // Loggien (Plattenbau, Nachkriegsbau): eingelassene Balkone mit farbiger Brüstung an jeder zweiten Achse
+  if (p.loggia && floors > 1) {
+    for (let f = 1; f < floors; f++) {
+      const y = base + gh + (f - 1) * fh;
+      for (let i = p.loggiaFrom ?? 1; i < cols; i += 2) {
+        const x = colX(i);
+        const lw = Math.min(w / cols - 0.2, 2.4);
+        F.box(x, y - 0.06, jet + 0.42, lw, 0.12, 0.84, PAL.concrete, { skip: 'k' });
+        F.box(x, y + 0.06, jet + 0.8, lw, 0.9, 0.08, p.loggia[(i + f) % p.loggia.length], { skip: 'bk' });
+        if (near) for (const sgn of [-1, 1]) F.box(x + sgn * (lw / 2 - 0.04), y + 0.06, jet + 0.42, 0.08, 0.9, 0.76, PAL.concrete, { skip: 'b' });
+      }
+    }
   }
   // Backstein: helle Bänder in Höhe der Geschossdecken
   if (style === 'brick') {
@@ -609,7 +640,7 @@ function house(b, p) {
     for (let i = 0; i < n; i++) {
       const x = colX(i, n) * (n === 1 ? 0 : 0.92);
       T.box(x, y0, zf - run / 2, dw, dh, run, WHITE, { skip: 'kb', k: 0.97 });
-      b.gable(x, y0 + dh, zf - run / 2, dw, run, 0.5, roofCol, { axis: 'z', oe: 0.14, og: 0.14, t: 0.12, ridge: false });
+      b.gable(x, y0 + dh, zf - run / 2, dw, run, 0.5, rc, { axis: 'z', oe: 0.14, og: 0.14, t: 0.12, ridge: false, ...rp });
       T.extrude([[x - dw / 2, y0 + dh], [x + dw / 2, y0 + dh], [x, y0 + dh + 0.5]], zf - 0.02, zf, WHITE, { sides: false, caps: 'f' });
       b.at(x, 0, zf, 0, () => b.win(0, y0 + 0.22, 0.75, 0.8, { frame, cross: 1, sill: false, fw: 0.07 }));
     }
@@ -625,7 +656,7 @@ function house(b, p) {
       b.at(bx, 0, jet + 0.7, 0, () => b.win(0, y, bw - 0.75, wh + 0.2, winOpt(f, bay)));
       if (near) for (const sgn of [-1, 1]) b.at(bx + sgn * bw / 2, 0, jet + 0.35, sgn * Math.PI / 2, () => G.rect(0, y + 0.1, 0.01, 0.34, wh, PAL.glass));
     }
-    b.hip(bx, base + bh, jet + 0.42, bw, 0.84, 0.45, p.bayRoof ?? roofCol, { oe: 0.1 });
+    b.hip(bx, base + bh, jet + 0.42, bw, 0.84, 0.45, p.bayRoof ?? rc, { oe: 0.1, ...(p.bayRoof ? {} : rp) });
     over = Math.max(over, 0.85);
   }
   // Holzbalkon vor dem ersten Stock (Alpen): Boden, Brüstung mit Brettern, Blumenkästen, Konsolen
@@ -644,7 +675,8 @@ function house(b, p) {
     else if (roof === 'front') b.chimney(w * 0.2, H + rh * 0.4, -d * 0.62, rh * 0.6 + 0.7, p.chimneyCol);
     else b.chimney(cx * 0.6, H + rh * 0.5, zc - dd * 0.1, rh * 0.5 + 0.8, p.chimneyCol);
   }
-  return { w, d, h: Math.max(H + par + rh + (roof === 'flat' ? 0.26 : 0.9), top + 0.1), eaves: H, over, rh };
+  if (p.loggia && floors > 1) over = Math.max(over, 0.95);
+  return { w, d, h: Math.max(H + par + rh + (roof === 'flat' ? 0.26 : 0.9), top + 0.1), eaves: H, over, rh, ...(RT && roof !== 'flat' ? { roofCol } : {}) };
 }
 
 const WALLS = PAL.wall;
@@ -658,7 +690,7 @@ function addHouse(name, kind, tints, p, extra) {
     tints,
     far: true,
     make: (b) => {
-      const info = house(b, p);
+      const info = house(b, { ...p, roofTint: true });
       if (extra) extra(b, info);
       return info;
     },
@@ -1799,7 +1831,9 @@ defs.cityGate = {
 // Ortsbilder aus der Mitte Deutschlands (der Besitzer am 24.11.2026: „Gestalte die Orte noch unterschiedlicher, damit
 // sie nicht alle gleich aussehen“): Fachwerk, Schiefer (Bergisches Land, Siegerland, Westerwald), Kurort, Gründerzeit
 // und roter Sandstein (Main, Neckar, Rhein).
-export const REGIONS = ['brick', 'dutch', 'alpine', 'med', 'nordic', 'british', 'american', 'japanese', 'fachwerk', 'schiefer', 'kurort', 'gruenderzeit', 'sandstein'];
+// Dazu (25.11.2026, „Kannst du jede Stadt individualisieren?“, Steckbriefe in steckbrief.js) Barock, Plattenbau,
+// Nachkriegsbau, Bäderarchitektur und Schwarzwald.
+export const REGIONS = ['brick', 'dutch', 'alpine', 'med', 'nordic', 'british', 'american', 'japanese', 'fachwerk', 'schiefer', 'kurort', 'gruenderzeit', 'sandstein', 'barock', 'platte', 'nachkrieg', 'baeder', 'schwarzwald'];
 const R_FRAME = 0xf3ecdd; // cremeweiße Fensterrahmen (nie reinweiß)
 const R_CREAM = 0xeadfcb;
 const R_PANTILE = 0xc8694a;
@@ -1838,7 +1872,19 @@ const R_TINTS = {
   gruenderzeit: [0xe8d8b8, 0xd9c7a6, 0xcfc2b0, 0xe6d2c0, 0xd6cfc4, 0xf0e4cc],
   // roter Buntsandstein
   sandstein: [0xa9574a, 0xb4644f, 0x9d5143, 0xbc6f5a, 0xa65e4e],
+  // Barock: Ocker, Schönbrunner Gelb, Rosé, Hellgrau mit weißen Lisenen
+  barock: [0xf1d27a, 0xeec27f, 0xf0cdbf, 0xe4ddcf, 0xf3e1a6, 0xe9b98f],
+  // Plattenbau: Beton in Beige, Grau und den Pastelltönen der Sanierung
+  platte: [0xd9d3c4, 0xc9c6bd, 0xe8dcb8, 0xcfdce0, 0xe6cfc0, 0xd7e0c8],
+  // Wiederaufbau der Fünfziger: helles Gelb, Lindgrün, Lachs, Taubenblau
+  nachkrieg: [0xf0e2a8, 0xd8e2c0, 0xf0cdb8, 0xcfd9e2, 0xe9e2d2, 0xe8d5a8],
+  // Bäderarchitektur: Weiß und Creme
+  baeder: [0xfbfaf6, 0xf6f2e8, 0xf4eedf, 0xeef2f4, 0xf8f4ea],
+  // Schwarzwald: dunkles Holz über weißem Sockel; im Städtle bunter Putz
+  swHolz: [0x8a5a3a, 0x7a4e33, 0x96643f, 0x6e4630],
+  swStadt: [0xf3e6c4, 0xf2d0c0, 0xdfe8d2, 0xf6efe0, 0xeed79c, 0xd8e4ea],
 };
+const MATERIAL = new Set([R_TINTS.brick, R_TINTS.dutch, R_TINTS.zaan, R_TINTS.wood, R_TINTS.nordWood, R_TINTS.gbBrick, R_TINTS.gbStone, R_TINTS.usBrown, R_TINTS.usMain, R_TINTS.schiefer, R_TINTS.sandstein, R_TINTS.swHolz]);
 const GB_DOORS = [0xb33a3a, 0x2f3f66, 0x2f5d4a, 0xe0b83a, 0x2e3036];
 const hashName = (n) => {
   let h = 7;
@@ -1976,6 +2022,52 @@ const DRESS = {
     }
     return { tints: R_TINTS.sandstein, p: { ...PLAIN, roof: 'side', rh: d * 0.5, roofCol: pickN(h, [0x6b3a32, R_TILE_DARK, 0x7a4436]), frame: R_SANDSTONE, base: 0.9, baseCol: 0x7e4034, lowerCol: role === 'shop' ? R_SANDSTONE : undefined, dormers: 2, winH: 1.7, flowers: undefined, chimney: false } };
   },
+  barock(role, p, h) {
+    // Barock: Putz in Ocker und Rosé, weiße Lisenen an den Ecken, hohe Fenster, Mansarde mit Gauben bzw. Walmdach
+    const d = p.d ?? 9;
+    if (role === 'cottage' || role === 'house') {
+      return { tints: R_TINTS.barock, p: { ...PLAIN, roof: 'hip', rh: Math.min(p.w, d) * 0.42, roofCol: pickN(h, [R_SLATE, 0xa8452f]), oe: 0.35, corners: R_FRAME, frame: R_FRAME, winH: 1.55, shutter: pickN(h >> 2, [undefined, 0x55804f, undefined]), flowers: undefined, base: 0.5, baseCol: 0xd9cdb5 } };
+    }
+    return { tints: R_TINTS.barock, p: { ...PLAIN, floors: Math.min(4, Math.max(3, p.floors ?? 3)), roof: 'mansard', rh: 3.0, roofCol: pickN(h, [R_SLATE, 0x4f555c, 0xa8452f]), dormers: Math.max(1, Math.round(p.w / 3.2)), cornice: R_FRAME, corners: R_FRAME, frame: R_FRAME, winW: 1.05, winH: 1.85, base: 0.6, baseCol: 0xd9cdb5, flowers: undefined, chimney: false } };
+  },
+  platte(role, p, h) {
+    // Plattenbau (WBS 70 und Verwandte): Großtafeln mit Fugen, fünf, sechs Geschosse, Flachdach, Loggien mit bunten
+    // Brüstungen; im Dorf das Einfamilienhaus mit Zeltdach in grauem Putz
+    const d = p.d ?? 9;
+    if (role === 'cottage' || role === 'house') {
+      return { tints: [0xd6d0c4, 0xcfc8b8, 0xe2dccc, 0xc8c4bc], p: { ...PLAIN, w: p.w, floors: 2, roof: 'hip', rh: Math.min(p.w, d) * 0.3, roofCol: pickN(h, [0x6b4a3c, R_TILE_DARK, 0x8b3e2c]), oe: 0.3, frame: R_FRAME, cross: 1, flowers: undefined, ground: p.ground } };
+    }
+    const shop = role === 'shop';
+    return { tints: R_TINTS.platte, p: { ...PLAIN, style: 'panel', floors: shop ? 5 : 6, gh: shop ? 3.4 : 2.8, fh: 2.8, roof: 'flat', parapet: 0.3, cornice: 0xcfcac0, roofCol: PAL.concrete, frame: R_FRAME, cross: 1, winW: 1.35, winH: 1.35, base: 0.4, baseCol: 0x9c968c, loggia: pickN(h, [[0xd06a4a, 0xe8b84a], [0x5f8fb8, 0xe6e2d6], [0x6fae6a, 0xe6e2d6], [0xc94f6d, 0xf2d27a]]), loggiaFrom: h % 2, flowers: undefined, chimney: false, flatWin: true, lamp: false } };
+  },
+  nachkrieg(role, p, h) {
+    // Wiederaufbau der Fünfziger: schlichte Lochfassaden in Pastell, flach geneigtes Satteldach ohne Gauben, Fenster ohne
+    // Sprossen, schmale Balkone; im Dorf das Siedlungshaus mit steilem Dach
+    const d = p.d ?? 9;
+    if (role === 'cottage' || role === 'house') {
+      return { tints: R_TINTS.nachkrieg, p: { ...PLAIN, roof: 'side', rh: d * 0.55, roofCol: pickN(h, [0x8b3e2c, R_TILE_DARK, 0x6b5a52]), oe: 0.25, frame: R_FRAME, cross: 1, dormers: 1, flowers: undefined } };
+    }
+    return { tints: R_TINTS.nachkrieg, p: { ...PLAIN, floors: Math.min(5, Math.max(3, (p.floors ?? 3) + 1)), roof: 'side', rh: d * 0.2, roofCol: pickN(h, [0x8b3e2c, R_TILE_DARK, 0x6b5a52]), oe: 0.3, frame: R_FRAME, cross: 0, winW: 1.25, winH: 1.3, loggia: h % 3 === 0 ? [0xe6e2d6, 0xd9cfa8] : undefined, loggiaFrom: 1, flowers: undefined, chimney: false } };
+  },
+  baeder(role, p, h) {
+    // Bäderarchitektur an Ost- und Nordsee: weiße Villen mit Holzveranden und Balkonen über die ganze Front,
+    // Zierwerk in Weiß, Walm- oder Giebeldach
+    const d = p.d ?? 9;
+    if (role === 'cottage' || role === 'house') {
+      const front = h % 2 === 0;
+      return { tints: R_TINTS.baeder, p: { ...PLAIN, floors: 2, roof: front ? 'front' : 'hip', rh: front ? p.w * 0.55 : Math.min(p.w, d) * 0.36, roofCol: pickN(h >> 1, [R_TILE_DARK, 0x8b3e2c, R_SLATE]), oe: 0.45, frame: R_FRAME, gableWin: 'round', balcony: { col: R_FRAME, flowers: undefined }, porch: true, flowers: undefined, setback: 3.4, yard: 'picket' } };
+    }
+    return { tints: R_TINTS.baeder, p: { ...PLAIN, floors: Math.min(4, Math.max(3, p.floors ?? 3)), roof: 'side', rh: d * 0.42, roofCol: pickN(h, [R_TILE_DARK, R_SLATE, 0x8b3e2c]), dormers: 2, frame: R_FRAME, balcony: { col: R_FRAME, flowers: undefined }, balc: role === 'town' ? 'iron' : undefined, bay: role === 'town' ? true : undefined, bayFloors: 2, bayRoof: R_TILE_DARK, winH: 1.6, flowers: undefined, chimney: false } };
+  },
+  schwarzwald(role, p, h) {
+    // Schwarzwaldhaus: riesiges, tief heruntergezogenes Walmdach, Holz über weißem Sockelgeschoss, Laube mit Geranien,
+    // grüne Läden; im Städtle bunter Putz mit steilen Giebeln und Klappläden
+    const d = p.d ?? 9;
+    if (role === 'cottage' || role === 'house') {
+      return { tints: R_TINTS.swHolz, p: { ...PLAIN, style: 'siding', corners: false, lowerCol: 0xf2ede2, floors: 2, roof: 'hip', rh: Math.min(p.w, d) * 0.62, roofCol: pickN(h, [0x6b5a4c, 0x5a4a40, 0x7a5a44]), oe: 1.2, balcony: { col: 0x6e4630, flowers: R_GERANIUM }, shutter: 0x3f7a4a, frame: R_FRAME, flowers: R_GERANIUM, flowersAll: true, chimney: false } };
+    }
+    return { tints: R_TINTS.swStadt, p: { ...PLAIN, roof: 'front', rh: p.w * 0.78, roofCol: pickN(h, [0xa8452f, 0x8b3e2c, 0x6b5a52]), shutter: pickN(h >> 2, [0x3f7a4a, 0x8a3b32, 0x3f7a4a, 0x2f4f6a]), frame: R_FRAME, gableWin: 'win', flowers: R_GERANIUM, flowersAll: true } };
+  },
   japanese(role, p, h) {
     const d = p.d ?? 9;
     const street = role === 'town' || role === 'shop';
@@ -2049,7 +2141,7 @@ function regionalHouse(b, p) {
   const sb = p.setback ?? 0;
   let info;
   b.at(0, 0, -sb, 0, () => {
-    info = house(b, p);
+    info = house(b, { ...p, roofTint: true });
     if (p.porch) {
       const cols = p.cols ?? Math.max(2, Math.round(p.w / 2.4));
       const dc = p.doorCol ?? (cols > 2 ? 1 : 0);
@@ -2079,7 +2171,8 @@ for (const [name, H0] of Object.entries(HOUSES)) {
       make: (b) => {
         const info = regionalHouse(b, p);
         if (H0.extra && !p.setback) H0.extra(b, info);
-        return info;
+        // Baustoff statt Anstrich (Backstein, Schiefer, Sandstein, Holz): der Ort färbt ihn nicht in seine Palette
+        return MATERIAL.has(r.tints) ? { ...info, material: true } : info;
       },
     };
   }
