@@ -42,6 +42,7 @@
 //    Hanaus Säule steht hinter dem Brunnen (parks.js postAt): erst der Brunnen, dann die Säule. Der Weg der Szene rollt
 //    dafür ohne Sprung erst vor bis an den Haltepunkt und setzt dann rückwärts in die Bucht (charge.js stopPlan,
 //    creepPath).
+import { fmtNum } from '../src/util.js';
 import { mainSource, gameSource } from './lib/main-source.mjs';
 import { PerspectiveCamera } from 'three';
 import { Trip, J } from '../src/game/trip.js';
@@ -425,7 +426,7 @@ console.log('3. Schäden werden abgezogen:');
   if (b1) {
     ok(near(b1.before - b1.after, b1.amount, 1e-9) && b1.after < 0, `Runde 1: Kasse ${b1.before} → ${b1.after} € (soll −${b1.amount} €, ins Minus)`);
     ok(b1.shown.length === 1 && b1.shown[0].v === -b1.amount && b1.shown[0].label === 'Schäden', `Runde 1 am Guthaben: ${JSON.stringify(b1.shown)}`);
-    ok(b1.toast && new RegExp(`Schäden −${2 * R.bump + 5 * R.mark}\\s€ \\(2 Rempler · 5 Kratzer\\)$`).test(b1.toast.text), `Runde 1 am Rand: ${b1.toast && b1.toast.text}`);
+    ok(b1.toast && new RegExp(`Schäden −${fmtNum(2 * R.bump + 5 * R.mark).replace('.', '\\.')}\\s€ \\(2 Rempler · 5 Kratzer\\)$`).test(b1.toast.text), `Runde 1 am Rand: ${b1.toast && b1.toast.text}`);
     ok(g.player.damage.scratches.left === 3, `gezeichnet ${g.player.damage.scratches.left} Kratzer links (höchstens drei)`);
   }
   // Ende des Streams: Der Rempler der offenen Runde wird noch gebucht
