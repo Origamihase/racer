@@ -15,7 +15,7 @@ import { plush, COLORS, buildMiniAdam, buildBottle, ADAM_DIM } from '../models/m
 import { prep, meshOf, rbox, sweep, ring, place, roundedRect, warp, pillow, lathe } from './parts.js';
 import { buildCabin, buildHood, roofGlassGeometry, blob, dashTopY, pillarPoint, PAL, SEAT } from './cabin.js';
 import { WHEEL, buildWheelParts, buildColumn } from './wheel.js';
-import { mittenGeometry, openHandGeometry, forearmGeometry, upperArmGeometry, sleeveGeometry, WRIST } from './hands.js';
+import { mittenGeometry, openHandGeometry, forearmGeometry, upperSleeveGeometry, foreSleeveGeometry, WRIST } from './hands.js';
 import { buildRig, setLiveCrop } from './rig.js';
 import { buildProps } from './props.js';
 import { buildRadar } from './radar.js';
@@ -68,10 +68,12 @@ const GRIP_TALL = 0.8;
 // Arme: Schulter–Handgelenk sind 0,59–0,73 m (je nach Griff und Lenkeinschlag) – länger als Mini Adams eigene
 // Plüscharme, deshalb sind sie dehnbar: Ober- und Unterarm (Grundlängen) werden jedes Bild bis zum Ellbogen gestreckt.
 // Der Ellbogen liegt knapp vor der Mitte und hängt etwas nach unten und außen durch (nie im Bild der Ich-Perspektive,
-// aber aus freien Kameras wirken die Arme so weich statt wie Stangen). Der T-Shirt-Ärmel wird nicht gestreckt.
+// aber aus freien Kameras wirken die Arme so weich statt wie Stangen). Die Ärmel des T-Shirts dehnen sich mit:
+// oben über den ganzen Oberarm, unten über den Ellbogen bis zum Saum auf dem Unterarm, HEM vor dem Handgelenk
+// (der Unterarm verlässt das Bild nach 15–20 cm, so zeigt die Ich-Perspektive Hand, Plüscharm und Ärmelsaum).
 const UPPER_LEN = 0.3;
 const FORE_LEN = 0.36;
-const SLEEVE_LEN = 0.13;
+const HEM = 0.1;
 const ELBOW = { at: 0.45, down: 0.06, out: 0.035 };
 // Schultern: wo Mini Adams Schultern im Sitz sind (unter und hinter dem Auge; dort sitzen sie auch bei der Figur,
 // die freie Kameras zu sehen bekommen, siehe showDriver)
@@ -332,6 +334,11 @@ export class Cockpit {
     this.skinMat.vertexColors = true;
     this.shirtMat = plush(COLORS.shirt, false);
     this.shirtMat.vertexColors = true;
+    // Stoffglanz wie am Shirt der Figur (dort aus der Stofffarbe mit Flausch 0,6, siehe plushMaterial): sonst wirkt
+    // das Schwarz der Ärmel aus der Nähe grau
+    const sc = new THREE.Color(COLORS.shirt);
+    const grey = (sc.r + sc.g + sc.b) * 0.33;
+    this.shirtMat.sheenColor.copy(sc).multiplyScalar(0.65).addScalar(0.35 * grey + 0.02).multiplyScalar(0.6);
 
     // weiche Schatten unter allem, was auf dem Armaturenbrett steht
     this.shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, map: softDotTexture(), transparent: true, opacity: 0.6, depthWrite: false });
@@ -464,17 +471,18 @@ export class Cockpit {
     this.gripTarget = GRIP_WIDE;
     this.gripSet = false;
     this.placeHands();
-    // Arme wie beim Plüsch: kurzer schwarzer T-Shirt-Ärmel an der Schulter, darunter der hautfarbene Plüscharm mit
-    // weichem Ellbogen bis in die Hand (placeArms richtet sie jedes Bild aus)
-    const upperGeo = upperArmGeometry(UPPER_LEN);
-    const sleeveGeo = sleeveGeometry(SLEEVE_LEN);
+    // Arme wie beim Plüsch: die Ärmel seines schwarzen T-Shirts (derselbe Stoff wie an der Figur) über Oberarm und
+    // Ellbogen, darunter der hautfarbene Plüscharm bis in die Hand (placeArms richtet sie jedes Bild aus). Der untere
+    // Ärmel hängt am Unterarm und dehnt sich mit ihm.
+    const upperGeo = upperSleeveGeometry(UPPER_LEN);
+    const foreSleeveGeo = foreSleeveGeometry(FORE_LEN, HEM);
     this.arms = [-1, 1].map((s) => {
-      const upper = new THREE.Mesh(upperGeo, this.skinMat);
+      const upper = new THREE.Mesh(upperGeo, this.shirtMat);
       const fore = new THREE.Mesh(forearmGeometry(FORE_LEN, s), this.skinMat);
-      const sleeve = new THREE.Mesh(sleeveGeo, this.shirtMat);
-      this.root.add(upper, fore, sleeve);
+      fore.add(new THREE.Mesh(foreSleeveGeo, this.shirtMat));
+      this.root.add(upper, fore);
       return {
-        upper, fore, sleeve,
+        upper, fore,
         shoulder: new THREE.Vector3(EYE.x + s * SHOULDER.dx, SHOULDER.y, SHOULDER.z),
         sag: new THREE.Vector3(s * ELBOW.out, -ELBOW.down, 0),
       };
@@ -551,7 +559,7 @@ export class Cockpit {
     G.T.decompose(hand.position, hand.quaternion, G.s);
   }
 
-  /** Ärmel und Oberarm ab der Schulter, Unterarm ab dem Handgelenk ausrichten; beide treffen sich im Ellbogen. */
+  /** Oberarm (Ärmel) ab der Schulter, Unterarm ab dem Handgelenk ausrichten; beide treffen sich im Ellbogen. */
   placeArms() {
     const { m, w, e } = this.tmp;
     this.wheel.updateMatrix();
@@ -562,7 +570,6 @@ export class Cockpit {
       w.copy(WRIST).applyMatrix4(m);
       const a = this.arms[i];
       e.lerpVectors(a.shoulder, w, ELBOW.at).add(a.sag);
-      aimAlong(a.sleeve, a.shoulder, e);
       aimAlong(a.upper, a.shoulder, e, UPPER_LEN);
       aimAlong(a.fore, w, e, FORE_LEN);
     }
