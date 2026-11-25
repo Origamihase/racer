@@ -237,10 +237,11 @@ console.log('2. Kosten:');
   const before = { bump: 150, mark: 25, blitzer: 15, verwarn: 10 };
   const now = { bump: REPARATUR.bump, mark: REPARATUR.mark, blitzer: BUSSGELD.blitzer, verwarn: BUSSGELD.verwarn };
   // 24.11. um 33–50 % teurer, am 25.11. vom Besitzer festgelegt: Rempler 400–500 €, Blitzerfoto 100 € (der Kratzer
-  // wächst mit dem Rempler mit, das Verwarngeld bleibt)
-  for (const k of ['mark', 'verwarn']) ok(now[k] / before[k] >= 1.3, `${k}: ${before[k]} → ${now[k]} €`);
+  // wächst mit dem Rempler mit), Verwarngeld 50 €
+  for (const k of ['mark']) ok(now[k] / before[k] >= 1.3, `${k}: ${before[k]} → ${now[k]} €`);
   ok(now.bump >= 400 && now.bump <= 500, `bump: ${now.bump} € statt 400–500 €`);
   ok(now.blitzer === 100, `blitzer: ${now.blitzer} € statt 100 €`);
+  ok(now.verwarn === 50, `verwarn: ${now.verwarn} € statt 50 €`);
   console.log(`  ${Object.keys(before).map((k) => `${k} ${before[k]} → ${now[k]} €`).join(', ')}`);
 }
 

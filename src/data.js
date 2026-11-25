@@ -108,8 +108,8 @@ export const REPARATUR = { bump: 450, mark: 75 };
  * Landstraße) blitzer, Verwarngeld für Standstreifen und Rechtsfahrgebot verwarn. Abgebucht wird, was die Kasse hat
  * (Game.fine). Vor dem 24.11.: Rempler 150 €, Kratzer 25 €, Blitzer 15 €, Verwarngeld 10 €.
  */
-// der Besitzer am 25.11.: „Ein Blitzerfoto soll 100€ kosten.“ (vorher 20 €)
-export const BUSSGELD = { blitzer: 100, verwarn: 15 };
+// der Besitzer am 25.11.: „Ein Blitzerfoto soll 100€ kosten.“ (vorher 20 €), zum Verwarngeld „Mach 50€ draus“ (vorher 15 €)
+export const BUSSGELD = { blitzer: 100, verwarn: 50 };
 /**
  * Frontal in den Gegenverkehr (der Besitzer am 24.11.: „eine bessere Lösung mit mehr Schaden“): Ein Frontal-Rempler
  * kostet base Rempler und je km/h Annäherung perKmh Rempler mehr (gerundet auf 5 €) – bei 30 km/h gut das Doppelte
