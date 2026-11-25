@@ -68,7 +68,8 @@ export function loadSave() {
     const save = {
       ...structuredClone(DEFAULT_SAVE),
       ...data,
-      // (das Guthaben wird addiert: Steht dort keine Zahl, begänne die Kasse lieber bei null als bei „12,5“ + 3)
+      // (das Guthaben wird addiert, auch eins im Minus: Steht dort keine Zahl, begänne die Kasse lieber bei null als bei
+      // „12,5“ + 3)
       wallet: Number.isFinite(data.wallet) ? data.wallet : DEFAULT_SAVE.wallet,
       best: { ...DEFAULT_SAVE.best, ...part(data.best) },
       stats: { ...DEFAULT_SAVE.stats, ...part(data.stats) },
@@ -110,8 +111,10 @@ const cleanNote = (raw) => (raw && typeof raw === 'object' && Number.isFinite(ra
 
 /**
  * Einen Stream ins Guthaben, die Rekorde und die Statistik buchen (am Ende jedes Streams, und für einen abgebrochenen
- * beim nächsten Start). Ein Stream im Minus (die Schäden) geht vom Guthaben ab, unter null fällt es nie. Der offene
- * Zwischenstand ist danach erledigt. Ergebnis: { newRecord, best } (Rekord der Strecke in Reisemetern).
+ * beim nächsten Start). Ein Stream im Minus (Schäden, Bußgelder) geht ganz vom Guthaben ab, auch unter null
+ * (Besitzer, 25.11.2026: „Ich möchte, dass Schäden, Bußgelder etc das Guthaben ins Minus ziehen kann.“): Die Schulden
+ * bleiben stehen, bis spätere Streams sie abtragen. Der offene Zwischenstand ist danach erledigt. Ergebnis: { newRecord,
+ * best } (Rekord der Strecke in Reisemetern).
  */
 export function settleStream(save, r) {
   const s = cleanStream(r);
@@ -119,7 +122,7 @@ export function settleStream(save, r) {
   if (!s) return { newRecord: false, best: save.best.reise || 0 };
   const best = save.best.reise || 0;
   const newRecord = s.distance > best && s.distance > 50;
-  save.wallet = Math.max(0, Math.round((save.wallet + s.money) * 100) / 100);
+  save.wallet = Math.round((save.wallet + s.money) * 100) / 100;
   save.best.reise = Math.max(best, s.distance);
   save.best.earned = Math.max(save.best.earned || 0, s.money);
   save.best.viewers = Math.max(save.best.viewers || 0, s.peakViewers);
@@ -139,7 +142,7 @@ export function settlePending(save) {
   if (!s) return null;
   const before = save.wallet;
   settleStream(save, s);
-  // (der Hinweis nennt, was sich am Guthaben getan hat: Ein Minus zieht es nie unter null)
+  // (der Hinweis nennt, was sich am Guthaben getan hat – ein Minus ganz, auch unter null)
   save.streamNote = { money: Math.round((save.wallet - before) * 100) / 100, distance: s.distance };
   return s;
 }

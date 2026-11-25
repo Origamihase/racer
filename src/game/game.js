@@ -460,14 +460,17 @@ export class Game {
     return amount;
   }
 
+  /**
+   * Bußgeld oder Verwarngeld abbuchen, immer ganz (Besitzer, 25.11.2026: „Ich möchte, dass Schäden, Bußgelder etc das
+   * Guthaben ins Minus ziehen kann.“): Die Stream-Kasse darf dafür ins Minus gehen, am Guthaben und in der Abrechnung
+   * steht der ganze Betrag.
+   */
   fine(amount, label) {
-    // im Minus (nach einer Werkstattrechnung) gibt es nichts zu holen: nie Geld gutschreiben
-    const v = Math.min(Math.max(this.money, 0), amount);
-    this.money -= v;
-    this.breakdown[label] = (this.breakdown[label] || 0) - v;
-    this.stats.fines += v;
-    // nur zeigen, was wirklich abgebucht wurde (bei leerem Konto gibt es nichts zu holen)
-    if (v > 0) this.ui.money(-v, label);
+    if (!(amount > 0)) return;
+    this.money -= amount;
+    this.breakdown[label] = (this.breakdown[label] || 0) - amount;
+    this.stats.fines += amount;
+    this.ui.money(-amount, label);
     this.audio.bad();
   }
 

@@ -105,8 +105,9 @@ export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Mitleidskäufe'];
 export const REPARATUR = { bump: 450, mark: 75 };
 /**
  * Bußgelder (der Besitzer am 24.11.: „Die Kosten sind generell noch ein wenig zu günstig“): geblitzt (Autobahn, Ort,
- * Landstraße) blitzer, Verwarngeld für Standstreifen und Rechtsfahrgebot verwarn. Abgebucht wird, was die Kasse hat
- * (Game.fine). Vor dem 24.11.: Rempler 150 €, Kratzer 25 €, Blitzer 15 €, Verwarngeld 10 €.
+ * Landstraße) blitzer, Verwarngeld für Standstreifen und Rechtsfahrgebot verwarn. Abgebucht wird immer der ganze
+ * Betrag, auch ins Minus (Game.fine; Besitzer, 25.11.2026). Vor dem 24.11.: Rempler 150 €, Kratzer 25 €, Blitzer 15 €,
+ * Verwarngeld 10 €.
  */
 // der Besitzer am 25.11.: „Ein Blitzerfoto soll 100€ kosten.“ (vorher 20 €), zum Verwarngeld „Mach 50€ draus“ (vorher 15 €)
 export const BUSSGELD = { blitzer: 100, verwarn: 50 };
@@ -1231,7 +1232,7 @@ export function shopPrice(it, lvl) {
 /** Titel nach einem Stream, der ohne Abspann endete (Seite zu, Absturz): was er gebracht hat (save.js settlePending). */
 export const STREAM_GEBUCHT = (km, euro, minus) =>
   minus
-    ? `📼 Letzter Stream ohne Abspann gebucht: ${km}, Werkstatt −${euro}.`
+    ? `📼 Letzter Stream ohne Abspann gebucht: ${km}, −${euro} vom Guthaben.`
     : `📼 Letzter Stream ohne Abspann gebucht: ${km}, +${euro} im Guthaben.`;
 export const MEGAFON_ERSTATTET = (euro) => `📢 Das Megafon gehört jetzt zur Ausstattung – deine ${euro} sind zurück im Guthaben.`;
 

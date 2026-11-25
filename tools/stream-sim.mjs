@@ -34,11 +34,11 @@ export const DRIVERS = {
 /**
  * Baut einen Stream. opts: driver (DRIVERS), seed, upgrades, traffic (Ersatz für den Verkehr), endless (der Stream
  * endet nicht, wenn nach einer Folge niemand bietet: Game.endless), start (Knoten des Startorts, game/starts.js;
- * Standard Erlensee).
+ * Standard Erlensee), wallet (das Guthaben des Spielstands vor dem Stream, auch im Minus; Standard 0).
  * Liefert { game, trip, p, log, step(secs), state() }; log.chat/log.say/log.toast: [{ t, text, name|voice, at }],
  * at = state() im Moment der Meldung; Chatzeilen der Running Gags (gags.js) tragen gag: true.
  */
-export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, traffic = null, endless = false, start } = {}) {
+export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, traffic = null, endless = false, start, wallet = 0 } = {}) {
   Math.random = mulberry32(seed);
   const trip = new Trip({ rng: Math.random, start });
   const arrival = new Arrival();
@@ -77,7 +77,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });
   game.endless = endless;
-  game.start({ upgrades, best: {} });
+  game.start({ upgrades, best: {}, wallet });
   game.gags.reset(seed); // (im Spiel würfeln die Gags je Stream neu – hier mit der Saat, damit jeder Lauf gleich ist)
   const p = game.player;
   p.s = trip.s;

@@ -79,6 +79,7 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
   box-shadow: inset 0 0 0 1px rgba(120, 180, 255, 0.55); white-space: nowrap; }
 .cruise-badge.hidden { display: none; }
 .stat-val:has(+ .stat-label) { min-width: 0; }
+.stat-val.minus { color: #ff8a80; }
 .money-slot { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; align-self: stretch; }
 .money-slot .stat-label { transition: opacity 0.3s; }
 .money-slot.popping .stat-label { opacity: 0; transition: none; }
@@ -656,6 +657,8 @@ body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top)
 .over-dist .num, .over-money .num { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .over-money .num { color: #6dff9c; }
 .over-money.minus .num { color: var(--bad); }
+/* das Guthaben im Minus (Schäden und Bußgelder dürfen es unter null ziehen): Titel, Shop, Abspann, HUD */
+.over-money .konto.minus, .title-stats .minus { color: #ff8a80; }
 .over-dist .lbl, .over-money .lbl { color: var(--sub); font-weight: 600; }
 .over-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
 /* Ziffern gleich breit nur im Wert – im Text machte das die Bindestriche breit („Navi - Ziele“) */
@@ -693,6 +696,7 @@ body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top)
 /* schmal: das Guthaben rutscht unter den Titel, statt Titel und Betrag zu zerbrechen */
 .shop-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; }
 .wallet { font-size: 22px; font-weight: 800; color: #6dff9c; background: rgba(53, 200, 106, 0.12); padding: 6px 14px; border-radius: 10px; white-space: nowrap; }
+.wallet.minus { color: #ff8a80; background: rgba(255, 90, 79, 0.14); }
 .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-top: 10px; }
 .shop-item { background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 13px; display: flex; flex-direction: column; gap: 7px; }
 .shop-item.maxed { border-color: rgba(53, 200, 106, 0.45); }

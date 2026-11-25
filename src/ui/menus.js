@@ -1,7 +1,7 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
 import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, MEGAFON_ERSTATTET, STREAM_GEBUCHT, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice } from '../data.js';
-import { fmtNum, fmtCent, fmtEuro, fmtSpan } from '../util.js';
+import { fmtNum, fmtCent, fmtEuro, fmtSpan, fmtKonto, kontoMinus } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
 import { MapScreen, visitLine } from './mapscreen.js';
@@ -357,7 +357,8 @@ export class Menus {
     button(menu, 'ℹ️  Über das Spiel', 'about');
     feedbackLink(menu);
     const stats = el('div', 'title-stats', card);
-    el('span', '', stats, '💶 ' + fmtCent(d.wallet) + ' Guthaben');
+    // im Minus mit Minuszeichen und in der Farbe der Abzüge (Schäden und Bußgelder dürfen es unter null ziehen)
+    el('span', kontoMinus(d.wallet) ? 'minus' : '', stats, '💶 ' + fmtKonto(d.wallet) + ' Guthaben');
     // Rekord und Summe in Reisekilometern, dazu die besuchten Orte (dieselbe Zahl wie auf der großen Karte)
     el('span', '', stats, '🏆 Rekord ' + fmtOdo((d.best.reise || 0) / 1000));
     el('span', '', stats, '🛣️ ' + fmtOdo(d.stats.reiseKm || 0) + ' gesamt');
@@ -438,7 +439,8 @@ export class Menus {
     el('span', 'lbl', dist, o.newRecord ? '🏆 Neuer Rekord!' : 'Rekord: ' + strecke(o.best));
     const mon = el('div', 'over-money' + (o.money < 0 ? ' minus' : ''), big);
     el('span', 'num', mon, signedCent(o.money));
-    el('span', 'lbl', mon, 'Guthaben · jetzt ' + fmtCent(o.wallet));
+    const now = el('span', 'lbl', mon, 'Guthaben · jetzt ');
+    el('span', 'konto' + (kontoMinus(o.wallet) ? ' minus' : ''), now, fmtKonto(o.wallet));
     const menu = el('div', 'menu row over-menu', card);
     button(menu, '↻ Nochmal fahren', 'restart', 'primary');
     button(menu, '🛒 Shop', 'shop');
@@ -653,7 +655,7 @@ export class Menus {
     const card = el('div', 'card shop-card', s);
     const head = el('div', 'shop-head', card);
     el('h2', '', head, '🛒 Shop');
-    el('div', 'wallet', head, '💶 ' + fmtCent(d.wallet));
+    el('div', 'wallet' + (kontoMinus(d.wallet) ? ' minus' : ''), head, '💶 ' + fmtKonto(d.wallet));
     el('p', 'sub', card, 'Upgrades für den schwarzen Model 3 Long Range AWD. Bezahlt wird mit den Stream-Einnahmen: Spenden, Abos, Navi-Gebote.');
     if (d.refund) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.refund)));
     const grid = el('div', 'shop-grid', card);
