@@ -1,7 +1,6 @@
 // Mini Adams Plüscharme aus der Ich-Perspektive (und für freie Kameras): Fäustlinge, die wirklich um den
 // Lenkradkranz greifen (Handballen zum Fahrer, vier Finger als ein weicher Fäustling außen herum, Daumen innen um
-// den Kranz), der Unterarm aus Plüsch und darüber die Ärmel seines schwarzen T-Shirts (über Oberarm und Ellbogen
-// bis auf den Unterarm, damit er sie aus der Ich-Perspektive unten im Bild sieht). Genäht wie ein
+// den Kranz), Unter- und Oberarm aus Plüsch mit weichem Ellbogen und der kurze T-Shirt-Ärmel. Genäht wie ein
 // Plüschtier: Steppnähte ziehen Rillen zwischen die Finger, helle Stiche an den Seiten der Fäustlinge, ums
 // Handgelenk und längs der Unterarme.
 import * as THREE from 'three';
@@ -174,7 +173,7 @@ const armShade = (p, n) => 0.76 + 0.24 * (0.5 + 0.5 * n.z);
 export function forearmGeometry(len, side) {
   // weich wie ein Plüschärmchen: schmales Handgelenk, zum Ellbogen hin rundlich
   const profile = [
-    [0, 0], [0.016, 0.003], [0.024, 0.01], [0.0268, 0.022], [0.0274, 0.034], [0.0302, 0.07], [0.0328, 0.17], [0.0345, len],
+    [0, 0], [0.016, 0.003], [0.024, 0.01], [0.0268, 0.022], [0.0274, 0.034], [0.0302, 0.07], [0.0328, Math.min(0.17, len - 0.04)], [0.0345, len],
     [0.0302, len + 0.017], [0.0186, len + 0.029], [0, len + 0.0345],
   ];
   const parts = [prep(plushTube(profile), 0xffffff, { shade: armShade, uv: 'keep' })];
@@ -201,61 +200,44 @@ export function forearmGeometry(len, side) {
   return mergeGeometries(parts);
 }
 
-/** Stoff des T-Shirts: schräge Knitterfalten (k: wie stark) und weiche Querfalten zur Armbeuge hin (bei y = bend). */
-function shirtFolds(p, k, bend) {
-  const a = Math.atan2(p.z, p.x);
-  const fold = 1 - 0.16 * k * Math.max(0, Math.sin(a * 3 + p.y * 34)) ** 6;
-  const near = Math.max(0, 1 - Math.abs(p.y - bend) / 0.07);
-  const crease = 1 - 0.14 * near * Math.max(0, Math.sin(p.y * 160 + a * 0.6)) ** 4;
-  return fold * crease;
-}
-// Saumnaht als feine dunklere Linie bei y = at
-const hemLine = (y, at) => 1 - 0.35 * Math.max(0, 1 - Math.abs(y - at) / 0.0018);
-
-/**
- * Oberer Teil des T-Shirt-Ärmels über dem ganzen Oberarm: Schulter im Ursprung (rund geschlossen wie das Gelenk
- * eines Plüschtiers, mit Ansatznaht), der Ärmel läuft nach +y bis zum Ellbogen bei y = len und ist dort rund
- * geschlossen (dort trifft er auf den unteren Teil, foreSleeveGeometry). Darunter liegt kein Plüscharm mehr.
- */
-export function upperSleeveGeometry(len) {
-  const g = plushTube([
-    [0, -0.042], [0.026, -0.037], [0.042, -0.024], [0.051, -0.004], [0.0545, 0.03], [0.052, 0.12], [0.0485, len - 0.03],
-    [0.0475, len], [0.0425, len + 0.022], [0.026, len + 0.04], [0, len + 0.047],
-  ], 24);
-  return prep(g, 0xffffff, {
-    shade: (p, n) => armShade(p, n) * hemLine(p.y, 0.004) * shirtFolds(p, Math.min(1, Math.max(0, (p.y - 0.03) / 0.08)), len),
-    uv: 'keep',
-  });
+/** Oberarm: Schulter im Ursprung, der Arm läuft nach +y bis zum Ellbogen bei y = len; beide Enden rund. */
+export function upperArmGeometry(len) {
+  return prep(plushTube([
+    [0, -0.036], [0.024, -0.028], [0.0345, -0.012], [0.037, 0.012], [0.0365, len - 0.04], [0.036, len],
+    [0.0315, len + 0.018], [0.019, len + 0.03], [0, len + 0.036],
+  ]), 0xffffff, { shade: armShade, uv: 'keep' });
 }
 
 /**
- * Unterer Teil des T-Shirt-Ärmels im Rahmen des Unterarms (Handgelenk im Ursprung, Ellbogen bei y = len): vom
- * Ellbogen (rund geschlossen über dem Ende des Plüscharms) bis zum Saum bei y = hem, der weit offen über dem Arm
- * steht – mit umgeschlagenem Saum, Saumnaht und dunklem Innenfutter (durch den Spalt sieht man Stoff, nicht ins
- * Leere). So sieht Mini Adam aus der Ich-Perspektive die Ärmel seines schwarzen Shirts unten im Bild.
+ * Kurzer T-Shirt-Ärmel ab der Schulter (im Ursprung) nach +y: an der Schulter rund geschlossen (wie das Gelenk
+ * eines Plüschtiers), vorn weit offen mit umgeschlagenem Saum und Saumnaht, dazu ein paar weiche Falten.
+ * Innen ist er geschlossen und dunkel (durch den Spalt zwischen Saum und Arm sieht man Stoff, nicht ins Leere).
  */
-export function foreSleeveGeometry(len, hem) {
-  // von innen (Futter, geschlossen hinter dem Saum) über den Saum nach außen und hinauf bis über den Ellbogen
+export function sleeveGeometry(len) {
   const g = plushTube([
-    [0, hem + 0.055], [0.0395, hem + 0.05], [0.0435, hem + 0.024], [0.0445, hem + 0.004], [0.0485, hem], [0.0525, hem + 0.001],
-    [0.054, hem + 0.008], [0.0525, hem + 0.02], [0.0495, hem + 0.034], [0.0485, hem + 0.09], [0.0505, len - 0.03],
-    [0.0495, len], [0.044, len + 0.024], [0.027, len + 0.043], [0, len + 0.05],
+    [0, -0.042], [0.026, -0.037], [0.042, -0.024], [0.051, -0.004], [0.0545, 0.03], [0.0535, len - 0.034],
+    [0.0565, len - 0.02], [0.058, len - 0.008], [0.0565, len - 0.001], [0.0525, len], [0.0485, len - 0.004], [0.0475, len - 0.02],
+    [0.0425, len - 0.046], [0, len - 0.052],
   ], 24);
   const sleeve = prep(g, 0xffffff, {
-    shade: (p, n) => {
+    shade: (p) => {
       const r = Math.hypot(p.x, p.z);
-      if (r < 0.047 && p.y > hem + 0.002 && p.y < hem + 0.056) return 0.32; // im Ärmel ist es dunkel
-      return armShade(p, n) * hemLine(p.y, hem + 0.024) * shirtFolds(p, Math.min(1, Math.max(0, (p.y - hem - 0.03) / 0.08)), len);
+      if (r < 0.05 && p.y > len - 0.05) return 0.32; // im Ärmel ist es dunkel
+      const a = Math.atan2(p.z, p.x);
+      // Saumnaht als feine dunklere Linie, schräge Knitterfalten zum Saum hin
+      const hem = 1 - 0.35 * Math.max(0, 1 - Math.abs(p.y - (len - 0.024)) / 0.0018);
+      const fold = 1 - 0.16 * Math.max(0, Math.sin(a * 3 + p.y * 34)) ** 6 * Math.min(1, Math.max(0, (p.y - 0.03) / 0.08));
+      return hem * fold;
     },
     uv: 'keep',
   });
   // Steppnaht rund um den umgeschlagenen Saum, auf der Saumlinie
   const ring = [];
   const rn = [];
-  for (let i = 0; i <= 64; i++) {
-    const a = (i / 64) * Math.PI * 2;
+  for (let k = 0; k <= 64; k++) {
+    const a = (k / 64) * Math.PI * 2;
     const n = v3(Math.sin(a), 0, Math.cos(a));
-    ring.push(n.clone().multiplyScalar(0.0516).setY(hem + 0.024));
+    ring.push(n.clone().multiplyScalar(0.0558).setY(len - 0.024));
     rn.push(n);
   }
   return mergeGeometries([sleeve, ...stitches(ring, rn, { ...STITCH, len: 0.0048, w: 0.0013, h: 0.0006, color: SHIRT_THREAD })]);

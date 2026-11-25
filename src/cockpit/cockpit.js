@@ -15,7 +15,7 @@ import { plush, COLORS, buildMiniAdam, buildBottle, ADAM_DIM } from '../models/m
 import { prep, meshOf, rbox, sweep, ring, place, roundedRect, warp, pillow, lathe } from './parts.js';
 import { buildCabin, buildHood, roofGlassGeometry, blob, dashTopY, pillarPoint, PAL, SEAT } from './cabin.js';
 import { WHEEL, buildWheelParts, buildColumn } from './wheel.js';
-import { mittenGeometry, openHandGeometry, forearmGeometry, upperSleeveGeometry, foreSleeveGeometry, WRIST } from './hands.js';
+import { mittenGeometry, openHandGeometry, forearmGeometry, upperArmGeometry, sleeveGeometry, WRIST } from './hands.js';
 import { buildRig, setLiveCrop } from './rig.js';
 import { buildProps } from './props.js';
 import { buildRadar } from './radar.js';
@@ -66,15 +66,15 @@ const HOUSING = { x: -0.08, hb: 0.038, hw: 0.045, v0: 0.695, v1: 0.795, t0: 0.01
 const GRIP_WIDE = 1.2;
 const GRIP_TALL = 0.8;
 // Arme: Schulter–Handgelenk sind 0,59–0,73 m (je nach Griff und Lenkeinschlag) – länger als Mini Adams eigene
-// Plüscharme, deshalb sind sie dehnbar: Ober- und Unterarm (Grundlängen) werden jedes Bild bis zum Ellbogen gestreckt.
-// Der Ellbogen liegt knapp vor der Mitte und hängt etwas nach unten und außen durch (nie im Bild der Ich-Perspektive,
-// aber aus freien Kameras wirken die Arme so weich statt wie Stangen). Die Ärmel des T-Shirts dehnen sich mit:
-// oben über den ganzen Oberarm, unten über den Ellbogen bis zum Saum auf dem Unterarm, HEM vor dem Handgelenk
-// (der Unterarm verlässt das Bild nach 15–20 cm, so zeigt die Ich-Perspektive Hand, Plüscharm und Ärmelsaum).
-const UPPER_LEN = 0.3;
-const FORE_LEN = 0.36;
-const HEM = 0.1;
-const ELBOW = { at: 0.45, down: 0.06, out: 0.035 };
+// Plüscharme, deshalb ist der Oberarm dehnbar (Grundlänge, jedes Bild bis zum Ellbogen gestreckt). Der Unterarm ist
+// kurz wie beim Plüsch: Der Ellbogen sitzt FORE_REACH hinter dem Handgelenk und hängt etwas nach unten und außen
+// durch. So ist er unten im Bild der Ich-Perspektive, und knapp darüber endet der kurze T-Shirt-Ärmel (SLEEVE_GAP vor
+// dem Ellbogen, mit dem Oberarm gestreckt) – Mini Adam sieht seine eigenen Ärmel.
+const UPPER_LEN = 0.52;
+const FORE_LEN = 0.115;
+const FORE_REACH = 0.11;
+const SLEEVE_GAP = 0.03;
+const ELBOW = { down: 0.025, out: 0.02 };
 // Schultern: wo Mini Adams Schultern im Sitz sind (unter und hinter dem Auge; dort sitzen sie auch bei der Figur,
 // die freie Kameras zu sehen bekommen, siehe showDriver)
 const SHOULDER = { dx: 0.165, y: 0.93, z: 0.36 };
@@ -471,18 +471,17 @@ export class Cockpit {
     this.gripTarget = GRIP_WIDE;
     this.gripSet = false;
     this.placeHands();
-    // Arme wie beim Plüsch: die Ärmel seines schwarzen T-Shirts (derselbe Stoff wie an der Figur) über Oberarm und
-    // Ellbogen, darunter der hautfarbene Plüscharm bis in die Hand (placeArms richtet sie jedes Bild aus). Der untere
-    // Ärmel hängt am Unterarm und dehnt sich mit ihm.
-    const upperGeo = upperSleeveGeometry(UPPER_LEN);
-    const foreSleeveGeo = foreSleeveGeometry(FORE_LEN, HEM);
+    // Arme wie beim Plüsch: kurzer schwarzer T-Shirt-Ärmel (derselbe Stoff wie an der Figur) über dem Oberarm,
+    // darunter der hautfarbene Plüscharm mit weichem Ellbogen bis in die Hand (placeArms richtet sie jedes Bild aus)
+    const upperGeo = upperArmGeometry(UPPER_LEN);
+    const sleeveGeo = sleeveGeometry(UPPER_LEN - SLEEVE_GAP);
     this.arms = [-1, 1].map((s) => {
-      const upper = new THREE.Mesh(upperGeo, this.shirtMat);
+      const upper = new THREE.Mesh(upperGeo, this.skinMat);
       const fore = new THREE.Mesh(forearmGeometry(FORE_LEN, s), this.skinMat);
-      fore.add(new THREE.Mesh(foreSleeveGeo, this.shirtMat));
-      this.root.add(upper, fore);
+      const sleeve = new THREE.Mesh(sleeveGeo, this.shirtMat);
+      this.root.add(upper, fore, sleeve);
       return {
-        upper, fore,
+        upper, fore, sleeve,
         shoulder: new THREE.Vector3(EYE.x + s * SHOULDER.dx, SHOULDER.y, SHOULDER.z),
         sag: new THREE.Vector3(s * ELBOW.out, -ELBOW.down, 0),
       };
@@ -559,7 +558,7 @@ export class Cockpit {
     G.T.decompose(hand.position, hand.quaternion, G.s);
   }
 
-  /** Oberarm (Ärmel) ab der Schulter, Unterarm ab dem Handgelenk ausrichten; beide treffen sich im Ellbogen. */
+  /** Ärmel und Oberarm ab der Schulter, Unterarm ab dem Handgelenk ausrichten; beide treffen sich im Ellbogen. */
   placeArms() {
     const { m, w, e } = this.tmp;
     this.wheel.updateMatrix();
@@ -569,7 +568,8 @@ export class Cockpit {
       m.multiplyMatrices(this.wheelPivot.matrix, this.wheel.matrix).multiply(hand.matrix);
       w.copy(WRIST).applyMatrix4(m);
       const a = this.arms[i];
-      e.lerpVectors(a.shoulder, w, ELBOW.at).add(a.sag);
+      e.subVectors(a.shoulder, w).setLength(FORE_REACH).add(w).add(a.sag);
+      aimAlong(a.sleeve, a.shoulder, e, UPPER_LEN);
       aimAlong(a.upper, a.shoulder, e, UPPER_LEN);
       aimAlong(a.fore, w, e, FORE_LEN);
     }
