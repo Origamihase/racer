@@ -9,6 +9,9 @@
 // (Bäume, Autos, Buden, Menschen), wird nach dem Planen aus den Sichtlinien geräumt; sightBlockers() prüft das
 // und wird vom Planer und vom Node-Test (tools/citykit-test.mjs) gleichermaßen benutzt.
 
+import { resolveProfile, weighted } from './steckbrief.js';
+import { STECKBRIEFE } from './steckbriefe-de.js';
+
 export const STREET = {
   lane: 9.0, // eigene Spur
   other: 5.75, // Gegenspur
@@ -59,6 +62,11 @@ export const LOOKS = {
   sandstein: { title: 'Sandstein', cars: 0.5, old: true },
   brick: { title: 'Backstein', cars: 0.55, old: false },
   alpine: { title: 'Alpenland', cars: 0.45, old: true },
+  barock: { title: 'Barock', cars: 0.5, old: true },
+  platte: { title: 'Plattenbau', cars: 0.75, old: false },
+  nachkrieg: { title: 'Wiederaufbau', cars: 0.7, old: false },
+  baeder: { title: 'Bäderarchitektur', cars: 0.35, old: true },
+  schwarzwald: { title: 'Schwarzwald', cars: 0.4, old: true },
 };
 // Fachwerkstädte der Karte (ihre Altstadt ist berühmt dafür), Schiefer im Bergischen Land, Siegerland und Sauerland,
 // roter Buntsandstein an Main, Neckar und Rhein (Aschaffenburg, Mainz, Heidelberg, Speyer, Würzburg)
@@ -67,8 +75,28 @@ const SCHIEFER = { s: 50.4, n: 51.5, w: 7.0, e: 8.45 };
 const SANDSTEIN = { s: 49.0, n: 50.05, w: 7.5, e: 10.0 };
 const inBox = (b, lat, lon) => lat > b.s && lat < b.n && lon > b.w && lon < b.e;
 
-/** Ortsbild eines Orts (Schlüssel in LOOKS bzw. town.js REGIONS): außerhalb Deutschlands die Gegend (regionOf). */
+/**
+ * Ortsbild eines Orts (Schlüssel in LOOKS bzw. town.js REGIONS): die erste Bauweise seines Steckbriefs (steckbrief.js),
+ * außerhalb Deutschlands die Gegend (regionOf).
+ */
 export function lookOf(place) {
+  return profileOf(place).looks[0][0];
+}
+
+const PROFILES = new Map();
+/** Aufgelöster Steckbrief eines Orts (steckbrief.js resolveProfile), je Ort einmal gerechnet. */
+export function profileOf(place) {
+  const key = (place.key ?? place.name ?? '') + '|' + place.cc;
+  let pr = PROFILES.get(key);
+  if (!pr) {
+    pr = resolveProfile(place, STECKBRIEFE, regionOf(place), ruleLook(place));
+    PROFILES.set(key, pr);
+  }
+  return pr;
+}
+
+/** Ortsbild nach Regeln (vor den Steckbriefen; jetzt nur noch Rückfall für einen deutschen Ort ohne Eintrag). */
+function ruleLook(place) {
   const region = regionOf(place);
   if (place.cc !== 'DE' || region !== 'default') return region;
   const name = place.name ?? place.key ?? '';
@@ -463,13 +491,24 @@ export function planTown(place, opts = {}) {
   const top = STREET.top;
   const plan = { place: { key: place.key, name: place.name ?? place.key, cc: place.cc }, size, region: regionOf(place), look: lookOf(place), len, items: [], fountains: [], squares: [], texts: [], goal: opts.goal ?? opts.island?.u ?? null, landmarks: [] };
   const look = LOOKS[plan.look] ?? LOOKS.default;
+  // Steckbrief des Orts (steckbrief.js): Bauweisen, Farben, Bäume, Laternen, Pflaster, Stadtfarben
+  const prof = profileOf(place);
+  plan.pave = prof.paveKey;
+  plan.note = prof.note;
+  // eigener Zufall für Stil und Farben: der Plan des Orts (Plätze, Brunnen, Lücken) bleibt davon unberührt
+  const srnd = rng(hashKey('Ortsstil ' + (place.key ?? place.name ?? 'Ort')));
   const marks = opts.landmarks ?? [];
-  // Spielart eines Hauses nach dem Ortsbild, wenn es sie gibt (town.js: name@ortsbild)
+  // Spielart eines Hauses nach einer Bauweise des Orts (Anteile laut Steckbrief), wenn es sie gibt (town.js:
+  // name@bauweise; 'default' sind die Grundhäuser)
   const reg = (name) => {
-    if (plan.look === 'default' || !opts.has) return name;
-    const r = name + '@' + plan.look;
+    const lk = weighted(prof.looks, srnd());
+    if (lk === 'default' || !opts.has) return name;
+    const r = name + '@' + lk;
     return opts.has(r) ? r : name;
   };
+  const trees = prof.trees;
+  const plazaKind = prof.paveKey === 'platten' || !opts.has || !opts.has('plaza:' + prof.paveKey) ? 'plaza' : 'plaza:' + prof.paveKey;
+  const tree = (alt) => (trees.length ? pick(srnd, trees) : alt);
   const squareMark = marks.find((m) => m.slot === 'square');
   const busy = []; // belegte Grundrisse (Häuser, Plätze), um Überschneidungen zu vermeiden
 
@@ -477,6 +516,15 @@ export function planTown(place, opts = {}) {
     const info = infoOf(name);
     const it = { name, x, y, z, ry, ...o };
     if (o.tint === undefined && info.tints && info.tints.length > 1) it.tint = pick(rnd, info.tints);
+    // Häuser in den Farben des Orts: Putz und Gefache aus seinen Paletten; Baustoffe (Backstein, Schiefer, Sandstein,
+    // Holz) behalten ihre Töne, je Ort nur zwei, drei davon. Dächer in seinen Dachfarben, Reet bleibt Reet.
+    if (o.tint === undefined && PAINTED.has(info.kind)) {
+      if (info.material && info.tints && info.tints.length > 1) {
+        const k = hashKey('Baustoff ' + name.slice(name.indexOf('@') + 1) + (place.key ?? place.name ?? ''));
+        it.tint = info.tints[(k + Math.floor(srnd() * 3)) % info.tints.length];
+      } else if (prof.walls.length) it.tint = pick(srnd, prof.walls);
+    }
+    if (o.roof === undefined && info.roofCol !== undefined && info.roofCol !== THATCH && prof.roofs.length) it.roof = weighted(prof.roofs, srnd());
     it.fp = footprint(it, info);
     plan.items.push(it);
     return it;
@@ -528,7 +576,7 @@ export function planTown(place, opts = {}) {
     : placeFountain(mainKind, 1, md, uc, 0, { goal: opts.goal != null });
   if (centre) add(centre, sx(1, md), top, -uc, 0);
   // Pflaster des Platzes
-  for (let u = sq.u0 + 4; u < sq.u1; u += 8) for (let d = lineD + 4; d < sq.d1; d += 8) add('plaza', sx(1, d), 0, -u, 0);
+  for (let u = sq.u0 + 4; u < sq.u1; u += 8) for (let d = lineD + 4; d < sq.d1; d += 8) add(plazaKind, sx(1, d), 0, -u, 0);
   // Vor dem Platz eine kleine Grünfläche ohne Haus: der Brunnen ist schon von weitem zu sehen
   // Steht ein Wahrzeichen an der Rückwand, bleibt davor ein längerer Rasen frei: aus dem Cockpit sieht man es schon
   // beim Heranfahren schräg über den Rasen, nicht erst im Vorbeifahren (der Ortsanfang und ein Ladepark davor bleiben)
@@ -555,7 +603,9 @@ export function planTown(place, opts = {}) {
   else add(reg(pick(rnd, ROWS[size].mid)), sx(1, sq.d1), 0, -uc, toRoad(1));
 
   // Laternen am Brunnen: hinter ihm (weiter weg von der Straße) und nach ihm (in Fahrtrichtung)
-  const lamp = size === 'dorf' || size === 'klein' || look.old ? 'lampOld' : 'lampModern';
+  const lamp = prof.lamp ?? (size === 'dorf' || size === 'klein' || look.old ? 'lampOld' : 'lampModern');
+  const cars = prof.cars ?? look.cars;
+  const tram = prof.tram ?? size === 'gross';
   const fx = centre ? sx(1, md) : main.f.x;
   add(lamp, fx + mr + 1.4, top, -(uc - mr * 0.7), 0);
   add(lamp, fx - mr * 0.5, top, -(uc + mr + 1.6), 0);
@@ -564,7 +614,7 @@ export function planTown(place, opts = {}) {
   add('benchPark', fx, top, -(uc + mr + 1.6) + 0.0, Math.PI);
   add('flowerTub', fx + mr + 1.0, top, -(uc - mr - 1.2), 0);
   add('flowerTub', fx - mr - 0.4, top, -(uc + mr + 1.4), 0);
-  for (const du of [-S / 2 + 3, S / 2 - 3]) add(pick(rnd, ['streetTree', 'streetTree2']), sx(1, sq.d1 - 3), top, -(uc + du), rnd() * 6);
+  for (const du of [-S / 2 + 3, S / 2 - 3]) add(tree(pick(rnd, ['streetTree', 'streetTree2'])), sx(1, sq.d1 - 3), top, -(uc + du), rnd() * 6);
   for (let i = 0; i < 3; i++) add(i % 2 ? 'pigeonPeck' : 'pigeon', fx - mr - 0.8 - rnd() * 0.8, top, -(uc + (rnd() - 0.5) * mr), rnd() * 6.28);
   // Dorf: Maibaum hinten; Kleinstadt und größer: Marktstände hinter dem Brunnen, Café nach dem Brunnen
   if (size === 'dorf') {
@@ -611,7 +661,7 @@ export function planTown(place, opts = {}) {
       add(lamp, xb + 2.4, top, -(isl.u + sg * (isl.r + 7)), Math.PI / 2);
       add('bench', xb + 0.9, top, -(isl.u + sg * 3.4), toRoad(-1));
       add('flowerTub', xb + 0.8, top, -(isl.u + sg * 6.2), 0);
-      add(pick(rnd, ['streetTree', 'streetTree2']), xb + 2.8, top, -(isl.u + sg * (isl.r + 20)), rnd() * 6);
+      add(tree(pick(rnd, ['streetTree', 'streetTree2'])), xb + 2.8, top, -(isl.u + sg * (isl.r + 20)), rnd() * 6);
     }
     if (people) {
       add('oma_sit', xb + 0.9, top + 0.03, -(isl.u + 3.4), toRoad(-1));
@@ -664,7 +714,7 @@ export function planTown(place, opts = {}) {
     const sq2 = { kind: 'extra', side: -1, u0: u2 - w2 / 2, u1: u2 + w2 / 2, d0: lineD, d1: lineD + d2 };
     plan.squares.push(sq2);
     busy.push({ side: -1, u0: sq2.u0, u1: sq2.u1 });
-    for (let u = sq2.u0 + 4; u < sq2.u1; u += 8) for (let d = lineD + 4; d < sq2.d1; d += 8) add('plaza', sx(-1, d), 0, -u, 0);
+    for (let u = sq2.u0 + 4; u < sq2.u1; u += 8) for (let d = lineD + 4; d < sq2.d1; d += 8) add(plazaKind, sx(-1, d), 0, -u, 0);
     placeFountain(kind, -1, lineD + d2 / 2, u2);
     add(lamp, sx(-1, lineD + d2 / 2 + r + 1.3), top, -(u2 - r * 0.5), 0);
     add('bench', sx(-1, lineD + d2 - 1.0), top, -(u2 + r * 0.4), Math.PI / 2);
@@ -731,7 +781,7 @@ export function planTown(place, opts = {}) {
     for (let du = -half + 4; du <= half - 4; du += 8) for (const d of [4, 12]) add('lawn', sx(-1, lineD + d), 0, -(gu + du), 0);
     for (let du = -half + 12; du <= half - 12; du += 12) add('flowerBed', sx(-1, lineD + 2.4), top, -(gu + du), 0);
     for (const du of [-6, 6]) add('bench', sx(-1, lineD + 5.2), top, -(gu + du), toRoad(-1));
-    for (const du of [-half + 3, half - 3]) add(pick(rnd, ['streetTree', 'streetTree2']), sx(-1, lineD + 3), top, -(gu + du), rnd() * 6);
+    for (const du of [-half + 3, half - 3]) add(tree(pick(rnd, ['streetTree', 'streetTree2'])), sx(-1, lineD + 3), top, -(gu + du), rnd() * 6);
   }
 
   // --- 4. Häuserzeilen auf beiden Seiten --------------------------------------------------------------------------
@@ -808,16 +858,19 @@ export function planTown(place, opts = {}) {
     let u = 14 + rnd() * 8;
     let k = 0;
     let lampNo = 0;
+    let lampK = 0;
     while (u < len - 12) {
       if (!onSquare(u)) {
         // Laterne am Bordstein, Arm über die Fahrbahn
         add(lamp, sx(side, 0.45), top, -u, side > 0 ? -Math.PI / 2 : Math.PI / 2);
+        // Fahnen in den Stadtfarben an jeder zweiten Laterne (ab der Kleinstadt)
+        if (prof.flag && size !== 'dorf' && lampK++ % 2 === 0) add('lampBanner', sx(side, 0.45), top, -u, side > 0 ? -Math.PI / 2 : Math.PI / 2, { tint: prof.flag[0], roof: prof.flag[1] });
         const a = u + 6;
         const b = u + 24;
         // zwischen zwei Laternen: Straßenbahnhalt (Großstadt), Baum oder Autos (ab Kleinstadt), sonst Grün
-        if (size === 'gross' && TRAM_AT.has(lampNo++) && !onSquare(u + 10) && !onSquare(u + 16) && u + 20 < len - 3) {
+        if (tram && TRAM_AT.has(lampNo++) && !onSquare(u + 10) && !onSquare(u + 16) && u + 20 < len - 3) {
           add('tramStop', sx(side, 1.15), top, -(u + 13), toRoad(side));
-        } else if (size !== 'dorf' && rnd() < look.cars) {
+        } else if (size !== 'dorf' && rnd() < cars) {
           let cu = a + 1;
           while (cu + 4.6 < b) {
             const car = pick(rnd, ['carSmall', 'carCompact', 'carCompact', 'carVan']);
@@ -828,7 +881,9 @@ export function planTown(place, opts = {}) {
           }
         } else if (u + 13 < len - 3 && !onSquare(u + 13) && !views.some((v) => v.side === side && u + 13 > v.u0 - 3 && u + 13 < v.u1 + 3)) {
           // Krone (bis 2 m Radius) bleibt über dem Gehweg; vor einer Sichtlücke steht keiner
-          add(pick(rnd, ['streetTree', 'streetTree2', 'streetTreeTall']), sx(side, 2.05), top, -(u + 13), rnd() * 6.28);
+          // der Straßenbaum des Orts; wo keiner steht (enge Altstadt), ein Blumenkübel
+          const alt = pick(rnd, ['streetTree', 'streetTree2', 'streetTreeTall']);
+          add(trees.length ? tree(alt) : 'flowerTub', sx(side, trees.length ? 2.05 : 1.2), top, -(u + 13), rnd() * 6.28);
         }
         // Kleinkram am Rand des Gehwegs (nah an der Hauswand stört er niemanden)
         const small = ['bin', 'bench', 'postBox', 'hydrant', 'bikeStand', 'flowerTub', 'adColumn', 'phoneBox', 'parkingMeter'];
@@ -887,6 +942,10 @@ export function planTown(place, opts = {}) {
   plan.layout = townLayout(plan, infoOf);
   return plan;
 }
+
+// Was die Farben des Orts trägt (Häuser; Hochhäuser, Wahrzeichen und Glastürme behalten ihre), Reet bleibt Reet
+const PAINTED = new Set(['village', 'shop', 'town']);
+const THATCH = 0xb2915e;
 
 const r1 = (v) => Math.round(v * 100) / 100;
 const HOUSE_KINDS = new Set(['village', 'shop', 'town', 'city', 'region']);

@@ -83,7 +83,7 @@ function checkLayout(plan, where) {
   }
   plan.squares.forEach((q, i) => {
     const s = L.squares[i];
-    const tiles = plan.items.filter((it) => it.name === 'plaza' && it.x > s.x0 && it.x < s.x1 && it.z > s.z0 && it.z < s.z1);
+    const tiles = plan.items.filter((it) => it.name.startsWith('plaza') && it.x > s.x0 && it.x < s.x1 && it.z > s.z0 && it.z < s.z1);
     const hull = [Math.min(...tiles.map((t) => t.x - 4)), Math.max(...tiles.map((t) => t.x + 4)), Math.min(...tiles.map((t) => t.z - 4)), Math.max(...tiles.map((t) => t.z + 4))];
     ok(tiles.length && near(hull[0], s.x0) && near(hull[1], s.x1) && near(hull[2], s.z0) && near(hull[3], s.z1), `${where}: Platz ${i} im Lageplan ${[s.x0, s.x1, s.z0, s.z1]} statt Pflaster ${hull}`);
   });
@@ -132,7 +132,7 @@ for (const [key, name, lat, lon, cc, n, pop] of PLACES) {
         // Im Becken steht nichts
         const fb = box(plan.items.find((it) => it.fountain === f.id).fp);
         for (const it of plan.items) {
-          if (it.fountain === f.id || GROUND.has(it.name)) continue;
+          if (it.fountain === f.id || GROUND.has(it.name.split(':')[0])) continue;
           ok(!overlap(fb, box(it.fp), 0.05), `${where}: ${it.name} steht im Brunnen ${f.kind}`);
         }
         if (f === main) {
@@ -190,7 +190,7 @@ for (const size of SIZES) {
       ok(g.cam.pos[1] > 1.1 && g.cam.pos[1] < 1.5, `${where}: Kamerahöhe ${g.cam.pos[1]}`);
       // freie Sicht von der Kamera auf den Brunnen, nichts steht im Becken oder auf der Kamera
       for (const it of g.items) {
-        if (it.fountain === 0 || GROUND.has(it.name)) continue;
+        if (it.fountain === 0 || GROUND.has(it.name.split(':')[0])) continue;
         ok(!L.segHitsBox(g.cam.pos[0], g.cam.pos[2], g.cam.look[0], g.cam.look[2], it.fp, 0.1) || it.fp.h <= 0.95, `${where}: ${it.name} verstellt die Nahaufnahme`);
         ok(!overlap(fb, box(it.fp), 0.05), `${where}: ${it.name} steht im Brunnen`);
       }
@@ -315,7 +315,7 @@ for (const p of places) {
     const lit = f.island ? Math.max(f.r, isl.r - L.ISLAND.kerb - L.ISLAND.ring) : f.r;
     ok(plan.items.some((it) => it.name.startsWith('lamp') && Math.hypot(it.x - f.x, it.z - f.z) <= lit + 6), `${where}: keine Laterne am Brunnen ${f.kind}`);
     const fb = box(plan.items.find((it) => it.fountain === f.id).fp);
-    for (const it of plan.items) if (it.fountain !== f.id && !GROUND.has(it.name)) ok(!overlap(fb, box(it.fp), 0.05), `${where}: ${it.name} steht im Brunnen ${f.kind}`);
+    for (const it of plan.items) if (it.fountain !== f.id && !GROUND.has(it.name.split(':')[0])) ok(!overlap(fb, box(it.fp), 0.05), `${where}: ${it.name} steht im Brunnen ${f.kind}`);
   }
   // linke Bordsteinkante: geweitet neben der Insel, sonst wie überall
   const kerbL = (u) => (u > isl.u0 && u < isl.u1 ? isl.kerb(u) : L.STREET.curbL);

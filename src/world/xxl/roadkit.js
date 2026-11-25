@@ -15,7 +15,9 @@ import { GRASS_RGB, ROAD, asphaltBase, guardrailTexture } from '../../textures.j
 import { mulberry32 } from '../../util.js';
 import { ASPHALT, wetAsphalt } from '../road.js';
 import { LAYER, meadowTexture } from './ground.js';
-import { STREET } from '../kit/layout.js';
+import { STREET, profileOf } from '../kit/layout.js';
+import { PAVES } from '../kit/steckbrief.js';
+import { places } from '../../map/graph.js';
 import { PAVEMENT } from '../kit/street.js';
 import { squareOf, squareWeight, kitTown } from './plan.js';
 import { chargeOf, kerbAt } from './charge.js';
@@ -371,9 +373,22 @@ export class RoadMaterials {
     // Gehweg der Orte: matt und in den Farben des Stadtbaukastens, wie dessen Plätze (auch im Regen)
     this.strip = W.lambert({ map: tilesTexture(PAVEMENT.cobble, 1, 2) });
     this.walk = W.lambert({ map: tilesTexture(PAVEMENT.slab, 2, 2) });
+    // je Pflaster der Steckbriefe (kit/steckbrief.js PAVES) ein Paar, erst wenn ein Ort es braucht
+    this.paveMats = new Map([['platten', { strip: this.strip, walk: this.walk }]]);
     this.cobble = W.std({ map: cobbleTexture(), roughness: 0.82, envMapIntensity: 0.6 });
     this.solid = W.std({ vertexColors: true, roughness: 0.6, metalness: 0.1 });
     this.wet = 0;
+  }
+
+  /** Pflasterstreifen und Plattenweg im Pflaster key (PAVES), z. B. Klinker im Norden, Basalt in der Eifel. */
+  pave(key) {
+    let m = this.paveMats.get(key);
+    if (!m) {
+      const P = PAVES[key] ?? PAVES.platten;
+      m = { strip: W.lambert({ map: tilesTexture(P.cobble, 1, 2) }), walk: W.lambert({ map: tilesTexture(P.slab, 2, 2) }) };
+      this.paveMats.set(key, m);
+    }
+    return m;
   }
 
   /** Nässe wie Road.setWet: Asphalt dunkler und spiegelnder, Gras dunkler. */
@@ -767,8 +782,10 @@ export function buildPiece(mats, sec, prev, next, sa, sb, inCurve) {
   add(asph, mats.asphalt);
   add(under, mats.asphaltUnder);
   add(grass, mats.grass);
-  add(strip, mats.strip);
-  add(walk, mats.walk);
+  // Gehweg im Pflaster des Orts (Steckbrief), sonst den Platten des Stadtbaukastens
+  const pm = sec.kind === 'stadt' && sec.place >= 0 && places[sec.place] ? mats.pave(profileOf(places[sec.place]).paveKey) : mats.pave('platten');
+  add(strip, pm.strip);
+  add(walk, pm.walk);
   add(cobble, mats.cobble);
   add(marks, mats.mark);
   add(rails, mats.rail);
