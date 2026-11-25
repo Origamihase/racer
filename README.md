@@ -70,7 +70,9 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
   Akku-Puffer, Stream-Technik, Sportreifen, Sportfahrwerk, Sportbremsen, Plüsch-Polster, Wischer-Firmware (Beta),
   Radarwarner, Satelliten-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone. Blitzer
   kommen unangekündigt – nur wer den Radarwarner an Bord hat, hört es vorher piepen und OMI warnen. Das Megafon
-  gehört zur Ausstattung (wer es früher gekauft hat, bekommt die 450 € einmal zurück).
+  gehört zur Ausstattung (wer es früher gekauft hat, bekommt die 450 € einmal zurück). Schäden und Bußgelder werden
+  immer ganz gebucht und dürfen das Guthaben ins Minus ziehen; dann bleibt der Shop zu, bis spätere Streams es wieder
+  ins Plus bringen – gespielt und geladen wird trotzdem.
 - **Abspann** mit Abrechnung, Statistik, Blitzerfotos, erlogener Berufsbezeichnung des Tages und einem
   „Danke an“ – größte Spende, wer Abos verschenkt hat und wer neu VIP geworden ist.
 

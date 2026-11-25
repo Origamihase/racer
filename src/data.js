@@ -1228,6 +1228,15 @@ export function shopPrice(it, lvl) {
   const p = it.prices[lvl];
   return it.code ? Math.round(p * (100 - it.code.off)) / 100 : p;
 }
+/**
+ * Im Minus wird nichts gekauft (Besitzer, 25.11.2026: „Dann kann man nichts mehr im Shop kaufen, aber trotzdem noch
+ * spielen und auch laden.“): Steht das Guthaben unter null, ist der Shop zu – bis spätere Streams es wieder ins Plus
+ * bringen. Spielen und Laden fragen nie danach.
+ */
+export const SHOP_LOCK = '🔒 Guthaben im Minus: erst wieder ins Plus fahren, dann geht der Shop wieder auf.';
+export const shopLocked = (wallet) => wallet < 0;
+/** Reicht das Guthaben für einen Kauf zum Preis price? Nie im Minus, nie unter dem Preis. */
+export const canBuy = (wallet, price) => !shopLocked(wallet) && wallet >= price;
 // Das Megafon ist kein Shop-Artikel mehr (save.js refundMegafon): Titel und Shop sagen es dem, der es gekauft hatte
 /** Titel nach einem Stream, der ohne Abspann endete (Seite zu, Absturz): was er gebracht hat (save.js settlePending). */
 export const STREAM_GEBUCHT = (km, euro, minus) =>

@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, MEGAFON_ERSTATTET, STREAM_GEBUCHT, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, MEGAFON_ERSTATTET, STREAM_GEBUCHT, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice, shopLocked, canBuy, SHOP_LOCK } from '../data.js';
 import { fmtNum, fmtCent, fmtEuro, fmtSpan, fmtKonto, kontoMinus } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -658,6 +658,9 @@ export class Menus {
     el('div', 'wallet' + (kontoMinus(d.wallet) ? ' minus' : ''), head, '💶 ' + fmtKonto(d.wallet));
     el('p', 'sub', card, 'Upgrades für den schwarzen Model 3 Long Range AWD. Bezahlt wird mit den Stream-Einnahmen: Spenden, Abos, Navi-Gebote.');
     if (d.refund) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.refund)));
+    // im Minus ist der Shop zu: der Grund oben, jeder Kauf-Knopf gesperrt (Spielen und Laden gehen weiter)
+    const locked = shopLocked(d.wallet);
+    if (locked) el('p', 'shop-lock', card, SHOP_LOCK);
     const grid = el('div', 'shop-grid', card);
     for (const it of SHOP) {
       const lvl = d.upgrades[it.id] || 0;
@@ -682,9 +685,10 @@ export class Menus {
           el('span', 'shop-code-tag', code, `Code ${it.code.name} −${it.code.off}\u00a0%`);
           el('s', '', code, fmtEuro(it.prices[lvl]));
         }
-        const ok = d.wallet >= price;
-        // reicht das Guthaben nicht, steht da, wie viel noch fehlt
-        const b = button(c, ok ? 'Kaufen · ' + fmtEuro(price) : fmtEuro(price) + ' · fehlt noch ' + fmtCent(price - d.wallet), 'buy', ok ? 'buy' : 'buy poor');
+        const ok = canBuy(d.wallet, price);
+        // reicht das Guthaben nicht, steht da, wie viel noch fehlt; im Minus nur der Preis mit dem Schloss
+        const label = ok ? 'Kaufen · ' + fmtEuro(price) : locked ? '🔒 Gesperrt · ' + fmtEuro(price) : fmtEuro(price) + ' · fehlt noch ' + fmtCent(price - d.wallet);
+        const b = button(c, label, 'buy', ok ? 'buy' : 'buy poor');
         b.dataset.id = it.id;
         if (!ok) b.disabled = true;
       } else el('div', 'maxed-tag', c, 'Ausgebaut ✔');

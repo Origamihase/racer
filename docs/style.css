@@ -591,6 +591,8 @@ body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top)
 /* einmal nach der Erstattung des gekauften Megafons (save.js refundMegafon): eine freundliche Zeile auf dem Titel und im Shop */
 .refund-note { margin: 12px 0 0; max-width: min(520px, calc(100vw - 56px)); color: #ffe39a; font-size: 14px; font-weight: 600; line-height: 1.35; text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
 .shop-card > .refund-note { margin: 0 0 14px; max-width: none; font-size: 15px; text-shadow: none; }
+/* der Shop im Minus: der Grund in der Farbe der Abzüge, über den gesperrten Artikeln */
+.shop-lock { margin: 0 0 14px; padding: 8px 12px; border-radius: 10px; color: #ff8a80; background: rgba(255, 90, 79, 0.12); border: 1px solid rgba(255, 90, 79, 0.45); font-size: 15px; font-weight: 700; line-height: 1.35; }
 
 .btn { font: inherit; font-size: 17px; font-weight: 600; padding: 11px 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.07);
   color: #fff; cursor: pointer; text-align: left; transition: background 0.15s, transform 0.1s, border-color 0.15s; }

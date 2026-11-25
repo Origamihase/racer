@@ -4,6 +4,8 @@
 //    Einblendung), der Stream endet mit Vorzeichen, das Guthaben geht unter null und trägt die Schulden in den nächsten
 //    Stream; ein Spielstand im Minus lädt; ein Stream mit Guthaben im Minus startet und läuft; Titel, Shop, Abspann und
 //    HUD zeigen ein Minus mit Minuszeichen in der Farbe der Abzüge, nie als 0.
+// 2. Im Minus ist der Shop zu: der Grund steht oben, jeder Kauf-Knopf ist gesperrt, der Kauf in main.js wird abgelehnt –
+//    und ist das Guthaben wieder im Plus, geht es wieder; nichts anderes gibt Guthaben aus.
 // node tools/minus-test.mjs
 import { readFileSync } from 'node:fs';
 
@@ -63,7 +65,7 @@ globalThis.ResizeObserver = class {
 };
 
 const { DEFAULT_SAVE, loadSave, storeSave, settleStream, settlePending } = await import('../src/save.js');
-const { BUSSGELD, REPARATUR, STREAM_GEBUCHT } = await import('../src/data.js');
+const { BUSSGELD, REPARATUR, STREAM_GEBUCHT, SHOP, UPGRADE_LIMITS, shopPrice, shopLocked, canBuy, SHOP_LOCK } = await import('../src/data.js');
 const { fmtKonto, kontoMinus } = await import('../src/util.js');
 const { Menus } = await import('../src/ui/menus.js');
 const { makeStream, DRIVERS } = await import('./stream-sim.mjs');
@@ -210,5 +212,53 @@ const NB = ' ';
   ok(!/Math\.max\(0, Math\.round\(\(save\.wallet/.test(src('src/save.js')), 'settleStream kappt das Guthaben noch bei null');
 }
 
-console.log(fails ? `minus-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `minus-test: alles grün (${checks} Prüfungen: Schulden ganz gebucht und getragen, Spielstand im Minus, Start im Minus, Anzeige mit Minus)`);
+// --- 2. Im Minus ist der Shop zu ----------------------------------------------------------------------------------
+{
+  ok(shopLocked(-0.01) && shopLocked(-500) && !shopLocked(0) && !shopLocked(12), 'shopLocked: falsche Grenze');
+  ok(!canBuy(-0.01, 0) && !canBuy(-500, 90) && !canBuy(89.99, 90) && canBuy(90, 90) && canBuy(5000, 1900), 'canBuy: falsche Grenze');
+  // der Kauf aus main.js, so wie er dort steht (mit Ersatz für Ton, Speicher und Kosmetik)
+  const main = src('src/main.js');
+  const at = main.indexOf('  buy: (id) => {');
+  const body = main.slice(at + '  buy: '.length, main.indexOf('\n  },\n', at) + 4);
+  ok(at > 0 && /if \(!canBuy\(save\.wallet, price\)\)/.test(body), 'main.js: der Kauf fragt nicht canBuy');
+  const sounds = [];
+  const save = { wallet: -500, upgrades: {} };
+  let stored = 0;
+  const buy = new Function('SHOP', 'UPGRADE_LIMITS', 'shopPrice', 'canBuy', 'save', 'audio', 'storeSave', 'applyCosmetics', 'return ' + body)(
+    SHOP, UPGRADE_LIMITS, shopPrice, canBuy, save, { bad: () => sounds.push('bad'), coin: () => sounds.push('coin') }, () => stored++, () => {});
+  const cheap = SHOP.reduce((a, b) => (shopPrice(b, 0) < shopPrice(a, 0) ? b : a));
+  ok(buy(cheap.id) === false && save.wallet === -500 && !save.upgrades[cheap.id] && stored === 0 && sounds.pop() === 'bad', `Kauf bei −500 €: ${JSON.stringify(save)}`);
+  save.wallet = -0.01;
+  ok(buy('weste') === false && save.wallet === -0.01 && !save.upgrades.weste, 'Kauf bei −0,01 €: nicht abgelehnt');
+  // spätere Streams bringen das Guthaben ins Plus: Dann geht der Kauf wieder
+  settleStream(Object.assign(save, { best: {}, stats: {} }), { money: 600.01, distance: 9000 });
+  const price = shopPrice(cheap, 0);
+  ok(save.wallet === 600 && buy(cheap.id) === true && save.wallet === 600 - price && save.upgrades[cheap.id] === 1 && stored === 1 && sounds.pop() === 'coin', `Kauf im Plus: ${JSON.stringify({ w: save.wallet, u: save.upgrades })}`);
+  // der Shop zeigt es: im Minus der Grund oben und alle Knöpfe gesperrt; im Plus wie immer
+  const menus = Object.create(Menus.prototype);
+  const shopAt = (wallet) => {
+    const s = node('div');
+    menus.render_shop(s, { wallet, upgrades: {}, refund: 0 });
+    const nodes = all(s);
+    return { lock: nodes.find((n) => n.classList.contains('shop-lock')), buys: nodes.filter((n) => n.tag === 'button' && n.dataset.action === 'buy') };
+  };
+  const minus = shopAt(-512.34);
+  ok(minus.lock && minus.lock.textContent === SHOP_LOCK && /Guthaben im Minus/.test(SHOP_LOCK) && /ins Plus/.test(SHOP_LOCK), `Shop im Minus: Grund ${minus.lock && minus.lock.textContent}`);
+  ok(minus.buys.length === SHOP.length && minus.buys.every((b) => b.disabled && b.classList.contains('poor') && /^🔒 Gesperrt · \d/.test(b.textContent)), `Shop im Minus: Knöpfe ${minus.buys.map((b) => b.textContent + (b.disabled ? '' : ' (frei)')).join(' | ')}`);
+  const plus = shopAt(5000);
+  ok(!plus.lock && plus.buys.every((b) => !b.disabled && /^Kaufen · /.test(b.textContent)), 'Shop mit 5.000 €: gesperrt');
+  const some = shopAt(150);
+  ok(!some.lock && some.buys.some((b) => !b.disabled) && some.buys.some((b) => b.disabled && / · fehlt noch /.test(b.textContent)), 'Shop mit 150 €: „fehlt noch“ fehlt oder alles gesperrt');
+  // Titel, Pause und Abspann führen in denselben Shop: Nur Titel und Abspann haben den Knopf, die Pause keinen
+  const m = src('src/ui/menus.js');
+  const pause = m.slice(m.indexOf('  render_pause('), m.indexOf('  render_over('));
+  ok(!/'shop'/.test(pause) && (m.match(/button\(menu, '🛒 {1,2}Shop', 'shop'\)/g) || []).length === 2, 'Shop-Knöpfe: Titel und Abspann, nicht die Pause');
+  ok(/if \(name === 'shop'\) return \{ wallet: save\.wallet/.test(main), 'main.js: der Shop bekommt nicht das gespeicherte Guthaben');
+  // nichts anderes gibt Guthaben aus: save.wallet wird nur beim Kauf, beim Buchen eines Streams und der Erstattung geändert
+  const writes = [...main.matchAll(/save\.wallet\s*=(?!=)/g)].length;
+  const saveJs = src('src/save.js');
+  ok(writes === 1 && [...saveJs.matchAll(/save\.wallet\s*=(?!=)/g)].length === 2, `Guthaben wird außerhalb von Kauf, Abrechnung und Erstattung geändert (main.js ${writes}×)`);
+}
+
+console.log(fails ? `minus-test: ${fails} von ${checks} Prüfungen FEHLGESCHLAGEN` : `minus-test: alles grün (${checks} Prüfungen: Schulden ganz gebucht und getragen, Spielstand im Minus, Start im Minus, Anzeige mit Minus, Shop im Minus zu)`);
 process.exit(fails ? 1 : 0);
