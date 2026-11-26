@@ -47,6 +47,10 @@ import { TV } from '../src/world/xxl/brunnentv.js';
 import { signsAlong, BOARD_D } from '../src/world/xxl/signplan.js';
 import { parkBoard, PARK_STOP_AFTER, PARKS, postName } from '../src/map/parks.js';
 
+// Der Wochentag steht fest (ein Mittwoch): Das Stichwort „donnerstag“ der Sprachdurchsagen (game/parts/ereignisse.js)
+// fragt die echte Uhr, donnerstags zöge der Zufall der Streams also anders – und die Grenzen dieses Prüfstands gelten
+// für einen festen Lauf, nicht für den Kalender (am Donnerstag, 26.11.2026 fuhr der Lader einen Akku leer).
+Date.prototype.getDay = () => 3;
 const HOURS = Number(process.argv[2]) || 3;
 const LOG = process.argv[3] === 'log';
 // so viele erste Runden je Fahrer (Streams von höchstens zehn Minuten, siehe „Die erste Runde“ unten)
