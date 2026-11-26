@@ -1013,14 +1013,31 @@ landmark('hohenzollernbruecke', { places: ['Köln'], slot: 'river', title: 'Hohe
   const len = 70;
   const zc = -len / 2;
   const y = 3.6;
-  river(b, half, len, y, 16, 0xa39686);
+  const xs = [-204.6, -85.7, 82.0, 204.6].map((x) => x * s);
+  // Länge der Rampen hinter den Brückenköpfen; das Ufer reicht bis an ihr Ende
+  const ramp = 24;
+  river(b, half, len, y, xs[3] + 4 + ramp - half, 0xa39686);
   const deckY = y + 1.4;
   const D = 29.5 * s; // Breite der drei Brückenzüge
   // Pfeiler und Fahrbahn
-  const xs = [-204.6, -85.7, 82.0, 204.6].map((x) => x * s);
   for (const x of xs.slice(1, 3)) prism(F, rrect(9, D + 4, 4, 2, x, zc), 0, deckY, 0x756a62, { smooth: 0.7, g: [0.7, 1] });
   F.box(0, deckY - 1.6, zc, xs[3] - xs[0] + 8, 1.6, D, 0x5f666b, { g: [0.85, 1] });
   F.box(0, deckY, zc, xs[3] - xs[0] + 8, 0.12, D - 1, 0x9a948a, { skip: 'b' });
+  // Rampen an beiden Brückenköpfen: das Gleisbett läuft zwischen Stützmauern sacht auf das Ufer hinab, statt über ihm
+  // abzubrechen (am Fluss eines Orts liegt das Ufer knapp unter dem Boden: die Rampe taucht in den Uferweg ein)
+  for (const sx of [-1, 1]) {
+    const xa = sx * (xs[3] + 4);
+    const xb = xa + sx * ramp;
+    const ya = deckY + 0.12;
+    const za = zc + D / 2;
+    const zb = zc - D / 2;
+    const top = [[xa, ya, za], [xb, y, za], [xb, y, zb], [xa, ya, zb]];
+    F.quad(...(sx > 0 ? top : top.reverse()), 0x9a948a);
+    for (const [z, front] of [[za, true], [zb, false]]) {
+      const wall = [[Math.min(xa, xb), y, z], [Math.max(xa, xb), y, z], [xa, ya, z]];
+      F.tri(...(front ? wall : wall.reverse()), 0x756a62, { g: [0.8, 1] });
+    }
+  }
   // Bögen: je Feld drei Bogenebenen (außen und Mitte), Kreisbögen mit Stich f, Hänger alle 8,4 m (× s)
   const spans = [[xs[0], xs[1], 17], [xs[1], xs[2], 25], [xs[2], xs[3], 17.5]];
   const planes = [zc + D / 2 - 0.5, zc, zc - D / 2 + 0.5];
@@ -1068,7 +1085,7 @@ landmark('hohenzollernbruecke', { places: ['Köln'], slot: 'river', title: 'Hohe
       for (let w = 0; w < 4; w++) G.rect(x - 4.4 + w * 2.9, deckY + 2.1, zc + 1.42, 1.8, 0.9, GLASS);
     }
   }
-  return { w: 2 * half + 32, d: len, h: deckY + 25 * s + 1.5, river: { half, len, y: 0.05 } };
+  return { w: 2 * (xs[3] + 4 + ramp), d: len, h: deckY + 25 * s + 1.5, river: { half, len, y: 0.05 } };
 });
 
 // =============================================================================================================
@@ -1267,7 +1284,11 @@ function crane(b, raised = false) {
   return { w: 36, d: 122, h: raised ? 110 : 66 };
 }
 
-landmark('containerCrane', { places: ['Hamburg', 'Bremen', 'Kiel'], slot: 'open', title: 'Containerbrücke' }, (b) => crane(b));
+landmark('containerCrane', { places: ['Hamburg', 'Bremen', 'Kiel'], slot: 'open', title: 'Containerbrücke' }, (b) => {
+  // Kaiplatte unter beiden Schienen: wo sie ohne Hafen steht (am Rand eines Orts), steht sie nicht auf der Wiese
+  b.F.box(0, 0, -37, 36, 0.06, 40, 0xa8a49c, { skip: 'b' });
+  return crane(b);
+});
 landmark('containerStack', { places: [], slot: 'open', title: 'Containerstapel' }, (b) => {
   containers(b, 0, -3, 3, 2, 4, 3);
   return { w: 38, d: 6, h: 10.4 };
@@ -1276,14 +1297,17 @@ landmark('containerStack', { places: [], slot: 'open', title: 'Containerstapel' 
 landmark('hamburgHafen', { places: ['Hamburg'], slot: 'river', far: true, title: 'Containerhafen' }, (b) => {
   const { F, W } = b;
   const near = !b.lod;
-  // Kai (1,5 m) mit Kante, dahinter Wasser bis zum Ende der Ausleger und ein Schiff am Kai
-  F.box(0, 0, -29, 200, 1.5, 58, 0xa8a49c, { g: [0.85, 1] });
-  F.box(0, 1.5, -57.6, 200, 0.4, 0.8, 0xd8d3c8);
+  // Kai mit Kante, dahinter Wasser bis zum Ende der Ausleger und ein Schiff am Kai. Der Kai liegt q Meter über dem
+  // Wasser und ist kd Meter tief: so hoch wie das Ufer der Elbe im Ort (map/rivers.js), an dem er steht
+  const q = 3.2;
+  const kd = 58;
+  F.box(0, 0, -kd / 2, 200, q, kd, 0xa8a49c, { g: [0.85, 1] });
+  F.box(0, q, -kd + 0.4, 200, 0.4, 0.8, 0xd8d3c8);
   W.poolRect(0, 0.05, -100, 200, 84, WATER, { rings: 0.1 });
-  b.at(-60, 1.5, 0, 0, () => crane(b));
-  b.at(-8, 1.5, 0, 0, () => crane(b, true));
-  b.at(44, 1.5, 0, 0, () => crane(b));
-  b.at(0, 1.5, 0, 0, () => {
+  b.at(-60, q, 0, 0, () => crane(b));
+  b.at(-8, q, 0, 0, () => crane(b, true));
+  b.at(44, q, 0, 0, () => crane(b));
+  b.at(0, q, 0, 0, () => {
     containers(b, -30, -8, 3, 3, 3, 2);
     containers(b, 30, -10, 3, 4, 4, 5);
     containers(b, 82, -6, 2, 2, 2, 9);
@@ -1301,7 +1325,7 @@ landmark('hamburgHafen', { places: ['Hamburg'], slot: 'river', far: true, title:
     if (near) for (let i = 0; i < 6; i++) b.G.rect(-len / 2 + 5 + i * 2, 24.5, 5.52, 1.4, 1.2, GLASS);
     b.at(10, 13, 0, 0, () => containers(b, 0, 0, 8, 4, 3, 4));
   });
-  return { w: 200, d: 142, h: 124 };
+  return { w: 200, d: 142, h: q + 122.5, quay: { d: kd, y: q } };
 });
 
 // =============================================================================================================

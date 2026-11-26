@@ -81,10 +81,11 @@ export function pierSpots(rv) {
 
 /**
  * Baut den Fluss rv (map/rivers.js riverOf) als Group in Ortskoordinaten (x seitlich wie die Straße, z = −u).
- * aprons: zusätzlich gepflasterte Flächen am Ufer in Flusskoordinaten [{ X0, X1, D0, D1 }] (Kai unter den
- * Containerbrücken); open: [{ side (+1 jenseits, −1 diesseits), X0, X1 }] – dort bringt ein Wahrzeichen sein eigenes
- * Ufer mit (der Kai des Hafens), Uferkante und Uferweg bleiben weg. Die Geometrien tragen userData.merged: release()
- * des Baukastens räumt sie mit dem Ort ab.
+ * aprons: zusätzlich gepflasterte Flächen hinter dem Uferweg [{ lx, X, D0, D1 }] – vom Gehweg der Straße (lx: seine
+ * Außenkante seitlich der Straßenmitte, links −) bis zur Lage X längs des Flusses, quer von D0 bis D1 (Kai unter den
+ * Containerbrücken, Hof vor dem Hafen); open: [{ side (+1 jenseits, −1 diesseits), X0, X1 }] – dort bringt ein
+ * Wahrzeichen sein eigenes Ufer mit (der Kai des Hafens): Uferkante und Uferweg bleiben weg, die Mauer bekommt einen
+ * Absatz bis an seinen Fuß. Die Geometrien tragen userData.merged: release() des Baukastens räumt sie mit dem Ort ab.
  */
 export function buildRiver(core, rv, { aprons = [], open = [] } = {}) {
   const K = RIVER_KIT;
@@ -138,7 +139,9 @@ export function buildRiver(core, rv, { aprons = [], open = [] } = {}) {
       // Stützstellen dieses Laufs von der Brücke nach außen
       // an der Brücke schräg entlang der Straße geschnitten: die Uferkante am Randbalken, der Uferweg am Gehweg
       const cut = (D, lx = hb) => XofLx(dir * lx, D);
-      const outer = xs.filter((x) => dir * x > dir * cut(Di) + 8 && dir * x > dir * cut(Dp) + 8);
+      // (die Enden offener Uferstücke sind eigene Stützstellen: Kante und Weg reichen genau bis dorthin)
+      const ends = open.filter((q) => q.side === sg).flatMap((q) => [q.X0, q.X1]);
+      const outer = [...new Set([...xs, ...ends])].sort((a, b) => a - b).filter((x) => dir * x > dir * cut(Di) + 8 && dir * x > dir * cut(Dp) + 8);
       if (dir < 0) outer.reverse();
       let prev = null;
       for (const X of [null, ...outer]) {
@@ -163,11 +166,17 @@ export function buildRiver(core, rv, { aprons = [], open = [] } = {}) {
       const A = runs.length ? runs[0][0] : null;
       if (A) quad(P(A.i, Di, K.yTop - 0.3), P(A.o, Do, K.yTop - 0.3), P(A.o, Do, K.cope[2]), P(A.i, Di, K.cope[2]), along(-dir), COPING, { k: 0.9 });
     }
+    // offenes Uferstück: Absatz von der Mauer bis an den Fuß des Kais, an beiden Enden die Stirn der Uferkante
+    for (const q of open) {
+      if (q.side !== sg) continue;
+      quad(P(q.X0, Dw, K.yTop), P(q.X1, Dw, K.yTop), P(q.X1, sg * (half + 0.1), K.yTop), P(q.X0, sg * (half + 0.1), K.yTop), UP, STONE);
+      for (const [X, dir] of [[q.X0, 1], [q.X1, -1]]) quad(P(X, Di, K.yTop - 0.3), P(X, Do, K.yTop - 0.3), P(X, Do, K.cope[2]), P(X, Di, K.cope[2]), along(dir), COPING, { k: 0.9 });
+    }
   }
-  // Kai unter Containerbrücken und Stapeln: Platten bis an die Uferkante
+  // Kai und Hof: Platten auf der Höhe des Uferwegs, bündig an ihn und an den Gehweg der Straße gesetzt
   for (const a of aprons) {
-    const Y = K.pave + 0.01;
-    quad(P(a.X0, a.D0, Y), P(a.X1, a.D0, Y), P(a.X1, a.D1, Y), P(a.X0, a.D1, Y), UP, mix(PAVE, 0x8f9499, 0.35));
+    const Y = K.pave;
+    quad(P(XofLx(a.lx, a.D0), a.D0, Y), P(a.X, a.D0, Y), P(a.X, a.D1, Y), P(XofLx(a.lx, a.D1), a.D1, Y), UP, mix(PAVE, 0x8f9499, 0.35));
   }
 
   // --- Straßenbrücke: Platte unter Fahrbahn und Gehwegen, je Seite ein Randbalken mit Geländer und Endpfeilern -----

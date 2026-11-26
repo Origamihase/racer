@@ -498,8 +498,9 @@ export function sightDistance(plan, f, max = 120) {
  * Häuser an der zurückgesetzten Flucht hinter dem geweiteten Gehweg (squares: kind 'island').
  * Ergebnis: { place, size, region, len, items, fountains, squares, texts, goal, landmarks }. Wahrzeichen: 'square' wird
  * Rückwand des Hauptplatzes (der Platz wächst mit), 'skyline' steht links hinter der Häuserzeile, mit einer Lücke in
- * der Zeile, durch die man es sieht; 'river' und 'open' stehen nur in plan.landmarks (placed = false) und bleiben dem
- * Streckenbau überlassen.
+ * der Zeile, durch die man es sieht. 'river' und 'open' stehen am Fluss des Orts (opts.river, Abschnitt 0): eine Brücke
+ * quer im Strom links der Straße, der Hafen am jenseitigen Ufer rechts, Containerbrücken auf einem Kai links – oder,
+ * 'open' ohne Fluss, am Ortsende hinter der rechten Zeile. 'river' ohne Fluss bleibt ungesetzt (placed = false).
  * items: { name, x, y, z, ry, tint?, fp } in Ortskoordinaten; fountains: { id, kind, title, x, y, z, u, ry, r, h,
  * place, special, goal, island (nur auf der Insel des Straßenbaus), cam: { pos, look } } (cam in Ortskoordinaten, für
  * die Nahaufnahme aus 2–4 m).
@@ -563,15 +564,63 @@ export function planTown(place, opts = {}) {
   // und Gehweg (wet) stehen dort nur die Laternen der Brücke
   const river = opts.river ?? null;
   const wet = [];
-  let bandL = null; // sein Band auf der linken Seite: dort liegen die Nebenplätze
+  const band = {}; // sein Band je Seite (1 rechts, −1 links): Wahrzeichen am Ufer weiten es
+  const taken = []; // Uferstücke { sg (Ufer, 0 = beide), X0, X1 }, die ein Wahrzeichen belegt: dort kein Baum, keine Bank
   if (river) {
     plan.river = river;
+    // was der Flussbau für die Wahrzeichen am Ufer braucht (river.js buildRiver): Kaiflächen und offene Uferstücke
+    plan.riverside = { aprons: [], open: [] };
     for (const side of [1, -1]) {
       const [u0, u1] = riverSpan(river, sx(side, 0), sx(side, lineD + 40), river.bank);
-      busy.push({ side, u0, u1 });
-      if (side < 0) bandL = busy[busy.length - 1];
+      band[side] = { side, u0, u1 };
+      busy.push(band[side]);
       const [w0, w1] = riverSpan(river, sx(side, 0), sx(side, lineD), river.bank);
       wet.push({ side, u0: w0, u1: w1 });
+    }
+    // Wahrzeichen am Wasser, in Flusskoordinaten gesetzt und wie der Fluss gedreht. hw: halbe Breite der Straße samt
+    // Gehwegen; stX: wo die Straßenmitte die Lage D quer zum Fluss kreuzt (sie läuft schräg über die Ufer – der
+    // Abstand zur Straße gilt deshalb für den ganzen Kasten eines Stücks, vom Land bis über den Strom)
+    const hw = (STREET.curbR - STREET.curbL) / 2 + STREET.pave;
+    const stX = (D) => (D * river.sin) / river.cos;
+    const put = (m, X, D, y, ry, side) => {
+      const [x, u] = riverAt(river, X, D);
+      const it = add(m.name, x, y, -u, ry, { river: true });
+      // die Zeile dieser Seite bleibt neben dem Stück frei
+      const [, , z0, z1] = aabb(it.fp);
+      band[side].u0 = Math.min(band[side].u0, -z1 - 4);
+      band[side].u1 = Math.max(band[side].u1, -z0 + 4);
+      return Math.round(u);
+    };
+    for (const m of marks) {
+      const info = infoOf(m.name);
+      if (m.slot === 'river' && info.river && Math.abs(info.river.half - river.half) < 0.01) {
+        // Brücke: ihr Flussstück (so breit wie der Fluss) liegt quer im Strom links der Straße, die Schauseite zur
+        // Straßenbrücke; ihr Wasser liegt knapp unter dem des Flusses, ihr Ufer unter dem Uferweg
+        const X0 = Math.min(stX(-river.half), stX(river.half)) - hw - RIVER_MARK.bridge;
+        const u = put(m, X0, 0, -river.drop - RIVER_MARK.sink, river.ang + Math.PI / 2, -1);
+        taken.push({ sg: 0, X0: X0 - info.d - 3, X1: X0 + 3 });
+        plan.landmarks.push({ name: m.name, slot: m.slot, placed: true, u });
+      } else if (m.slot === 'river' && info.quay) {
+        // Hafen: der Kai am jenseitigen Ufer rechts der Straße (seine Oberkante knapp über dem Boden), Schiff und
+        // Ausleger im Strom; bis zum Gehweg pflastert der Flussbau, Uferkante und Uferweg setzen vor dem Kai aus
+        const D = river.half + info.quay.d;
+        const X0 = Math.max(stX(D - info.d), stX(D)) + hw + RIVER_MARK.beside;
+        const u = put(m, X0 + info.w / 2, D, RIVERSIDE.y + 0.03 - info.quay.y, river.ang + Math.PI, 1);
+        plan.riverside.open.push({ side: 1, X0, X1: X0 + info.w });
+        plan.riverside.aprons.push({ lx: hw, X: X0, D0: river.half + river.bank, D1: D });
+        taken.push({ sg: 1, X0: X0 - 3, X1: X0 + info.w + 3 });
+        plan.landmarks.push({ name: m.name, slot: m.slot, placed: true, u });
+      } else if (m.slot === 'open') {
+        // Containerbrücken: auf einem Kai am jenseitigen Ufer links der Straße, die Ausleger über dem Strom
+        const D = river.half + RIVER_MARK.quay;
+        const X1 = Math.min(stX(D - info.d), stX(D)) - hw - RIVER_MARK.beside;
+        let u = 0;
+        for (let k = 0; k < RIVER_MARK.cranes; k++) u = put(m, X1 - info.w / 2 - k * (info.w + RIVER_MARK.gap), D, RIVERSIDE.y, river.ang + Math.PI, -1);
+        const X0 = X1 - RIVER_MARK.cranes * (info.w + RIVER_MARK.gap);
+        plan.riverside.aprons.push({ lx: -hw, X: X0, D0: river.half + river.bank, D1: D + 4 });
+        taken.push({ sg: 1, X0: X0 - 3, X1: 0 });
+        plan.landmarks.push({ name: m.name, slot: m.slot, placed: true, u, n: RIVER_MARK.cranes });
+      }
     }
   }
   // ragt der Grundriss eines Stücks ins Band des Flusses (pad Meter über die Wasserkante hinaus)?
@@ -747,6 +796,7 @@ export function planTown(place, opts = {}) {
   // --- 2. Weitere Brunnen in größeren Orten: auf eigenen kleinen Plätzen links ------------------------------------
   const extras = special && size === 'gross' ? EXTRA.gross.slice(1) : EXTRA[size];
   // am Fluss liegt der erste 100 m vor dem Ufer; einer, der ins Band fiele, rückt hinter den Fluss
+  const bandL = band[-1];
   let side2u = bandL ? Math.min(len * 0.25, bandL.u0 - 100) : len * 0.25;
   for (const kind of extras) {
     const info = infoOf(kind);
@@ -792,7 +842,20 @@ export function planTown(place, opts = {}) {
   let inRow = 0;
   for (const m of marks) {
     if (m.slot !== 'skyline') {
-      if (m.slot !== 'square') plan.landmarks.push({ name: m.name, slot: m.slot, placed: false });
+      // 'square' steht am Hauptplatz, 'river' und 'open' am Fluss (Abschnitt 0)
+      if (m.slot === 'square' || plan.landmarks.some((l) => l.name === m.name)) continue;
+      if (m.slot === 'open') {
+        // ohne Fluss (Containerbrücke in Bremen, Bremerhaven, Kiel): am Ortsende rechts hinter dem Gehweg auf ihrer
+        // Kaiplatte, das Heck zur Straße, der Ausleger zeigt vom Ort weg. Die Zeile endet schon view Meter davor: man
+        // sieht sie beim Heranfahren schräg voraus neben den Speichern, wie am Rand eines Hafens
+        const info = infoOf(m.name);
+        const u = len - OPEN_MARK.end - info.w / 2;
+        busy.push({ side: 1, u0: u - info.w / 2 - OPEN_MARK.view, u1: len });
+        add(m.name, sx(1, lineD + OPEN_MARK.back), 0, -u, toRoad(1));
+        plan.landmarks.push({ name: m.name, slot: m.slot, placed: true, u });
+        continue;
+      }
+      plan.landmarks.push({ name: m.name, slot: m.slot, placed: false });
       continue;
     }
     const info = infoOf(m.name);
@@ -975,17 +1038,22 @@ export function planTown(place, opts = {}) {
     }
     // Uferwege (river.js pflastert sie): an beiden Ufern links und rechts der Straße eine Reihe Bäume längs des Flusses
     // und Bänke mit Blick aufs Wasser. lx: Abstand seitlich von der Straßenmitte (die Straße kreuzt das Ufer schräg)
+    // (wo ein Wahrzeichen am Ufer steht, bleiben sie weg: taken)
     const hw = (STREET.curbR - STREET.curbL) / 2 + STREET.pave;
-    const bank = (lx, D) => riverAt(river, (lx + D * river.sin) / river.cos, D);
+    const bank = (lx, sg, d) => {
+      const D = sg * (river.half + d);
+      const X = (lx + D * river.sin) / river.cos;
+      return taken.some((t) => (t.sg === 0 || t.sg === sg) && X > t.X0 && X < t.X1) ? null : riverAt(river, X, D);
+    };
     for (const sg of [-1, 1]) {
       for (const dir of [-1, 1]) {
         for (let k = 0; k < RIVERSIDE.trees; k++) {
-          const [x, u] = bank(dir * (hw + 7 + k * RIVERSIDE.step), sg * (river.half + river.bank - 2.6));
-          add(tree(pick(rnd, ['streetTree', 'streetTree2'])), x, RIVERSIDE.y, -u, rnd() * 6.28);
+          const at = bank(dir * (hw + 7 + k * RIVERSIDE.step), sg, river.bank - 2.6);
+          if (at) add(tree(pick(rnd, ['streetTree', 'streetTree2'])), at[0], RIVERSIDE.y, -at[1], rnd() * 6.28);
         }
         for (let k = 0; k < RIVERSIDE.benches; k++) {
-          const [x, u] = bank(dir * (hw + 7 + (k * 2 + 0.5) * RIVERSIDE.step), sg * (river.half + 3.1));
-          add('bench', x, RIVERSIDE.y, -u, river.ang + (sg < 0 ? Math.PI : 0));
+          const at = bank(dir * (hw + 7 + (k * 2 + 0.5) * RIVERSIDE.step), sg, 3.1);
+          if (at) add('bench', at[0], RIVERSIDE.y, -at[1], river.ang + (sg < 0 ? Math.PI : 0));
         }
       }
     }
@@ -1029,6 +1097,14 @@ const THATCH = 0xb2915e;
 const RIVER_CLEAR = 1;
 // Uferweg eines Flusses: Bäume je Reihe, ihr Abstand, Bänke je Reihe, Höhe des Pflasters (river.js RIVER_KIT.pave)
 const RIVERSIDE = { trees: 9, step: 16, benches: 4, y: 0.03 };
+// Wahrzeichen am Fluss. sink: so tief liegt das Wasser einer Brücke unter dem des Flusses · bridge: Abstand ihres
+// Flussstücks vom Gehweg der Straßenbrücke · beside: Abstand von Hafenkai und Containerbrücken zum Gehweg · quay: Tiefe
+// des Kais der Containerbrücken (wie der des Hafens: die Schienen liegen 6 und 36 m hinter der Wasserkante) · cranes:
+// so viele Containerbrücken, gap Meter Luft dazwischen (so viel, dass sich auch ihre achsparallelen Hüllen nicht
+// berühren: sie stehen um den Winkel des Flusses gedreht)
+const RIVER_MARK = { sink: 0.09, bridge: 12, beside: 6, quay: 58, cranes: 2, gap: 18 };
+// Containerbrücke ohne Fluss: end Meter vor dem Ortsende, back Meter hinter der Häuserflucht, davor view Meter ohne Haus
+const OPEN_MARK = { end: 30, back: 14, view: 40 };
 
 const r1 = (v) => Math.round(v * 100) / 100;
 const HOUSE_KINDS = new Set(['village', 'shop', 'town', 'city', 'region']);
