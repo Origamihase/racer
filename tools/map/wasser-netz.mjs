@@ -10,7 +10,9 @@
 //    weicht dem Kreis auf der Seite aus, auf der er ihn ohnehin streift; ein See bekommt eine Bucht.
 // 2. Kreuzt ein Fluss dieselbe Straße (oder denselben Zubringer) zweimal kurz hintereinander (weniger als gap km
 //    Straße dazwischen), ist das ein Pendeln über die Straße: Das Stück jenseits kommt off km neben die Straße auf
-//    die Seite, von der der Fluss kam.
+//    die Seite, von der der Fluss kam. Weiter auseinander (bis gapFar: eine Straße im Flusstal, die in Wahrheit am
+//    Ufer bleibt, etwa am Rhein bei Koblenz oder an der Mosel) nur, wenn der Fluss danach seltener über Straßen führt –
+//    zwischen zwei Straßen an beiden Ufern pendelte er sonst hin und her.
 // 3. Durchquert eine Straße einen See auf weniger als skim km, streift sie sein Ufer: Der kleinere Teil des Sees
 //    jenseits der Straße kommt off km neben sie. Längere Querungen bleiben (Dämme und Brücken über Seen).
 // Was übrig bleibt, sind echte Kreuzungen; dort baut die Welt Brücken (src/map/crossings.js).
@@ -21,7 +23,9 @@
 export const ABGLEICH = {
   node: 0.8, // km um jeden Knoten ohne Wasser
   pin: 0.4, // km um jeden Ortspunkt ohne Wasser
-  gap: 3, // km Straße: zwei Kreuzungen desselben Flusses näher beieinander sind ein Pendeln
+  gap: 3, // km Straße: zwei Kreuzungen desselben Flusses näher beieinander sind ein Pendeln …
+  gapFar: 40, // km: … und bis hierher, wenn das Verlegen Kreuzungen spart (Straßen im Flusstal) …
+  farKeep: 2.5, // km: … und das verlegte Wasser so weit (über ihren Kreis hinaus) von Knoten und Orten bleibt
   off: 0.25, // km: so weit neben der Straße liegt das verlegte Wasser
   skim: Infinity, // km: kürzere Wege durch einen See streifen nur sein Ufer
   step: 0.1, // km: so dicht werden Linien nahe am Netz für das Verlegen unterteilt
@@ -376,7 +380,11 @@ export function abgleich(rivers, lakes, net) {
       L.sort((p, q) => p.a - q.a);
       for (let j = 0; j + 1 < L.length; j++) {
         const [c1, c2] = [L[j], L[j + 1]].sort((p, q) => p.k + p.t - (q.k + q.t));
-        if (Math.abs(L[j + 1].a - L[j].a) >= ABGLEICH.gap) continue;
+        const span = Math.abs(L[j + 1].a - L[j].a);
+        if (span >= ABGLEICH.gapFar) continue;
+        const far = span >= ABGLEICH.gap;
+        const tag = li + ':' + Math.round(L[j].a * 10) + ':' + Math.round(L[j + 1].a * 10);
+        if (far && r.keep && r.keep.has(tag)) continue;
         // Wasserlänge zwischen den beiden: höchstens dreimal der Weg auf der Straße plus 2 km (sonst eine Schleife)
         let wk = 0;
         for (let i = c1.k; i <= c2.k; i++) wk += Math.hypot(W[i + 1][0] - W[i][0], W[i + 1][1] - W[i][1]) * kmAt(W[i][1]);
@@ -384,6 +392,7 @@ export function abgleich(rivers, lakes, net) {
         const P = net.lines[li];
         const f0 = footOn(P, W[c1.k][0], W[c1.k][1]);
         const sg = sideOf(P, f0, W[c1.k][0], W[c1.k][1]);
+        const before = far ? W.map((p) => p.slice()) : null;
         const idx = [];
         for (let i = c1.k + 1; i <= c2.k; i++) idx.push(i);
         if (!idx.length) {
@@ -393,6 +402,15 @@ export function abgleich(rivers, lakes, net) {
           idx.push(c1.k + 1);
         }
         moveTo(W, idx, li, sg);
+        // (und nicht nah an Knoten und Orten: dort führen Rampen und Ortsränder von der Straße weg, ein Fluss dicht
+        // neben ihr läge zwischen ihnen und der Straße)
+        const nearPin = (p) => circles.some((c) => Math.hypot(c[0] - p[0], c[1] - p[1]) * kmAt(p[1]) < c[2] + ABGLEICH.farKeep);
+        if (far && (crossings(W, false).length > xs.length - 2 || idx.some((i) => nearPin(W[i])))) {
+          // spart nichts (der Fluss läge dann über einer anderen Straße): so lassen und nicht noch einmal versuchen
+          W.splice(0, W.length, ...before);
+          (r.keep ||= new Set()).add(tag);
+          continue;
+        }
         stats.pendel++;
         return true;
       }

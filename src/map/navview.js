@@ -645,10 +645,11 @@ export class NaviScreen {
     }
     // Flüsse der Orte: Wasser in der Farbe der Karte von Ufer zu Ufer, über der bebauten Fläche und unter allen
     // Fahrbahnen – die Ortsdurchfahrt läuft als Brücke darüber
-    for (const t of sc.towns) {
-      if (!t.river) continue;
-      const near = G(t.river.near);
-      const far = G(t.river.far);
+    // ebenso das Wasser unter den Brücken der Landstraßen und Autobahnen (so weit, wie die Welt es zeigt)
+    for (const w of [...sc.towns.map((t) => t.river), ...(sc.waters || [])]) {
+      if (!w) continue;
+      const near = G(w.near);
+      const far = G(w.far);
       const poly = near.slice();
       for (let i = far.length - 2; i >= 0; i -= 2) poly.push(far[i], far[i + 1]);
       this.area(ctx, poly, T.sea);

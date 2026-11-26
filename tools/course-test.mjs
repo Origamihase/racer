@@ -714,12 +714,16 @@ drive(shapes, `Zufallsfahrt 2 (${SHAPES})`, 30000, 55, 0.5);
 function profileFacts(P) {
   const f = { len: P.len, straight: 0, tight: 0, advise100: 0, advise80: 0, sweep: 0, bends: 0, sBends: 0, crests: 0, sags: 0, events: [], longest: 0 };
   let run = 0;
+  // eine Brücke (Mitte der Ruhezone, map/crossings.js) unterbricht eine lange Gerade: die Ruhezone selbst muss gerade
+  // sein, der Fluss darunter ist die Abwechslung. In die Dichte der entworfenen Erlebnisse zählt sie nicht.
+  const mids = (P.zones || []).map(([a, b]) => Math.round((a + b) / 2 / DS));
   for (let i = 0; i < P.n; i++) {
     if (Math.abs(P.kappa[i]) < 1 / 4000) {
       f.straight += DS;
       run += DS;
       f.longest = Math.max(f.longest, run);
     } else run = 0;
+    if (mids.includes(i)) run = 0;
   }
   const bends = P.bends.filter((b) => Math.abs(b.k * (b.b - b.a - b.t)) > 3 * RAD);
   for (let i = 0; i < bends.length; i++) {

@@ -426,8 +426,14 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
         const Q = [pen.x, pen.y];
         dubins(Q, pen.x, pen.y, pen.dx, pen.dy, j.x, j.y, dx, dy, ku(0.12, pen.y));
         if (!dry(Q)) Q.length = 2;
-        for (let i = 2; i < Q.length; i++) out.push(Q[i]);
-        out.push(j.x, j.y);
+        if (Q.length === 2 && !dry([pen.x, pen.y, j.x, j.y]) && dry([pen.x, pen.y, P[0], P[1]])) {
+          // auch gerade hinüber über Wasser (ein Fluss zwischen Ortsrand und Straße): über den Knoten auf die Kante
+          out.push(P[0], P[1]);
+          j = { i: 0, x: P[0], y: P[1] };
+        } else {
+          for (let i = 2; i < Q.length; i++) out.push(Q[i]);
+          out.push(j.x, j.y);
+        }
       } else out.push(j.x, j.y);
       i0 = j.i + 1;
     } else out.push(P[0], P[1]);

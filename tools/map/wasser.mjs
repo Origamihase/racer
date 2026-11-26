@@ -162,6 +162,11 @@ const DE_NAMES = {
   'Uljua syvnne': 'Uljuan tekojärvi', Sane: 'Saône', Mane: 'Måna', Hossanj: 'Hossanjoki', 'Balta Bistre?': 'Balta Bistreț',
 };
 const enDe = { river: new Map(), lake: new Map() };
+/**
+ * Linien, die Natural Earth über eine Mündung hinweg unter einem Namen führt: bis zur Stelle at (Länge, Breite) heißt
+ * der Fluss head, danach tail (die Lahn trägt dort von der Quelle der Ohm bis Lahnstein den Namen Ohm).
+ */
+const SPLIT = { Ohm: { at: [8.778, 50.851], head: 'Ohm', tail: 'Lahn' } };
 const nameOf = (pr, kind = 'river') => {
   const n = pr.name_de || DE_NAMES[pr.name] || enDe[kind].get(pr.name_en || pr.name) || pr.name || '';
   return n.replace(/\?/g, '');
@@ -181,7 +186,25 @@ const add = (ft, src) => {
   const L = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
   const sr = +pr.scalerank;
   const cls = src === 'main' ? (sr <= 5 ? 0 : 1) : 2;
-  for (const l of L) lines.push({ name: nameOf(pr), cls, src, pts: l.map(([lon, lat]) => [...proj(lon, lat), lat, 0]) });
+  for (const l of L) {
+    const name = nameOf(pr);
+    const sp = SPLIT[name];
+    // ein Fluss, den Natural Earth mit seinem Nebenfluss zu einer Linie zusammenlegt: an der Mündung teilen
+    let k = -1;
+    if (sp) {
+      let best = Infinity;
+      l.forEach(([lon, lat], i) => {
+        const d = Math.hypot((lon - sp.at[0]) * Math.cos((lat * Math.PI) / 180), lat - sp.at[1]);
+        if (d < best) [best, k] = [d, i];
+      });
+      if (best > 0.05) k = -1;
+    }
+    const pts = (part) => part.map(([lon, lat]) => [...proj(lon, lat), lat, 0]);
+    if (k > 0 && k < l.length - 1) {
+      lines.push({ name: sp.head, cls, src, pts: pts(l.slice(0, k + 1)) });
+      lines.push({ name: sp.tail, cls, src, pts: pts(l.slice(k)) });
+    } else lines.push({ name, cls, src, pts: pts(l) });
+  }
 };
 for (const ft of read('ne_10m_rivers_lake_centerlines')) add(ft, 'main');
 for (const ft of read('ne_10m_rivers_europe')) add(ft, 'eu');

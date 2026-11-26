@@ -135,7 +135,7 @@ export class Towns {
     this.items = new Map();
     this.want = new Set();
     /**
-     * Das Flussband für den Boden der Welt (ground.js setRiver), im Raum vor der Krümmung wie die Rahmen: on, Punkt
+     * Das Flussband für den Boden der Welt (ground.js setHoles), im Raum vor der Krümmung wie die Rahmen: on, Punkt
      * der Achse (x, z), Einheitsvektor quer zum Fluss (nx, nz), halbe Breite des Lochs und seine halbe Länge. Je Bild
      * neu aus dem nächsten Ort mit gebautem Fluss auf dem Weg des Wagens (update); ein Objekt für alle Bilder.
      */

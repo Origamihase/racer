@@ -26,6 +26,20 @@ import { nodes, places, deTo, deEdge, deRoad, deTowards, straight, edgeLen, rout
 import { parkBoard, POST } from '../../map/parks.js';
 import { steleOf } from './charge.js';
 import { camerasOf } from './blitzer.js';
+import { bridgesOf, DECK } from './bridgeplan.js';
+
+/**
+ * Steht eine Tafel am Rand der Autobahn bei s auf einer Brücke (bridgeplan.js), stehen ihre Pfosten auf der Kappe
+ * zwischen Planke und Geländer, die Tafel ragt über das Wasser: [x der beiden Pfosten] oder null.
+ */
+export const DECK_POSTS = [11.75, 10.5 + DECK.capAb - 0.75];
+function onDeck(secs, s) {
+  for (const c of secs) {
+    if (c.kind !== 'ab' || s < c.s0 || s > c.s1) continue;
+    for (const b of bridgesOf(c)) if (s > b.c0 - 3 && s < b.c1 + 3) return DECK_POSTS;
+  }
+  return null;
+}
 
 /** Vorwegweiser: so viele Meter vor der Gabelung (wie guidance().dist). */
 export const BOARD_D = [1000, 500];
@@ -223,7 +237,8 @@ export function sectionSigns(trip, secs, sec, out, opts = {}) {
 function sectionSigns0(trip, secs, sec, out, opts) {
   const fr = sec.frame;
   const push = (kind, s, x, side, texts, extra = {}) => {
-    out.push({ key: kind + '|' + (extra.keyPart ?? sec.id) + '|' + Math.round(s * 10), kind, s, x, side, frame: fr, texts, ...extra });
+    const deck = sec.kind === 'ab' && x >= AB_SIGN_X - 1e-6 ? onDeck(secs, s) : null;
+    out.push({ key: kind + '|' + (extra.keyPart ?? sec.id) + '|' + Math.round(s * 10), kind, s, x, side, frame: fr, texts, ...extra, ...(deck ? { deck } : {}) });
   };
   if (sec.kind === 'ab') {
     const f = sec.fork;

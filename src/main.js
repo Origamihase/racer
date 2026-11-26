@@ -51,7 +51,7 @@ import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
 import { SHOP, UPGRADE_LIMITS, shopPrice, canBuy } from './data.js';
 import { NavModel } from './map/navroute.js';
 import { nextStart, startNode } from './game/starts.js';
-import { setRoadAhead, setTownLayout } from './map/roadahead.js';
+import { setRoadAhead, setTownLayout, setBridgeReach } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
 import { albumBadges } from './ui/album.js';
 import { thinLine } from './ui/routemap.js';
@@ -169,6 +169,8 @@ let courseTick = null;
 setRoadAhead((trip, s, dMax) => course.preview(trip, s, Math.min(dMax, 4000)));
 // und die Orte der Welt in seiner Nahansicht: Brunnenplatz und Zielbrunnen dort, wo die Welt sie baut
 setTownLayout((trip, sec) => naviLayout(sec, xxl.town(sec)));
+// und das Wasser unter den Brücken so weit, wie die Welt es gerade zeigt
+setBridgeReach((key) => xxl.bridges.reachOf(key));
 // Kurvenschilder rücken von Möbeln am Rand weg: vom Raster der Landschaft und von Blitzern, Tempo-Schildern und
 // Elsa, die das Spiel dort bestellt hat
 const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'elsa']);

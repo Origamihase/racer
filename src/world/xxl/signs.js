@@ -447,6 +447,12 @@ const BOARD_K = 1.6;
 
 /** Größe (Meter), Unterkante und Pfosten einer Tafel je Art; tw, th, k: Maße der Aufteilung und Maßstab, dx: Versatz. */
 function layout(e) {
+  const L = layout0(e);
+  // auf einer Brücke (signplan.js onDeck): beide Pfosten auf der Kappe, die Tafel ragt über das Wasser
+  if (e.deck) L.posts = e.deck.map((x) => x - e.x - (L.dx || 0));
+  return L;
+}
+function layout0(e) {
   switch (e.kind) {
     case 'vorweg': {
       const tw = 3.9;

@@ -14,6 +14,7 @@ import { squareOf } from './plan.js';
 import { chargeOf, steleOf, CHARGE } from './charge.js';
 import { schrankeOf } from './schranke.js';
 import { RIVER, riverOfSec, riverSpan } from '../../map/rivers.js';
+import { bridgesOf } from './bridgeplan.js';
 
 export const BLITZER = {
   town: 0.3, // Anteil der Orte (Ortsdurchfahrten) mit Blitzer
@@ -95,8 +96,15 @@ export function camerasOf(sec) {
     const road = sec.kind === 'land' ? landKey(sec.de) : ['Z', nodes[sec.node].id, places[sec.place]?.key ?? '', PARKS[sec.park]?.name ?? '', sec.back ? 1 : 0, nodes[sec.transitTo]?.id ?? ''].join('|');
     const h = hashKey('Blitzer Landstraße ' + road);
     if (frac(h) < Math.min(BLITZER.landMax, len * BLITZER.landPerM)) {
-      const u = BLITZER.landEdge + frac(hashKey('Blitzerplatz Landstraße ' + road)) * (len - 2 * BLITZER.landEdge);
-      list.push({ kind: 'land', u: Math.round(u * 10) / 10, limit: PROFILES.land.limit, place: -1 });
+      // nicht auf einer Brücke und nicht an ihren Ufern (bridgeplan.js): dann eine der nächsten Stellen
+      const wet = bridgesOf(sec).map((b) => [b.c0 - sec.s0 - BLITZER.keep, b.c1 - sec.s0 + BLITZER.keep]);
+      const h2 = hashKey('Blitzerplatz Landstraße ' + road);
+      for (let k = 0; k < 12; k++) {
+        const u = BLITZER.landEdge + frac(h2 + k * 7919) * (len - 2 * BLITZER.landEdge);
+        if (wet.some(([lo, hi]) => u > lo && u < hi)) continue;
+        list.push({ kind: 'land', u: Math.round(u * 10) / 10, limit: PROFILES.land.limit, place: -1 });
+        break;
+      }
     }
   }
   for (const c of list) {

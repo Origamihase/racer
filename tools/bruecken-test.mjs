@@ -11,6 +11,8 @@ const { NavModel } = await import('../src/map/navroute.js');
 const { sectionWater, zubLine, townEdge, BRIDGE } = await import('../src/map/crossings.js');
 const { STARTS, startNode } = await import('../src/game/starts.js');
 const { checkSection } = await import('./bruecken-check.mjs');
+const { closeScene } = await import('../src/map/roadahead.js');
+const { bridgesOf } = await import('../src/world/xxl/bridgeplan.js');
 
 let fails = 0;
 let checks = 0;
@@ -25,7 +27,7 @@ const ok = (cond, msg) => {
 // --- 1. Fahrten ---------------------------------------------------------------------------------------------------
 let seed = Number(process.env.BRUECKEN_SEED || 7);
 const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-const stat = { trips: 0, steps: 0, sections: 0, bridges: 0, zub: 0, lakes: 0 };
+const stat = { trips: 0, steps: 0, sections: 0, bridges: 0, zub: 0, lakes: 0, navi: 0 };
 const kinds = {};
 const STEPS = Number(process.env.BRUECKEN_STEPS || 26000);
 function drive(start, target, label) {
@@ -68,10 +70,32 @@ function drive(start, target, label) {
     for (const e of trip.update(s, x)) if (e.type === 'arrive' && e.place === target) arrived = true;
     nav.update(0.2);
     verify();
+    if (n % 40 === 0) navi(trip, label, () => bad++ < 3);
   }
   stat.trips++;
   stat.steps += n;
   return arrived;
+}
+// Nahansicht des Navis (map/roadahead.js): jede Brücke voraus auf dem eigenen Weg zeigt ihr Wasser, quer unter der
+// Straße an der Stelle der Brücke (die Ufer diesseits und jenseits)
+function navi(trip, label, report) {
+  const sc = closeScene(trip, 2200, 500);
+  const av = trip.autobahnView();
+  for (const sec of trip.cur.sections) {
+    if (sec.s1 < trip.s || sec.s0 > trip.s + 1500 || !trip.visible(sec, trip.cur)) continue;
+    if (sec.kind === 'stadt') continue;
+    if (sec.kind === 'ab' && !(av && av.role === 'cur' && av.secs.includes(sec))) continue;
+    for (const b of bridgesOf(sec)) {
+      if (b.sc < trip.s + 30 || b.sc > Math.min(trip.s + 1500, sec.s1, sec.kind === 'ab' ? av.s1 : Infinity)) continue;
+      stat.navi++;
+      const w = sc.waters.find((q) => q.key === b.key + '@' + Math.round(b.sc));
+      const d = b.sc - trip.s;
+      // das Wasser an der Straße (X = 0 liegt in der Mitte der Stützstellen): diesseits davor, jenseits dahinter
+      const mid = (pts) => pts[2 * Math.floor(pts.length / 4)];
+      const good = w && mid(w.near) < d && mid(w.far) > d && Math.abs(mid(w.far) - mid(w.near) - 2 * b.half * b.cos) < 0.5;
+      if (!good && report()) ok(false, `${label}: Navi zeigt das Wasser der Brücke ${b.name} bei ${d.toFixed(0)} m nicht richtig`);
+    }
+  }
 }
 const placesOf = (n) => G.nodes[n].places.map((p) => p.place);
 const big = G.places.map((p, i) => i).filter((i) => G.places[i].pop > 150000 && G.places[i].node >= 0);
@@ -111,6 +135,7 @@ for (const i of wetTowns.slice(0, 8)) {
 }
 ok(stat.trips >= 25 && arrivedN >= stat.trips * 0.6, `Fahrten kommen an (${arrivedN} von ${stat.trips})`);
 ok(stat.bridges > 150 && stat.lakes >= 2, `Brücken unterwegs geprüft (${stat.bridges}, davon ${stat.lakes} über Seen)`);
+ok(stat.navi > 300, `Wasser der Brücken in der Nahansicht des Navis geprüft (${stat.navi})`);
 
 // --- 2. Lage der Brücken auf allen Kanten --------------------------------------------------------------------------
 {

@@ -524,8 +524,9 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
       // die Ortsdurchfahrt läuft als Brücke darüber: ihre Linie kreuzt beide Ufer
       const road = sc.roads.find((q) => q.sec === sec);
       ok(!!road && crosses(road.pts, R.near) && crosses(road.pts, R.far), `${key} (u ${u}): die Ortsdurchfahrt kreuzt beide Ufer`);
-      const mk = sc.marks.filter((q) => q.type === 'river');
-      ok(mk.length === 1 && mk[0].name === rv.name && inside(poly, mk[0].d, mk[0].X), `${key} (u ${u}): der Name steht einmal, auf dem Wasser`);
+      // (Brücken davor und dahinter tragen ihren eigenen Namen auf ihrem eigenen Wasser)
+      const mk = sc.marks.filter((q) => q.type === 'river' && inside(poly, q.d, q.X));
+      ok(mk.length === 1 && mk[0].name === rv.name, `${key} (u ${u}): der Name steht einmal, auf dem Wasser`);
       if (mk.length) ok(Math.abs(mk[0].X - RIVER.axis) > (RIVER.deck[1] - RIVER.deck[0]) / 2 + 20, `${key} (u ${u}): der Name steht neben der Brücke`);
     }
 
