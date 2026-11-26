@@ -21,6 +21,7 @@ import { J, PROFILES } from '../game/trip.js';
 import { places } from './graph.js';
 import { riverOfSec, riverAt } from './rivers.js';
 import { bridgesOf } from '../world/xxl/bridgeplan.js';
+import { bandsOf, centreline } from '../world/xxl/bandplan.js';
 
 /** Abtastung der Linie in Metern. */
 export const STEP = 10;
@@ -33,6 +34,7 @@ export const RIVER_SCENE = { X: [-900, -450, -200, -60, 0, 60, 200, 450, 900], l
 let source = null;
 let layoutSource = null;
 let reachSource = null;
+let bandSource = null;
 const RP = [0, 0];
 const straight = { n: 0, x: new Float64Array(0), z: new Float64Array(0), psi: NaN };
 
@@ -78,6 +80,14 @@ export function townLayout(trip, sec) {
  */
 export function setBridgeReach(fn) {
   reachSource = fn || null;
+}
+
+/**
+ * Schließt die Flüsse neben der Straße an: fn(key) → [A, B], wie weit (Meter ab der Ecke, bandplan.js) die Welt die
+ * beiden Arme des Bands key gerade zeigt, oder null (nicht zu sehen). Ohne Welt zeigt die Nahansicht jedes Band ganz.
+ */
+export function setBandReach(fn) {
+  bandSource = fn || null;
 }
 
 /** Mitte der Fahrbahn eines Querschnitts (Mittel der Spuren in unserer Richtung und der Gegenrichtung). */
@@ -203,6 +213,31 @@ export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = 
       if (own && br.name && L < reach[1]) {
         const so = br.sc + L * br.sin;
         scene.marks.push({ type: 'river', name: br.name, d: so - s, X: lat(sec, so, L * br.cos) });
+      }
+    }
+    // Flüsse neben der Straße (bandplan.js): dasselbe Band wie in der Welt, mit den Armen so weit, wie sie reichen
+    for (const bd of bandsOf(sec)) {
+      if (bd.c1 < a || bd.c0 > b || seen.has(bd.key)) continue;
+      seen.add(bd.key);
+      const reach = bandSource ? bandSource(bd.key) : [Infinity, Infinity];
+      if (!reach) continue;
+      const far = RIVER_SCENE.X[RIVER_SCENE.X.length - 1];
+      const C = centreline(bd, Math.min(reach[0], far), Math.min(reach[1], far), 25, 6);
+      const bank = (D) => {
+        const q = [];
+        for (const p of C.pts) {
+          const so = p.s + p.ns * D;
+          const Xl = lat(sec, so, p.x + p.nx * D);
+          if (Number.isFinite(Xl)) q.push(so - s, Xl);
+        }
+        return q;
+      };
+      const w = { name: bd.name, key: bd.key, near: bank(-bd.half), far: bank(bd.half) };
+      if (w.near.length < 4 || w.far.length < 4) continue;
+      scene.waters.push(w);
+      if (own && bd.name) {
+        const so = Math.min(Math.max(s + 140, bd.s0 + 40), bd.s1 - 40);
+        if (so > a && so < b) scene.marks.push({ type: 'river', name: bd.name, d: so - s, X: lat(sec, so, bd.xc) });
       }
     }
   };

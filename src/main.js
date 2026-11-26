@@ -51,7 +51,7 @@ import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
 import { SHOP, UPGRADE_LIMITS, shopPrice, canBuy } from './data.js';
 import { NavModel } from './map/navroute.js';
 import { nextStart, startNode } from './game/starts.js';
-import { setRoadAhead, setTownLayout, setBridgeReach } from './map/roadahead.js';
+import { setRoadAhead, setTownLayout, setBridgeReach, setBandReach } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
 import { albumBadges } from './ui/album.js';
 import { thinLine } from './ui/routemap.js';
@@ -171,6 +171,7 @@ setRoadAhead((trip, s, dMax) => course.preview(trip, s, Math.min(dMax, 4000)));
 setTownLayout((trip, sec) => naviLayout(sec, xxl.town(sec)));
 // und das Wasser unter den Brücken so weit, wie die Welt es gerade zeigt
 setBridgeReach((key) => xxl.bridges.reachOf(key));
+setBandReach((key) => xxl.bands.reachOf(key));
 // Kurvenschilder rücken von Möbeln am Rand weg: vom Raster der Landschaft und von Blitzern, Tempo-Schildern und
 // Elsa, die das Spiel dort bestellt hat
 const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'elsa']);
