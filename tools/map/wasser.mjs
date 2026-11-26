@@ -164,9 +164,18 @@ const DE_NAMES = {
 const enDe = { river: new Map(), lake: new Map() };
 /**
  * Linien, die Natural Earth über eine Mündung hinweg unter einem Namen führt: bis zur Stelle at (Länge, Breite) heißt
- * der Fluss head, danach tail (die Lahn trägt dort von der Quelle der Ohm bis Lahnstein den Namen Ohm).
+ * der Fluss head, danach tail (die Lahn trägt dort von der Quelle der Ohm bis Lahnstein den Namen Ohm, die Nahe von
+ * der Quelle des Glans bis Bingen den Namen Glan, die Leine und die Oker bis zu ihrer Mündung den Namen Aller). from:
+ * nur die Linie, die dort (Länge, Breite) beginnt.
  */
-const SPLIT = { Ohm: { at: [8.778, 50.851], head: 'Ohm', tail: 'Lahn' } };
+const SPLIT = {
+  Ohm: [{ at: [8.778, 50.851], head: 'Ohm', tail: 'Lahn' }],
+  Glan: [{ at: [7.703, 49.767], head: 'Glan', tail: 'Nahe' }],
+  Aller: [
+    { at: [9.611, 52.698], head: 'Leine', tail: 'Aller', from: [10.3226, 51.4064] },
+    { at: [10.364, 52.528], head: 'Oker', tail: 'Aller', from: [10.5156, 51.8102] },
+  ],
+};
 const nameOf = (pr, kind = 'river') => {
   const n = pr.name_de || DE_NAMES[pr.name] || enDe[kind].get(pr.name_en || pr.name) || pr.name || '';
   return n.replace(/\?/g, '');
@@ -188,7 +197,7 @@ const add = (ft, src) => {
   const cls = src === 'main' ? (sr <= 5 ? 0 : 1) : 2;
   for (const l of L) {
     const name = nameOf(pr);
-    const sp = SPLIT[name];
+    const sp = (SPLIT[name] || []).find((q) => !q.from || Math.hypot(l[0][0] - q.from[0], l[0][1] - q.from[1]) < 0.01);
     // ein Fluss, den Natural Earth mit seinem Nebenfluss zu einer Linie zusammenlegt: an der Mündung teilen
     let k = -1;
     if (sp) {
@@ -302,10 +311,13 @@ for (const p of places) {
   drawn.push([...proj(nodes[p.node].lon, nodes[p.node].lat), ...proj(p.lon, p.lat)]);
 }
 const before = STATS ? countCrossings(rivers, lakes, drawn) : null;
+// Orte auf einer Halbinsel, die Natural Earth im See nicht zeigt (Sirmione im Gardasee): Land bis zu ihrem Knoten
+const HALBINSELN = ['Sirmione'];
 const fix = abgleich(rivers, lakes, {
   lines: drawn,
   nodes: nodes.map((n) => proj(n.lon, n.lat)),
   pins: places.map((p) => proj(p.lon, p.lat)),
+  peninsulas: places.filter((p) => HALBINSELN.includes(p.name) && p.node >= 0).map((p) => [...proj(p.lon, p.lat), ...proj(nodes[p.node].lon, nodes[p.node].lat)]),
 });
 if (STATS) console.log('Paare nach dem Abgleich', pairsLeft(rivers, drawn).slice(0, 12));
 // neue und verlegte Punkte: Breite dazu, dann leicht vereinfachen (die Unterteilung ist nur fürs Verlegen da)

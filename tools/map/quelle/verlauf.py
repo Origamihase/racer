@@ -3,7 +3,8 @@
 #
 #   python3 -I tools/map/quelle/verlauf.py --daten <Ordner> --arbeit <Ordner>
 #
-# --daten enthält ne/ne_10m_roads.geojson, world-atlas/package/*.json und terrain/{z}/{x}/{y}.png (fehlende
+# --daten enthält ne/ne_10m_roads.geojson, ne/ne_10m_rivers_lake_centerlines.geojson und ne/ne_10m_rivers_europe.geojson
+# (für die Uferstraßen, ufer.py), world-atlas/package/*.json und terrain/{z}/{x}/{y}.png (fehlende
 # Kacheln werden geladen, siehe hoehen.py); --arbeit nimmt Zwischenstände, Protokoll und Statistik auf.
 # Der Lauf ist wiederholbar: netz.json behält bei jedem verschobenen Knoten den Handstand (Lage und Zubringer) in
 # "grob" und bei jeder Kante den Grobverlauf in "pts"; beides ist die Eingabe des nächsten Laufs.
@@ -29,6 +30,7 @@ import hoehen  # noqa: E402
 import knoten  # noqa: E402
 import ne_graph  # noqa: E402
 import tal  # noqa: E402
+import ufer  # noqa: E402
 
 HIER = os.path.dirname(os.path.abspath(__file__))
 NETZ = os.path.join(HIER, '..', 'netz.json')
@@ -865,6 +867,11 @@ def schreiben(netz, roads, lage, formen, status, log):
         pts[-1] = (N[e['b']]['lat'], N[e['b']]['lon'])
         e['form'] = form_kodieren(pts, h)
         e['status'] = status[i]
+        # Uferstraße (ufer.py): der Export vereinfacht sie feiner, sonst schnitte die grobe Linie die Flussbögen
+        if f.get('ufer'):
+            e['ufer'] = f['ufer']
+        else:
+            e.pop('ufer', None)
         if art in ('ab', 'land', 'faehre'):
             e['km'] = round(form.kum(f['pts'])[-1], 1)
     with open(NETZ, 'w', encoding='utf-8') as f:
@@ -925,6 +932,8 @@ def main():
     reparieren(netz, roads, formen, log)
     ersatzverlaeufe(netz, roads, kanten_von, routen, formen, lage, masken, gel, log)
     geraden(netz, roads, formen, log)
+    # Uferstraßen (ufer.py): am Ufer entlang statt mal links, mal rechts des Flusses
+    ufer.legen(netz, args.daten, lage, formen, log)
     uebergaenge(netz, kanten_von, formen, log)
     # Schlussprüfung: was nach dem Glätten noch Mängel hat, bekommt doch einen Ersatzverlauf
     nachzuegler = []

@@ -45,7 +45,8 @@ wiederholbar):
     python3 -I tools/map/quelle/verlauf.py --daten <Kartendaten> --arbeit <Arbeitsordner>
     npm run map
 
-`<Kartendaten>` enthält `ne/ne_10m_roads.geojson` (Natural Earth 1:10m Roads), `world-atlas/package/*.json`
+`<Kartendaten>` enthält `ne/ne_10m_roads.geojson` (Natural Earth 1:10m Roads), für die Uferstraßen
+`ne/ne_10m_rivers_lake_centerlines.geojson` und `ne/ne_10m_rivers_europe.geojson`, `world-atlas/package/*.json`
 (Natural Earth Land und Staaten als TopoJSON) und `terrain/{z}/{x}/{y}.png` (Zwischenspeicher der Höhenkacheln;
 fehlende Kacheln lädt `hoehen.py` höflich nach: höchstens 2000 Kacheln im ganzen Speicher, 4 Anfragen je Sekunde;
 Zoom 8, in den Alpen Zoom 9). Rohdaten und Kacheln gehören nicht ins Repository. Der Lauf dauert mit geladenen
@@ -100,6 +101,17 @@ Die Schritte:
    von Ort zu Ort durch die Täler, auf einem Raster im Korridor um den Handverlauf, an Land und mit Abstand zu
    den Ersatzwegen anderer Straßen; im flachen Land der geglättete Handverlauf mit deterministischen Mäandern
    (Seed = Kante) von wenigen Prozent der Länge, an Land gehalten.
+   **Uferstraßen** (`ufer.py`): Wo Natural Earth eine Straße am Fluss nicht kennt (B9 und B42 im Mittelrheintal,
+   B42 im Rheingau, am Hochrhein die Etappe Lörrach–Schaffhausen), läge ihr Ersatzverlauf mal links, mal rechts des
+   Flusses, und die Karte zeigte Brücken, die es nicht gibt. Diese Etappen folgen der Flusslinie 0,4 km neben ihr
+   auf ihrem Ufer (links und rechts in Fließrichtung, Liste `UFERSTRASSEN`; am Hochrhein nur von Rheinfelden bis
+   Waldshut, dann landeinwärts durch den Klettgau). Orte am Ufer (Bad Salzig, St. Goar, Bacharach, St. Goarshausen,
+   Rüdesheim, Eltville) rücken mit ihrem Knoten an dieselbe Linie, denn die Karte zeigt die Flusslinie von Natural
+   Earth: Bad Salzig lag mit gerundeten Koordinaten im Fluss, Eltville jenseits der Linie, die dort zwischen den
+   Inseln verläuft.
+   `export.mjs` vereinfacht Uferstraßen fein (80 m statt 1,5 km), sonst schnitte die grobe Linie die
+   Flussbögen. Weil der Grobverlauf einer Uferstraße den Korridor ihrer Nachbaretappen mitbestimmt, braucht eine
+   Änderung der Liste zwei Läufe, bis `netz.json` wieder byte-gleich bleibt.
 7. **Fähren** (`faehren.py`): Natural-Earth-Fährlinien, wo sie passen, sonst ein Weg übers Wasser: A* auf einem
    Wasserraster (1 km, an den Häfen 0,4 km, Zufahrt bis 25 km vom Hafenknoten, damit auch Lübeck an der Trave
    aufs Meer findet), Kosten steigen nahe der Küste; danach gestrafft, ohne Land zu berühren, und die Ecken mit

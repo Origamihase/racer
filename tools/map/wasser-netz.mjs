@@ -7,10 +7,14 @@
 //
 // 1. Knoten und Ortspunkte bekommen einen Kreis ohne Wasser (node, pin km): Rampen, Verbindungsfahrbahnen und
 //    Ortsdurchfahrten sind auf der Karte kleine Bögen um sie herum und sollen nie über Wasser führen. Ein Fluss
-//    weicht dem Kreis auf der Seite aus, auf der er ihn ohnehin streift; ein See bekommt eine Bucht.
+//    weicht dem Kreis auf der Seite aus, auf der er ihn ohnehin streift; ein See bekommt eine Bucht. Ein Kreis reicht
+//    höchstens bis knapp vor die nächste fremde Straße (0,45 × ihr Abstand), sonst schöbe er den Fluss über die
+//    Straße am anderen Ufer. Ein Ort auf einer Halbinsel, die Natural Earth im See nicht zeigt (net.peninsulas:
+//    Sirmione), bekommt statt der Bucht einen Landstreifen vom Ufer bis um seinen Knoten.
 // 2. Kreuzt ein Fluss dieselbe Straße (oder denselben Zubringer) zweimal kurz hintereinander (weniger als gap km
 //    Straße dazwischen), ist das ein Pendeln über die Straße: Das Stück jenseits kommt off km neben die Straße auf
-//    die Seite, von der der Fluss kam. Weiter auseinander (bis gapFar: eine Straße im Flusstal, die in Wahrheit am
+//    die Seite, von der der Fluss kam (liegt dort näher als 2 × off eine andere Straße, etwa die am anderen Ufer im
+//    Rheintal, in die Mitte zwischen beide). Weiter auseinander (bis gapFar: eine Straße im Flusstal, die in Wahrheit am
 //    Ufer bleibt, etwa am Rhein bei Koblenz oder an der Mosel) nur, wenn der Fluss danach seltener über Straßen führt –
 //    zwischen zwei Straßen an beiden Ufern pendelte er sonst hin und her.
 // 3. Durchquert eine Straße einen See auf weniger als skim km, streift sie sein Ufer: Der kleinere Teil des Sees
@@ -30,6 +34,7 @@ export const ABGLEICH = {
   skim: Infinity, // km: kürzere Wege durch einen See streifen nur sein Ufer
   step: 0.1, // km: so dicht werden Linien nahe am Netz für das Verlegen unterteilt
   near: 4, // km: so nah am Netz wird unterteilt
+  debug: !!process.env.WASSER_DEBUG, // Protokoll der Runden
 };
 
 const KM = 111.32;
@@ -190,6 +195,11 @@ export function abgleich(rivers, lakes, net) {
     if (same) same[2] = Math.max(same[2], r);
     else circles.push([p[0], p[1], r]);
   }
+  // Orte auf einer Halbinsel, die Natural Earth nicht kennt: ihr Kreis führt einen Landstreifen zum Knoten mit (c[3])
+  for (const h of net.peninsulas || []) {
+    const c = circles.find((q) => Math.hypot(q[0] - h[0], q[1] - h[1]) * kmAt(h[1]) < 0.3);
+    if (c) c[3] = [h[2], h[3]];
+  }
   for (const c of circles) {
     const k = kmAt(c[1]);
     for (const o of circles) {
@@ -197,6 +207,26 @@ export function abgleich(rivers, lakes, net) {
       const d = Math.hypot(o[0] - c[0], o[1] - c[1]) * k;
       if (d < c[2] + o[2] + 1) c[2] = Math.max(0.15, Math.min(c[2], (d - 1) * (c[2] / (c[2] + o[2]))));
     }
+  }
+  // Ein Kreis drückt das Wasser höchstens bis knapp vor die nächste fremde Straße: sonst schöbe er einen Fluss über
+  // die Straße am anderen Ufer (Bad Salzig, Uferstraßen im Rheintal). Eigene Straßen zählen nicht: die durch seinen
+  // Mittelpunkt und die an einem Knoten bis 1 km daneben enden (die Etappen am Knoten eines Ortspunkts); einen
+  // Knoten am anderen Ufer so nah hält schon die Regel darüber klein.
+  const endsNear = (P, c, k) => {
+    const n = P.length;
+    return Math.hypot(P[0] - c[0], P[1] - c[1]) * k < 1 || Math.hypot(P[n - 2] - c[0], P[n - 1] - c[1]) * k < 1;
+  };
+  for (const c of circles) {
+    const k = kmAt(c[1]);
+    const R = (c[2] * 2.3) / k;
+    let dmin = Infinity;
+    for (const li of new Set([...grid.query(c[0] - R, c[1] - R, c[0] + R, c[1] + R)].map((it) => it.li))) {
+      const P = net.lines[li];
+      if (endsNear(P, c, k)) continue;
+      const d = footOn(P, c[0], c[1]).d * k;
+      if (d > 0.05) dmin = Math.min(dmin, d);
+    }
+    if (dmin < Infinity) c[2] = Math.max(0.15, Math.min(c[2], dmin * 0.45));
   }
   const cgrid = new Grid(0.05);
   circles.forEach((c, i) => {
@@ -272,6 +302,49 @@ export function abgleich(rivers, lakes, net) {
       let ch = false;
       const ru = c[2] / kmAt(c[1]);
       if (c[0] + ru < x0 || c[0] - ru > x1 || c[1] + ru < y0 || c[1] - ru > y1) continue;
+      if (closed && inRing(P, c[0], c[1]) && c[3]) {
+        // Ort auf einer Halbinsel: ein Landstreifen (2 × off breit) vom Ufer in Richtung seines Knotens bis um ihn herum
+        const [tx, ty] = c[3];
+        let best = null;
+        for (let i = 0; i < P.length; i++) {
+          const a = P[i];
+          const b = P[(i + 1) % P.length];
+          const q = segCross(c[0], c[1], tx, ty, a[0], a[1], b[0], b[1]);
+          if (q && (!best || q[0] < best.t)) best = { i, t: q[0] };
+        }
+        if (best) {
+          const L = Math.hypot(tx - c[0], ty - c[1]);
+          const ux = (tx - c[0]) / L;
+          const uy = (ty - c[1]) / L;
+          const X = [c[0] + (tx - c[0]) * best.t, c[1] + (ty - c[1]) * best.t];
+          const w = ABGLEICH.off / kmAt(c[1]);
+          const R = Math.max(ru * 1.05, w * 1.5);
+          const h = Math.sqrt(R * R - w * w);
+          // die beiden Ränder des Streifens (Seite +1 und −1), vom Ufer zum Kreis
+          const edge = (sg) => [
+            [X[0] - uy * w * sg, X[1] + ux * w * sg, 'bucht'],
+            [c[0] + ux * h - uy * w * sg, c[1] + uy * h + ux * w * sg, 'bucht'],
+          ];
+          const a0 = P[best.i];
+          const first = Math.hypot(edge(1)[0][0] - a0[0], edge(1)[0][1] - a0[1]) < Math.hypot(edge(-1)[0][0] - a0[0], edge(-1)[0][1] - a0[1]) ? 1 : -1;
+          const e1 = edge(first);
+          const e2 = edge(-first).reverse();
+          // um den Kreis auf der Seite weg vom Streifen
+          const as = Math.atan2(e1[1][1] - c[1], e1[1][0] - c[0]);
+          let ae = Math.atan2(e2[0][1] - c[1], e2[0][0] - c[0]);
+          let d = ae - as;
+          while (d <= 0) d += 2 * Math.PI;
+          const mid = as + d / 2;
+          if (Math.cos(mid) * ux + Math.sin(mid) * uy > 0) d -= 2 * Math.PI;
+          const arc = [];
+          const N = 20;
+          for (let k = 1; k < N; k++) arc.push([c[0] + Math.cos(as + (d * k) / N) * R, c[1] + Math.sin(as + (d * k) / N) * R, 'bucht']);
+          P.splice(best.i + 1, 0, ...e1, ...arc, ...e2);
+          stats.buchten++;
+          ch = true;
+          continue;
+        }
+      }
       if (closed && inRing(P, c[0], c[1])) {
         // Punkt im See: eine Bucht vom nächsten Uferpunkt aus um ihn herum
         let bi = 0;
@@ -297,6 +370,7 @@ export function abgleich(rivers, lakes, net) {
         for (const q of ring) q[2] = 'bucht';
         P.splice(bi + 1, 0, ...ring, [P[bi][0], P[bi][1], 'bucht']);
         stats.buchten++;
+        if (ABGLEICH.debug) console.log('Bucht', latOfY(c[1]).toFixed(3), c[0].toFixed(3));
         ch = true;
         continue;
       }
@@ -354,16 +428,41 @@ export function abgleich(rivers, lakes, net) {
     }
     return out;
   };
-  /** Punkte idx des Wassers W off km neben die Straße li auf die Seite sg legen (Punkte schon dort, weit genug: bleiben). */
+  /**
+   * Abstand (Einheiten) vom Punkt (x, y) in Richtung (nx, ny) bis zur ersten anderen Straße als li, höchstens L.
+   * Straßen, die schon im Punkt selbst beginnen (am Knoten, auf dem er liegt), zählen nicht.
+   */
+  const rayHit = (x, y, nx, ny, L, li) => {
+    const ex = x + nx * L;
+    const ey = y + ny * L;
+    const eps = 0.02 / kmAt(y);
+    let best = L;
+    for (const it of grid.query(Math.min(x, ex), Math.min(y, ey), Math.max(x, ex), Math.max(y, ey))) {
+      if (it.li === li) continue;
+      const P = net.lines[it.li];
+      const k = it.k * 2;
+      const q = segCross(x, y, ex, ey, P[k], P[k + 1], P[k + 2], P[k + 3]);
+      if (q && q[0] * L > eps) best = Math.min(best, q[0] * L);
+    }
+    return best;
+  };
+  /**
+   * Punkte idx des Wassers W off km neben die Straße li auf die Seite sg legen (Punkte schon dort, weit genug: bleiben).
+   * Liegt dort näher als zweimal off eine andere Straße (die am anderen Ufer, etwa im Rheintal), kommt das Wasser in
+   * die Mitte zwischen beide.
+   */
   const moveTo = (W, idx, li, sg) => {
     const P = net.lines[li];
     for (const i of idx) {
       const p = W[i];
       const f = footOn(P, p[0], p[1]);
       const off = ABGLEICH.off / kmAt(p[1]);
-      if (sideOf(P, f, p[0], p[1]) === sg && f.d >= off) continue;
       const [nx, ny] = normalAt(P, f, sg);
-      W[i] = [f.x + nx * off, f.y + ny * off];
+      const h = rayHit(f.x, f.y, nx, ny, 2 * off, li);
+      // schon auf der Seite, weit genug von der Straße und diesseits der nächsten Straße (ohne eine: wie weit auch immer)
+      if (sideOf(P, f, p[0], p[1]) === sg && f.d >= Math.min(off, h / 2) && (h >= 2 * off || f.d < h)) continue;
+      const o = Math.min(off, h / 2);
+      W[i] = [f.x + nx * o, f.y + ny * o];
     }
   };
 
