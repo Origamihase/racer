@@ -9,6 +9,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { Vector3, Group } from 'three';
 import * as G from '../src/map/graph.js';
 import * as shapes from '../src/map/shapes.js';
+import { sectionWater } from '../src/map/crossings.js';
 import { Trip, J } from '../src/game/trip.js';
 import { Course, MapPlanner, JX, KINDS, DS, R_CREST, R_SAG, SIGN_R, ADVISE_R, PROBE, PROBE_MARKS } from '../src/game/course.js';
 import { curveTable, curveAt, curveOffset, curveShrink, curvePoint, CURVE_N, CURVE_D0, CURVE_DS } from '../src/curve.js';
@@ -478,7 +479,7 @@ const KIND_ORDER = ['ab', 'land', 'zub', 'conn', 'stadt', 'ramp', 'auf', 'term']
 function drive(src, label, metres, seed, obey = 1, lite = false) {
   const r = rng(seed);
   const trip = new Trip({ rng: r });
-  const course = new Course({ planner: new MapPlanner({ graph: G, shapes: src }) });
+  const course = new Course({ planner: new MapPlanner({ graph: G, shapes: src, water: sectionWater }) });
   let ti = Math.floor(r() * TARGETS.length);
   const nextTarget = () => {
     for (let guard = 0; guard < TARGETS.length; guard++) {
@@ -611,7 +612,9 @@ function drive(src, label, metres, seed, obey = 1, lite = false) {
     rec.map.push(mh);
     // in einer Ruhezone des Abschnitts? (für die Obergrenze der Karten-Treue)
     const cp = course.cache.get(cs);
-    rec.calm.push(cp && (s - cs.s0 < cp.calm[0] || s - cs.s0 > cs.len - cp.calm[1]) ? 1 : 0);
+    // (auch die Brücken: dort gerade, map/crossings.js)
+    const u = s - cs.s0;
+    rec.calm.push(cp && (u < cp.calm[0] || u > cs.len - cp.calm[1] || (cp.zones || []).some(([a, b]) => u >= a && u <= b)) ? 1 : 0);
     if (!lite) for (const { path } of trip.paths()) for (const c2 of path.sections) if (c2.s0 < s + 200 && c2.s1 > s - 200 && course.cache.has(c2)) note(c2, path);
   }
   // leichte Fahrt: nur für die Karten-Treue
@@ -755,7 +758,7 @@ function profileFacts(P) {
 
 /** Profile aller Kanten einer Art (eine Richtung), jede für sich (gerader Anfang auf dem Kartenkurs). */
 function edgeProfiles(src, kind) {
-  const course = new Course({ planner: new MapPlanner({ graph: G, shapes: src }) });
+  const course = new Course({ planner: new MapPlanner({ graph: G, shapes: src, water: sectionWater }) });
   const out = [];
   for (const e of G.edges) {
     if (e.kind !== kind) continue;
@@ -1103,7 +1106,7 @@ function checkSigns(course, s, label, shear = null) {
 function naviDrive(src, label, metres, seed, retarget, targets = TARGETS) {
   const r = rng(seed);
   const trip = new Trip({ rng: r });
-  const course = new Course({ planner: new MapPlanner({ graph: G, shapes: src }) });
+  const course = new Course({ planner: new MapPlanner({ graph: G, shapes: src, water: sectionWater }) });
   let ti = Math.floor(r() * targets.length);
   const nextTarget = () => {
     for (let guard = 0; guard < targets.length; guard++) {

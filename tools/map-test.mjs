@@ -793,8 +793,9 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
     const { Course, MapPlanner } = await import('../src/game/course.js');
     const G = await import('../src/map/graph.js');
     const shapes = await import('../src/map/shapes.js');
+    const { sectionWater } = await import('../src/map/crossings.js');
     const { roadAhead, setRoadAhead, closeScene, curvePoint, STEP } = await import('../src/map/roadahead.js');
-    const course = new Course({ planner: new MapPlanner({ graph: G, shapes }) });
+    const course = new Course({ planner: new MapPlanner({ graph: G, shapes, water: sectionWater }) });
     setRoadAhead((trip, s, dMax) => course.preview(trip, s, dMax));
     cur = null;
     const k2 = { frames: 0, lines: 0, bad: 0, nan: 0, dpsi: [] };

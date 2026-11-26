@@ -21,8 +21,9 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { places, nodes, edges } from '../../src/map/graph.js';
+import { places, nodes, edges, distKm } from '../../src/map/graph.js';
 import { edgeShape } from '../../src/map/shapes.js';
+import { abgleich, clearNet, countCrossings, latOfY, pairsLeft } from './wasser-netz.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -33,7 +34,7 @@ if (!dir) {
 }
 const STATS = args.includes('--stats');
 
-const Q = 1000; // Schritte je Karteneinheit (1 Einheit = 1 Grad Länge; in Deutschland ≈ 70 m)
+const Q = 5000; // Schritte je Karteneinheit (1 Einheit = 1 Grad Länge; in Deutschland ≈ 70 m, ein Schritt also 14 m)
 const KM_PER_UNIT = 111.32;
 const EUROPE = [-26, 33.5, 46, 72]; // Länge, Breite: Ströme und Flüsse überall darin
 const NET_KM = 60; // kleine Flüsse und alles außerhalb Europas nur so nah am Netz
@@ -143,7 +144,35 @@ function simplify(P, tolKm) {
 const tolAt = (p) => (p[3] <= FINE_KM ? TOL.fine : TOL.coarse);
 
 // --- Flüsse -----------------------------------------------------------------------------------------
-const nameOf = (pr) => pr.name_de || pr.name || '';
+// Namen auf Deutsch: die Ergänzungsdateien führen name_de, die Hauptdatei nur Landesnamen oder Englisch, teils mit
+// verlorenen Umlauten (Natural Earth 5.1). Erst die Liste unten (bekannte deutsche Namen und die kaputten), dann, was
+// die Ergänzung zum selben englischen Namen weiß, sonst der Name, wie er ist.
+const DE_NAMES = {
+  Rhine: 'Rhein', Rhin: 'Rhein', Danube: 'Donau', 'Soroksari Duna': 'Soroksárer Donau', Dnipro: 'Dnepr', Dnepre: 'Dnepr',
+  Vistula: 'Weichsel', Thames: 'Themse', Tevere: 'Tiber', Tisa: 'Theiß', 'Severnaya Dvina': 'Nördliche Dwina', Neman: 'Memel',
+  Dniester: 'Dnister', 'Southern Bug': 'Südlicher Bug', Volga: 'Wolga', Euphrates: 'Euphrat', Firat: 'Euphrat', 'Al Furat': 'Euphrat',
+  Dicle: 'Tigris', Strymnas: 'Struma', Haliacmon: 'Haliakmon', Evros: 'Maritza', Warta: 'Warthe', Prut: 'Pruth', Mures: 'Mieresch',
+  Olt: 'Alt', Ialomita: 'Ialomița', Vltava: 'Moldau', Pripyat: 'Prypjat', Neva: 'Newa', Svir: 'Swir', Volkhov: 'Wolchow',
+  Sheksna: 'Scheksna', Sukhona: 'Suchona', Velikaya: 'Welikaja', Desna: 'Desna', Donets: 'Donez', Kuban: 'Kuban', Mezen: 'Mesen',
+  Unzha: 'Unscha', Tsna: 'Zna', Seym: 'Seim', Khopr: 'Choper', Daugava: 'Düna', Neris: 'Neris', Drau: 'Drau', Sava: 'Save',
+  Bojana: 'Bojana', Moulouya: 'Muluya', 'Oued Sebou': 'Sebou', Tajo: 'Tajo', Tejo: 'Tajo', Duero: 'Duero', Minho: 'Minho',
+  'Gta lv': 'Göta älv', 'Göta älv': 'Göta älv', ngermanlven: 'Ångermanälven', 'Stora Lule lv': 'Stora Luleälv', 'Lule lv': 'Luleälven',
+  Klarlven: 'Klarälven', Skelleftelven: 'Skellefteälven', Tornelven: 'Torneälven', 'Motala strm': 'Motala ström', 'Kiz?lirmak': 'Kızılırmak',
+  'Byk Menderes': 'Büyük Menderes', Zncara: 'Záncara', Talkeh: 'Talkheh', Lngelmenjärvi: 'Längelmänjärvi',
+  'Uljua syvnne': 'Uljuan tekojärvi', Sane: 'Saône', Mane: 'Måna', Hossanj: 'Hossanjoki', 'Balta Bistre?': 'Balta Bistreț',
+};
+const enDe = { river: new Map(), lake: new Map() };
+const nameOf = (pr, kind = 'river') => {
+  const n = pr.name_de || DE_NAMES[pr.name] || enDe[kind].get(pr.name_en || pr.name) || pr.name || '';
+  return n.replace(/\?/g, '');
+};
+for (const [f, kind] of [['ne_10m_rivers_europe', 'river'], ['ne_10m_lakes_europe', 'lake'], ['ne_10m_lakes', 'lake']])
+  for (const ft of read(f)) {
+    const pr = ft.properties;
+    const M = enDe[kind];
+    if (pr.name_de && (pr.name_en || pr.name) && !M.has(pr.name_en || pr.name)) M.set(pr.name_en || pr.name, pr.name_de);
+    if (pr.name_de && pr.name && !M.has(pr.name)) M.set(pr.name, pr.name_de);
+  }
 const lines = [];
 const add = (ft, src) => {
   const pr = ft.properties;
@@ -232,10 +261,38 @@ for (const f of ['ne_10m_lakes', 'ne_10m_lakes_europe']) {
       if (lakeSeen.has(key)) continue;
       lakeSeen.add(key);
       const ring = simplify(outer, (p) => (p[3] <= LAKE_NEAR_KM ? TOL.fine : TOL.coarse));
-      if (ring.length >= 4) lakes.push({ name: nameOf(ft.properties), pts: ring, area });
+      if (ring.length >= 4) lakes.push({ name: nameOf(ft.properties, 'lake'), pts: ring, area });
     }
   }
 }
+
+// --- Abgleich mit dem Straßennetz der Karte (wasser-netz.mjs) ---------------------------------------
+// gezeichnet werden die Kanten aus data.js (Knoten und Zwischenpunkte) und die Zubringer zu den Orten (mapview.js netData)
+const drawn = [];
+for (const e of edges) {
+  if (e.kind !== 'ab' && e.kind !== 'land') continue;
+  const ll = [[nodes[e.a].lat, nodes[e.a].lon], ...e.pts, [nodes[e.b].lat, nodes[e.b].lon]];
+  drawn.push(ll.flatMap(([la, lo]) => proj(lo, la)));
+}
+for (const p of places) {
+  if (p.node < 0 || distKm(nodes[p.node].lat, nodes[p.node].lon, p.lat, p.lon) < 0.3) continue;
+  drawn.push([...proj(nodes[p.node].lon, nodes[p.node].lat), ...proj(p.lon, p.lat)]);
+}
+const before = STATS ? countCrossings(rivers, lakes, drawn) : null;
+const fix = abgleich(rivers, lakes, {
+  lines: drawn,
+  nodes: nodes.map((n) => proj(n.lon, n.lat)),
+  pins: places.map((p) => proj(p.lon, p.lat)),
+});
+if (STATS) console.log('Paare nach dem Abgleich', pairsLeft(rivers, drawn).slice(0, 12));
+// neue und verlegte Punkte: Breite dazu, dann leicht vereinfachen (die Unterteilung ist nur fürs Verlegen da)
+for (const w of [...rivers, ...lakes]) {
+  w.pts = simplify(
+    w.pts.map((p) => [p[0], p[1], latOfY(p[1]), 0]),
+    0.03,
+  );
+}
+const cleared = clearNet([...rivers, ...lakes], drawn);
 
 // --- Packen -----------------------------------------------------------------------------------------
 const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -305,6 +362,7 @@ const lpts = lakes.reduce((a, r) => a + r.pts.length, 0);
 console.log(`water-data.js: ${R.length} Flussstücke (${pts} Punkte), ${LK.length} Seen (${lpts} Punkte), ${(js.length / 1024).toFixed(1)} kB`);
 if (STATS) {
   console.log('weggefallen', dropped);
+  console.log('Abgleich', fix, 'abgerückt', cleared, 'Kreuzungen vorher', before, 'nachher', countCrossings(rivers, lakes, drawn));
   const by = {};
   for (const r of rivers) by[r.cls] = (by[r.cls] || 0) + r.pts.length;
   console.log('Punkte je Klasse', by);

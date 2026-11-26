@@ -12,9 +12,9 @@ import {
   countryName, badgesAt, badgeTotals, badgesVersion,
 } from '../map/mapview.js';
 import { places, routeFrom, stateOfNode } from '../map/graph.js';
-import { FONT, RIVER_FADE, drawCar, drawFlag, drawHeart, drawRiverName } from '../map/symbols.js';
+import { FONT, drawCar, drawFlag, drawHeart, drawRiverName } from '../map/symbols.js';
 import { fmtNum } from '../util.js';
-import { fmtKm, fmtOdo } from '../map/navroute.js';
+import { fmtKm, fmtOdo, waterAlong, waterLabelOk } from '../map/navroute.js';
 import { startNode, startName } from '../game/starts.js';
 
 const MIN_SCALE = 2.6; // ganze Welt
@@ -572,8 +572,6 @@ export class MapScreen {
     const v = this.viewNow();
     const ps = this.ps;
     const T = THEMES[this.painter.theme];
-    // die Flüsse liegen in den Kacheln, unter dem Weg (navroute.js mapRivers)
-    this.painter.setRivers(this.nav ? this.nav.rivers : []);
     this.done = this.painter.drawTiles(ctx, v, ps, 5);
     ctx.setTransform(ps, 0, 0, ps, 0, 0);
     ctx.lineJoin = 'round';
@@ -665,19 +663,20 @@ export class MapScreen {
   }
 
   /**
-   * Name eines Flusses (sein Wasser liegt in den Kacheln): neben der Brücke auf dem Wasser, wo zwischen den Straßen
-   * am meisten Platz ist (r.label), längs des Flusses – sobald er dort weder die Brücke berührt noch über das
-   * auslaufende Ende hinausragt.
+   * Name von Fluss oder See, wo der Weg darüber führt (navroute.js waterMarks; das Wasser liegt in den Kacheln): neben
+   * der Brücke auf dem Wasser, längs des Flusses – sobald er dort lang genug im Bild liegt.
    */
   riverName(ctx, v, T, r) {
     ctx.font = `italic 600 ${RIVER_PX.font}px ${FONT}`;
-    const half = ctx.measureText(r.name).width / 2;
-    const at = Math.abs(r.label) * r.reach * v.scale;
-    if (at - half < RIVER_PX.pad || at + half > (1 - RIVER_FADE) * r.reach * v.scale) return;
+    if (!waterLabelOk(r, v.scale)) return;
+    const room = (RIVER_PX.pad + ctx.measureText(r.name).width / 2) / v.scale;
+    const at = waterAlong(r, room) || waterAlong(r, -room);
+    if (r.ri >= 0 && !at) return;
+    const P = at || { x: r.x, y: r.y + room * 0.6, dx: 1, dy: 0 };
     const o = [0, 0];
-    const [ax, ay] = v.toScreen(r.x, r.y, o);
-    const [bx, by] = v.toScreen(r.x + r.wx * r.reach * r.label, r.y + r.wy * r.reach * r.label, o);
-    drawRiverName(ctx, r.name, bx, by, Math.atan2(by - ay, bx - ax), RIVER_PX.font, T.seaText, T.sea);
+    const [bx, by] = v.toScreen(P.x, P.y, o);
+    const [cx, cy] = v.toScreen(P.x + P.dx * room * 0.2, P.y + P.dy * room * 0.2, [0, 0]);
+    drawRiverName(ctx, r.name, bx, by, Math.atan2(cy - by, cx - bx), RIVER_PX.font, T.seaText, T.sea);
   }
 
   /** Ortsnamen, über die Route oder gefahrener Weg laufen, noch einmal obenauf (wie in den Kacheln). */

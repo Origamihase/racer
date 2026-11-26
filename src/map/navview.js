@@ -19,7 +19,7 @@ import { roadAhead, closeScene, curvePoint } from './roadahead.js';
 import { Persp, TiltView, ribbon } from './persp.js';
 import { places } from './graph.js';
 import { goalName } from '../world/kit/layout.js';
-import { fmtOdo } from './navroute.js';
+import { fmtOdo, waterAlong, waterLabelOk } from './navroute.js';
 import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawCar, drawShield, drawFlag, drawHeart, drawRiverName } from './symbols.js';
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
@@ -388,8 +388,6 @@ export class NaviScreen {
     const rot = -Math.PI / 2 - Math.atan2(m.pose.dy, m.pose.dx);
     v.set(pose.x, pose.y, kNow * kmPerUnit(pose.y), rot, w, h, ox, oy);
     const reserve = this.reserveK(m, ins, kT, hop) * kmPerUnit(pose.y);
-    // die Flüsse liegen in den statischen Ebenen der Karte, unter dem Weg (navroute.js mapRivers)
-    this.painter.setRivers(m.rivers);
     if (cw < 1) this.drawMapGround(ctx, m, T, theme, hop, reserve);
     else if (this.tilt) {
       // die Karte für ihre Rückkehr vorbereiten: die Reserve immer, den vorderen Ausschnitt abseits von Autobahn und
@@ -567,16 +565,19 @@ export class NaviScreen {
       tv.toScreen(P.x, P.y, o);
       if (o[2] > 0 && o[0] > -40 && o[0] < w + 40 && o[1] > FOG_Y[1] - 10 && o[1] < h + 50) flagAt = [o[0], o[1], upright(o[2])];
     }
-    // Namen der Flüsse: neben der Brücke auf dem Wasser, wo zwischen den Straßen am meisten Platz ist (r.label), längs
-    // des Flusses – wenn er dafür groß genug im Bild liegt
-    const q = [0, 0, 0];
+    // Namen von Fluss und See, wo der Weg darüber führt (navroute.js waterMarks): neben der Brücke auf dem Wasser,
+    // längs des Flusses
+    ctx.font = `italic 600 ${RIVER_NAME.size}px ${FONT}`;
     for (const r of m.rivers) {
-      const d = r.reach * r.label;
-      if (!seen({ x: r.x + r.wx * d, y: r.y + r.wy * d })) continue;
-      tv.toScreen(r.x, r.y, q);
-      if (q[2] > 0 && Math.hypot(o[0] - q[0], o[1] - q[1]) > RIVER_NAME.room) {
-        drawRiverName(ctx, r.name, o[0], o[1], Math.atan2(o[1] - q[1], o[0] - q[0]), Math.round(RIVER_NAME.size * upright(o[2])), T.seaText, T.sea);
-      }
+      if (!waterLabelOk(r, tv.scale)) continue;
+      const room = (RIVER_NAME.room + ctx.measureText(r.name).width / 2) / tv.scale;
+      const at = waterAlong(r, room) || waterAlong(r, -room);
+      if (r.ri >= 0 && !at) continue;
+      const P = at || { x: r.x, y: r.y + room * 0.6, dx: 1, dy: 0 };
+      if (!seen(P)) continue;
+      tv.toScreen(P.x, P.y, o);
+      const q = tv.toScreen(P.x + P.dx * room * 0.2, P.y + P.dy * room * 0.2, [0, 0, 0]);
+      if (o[2] > 0 && q[2] > 0) drawRiverName(ctx, r.name, o[0], o[1], Math.atan2(q[1] - o[1], q[0] - o[0]), Math.round(RIVER_NAME.size * upright(o[2])), T.seaText, T.sea);
     }
     this.drawLabels(ctx, m, T, w, h, flagAt, tags, nav.visited);
     if (flagAt) drawFlag(ctx, flagAt[0], flagAt[1], flagPop(m) * flagAt[2], theme === 'dark' ? '#e6e8eb' : '#1d1f22');
