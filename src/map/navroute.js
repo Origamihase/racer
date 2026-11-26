@@ -7,10 +7,11 @@
 // NavModel hält dazu, was Navi, große Karte und HUD-Zeile brauchen: Lage und Kurs des Autos (über eine Sehne
 // geglättet, damit der Kurs an Knicken nicht zuckt), die geplante Route bis zum Ziel, den gefahrenen Weg, die Orte
 // entlang der Route, Überfahrten (Fähre, Autozug, Flug) als Hüpfer und die Ansage für das Navi. Läuft auch unter Node.
-import { nodes, places, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle } from './graph.js';
-import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm } from './mapview.js';
+import { nodes, places, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle, townLen } from './graph.js';
+import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm, netData } from './mapview.js';
 import { PARKS, parkBoard, postName } from './parks.js';
 import { goalName } from '../world/kit/layout.js';
+import { riverOf, riverOfSec, riverSpan } from './rivers.js';
 
 const NODE_XY = nodes.map((n) => project(n.lat, n.lon));
 /** Kilometer → Karteneinheiten in der Kartenhöhe y. */
@@ -230,6 +231,9 @@ const townR = (p) => ku(townKm(places[p].pop), placeXY(p).y);
  */
 export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
   const K = sec.kind;
+  // Ohne Vorgänger an einem Fluss (der Weg entsteht neu, während der Wagen schon dort fährt): Der Abschnitt beginnt,
+  // wo er es mit Vorgänger täte – sonst läge die Brücke der Karte woanders als die der Welt
+  if (!pen) pen = riverPen(sec, next);
   const piece = (s0, s1, pts, kind = K) => ({ s0, s1, pts, kind, sec: sec.id });
   const y0 = pen ? pen.y : NODE_XY[sec.node] ? NODE_XY[sec.node].y : -60;
   /** Wohin der Weg aus dem Ort mit Mitte C und Halbmesser R führt, wenn der Knoten A darin liegt: zur Straße way. */
@@ -299,6 +303,12 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
   }
   if (K === 'zub') {
     if (!sec.back && sec.place >= 0 && !sec.transitTo) {
+      // hin zu einem Ort mit Fluss: zum Tor am diesseitigen Ufer, um das Ende des Wassers herum – über den Fluss führt
+      // nur die Brücke der Ortsdurchfahrt
+      if (next && next.place === sec.place && riverOfSec(next, places)) {
+        toGate(out, pen, riverOnMap(sec.place), y0);
+        return [piece(sec.s0, sec.s1, out)];
+      }
       // hin zum Ort: bis an den Ortsrand, in Richtung Ortsmitte
       const C = placeXY(sec.place);
       const R = townR(sec.place);
@@ -376,6 +386,25 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
       const n = out.length;
       dubins(out, out[n - 2], out[n - 1], hx, hy, X.x, X.y, ox, oy, ku(0.2, y0));
       return [piece(sec.s0, sec.s1, out)];
+    }
+    if (riverOfSec(sec, places)) {
+      // Ort mit Fluss: Auf der Karte liegt die Durchfahrt, wie die Welt sie baut – vom Tor über die Brücke zum Brunnen
+      // am Ortspunkt. Das Stück über das Wasser der Karte trägt genau die Meter, die die Straße in der Welt über Wasser
+      // fährt (rm.u0 … rm.u1); der Weg hinaus bleibt auf dem Ufer des Brunnens
+      const rm = riverOnMap(sec.place);
+      const [ox, oy] = Math.hypot(A.x - C.x, A.y - C.y) < R * 0.3 ? [rm.tx, rm.ty] : unit(A.x - C.x, A.y - C.y);
+      const in1 = [pen.x, pen.y];
+      toGate(in1, pen, rm, y0);
+      in1.push(rm.near[0], rm.near[1]);
+      const out2 = [C.x, C.y];
+      bez(out2, C.x, C.y, rm.tx, rm.ty, C.x + ox * R, C.y + oy * R, ox, oy, 0.4, 12);
+      const sm = sec.s0 + sec.len * f;
+      return [
+        piece(sec.s0, sec.s0 + rm.u0, in1),
+        piece(sec.s0 + rm.u0, sec.s0 + rm.u1, [rm.near[0], rm.near[1], rm.far[0], rm.far[1]]),
+        piece(sec.s0 + rm.u1, sm, [rm.far[0], rm.far[1], C.x, C.y]),
+        piece(sm, sec.s1, out2),
+      ];
     }
     // Steht das Auto schon in der Mitte (die Landstraße endet dort), liegt die Mitte der Durchfahrt ein Stück voraus
     const atC = Math.hypot(C.x - pen.x, C.y - pen.y) < Math.min(R * 0.2, ku(0.25, y0));
@@ -585,6 +614,148 @@ export function fmtDistance(d) {
 }
 
 /**
+ * Flüsse auf der Karte (rivers.js – dasselbe Band, das die Welt baut und die Nahansicht zeichnet). Ein Fluss ist
+ * Landschaft: Er liegt fest auf der Karte (rivers.js RIVERS[…].map), für jede Fahrt gleich, auch für Orte abseits des
+ * Wegs und lange nach dem Besuch – und im Maßstab 1:1, so breit wie in der Welt. Damit die Karte dabei nichts zeigt,
+ * was die Welt nicht hat, richtet sich der Weg nach ihm (sectionPieces): Der Zubringer führt um das auslaufende Ende
+ * des Wassers herum zum Tor am äußeren Ufer, die Ortsdurchfahrt von dort über die Brücke zum Brunnen am Ortspunkt, und
+ * das Auto ist auf der Karte genau so lange über Wasser wie in der Welt auf der Brücke. Sonst berührt den Fluss nichts:
+ * keine Straße der Karte (er liegt zwischen den Autobahnen und läuft vor ihnen aus) und kein anderes Stück des Wegs.
+ * gap: so weit neben dem Ende des Wassers führt der Zubringer vorbei, turn: Halbmesser seines Bogens ans äußere
+ * Ufer (km); label: mögliche Stellen seines Namens auf dem Wasser neben der Brücke (Anteil von reach, rechts +; die
+ * erste gewinnt bei gleich viel Platz), span: so weit beiderseits davon reicht der Name etwa (Anteil von reach).
+ */
+export const RIVER_MAP = { gap: 0.4, turn: 0.25, label: [0.42, -0.42, 0.34, -0.34, 0.26, -0.26], span: 0.06 };
+/** Abstand des Kartenpunkts (x, y) zur nächsten Autobahn, Landstraße oder zum nächsten Zubringer der Karte, höchstens max. */
+export function roadGap(x, y, max) {
+  let best = max;
+  const scan = (P) => {
+    for (let i = 0; i + 3 < P.length; i += 2) {
+      const dx = P[i + 2] - P[i];
+      const dy = P[i + 3] - P[i + 1];
+      const t = clamp(((x - P[i]) * dx + (y - P[i + 1]) * dy) / (dx * dx + dy * dy || 1), 0, 1);
+      best = Math.min(best, Math.hypot(P[i] + dx * t - x, P[i + 1] + dy * t - y));
+    }
+  };
+  const N = netData();
+  for (const l of N.lines) if (l.kind === 'ab' || l.kind === 'land') scan(l.pts);
+  for (const f of N.feeders) scan(f.pts);
+  return best;
+}
+const riverCache = new Map();
+/**
+ * Fluss des Orts place auf der Karte oder null: {name, place, x, y (hier kreuzt seine Achse die Ortsdurchfahrt), tx, ty
+ * (Richtung der Ortsdurchfahrt dort: zum Ortspunkt), wx, wy (Richtung des Flusses, rechts der Durchfahrt +), k
+ * (Karteneinheiten je Meter), half, reach (Karteneinheiten), label (Stelle seines Namens längs des Flusses, Anteil von
+ * reach: wo auf dem Wasser am meisten Platz zwischen den Straßen der Karte ist), gate (hier beginnt die Ortsdurchfahrt),
+ * near, far (ihre Punkte an der äußeren und der inneren Wasserkante), u0, u1 (so viele Meter hinter dem Ortsbeginn
+ * fährt sie auf die Brücke und wieder herunter)}. Für denselben Ort immer derselbe.
+ */
+export function riverOnMap(place) {
+  if (riverCache.has(place)) return riverCache.get(place);
+  const p = places[place];
+  const rv = p ? riverOf(p.key, townLen(p.pop)) : null;
+  let rm = null;
+  if (rv) {
+    const C = placeXY(place);
+    const b = (rv.map.deg * Math.PI) / 180;
+    const k = ku(0.001, C.y);
+    // vom Ortspunkt zur Brücke: (sin, −cos), die Karte zählt y nach Süden; die Durchfahrt kommt von dort herein
+    const tx = -Math.sin(b);
+    const ty = Math.cos(b);
+    const x = C.x - tx * rv.map.km * 1000 * k;
+    const y = C.y - ty * rv.map.km * 1000 * k;
+    // rechts der Durchfahrt liegt (−ty, tx)
+    const wx = -ty * rv.cos + tx * rv.sin;
+    const wy = tx * rv.cos + ty * rv.sin;
+    const reach = rv.map.reach * 1000 * k;
+    const [u0, u1] = riverSpan(rv, rv.x, rv.x);
+    const at = (u) => [x + tx * (u - rv.u) * k, y + ty * (u - rv.u) * k];
+    let label = 0;
+    let room = -1;
+    for (const t of RIVER_MAP.label) {
+      let gap = Infinity;
+      for (const e of [-RIVER_MAP.span, 0, RIVER_MAP.span]) gap = Math.min(gap, roadGap(x + wx * reach * (t + e), y + wy * reach * (t + e), reach));
+      if (gap > room + reach * 1e-6) {
+        room = gap;
+        label = t;
+      }
+    }
+    rm = { name: rv.name, place, x, y, tx, ty, wx, wy, k, half: rv.half * k, reach, label, gate: at(0), near: at(u0), far: at(u1), u0, u1 };
+  }
+  riverCache.set(place, rm);
+  return rm;
+}
+let riverList = null;
+/** Alle Flüsse der Karte (riverOnMap), immer dieselbe Liste: Navi und große Karte zeichnen sie, wo auch immer der Wagen ist. */
+export function mapRivers() {
+  if (!riverList) riverList = places.map((p, i) => riverOnMap(i)).filter(Boolean);
+  return riverList;
+}
+/** Berührt der Linienzug P = [x, y, …] das Wasser des Flusses rm – oder kommt ihm näher als pad (Karteneinheiten)? */
+export function riverTouch(P, rm, pad = 0) {
+  const hx = rm.reach + pad;
+  const hd = rm.half + pad;
+  let X0 = 0;
+  let D0 = 0;
+  for (let i = 0; i < P.length; i += 2) {
+    const X = (P[i] - rm.x) * rm.wx + (P[i + 1] - rm.y) * rm.wy;
+    const D = (P[i] - rm.x) * rm.wy - (P[i + 1] - rm.y) * rm.wx;
+    if (Math.abs(X) <= hx && Math.abs(D) <= hd) return true;
+    if (i) {
+      // die Strecke vom vorigen Punkt hierher gegen das Rechteck des Wassers (in Flusskoordinaten)
+      let t0 = 0;
+      let t1 = 1;
+      for (const [d, lo, hi] of [[X - X0, -hx - X0, hx - X0], [D - D0, -hd - D0, hd - D0]]) {
+        if (Math.abs(d) < 1e-15) {
+          if (lo > 0 || hi < 0) t1 = -1;
+        } else {
+          t0 = Math.max(t0, Math.min(lo / d, hi / d));
+          t1 = Math.min(t1, Math.max(lo / d, hi / d));
+        }
+      }
+      if (t0 <= t1) return true;
+    }
+    X0 = X;
+    D0 = D;
+  }
+  return false;
+}
+/** Stift für einen Abschnitt am Fluss ohne Vorgänger: die Ortsdurchfahrt beginnt am Tor, ihr Zubringer kurz davor; sonst null. */
+function riverPen(sec, next) {
+  const town = sec.kind === 'stadt' ? sec : sec.kind === 'zub' && !sec.back && !sec.transitTo && next && next.place === sec.place ? next : null;
+  if (!town || town.exitOnly || !riverOfSec(town, places)) return null;
+  const rm = riverOnMap(town.place);
+  const d = town === sec ? 0 : ku(0.3, rm.y);
+  return { x: rm.gate[0] - rm.tx * d, y: rm.gate[1] - rm.ty * d, dx: rm.tx, dy: rm.ty };
+}
+/**
+ * Weg vom Stift zum Tor des Flussorts (dort in Richtung der Brücke), ohne das Wasser zu berühren: geradewegs, wenn
+ * das geht, sonst um das nähere Ende des Flusses herum – RIVER_MAP.gap neben dem Ende quer hinüber, dann in weitem
+ * Bogen (RIVER_MAP.turn) ans äußere Ufer und an ihm entlang. Hängt die Punkte ohne den Anfang an.
+ */
+function toGate(out, pen, rm, y0) {
+  const [gx, gy] = rm.gate;
+  if (Math.hypot(pen.x - gx, pen.y - gy) < 1e-9) return;
+  const r = RAMP_R(y0);
+  const side = (pen.x - rm.x) * rm.wx + (pen.y - rm.y) * rm.wy >= 0 ? 1 : -1;
+  const far = rm.reach + ku(RIVER_MAP.gap, y0);
+  for (const sg of [0, side, -side]) {
+    const P = [pen.x, pen.y];
+    if (sg) {
+      const qx = rm.x + rm.wx * sg * far;
+      const qy = rm.y + rm.wy * sg * far;
+      dubins(P, pen.x, pen.y, pen.dx, pen.dy, qx, qy, -rm.tx, -rm.ty, r);
+      dubins(P, qx, qy, -rm.tx, -rm.ty, gx, gy, rm.tx, rm.ty, ku(RIVER_MAP.turn, y0));
+    } else dubins(P, pen.x, pen.y, pen.dx, pen.dy, gx, gy, rm.tx, rm.ty, r);
+    if (sg === -side || !riverTouch(P, rm, r * 0.5)) {
+      for (let i = 2; i < P.length; i++) out.push(P[i]);
+      return;
+    }
+  }
+}
+
+/**
  * Was das Navi gerade wissen muss, aus einer Fahrt (Trip). update() einmal je Bild aufrufen (billig); teuer wird es nur,
  * wenn sich die Wege der Fahrt ändern (trip.version) oder ein neues Ziel kommt.
  */
@@ -596,6 +767,7 @@ export class NavModel {
     this.target = -2;
     this.cur = new Line(); // eigener Weg (mit s-Zuordnung)
     this.route = null; // geplanter Weg bis zum Ziel: {line, a0 (Auto), stops, dest, kmTotal}
+    this.rivers = mapRivers(); // Flüsse der Karte (riverOnMap): fest, für jede Fahrt dieselben
     this.trail = []; // gefahrener Weg (Kartenpunkte)
     this.trailKm = TRAIL.km; // Mindestabstand seiner älteren Punkte (wächst, wenn das Ausdünnen nicht reicht, thinTrail)
     this.pose = { x: 0, y: 0, dx: 0, dy: -1, a: 0, kind: 'ab' };

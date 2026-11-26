@@ -12,6 +12,7 @@
 import { resolveProfile, weighted } from './steckbrief.js';
 import { STECKBRIEFE as DE } from './steckbriefe-de.js';
 import { STECKBRIEFE as AUSLAND } from './steckbriefe-ausland.js';
+import { riverSpan, riverHits, riverAt } from '../../map/rivers.js';
 
 const STECKBRIEFE = { ...DE, ...AUSLAND };
 
@@ -296,8 +297,11 @@ export function footprint(it, info) {
   const front = FRONT_KINDS.has(info.kind) && !info.centre;
   const c = Math.cos(it.ry);
   const s = Math.sin(it.ry);
-  const off = front ? -info.d / 2 : 0;
-  const fp = { cx: it.x + s * off, cz: it.z + c * off, hw: info.w / 2, hd: info.d / 2, ang: it.ry, h: info.h };
+  // overhang: so viele Meter seiner Tiefe hängt ein Stück vorn nur in der Luft (das Heck der Containerbrücke, 46 m
+  // hoch) – sein Grundriss beginnt erst dahinter, wie der einer Laterne an ihrem Mast und nicht an ihrem Arm
+  const air = front ? info.overhang || 0 : 0;
+  const off = front ? -(info.d + air) / 2 : 0;
+  const fp = { cx: it.x + s * off, cz: it.z + c * off, hw: info.w / 2, hd: (info.d - air) / 2, ang: it.ry, h: info.h };
   // Laternen, Ampeln und Bäume verdecken in Augenhöhe nur mit Mast oder Stamm (Arm und Krone hängen darüber)
   if (THIN.has(info.kind)) fp.thin = { cx: it.x, cz: it.z, hw: 0.25, hd: 0.25, ang: 0 };
   return fp;
@@ -497,8 +501,9 @@ export function sightDistance(plan, f, max = 120) {
  * Häuser an der zurückgesetzten Flucht hinter dem geweiteten Gehweg (squares: kind 'island').
  * Ergebnis: { place, size, region, len, items, fountains, squares, texts, goal, landmarks }. Wahrzeichen: 'square' wird
  * Rückwand des Hauptplatzes (der Platz wächst mit), 'skyline' steht links hinter der Häuserzeile, mit einer Lücke in
- * der Zeile, durch die man es sieht; 'river' und 'open' stehen nur in plan.landmarks (placed = false) und bleiben dem
- * Streckenbau überlassen.
+ * der Zeile, durch die man es sieht. 'river' und 'open' stehen am Fluss des Orts (opts.river, Abschnitt 0): eine Brücke
+ * quer im Strom links der Straße, der Hafen am jenseitigen Ufer rechts, Containerbrücken auf einem Kai links – oder,
+ * 'open' ohne Fluss, am Ortsende hinter der rechten Zeile. 'river' ohne Fluss bleibt ungesetzt (placed = false).
  * items: { name, x, y, z, ry, tint?, fp } in Ortskoordinaten; fountains: { id, kind, title, x, y, z, u, ry, r, h,
  * place, special, goal, island (nur auf der Insel des Straßenbaus), cam: { pos, look } } (cam in Ortskoordinaten, für
  * die Nahaufnahme aus 2–4 m).
@@ -556,6 +561,82 @@ export function planTown(place, opts = {}) {
   const sx = (side, d) => (side > 0 ? STREET.curbR + d : STREET.curbL - d);
   const toRoad = (side) => (side > 0 ? -Math.PI / 2 : Math.PI / 2);
   const lineD = STREET.pave; // Häuserflucht
+
+  // --- 0. Fluss quer durch den Ort (opts.river, map/rivers.js riverOf): sein Band samt Uferweg bleibt frei. Häuser,
+  // Plätze und Sichtlücken weichen ihm aus (busy: so tief, wie die tiefsten Häuser der Zeile reichen), auf Streifen
+  // und Gehweg (wet) stehen dort nur die Laternen der Brücke
+  const river = opts.river ?? null;
+  const wet = [];
+  const band = {}; // sein Band je Seite (1 rechts, −1 links): Wahrzeichen am Ufer weiten es
+  const taken = []; // Uferstücke { sg (Ufer, 0 = beide), X0, X1 }, die ein Wahrzeichen belegt: dort kein Baum, keine Bank
+  if (river) {
+    plan.river = river;
+    // was der Flussbau für die Wahrzeichen am Ufer braucht (river.js buildRiver): Kaiflächen und offene Uferstücke
+    plan.riverside = { aprons: [], open: [] };
+    for (const side of [1, -1]) {
+      const [u0, u1] = riverSpan(river, sx(side, 0), sx(side, lineD + 40), river.bank);
+      band[side] = { side, u0, u1 };
+      busy.push(band[side]);
+      const [w0, w1] = riverSpan(river, sx(side, 0), sx(side, lineD), river.bank);
+      wet.push({ side, u0: w0, u1: w1 });
+    }
+    // Wahrzeichen am Wasser, in Flusskoordinaten gesetzt und wie der Fluss gedreht. hw: halbe Breite der Straße samt
+    // Gehwegen; stX: wo die Straßenmitte die Lage D quer zum Fluss kreuzt (sie läuft schräg über die Ufer – der
+    // Abstand zur Straße gilt deshalb für den ganzen Kasten eines Stücks, vom Land bis über den Strom)
+    const hw = (STREET.curbR - STREET.curbL) / 2 + STREET.pave;
+    const stX = (D) => (D * river.sin) / river.cos;
+    const put = (m, X, D, y, ry, side) => {
+      const [x, u] = riverAt(river, X, D);
+      const it = add(m.name, x, y, -u, ry, { river: true });
+      // die Zeile dieser Seite bleibt neben dem Stück frei
+      const [, , z0, z1] = aabb(it.fp);
+      band[side].u0 = Math.min(band[side].u0, -z1 - 4);
+      band[side].u1 = Math.max(band[side].u1, -z0 + 4);
+      return Math.round(u);
+    };
+    for (const m of marks) {
+      const info = infoOf(m.name);
+      if (m.slot === 'river' && info.river && Math.abs(info.river.half - river.half) < 0.01) {
+        // Brücke: ihr Flussstück (so breit wie der Fluss) liegt quer im Strom links der Straße, die Schauseite zur
+        // Straßenbrücke; ihr Wasser liegt knapp unter dem des Flusses, ihr Ufer unter dem Uferweg
+        const X0 = Math.min(stX(-river.half), stX(river.half)) - hw - RIVER_MARK.bridge;
+        const u = put(m, X0, 0, -river.drop - RIVER_MARK.sink, river.ang + Math.PI / 2, -1);
+        taken.push({ sg: 0, X0: X0 - info.d - 3, X1: X0 + 3 });
+        // reicht ihr Ufer (mit den Rampen der Eisenbahnbrücke) hinter den Uferweg, liegt dort ein gepflasterter
+        // Vorplatz bis an den Gehweg der Straße: aus ihm steigt die Rampe, sein Pflaster deckt den Uferblock
+        const far = info.w / 2 + RIVER_MARK.court;
+        if (far > river.half + river.bank + RIVER_MARK.court) {
+          for (const sg of [-1, 1]) plan.riverside.aprons.push({ lx: -hw, X: X0 - info.d - RIVER_MARK.court, D0: sg * (river.half + river.bank), D1: sg * far });
+        }
+        plan.landmarks.push({ name: m.name, slot: m.slot, placed: true, u });
+      } else if (m.slot === 'river' && info.quay) {
+        // Hafen: der Kai am jenseitigen Ufer rechts der Straße (seine Oberkante knapp über dem Boden), Schiff und
+        // Ausleger im Strom; bis zum Gehweg pflastert der Flussbau, Uferkante und Uferweg setzen vor dem Kai aus
+        const D = river.half + info.quay.d;
+        const X0 = Math.max(stX(D - info.d), stX(D)) + hw + RIVER_MARK.beside;
+        const u = put(m, X0 + info.w / 2, D, RIVERSIDE.y + 0.03 - info.quay.y, river.ang + Math.PI, 1);
+        plan.riverside.open.push({ side: 1, X0, X1: X0 + info.w });
+        plan.riverside.aprons.push({ lx: hw, X: X0, D0: river.half + river.bank, D1: D });
+        taken.push({ sg: 1, X0: X0 - 3, X1: X0 + info.w + 3 });
+        plan.landmarks.push({ name: m.name, slot: m.slot, placed: true, u });
+      } else if (m.slot === 'open') {
+        // Containerbrücken: auf einem Kai am jenseitigen Ufer links der Straße, die Ausleger über dem Strom
+        const D = river.half + RIVER_MARK.quay;
+        const X1 = Math.min(stX(D - info.d), stX(D)) - hw - RIVER_MARK.beside;
+        let u = 0;
+        for (let k = 0; k < RIVER_MARK.cranes; k++) u = put(m, X1 - info.w / 2 - k * (info.w + RIVER_MARK.gap), D, RIVERSIDE.y, river.ang + Math.PI, -1);
+        const X0 = X1 - RIVER_MARK.cranes * (info.w + RIVER_MARK.gap);
+        plan.riverside.aprons.push({ lx: -hw, X: X0, D0: river.half + river.bank, D1: D + 4 });
+        taken.push({ sg: 1, X0: X0 - 3, X1: 0 });
+        plan.landmarks.push({ name: m.name, slot: m.slot, placed: true, u, n: RIVER_MARK.cranes });
+      }
+    }
+  }
+  // ragt der Grundriss eines Stücks ins Band des Flusses (pad Meter über die Wasserkante hinaus)?
+  const inRiver = (it, pad) => {
+    const [x0, x1, z0, z1] = aabb(it.fp);
+    return riverHits(river, x0, x1, -z1, -z0, pad);
+  };
 
   // --- 1. Hauptplatz mit Brunnen, rechts an der Straße, beim Ziel (60 % wie das Ziel im Straßenbau) ---------------
   const isl = opts.island ?? null;
@@ -698,7 +779,7 @@ export function planTown(place, opts = {}) {
   // Bordstein zur Einfahrt ab; auf Streifen und Gehweg vor dem Park steht nichts (keep). Drei Buchten belegen
   // Elektroautos, rückwärts eingeparkt; die Heldenbucht und ihre Nachbarn bleiben frei. price: der Preis, den die
   // Bildschirme seiner Säulen zeigen (map/ladepreis.js, rest.js priceScreens).
-  const keep = [];
+  const keep = [...wet];
   if (opts.charge) {
     const c = opts.charge;
     const info = infoOf(c.kind);
@@ -723,13 +804,16 @@ export function planTown(place, opts = {}) {
 
   // --- 2. Weitere Brunnen in größeren Orten: auf eigenen kleinen Plätzen links ------------------------------------
   const extras = special && size === 'gross' ? EXTRA.gross.slice(1) : EXTRA[size];
-  let side2u = len * 0.25;
+  // am Fluss liegt der erste 100 m vor dem Ufer; einer, der ins Band fiele, rückt hinter den Fluss
+  const bandL = band[-1];
+  let side2u = bandL ? Math.min(len * 0.25, bandL.u0 - 100) : len * 0.25;
   for (const kind of extras) {
     const info = infoOf(kind);
     const r = info.r ?? info.w / 2;
     const w2 = Math.ceil((2 * r + 6) / 8) * 8;
     const d2 = Math.ceil((2 * r + 4) / 8) * 8;
-    const u2 = Math.round(side2u + w2 / 2);
+    let u2 = Math.round(side2u + w2 / 2);
+    if (bandL && u2 + w2 / 2 > bandL.u0 - 8 && u2 - w2 / 2 < bandL.u1 + 8) u2 = Math.ceil(bandL.u1 + 8 + w2 / 2);
     if (u2 + w2 / 2 > len - 40) break;
     if (Math.abs(u2 - uc) < S / 2 + w2 / 2 + 20) {
       side2u = uc + S / 2 + 30;
@@ -767,7 +851,23 @@ export function planTown(place, opts = {}) {
   let inRow = 0;
   for (const m of marks) {
     if (m.slot !== 'skyline') {
-      if (m.slot !== 'square') plan.landmarks.push({ name: m.name, slot: m.slot, placed: false });
+      // 'square' steht am Hauptplatz, 'river' und 'open' am Fluss (Abschnitt 0)
+      if (m.slot === 'square' || plan.landmarks.some((l) => l.name === m.name)) continue;
+      if (m.slot === 'open') {
+        // ohne Fluss (Containerbrücke in Bremen, Bremerhaven, Kiel): am Ortsende rechts, die Straße ist ihre Kaistraße –
+        // die landseitige Schiene liegt gleich hinter dem Gehweg, der Ausleger zeigt vom Ort weg, und das Heck mit dem
+        // Maschinenhaus ragt 46 m hoch über die Fahrbahn, wie über die Fahrspuren eines Terminals. Neben der Straße
+        // verdecken die Häuser der Zeile jedes Stück, das weiter als ein paar Meter hinter dem Gehweg steht, bis kurz
+        // davor; über der Straße sieht man das Heck vom Auto aus schon von weitem, die Beine ab der Lücke der Zeile
+        const info = infoOf(m.name);
+        const u = len - OPEN_MARK.end - info.w / 2;
+        busy.push({ side: 1, u0: u - info.w / 2 - OPEN_MARK.view, u1: len });
+        views.push({ side: 1, u0: u - info.w / 2 - OPEN_MARK.view, u1: len });
+        add(m.name, sx(1, lineD + OPEN_MARK.rail) - info.rail, 0, -u, toRoad(1));
+        plan.landmarks.push({ name: m.name, slot: m.slot, placed: true, u });
+        continue;
+      }
+      plan.landmarks.push({ name: m.name, slot: m.slot, placed: false });
       continue;
     }
     const info = infoOf(m.name);
@@ -863,7 +963,7 @@ export function planTown(place, opts = {}) {
       const it = add(pick(rnd, towers), sx(side, lineD + 32 + (k % 3) * 24 + rnd() * 8), 0, -u, toRoad(side));
       // nicht in ein Wahrzeichen und nicht in ein tiefes Haus der Zeile (Messe 34 m, Kaufhaus 20 m)
       const tb = aabb(it.fp);
-      if (skyBoxes.some((b) => touches(b, tb)) || plan.items.some((o) => o !== it && HOUSE_KINDS.has(infoOf(o.name).kind) && touches(aabb(o.fp), tb))) plan.items.pop();
+      if (skyBoxes.some((b) => touches(b, tb)) || (river && inRiver(it, river.bank)) || plan.items.some((o) => o !== it && HOUSE_KINDS.has(infoOf(o.name).kind) && touches(aabb(o.fp), tb))) plan.items.pop();
     }
   }
 
@@ -940,6 +1040,36 @@ export function planTown(place, opts = {}) {
     plan.texts.push({ name: 'townExit', x: sx(1, 0.9), y: top, z: -(len - 8), ry: 0, text: sign, next: opts.nextName ?? '' });
   }
   add('bollards3', sx(1, 1.0), top, -(uc - S / 2 - 2), Math.PI / 2);
+  // Laternen der Brücke: je Seite in gleichem Abstand von Ufer zu Ufer, am Bordstein wie im übrigen Ort
+  if (river) {
+    for (const side of [1, -1]) {
+      const x = sx(side, 0.45);
+      const [u0, u1] = riverSpan(river, x, x);
+      const n = Math.round((u1 - u0) / 30);
+      for (let i = 0; i <= n; i++) add(lamp, x, top, -(u0 + ((u1 - u0) * i) / n), side > 0 ? -Math.PI / 2 : Math.PI / 2, { river: true });
+    }
+    // Uferwege (river.js pflastert sie): an beiden Ufern links und rechts der Straße eine Reihe Bäume längs des Flusses
+    // und Bänke mit Blick aufs Wasser. lx: Abstand seitlich von der Straßenmitte (die Straße kreuzt das Ufer schräg)
+    // (wo ein Wahrzeichen am Ufer steht, bleiben sie weg: taken)
+    const hw = (STREET.curbR - STREET.curbL) / 2 + STREET.pave;
+    const bank = (lx, sg, d) => {
+      const D = sg * (river.half + d);
+      const X = (lx + D * river.sin) / river.cos;
+      return taken.some((t) => (t.sg === 0 || t.sg === sg) && X > t.X0 && X < t.X1) ? null : riverAt(river, X, D);
+    };
+    for (const sg of [-1, 1]) {
+      for (const dir of [-1, 1]) {
+        for (let k = 0; k < RIVERSIDE.trees; k++) {
+          const at = bank(dir * (hw + 7 + k * RIVERSIDE.step), sg, river.bank - 2.6);
+          if (at) add(tree(pick(rnd, ['streetTree', 'streetTree2'])), at[0], RIVERSIDE.y, -at[1], rnd() * 6.28);
+        }
+        for (let k = 0; k < RIVERSIDE.benches; k++) {
+          const at = bank(dir * (hw + 7 + (k * 2 + 0.5) * RIVERSIDE.step), sg, 3.1);
+          if (at) add('bench', at[0], RIVERSIDE.y, -at[1], river.ang + (sg < 0 ? Math.PI : 0));
+        }
+      }
+    }
+  }
 
   // --- 6. Sichtlinien zum Brunnen freiräumen (Regel, nicht Zufall), und im Becken steht nichts --------------------
   plan.fountains = fountains;
@@ -963,6 +1093,10 @@ export function planTown(place, opts = {}) {
     const drop = new Set(poleBlockers(plan, cm, infoOf));
     if (drop.size) plan.items = plan.items.filter((_, i) => !drop.has(i));
   }
+  // --- 9. Im Fluss steht nichts (Regel, nicht Zufall): was mit seinem Grundriss ins Wasser oder auf die Uferkante
+  // ragte, entfällt – bis auf das, was zum Fluss gehört (river: Laternen der Brücke) und die Wahrzeichen (die setzt der
+  // Plan mit Abstand, tools/fluesse-test.mjs prüft es)
+  if (river) plan.items = plan.items.filter((it) => it.river || infoOf(it.name).kind === 'landmark' || !inRiver(it, RIVER_CLEAR));
   plan.layout = townLayout(plan, infoOf);
   return plan;
 }
@@ -970,6 +1104,21 @@ export function planTown(place, opts = {}) {
 // Was die Farben des Orts trägt (Häuser; Hochhäuser, Wahrzeichen und Glastürme behalten ihre), Reet bleibt Reet
 const PAINTED = new Set(['village', 'shop', 'town']);
 const THATCH = 0xb2915e;
+
+// so weit hinter der Wasserkante eines Flusses steht nichts (dort liegt seine Uferkante aus Stein)
+const RIVER_CLEAR = 1;
+// Uferweg eines Flusses: Bäume je Reihe, ihr Abstand, Bänke je Reihe, Höhe des Pflasters (river.js RIVER_KIT.pave)
+const RIVERSIDE = { trees: 9, step: 16, benches: 4, y: 0.03 };
+// Wahrzeichen am Fluss. sink: so tief liegt das Wasser einer Brücke unter dem des Flusses · bridge: Abstand ihres
+// Flussstücks vom Gehweg der Straßenbrücke · court: so weit reicht das Pflaster des Vorplatzes über ihr Ufer hinaus,
+// wo es hinter dem Uferweg hervorkäme · beside: Abstand von Hafenkai und Containerbrücken zum Gehweg · quay: Tiefe
+// des Kais der Containerbrücken (wie der des Hafens: die Schienen liegen 6 und 36 m hinter der Wasserkante) · cranes:
+// so viele Containerbrücken, gap Meter Luft dazwischen (so viel, dass sich auch ihre achsparallelen Hüllen nicht
+// berühren: sie stehen um den Winkel des Flusses gedreht)
+const RIVER_MARK = { sink: 0.09, bridge: 12, court: 1, beside: 6, quay: 58, cranes: 2, gap: 18 };
+// Containerbrücke ohne Fluss: end Meter vor dem Ortsende (hinter dem Ladepark), ihre landseitige Schiene rail Meter
+// hinter der Häuserflucht (so reicht ihr Heck genau über Fahrbahn und Gehwege), davor view Meter ohne Haus und Baum
+const OPEN_MARK = { end: 20, rail: 5, view: 40 };
 
 const r1 = (v) => Math.round(v * 100) / 100;
 const HOUSE_KINDS = new Set(['village', 'shop', 'town', 'city', 'region']);

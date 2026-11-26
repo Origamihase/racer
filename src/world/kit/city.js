@@ -10,6 +10,7 @@ import { createFountainKit } from './fountains.js';
 import { createPeopleKit } from './people.js';
 import { createLandmarkKit, landmarkFor } from './landmarks.js';
 import { createRestKit, restGround, POPCORN_STAND } from './rest.js';
+import { buildRiver } from './river.js';
 import { planTown, planGoal, planRest, planPark, sizeOf, regionOf, goalKind, islandRadius, fanSpot, STREET, REST } from './layout.js';
 
 // Ein Ort wird in Stücke von 100 m Straße verschmolzen: wenige Draw Calls, und was hinter der Kamera liegt, fällt weg
@@ -181,7 +182,8 @@ export function createCityKit(F, { bend = null } = {}) {
      * Straßenbau bei z = −s0 in die Strecke gehängt. Dazu group.fountains (Brunnenliste), fountainsInView,
      * watchFountains, resetFountains (siehe attachFountains), group.update(t) für die Fangruppe am Ziel und
      * group.layout, der Lageplan für das Navi (layout.js townLayout, im selben Rahmen); an einer Säule mit Ladestopp
-     * group.popcornStand (LOD mit Maschine und Eimer, versteckt: rest.js POPCORN_STAND).
+     * group.popcornStand (LOD mit Maschine und Eimer, versteckt: rest.js POPCORN_STAND); mit plan.river group.river
+     * (Wasser, Kaimauern und Straßenbrücke, river.js).
      * lazy: die verschmolzenen Stücke und die Wahrzeichen entstehen erst mit group.step() (eines je Aufruf, zuerst
      * alle Fernfassungen, dann die nahen vom Ortsbeginn an; true, solange noch etwas fehlt; group.pending zählt den
      * Rest, group.pendingFar die fehlenden Fernfassungen): eine Großstadt braucht am Stück über 100 ms, in Schritten
@@ -216,6 +218,14 @@ export function createCityKit(F, { bend = null } = {}) {
         const ci = Math.floor(-it.z / CHUNK);
         if (!chunks.has(ci)) chunks.set(ci, []);
         chunks.get(ci).push(it);
+      }
+      // der Fluss des Orts (river.js): ein Stück für den ganzen Ort und sein erster Schritt – der Boden der Welt bekommt
+      // sein Loch erst, wenn group.river dasteht (xxl/towns.js)
+      if (plan.river) {
+        farJobs.push(() => {
+          root.river = buildRiver(core, plan.river, plan.riverside);
+          root.add(root.river);
+        });
       }
       const cx = (STREET.curbL + STREET.curbR) / 2;
       // eine Stufe (nah bei 0, fern ab farAt) in ihre LOD hängen; mit nur einer Stufe zeigt die LOD diese

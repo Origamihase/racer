@@ -1013,14 +1013,31 @@ landmark('hohenzollernbruecke', { places: ['Köln'], slot: 'river', title: 'Hohe
   const len = 70;
   const zc = -len / 2;
   const y = 3.6;
-  river(b, half, len, y, 16, 0xa39686);
+  const xs = [-204.6, -85.7, 82.0, 204.6].map((x) => x * s);
+  // Länge der Rampen hinter den Brückenköpfen; das Ufer reicht bis an ihr Ende
+  const ramp = 24;
+  river(b, half, len, y, xs[3] + 4 + ramp - half, 0xa39686);
   const deckY = y + 1.4;
   const D = 29.5 * s; // Breite der drei Brückenzüge
   // Pfeiler und Fahrbahn
-  const xs = [-204.6, -85.7, 82.0, 204.6].map((x) => x * s);
   for (const x of xs.slice(1, 3)) prism(F, rrect(9, D + 4, 4, 2, x, zc), 0, deckY, 0x756a62, { smooth: 0.7, g: [0.7, 1] });
   F.box(0, deckY - 1.6, zc, xs[3] - xs[0] + 8, 1.6, D, 0x5f666b, { g: [0.85, 1] });
   F.box(0, deckY, zc, xs[3] - xs[0] + 8, 0.12, D - 1, 0x9a948a, { skip: 'b' });
+  // Rampen an beiden Brückenköpfen: das Gleisbett läuft zwischen Stützmauern sacht auf das Ufer hinab, statt über ihm
+  // abzubrechen (am Fluss eines Orts liegt das Ufer knapp unter dem Boden: die Rampe taucht in den Uferweg ein)
+  for (const sx of [-1, 1]) {
+    const xa = sx * (xs[3] + 4);
+    const xb = xa + sx * ramp;
+    const ya = deckY + 0.12;
+    const za = zc + D / 2;
+    const zb = zc - D / 2;
+    const top = [[xa, ya, za], [xb, y, za], [xb, y, zb], [xa, ya, zb]];
+    F.quad(...(sx > 0 ? top : top.reverse()), 0x9a948a);
+    for (const [z, front] of [[za, true], [zb, false]]) {
+      const wall = [[Math.min(xa, xb), y, z], [Math.max(xa, xb), y, z], [xa, ya, z]];
+      F.tri(...(front ? wall : wall.reverse()), 0x756a62, { g: [0.8, 1] });
+    }
+  }
   // Bögen: je Feld drei Bogenebenen (außen und Mitte), Kreisbögen mit Stich f, Hänger alle 8,4 m (× s)
   const spans = [[xs[0], xs[1], 17], [xs[1], xs[2], 25], [xs[2], xs[3], 17.5]];
   const planes = [zc + D / 2 - 0.5, zc, zc - D / 2 + 0.5];
@@ -1068,7 +1085,7 @@ landmark('hohenzollernbruecke', { places: ['Köln'], slot: 'river', title: 'Hohe
       for (let w = 0; w < 4; w++) G.rect(x - 4.4 + w * 2.9, deckY + 2.1, zc + 1.42, 1.8, 0.9, GLASS);
     }
   }
-  return { w: 2 * half + 32, d: len, h: deckY + 25 * s + 1.5, river: { half, len, y: 0.05 } };
+  return { w: 2 * (xs[3] + 4 + ramp), d: len, h: deckY + 25 * s + 1.5, river: { half, len, y: 0.05 } };
 });
 
 // =============================================================================================================
@@ -1264,10 +1281,16 @@ function crane(b, raised = false) {
   // Warnlichter
   L.ball(0, 65.4, -44, 0.5, 0xff5a4a, { ws: 6, hs: 3 });
   L.ball(0, 57.6, -12, 0.4, 0xff5a4a, { ws: 6, hs: 3 });
-  return { w: 36, d: 122, h: raised ? 110 : 66 };
+  return { w: 36, d: 122, h: raised ? 110 : 66, rail: 22 };
 }
 
-landmark('containerCrane', { places: ['Hamburg', 'Bremen', 'Kiel'], slot: 'open', title: 'Containerbrücke' }, (b) => crane(b));
+landmark('containerCrane', { places: ['Hamburg', 'Bremen', 'Kiel'], slot: 'open', title: 'Containerbrücke' }, (b) => {
+  // Kaiplatte unter beiden Schienen: wo sie ohne Hafen steht (am Rand eines Orts), steht sie nicht auf der Wiese.
+  // overhang: bis zur Platte hängt das Heck nur in der Luft – dort beginnt ihr Grundriss (kit/layout.js footprint)
+  const slab = { z: -37, d: 40 };
+  b.F.box(0, 0, slab.z, 36, 0.06, slab.d, 0xa8a49c, { skip: 'b' });
+  return { ...crane(b), overhang: -slab.z - slab.d / 2 };
+});
 landmark('containerStack', { places: [], slot: 'open', title: 'Containerstapel' }, (b) => {
   containers(b, 0, -3, 3, 2, 4, 3);
   return { w: 38, d: 6, h: 10.4 };
@@ -1276,32 +1299,38 @@ landmark('containerStack', { places: [], slot: 'open', title: 'Containerstapel' 
 landmark('hamburgHafen', { places: ['Hamburg'], slot: 'river', far: true, title: 'Containerhafen' }, (b) => {
   const { F, W } = b;
   const near = !b.lod;
-  // Kai (1,5 m) mit Kante, dahinter Wasser bis zum Ende der Ausleger und ein Schiff am Kai
-  F.box(0, 0, -29, 200, 1.5, 58, 0xa8a49c, { g: [0.85, 1] });
-  F.box(0, 1.5, -57.6, 200, 0.4, 0.8, 0xd8d3c8);
+  // Kai mit Kante, dahinter Wasser bis zum Ende der Ausleger und ein Schiff am Kai. Der Kai liegt q Meter über dem
+  // Wasser und ist kd Meter tief: so hoch wie das Ufer der Elbe im Ort (map/rivers.js), an dem er steht
+  const q = 3.2;
+  const kd = 58;
+  F.box(0, 0, -kd / 2, 200, q, kd, 0xa8a49c, { g: [0.85, 1] });
+  F.box(0, q, -kd + 0.4, 200, 0.4, 0.8, 0xd8d3c8);
   W.poolRect(0, 0.05, -100, 200, 84, WATER, { rings: 0.1 });
-  b.at(-60, 1.5, 0, 0, () => crane(b));
-  b.at(-8, 1.5, 0, 0, () => crane(b, true));
-  b.at(44, 1.5, 0, 0, () => crane(b));
-  b.at(0, 1.5, 0, 0, () => {
+  b.at(-60, q, 0, 0, () => crane(b));
+  b.at(-8, q, 0, 0, () => crane(b, true));
+  b.at(44, q, 0, 0, () => crane(b));
+  b.at(0, q, 0, 0, () => {
     containers(b, -30, -8, 3, 3, 3, 2);
     containers(b, 30, -10, 3, 4, 4, 5);
     containers(b, 82, -6, 2, 2, 2, 9);
   });
-  // Containerschiff: dunkler Rumpf mit rotem Unterwasserschiff, weißes Deckshaus hinten, bunte Ladung
+  // Containerschiff: dunkler Rumpf, weißes Deckshaus hinten, bunte Ladung. Es liegt beladen im Wasser: Vom roten
+  // Unterwasserschiff schaut nur ein Streifen von red Metern über die Wasserlinie, das Deck liegt deck Meter hoch
   const len = 150;
   const hull = [[-len / 2, -6], [len / 2 - 14, -6], [len / 2, 0], [len / 2 - 14, 6], [-len / 2, 6]];
   const shipZ = -76;
+  const red = 0.6;
+  const deck = 10.6;
   b.at(0, 0, shipZ, 0, () => {
-    prism(F, hull, 0, 3, 0xb5443a);
-    prism(F, hull, 3, 13, 0x3f4a5c, { g: [0.9, 1.05] });
-    F.box(-len / 2 + 10, 13, 0, 12, 14, 11, 0xf4f1ea, { g: [0.9, 1.02] });
-    F.box(-len / 2 + 10, 27, 0, 14, 1, 12, 0xf4f1ea);
-    F.box(-len / 2 + 4, 13, 0, 3, 22, 3, 0x3f4a5c);
-    if (near) for (let i = 0; i < 6; i++) b.G.rect(-len / 2 + 5 + i * 2, 24.5, 5.52, 1.4, 1.2, GLASS);
-    b.at(10, 13, 0, 0, () => containers(b, 0, 0, 8, 4, 3, 4));
+    prism(F, hull, 0, red, 0xb5443a);
+    prism(F, hull, red, deck, 0x3f4a5c, { g: [0.9, 1.05] });
+    F.box(-len / 2 + 10, deck, 0, 12, 14, 11, 0xf4f1ea, { g: [0.9, 1.02] });
+    F.box(-len / 2 + 10, deck + 14, 0, 14, 1, 12, 0xf4f1ea);
+    F.box(-len / 2 + 4, deck, 0, 3, 22, 3, 0x3f4a5c);
+    if (near) for (let i = 0; i < 6; i++) b.G.rect(-len / 2 + 5 + i * 2, deck + 11.5, 5.52, 1.4, 1.2, GLASS);
+    b.at(10, deck, 0, 0, () => containers(b, 0, 0, 8, 4, 3, 4));
   });
-  return { w: 200, d: 142, h: 124 };
+  return { w: 200, d: 142, h: q + 122.5, quay: { d: kd, y: q } };
 });
 
 // =============================================================================================================

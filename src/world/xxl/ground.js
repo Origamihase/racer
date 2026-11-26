@@ -2,6 +2,8 @@
 // breit wie die Sicht und an den Rändern sanft abfallend (so verschwindet das Ende der Welt im Dunst). Er wird nie geschert und läuft nur mit s mit, darf also kein Muster haben, dessen Gleiten man
 // neben einem gescherten Rahmen bemerken würde: nur feines, richtungsloses Gras. Felder, Wege und Teiche sind
 // aufgenähte Flicken der Rahmen (siehe roadkit/forest), nie Teil dieses Bodens.
+// Wo ein Fluss durch einen Ort fließt (kit/river.js), hat er ein Loch: ein Band, das der Shader ausspart (setRiver) –
+// Wasser und Kaimauern liegen tiefer als er.
 import * as THREE from 'three';
 import { W } from '../../curve.js';
 import { GRASS_RGB } from '../../textures.js';
@@ -97,10 +99,31 @@ function groundCols() {
   return xs;
 }
 
+// Loch des Flusses: die Lage vor der Krümmung kommt aus dem Vertex-Shader (dort, wo curve.js sie berechnet)
+const HOLE_AT = 'vec4 cwPos = modelMatrix * mvPosition;';
+const HOLE_FRAG = /* glsl */ `{
+  vec2 rd = vRiverXZ - uRiver.xy;
+  if (abs(dot(rd, uRiver.zw)) < uRiverSize.x && abs(dot(rd, vec2(-uRiver.w, uRiver.z))) < uRiverSize.y) discard;
+}
+#include <clipping_planes_fragment>`;
+
 export class Ground {
   constructor(parent) {
     this.tex = meadowTexture();
     this.mat = W.lambert({ map: this.tex, ...LAYER.ground });
+    // Flussband im Raum vor der Krümmung: (Punkt der Achse x, z, Einheitsvektor quer dazu x, z) und (halbe Breite, halbe
+    // Länge); Breite 0 = kein Fluss in Sicht
+    this.uRiver = { value: new THREE.Vector4(0, 0, 0, 1) };
+    this.uRiverSize = { value: new THREE.Vector2(0, 0) };
+    const curved = this.mat.onBeforeCompile;
+    this.mat.onBeforeCompile = (shader, renderer) => {
+      curved(shader, renderer);
+      shader.uniforms.uRiver = this.uRiver;
+      shader.uniforms.uRiverSize = this.uRiverSize;
+      shader.vertexShader = 'varying vec2 vRiverXZ;\n' + shader.vertexShader.replace(HOLE_AT, HOLE_AT + '\nvRiverXZ = cwPos.xz;');
+      shader.fragmentShader = 'uniform vec4 uRiver;\nuniform vec2 uRiverSize;\nvarying vec2 vRiverXZ;\n' + shader.fragmentShader.replace('#include <clipping_planes_fragment>', HOLE_FRAG);
+    };
+    this.mat.customProgramCacheKey = () => 'curved-world|flussloch';
     const uv = (x, y, z) => [x / TILE, -z / TILE];
     const xs = groundCols();
     const strips = [{ a: [-EDGE[0], EDGE[1]], b: [-FLAT, GROUND_Y], uv }];
@@ -119,5 +142,11 @@ export class Ground {
   update(s, wet) {
     this.tex.offset.y = (s / TILE) % 1;
     this.mat.color.setScalar(1 - wet * 0.27);
+  }
+
+  /** Das Loch für den Fluss stellen: band wie Towns.band (xxl/towns.js); ohne Fluss in Sicht bleibt der Boden ganz. */
+  setRiver(band) {
+    this.uRiverSize.value.set(band.on ? band.half : 0, band.reach);
+    if (band.on) this.uRiver.value.set(band.x, band.z, band.nx, band.nz);
   }
 }

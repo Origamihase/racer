@@ -9,7 +9,7 @@
 // Kartenkoordinaten: project() aus graph.js (Mercator, x = Länge, y nach Süden, Einheit = Grad Länge am Äquator).
 import { places, nodes, edges, roads, project, distKm } from './graph.js';
 import { Q, LAND, PATCHES, REGIONS, COUNTRIES, SEAS } from './land.js';
-import { FONT, drawShield, drawTransitBadge, drawHeart } from './symbols.js';
+import { FONT, drawShield, drawTransitBadge, drawHeart, fillRiver } from './symbols.js';
 import { Warp } from './warp.js';
 
 export { project, REGIONS, COUNTRIES, SEAS };
@@ -1072,6 +1072,13 @@ function smoothRing(path, P) {
 }
 
 /**
+ * Flüsse der Orte in den statischen Ebenen, in CSS-Bildpunkten: min = halbe Breite, unter die das Wasser nie fällt, len =
+ * erst ab dieser halben Länge wird ein Fluss gezeichnet. Die Flüsse liegen immer auf der Karte; weit herausgezoomt wäre
+ * jeder nur ein blauer Krümel neben dem Punkt seiner Stadt – er erscheint, sobald er als Fluss zu lesen ist.
+ */
+const RIVER_PX = { min: 1.1, len: 12 };
+
+/**
  * Zeichnet Karten. Ein Zeichner hält seine Zwischenspeicher (Kacheln, Ausschnitt).
  * theme: 'light' | 'dark'; look: 'menu' (große Karte) | 'navi' (Mittelbildschirm: kräftigere Linien und Punkte);
  * labels: false – renderStatic lässt die Namen weg (wer selbst darüber zeichnet, setzt sie danach mit renderLabels).
@@ -1092,6 +1099,9 @@ export class MapPainter {
     // Orte, durch die der Wagen fuhr, mit Punkt und Zubringer, und die Landstraßen, auf denen er fuhr
     // ({ places: Set Ortsindex, edges: Set Kante } oder null)
     this.keep = null;
+    this.rivers = []; // Flüsse der Karte (setRivers)
+    this.riverList = null;
+    this.riverKey = '';
   }
   get T() {
     return THEMES[this.theme];
@@ -1103,6 +1113,25 @@ export class MapPainter {
     this.cache = null;
     this.lv = [null, null];
     this.jobs = [null, null];
+  }
+
+  /**
+   * Flüsse der Karte (navroute.js mapRivers: [{place, x, y, wx, wy, half, reach}], Karteneinheiten): Sie liegen in den
+   * statischen Ebenen über den Ortsflächen und unter dem Weg des Wagens, der so als Brücke darüber läuft. Ändert sich
+   * die Liste, entstehen die Ebenen neu: Kacheln und gedrehter Ausschnitt sofort, die schrägen Ausschnitte im
+   * Hintergrund (bis dahin bleibt der alte stehen, das Navi blinkt nicht). Dieselbe Liste noch einmal kostet nichts.
+   */
+  setRivers(list) {
+    if (list === this.riverList) return;
+    this.riverList = list;
+    const key = list.map((r) => [r.place, r.x, r.y, r.wx, r.wy, r.half, r.reach].join(':')).join('|');
+    if (key === this.riverKey) return;
+    this.riverKey = key;
+    this.rivers = list.slice();
+    this.trim(0);
+    this.cache = null;
+    this.jobs = [null, null];
+    for (const l of this.lv) if (l) l.stale = true;
   }
 
   /**
@@ -1152,6 +1181,11 @@ export class MapPainter {
     }
     ctx.globalAlpha = 1;
     if (k >= 1.5) this.renderTowns(ctx, wx, wy, cw / s, ch / s, k, u);
+    // Flüsse: mindestens ein feiner Strich, sobald sie ein paar Bildpunkte lang sind
+    for (const q of this.rivers) {
+      if (q.reach < RIVER_PX.len * u || isOut([q.x - q.reach, q.y - q.reach, q.x + q.reach, q.y + q.reach], r[0], r[1], r[2], r[3])) continue;
+      fillRiver(ctx, q.x - q.wx * q.reach, q.y - q.wy * q.reach, q.x + q.wx * q.reach, q.y + q.wy * q.reach, Math.max(q.half, RIVER_PX.min * u), T.sea);
+    }
     ctx.strokeStyle = T.borderUnder;
     ctx.lineWidth = clamp(2 + Math.log2(k * 4), 2, 6) * u;
     ctx.stroke(solidPath(G.borders, r));
@@ -1387,7 +1421,7 @@ export class MapPainter {
     let b = Math.round(bz);
     if (L[0] && Math.abs(bz - L[0].b) < 0.75) b = L[0].b;
     if (J[0] && (!front || J[0].b !== b || !inside(J[0], box, 0))) J[0] = null;
-    if (front && !J[0] && !(L[0] && L[0].b === b && inside(L[0], box, side * 0.07))) J[0] = this.tiltJob(0, box, b, ps, vel);
+    if (front && !J[0] && !(L[0] && !L[0].stale && L[0].b === b && inside(L[0], box, side * 0.07))) J[0] = this.tiltJob(0, box, b, ps, vel);
     // Reserve, nur wenn sie deutlich gröber ist als die Ansicht (sonst bleibt die alte, wie sie ist)
     let rbox = null;
     if (reserve > 0 && reserve < view.scale * 0.7) {
@@ -1395,7 +1429,7 @@ export class MapPainter {
       rbox = [view.x + (box[0] - view.x) * f, view.y + (box[1] - view.y) * f, view.x + (box[2] - view.x) * f, view.y + (box[3] - view.y) * f];
       const br = Math.round(Math.log2(reserve) * 2);
       if (J[1] && (J[1].b !== br || !inside(J[1], rbox, 0))) J[1] = null;
-      if (!J[1] && !(L[1] && L[1].b === br && inside(L[1], rbox, side * f * 0.07))) J[1] = this.tiltJob(1, rbox, br, ps, null);
+      if (!J[1] && !(L[1] && !L[1].stale && L[1].b === br && inside(L[1], rbox, side * f * 0.07))) J[1] = this.tiltJob(1, rbox, br, ps, null);
     } else J[1] = null;
     // Arbeit im Zeitbudget: zuerst die Reserve, wenn sie den Boden nach dem Hinauszoomen noch nicht deckt, sonst vorn;
     // alles in einem Bild nur, wenn gar nichts den Boden deckt

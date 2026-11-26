@@ -5,6 +5,7 @@
 // Punkte, gleiche Namen wie dort).
 import { MapPainter, THEMES, bucketScale, project, spotBox, dotRadius, PLACE_BY_INDEX, menuLayoutOf, isCity, placeLabel } from '../map/mapview.js';
 import { drawCar, drawTurnIcon, FONT } from '../map/symbols.js';
+import { mapRivers } from '../map/navroute.js';
 
 const PAD = 30; // Rand um die Route (CSS-Bildpunkte): Platz für Marken und Auto
 const EDGE = 3; // Namen bleiben so weit vom Rand der Karte …
@@ -202,6 +203,14 @@ export function routeKeep(route) {
 }
 
 /**
+ * Die Flüsse der Flussorte, durch die der Wagen fuhr (keep = routeKeep): Wer in Köln über den Rhein gefahren ist, sieht
+ * ihn auch auf der Karte des Abspanns, dieselbe Lage wie im Navi und in der großen Karte (navroute.js mapRivers).
+ */
+export function routeRivers(keep) {
+  return mapRivers().filter((r) => keep.places.has(r.place));
+}
+
+/**
  * Beschriftung einer Stufe samt den Namen der Orte aus keep, die sie nicht beschriftet (placeLabel; nach den Großstädten
  * vor den übrigen Namen, routeLabels setzt in dieser Reihenfolge). Ergebnis wie menuLayout, dazu extra: die neuen Namen.
  */
@@ -251,8 +260,10 @@ export function drawRouteMap(canvas, route, w, h, ps) {
   canvas.height = Math.max(1, Math.round(h * ps));
   const ctx = canvas.getContext('2d');
   // Land, Straßen und Ortspunkte wie in der großen Karte; die Namen kommen erst über den Weg
-  // dazu die gefahrenen Landstraßen und die Orte, durch die der Wagen fuhr (routeKeep), auch wo die Stufe sie weglässt
+  // dazu die gefahrenen Landstraßen und die Orte, durch die der Wagen fuhr (routeKeep), auch wo die Stufe sie weglässt,
+  // und unter den Straßen die Flüsse der Flussorte dieser Fahrt
   painter.keep = keep;
+  painter.setRivers(routeRivers(keep));
   painter.renderStatic(ctx, v.wx, v.wy, v.s * ps, canvas.width, canvas.height, ps, v.b);
   painter.keep = null;
   ctx.setTransform(ps, 0, 0, ps, 0, 0);
