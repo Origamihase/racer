@@ -10,6 +10,13 @@ import { clamp } from './util.js';
  */
 export const RADAR_BEEP = { freq: [2637, 3136], dur: 0.075, gap: 0.085, every: 0.2, n: 3, start: 0.05, vol: 0.07, duck: [0.75, 0.4] };
 
+/**
+ * Die Hupe (Audio.horn): Tiefton und Hochton eines Fanfarenpaars in Hz, ihre Anteile, leichte Verstimmung in Cent,
+ * Einsatz in s, Ausklang (Zeitkonstante in s), Länge eines Tipps auf die Taste in s, Lautstärke und Schnarren.
+ * Die Länge bleibt unter dem Abstand des Hupkonzerts (0,45 s), damit die drei Huper einzeln zu hören sind.
+ */
+export const HORN = { freq: [410, 512], mix: [1, 0.85], detune: [-4, 3], attack: 0.012, release: 0.022, dur: 0.36, vol: 0.065, rasp: 0.2 };
+
 export class Audio {
   constructor() {
     this.ctx = null;
@@ -340,9 +347,71 @@ export class Audio {
     this.noiseBurst(0.1, 0.012, { type: 'bandpass', freq: 3000, q: 12, when: 0.19 });
   }
 
-  horn() {
-    this.tone(415, 0.45, 'square', 0.06);
-    this.tone(523, 0.45, 'square', 0.05);
+  /**
+   * Die Hupe: ein Paar Fanfaren wie unter der Stoßstange, Tiefton und Hochton eine große Terz auseinander (HORN).
+   * Beide klingen gleich laut, solange gehupt wird – kein abklingendes Pling –, setzen in ein paar Millisekunden ein
+   * und verstummen ebenso kurz, ohne Knacken und ohne Tonhöhenrutschen. Den blechernen Klang macht die Membran:
+   * ein Obertonspektrum mit einer Resonanz um 2,6 kHz (hornWave), dazu ein Hauch Schnarren aus gefiltertem Rauschen.
+   * Hochton und Tiefton schwingen wie zwei echte Hörner nicht ganz gleich, daher die leichte Schwebung.
+   */
+  horn(dur = HORN.dur) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime + 0.005;
+    const t1 = t0 + dur;
+    const end = t1 + HORN.release * 6;
+    // ein Ausgang für beide Hörner: Einsatz (kurz etwas kräftiger, wie die anschlagende Membran), Halten, Ausklang
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0, t0);
+    out.gain.linearRampToValueAtTime(HORN.vol * 1.15, t0 + HORN.attack);
+    out.gain.setTargetAtTime(HORN.vol, t0 + HORN.attack, 0.04);
+    out.gain.setTargetAtTime(0, t1, HORN.release);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 5200;
+    lp.Q.value = 0.5;
+    out.connect(lp).connect(this.sfx);
+    HORN.freq.forEach((f, i) => {
+      const o = ctx.createOscillator();
+      o.setPeriodicWave(this.hornWave(f));
+      o.frequency.setValueAtTime(f, t0);
+      o.detune.setValueAtTime(HORN.detune[i], t0);
+      const g = ctx.createGain();
+      g.gain.value = HORN.mix[i];
+      o.connect(g).connect(out);
+      o.start(t0);
+      o.stop(end);
+    });
+    // Schnarren der Membran
+    const n = ctx.createBufferSource();
+    n.buffer = this.noiseBuf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 2600;
+    bp.Q.value = 3;
+    const ng = ctx.createGain();
+    ng.gain.value = HORN.rasp;
+    n.connect(bp).connect(ng).connect(out);
+    n.start(t0, Math.random());
+    n.stop(end);
+  }
+
+  /** Die Schwingungsform eines Horns mit Grundton f (einmal gebaut, dann gemerkt). */
+  hornWave(f) {
+    this.hornWaves = this.hornWaves || new Map();
+    let w = this.hornWaves.get(f);
+    if (w) return w;
+    const N = Math.min(40, Math.floor(6000 / f));
+    const re = new Float32Array(N + 1);
+    const im = new Float32Array(N + 1);
+    for (let k = 1; k <= N; k++) {
+      // abfallende Obertöne, die Membranresonanz hebt die um 2,6 kHz an
+      const res = Math.exp(-(((k * f - 2600) / 900) ** 2));
+      im[k] = (k ** -0.85) * (1 + 1.6 * res) * (k % 2 ? 1 : 0.8);
+    }
+    w = this.ctx.createPeriodicWave(re, im);
+    this.hornWaves.set(f, w);
+    return w;
   }
 
   blinker() {
