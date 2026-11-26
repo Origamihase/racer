@@ -12,9 +12,9 @@ import {
   countryName, badgesAt, badgeTotals, badgesVersion,
 } from '../map/mapview.js';
 import { places, routeFrom, stateOfNode } from '../map/graph.js';
-import { drawCar, drawFlag, drawHeart } from '../map/symbols.js';
+import { FONT, RIVER_FADE, drawCar, drawFlag, drawHeart, drawRiverName } from '../map/symbols.js';
 import { fmtNum } from '../util.js';
-import { fmtKm, fmtOdo } from '../map/navroute.js';
+import { fmtKm, fmtOdo, RIVER_MAP } from '../map/navroute.js';
 import { startNode, startName } from '../game/starts.js';
 
 const MIN_SCALE = 2.6; // ganze Welt
@@ -30,6 +30,11 @@ function el(tag, cls, parent, text) {
   return e;
 }
 
+/**
+ * Namen der Flüsse auf der großen Karte in Bildpunkten: font = Schriftgröße, pad = so viel länger als sein Name muss
+ * das Wasser ohne die auslaufenden Enden sein, damit er darauf steht.
+ */
+const RIVER_PX = { font: 12, pad: 14 };
 const CELL = 64;
 function addSeg(map, ax, ay, bx, by) {
   const i0 = Math.floor(Math.min(ax, bx) / CELL);
@@ -567,6 +572,8 @@ export class MapScreen {
     const v = this.viewNow();
     const ps = this.ps;
     const T = THEMES[this.painter.theme];
+    // Flüsse der Orte am Weg liegen in den Kacheln, unter den Straßen (navroute.js riverOnMap)
+    this.painter.setRivers(this.nav ? this.nav.rivers : []);
     this.done = this.painter.drawTiles(ctx, v, ps, 5);
     ctx.setTransform(ps, 0, 0, ps, 0, 0);
     ctx.lineJoin = 'round';
@@ -639,6 +646,7 @@ export class MapScreen {
       ctx.lineWidth = w;
       ctx.stroke(p);
     }
+    for (const r of m.rivers) this.riverName(ctx, v, T, r);
     this.relabel(ctx, v, T);
     if (m.trip && m.trip.target >= 0) {
       const q = PLACE_BY_INDEX[m.trip.target];
@@ -654,6 +662,20 @@ export class MapScreen {
     ctx.arc(o[0], o[1], size * 0.62, 0, Math.PI * 2);
     ctx.stroke();
     drawCar(ctx, o[0], o[1], Math.atan2(m.pose.dx, -m.pose.dy), size, null);
+  }
+
+  /**
+   * Name eines Flusses am Weg (sein Wasser liegt in den Kacheln): rechts neben dem Weg auf dem Wasser, längs des
+   * Flusses – sobald der dafür lang genug im Bild ist.
+   */
+  riverName(ctx, v, T, r) {
+    const o = [0, 0];
+    const [ax, ay] = v.toScreen(r.x, r.y, o);
+    const d = r.reach * RIVER_MAP.label;
+    const [bx, by] = v.toScreen(r.x + r.wx * d, r.y + r.wy * d, o);
+    ctx.font = `italic 600 ${RIVER_PX.font}px ${FONT}`;
+    if (2 * r.reach * v.scale * (1 - 2 * RIVER_FADE) < ctx.measureText(r.name).width + RIVER_PX.pad) return;
+    drawRiverName(ctx, r.name, bx, by, Math.atan2(by - ay, bx - ax), RIVER_PX.font, T.seaText, T.sea);
   }
 
   /** Ortsnamen, über die Route oder gefahrener Weg laufen, noch einmal obenauf (wie in den Kacheln). */

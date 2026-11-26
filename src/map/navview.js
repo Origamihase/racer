@@ -19,8 +19,8 @@ import { roadAhead, closeScene, curvePoint } from './roadahead.js';
 import { Persp, TiltView, ribbon } from './persp.js';
 import { places } from './graph.js';
 import { goalName } from '../world/kit/layout.js';
-import { fmtOdo } from './navroute.js';
-import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawCar, drawShield, drawFlag, drawHeart } from './symbols.js';
+import { fmtOdo, RIVER_MAP } from './navroute.js';
+import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawCar, drawShield, drawFlag, drawHeart, drawRiverName } from './symbols.js';
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -141,6 +141,11 @@ function flagPop(m) {
 const CAR_Y = 0.69;
 /** Größe eines aufrechten Zeichens auf dem Boden: mit der Tiefe kleiner, aber immer gut lesbar. */
 const upright = (m) => clamp(0.55 + 0.45 * m, 0.78, 1);
+/**
+ * Namen der Flüsse im Navi in Bildpunkten: size, close = Schriftgröße auf der Karte und in der Nahansicht; room = so
+ * weit vom Weg muss der Name auf der Karte liegen, sonst ist der Fluss für einen Namen zu klein im Bild.
+ */
+const RIVER_NAME = { size: 15, close: 17, room: 34 };
 
 /**
  * Das Auto als kleiner schwarzer Pfeil, flach auf dem Boden (c = cos der Neigung staucht ihn), mit etwas Dicke wie ein
@@ -383,6 +388,8 @@ export class NaviScreen {
     const rot = -Math.PI / 2 - Math.atan2(m.pose.dy, m.pose.dx);
     v.set(pose.x, pose.y, kNow * kmPerUnit(pose.y), rot, w, h, ox, oy);
     const reserve = this.reserveK(m, ins, kT, hop) * kmPerUnit(pose.y);
+    // Flüsse der Orte am Weg liegen in den statischen Ebenen der Karte, unter den Straßen (navroute.js riverOnMap)
+    this.painter.setRivers(m.rivers);
     if (cw < 1) this.drawMapGround(ctx, m, T, theme, hop, reserve);
     else if (this.tilt) {
       // die Karte für ihre Rückkehr vorbereiten: die Reserve immer, den vorderen Ausschnitt abseits von Autobahn und
@@ -479,6 +486,39 @@ export class NaviScreen {
     ctx.fillStyle = color;
     ctx.fill(ribbon(this.cam, G, hw, this.gz0, this.gz1));
   }
+  /**
+   * Fläche auf dem Boden füllen: Vieleck G = [gx, gz, …] (Bezugs-Bildpunkte), auf die sichtbare Scheibe gz0 … gz1
+   * zugeschnitten – ein Fluss liegt quer zur Fahrt, seine Ufer reichen vor und hinter den Bildrand.
+   */
+  area(ctx, G, color) {
+    let poly = G;
+    for (const [lim, sg] of [[this.gz0, 1], [this.gz1, -1]]) {
+      const out = [];
+      const n = poly.length / 2;
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        const a = (poly[i * 2 + 1] - lim) * sg;
+        const b = (poly[j * 2 + 1] - lim) * sg;
+        if (a >= 0) out.push(poly[i * 2], poly[i * 2 + 1]);
+        if (a >= 0 !== b >= 0) {
+          const t = a / (a - b);
+          out.push(poly[i * 2] + (poly[j * 2] - poly[i * 2]) * t, lim);
+        }
+      }
+      poly = out;
+    }
+    if (poly.length < 6) return;
+    const o = [0, 0, 0];
+    ctx.beginPath();
+    for (let i = 0; i < poly.length; i += 2) {
+      this.cam.project(poly[i], poly[i + 1], o);
+      if (i) ctx.lineTo(o[0], o[1]);
+      else ctx.moveTo(o[0], o[1]);
+    }
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
 
   /** Die Karte auf dem Boden: statische Ebenen, gefahrener Weg, Route. */
   drawMapGround(ctx, m, T, theme, hop, reserve) {
@@ -526,6 +566,16 @@ export class NaviScreen {
       const P = PLACE_BY_INDEX[m.trip.target];
       tv.toScreen(P.x, P.y, o);
       if (o[2] > 0 && o[0] > -40 && o[0] < w + 40 && o[1] > FOG_Y[1] - 10 && o[1] < h + 50) flagAt = [o[0], o[1], upright(o[2])];
+    }
+    // Namen der Flüsse: rechts neben dem Weg auf dem Wasser, längs des Flusses – wenn er dafür groß genug im Bild liegt
+    const q = [0, 0, 0];
+    for (const r of m.rivers) {
+      const d = r.reach * RIVER_MAP.label;
+      if (!seen({ x: r.x + r.wx * d, y: r.y + r.wy * d })) continue;
+      tv.toScreen(r.x, r.y, q);
+      if (q[2] > 0 && Math.hypot(o[0] - q[0], o[1] - q[1]) > RIVER_NAME.room) {
+        drawRiverName(ctx, r.name, o[0], o[1], Math.atan2(o[1] - q[1], o[0] - q[0]), Math.round(RIVER_NAME.size * upright(o[2])), T.seaText, T.sea);
+      }
     }
     this.drawLabels(ctx, m, T, w, h, flagAt, tags, nav.visited);
     if (flagAt) drawFlag(ctx, flagAt[0], flagAt[1], flagPop(m) * flagAt[2], theme === 'dark' ? '#e6e8eb' : '#1d1f22');
@@ -590,6 +640,16 @@ export class NaviScreen {
           ctx.fill();
         }
       }
+    }
+    // Flüsse der Orte: Wasser in der Farbe der Karte von Ufer zu Ufer, über der bebauten Fläche und unter allen
+    // Fahrbahnen – die Ortsdurchfahrt läuft als Brücke darüber
+    for (const t of sc.towns) {
+      if (!t.river) continue;
+      const near = G(t.river.near);
+      const far = G(t.river.far);
+      const poly = near.slice();
+      for (let i = far.length - 2; i >= 0; i -= 2) poly.push(far[i], far[i + 1]);
+      this.area(ctx, poly, T.sea);
     }
     // Fahrbahnen mit echtem Querschnitt: erst alle Ränder, dann der Asphalt (die Autobahn obenauf), dann die Linien.
     // Ganz klein bleibt jede Straße mindestens so breit wie auf der Karte.
@@ -725,6 +785,9 @@ export class NaviScreen {
         ctx.stroke();
         drawTurnIcon(ctx, 'stop', 0, 0, 26, '#ffffff');
         ctx.restore();
+      } else if (mk.type === 'river') {
+        // Name des Flusses auf dem Wasser rechts neben der Brücke
+        drawRiverName(ctx, mk.name, o[0], o[1], 0, Math.round(RIVER_NAME.close * k), T.seaText, T.sea);
       } else if (mk.type === 'exit') exitButton(ctx, o[0], o[1], T, k, tagOf(mk.name));
       else if (mk.type === 'pin') drawFlag(ctx, o[0], o[1], flagPop(m) * k, theme === 'dark' ? '#e6e8eb' : '#1d1f22');
     }

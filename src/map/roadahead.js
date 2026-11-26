@@ -18,12 +18,20 @@
 // Brunnen), über setTownLayout(fn) angeschlossen. Ohne Baukasten null: dann zeigt das Navi nur, was der Abschnitt der
 // Fahrt hat (Durchfahrt, Ortsanfang und -ende, Zielpunkt), kein erfundenes Straßenmuster.
 import { J, PROFILES } from '../game/trip.js';
+import { places } from './graph.js';
+import { riverOfSec, riverAt } from './rivers.js';
 
 /** Abtastung der Linie in Metern. */
 export const STEP = 10;
+/**
+ * Fluss eines Orts in der Nahansicht: Stützstellen längs des Flusses (Meter links und rechts der Straße, weit über
+ * den Bildrand hinaus) und die Stelle seines Namens (auf dem Wasser rechts neben der Brücke).
+ */
+export const RIVER_SCENE = { X: [-900, -450, -200, -60, 0, 60, 200, 450, 900], label: 62 };
 
 let source = null;
 let layoutSource = null;
+const RP = [0, 0];
 const straight = { n: 0, x: new Float64Array(0), z: new Float64Array(0), psi: NaN };
 
 /**
@@ -110,7 +118,9 @@ function chord(L, i) {
 
 /**
  * Alles in der Nahansicht: {roads: [{kind, role, fade, pts: [d, X, …], sec}], route: [d, X, …], trail: [d, X, …],
- * towns: [{place, sec, pts, streets: [{pts, w}], square: {d, X, r} | null}], marks: [{type, d, X, …}], carX}.
+ * towns: [{place, sec, pts, streets: [{pts, w}], square: {d, X, r} | null, river: {name, near: [d, X, …], far: [d, X,
+ * …]} | null}], marks: [{type, d, X, …}], carX}. river: der Fluss des Orts (rivers.js – dasselbe Band, das die Welt
+ * baut) als seine beiden Wasserkanten diesseits und jenseits, von links nach rechts; dazu die Marke 'river' (sein Name).
  * kind: Querschnitt ('ab', 'rampe', 'verbindung', 'land', 'stadt'); role: 'cur' | 'branch' | 'ghost' | 'ahead';
  * fade 0…1 (verlassene Wege verschwinden, wo die Welt sie verschwinden lässt); marks: 'exit' (angesagte Ausfahrt;
  * name: ihr Schildtext), 'pin' (Zielpunkt), 'term' (Terminal), 'town' (Ortsanfang). ins: die Ansage des Navis (für
@@ -190,7 +200,23 @@ export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = 
       const pts = sample(sec, a, b, MID[sec.profile], []);
       if (pts.length >= 4) scene.roads.push({ kind: sec.profile, role, fade, pts, sec });
       if (sec.kind === 'stadt' && sec.place >= 0) {
-        const town = { place: sec.place, sec, role, pts: pts.slice(), streets: [], square: null };
+        const town = { place: sec.place, sec, role, pts: pts.slice(), streets: [], square: null, river: null };
+        // der Fluss nur, wo auch die Straße des Orts über ihn gezeichnet ist
+        const rv = riverOfSec(sec, places);
+        if (rv && sec.s0 + rv.u > a && sec.s0 + rv.u < b) {
+          const bank = (D) => {
+            const q = [];
+            for (const X of RIVER_SCENE.X) {
+              riverAt(rv, X, D, RP);
+              const Xl = lat(sec, sec.s0 + RP[1], RP[0]);
+              if (Number.isFinite(Xl)) q.push(sec.s0 + RP[1] - s, Xl);
+            }
+            return q;
+          };
+          town.river = { name: rv.name, near: bank(-rv.half), far: bank(rv.half) };
+          riverAt(rv, RIVER_SCENE.label, 0, RP);
+          if (own) scene.marks.push({ type: 'river', name: rv.name, d: sec.s0 + RP[1] - s, X: lat(sec, sec.s0 + RP[1], RP[0]) });
+        }
         // Straßen und Platz aus dem Stadtbaukasten (über setTownLayout), in die Lage der Nahansicht umgerechnet
         const L = townLayout(trip, sec);
         if (L) {

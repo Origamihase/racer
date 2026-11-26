@@ -11,6 +11,7 @@ import { nodes, places, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle 
 import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm } from './mapview.js';
 import { PARKS, parkBoard, postName } from './parks.js';
 import { goalName } from '../world/kit/layout.js';
+import { riverOfSec } from './rivers.js';
 
 const NODE_XY = nodes.map((n) => project(n.lat, n.lon));
 /** Kilometer → Karteneinheiten in der Kartenhöhe y. */
@@ -585,6 +586,40 @@ export function fmtDistance(d) {
 }
 
 /**
+ * Flüsse auf der Karte (rivers.js – dasselbe Band, das die Welt baut und die Nahansicht zeichnet). Die Karte dehnt eine
+ * Ortsdurchfahrt über die ganze Ortsfläche; der Fluss liegt deshalb dort, wo das Auto auf der Karte steht, wenn es in
+ * der Welt über seine Achse fährt, quer zum Weg um seinen Winkel gedreht und so gedehnt wie der Weg – das Auto fährt
+ * auf der Karte genau so lange über Wasser wie in der Welt über die Brücke. chord: Meter vor und hinter der Achse, aus
+ * denen die Richtung des Wegs kommt; reach: Länge je Seite in Halbmessern der Ortsfläche (weiter draußen läge ein Fluss
+ * ohne Stadt im leeren Land; an den Enden läuft er aus, symbols.js fillRiver); label: so weit rechts neben dem Weg
+ * steht sein Name auf dem Wasser (Anteil von reach).
+ */
+export const RIVER_MAP = { chord: 60, reach: 1.25, label: 0.42 };
+/**
+ * Fluss der Ortsdurchfahrt sec auf dem Kartenstück p (aus sectionPieces) oder null: {name, place, x, y (hier kreuzt
+ * seine Achse den Weg), tx, ty (Richtung des Wegs dort), wx, wy (Richtung des Flusses, rechts des Wegs +), k
+ * (Karteneinheiten je Meter), half, reach (Karteneinheiten)}.
+ */
+export function riverOnMap(sec, p) {
+  const rv = riverOfSec(sec, places);
+  if (!rv) return null;
+  const sr = sec.s0 + rv.u;
+  if (!(p.s0 <= sr && sr < p.s1)) return null;
+  const L = new Line();
+  L.push(p.pts, p.s0, p.s1);
+  if (!(L.len > 0)) return null;
+  const k = L.len / (p.s1 - p.s0);
+  const a = L.aOf(sr);
+  const P = [0, 0];
+  L.at(a, P);
+  const [tx, ty] = L.dirAt(a, RIVER_MAP.chord * k, [0, 0]);
+  // rechts des Wegs liegt (−ty, tx): die Karte zählt y nach Süden
+  const wx = -ty * rv.cos + tx * rv.sin;
+  const wy = tx * rv.cos + ty * rv.sin;
+  return { name: rv.name, place: sec.place, x: P[0], y: P[1], tx, ty, wx, wy, k, half: rv.half * k, reach: Math.min(rv.reach * k, RIVER_MAP.reach * townR(sec.place)) };
+}
+
+/**
  * Was das Navi gerade wissen muss, aus einer Fahrt (Trip). update() einmal je Bild aufrufen (billig); teuer wird es nur,
  * wenn sich die Wege der Fahrt ändern (trip.version) oder ein neues Ziel kommt.
  */
@@ -596,6 +631,7 @@ export class NavModel {
     this.target = -2;
     this.cur = new Line(); // eigener Weg (mit s-Zuordnung)
     this.route = null; // geplanter Weg bis zum Ziel: {line, a0 (Auto), stops, dest, kmTotal}
+    this.rivers = []; // Flüsse der Orte am eigenen und am geplanten Weg (riverOnMap)
     this.trail = []; // gefahrener Weg (Kartenpunkte)
     this.trailKm = TRAIL.km; // Mindestabstand seiner älteren Punkte (wächst, wenn das Ausdünnen nicht reicht, thinTrail)
     this.pose = { x: 0, y: 0, dx: 0, dy: -1, a: 0, kind: 'ab' };
@@ -737,11 +773,23 @@ export class NavModel {
     for (const p of pieces) cur.push(p.pts, p.s0, p.s1, p.kind);
     this.cur = cur;
     this.curPen = pen;
+    this.rivers = [];
+    this.addRivers(pieces);
     // Abschnitte, die es nicht mehr gibt, vergessen
     const alive = new Set();
     for (const { path } of trip.paths()) for (const c of path.sections) alive.add(c.id);
     for (const id of this.cache.keys()) if (!alive.has(id)) this.cache.delete(id);
     this.buildRoute(pieces);
+  }
+
+  /** Flüsse der Ortsdurchfahrten unter den Stücken merken (je Ort einmal). */
+  addRivers(pieces) {
+    for (const p of pieces) {
+      if (p.kind !== 'stadt') continue;
+      const sec = this.secById(p.sec);
+      const r = sec && riverOnMap(sec, p);
+      if (r && !this.rivers.some((q) => q.place === r.place)) this.rivers.push(r);
+    }
   }
 
   /** Geplanter Weg: eigener Weg bis zur geplanten Ausfahrt, deren Zweig, dann laut Routenplan bis zum Ziel. */
@@ -797,6 +845,7 @@ export class NavModel {
     if (exitFork && !reached) {
       const pen = this.cache.get(exitFork.sec.id).pen;
       const b = this.build(exitFork.branch, pen);
+      this.addRivers(b.pieces);
       take(b.pieces, Infinity);
       path = exitFork.branch;
       frontier = path.frontier;
