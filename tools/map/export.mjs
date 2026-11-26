@@ -29,6 +29,9 @@ const RICHTUNG_MIN_KM = 0.1;
 // Richtungspunkte bleiben auch hier und stehen auf 1e-4° (1e-3° kippte die Richtung auf 0,3 km um bis zu 18°): so
 // sehen graph.js (straight) und trip.js (turnAngle) an jedem Knoten dieselbe Richtung wie der Verlauf.
 const GROB_KM = 1.5;
+// Uferstraßen (netz.json "ufer", quelle/ufer.py) laufen 0,4 km neben einem Fluss: grob auf 1,5 km schnitte ihre Linie
+// die Bögen des Flusses (Brücken, die es nicht gibt); sie bleiben so fein
+const GROB_UFER_KM = 0.08;
 const rund = (x, stellen) => Math.round(x * 10 ** stellen) / 10 ** stellen;
 // Höchste Steigung je Straßenart (eine Quelle mit der Höhenaufbereitung: quelle/regeln.json); die gerasterte Lage
 // darf sie nicht verschärfen.
@@ -419,7 +422,7 @@ for (const e of netz.edges) {
   }
   // Grobe Zwischenpunkte aus dem kodierten Verlauf, mit den Richtungspunkten
   const richtungen = [keep.indexOf(k1), keep.indexOf(k2)].filter((j) => j > 0 && j < n - 1);
-  const inner = vereinfachen(ebene, null, GROB_KM, 0, richtungen).slice(1, -1);
+  const inner = vereinfachen(ebene, null, e.ufer ? GROB_UFER_KM : GROB_KM, 0, richtungen).slice(1, -1);
   coarse.push(inner.map((k) => (richtungen.includes(k) ? [rund(lat[k], 4), rund(lon[k], 4)] : [rund(lat[k], 3), rund(lon[k], 3)])));
 }
 
