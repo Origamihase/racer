@@ -377,7 +377,7 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
 // lange über Wasser wie in der Welt auf der Brücke; der Zeichner legt ihn unter die Straßen.
 {
   const { Trip, J } = await import('../src/game/trip.js');
-  const { NavModel, RIVER_MAP } = await import('../src/map/navroute.js');
+  const { NavModel, RIVER_MAP, roadGap } = await import('../src/map/navroute.js');
   const { closeScene, RIVER_SCENE } = await import('../src/map/roadahead.js');
   const { MapPainter, THEMES, PLACE_BY_INDEX, townKm, kmPerUnit, bucketOf } = await import('../src/map/mapview.js');
   const { RIVER_FADE } = await import('../src/map/symbols.js');
@@ -502,6 +502,10 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
     ok(near(r.half / r.k, rv.half, 1e-6) && near(r.k, Math.hypot(B[0] - A[0], B[1] - A[1]) / 60, r.k * 0.02), `${key}: Breite im Maßstab des Wegs auf der Karte`);
     const R0 = townKm(p.pop) / kmPerUnit(PLACE_BY_INDEX[target].y);
     ok(r.reach > r.half * 3 && r.reach <= R0 * RIVER_MAP.reach + 1e-12, `${key}: der Fluss der Karte reicht durch den Ort, nicht ins leere Land`);
+    // sein Name: neben dem Weg auf deckendem Wasser, an der Stelle mit dem meisten Platz zwischen den Straßen der Karte
+    const gapAt = (t) => Math.min(...[-RIVER_MAP.span, 0, RIVER_MAP.span].map((e) => roadGap(r.x + r.wx * r.reach * (t + e), r.y + r.wy * r.reach * (t + e), r.reach)));
+    ok(RIVER_MAP.label.includes(r.label) && RIVER_MAP.label.every((t) => gapAt(t) <= gapAt(r.label) + r.reach * 1e-6), `${key}: der Name steht, wo auf dem Wasser am meisten Platz zwischen den Straßen ist (${r.label})`);
+    ok(gapAt(r.label) > 0, `${key}: der Name steht auf keiner Straße der Karte`);
     // quer zum Fluss der Karte (voraus +): das Auto ist so lange über Wasser wie in der Welt auf der Brücke
     const cross = (Q) => (Q[0] - r.x) * r.wy - (Q[1] - r.y) * r.wx;
     const [u0, u1] = riverSpan(rv, RIVER.axis, RIVER.axis);
@@ -551,6 +555,9 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
     }
   }
   ok(widths.Rhein > widths.Main && widths.Elbe > widths.Main, 'Rhein und Elbe sind auf der Karte breiter als der Main');
+  const far = RIVER_MAP.label.map(Math.abs);
+  ok(Math.min(...far) - RIVER_MAP.span > 0.15 && Math.max(...far) + RIVER_MAP.span < 1 - 2 * RIVER_FADE + 0.1, 'Flussnamen der Karte stehen neben dem Weg und auf deckendem Wasser');
+  ok(near(roadGap(1e6, 1e6, 0.5), 0.5), 'roadGap misst höchstens bis zur Grenze');
 }
 
 // Gegenprobe: ein längerer Abschnitt bekäme sein S (die Prüfung oben misst also etwas)

@@ -8,7 +8,7 @@
 // geglättet, damit der Kurs an Knicken nicht zuckt), die geplante Route bis zum Ziel, den gefahrenen Weg, die Orte
 // entlang der Route, Überfahrten (Fähre, Autozug, Flug) als Hüpfer und die Ansage für das Navi. Läuft auch unter Node.
 import { nodes, places, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle } from './graph.js';
-import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm } from './mapview.js';
+import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm, netData } from './mapview.js';
 import { PARKS, parkBoard, postName } from './parks.js';
 import { goalName } from '../world/kit/layout.js';
 import { riverOfSec } from './rivers.js';
@@ -591,14 +591,32 @@ export function fmtDistance(d) {
  * der Welt über seine Achse fährt, quer zum Weg um seinen Winkel gedreht und so gedehnt wie der Weg – das Auto fährt
  * auf der Karte genau so lange über Wasser wie in der Welt über die Brücke. chord: Meter vor und hinter der Achse, aus
  * denen die Richtung des Wegs kommt; reach: Länge je Seite in Halbmessern der Ortsfläche (weiter draußen läge ein Fluss
- * ohne Stadt im leeren Land; an den Enden läuft er aus, symbols.js fillRiver); label: so weit rechts neben dem Weg
- * steht sein Name auf dem Wasser (Anteil von reach).
+ * ohne Stadt im leeren Land; an den Enden läuft er aus, symbols.js fillRiver); label: mögliche Stellen seines Namens
+ * auf dem Wasser neben dem Weg (Anteil von reach, rechts +; die erste gewinnt bei gleich viel Platz), span: so weit
+ * beiderseits davon reicht der Name etwa (Anteil von reach).
  */
-export const RIVER_MAP = { chord: 60, reach: 1.25, label: 0.42 };
+export const RIVER_MAP = { chord: 60, reach: 1.25, label: [0.42, -0.42, 0.34, -0.34, 0.26, -0.26], span: 0.06 };
+/** Abstand des Kartenpunkts (x, y) zur nächsten Autobahn, Landstraße oder zum nächsten Zubringer der Karte, höchstens max. */
+export function roadGap(x, y, max) {
+  let best = max;
+  const scan = (P) => {
+    for (let i = 0; i + 3 < P.length; i += 2) {
+      const dx = P[i + 2] - P[i];
+      const dy = P[i + 3] - P[i + 1];
+      const t = clamp(((x - P[i]) * dx + (y - P[i + 1]) * dy) / (dx * dx + dy * dy || 1), 0, 1);
+      best = Math.min(best, Math.hypot(P[i] + dx * t - x, P[i + 1] + dy * t - y));
+    }
+  };
+  const N = netData();
+  for (const l of N.lines) if (l.kind === 'ab' || l.kind === 'land') scan(l.pts);
+  for (const f of N.feeders) scan(f.pts);
+  return best;
+}
 /**
  * Fluss der Ortsdurchfahrt sec auf dem Kartenstück p (aus sectionPieces) oder null: {name, place, x, y (hier kreuzt
  * seine Achse den Weg), tx, ty (Richtung des Wegs dort), wx, wy (Richtung des Flusses, rechts des Wegs +), k
- * (Karteneinheiten je Meter), half, reach (Karteneinheiten)}.
+ * (Karteneinheiten je Meter), half, reach (Karteneinheiten), label (Stelle seines Namens längs des Flusses, Anteil von
+ * reach: wo auf dem Wasser am meisten Platz zwischen den Straßen der Karte ist)}.
  */
 export function riverOnMap(sec, p) {
   const rv = riverOfSec(sec, places);
@@ -616,7 +634,18 @@ export function riverOnMap(sec, p) {
   // rechts des Wegs liegt (−ty, tx): die Karte zählt y nach Süden
   const wx = -ty * rv.cos + tx * rv.sin;
   const wy = tx * rv.cos + ty * rv.sin;
-  return { name: rv.name, place: sec.place, x: P[0], y: P[1], tx, ty, wx, wy, k, half: rv.half * k, reach: Math.min(rv.reach * k, RIVER_MAP.reach * townR(sec.place)) };
+  const reach = Math.min(rv.reach * k, RIVER_MAP.reach * townR(sec.place));
+  let label = 0;
+  let room = -1;
+  for (const t of RIVER_MAP.label) {
+    let gap = Infinity;
+    for (const e of [-RIVER_MAP.span, 0, RIVER_MAP.span]) gap = Math.min(gap, roadGap(P[0] + wx * reach * (t + e), P[1] + wy * reach * (t + e), reach));
+    if (gap > room + reach * 1e-6) {
+      room = gap;
+      label = t;
+    }
+  }
+  return { name: rv.name, place: sec.place, x: P[0], y: P[1], tx, ty, wx, wy, k, half: rv.half * k, reach, label };
 }
 
 /**

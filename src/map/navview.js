@@ -19,7 +19,7 @@ import { roadAhead, closeScene, curvePoint } from './roadahead.js';
 import { Persp, TiltView, ribbon } from './persp.js';
 import { places } from './graph.js';
 import { goalName } from '../world/kit/layout.js';
-import { fmtOdo, RIVER_MAP } from './navroute.js';
+import { fmtOdo } from './navroute.js';
 import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawCar, drawShield, drawFlag, drawHeart, drawRiverName } from './symbols.js';
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
@@ -567,10 +567,11 @@ export class NaviScreen {
       tv.toScreen(P.x, P.y, o);
       if (o[2] > 0 && o[0] > -40 && o[0] < w + 40 && o[1] > FOG_Y[1] - 10 && o[1] < h + 50) flagAt = [o[0], o[1], upright(o[2])];
     }
-    // Namen der Flüsse: rechts neben dem Weg auf dem Wasser, längs des Flusses – wenn er dafür groß genug im Bild liegt
+    // Namen der Flüsse: neben dem Weg auf dem Wasser, wo zwischen den Straßen am meisten Platz ist (r.label), längs des
+    // Flusses – wenn er dafür groß genug im Bild liegt
     const q = [0, 0, 0];
     for (const r of m.rivers) {
-      const d = r.reach * RIVER_MAP.label;
+      const d = r.reach * r.label;
       if (!seen({ x: r.x + r.wx * d, y: r.y + r.wy * d })) continue;
       tv.toScreen(r.x, r.y, q);
       if (q[2] > 0 && Math.hypot(o[0] - q[0], o[1] - q[1]) > RIVER_NAME.room) {

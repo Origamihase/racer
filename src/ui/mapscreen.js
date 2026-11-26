@@ -14,7 +14,7 @@ import {
 import { places, routeFrom, stateOfNode } from '../map/graph.js';
 import { FONT, RIVER_FADE, drawCar, drawFlag, drawHeart, drawRiverName } from '../map/symbols.js';
 import { fmtNum } from '../util.js';
-import { fmtKm, fmtOdo, RIVER_MAP } from '../map/navroute.js';
+import { fmtKm, fmtOdo } from '../map/navroute.js';
 import { startNode, startName } from '../game/starts.js';
 
 const MIN_SCALE = 2.6; // ganze Welt
@@ -31,8 +31,8 @@ function el(tag, cls, parent, text) {
 }
 
 /**
- * Namen der Flüsse auf der großen Karte in Bildpunkten: font = Schriftgröße, pad = so viel länger als sein Name muss
- * das Wasser ohne die auslaufenden Enden sein, damit er darauf steht.
+ * Namen der Flüsse auf der großen Karte in Bildpunkten: font = Schriftgröße, pad = so weit bleibt der Name vom Weg
+ * entfernt, den der Fluss kreuzt.
  */
 const RIVER_PX = { font: 12, pad: 14 };
 const CELL = 64;
@@ -665,16 +665,18 @@ export class MapScreen {
   }
 
   /**
-   * Name eines Flusses am Weg (sein Wasser liegt in den Kacheln): rechts neben dem Weg auf dem Wasser, längs des
-   * Flusses – sobald der dafür lang genug im Bild ist.
+   * Name eines Flusses am Weg (sein Wasser liegt in den Kacheln): neben dem Weg auf dem Wasser, wo zwischen den
+   * Straßen am meisten Platz ist (r.label), längs des Flusses – sobald er dort weder den Weg berührt noch über das
+   * auslaufende Ende hinausragt.
    */
   riverName(ctx, v, T, r) {
+    ctx.font = `italic 600 ${RIVER_PX.font}px ${FONT}`;
+    const half = ctx.measureText(r.name).width / 2;
+    const at = Math.abs(r.label) * r.reach * v.scale;
+    if (at - half < RIVER_PX.pad || at + half > (1 - RIVER_FADE) * r.reach * v.scale) return;
     const o = [0, 0];
     const [ax, ay] = v.toScreen(r.x, r.y, o);
-    const d = r.reach * RIVER_MAP.label;
-    const [bx, by] = v.toScreen(r.x + r.wx * d, r.y + r.wy * d, o);
-    ctx.font = `italic 600 ${RIVER_PX.font}px ${FONT}`;
-    if (2 * r.reach * v.scale * (1 - 2 * RIVER_FADE) < ctx.measureText(r.name).width + RIVER_PX.pad) return;
+    const [bx, by] = v.toScreen(r.x + r.wx * r.reach * r.label, r.y + r.wy * r.reach * r.label, o);
     drawRiverName(ctx, r.name, bx, by, Math.atan2(by - ay, bx - ax), RIVER_PX.font, T.seaText, T.sea);
   }
 
