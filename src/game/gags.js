@@ -5,7 +5,7 @@
 // seine Zeilen direkt in den Chat (nie über Game.chat oder Game.bot – die würfeln Namen oder schieben die Uhr des
 // Chats) und rührt Geld und Stimmung nur an, wo die Welt mitspielt (Schranke, Laden). So verläuft ein Stream mit den
 // Gags genauso wie ohne sie – die Prüfstände mit festem Zufall (journey-, geld-, ansagen-test) bleiben, wie sie sind.
-import { BOTS, SCHOENNBRUN, GAGS, viewerNameAt, fillTemplate } from '../data.js';
+import { BOTS, SCHOENNBRUN, GAGS, viewerNameAt, fillTemplate, canBuy } from '../data.js';
 import { fmtCent, fmtNum, mulberry32 } from '../util.js';
 import { schrankeOf } from '../world/xxl/schranke.js';
 import { places } from '../map/graph.js';
@@ -422,7 +422,9 @@ export class StreamGags {
     const amount = Math.round(this.between(lo, hi) * 10) / 10;
     M.towns.add(key);
     M.next = g.t + MITLEID.gap;
-    if (g.money < amount) return;
+    // bezahlt wird aus der Kasse des Streams; im Minus kauft Mini Adam nichts (data.js canBuy: das gespeicherte Guthaben
+    // samt der Kasse dieses Streams, wie es die Abrechnung buchen würde)
+    if (g.money < amount || !canBuy((g.save?.wallet || 0) + g.money, amount)) return;
     // bezahlt aus der Kasse des Streams: eine Zeile der Abrechnung (bei den Abzügen), die Stimmung steigt
     g.money -= amount;
     g.breakdown['Mitleidskäufe'] = (g.breakdown['Mitleidskäufe'] || 0) - amount;

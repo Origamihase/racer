@@ -531,7 +531,7 @@ function fakeGame(secs, { gate = true } = {}) {
     standAt(g, town.s0 + u, 4);
     ok(g.gags.mitleid.n === 0, `Mitleidskauf ${why}`);
   }
-  for (const [what, set] of [['in einer Folge', (g) => (g.tv = { place: 165 })], ['beim Laden', (g) => (g.charging = {})], ['am Haltepunkt', (g) => (g.halt = {})], ['ohne Geld', (g) => (g.money = 1)], ['im Rollen', (g) => (g.player.speed = 0.6)]]) {
+  for (const [what, set] of [['in einer Folge', (g) => (g.tv = { place: 165 })], ['beim Laden', (g) => (g.charging = {})], ['am Haltepunkt', (g) => (g.halt = {})], ['ohne Geld', (g) => (g.money = 1)], ['mit Guthaben im Minus (−500 €, Kasse 100 €)', (g) => (g.save = { wallet: -500 })], ['im Rollen', (g) => (g.player.speed = 0.6)]]) {
     const { g, town } = mk();
     g.t = 100;
     g.player.s = town.s0 + 205;
@@ -539,8 +539,16 @@ function fakeGame(secs, { gate = true } = {}) {
     for (let i = 0; i < 40; i++) g.step(0.1);
     ok(g.gags.mitleid.n === 0, `Mitleidskauf ${what}`);
   }
+  // trägt die Kasse dieses Streams die Schulden ab, kauft er wieder (data.js canBuy: Guthaben samt Kasse)
+  {
+    const { g, town } = mk();
+    g.t = 100;
+    g.save = { wallet: -50 };
+    standAt(g, town.s0 + 207, 2);
+    ok(g.gags.mitleid.n === 1, 'Mitleidskauf mit 50 € Schulden und 100 € in der Kasse: nichts gekauft');
+  }
   ok(/if \(o\.gags\?\.mitleid\.n\) line\('Mitleidskäufe', fmtNum\(o\.gags\.mitleid\.n\) \+ ' · ' \+ fmtCent\(o\.gags\.mitleid\.sum\)\)/.test(read('src/ui/menus.js')), 'menus.js: die Statistik zählt die Mitleidskäufe nicht');
-  ok(read('src/data.js').includes("export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Mitleidskäufe'];"), 'data.js: Mitleidskäufe nicht bei den Abzügen');
+  ok(read('src/data.js').includes("export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Ladestrom', 'Mitleidskäufe'];"), 'data.js: Mitleidskäufe nicht bei den Abzügen');
   // ohne Plan des Orts (die Prüfstände) gibt es keine
   const sim = makeStream({ driver: DRIVERS.troedler, seed: 4, endless: true });
   sim.step(600);

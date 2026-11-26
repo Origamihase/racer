@@ -34,11 +34,13 @@ export const DRIVERS = {
 /**
  * Baut einen Stream. opts: driver (DRIVERS), seed, upgrades, traffic (Ersatz für den Verkehr), endless (der Stream
  * endet nicht, wenn nach einer Folge niemand bietet: Game.endless), start (Knoten des Startorts, game/starts.js;
- * Standard Erlensee).
+ * Standard Erlensee), wallet (das Guthaben des Spielstands vor dem Stream, auch im Minus; Standard 0), charge (der Akku
+ * leert sich wirklich, und der Fahrer plant bei jeder Warnung OMIs den Ladestopp, den sie nennt – wie der Lader der
+ * journey-test; sonst steht der Akku nach jedem Bild wieder auf 100).
  * Liefert { game, trip, p, log, step(secs), state() }; log.chat/log.say/log.toast: [{ t, text, name|voice, at }],
  * at = state() im Moment der Meldung; Chatzeilen der Running Gags (gags.js) tragen gag: true.
  */
-export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, traffic = null, endless = false, start } = {}) {
+export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, traffic = null, endless = false, start, wallet = 0, charge = false } = {}) {
   Math.random = mulberry32(seed);
   const trip = new Trip({ rng: Math.random, start });
   const arrival = new Arrival();
@@ -77,7 +79,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });
   game.endless = endless;
-  game.start({ upgrades, best: {} });
+  game.start({ upgrades, best: {}, wallet });
   game.gags.reset(seed); // (im Spiel würfeln die Gags je Stream neu – hier mit der Saat, damit jeder Lauf gleich ist)
   const p = game.player;
   p.s = trip.s;
@@ -88,6 +90,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
   const ctl = { steer: 0, throttle: 0, brake: 0, kappa: 0, grade: 0, horn: false, wiper: false, megafon: false };
   const DT = 1 / 30;
   let waitUntil = -1;
+  let warned = 0;
   const sim = { game, trip, p, log, arrival, state, driver, DT };
   /** secs Sekunden fahren (oder bis der Stream vorbei ist). Gibt false zurück, sobald game.over gesetzt ist. */
   sim.step = (secs) => {
@@ -110,6 +113,10 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
       ctl.throttle = !idle && p.speed < v - 0.5 ? 1 : 0;
       ctl.brake = idle ? 1 : p.speed > v + 3 ? 0.4 : 0;
       game.offAutobahn = sec.kind !== 'ab';
+      if (charge) {
+        if (game.akku.warned > warned && trip.stop < 0 && trip.post < 0 && !game.charging) game.akku.planStop();
+        warned = game.akku.warned;
+      }
       const tvBefore = game.tv;
       game.update(DT, ctl, camera);
       if (tvBefore && !game.tv && driver.dawdle) waitUntil = game.t + driver.dawdle;
@@ -118,7 +125,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
       for (let k = 0; k < evs.length; k++) game.onTrip(evs[k]);
       const rest = arrival.update(trip, evs, p.speed);
       if (rest) game.onTrip(rest);
-      p.battery = 100;
+      if (!charge) p.battery = 100;
     }
     return !game.over;
   };

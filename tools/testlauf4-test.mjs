@@ -459,7 +459,8 @@ console.log('3. Schäden werden abgezogen:');
   ok(row && row.children[0].textContent === want && /^−[\d.]+,00\s€$/.test(row.children[1].textContent) && row.children[1].textContent.includes(String(o.damage.amount).replace(/\B(?=(\d{3})+$)/g, '.')), `Abrechnung: „${row && row.children[0].textContent}“ ${row && row.children[1].textContent} (soll „${want}“ −${o.damage.amount} €)`);
   const mon = all.find((n) => /^over-money/.test(n.className));
   ok(mon && mon.children[0].textContent.startsWith(o.money < 0 ? '−' : '+') && mon.className === (o.money < 0 ? 'over-money minus' : 'over-money'), `Ergebnis im Abspann: ${mon && mon.children[0].textContent} (${o.money})`);
-  // das Guthaben fällt mit einem Stream im Minus, aber nie unter null (save.js settleStream, gebucht von main.js finishRun)
+  // das Guthaben fällt mit einem Stream im Minus, auch unter null (save.js settleStream, gebucht von main.js finishRun;
+  // Besitzer, 25.11.2026: Schäden und Bußgelder dürfen es ins Minus ziehen)
   {
     const { settleStream } = await import('../src/save.js');
     const acc = (wallet) => ({ wallet, best: {}, stats: {} });
@@ -469,7 +470,7 @@ console.log('3. Schäden werden abgezogen:');
     settleStream(b, { money: -305, distance: 1000 });
     const c = acc(10);
     settleStream(c, { money: o.money, distance: o.distance });
-    ok(a.wallet === 0 && b.wallet === 195 && c.wallet === Math.max(0, Math.round((10 + o.money) * 100) / 100), `Guthaben nach dem Stream: ${a.wallet}, ${b.wallet}, ${c.wallet}`);
+    ok(a.wallet === -255 && b.wallet === 195 && c.wallet === Math.round((10 + o.money) * 100) / 100, `Guthaben nach dem Stream: ${a.wallet}, ${b.wallet}, ${c.wallet}`);
     ok(/settleStream\(save, \{ money: o\.money/.test(mainSource()), 'main.js bucht den Stream nicht über settleStream');
   }
   console.log(`  Runde 1: ${b1 ? `${b1.hits} Rempler + ${b1.marks} Kratzer = ${b1.amount} €, Kasse ${b1.before} → ${b1.after} €, „${b1.toast.text}“` : '–'} · Ende: ${open} Rempler offen gebucht · Abspann „${row && row.children[0].textContent} ${row && row.children[1].textContent}“, Ergebnis ${mon && mon.children[0].textContent}`);

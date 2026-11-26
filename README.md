@@ -56,10 +56,13 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
   oder kriecht der Wagen daneben, bietet der Bildrand das Laden an, und <kbd>L</kbd> (am Gamepad LB, auf dem Handy
   „Jetzt laden“) lädt gleich dort. Anderswo plant dieselbe Taste (der Knopf heißt dann „Ladestopp einplanen“) den
   nächsten Stopp ein, das Navi führt hinein und danach weiter zum Ziel; nur an der geplanten Säule beginnt das Laden
-  von selbst. Bei 10 und bei 5 % warnt der Mittelbildschirm mit einer roten Karte; ist der Akku
-  leer, rollt der Wagen aus, und die Fahrt ist zu Ende. Rempler kosten Karosserie-Punkte, die Werkstatt rechnet sie
-  am Brunnen ab (210 € je Rempler, 35 € je Kratzer; frontal in den Gegenverkehr je nach Annäherung bis über 1.000 € und
-  ab 90 km/h zwei Punkte); zu viel Blechschaden beendet die Fahrt ebenfalls.
+  von selbst. Der Strom kommt auf die Rechnung (Zeile „Ladestrom“): Jeder Ladepark und jede Säule eines Orts hat einen
+  festen Preis, den die Bildschirme der Säulen zeigen – in Deutschland 0,46 bis 0,59 € je kWh, im Ausland mehr und in
+  der Landeswährung (etwa 0,73 CHF/kWh; abgerechnet wird in Euro). Geladen wird aber immer, auch wenn das Guthaben im
+  Minus steht. Bei 10 und bei 5 % warnt der Mittelbildschirm mit einer roten Karte; ist der Akku leer, rollt der Wagen aus,
+  und die Fahrt ist zu Ende. Rempler kosten Karosserie-Punkte, die Werkstatt rechnet sie am Brunnen ab (450 € je
+  Rempler, 75 € je Kratzer; frontal in den Gegenverkehr je nach Annäherung bis über 2.000 € und ab 90 km/h zwei
+  Punkte); zu viel Blechschaden beendet die Fahrt ebenfalls.
 - **Live-Chat und Live-Bereich:** Spenden mit Alter-Skala, Sprachdurchsagen, gekaufte Rahmen
   (Rosen, Sonnenblumen, Pappkartons …), Funklöcher, Polizei Gifhorn, Blitzer mit Polaroid,
   Brunnen und die blaue Plüsch-Elsa mit Krönchen und Schärpe am Straßenrand, Bananensaft und Koriander – und ab und zu ein lächerliches
@@ -70,7 +73,10 @@ es mit <kbd>F</kbd> oder dem Knopf „Vollbild“ (auf dem iPhone über Teilen �
   Akku-Puffer, Stream-Technik, Sportreifen, Sportfahrwerk, Sportbremsen, Plüsch-Polster, Wischer-Firmware (Beta),
   Radarwarner, Satelliten-Schüssel, Linke-Spur-Sammelaktion, Wackel-Elsa, Warnweste und Konfetti-Kanone. Blitzer
   kommen unangekündigt – nur wer den Radarwarner an Bord hat, hört es vorher piepen und OMI warnen. Das Megafon
-  gehört zur Ausstattung (wer es früher gekauft hat, bekommt die 450 € einmal zurück).
+  gehört zur Ausstattung (wer es früher gekauft hat, bekommt die 450 € einmal zurück). Schäden, Bußgelder (100 € je
+  Blitzerfoto, 50 € Verwarngeld für Standstreifen und Rechtsfahrgebot) und Ladestrom werden immer ganz gebucht und
+  dürfen das Guthaben ins Minus ziehen (im HUD steht es mit den Einnahmen des laufenden Streams, im Minus rot); dann
+  bleibt der Shop zu, bis spätere Streams es wieder ins Plus bringen – gespielt und geladen wird trotzdem.
 - **Abspann** mit Abrechnung, Statistik, Blitzerfotos, erlogener Berufsbezeichnung des Tages und einem
   „Danke an“ – größte Spende, wer Abos verschenkt hat und wer neu VIP geworden ist.
 

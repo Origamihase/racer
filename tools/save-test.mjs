@@ -178,17 +178,17 @@ for (const [what, raw] of [
   storeSave(b);
   const c = loadSave();
   ok(c.pending === null && same(c.streamNote, b.streamNote), 'Hinweis oder erledigter Zwischenstand gehen beim Speichern verloren');
-  // ein abgebrochener Stream im Minus: Der Titel nennt, was wirklich vom Guthaben abging
+  // ein abgebrochener Stream im Minus: Der Titel nennt, was wirklich vom Guthaben abging – ganz, auch unter null
   const m = loadSave();
   m.wallet = 120;
   m.pending = { money: -325, distance: 23400, peakViewers: 1, naviReached: 0, crashes: 3 };
   settlePending(m);
-  ok(m.wallet === 0 && same(m.streamNote, { money: -120, distance: 23400 }), `Abbruch im Minus: Guthaben ${m.wallet}, Hinweis ${JSON.stringify(m.streamNote)}`);
-  // ein Stream im Minus (Schäden): Das Guthaben fällt nie unter null
+  ok(m.wallet === -205 && same(m.streamNote, { money: -325, distance: 23400 }), `Abbruch im Minus: Guthaben ${m.wallet}, Hinweis ${JSON.stringify(m.streamNote)}`);
+  // ein Stream im Minus (Schäden, Bußgelder): Das Guthaben geht unter null, und die Schulden bleiben stehen
   const d = loadSave();
   d.wallet = 10;
   settleStream(d, { money: -325, distance: 800, peakViewers: 300, naviReached: 0, crashes: 3 });
-  ok(d.wallet === 0, `Stream im Minus: Guthaben ${d.wallet} statt 0`);
+  ok(d.wallet === -315, `Stream im Minus: Guthaben ${d.wallet} statt −315`);
   // der Rekord zählt erst ab 50 Reisemetern
   const e = loadSave();
   e.best.reise = 0;

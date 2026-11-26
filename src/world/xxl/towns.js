@@ -15,6 +15,7 @@ import { SCHRANKE, schrankeOf, buildSchranke } from './schranke.js';
 import { camerasOf } from './blitzer.js';
 import { TOWN_SIGN_X } from './signplan.js';
 import { PARKS, PARK } from '../../map/parks.js';
+import { ladePreis } from '../../map/ladepreis.js';
 
 let kit = null;
 /**
@@ -73,8 +74,9 @@ export function townPlan(K, sec, budget = Infinity) {
     ...(island ? { island } : sec.start ? { goal: START_GOAL - sec.s0 } : {}),
     // die Ladesäule des Orts (charge.js; in Erlensee am Start der Supercharger, an dem jede Fahrt beginnt): Stecker und
     // Kabel bringt der Ort mit (Towns.lay, chargerig.js), auf der Ortsdurchfahrt steht die Popcorn-Maschine auf der Säule
-    // und vor dem Park die Stele (der Plan hält ihr Platz und Sichtlinie frei)
-    ...(charge ? { charge: { u: charge.u, kind: CHARGE.kindStart, stop: !charge.start, stele: steleOf(sec) } } : {}),
+    // und vor dem Park die Stele (der Plan hält ihr Platz und Sichtlinie frei); die Bildschirme der Säulen zeigen den
+    // Preis der Säule des Orts (map/ladepreis.js, derselbe, den der Ladestopp dort bucht)
+    ...(charge ? { charge: { u: charge.u, kind: CHARGE.kindStart, stop: !charge.start, stele: steleOf(sec), price: ladePreis({ post: sec.place }) } } : {}),
     // der Blitzer des Orts (blitzer.js) und die Tafel einer Säule hinter dem Brunnen (die stellt der Schilderplan): ihr
     // Platz im Streifen bleibt frei
     ...(poles.length ? { poles } : {}),
@@ -83,10 +85,11 @@ export function townPlan(K, sec, budget = Infinity) {
 
 /**
  * Plan des Ladeparks eines Abschnitts 'park' (kit/layout.js planPark): derselbe für denselben Park, benannt wie seine
- * Schilder, der Ladepark mit der Mitte bei PARK.u (dort hält der Wagen neben der freien Heldenbucht, PARK.halt).
+ * Schilder, der Ladepark mit der Mitte bei PARK.u (dort hält der Wagen neben der freien Heldenbucht, PARK.halt), auf
+ * den Bildschirmen seiner Säulen sein Preis (map/ladepreis.js).
  */
 export function parkPlan(K, sec) {
-  return K.planPark({ title: PARKS[sec.park].name, len: sec.s1 - sec.s0, u: PARK.u, kind: CHARGE.kindStart });
+  return K.planPark({ title: PARKS[sec.park].name, len: sec.s1 - sec.s0, u: PARK.u, kind: CHARGE.kindStart, price: ladePreis({ park: sec.park }) });
 }
 
 /**

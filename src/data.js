@@ -1,6 +1,6 @@
 // Alle Texte, Insider und Spieldaten an einem Ort.
 // Quellen der Insider: SkylineTV LIVE Wiki (siehe INSIDER.md im Repo).
-import { pick, randInt, chance, fmtEuro, fmtCent } from './util.js';
+import { pick, randInt, chance, fmtEuro, fmtCent, fmtKwh, fmtNum } from './util.js';
 
 // Der Name des Spiels ist „Mini Adam – Navi ferngesteuert BrunnenTV XXL“ (GAME_NAME: Über das Spiel, Seitentitel und
 // README sagen es so). Auf dem Titelbildschirm steht er unter dem großen „Mini Adam“: GAME_SUBTITLE, dahinter GAME_XXL
@@ -92,7 +92,7 @@ export const INCOME = {
   Challenges: 'Challenge',
 };
 // Abzüge stehen in der Abrechnung ganz unten
-export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Mitleidskäufe'];
+export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Ladestrom', 'Mitleidskäufe'];
 
 /**
  * Reise: An jedem erreichten Ziel kommt die Werkstatt-Rechnung der Runde (game.js settleRound). bump: Euro je
@@ -105,8 +105,9 @@ export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Mitleidskäufe'];
 export const REPARATUR = { bump: 450, mark: 75 };
 /**
  * Bußgelder (der Besitzer am 24.11.: „Die Kosten sind generell noch ein wenig zu günstig“): geblitzt (Autobahn, Ort,
- * Landstraße) blitzer, Verwarngeld für Standstreifen und Rechtsfahrgebot verwarn. Abgebucht wird, was die Kasse hat
- * (Game.fine). Vor dem 24.11.: Rempler 150 €, Kratzer 25 €, Blitzer 15 €, Verwarngeld 10 €.
+ * Landstraße) blitzer, Verwarngeld für Standstreifen und Rechtsfahrgebot verwarn. Abgebucht wird immer der ganze
+ * Betrag, auch ins Minus (Game.fine; Besitzer, 25.11.2026). Vor dem 24.11.: Rempler 150 €, Kratzer 25 €, Blitzer 15 €,
+ * Verwarngeld 10 €.
  */
 // der Besitzer am 25.11.: „Ein Blitzerfoto soll 100€ kosten.“ (vorher 20 €), zum Verwarngeld „Mach 50€ draus“ (vorher 15 €)
 export const BUSSGELD = { blitzer: 100, verwarn: 50 };
@@ -118,6 +119,28 @@ export const BUSSGELD = { blitzer: 100, verwarn: 50 };
  */
 export const FRONTAL = { base: 1.5, perKmh: 1 / 50 };
 export const frontalCost = (kmh) => Math.round((REPARATUR.bump * (FRONTAL.base + Math.max(0, kmh) * FRONTAL.perKmh)) / 5) * 5;
+/**
+ * Ladestrom (Besitzer, 25.11.2026: „Das Laden des Autos soll auch auf die Rechnung. (Egal wie der Kontostand ist, laden
+ * muss trotzdem gehen, um weiterspielen zu können)“): Geladen sind die Prozent, die der Akku gewinnt, von seiner
+ * nutzbaren Kapazität (Player.capacity: 75 kWh, je Stufe Akku-Puffer 4 mehr – dasselbe Maß, nach dem er sich leert),
+ * zum Preis des Ladeplatzes (map/ladepreis.js: in Deutschland 0,46 bis 0,59 €/kWh, im Ausland mehr). Gebucht wird am
+ * Ende des Ladens aus der Stream-Kasse, auch ins Minus (Game.payCharge); vorher fragt niemand nach dem Kontostand.
+ * Ladestrom für pct Prozent eines Akkus mit capacity kWh zu euroPerKwh: { kwh, euro } (Euro auf den Cent).
+ */
+export function ladeKosten(pct, capacity, euroPerKwh) {
+  const kwh = (Math.max(0, pct) / 100) * capacity;
+  return { kwh, euro: Math.round(kwh * euroPerKwh * 100) / 100 };
+}
+/**
+ * „1 Ladestopp · 71,3 kWh à 0,52 €/kWh“: was der Ladestrom einer Abrechnung zählt (Abspann); preis: ladePreisText.
+ */
+export const ladeCount = (n, kwh, preis = '') => `${n === 1 ? '1 Ladestopp' : n + ' Ladestopps'} · ${fmtKwh(kwh)}${preis ? ' ' + preis : ''}`;
+/**
+ * Der Preis zu einer Ladestrom-Rechnung bill ({ kwh, amount, preis }, Game.ladeBill): „à 0,52 €/kWh“ (im Ausland der
+ * Preis der Säule in ihrer Währung, „à 0,72 CHF/kWh“; der Betrag daneben steht in Euro); lud der Stream zu
+ * verschiedenen Preisen (preis leer), der Schnitt in Euro: „· Ø 0,55 €/kWh“.
+ */
+export const ladePreisText = (bill) => (!bill || !(bill.kwh > 0) ? '' : bill.preis ? 'à ' + bill.preis : `· Ø ${fmtNum(bill.amount / bill.kwh, 2)}\u00a0€/kWh`);
 /** Werkstatt-Rechnung: hits Rempler (frontale mitgezählt), marks Kratzer, extra = was frontale mehr kosten. */
 export const damageCost = (hits, marks, extra = 0) => REPARATUR.bump * hits + REPARATUR.mark * marks + extra;
 /**
@@ -588,6 +611,10 @@ export const CHAT = {
   // Reise: Ladestopp im Ladepark (Akku.tickCharge), die Popcorn-Maschine an der Säule und die Saftpause
   popcorn: ['Popcorn-Stream! 🍿', '🍿🍿🍿', 'Haushaltsgeräte an der E-Säule testen 😂', 'Die Säule kann auch Popcorn!', 'Popcorn mit Ökostrom 🔌', 'Salzig oder süß? 🍿'],
   saftpause: ['Bananensaft-Pause! 🍌', 'Prost, Mini Adam! 🍌', 'Zucker tanken 🍌🔋', 'Erst Saft, dann Strom 😄'],
+  // … und die Rechnung für den Ladestrom danach (Game.payCharge, nicht nach jedem Laden)
+  ladestrom: ['Strom ist teurer als Popcorn 😅', 'Wer zahlt den Strom? Wir! 😂', 'Die Säule schickt die Rechnung 🧾⚡',
+    'Hauptsache voll 🔋', 'Kilowattstunden-König 👑⚡', 'James rechnet schon 🤓', 'Teuer, aber der Akku ist voll 😌',
+    'Ladestrom ✔️ Popcorn ✔️ weiter!', 'Strompreis-Schock 😱', 'Volle Ladung für den Stream ⚡'],
   shoulder: ['Standstreifen?! 😱', 'Polizei Gifhorn!!', 'Das ist keine Fahrspur!'],
   fiveJobs: ['Job erledigt ✅', 'Weiter so!', 'Noch ein Job weniger', 'Versprochen ist versprochen 🤝',
     'Jetzt wird gezahlt 😂', 'Challenge geschafft!'],
@@ -1227,11 +1254,20 @@ export function shopPrice(it, lvl) {
   const p = it.prices[lvl];
   return it.code ? Math.round(p * (100 - it.code.off)) / 100 : p;
 }
+/**
+ * Im Minus wird nichts gekauft (Besitzer, 25.11.2026: „Dann kann man nichts mehr im Shop kaufen, aber trotzdem noch
+ * spielen und auch laden.“): Steht das Guthaben unter null, ist der Shop zu – bis spätere Streams es wieder ins Plus
+ * bringen. Spielen und Laden fragen nie danach.
+ */
+export const SHOP_LOCK = '🔒 Guthaben im Minus: erst wieder ins Plus fahren, dann geht der Shop wieder auf.';
+export const shopLocked = (wallet) => wallet < 0;
+/** Reicht das Guthaben für einen Kauf zum Preis price? Nie im Minus, nie unter dem Preis. */
+export const canBuy = (wallet, price) => !shopLocked(wallet) && wallet >= price;
 // Das Megafon ist kein Shop-Artikel mehr (save.js refundMegafon): Titel und Shop sagen es dem, der es gekauft hatte
 /** Titel nach einem Stream, der ohne Abspann endete (Seite zu, Absturz): was er gebracht hat (save.js settlePending). */
 export const STREAM_GEBUCHT = (km, euro, minus) =>
   minus
-    ? `📼 Letzter Stream ohne Abspann gebucht: ${km}, Werkstatt −${euro}.`
+    ? `📼 Letzter Stream ohne Abspann gebucht: ${km}, −${euro} vom Guthaben.`
     : `📼 Letzter Stream ohne Abspann gebucht: ${km}, +${euro} im Guthaben.`;
 export const MEGAFON_ERSTATTET = (euro) => `📢 Das Megafon gehört jetzt zur Ausstattung – deine ${euro} sind zurück im Guthaben.`;
 

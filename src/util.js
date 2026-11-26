@@ -46,6 +46,14 @@ export const fmtNum = (v, digits = 0) => nf(digits, digits).format(v);
 // geschütztes Leerzeichen: Betrag und € werden nie auf zwei Zeilen getrennt
 export const fmtEuro = (v, digits = 0) => nf(digits, digits).format(v) + '\u00a0€';
 export const fmtCent = (v) => nf(2, 2).format(v) + '\u00a0€';
+/**
+ * Ein Kontostand (Guthaben, Stream-Kasse): im Minus mit echtem Minuszeichen („−500,00 €“, nicht „-500,00 €“), nie
+ * „−0,00 €“ für einen Rest unter einem halben Cent; kontoMinus: ob er so im Minus steht (dann in der Farbe der Abzüge).
+ */
+export const kontoMinus = (v) => v <= -0.005;
+export const fmtKonto = (v) => (kontoMinus(v) ? '−' : '') + fmtCent(Math.abs(v) < 0.005 ? 0 : Math.abs(v));
+/** Geladene Energie: „71,3 kWh“ (eine Nachkommastelle, geschütztes Leerzeichen). */
+export const fmtKwh = (v) => nf(1, 1).format(v) + '\u00a0kWh';
 
 // Tacho: ganze km/h – die eine Rundung für den Mittelbildschirm und das HUD (das zeigt die Zahl des Bildschirms)
 export const tachoKmh = (kmh) => Math.round(kmh);

@@ -47,7 +47,7 @@ import { UI } from './ui/ui.js';
 import * as sicht from './ui/sicht.js';
 import { Menus } from './ui/menus.js';
 import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
-import { SHOP, UPGRADE_LIMITS, shopPrice } from './data.js';
+import { SHOP, UPGRADE_LIMITS, shopPrice, canBuy } from './data.js';
 import { NavModel } from './map/navroute.js';
 import { nextStart, startNode } from './game/starts.js';
 import { setRoadAhead, setTownLayout } from './map/roadahead.js';
@@ -617,7 +617,8 @@ const menus = new Menus(app, {
     const lvl = save.upgrades[id] || 0;
     if (!it || lvl >= UPGRADE_LIMITS[id]) return false;
     const price = shopPrice(it, lvl);
-    if (save.wallet < price) {
+    // im Minus ist der Shop zu (data.js canBuy), sonst reicht das Guthaben für den Preis oder nicht
+    if (!canBuy(save.wallet, price)) {
       audio.bad();
       return false;
     }

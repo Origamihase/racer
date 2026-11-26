@@ -1,7 +1,7 @@
 // Das Stream-Overlay über dem Spiel: LIVE-Anzeige, Zuschauer, Strecke, Guthaben, Akku, Karosserie-Punkte, Chat mit
 // Bots, die Streifen oben (Navi, Hinweise) und unten (Untertitel, BrunnenTV), Rahmen und Blitzerfotos. Wo was wohnt
 // und welches Rechteck dabei frei bleibt, steht in sicht.js: Über der Bildmitte liegt nichts, solange gefahren wird.
-import { fmtNum, fmtCent, fmtEuro, fmtClock, clamp, tachoKmh } from '../util.js';
+import { fmtNum, fmtCent, fmtEuro, fmtClock, clamp, tachoKmh, fmtKonto, kontoMinus } from '../util.js';
 import { nameColor, nameBreak, BOTS, SCHOENNBRUN } from '../data.js';
 import { DamageBadge, CruiseBadge } from './drive-hud.js';
 import { drawTurnIcon } from '../map/symbols.js';
@@ -884,10 +884,14 @@ export class UI {
     this.recordEl.textContent = odo > best && best > 0 ? '🏆 neuer Rekord!' : best > 0 ? 'Rekord ' + strecke(best) : '';
     this.recordEl.classList.toggle('record', odo > best && best > 0);
     if (tacho === null) this.showKmh(tachoKmh(p.kmh));
-    // (die Schäden können die Stream-Kasse ins Minus bringen)
-    const money = (g.money < 0 ? '−' : '') + fmtCent(Math.abs(g.money));
+    // Guthaben: das gespeicherte aus den Streams davor (save.wallet) und die Kasse dieses Streams zusammen, so viel hätte
+    // Mini Adam, endete der Stream jetzt (am Ende bucht main.js die Kasse ins gespeicherte; dann zeigt das HUD nichts
+    // mehr an). Schäden, Bußgelder und Ladestrom können es ins Minus bringen: dann mit Minuszeichen in der Farbe der Abzüge
+    const konto = g.save.wallet + g.money;
+    const money = fmtKonto(konto);
     if (money !== this.moneyRow.textContent) {
       this.moneyRow.textContent = money;
+      this.moneyRow.classList.toggle('minus', kontoMinus(konto));
       // ein längeres Guthaben lässt einer stehenden Gutschrift weniger Platz
       if (this.moneyPops.firstChild) this.fitMoneyPop();
     }

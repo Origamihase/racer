@@ -105,7 +105,10 @@ export class WorldNavi {
     const D = trip.distances(true);
     const list = (this.list = []);
     const ahead = trip.cur.sections.filter((c) => c.kind === 'stadt' && !c.spotDone && c.s1 > trip.s).map((c) => c.place);
-    const near = this.opening ? this.nearby(trip, D, ahead) : null;
+    // (liegt ein eingeplanter Ladepark hinter dem Wagen, führt schon der Weg dorthin über ein Wenden, und die erste
+    // Runde fände keinen Ort: dann wählt sie nach der Entfernung wie jede andere – es gibt immer etwas zu bieten)
+    let near = this.opening ? this.nearby(trip, D, ahead) : null;
+    if (near && near.size < OPENING.min) near = null;
     for (const t of this.targets) {
       const p = places[t.place];
       const far = near ? (near.has(t.place) ? 1 : 0) : placeWeight(D.toPlace(t.place).km);
@@ -130,8 +133,11 @@ export class WorldNavi {
     }
     pool.sort((a, b) => a.secs - b.secs);
     const rows = [];
-    // (liegen zu viele der nächsten hinter dem Wagen, geht die Suche weiter, bis min Orte gefunden sind)
-    for (let i = 0; i < pool.length && (i < O.pool || rows.length < O.min); i++) {
+    // (liegen zu viele der nächsten hinter dem Wagen, geht die Suche weiter, bis min Orte gefunden sind – außer mit
+    // eingeplantem Ladestopp: führt der Weg zu ihm über ein Wenden, wendet er zu jedem Ort, und die Suche liefe für
+    // jedes Gebot über die ganze Karte)
+    const scan = trip.stop >= 0 || trip.post >= 0 ? O.pool : pool.length;
+    for (let i = 0; i < Math.min(pool.length, scan) && (i < O.pool || rows.length < O.min); i++) {
       const r = trip.whatIf(pool[i].place, true);
       if (isFinite(r.secs) && !r.wende) rows.push({ place: pool[i].place, secs: r.secs });
     }

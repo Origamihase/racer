@@ -1,7 +1,7 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, MEGAFON_ERSTATTET, STREAM_GEBUCHT, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice } from '../data.js';
-import { fmtNum, fmtCent, fmtEuro, fmtSpan } from '../util.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, ladeCount, ladePreisText, MEGAFON_ERSTATTET, STREAM_GEBUCHT, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice, shopLocked, canBuy, SHOP_LOCK } from '../data.js';
+import { fmtNum, fmtCent, fmtEuro, fmtSpan, fmtKonto, kontoMinus } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
 import { MapScreen, visitLine } from './mapscreen.js';
@@ -357,7 +357,8 @@ export class Menus {
     button(menu, 'ℹ️  Über das Spiel', 'about');
     feedbackLink(menu);
     const stats = el('div', 'title-stats', card);
-    el('span', '', stats, '💶 ' + fmtCent(d.wallet) + ' Guthaben');
+    // im Minus mit Minuszeichen und in der Farbe der Abzüge (Schäden und Bußgelder dürfen es unter null ziehen)
+    el('span', kontoMinus(d.wallet) ? 'minus' : '', stats, '💶 ' + fmtKonto(d.wallet) + ' Guthaben');
     // Rekord und Summe in Reisekilometern, dazu die besuchten Orte (dieselbe Zahl wie auf der großen Karte)
     el('span', '', stats, '🏆 Rekord ' + fmtOdo((d.best.reise || 0) / 1000));
     el('span', '', stats, '🛣️ ' + fmtOdo(d.stats.reiseKm || 0) + ' gesamt');
@@ -388,13 +389,14 @@ export class Menus {
     if (canFullscreen()) button(tools, fullscreenLabel(), 'vollbild', 'fs-btn');
     el('p', 'sub', card, 'Kappandramäßige Zusammenfassung für alle, die gerade erst reingekommen sind:');
     const grid = el('div', 'summary-grid', card);
-    const item = (k, v) => {
+    const item = (k, v, cls = '') => {
       const r = el('div', 'sum', grid);
       el('span', 'k', r, k);
-      el('span', 'v', r, v);
+      el('span', cls ? 'v ' + cls : 'v', r, v);
     };
     item('Strecke', fmtOdo(g.odometer / 1000));
-    item('Einnahmen dieser Fahrt', signedCent(g.money).replace(/^\+/, ''));
+    // im Minus mit Minuszeichen in der Farbe der Abzüge wie die Posten der Kasse darunter (nie „−0,00 €“)
+    item('Einnahmen dieser Fahrt', fmtKonto(g.money), kontoMinus(g.money) ? 'minus' : '');
     // ein echter Ort – oder, zwischen Ankunft und erstem Gebot der Runde, was gerade gilt (WorldNavi.label)
     item('Navi-Ziel', g.navi.label);
     item('Navi-Gebote', fmtNum(g.stats.naviChanges));
@@ -438,7 +440,8 @@ export class Menus {
     el('span', 'lbl', dist, o.newRecord ? '🏆 Neuer Rekord!' : 'Rekord: ' + strecke(o.best));
     const mon = el('div', 'over-money' + (o.money < 0 ? ' minus' : ''), big);
     el('span', 'num', mon, signedCent(o.money));
-    el('span', 'lbl', mon, 'Guthaben · jetzt ' + fmtCent(o.wallet));
+    const now = el('span', 'lbl', mon, 'Guthaben · jetzt ');
+    el('span', 'konto' + (kontoMinus(o.wallet) ? ' minus' : ''), now, fmtKonto(o.wallet));
     const menu = el('div', 'menu row over-menu', card);
     button(menu, '↻ Nochmal fahren', 'restart', 'primary');
     button(menu, '🛒 Shop', 'shop');
@@ -454,8 +457,10 @@ export class Menus {
     el('h3', '', left, 'Abrechnung');
     for (const [k, v] of breakdownRows(o.breakdown)) {
       const row = el('div', 'bd' + (v < 0 ? ' minus' : ''), left);
-      // die Schäden mit ihrer Zahl: „Schäden (2 Rempler · 1 Kratzer)“
-      const count = k === 'Schäden' && o.damage ? damageCount(o.damage.hits, o.damage.marks, o.damage.front || 0) : '';
+      // die Schäden mit ihrer Zahl: „Schäden (2 Rempler · 1 Kratzer)“, der Ladestrom mit dem Preis der Säulen:
+      // „Ladestrom (1 Ladestopp · 71,3 kWh à 0,52 €/kWh)“
+      const count = k === 'Schäden' && o.damage ? damageCount(o.damage.hits, o.damage.marks, o.damage.front || 0)
+        : k === 'Ladestrom' && o.laden && o.laden.n ? ladeCount(o.laden.n, o.laden.kwh, ladePreisText(o.laden)) : '';
       el('span', '', row, count ? `${k} (${count})` : k);
       el('span', '', row, (v < 0 ? '−' : '+') + fmtCent(Math.abs(v)));
     }
@@ -653,9 +658,12 @@ export class Menus {
     const card = el('div', 'card shop-card', s);
     const head = el('div', 'shop-head', card);
     el('h2', '', head, '🛒 Shop');
-    el('div', 'wallet', head, '💶 ' + fmtCent(d.wallet));
+    el('div', 'wallet' + (kontoMinus(d.wallet) ? ' minus' : ''), head, '💶 ' + fmtKonto(d.wallet));
     el('p', 'sub', card, 'Upgrades für den schwarzen Model 3 Long Range AWD. Bezahlt wird mit den Stream-Einnahmen: Spenden, Abos, Navi-Gebote.');
     if (d.refund) el('p', 'refund-note', card, MEGAFON_ERSTATTET(fmtEuro(d.refund)));
+    // im Minus ist der Shop zu: der Grund oben, jeder Kauf-Knopf gesperrt (Spielen und Laden gehen weiter)
+    const locked = shopLocked(d.wallet);
+    if (locked) el('p', 'shop-lock', card, SHOP_LOCK);
     const grid = el('div', 'shop-grid', card);
     for (const it of SHOP) {
       const lvl = d.upgrades[it.id] || 0;
@@ -680,9 +688,10 @@ export class Menus {
           el('span', 'shop-code-tag', code, `Code ${it.code.name} −${it.code.off}\u00a0%`);
           el('s', '', code, fmtEuro(it.prices[lvl]));
         }
-        const ok = d.wallet >= price;
-        // reicht das Guthaben nicht, steht da, wie viel noch fehlt
-        const b = button(c, ok ? 'Kaufen · ' + fmtEuro(price) : fmtEuro(price) + ' · fehlt noch ' + fmtCent(price - d.wallet), 'buy', ok ? 'buy' : 'buy poor');
+        const ok = canBuy(d.wallet, price);
+        // reicht das Guthaben nicht, steht da, wie viel noch fehlt; im Minus nur der Preis mit dem Schloss
+        const label = ok ? 'Kaufen · ' + fmtEuro(price) : locked ? '🔒 Gesperrt · ' + fmtEuro(price) : fmtEuro(price) + ' · fehlt noch ' + fmtCent(price - d.wallet);
+        const b = button(c, label, 'buy', ok ? 'buy' : 'buy poor');
         b.dataset.id = it.id;
         if (!ok) b.disabled = true;
       } else el('div', 'maxed-tag', c, 'Ausgebaut ✔');
