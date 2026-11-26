@@ -12,6 +12,7 @@
 import { resolveProfile, weighted } from './steckbrief.js';
 import { STECKBRIEFE as DE } from './steckbriefe-de.js';
 import { STECKBRIEFE as AUSLAND } from './steckbriefe-ausland.js';
+import { riverSpan, riverHits, riverAt } from '../../map/rivers.js';
 
 const STECKBRIEFE = { ...DE, ...AUSLAND };
 
@@ -557,6 +558,28 @@ export function planTown(place, opts = {}) {
   const toRoad = (side) => (side > 0 ? -Math.PI / 2 : Math.PI / 2);
   const lineD = STREET.pave; // Häuserflucht
 
+  // --- 0. Fluss quer durch den Ort (opts.river, map/rivers.js riverOf): sein Band samt Uferweg bleibt frei. Häuser,
+  // Plätze und Sichtlücken weichen ihm aus (busy: so tief, wie die tiefsten Häuser der Zeile reichen), auf Streifen
+  // und Gehweg (wet) stehen dort nur die Laternen der Brücke
+  const river = opts.river ?? null;
+  const wet = [];
+  let bandL = null; // sein Band auf der linken Seite: dort liegen die Nebenplätze
+  if (river) {
+    plan.river = river;
+    for (const side of [1, -1]) {
+      const [u0, u1] = riverSpan(river, sx(side, 0), sx(side, lineD + 40), river.bank);
+      busy.push({ side, u0, u1 });
+      if (side < 0) bandL = busy[busy.length - 1];
+      const [w0, w1] = riverSpan(river, sx(side, 0), sx(side, lineD), river.bank);
+      wet.push({ side, u0: w0, u1: w1 });
+    }
+  }
+  // ragt der Grundriss eines Stücks ins Band des Flusses (pad Meter über die Wasserkante hinaus)?
+  const inRiver = (it, pad) => {
+    const [x0, x1, z0, z1] = aabb(it.fp);
+    return riverHits(river, x0, x1, -z1, -z0, pad);
+  };
+
   // --- 1. Hauptplatz mit Brunnen, rechts an der Straße, beim Ziel (60 % wie das Ziel im Straßenbau) ---------------
   const isl = opts.island ?? null;
   const special = SPECIAL[place.key] ?? SPECIAL[place.name];
@@ -698,7 +721,7 @@ export function planTown(place, opts = {}) {
   // Bordstein zur Einfahrt ab; auf Streifen und Gehweg vor dem Park steht nichts (keep). Drei Buchten belegen
   // Elektroautos, rückwärts eingeparkt; die Heldenbucht und ihre Nachbarn bleiben frei. price: der Preis, den die
   // Bildschirme seiner Säulen zeigen (map/ladepreis.js, rest.js priceScreens).
-  const keep = [];
+  const keep = [...wet];
   if (opts.charge) {
     const c = opts.charge;
     const info = infoOf(c.kind);
@@ -723,13 +746,15 @@ export function planTown(place, opts = {}) {
 
   // --- 2. Weitere Brunnen in größeren Orten: auf eigenen kleinen Plätzen links ------------------------------------
   const extras = special && size === 'gross' ? EXTRA.gross.slice(1) : EXTRA[size];
-  let side2u = len * 0.25;
+  // am Fluss liegt der erste 100 m vor dem Ufer; einer, der ins Band fiele, rückt hinter den Fluss
+  let side2u = bandL ? Math.min(len * 0.25, bandL.u0 - 100) : len * 0.25;
   for (const kind of extras) {
     const info = infoOf(kind);
     const r = info.r ?? info.w / 2;
     const w2 = Math.ceil((2 * r + 6) / 8) * 8;
     const d2 = Math.ceil((2 * r + 4) / 8) * 8;
-    const u2 = Math.round(side2u + w2 / 2);
+    let u2 = Math.round(side2u + w2 / 2);
+    if (bandL && u2 + w2 / 2 > bandL.u0 - 8 && u2 - w2 / 2 < bandL.u1 + 8) u2 = Math.ceil(bandL.u1 + 8 + w2 / 2);
     if (u2 + w2 / 2 > len - 40) break;
     if (Math.abs(u2 - uc) < S / 2 + w2 / 2 + 20) {
       side2u = uc + S / 2 + 30;
@@ -863,7 +888,7 @@ export function planTown(place, opts = {}) {
       const it = add(pick(rnd, towers), sx(side, lineD + 32 + (k % 3) * 24 + rnd() * 8), 0, -u, toRoad(side));
       // nicht in ein Wahrzeichen und nicht in ein tiefes Haus der Zeile (Messe 34 m, Kaufhaus 20 m)
       const tb = aabb(it.fp);
-      if (skyBoxes.some((b) => touches(b, tb)) || plan.items.some((o) => o !== it && HOUSE_KINDS.has(infoOf(o.name).kind) && touches(aabb(o.fp), tb))) plan.items.pop();
+      if (skyBoxes.some((b) => touches(b, tb)) || (river && inRiver(it, river.bank)) || plan.items.some((o) => o !== it && HOUSE_KINDS.has(infoOf(o.name).kind) && touches(aabb(o.fp), tb))) plan.items.pop();
     }
   }
 
@@ -940,6 +965,31 @@ export function planTown(place, opts = {}) {
     plan.texts.push({ name: 'townExit', x: sx(1, 0.9), y: top, z: -(len - 8), ry: 0, text: sign, next: opts.nextName ?? '' });
   }
   add('bollards3', sx(1, 1.0), top, -(uc - S / 2 - 2), Math.PI / 2);
+  // Laternen der Brücke: je Seite in gleichem Abstand von Ufer zu Ufer, am Bordstein wie im übrigen Ort
+  if (river) {
+    for (const side of [1, -1]) {
+      const x = sx(side, 0.45);
+      const [u0, u1] = riverSpan(river, x, x);
+      const n = Math.round((u1 - u0) / 30);
+      for (let i = 0; i <= n; i++) add(lamp, x, top, -(u0 + ((u1 - u0) * i) / n), side > 0 ? -Math.PI / 2 : Math.PI / 2, { river: true });
+    }
+    // Uferwege (river.js pflastert sie): an beiden Ufern links und rechts der Straße eine Reihe Bäume längs des Flusses
+    // und Bänke mit Blick aufs Wasser. lx: Abstand seitlich von der Straßenmitte (die Straße kreuzt das Ufer schräg)
+    const hw = (STREET.curbR - STREET.curbL) / 2 + STREET.pave;
+    const bank = (lx, D) => riverAt(river, (lx + D * river.sin) / river.cos, D);
+    for (const sg of [-1, 1]) {
+      for (const dir of [-1, 1]) {
+        for (let k = 0; k < RIVERSIDE.trees; k++) {
+          const [x, u] = bank(dir * (hw + 7 + k * RIVERSIDE.step), sg * (river.half + river.bank - 2.6));
+          add(tree(pick(rnd, ['streetTree', 'streetTree2'])), x, RIVERSIDE.y, -u, rnd() * 6.28);
+        }
+        for (let k = 0; k < RIVERSIDE.benches; k++) {
+          const [x, u] = bank(dir * (hw + 7 + (k * 2 + 0.5) * RIVERSIDE.step), sg * (river.half + 3.1));
+          add('bench', x, RIVERSIDE.y, -u, river.ang + (sg < 0 ? Math.PI : 0));
+        }
+      }
+    }
+  }
 
   // --- 6. Sichtlinien zum Brunnen freiräumen (Regel, nicht Zufall), und im Becken steht nichts --------------------
   plan.fountains = fountains;
@@ -963,6 +1013,10 @@ export function planTown(place, opts = {}) {
     const drop = new Set(poleBlockers(plan, cm, infoOf));
     if (drop.size) plan.items = plan.items.filter((_, i) => !drop.has(i));
   }
+  // --- 9. Im Fluss steht nichts (Regel, nicht Zufall): was mit seinem Grundriss ins Wasser oder auf die Uferkante
+  // ragte, entfällt – bis auf das, was zum Fluss gehört (river: Laternen der Brücke) und die Wahrzeichen (die setzt der
+  // Plan mit Abstand, tools/fluesse-test.mjs prüft es)
+  if (river) plan.items = plan.items.filter((it) => it.river || infoOf(it.name).kind === 'landmark' || !inRiver(it, RIVER_CLEAR));
   plan.layout = townLayout(plan, infoOf);
   return plan;
 }
@@ -970,6 +1024,11 @@ export function planTown(place, opts = {}) {
 // Was die Farben des Orts trägt (Häuser; Hochhäuser, Wahrzeichen und Glastürme behalten ihre), Reet bleibt Reet
 const PAINTED = new Set(['village', 'shop', 'town']);
 const THATCH = 0xb2915e;
+
+// so weit hinter der Wasserkante eines Flusses steht nichts (dort liegt seine Uferkante aus Stein)
+const RIVER_CLEAR = 1;
+// Uferweg eines Flusses: Bäume je Reihe, ihr Abstand, Bänke je Reihe, Höhe des Pflasters (river.js RIVER_KIT.pave)
+const RIVERSIDE = { trees: 9, step: 16, benches: 4, y: 0.03 };
 
 const r1 = (v) => Math.round(v * 100) / 100;
 const HOUSE_KINDS = new Set(['village', 'shop', 'town', 'city', 'region']);

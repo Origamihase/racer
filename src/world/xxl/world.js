@@ -173,6 +173,7 @@ export class XxlWorld {
     this.ground.update(s, wet);
     this.mats.setWet(wet);
     this.towns.update(s, this.shear, time, wet);
+    this.ground.setRiver(this.towns.band);
     this.updateRoad(s);
     this.junctions.update(s, wet);
     if (this.maskAutobahn !== this.maskOn) this.setMask(this.maskAutobahn);

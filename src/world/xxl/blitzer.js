@@ -12,6 +12,7 @@ import { hashKey } from '../kit/layout.js';
 import { squareOf } from './plan.js';
 import { chargeOf, steleOf, CHARGE } from './charge.js';
 import { schrankeOf } from './schranke.js';
+import { RIVER, riverOfSec, riverSpan } from '../../map/rivers.js';
 
 export const BLITZER = {
   town: 0.3, // Anteil der Orte (Ortsdurchfahrten) mit Blitzer
@@ -49,6 +50,12 @@ function townSpot(sec, h) {
   if (sb) keepOut.push([sb.u - BLITZER.keep, sb.u + BLITZER.keep]);
   const q = squareOf(sec);
   if (q) keepOut.push([q.s0 - sec.s0 - BLITZER.keep, q.s1 - sec.s0 + BLITZER.keep]);
+  // auf der Brücke über den Fluss des Orts und an seinen Ufern steht keiner (map/rivers.js)
+  const rv = riverOfSec(sec, places);
+  if (rv) {
+    const [u0, u1] = riverSpan(rv, RIVER.deck[0], RIVER.deck[1], rv.bank);
+    keepOut.push([u0 - BLITZER.keep, u1 + BLITZER.keep]);
+  }
   // der Platz, den der Ort ohne Insel rechts hat (am Start), bleibt ohnehin frei: dort steht keiner (kein Start-Blitzer)
   for (let k = 0; k < 12; k++) {
     const u = a + frac(h + k * 7919) * (b - a);

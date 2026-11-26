@@ -16,6 +16,8 @@ import { camerasOf } from './blitzer.js';
 import { TOWN_SIGN_X } from './signplan.js';
 import { PARKS, PARK } from '../../map/parks.js';
 import { ladePreis } from '../../map/ladepreis.js';
+import { riverOfSec, riverAt } from '../../map/rivers.js';
+import { RIVER_KIT } from '../kit/river.js';
 
 let kit = null;
 /**
@@ -41,6 +43,7 @@ const BUILD_NEAR = 900;
 const PLAN_MS = 5;
 // Bis in diese Entfernung regt sich ein Ort (Fangruppe, Mühlenflügel, Riesenrad)
 const ALIVE = 400;
+const PT = [0, 0];
 
 /**
  * Insel des Zielbrunnens einer Ortsdurchfahrt für den Ortsplaner (kit/layout.js planTown, island), in Ortskoordinaten
@@ -69,6 +72,8 @@ export function townPlan(K, sec, budget = Infinity) {
   const poles = camerasOf(sec).map((c) => ({ u: c.u, x: c.x }));
   // die Tafel der Ladesäule, wenn sie hinter dem Brunnenplatz im Ort steht (parks.js postAt, signplan.js)
   if (sec.postAt && sec.postAt.after) poles.push({ u: sec.postAt.u - sec.postAt.sign, x: TOWN_SIGN_X });
+  // Main, Rhein und Elbe (map/rivers.js): der Plan hält ihr Band frei, der Ort baut Wasser, Ufer und Brücke
+  const river = riverOfSec(sec, places);
   return K.planTown(p, {
     budget, len: sec.s1 - sec.s0, mainKind: goalKind(p), pavement: false, signs: false, signName: p.name,
     ...(island ? { island } : sec.start ? { goal: START_GOAL - sec.s0 } : {}),
@@ -80,6 +85,7 @@ export function townPlan(K, sec, budget = Infinity) {
     // der Blitzer des Orts (blitzer.js) und die Tafel einer Säule hinter dem Brunnen (die stellt der Schilderplan): ihr
     // Platz im Streifen bleibt frei
     ...(poles.length ? { poles } : {}),
+    ...(river ? { river } : {}),
   });
 }
 
@@ -128,6 +134,12 @@ export class Towns {
     // steht (update)
     this.items = new Map();
     this.want = new Set();
+    /**
+     * Das Flussband für den Boden der Welt (ground.js setRiver), im Raum vor der Krümmung wie die Rahmen: on, Punkt
+     * der Achse (x, z), Einheitsvektor quer zum Fluss (nx, nz), halbe Breite des Lochs und seine halbe Länge. Je Bild
+     * neu aus dem nächsten Ort mit gebautem Fluss (update); ein Objekt für alle Bilder.
+     */
+    this.band = { on: false, x: 0, z: 0, nx: 0, nz: 1, half: 0, reach: 0, d: 0 };
   }
 
   /**
@@ -243,6 +255,8 @@ export class Towns {
     this.kit.setWater(t, rain);
     const xr = STREET.lane;
     let planning = false;
+    const band = this.band;
+    band.on = false;
     for (const it of this.items.values()) {
       const d0 = it.sec.s0 - s;
       // hinter dem Wagen zählt ein Ort, solange sein Ende im Sichtbereich liegt
@@ -269,7 +283,43 @@ export class Towns {
         else if (g.pendingFar || d0 < BUILD_NEAR) g.step();
       }
       if (here && d0 < ALIVE) g.update(t);
+      if (g.river && g.visible) this.riverBand(g, it.plan.river, d0);
     }
+  }
+
+  /**
+   * Trägt den Fluss rv des Orts g (dessen Matrix steht, d0 Meter voraus beginnt er) als Band für den Boden ein, wenn
+   * kein näherer schon dasteht. Die Matrix dreht und streckt den Ort in fremden Rahmen ein wenig: das Band entsteht
+   * deshalb aus drei mitgeführten Punkten (Achse, 100 m flussab, Wasserkante), nicht aus dem Winkel des Plans.
+   */
+  riverBand(g, rv, d0) {
+    const band = this.band;
+    const d = Math.abs(d0 + rv.u);
+    if (band.on && band.d <= d) return;
+    const e = g.matrix.elements;
+    const at = (X, D) => {
+      riverAt(rv, X, D, PT);
+      const x = PT[0];
+      const z = -PT[1];
+      PT[0] = e[0] * x + e[8] * z + e[12];
+      PT[1] = e[2] * x + e[10] * z + e[14];
+    };
+    at(0, 0);
+    const ax = PT[0];
+    const az = PT[1];
+    at(100, 0);
+    const tx = PT[0] - ax;
+    const tz = PT[1] - az;
+    const tl = Math.hypot(tx, tz);
+    at(0, rv.half + RIVER_KIT.hole);
+    band.on = true;
+    band.d = d;
+    band.x = ax;
+    band.z = az;
+    band.nx = -tz / tl;
+    band.nz = tx / tl;
+    band.half = Math.abs((PT[0] - ax) * band.nx + (PT[1] - az) * band.nz);
+    band.reach = (rv.reach * tl) / 100;
   }
 
   /**
