@@ -7,11 +7,22 @@
 // NavModel hält dazu, was Navi, große Karte und HUD-Zeile brauchen: Lage und Kurs des Autos (über eine Sehne
 // geglättet, damit der Kurs an Knicken nicht zuckt), die geplante Route bis zum Ziel, den gefahrenen Weg, die Orte
 // entlang der Route, Überfahrten (Fähre, Autozug, Flug) als Hüpfer und die Ansage für das Navi. Läuft auch unter Node.
-import { nodes, places, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle, townLen } from './graph.js';
-import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm, netData } from './mapview.js';
+import { nodes, places, deKind, deTo, deRoad, deTowards, stateOfNode, nodeTitle } from './graph.js';
+import { project, edgeLine, kmPerUnit, polyLength, PLACE_BY_INDEX, townKm } from './mapview.js';
 import { PARKS, parkBoard, postName } from './parks.js';
 import { goalName } from '../world/kit/layout.js';
-import { riverOf, riverOfSec, riverSpan } from './rivers.js';
+import { riverOfSec, riverSpan } from './rivers.js';
+import { sectionWater, zubLine, townEdgeDir, townRiverOnMap, lineWater } from './crossings.js';
+export { waterAlong } from './crossings.js';
+import { WATER_CLASS } from './water.js';
+/**
+ * Steht der Name des Wassers r (NavModel.rivers) beim Maßstab scale (Bildpunkte je Karteneinheit) auf der Karte? Erst,
+ * wenn sein Fluss deutlich gezeichnet ist (mapview.js: ab WATER_CLASS[cls].from), und nie weiter weg als 0,5 px/km.
+ */
+export function waterLabelOk(r, scale) {
+  const k = scale / kmPerUnit(r.y);
+  return k >= Math.max(0.5, r.cls < 3 ? WATER_CLASS[r.cls].from * 2 : 0);
+}
 
 const NODE_XY = nodes.map((n) => project(n.lat, n.lon));
 /** Kilometer → Karteneinheiten in der Kartenhöhe y. */
@@ -72,7 +83,8 @@ function nearestOn(P, x, y, maxA) {
     const vx = P[i] - ax;
     const vy = P[i + 1] - ay;
     const L2 = vx * vx + vy * vy;
-    const t = L2 > 0 ? clamp(((x - ax) * vx + (y - ay) * vy) / L2, 0, 1) : 0;
+    const tMax = L2 > 0 ? Math.min(1, (maxA - a) / Math.sqrt(L2)) : 0;
+    const t = L2 > 0 ? clamp(((x - ax) * vx + (y - ay) * vy) / L2, 0, tMax) : 0;
     const qx = ax + vx * t;
     const qy = ay + vy * t;
     const d = Math.hypot(qx - x, qy - y);
@@ -93,16 +105,71 @@ function arcAt(P, j) {
  * Stift schon dicht neben E in deren Richtung fährt, 0,3 km vor ihm. Das ist der Fall, wenn der Knoten mitten im Ort
  * liegt und der Weg schon aus dem Ort heraus führt; zurück zum Knoten ginge es nur mit einer Wende.
  */
-function joinPoint(E, pen, minA, y) {
-  const j = nearestOn(E, pen.x, pen.y, polyLength(E) * 0.9);
+function joinPoint(E, pen, minA, y, cap = Infinity) {
+  const j = nearestOn(E, pen.x, pen.y, Math.min(polyLength(E) * 0.9, cap));
   let a = minA;
   if (j.d < ku(0.8, y)) {
     const [ex, ey] = unit(E[j.i * 2 + 2] - E[j.i * 2], E[j.i * 2 + 3] - E[j.i * 2 + 1]);
     if (pen.dx * ex + pen.dy * ey > 0.3) a = Math.max(minA, arcAt(E, j) + ku(0.3, y));
   }
-  return pointAlong(E, a);
+  return pointAlong(E, Math.min(a, cap));
+}
+const wetCache = new Map();
+/**
+ * So weit (Karteneinheiten ab ihrem Knoten) darf der Weg auf die Straße de kommen: bis kurz vor ihr erstes Wasser –
+ * sonst überspränge er dessen Brücke (crossings.js sectionWater). Infinity ohne Wasser.
+ */
+function dryCap(de) {
+  let c = wetCache.get(de);
+  if (c === undefined) {
+    const P = dePts(de);
+    const w = lineWater(P);
+    c = w.length ? Math.max(w[0].a - (w[0].span || 0) / 2 - ku(0.15, P[1]), 0) : Infinity;
+    wetCache.set(de, c);
+  }
+  return c;
+}
+/** Führt der Linienzug über kein Wasser der Karte? */
+const dry = (pts) => lineWater(pts).length === 0;
+/** Den ersten trockenen Weg der Versuche tries ((P) => …, P beginnt am Stift) an out hängen, sonst den letzten. */
+function firstDry(out, pen, tries) {
+  for (let t = 0; t < tries.length; t++) {
+    const P = [pen.x, pen.y];
+    tries[t](P);
+    if (dry(P) || t === tries.length - 1) {
+      for (let i = 2; i < P.length; i++) out.push(P[i]);
+      return;
+    }
+  }
 }
 
+/**
+ * Wie bez, aber über kein Wasser der Karte (im Ort baut die Welt keine Brücke): erst die Kurve, dann eine flachere,
+ * dann über den Punkt via (die Ortsmitte: die Strahlen von ihr zum Rand sind trocken, crossings.js townEdgeDir), zuletzt
+ * geradewegs.
+ */
+function dryBez(out, x0, y0, ax, ay, x1, y1, bx, by, k = 0.4, n = 14, via = null) {
+  const tries = [
+    (o) => bez(o, x0, y0, ax, ay, x1, y1, bx, by, k, n),
+    (o) => bez(o, x0, y0, ax, ay, x1, y1, bx, by, k * 0.35, n),
+  ];
+  if (via && Math.hypot(via.x - x0, via.y - y0) > 1e-9 && Math.hypot(via.x - x1, via.y - y1) > 1e-9) {
+    tries.push((o) => {
+      const [vx, vy] = unit(x1 - via.x, y1 - via.y);
+      const d = Math.min(Math.hypot(x1 - via.x, y1 - via.y) * 0.15, Math.hypot(x0 - via.x, y0 - via.y));
+      o.push(via.x + vx * d, via.y + vy * d, x1, y1);
+    });
+  }
+  tries.push((o) => o.push(x1, y1));
+  for (let t = 0; t < tries.length; t++) {
+    const P = [x0, y0];
+    tries[t](P);
+    if (t === tries.length - 1 || lineWater(P).length === 0) {
+      for (let i = 2; i < P.length; i++) out.push(P[i]);
+      return;
+    }
+  }
+}
 /** Kubische Kurve vom Stift (Richtung a) zum Punkt (x1, y1) mit Richtung b (ohne Anfangspunkt). */
 function bez(out, x0, y0, ax, ay, x1, y1, bx, by, k = 0.4, n = 14) {
   const d = Math.hypot(x1 - x0, y1 - y0);
@@ -213,13 +280,97 @@ function penOf(out) {
   const [dx, dy] = unit(out[n * 2 - 2] - out[k * 2], out[n * 2 - 1] - out[k * 2 + 1]);
   return { x: out[n * 2 - 2], y: out[n * 2 - 1], dx, dy };
 }
+/**
+ * Stellen, an denen der Weg eines Abschnitts mit Brücken (crossings.js sectionWater) geteilt wird: jede Stelle der
+ * Karte, an der er über Wasser führt, mit dem s, bei dem der Wagen in der Welt über die Mitte der Brücke fährt
+ * (zwei Gewässer unter einer Brücke: verteilt über ihre halbe Breite). sec.orig: der ursprüngliche Abschnitt, wenn sec
+ * nur sein Rest ab dem Auto ist (recut).
+ */
+function waterCuts(sec) {
+  const base = sec.orig || sec;
+  const cuts = [];
+  for (const b of sectionWater(base)) {
+    const m = b.map.length;
+    b.map.forEach((q, j) => cuts.push({ x: q.x, y: q.y, s: base.s0 + b.s + (m > 1 ? (j / (m - 1) - 0.5) * b.half : 0) }));
+  }
+  return cuts;
+}
+/**
+ * Den Linienzug pts (s0 … s1) an den Stellen cuts (nach s geordnet, auf pts gelegen) in Stücke teilen: Zwischen zwei
+ * Stellen rückt das Auto der Karte gleichmäßig vor, an jeder Stelle steht es genau dann, wenn der Wagen dort ist.
+ */
+function splitPieces(piece, s0, s1, pts, cuts) {
+  const out = [];
+  let from = [pts[0], pts[1]];
+  let k = 0;
+  let sPrev = s0;
+  for (const c of cuts) {
+    if (c.s <= sPrev + 1e-6 || c.s >= s1 - 1e-6) continue;
+    let bj = -1;
+    let bd = Infinity;
+    let bt = 0;
+    for (let j = k; j + 3 < pts.length; j += 2) {
+      const vx = pts[j + 2] - pts[j];
+      const vy = pts[j + 3] - pts[j + 1];
+      const L2 = vx * vx + vy * vy;
+      const t = L2 > 0 ? clamp(((c.x - pts[j]) * vx + (c.y - pts[j + 1]) * vy) / L2, 0, 1) : 0;
+      const d = Math.hypot(pts[j] + vx * t - c.x, pts[j + 1] + vy * t - c.y);
+      if (d < bd) {
+        bd = d;
+        bj = j;
+        bt = t;
+      }
+    }
+    if (bj < 0) break;
+    const P = from.slice();
+    for (let j = k + 2; j <= bj; j += 2) P.push(pts[j], pts[j + 1]);
+    const cx = pts[bj] + (pts[bj + 2] - pts[bj]) * bt;
+    const cy = pts[bj + 1] + (pts[bj + 3] - pts[bj + 1]) * bt;
+    P.push(cx, cy);
+    out.push(piece(sPrev, c.s, P));
+    from = [cx, cy];
+    k = bj;
+    sPrev = c.s;
+  }
+  const P = from.slice();
+  for (let j = k + 2; j < pts.length; j += 2) P.push(pts[j], pts[j + 1]);
+  if (P.length < 4) P.push(from[0], from[1]);
+  out.push(piece(sPrev, s1, P));
+  return out;
+}
+/**
+ * Wo die Ortsdurchfahrt sec den Ort verlässt, wenn der folgende Zubringer eine feste Linie hat (crossings.js zubLine:
+ * zurück zum Knoten oder weiter zum nächsten Ort): an ihrem Anfang, auf dem Ufer des Ortspunkts. {x, y, tx, ty (in den
+ * Ort hinein)} oder null.
+ */
+function waterExit(sec, next) {
+  if (!next || next.kind !== 'zub' || !(sec.place >= 0)) return null;
+  if (next.back ? next.place !== sec.place : next.from !== sec.place) return null;
+  const z = zubLine(next);
+  if (!z) return null;
+  const C = PLACE_BY_INDEX[sec.place];
+  const [x, y] = [z.P[0], z.P[1]];
+  const [tx, ty] = Math.hypot(C.x - x, C.y - y) > z.len * 1e-3 ? unit(C.x - x, C.y - y) : unit(z.P[0] - z.P[2], z.P[1] - z.P[3]);
+  return { x, y, tx, ty };
+}
+/** Trockener Rand des Orts place in Richtung (ox, oy), höchstens R weit (crossings.js townEdgeDir); ohne Ort C + o·R. */
+/** So weit führt die Ortsdurchfahrt hinaus zum Ausgang A: bis an den Rand R, höchstens bis A (liegt der Knoten im Ort, ist A ein Punkt auf der nächsten Straße, exitTo). */
+const reachTo = (A, C, R) => {
+  const d = Math.hypot(A.x - C.x, A.y - C.y);
+  return d > 1e-9 ? Math.min(R, d) : R;
+};
+const dryEdge = (place, C, ox, oy, R) => (place >= 0 ? townEdgeDir(place, ox, oy, R) : { x: C.x + ox * R, y: C.y + oy * R });
 const placeXY = (p) => PLACE_BY_INDEX[p];
 /** Alles, was sectionPieces vom Nachfolger braucht (gleicher Schlüssel → gleiche Stücke). */
 const nextKey = (n) => (n ? [n.kind, n.de, n.node, n.place, n.back ? 1 : 0, n.transitTo ?? -1].join('|') : '');
 /** Wendekreis von Rampen und Zubringern auf der Karte (Einheiten). */
 const RAMP_R = (y) => ku(0.14, y);
-/** Wendekreis zum Punkt P: wie auf Rampen, liegt P aber hinter dem Stift, eine weite Schleife statt einer Haarnadel. */
-const turnR = (pen, P, y) => ((P.x - pen.x) * pen.dx + (P.y - pen.y) * pen.dy < 0 ? ku(0.3, y) : RAMP_R(y));
+/**
+ * Wendekreis zum Punkt P (mit Richtung dx, dy): wie auf Rampen; liegt P aber hinter dem Stift oder führt die neue
+ * Straße zurück, eine weite Schleife statt einer Haarnadel.
+ */
+const turnR = (pen, P, y) =>
+  (P.x - pen.x) * pen.dx + (P.y - pen.y) * pen.dy < 0 || (P.dx !== undefined && P.dx * pen.dx + P.dy * pen.dy < -0.5) ? ku(0.3, y) : RAMP_R(y);
 /** Halbmesser der Ortsfläche in Karteneinheiten. */
 const townR = (p) => ku(townKm(places[p].pop), placeXY(p).y);
 
@@ -237,27 +388,57 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
   const piece = (s0, s1, pts, kind = K) => ({ s0, s1, pts, kind, sec: sec.id });
   const y0 = pen ? pen.y : NODE_XY[sec.node] ? NODE_XY[sec.node].y : -60;
   /** Wohin der Weg aus dem Ort mit Mitte C und Halbmesser R führt, wenn der Knoten A darin liegt: zur Straße way. */
-  const exitTo = (A, C, R) => (way >= 0 && Math.hypot(A.x - C.x, A.y - C.y) < R * 0.5 ? pointAlong(dePts(way), R * 1.3) : A);
+  // (auf ihr nur bis vor ihr erstes Wasser, dryCap: dort läge ihre Brücke)
+  const exitTo = (A, C, R) =>
+    way >= 0 && Math.hypot(A.x - C.x, A.y - C.y) < R * 0.5 ? pointAlong(dePts(way), Math.max(Math.min(R * 1.3, dryCap(way) - ku(0.35, C.y)), ku(0.05, C.y))) : A;
   if (K === 'ab' || K === 'land') {
     const P = dePts(sec.de);
     const out = [];
     let i0 = 0;
     if (pen) {
       // an die Kante anschließen (meist steht der Stift schon am Knoten oder am Ende der Auffahrt)
-      let j = nearestOn(P, pen.x, pen.y, Math.max(polyLength(P) * 0.5, ku(6, pen.y)));
+      const cap = dryCap(sec.de);
+      let j = nearestOn(P, pen.x, pen.y, Math.min(Math.max(polyLength(P) * 0.5, ku(6, pen.y)), cap));
       out.push(pen.x, pen.y);
       let [dx, dy] = unit(P[j.i * 2 + 2] - P[j.i * 2], P[j.i * 2 + 3] - P[j.i * 2 + 1]);
-      if (pen.dx * dx + pen.dy * dy < -0.7) {
-        // die Fahrt kehrt am Knoten um (dieselbe Straße zurück): in einer weiten Schleife statt auf der Stelle
-        const q = pointAlong(P, arcAt(P, j) + ku(0.6, pen.y));
-        dubins(out, pen.x, pen.y, pen.dx, pen.dy, q.x, q.y, q.dx, q.dy, ku(0.3, pen.y));
+      // liegt der Anschluss hinter dem Stift (der Ort oder die Verbindung endet jenseits der Straße), wäre der kurze
+      // Bogen dorthin eine Haarnadel auf der Stelle
+      const behind = j.d > ku(0.03, pen.y) && (j.x - pen.x) * pen.dx + (j.y - pen.y) * pen.dy < 0;
+      if (pen.dx * dx + pen.dy * dy < -0.7 || behind) {
+        // die Fahrt kehrt am Knoten um (dieselbe Straße zurück): in einer weiten Schleife statt auf der Stelle – führte
+        // sie über Wasser (dort baut die Welt keine Brücke), enger oder zur Not geradewegs
+        const q = pointAlong(P, Math.min(arcAt(P, j) + ku(0.6, pen.y), cap));
+        const tries = [
+          (o) => dubins(o, pen.x, pen.y, pen.dx, pen.dy, q.x, q.y, q.dx, q.dy, ku(0.3, pen.y)),
+          (o) => dubins(o, pen.x, pen.y, pen.dx, pen.dy, q.x, q.y, q.dx, q.dy, ku(0.08, pen.y)),
+          (o) => o.push(q.x, q.y),
+        ];
+        for (let t = 0; t < tries.length; t++) {
+          const Q = [pen.x, pen.y];
+          tries[t](Q);
+          if (dry(Q) || t === tries.length - 1) {
+            for (let i = 2; i < Q.length; i++) out.push(Q[i]);
+            break;
+          }
+        }
         j = { i: q.i, x: q.x, y: q.y };
-      } else if (j.d > ku(0.03, pen.y)) dubins(out, pen.x, pen.y, pen.dx, pen.dy, j.x, j.y, dx, dy, ku(0.12, pen.y));
-      else out.push(j.x, j.y);
+      } else if (j.d > ku(0.03, pen.y)) {
+        const Q = [pen.x, pen.y];
+        dubins(Q, pen.x, pen.y, pen.dx, pen.dy, j.x, j.y, dx, dy, ku(0.12, pen.y));
+        if (!dry(Q)) Q.length = 2;
+        if (Q.length === 2 && !dry([pen.x, pen.y, j.x, j.y]) && dry([pen.x, pen.y, P[0], P[1]])) {
+          // auch gerade hinüber über Wasser (ein Fluss zwischen Ortsrand und Straße): über den Knoten auf die Kante
+          out.push(P[0], P[1]);
+          j = { i: 0, x: P[0], y: P[1] };
+        } else {
+          for (let i = 2; i < Q.length; i++) out.push(Q[i]);
+          out.push(j.x, j.y);
+        }
+      } else out.push(j.x, j.y);
       i0 = j.i + 1;
     } else out.push(P[0], P[1]);
     for (let i = Math.max(i0, 1); i < P.length / 2; i++) out.push(P[i * 2], P[i * 2 + 1]);
-    return [piece(sec.s0, sec.s1, out)];
+    return splitPieces(piece, sec.s0, sec.s1, out, waterCuts(sec));
   }
   if (!pen) {
     // erster Abschnitt ohne Vorgänger (Start im Ort): Richtung zum Knoten
@@ -266,25 +447,61 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
     const N = exitTo(NODE_XY[sec.node], C, R);
     const [dx, dy] = Math.hypot(N.x - C.x, N.y - C.y) > 1e-6 ? unit(N.x - C.x, N.y - C.y) : [0, -1];
     const f = sec.spotS !== undefined ? clamp((sec.spotS - sec.s0) / sec.len, 0.05, 0.95) : 0.5;
-    const a = [C.x - dx * R * 0.7, C.y - dy * R * 0.7];
-    const out1 = [a[0], a[1]];
-    bez(out1, a[0], a[1], dx, dy, C.x, C.y, dx, dy, 0.3, 6);
+    // beide Enden auf dem Ufer des Ortspunkts, hinaus am Anfang der Linie des Zubringers, wenn er eine hat
+    const A0 = dryEdge(sec.place, C, -dx, -dy, R * 0.7);
+    const WX = waterExit(sec, next);
+    const X = WX || dryEdge(sec.place, C, dx, dy, reachTo(N, C, R));
+    const out1 = [A0.x, A0.y];
+    dryBez(out1, A0.x, A0.y, dx, dy, C.x, C.y, dx, dy, 0.3, 6);
     const out2 = [C.x, C.y];
-    bez(out2, C.x, C.y, dx, dy, C.x + dx * R, C.y + dy * R, dx, dy, 0.3, 6);
+    const [ex, ey] = WX ? [-WX.tx, -WX.ty] : [dx, dy];
+    dryBez(out2, C.x, C.y, dx, dy, X.x, X.y, ex, ey, 0.3, 6);
     const sm = sec.s0 + sec.len * f;
     return [piece(sec.s0, sm, out1), piece(sm, sec.s1, out2)];
   }
   const out = [pen.x, pen.y];
   if (K === 'ramp') {
-    arc(out, pen.x, pen.y, pen.dx, pen.dy, ku(0.32, y0), 0.6, 8);
+    // die Abfahrt im Bogen hinaus – kürzer und flacher, wenn er sonst über Wasser führte (dort baut die Welt keine Brücke)
+    // (mit Platz dahinter: 0,15 km geradeaus trocken, sonst stünde der Zubringer am Ufer); zur Not stärker abbiegend
+    const T = [
+      [0.32, 0.6],
+      [0.2, 0.45],
+      [0.2, 1.0],
+      [0.15, 1.4],
+      [0.12, 0.3],
+      [0.06, 0.15],
+    ];
+    for (let t = 0, done = false; t < T.length * 2 && !done; t++) {
+      const [l, a] = T[t % T.length];
+      const P = [pen.x, pen.y];
+      arc(P, pen.x, pen.y, pen.dx, pen.dy, ku(l, y0), a, 8);
+      const n = P.length;
+      const h = pen.dx * Math.cos(a) - pen.dy * Math.sin(a);
+      const k = pen.dx * Math.sin(a) + pen.dy * Math.cos(a);
+      // im ersten Durchgang mit Platz dahinter, im zweiten ohne
+      if ((t < T.length ? dry([...P, P[n - 2] + h * ku(0.15, y0), P[n - 1] + k * ku(0.15, y0)]) : dry(P)) || t === T.length * 2 - 1) {
+        for (let i = 2; i < n; i++) out.push(P[i]);
+        done = true;
+      }
+    }
     return [piece(sec.s0, sec.s1, out)];
   }
   if (K === 'auf' || (K === 'conn' && next && next.kind === 'auf')) {
     // Verbindungsfahrbahn und Auffahrt: im Bogen auf die neue Autobahn (bei Linksabbiegern als Schleife wie im
     // Kleeblatt); die Auffahrt fädelt danach auf ihr ein
-    const E = dePts(K === 'auf' ? sec.de : next.de);
-    const q = K === 'auf' ? joinPoint(E, pen, ku(0.9, y0), y0) : pointAlong(E, ku(0.6, y0));
-    dubins(out, pen.x, pen.y, pen.dx, pen.dy, q.x, q.y, q.dx, q.dy, turnR(pen, q, y0));
+    const de = K === 'auf' ? sec.de : next.de;
+    const E = dePts(de);
+    const q = K === 'auf' ? joinPoint(E, pen, ku(0.9, y0), y0, dryCap(de)) : pointAlong(E, Math.min(ku(0.6, y0), dryCap(de)));
+    // enger, wenn der Bogen sonst über Wasser führte (dort baut die Welt keine Brücke)
+    const r0 = turnR(pen, q, y0);
+    for (const r of [r0, Math.min(r0, RAMP_R(y0)), RAMP_R(y0) * 0.6]) {
+      const P = [pen.x, pen.y];
+      dubins(P, pen.x, pen.y, pen.dx, pen.dy, q.x, q.y, q.dx, q.dy, r);
+      if (dry(P) || r === RAMP_R(y0) * 0.6) {
+        for (let i = 2; i < P.length; i++) out.push(P[i]);
+        break;
+      }
+    }
     return [piece(sec.s0, sec.s1, out)];
   }
   if (K === 'conn') {
@@ -296,16 +513,63 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
     // liegt das Ziel hinter uns (Knoten mitten im Ort), geradeaus weiter: die Schleife zurück fährt der Zubringer
     if (d > ku(0.1, y0) && (T.x - pen.x) * pen.dx + (T.y - pen.y) * pen.dy > 0) {
       const [tx, ty] = unit(T.x - pen.x, T.y - pen.y);
-      const L = Math.min(d * 0.5, ku(0.6, y0));
-      dubins(out, pen.x, pen.y, pen.dx, pen.dy, pen.x + tx * L, pen.y + ty * L, tx, ty, RAMP_R(y0));
+      // kürzer, wenn der Bogen sonst über Wasser führte (dort baut die Welt keine Brücke)
+      for (const f of [1, 0.5, 0.25]) {
+        const L = Math.min(d * 0.5, ku(0.6, y0)) * f;
+        const P = [pen.x, pen.y];
+        dubins(P, pen.x, pen.y, pen.dx, pen.dy, pen.x + tx * L, pen.y + ty * L, tx, ty, RAMP_R(y0) * Math.max(f, 0.5));
+        if (dry(P) || f === 0.25) {
+          for (let i = 2; i < P.length; i++) out.push(P[i]);
+          break;
+        }
+      }
     } else arc(out, pen.x, pen.y, pen.dx, pen.dy, ku(0.3, y0), 0, 1);
     return [piece(sec.s0, sec.s1, out)];
   }
   if (K === 'zub') {
+    const zw = zubLine(sec.orig || sec);
+    const wet = !!(zw && zw.list.length);
+    const first = wet ? zw.list[0].a - (zw.list[0].span || 0) / 2 : Infinity;
+    if (zw && !sec.back) {
+      // hin auf der festen Linie (crossings.js zubLine: vom Knoten oder vom Ort davor zum Ortsrand), über ihre Brücken
+      // bis an den Rand. Ohne Wasser darauf bleibt es bei den Schleifen unten, wenn der Knoten im Ort liegt.
+      const C = placeXY(sec.place);
+      const R = townR(sec.place);
+      const d = Math.hypot(pen.x - C.x, pen.y - C.y);
+      const loop = (inDir && d < R + ku(0.8, y0) && (C.x - pen.x) * pen.dx + (C.y - pen.y) * pen.dy < 0) || d < R * 0.6;
+      if (wet || !loop) {
+        const Z = zw.P;
+        const [lx, ly] = unit(Z[2] - Z[0], Z[3] - Z[1]);
+        const along = (pen.x - Z[0]) * lx + (pen.y - Z[1]) * ly;
+        // möglichst weit voraus auf die Linie (ein weiter Bogen, keine Haarnadel), aber vor ihrem ersten Wasser
+        const ja = clamp(Math.max(along, 0) + ku(1.0, y0), 0, Math.min(first - ku(0.12, y0), zw.len * 0.6));
+        if (ja > along + ku(0.002, y0) || Math.hypot(pen.x - (Z[0] + lx * along), pen.y - (Z[1] + ly * along)) > ku(0.005, y0)) {
+          dubins(out, pen.x, pen.y, pen.dx, pen.dy, Z[0] + lx * Math.max(ja, along), Z[1] + ly * Math.max(ja, along), lx, ly, RAMP_R(y0));
+        }
+        out.push(Z[2], Z[3]);
+        return wet ? splitPieces(piece, sec.s0, sec.s1, out, waterCuts(sec)) : [piece(sec.s0, sec.s1, out)];
+      }
+    }
+    if (wet && sec.back) {
+      // zurück über Wasser auf der festen Linie: vom Ortsrand über ihre Brücken, ein Stück hinter dem letzten Wasser
+      // weiter wie jeder Zubringer zurück (das Stück davor wird unten mit angehängt)
+      const Z = zw.P;
+      const [lx, ly] = unit(Z[2] - Z[0], Z[3] - Z[1]);
+      const along = (pen.x - Z[0]) * lx + (pen.y - Z[1]) * ly;
+      const last = zw.list[zw.list.length - 1];
+      const end = Math.min(last.a + (last.span || 0) / 2 + ku(0.25, y0), zw.len);
+      if (along < end) {
+        const ja = Math.min(Math.max(along, 0) + ku(0.05, y0), first - ku(0.05, y0), end);
+        if (Math.hypot(pen.x - (Z[0] + lx * ja), pen.y - (Z[1] + ly * ja)) > ku(0.005, y0)) dubins(out, pen.x, pen.y, pen.dx, pen.dy, Z[0] + lx * ja, Z[1] + ly * ja, lx, ly, RAMP_R(y0));
+        out.push(Z[0] + lx * end, Z[1] + ly * end);
+        pen = { x: Z[0] + lx * end, y: Z[1] + ly * end, dx: lx, dy: ly };
+      }
+    }
+    const fin = (pts) => (wet ? splitPieces(piece, sec.s0, sec.s1, pts, waterCuts(sec)) : [piece(sec.s0, sec.s1, pts)]);
     if (!sec.back && sec.place >= 0 && !sec.transitTo) {
       // hin zu einem Ort mit Fluss: zum Tor am diesseitigen Ufer, um das Ende des Wassers herum – über den Fluss führt
       // nur die Brücke der Ortsdurchfahrt
-      if (next && next.place === sec.place && riverOfSec(next, places)) {
+      if (next && next.place === sec.place && riverOfSec(next, places) && riverOnMap(sec.place)) {
         toGate(out, pen, riverOnMap(sec.place), y0);
         return [piece(sec.s0, sec.s1, out)];
       }
@@ -324,21 +588,29 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
         const [ux, uy] = unit(X.x - C.x, X.y - C.y);
         if (Math.hypot(X.x - C.x, X.y - C.y) > R * 0.3 && (ux * -hy + uy * hx) * sg > 0.5) sg = -sg;
         const dd = clamp(R * 0.3, ku(0.35, y0), ku(0.75, y0));
-        dubins(out, pen.x, pen.y, pen.dx, pen.dy, C.x - hy * sg * dd, C.y + hx * sg * dd, hy * sg, -hx * sg, clamp(R * 0.15, ku(0.2, y0), ku(0.3, y0)));
+        // führte die Schleife über Wasser: enger, sonst kurz geradeaus oder zur Seite des Orts (den Bogen hinein fährt
+        // die Ortsdurchfahrt)
+        const side = (C.x - pen.x) * -pen.dy + (C.y - pen.y) * pen.dx > 0 ? 1 : -1; // zum Ort hin (arc: positiv zur Seite (−dy, dx))
+        firstDry(out, pen, [
+          (P) => dubins(P, pen.x, pen.y, pen.dx, pen.dy, C.x - hy * sg * dd, C.y + hx * sg * dd, hy * sg, -hx * sg, clamp(R * 0.15, ku(0.2, y0), ku(0.3, y0))),
+          (P) => dubins(P, pen.x, pen.y, pen.dx, pen.dy, C.x - hy * sg * dd, C.y + hx * sg * dd, hy * sg, -hx * sg, ku(0.08, y0)),
+          (P) => arc(P, pen.x, pen.y, pen.dx, pen.dy, ku(0.1, y0), 0, 1),
+          (P) => arc(P, pen.x, pen.y, pen.dx, pen.dy, ku(0.12, y0), side * 1.2, 6),
+          (P) => arc(P, pen.x, pen.y, pen.dx, pen.dy, ku(0.03, y0), 0, 1),
+        ]);
         return [piece(sec.s0, sec.s1, out)];
       }
       if (d < R * 0.6) {
         // schon nah an der Mitte: kurz geradeaus, den Bogen hinein fährt die Ortsdurchfahrt (sonst führe der Zubringer
         // erst an der Mitte vorbei und kehrte dann um)
-        arc(out, pen.x, pen.y, pen.dx, pen.dy, ku(0.1, y0), 0, 1);
+        firstDry(out, pen, [(P) => arc(P, pen.x, pen.y, pen.dx, pen.dy, ku(0.1, y0), 0, 1), (P) => arc(P, pen.x, pen.y, pen.dx, pen.dy, ku(0.03, y0), 0, 1)]);
         return [piece(sec.s0, sec.s1, out)];
       }
       let ex;
       let ey;
       if (d > R * 1.2) {
         const [ux, uy] = unit(pen.x - C.x, pen.y - C.y);
-        ex = C.x + ux * R * 0.85;
-        ey = C.y + uy * R * 0.85;
+        ({ x: ex, y: ey } = dryEdge(sec.place, C, ux, uy, R * 0.85));
       } else {
         ex = pen.x + pen.dx * R * 0.3;
         ey = pen.y + pen.dy * R * 0.3;
@@ -352,9 +624,9 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
     const road = next && (next.kind === 'auf' || next.kind === 'land') && next.de >= 0 ? dePts(next.de) : null;
     if (road && (N.x - pen.x) * pen.dx + (N.y - pen.y) * pen.dy < ku(0.1, y0)) {
       // der Knoten liegt schon hinter uns (mitten im Ort): gleich hinüber auf die neue Straße statt zurück und wenden
-      const q = joinPoint(road, pen, ku(0.3, y0), y0);
+      const q = joinPoint(road, pen, ku(0.3, y0), y0, dryCap(next.de));
       dubins(out, pen.x, pen.y, pen.dx, pen.dy, q.x, q.y, q.dx, q.dy, turnR(pen, q, y0));
-      return [piece(sec.s0, sec.s1, out)];
+      return fin(out);
     }
     let [tx, ty] = unit(N.x - pen.x, N.y - pen.y);
     if (next && next.kind === 'auf') {
@@ -363,7 +635,7 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
     }
     if (Math.hypot(N.x - pen.x, N.y - pen.y) < ku(0.05, y0)) arc(out, pen.x, pen.y, pen.dx, pen.dy, ku(0.1, y0), 0, 1);
     else dubins(out, pen.x, pen.y, pen.dx, pen.dy, N.x, N.y, tx, ty, turnR(pen, N, y0));
-    return [piece(sec.s0, sec.s1, out)];
+    return fin(out);
   }
   if (K === 'stadt') {
     const C = sec.place >= 0 ? placeXY(sec.place) : NODE_XY[sec.node];
@@ -372,11 +644,14 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
     // wohin es danach geht: zum Knoten oder zum nächsten Ort
     const A = next && next.kind === 'zub' && !next.back && next.place >= 0 ? placeXY(next.place) : exitTo(NODE_XY[next ? next.node : sec.node], C, R);
     const r = Math.min(R * 0.14, ku(0.15, y0)); // Kreisverkehr
+    // führt der Zubringer danach über Wasser (oder ist es ein Flussort), endet die Durchfahrt am Rand vor dem Wasser,
+    // wo seine feste Linie beginnt (crossings.js townEdge)
+    const WX = waterExit(sec, next);
     if (sec.exitOnly) {
       // nach der Ankunft neu gebaut (das nächste Ziel liegt woanders): vom Auto aus zum neuen Ausgang, wenn er hinter
       // uns liegt über einen Kreisverkehr gleich voraus
-      const [ox, oy] = Math.hypot(A.x - C.x, A.y - C.y) < R * 0.3 ? [pen.dx, pen.dy] : unit(A.x - C.x, A.y - C.y);
-      const X = { x: C.x + ox * R, y: C.y + oy * R };
+      const [ox, oy] = WX ? [-WX.tx, -WX.ty] : Math.hypot(A.x - C.x, A.y - C.y) < R * 0.3 ? [pen.dx, pen.dy] : unit(A.x - C.x, A.y - C.y);
+      const X = WX ? { x: WX.x, y: WX.y } : dryEdge(sec.place, C, ox, oy, reachTo(A, C, R));
       let [hx, hy] = [pen.dx, pen.dy];
       const [vx, vy] = unit(X.x - pen.x, X.y - pen.y);
       if (vx * hx + vy * hy < -0.7) {
@@ -384,20 +659,28 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
         [hx, hy] = roundabout(out, hx, hy, r);
       }
       const n = out.length;
-      dubins(out, out[n - 2], out[n - 1], hx, hy, X.x, X.y, ox, oy, ku(0.2, y0));
+      const P = [out[n - 2], out[n - 1]];
+      dubins(P, out[n - 2], out[n - 1], hx, hy, X.x, X.y, ox, oy, ku(0.2, y0));
+      if (dry(P)) for (let i = 2; i < P.length; i++) out.push(P[i]);
+      else dryBez(out, out[n - 2], out[n - 1], hx, hy, X.x, X.y, ox, oy, 0.4, 12, C);
       return [piece(sec.s0, sec.s1, out)];
     }
-    if (riverOfSec(sec, places)) {
+    if (riverOfSec(sec, places) && riverOnMap(sec.place)) {
       // Ort mit Fluss: Auf der Karte liegt die Durchfahrt, wie die Welt sie baut – vom Tor über die Brücke zum Brunnen
       // am Ortspunkt. Das Stück über das Wasser der Karte trägt genau die Meter, die die Straße in der Welt über Wasser
       // fährt (rm.u0 … rm.u1); der Weg hinaus bleibt auf dem Ufer des Brunnens
       const rm = riverOnMap(sec.place);
-      const [ox, oy] = Math.hypot(A.x - C.x, A.y - C.y) < R * 0.3 ? [rm.tx, rm.ty] : unit(A.x - C.x, A.y - C.y);
+      const [ox, oy] = WX ? [-WX.tx, -WX.ty] : Math.hypot(A.x - C.x, A.y - C.y) < R * 0.3 ? [rm.tx, rm.ty] : unit(A.x - C.x, A.y - C.y);
       const in1 = [pen.x, pen.y];
       toGate(in1, pen, rm, y0);
       in1.push(rm.near[0], rm.near[1]);
       const out2 = [C.x, C.y];
-      bez(out2, C.x, C.y, rm.tx, rm.ty, C.x + ox * R, C.y + oy * R, ox, oy, 0.4, 12);
+      const X = WX || dryEdge(sec.place, C, ox, oy, reachTo(A, C, R));
+      // hinaus wieder zurück zum Knoten: in einem Bogen um die Mitte, nicht auf der Brücke zurück
+      let [hx, hy] = [rm.tx, rm.ty];
+      if (ox * hx + oy * hy < -0.94) [hx, hy] = roundabout(out2, hx, hy, r);
+      const n2 = out2.length;
+      dryBez(out2, out2[n2 - 2], out2[n2 - 1], hx, hy, X.x, X.y, ox, oy, 0.4, 12, C);
       const sm = sec.s0 + sec.len * f;
       return [
         piece(sec.s0, sec.s0 + rm.u0, in1),
@@ -411,23 +694,28 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
     let [ix, iy] = atC ? [pen.dx, pen.dy] : unit(C.x - pen.x, C.y - pen.y);
     let [ox, oy] = unit(A.x - C.x, A.y - C.y);
     if (Math.hypot(A.x - C.x, A.y - C.y) < R * 0.3) [ox, oy] = [ix, iy];
+    if (WX) [ox, oy] = [-WX.tx, -WX.ty];
     const out1 = [pen.x, pen.y];
     const out2 = [C.x, C.y];
     if (ix * ox + iy * oy > -0.94) {
       // durch die Mitte und weiter zum Ausgang (auch schräg zurück, in einem Bogen um die Mitte)
       const [mx, my] = unit(ix + ox, iy + oy);
       const M = atC ? { x: C.x + mx * R * 0.25, y: C.y + my * R * 0.25 } : C;
-      bez(out1, pen.x, pen.y, pen.dx, pen.dy, M.x, M.y, mx, my, 0.4, 12);
+      dryBez(out1, pen.x, pen.y, pen.dx, pen.dy, M.x, M.y, mx, my, 0.4, 12);
       out2[0] = M.x;
       out2[1] = M.y;
-      bez(out2, M.x, M.y, mx, my, C.x + ox * R, C.y + oy * R, ox, oy, 0.4, 12);
+      if (WX) dryBez(out2, M.x, M.y, mx, my, WX.x, WX.y, ox, oy, 0.4, 12, C);
+      else {
+        const X = dryEdge(sec.place, C, ox, oy, reachTo(A, C, R));
+        dryBez(out2, M.x, M.y, mx, my, X.x, X.y, ox, oy, 0.4, 12, C);
+      }
     } else {
       // Sackgasse: bis zum Kreisverkehr in der Ortsmitte (oder, steht das Auto schon dort, gleich voraus), einmal
       // herum und auf derselben Straße zurück
       const I = atC ? { x: pen.x + ix * (r * Math.sqrt(3) + R * 0.05), y: pen.y + iy * (r * Math.sqrt(3) + R * 0.05) } : C;
       const ex = I.x - ix * r * Math.sqrt(3);
       const ey = I.y - iy * r * Math.sqrt(3);
-      bez(out1, pen.x, pen.y, pen.dx, pen.dy, ex, ey, ix, iy, 0.4, 12);
+      dryBez(out1, pen.x, pen.y, pen.dx, pen.dy, ex, ey, ix, iy, 0.4, 12);
       out2[0] = ex;
       out2[1] = ey;
       roundabout(out2, ix, iy, r);
@@ -614,145 +902,50 @@ export function fmtDistance(d) {
 }
 
 /**
- * Flüsse auf der Karte (rivers.js – dasselbe Band, das die Welt baut und die Nahansicht zeichnet). Ein Fluss ist
- * Landschaft: Er liegt fest auf der Karte (rivers.js RIVERS[…].map), für jede Fahrt gleich, auch für Orte abseits des
- * Wegs und lange nach dem Besuch – und im Maßstab 1:1, so breit wie in der Welt. Damit die Karte dabei nichts zeigt,
- * was die Welt nicht hat, richtet sich der Weg nach ihm (sectionPieces): Der Zubringer führt um das auslaufende Ende
- * des Wassers herum zum Tor am äußeren Ufer, die Ortsdurchfahrt von dort über die Brücke zum Brunnen am Ortspunkt, und
- * das Auto ist auf der Karte genau so lange über Wasser wie in der Welt auf der Brücke. Sonst berührt den Fluss nichts:
- * keine Straße der Karte (er liegt zwischen den Autobahnen und läuft vor ihnen aus) und kein anderes Stück des Wegs.
- * gap: so weit neben dem Ende des Wassers führt der Zubringer vorbei, turn: Halbmesser seines Bogens ans äußere
- * Ufer (km); label: mögliche Stellen seines Namens auf dem Wasser neben der Brücke (Anteil von reach, rechts +; die
- * erste gewinnt bei gleich viel Platz), span: so weit beiderseits davon reicht der Name etwa (Anteil von reach).
- */
-export const RIVER_MAP = { gap: 0.4, turn: 0.25, label: [0.42, -0.42, 0.34, -0.34, 0.26, -0.26], span: 0.06 };
-/** Abstand des Kartenpunkts (x, y) zur nächsten Autobahn, Landstraße oder zum nächsten Zubringer der Karte, höchstens max. */
-export function roadGap(x, y, max) {
-  let best = max;
-  const scan = (P) => {
-    for (let i = 0; i + 3 < P.length; i += 2) {
-      const dx = P[i + 2] - P[i];
-      const dy = P[i + 3] - P[i + 1];
-      const t = clamp(((x - P[i]) * dx + (y - P[i + 1]) * dy) / (dx * dx + dy * dy || 1), 0, 1);
-      best = Math.min(best, Math.hypot(P[i] + dx * t - x, P[i + 1] + dy * t - y));
-    }
-  };
-  const N = netData();
-  for (const l of N.lines) if (l.kind === 'ab' || l.kind === 'land') scan(l.pts);
-  for (const f of N.feeders) scan(f.pts);
-  return best;
-}
-const riverCache = new Map();
-/**
- * Fluss des Orts place auf der Karte oder null: {name, place, x, y (hier kreuzt seine Achse die Ortsdurchfahrt), tx, ty
- * (Richtung der Ortsdurchfahrt dort: zum Ortspunkt), wx, wy (Richtung des Flusses, rechts der Durchfahrt +), k
- * (Karteneinheiten je Meter), half, reach (Karteneinheiten), label (Stelle seines Namens längs des Flusses, Anteil von
- * reach: wo auf dem Wasser am meisten Platz zwischen den Straßen der Karte ist), gate (hier beginnt die Ortsdurchfahrt),
- * near, far (ihre Punkte an der äußeren und der inneren Wasserkante), u0, u1 (so viele Meter hinter dem Ortsbeginn
+ * Fluss eines Flussorts (rivers.js) auf der Karte oder null: Er ist echtes Wasser der Karte (water.js), dort, wo die
+ * Linie vom Knoten zum Ortspunkt ihn kreuzt (crossings.js townRiverOnMap), liegt die Brücke der Ortsdurchfahrt. Im Ort
+ * ist die Karte nicht gerafft: Das Tor (gate) liegt so weit vor der Brücke, wie die Ortsdurchfahrt der Welt bis zum
+ * Fluss fährt, und das Auto ist auf der Karte genau so lange über Wasser wie der Wagen auf der Brücke. {name, place, x,
+ * y (Mitte der Brücke), tx, ty (Richtung der Ortsdurchfahrt: zum Ortspunkt), k (Karteneinheiten je Meter), gate, near,
+ * far (Punkte der Durchfahrt am diesseitigen und am jenseitigen Ufer), u0, u1 (so viele Meter hinter dem Ortsbeginn
  * fährt sie auf die Brücke und wieder herunter)}. Für denselben Ort immer derselbe.
  */
+const riverCache = new Map();
 export function riverOnMap(place) {
   if (riverCache.has(place)) return riverCache.get(place);
-  const p = places[place];
-  const rv = p ? riverOf(p.key, townLen(p.pop)) : null;
+  const tr = townRiverOnMap(place);
   let rm = null;
-  if (rv) {
-    const C = placeXY(place);
-    const b = (rv.map.deg * Math.PI) / 180;
-    const k = ku(0.001, C.y);
-    // vom Ortspunkt zur Brücke: (sin, −cos), die Karte zählt y nach Süden; die Durchfahrt kommt von dort herein
-    const tx = -Math.sin(b);
-    const ty = Math.cos(b);
-    const x = C.x - tx * rv.map.km * 1000 * k;
-    const y = C.y - ty * rv.map.km * 1000 * k;
-    // rechts der Durchfahrt liegt (−ty, tx)
-    const wx = -ty * rv.cos + tx * rv.sin;
-    const wy = tx * rv.cos + ty * rv.sin;
-    const reach = rv.map.reach * 1000 * k;
+  if (tr) {
+    const rv = tr.rv;
     const [u0, u1] = riverSpan(rv, rv.x, rv.x);
-    const at = (u) => [x + tx * (u - rv.u) * k, y + ty * (u - rv.u) * k];
-    let label = 0;
-    let room = -1;
-    for (const t of RIVER_MAP.label) {
-      let gap = Infinity;
-      for (const e of [-RIVER_MAP.span, 0, RIVER_MAP.span]) gap = Math.min(gap, roadGap(x + wx * reach * (t + e), y + wy * reach * (t + e), reach));
-      if (gap > room + reach * 1e-6) {
-        room = gap;
-        label = t;
-      }
-    }
-    rm = { name: rv.name, place, x, y, tx, ty, wx, wy, k, half: rv.half * k, reach, label, gate: at(0), near: at(u0), far: at(u1), u0, u1 };
+    const at = (u) => [tr.x + tr.tx * (u - rv.u) * tr.k, tr.y + tr.ty * (u - rv.u) * tr.k];
+    rm = { name: rv.name, place, x: tr.x, y: tr.y, tx: tr.tx, ty: tr.ty, k: tr.k, gate: tr.gate, near: at(u0), far: at(u1), u0, u1 };
   }
   riverCache.set(place, rm);
   return rm;
-}
-let riverList = null;
-/** Alle Flüsse der Karte (riverOnMap), immer dieselbe Liste: Navi und große Karte zeichnen sie, wo auch immer der Wagen ist. */
-export function mapRivers() {
-  if (!riverList) riverList = places.map((p, i) => riverOnMap(i)).filter(Boolean);
-  return riverList;
-}
-/** Berührt der Linienzug P = [x, y, …] das Wasser des Flusses rm – oder kommt ihm näher als pad (Karteneinheiten)? */
-export function riverTouch(P, rm, pad = 0) {
-  const hx = rm.reach + pad;
-  const hd = rm.half + pad;
-  let X0 = 0;
-  let D0 = 0;
-  for (let i = 0; i < P.length; i += 2) {
-    const X = (P[i] - rm.x) * rm.wx + (P[i + 1] - rm.y) * rm.wy;
-    const D = (P[i] - rm.x) * rm.wy - (P[i + 1] - rm.y) * rm.wx;
-    if (Math.abs(X) <= hx && Math.abs(D) <= hd) return true;
-    if (i) {
-      // die Strecke vom vorigen Punkt hierher gegen das Rechteck des Wassers (in Flusskoordinaten)
-      let t0 = 0;
-      let t1 = 1;
-      for (const [d, lo, hi] of [[X - X0, -hx - X0, hx - X0], [D - D0, -hd - D0, hd - D0]]) {
-        if (Math.abs(d) < 1e-15) {
-          if (lo > 0 || hi < 0) t1 = -1;
-        } else {
-          t0 = Math.max(t0, Math.min(lo / d, hi / d));
-          t1 = Math.min(t1, Math.max(lo / d, hi / d));
-        }
-      }
-      if (t0 <= t1) return true;
-    }
-    X0 = X;
-    D0 = D;
-  }
-  return false;
 }
 /** Stift für einen Abschnitt am Fluss ohne Vorgänger: die Ortsdurchfahrt beginnt am Tor, ihr Zubringer kurz davor; sonst null. */
 function riverPen(sec, next) {
   const town = sec.kind === 'stadt' ? sec : sec.kind === 'zub' && !sec.back && !sec.transitTo && next && next.place === sec.place ? next : null;
   if (!town || town.exitOnly || !riverOfSec(town, places)) return null;
   const rm = riverOnMap(town.place);
+  if (!rm) return null;
   const d = town === sec ? 0 : ku(0.3, rm.y);
   return { x: rm.gate[0] - rm.tx * d, y: rm.gate[1] - rm.ty * d, dx: rm.tx, dy: rm.ty };
 }
 /**
- * Weg vom Stift zum Tor des Flussorts (dort in Richtung der Brücke), ohne das Wasser zu berühren: geradewegs, wenn
- * das geht, sonst um das nähere Ende des Flusses herum – RIVER_MAP.gap neben dem Ende quer hinüber, dann in weitem
- * Bogen (RIVER_MAP.turn) ans äußere Ufer und an ihm entlang. Hängt die Punkte ohne den Anfang an.
+ * Weg vom Stift zum Tor des Flussorts, dort in Richtung der Brücke (meist steht der Stift schon dort: der Zubringer
+ * endet am Tor, crossings.js zubLine). Hängt die Punkte ohne den Anfang an.
  */
 function toGate(out, pen, rm, y0) {
   const [gx, gy] = rm.gate;
-  if (Math.hypot(pen.x - gx, pen.y - gy) < 1e-9) return;
-  const r = RAMP_R(y0);
-  const side = (pen.x - rm.x) * rm.wx + (pen.y - rm.y) * rm.wy >= 0 ? 1 : -1;
-  const far = rm.reach + ku(RIVER_MAP.gap, y0);
-  for (const sg of [0, side, -side]) {
-    const P = [pen.x, pen.y];
-    if (sg) {
-      const qx = rm.x + rm.wx * sg * far;
-      const qy = rm.y + rm.wy * sg * far;
-      dubins(P, pen.x, pen.y, pen.dx, pen.dy, qx, qy, -rm.tx, -rm.ty, r);
-      dubins(P, qx, qy, -rm.tx, -rm.ty, gx, gy, rm.tx, rm.ty, ku(RIVER_MAP.turn, y0));
-    } else dubins(P, pen.x, pen.y, pen.dx, pen.dy, gx, gy, rm.tx, rm.ty, r);
-    if (sg === -side || !riverTouch(P, rm, r * 0.5)) {
-      for (let i = 2; i < P.length; i++) out.push(P[i]);
-      return;
-    }
+  if (Math.hypot(pen.x - gx, pen.y - gy) < ku(0.002, y0)) {
+    out.push(gx, gy);
+    return;
   }
+  const P = [pen.x, pen.y];
+  dubins(P, pen.x, pen.y, pen.dx, pen.dy, gx, gy, rm.tx, rm.ty, RAMP_R(y0));
+  for (let i = 2; i < P.length; i++) out.push(P[i]);
 }
 
 /**
@@ -767,7 +960,8 @@ export class NavModel {
     this.target = -2;
     this.cur = new Line(); // eigener Weg (mit s-Zuordnung)
     this.route = null; // geplanter Weg bis zum Ziel: {line, a0 (Auto), stops, dest, kmTotal}
-    this.rivers = mapRivers(); // Flüsse der Karte (riverOnMap): fest, für jede Fahrt dieselben
+    this.rivers = []; // Wasser unter den Wegen der Fahrt (waterMarks): dort stehen Namen von Fluss und See
+    this.riversKey = '';
     this.trail = []; // gefahrener Weg (Kartenpunkte)
     this.trailKm = TRAIL.km; // Mindestabstand seiner älteren Punkte (wächst, wenn das Ausdünnen nicht reicht, thinTrail)
     this.pose = { x: 0, y: 0, dx: 0, dy: -1, a: 0, kind: 'ab' };
@@ -892,7 +1086,9 @@ export class NavModel {
       const d = L.dirAt(a, Math.max(L.len * 0.004, 1e-7), [0, 0]);
       const behind = L.slice(0, a);
       if (behind.length >= 4) out.push({ ...p, s1: s, pts: behind });
-      const rest = sec.kind === 'stadt' ? { ...sec, s0: s, len: sec.s1 - s, spotS: undefined, exitOnly: true } : { ...sec, s0: s };
+      // orig: der ganze Abschnitt (seine Brücken hängen an ihm, crossings.js sectionWater)
+      const orig = sec.orig || sec;
+      const rest = sec.kind === 'stadt' ? { ...sec, s0: s, len: sec.s1 - s, spotS: undefined, exitOnly: true, orig } : { ...sec, s0: s, orig };
       const ahead = sectionPieces(rest, { x: at[0], y: at[1], dx: d[0], dy: d[1] }, next, way, inDir);
       out.push(...ahead);
       return { pieces: out, nk: nextKey(next) + '>' + way, pen: penOf(ahead[ahead.length - 1].pts) };
@@ -914,6 +1110,35 @@ export class NavModel {
     for (const { path } of trip.paths()) for (const c of path.sections) alive.add(c.id);
     for (const id of this.cache.keys()) if (!alive.has(id)) this.cache.delete(id);
     this.buildRoute(pieces);
+    this.waterMarks();
+  }
+
+  /**
+   * Die Stellen, an denen die Wege der Fahrt über Wasser führen (crossings.js: jede ist in der Welt eine Brücke), je
+   * Fluss und Strecke einmal: [{x, y, name, cls, ri, j, t}] – Navi und große Karte schreiben dort den Namen aufs
+   * Wasser. Bleibt dieselbe Liste, solange sich nichts ändert.
+   */
+  waterMarks() {
+    const out = [];
+    const seen = new Set();
+    const add = (q) => {
+      if (!q.name) return;
+      const key = q.ri >= 0 ? q.ri + ':' + q.j : 'L' + Math.round(q.x * 1e4) + ':' + Math.round(q.y * 1e4);
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(q);
+    };
+    for (const { path } of this.trip.paths())
+      for (const c of path.sections) {
+        for (const b of sectionWater(c)) for (const q of b.map) add(q);
+        const tr = c.kind === 'stadt' && riverOfSec(c, places) ? townRiverOnMap(c.place) : null;
+        if (tr) add(tr.w);
+      }
+    const key = [...seen].join('|');
+    if (key !== this.riversKey) {
+      this.riversKey = key;
+      this.rivers = out;
+    }
   }
 
   /** Geplanter Weg: eigener Weg bis zur geplanten Ausfahrt, deren Zweig, dann laut Routenplan bis zum Ziel. */

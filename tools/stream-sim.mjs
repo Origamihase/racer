@@ -114,8 +114,8 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
       ctl.brake = idle ? 1 : p.speed > v + 3 ? 0.4 : 0;
       game.offAutobahn = sec.kind !== 'ab';
       if (charge) {
-        if (game.akku.warned > warned && trip.stop < 0 && trip.post < 0 && !game.charging) game.akku.planStop();
-        warned = game.akku.warned;
+        if (game.akku.warns > warned && trip.stop < 0 && trip.post < 0 && !game.charging) game.akku.planStop();
+        warned = game.akku.warns;
       }
       const tvBefore = game.tv;
       game.update(DT, ctl, camera);

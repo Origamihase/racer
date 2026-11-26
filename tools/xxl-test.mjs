@@ -23,6 +23,7 @@
 //   samt bemalter Textur, ein zweiter Abschnitt teilt Material und Textur.
 import * as G from '../src/map/graph.js';
 import * as shapes from '../src/map/shapes.js';
+import { sectionWater } from '../src/map/crossings.js';
 import { Trip, J, PROFILES } from '../src/game/trip.js';
 import { Player } from '../src/game/player.js';
 import { Course, MapPlanner, CALM } from '../src/game/course.js';
@@ -121,7 +122,7 @@ function drive(trip, metres, { mode = 'auto', decide = null, dt = 1 / 30, onEven
   p.x = trip.x;
   p.speed = 40 / 3.6;
   if (cruise) p.cruiseSet = AUTO.cruise;
-  const course = new Course({ planner: new MapPlanner({ graph: G, shapes }) });
+  const course = new Course({ planner: new MapPlanner({ graph: G, shapes, water: sectionWater }) });
   const env = { kappa: 0, grade: 0 };
   course.fill(trip, p.s, curveTable, dt);
   const lim = { left: 0, right: 0, shoulder: 0, lanes: null, extraLane: null, vmax: Infinity, decel: 0, slack: 0, closing: 0 };

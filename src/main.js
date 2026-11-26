@@ -6,6 +6,7 @@ import { W, curveTable, curveAt, curveOffset } from './curve.js';
 import { Course, MapPlanner, PROBE_MARKS } from './game/course.js';
 import * as mapGraph from './map/graph.js';
 import * as mapShapes from './map/shapes.js';
+import { sectionWater } from './map/crossings.js';
 import { setMaxAnisotropy } from './textures.js';
 import { Road } from './world/road.js';
 import { XxlWorld, ROAD_OPTS, autoTarget, autoDrive, AUTO } from './world/xxl/world.js';
@@ -50,7 +51,7 @@ import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
 import { SHOP, UPGRADE_LIMITS, shopPrice, canBuy } from './data.js';
 import { NavModel } from './map/navroute.js';
 import { nextStart, startNode } from './game/starts.js';
-import { setRoadAhead, setTownLayout } from './map/roadahead.js';
+import { setRoadAhead, setTownLayout, setBridgeReach } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
 import { albumBadges } from './ui/album.js';
 import { thinLine } from './ui/routemap.js';
@@ -160,13 +161,16 @@ sky.onEnv = (tex) => {
 // xxl.trip, siehe xxlStart): Autobahn, Landstraße und Ortszufahrt biegen und steigen, wie die Karte sie zeigt; rund um
 // Ausfahrten, Einfädelpunkte und Enden bleibt es gerade.
 // Prüfstand: __MA.course.drive(kurs, fahrt, tick) fährt einen Kurs über eine Fahrt (trip.js), tick(s) vor jedem Bild
-let course = new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes }) });
+// Über Wasser der Karte führt die Straße auf einer Brücke (map/crossings.js): dort gerade und eben
+let course = new Course({ planner: new MapPlanner({ graph: mapGraph, shapes: mapShapes, water: sectionWater }) });
 let courseTrip = null;
 let courseTick = null;
 // die Straße voraus des Navis: der Verlauf, den die Welt zeichnet (preview reicht 4 km weit)
 setRoadAhead((trip, s, dMax) => course.preview(trip, s, Math.min(dMax, 4000)));
 // und die Orte der Welt in seiner Nahansicht: Brunnenplatz und Zielbrunnen dort, wo die Welt sie baut
 setTownLayout((trip, sec) => naviLayout(sec, xxl.town(sec)));
+// und das Wasser unter den Brücken so weit, wie die Welt es gerade zeigt
+setBridgeReach((key) => xxl.bridges.reachOf(key));
 // Kurvenschilder rücken von Möbeln am Rand weg: vom Raster der Landschaft und von Blitzern, Tempo-Schildern und
 // Elsa, die das Spiel dort bestellt hat
 const EDGE_REQUESTS = new Set(['blitzer', 'speed', 'elsa']);

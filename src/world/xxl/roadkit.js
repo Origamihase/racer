@@ -21,6 +21,7 @@ import { places } from '../../map/graph.js';
 import { PAVEMENT } from '../kit/street.js';
 import { squareOf, squareWeight, kitTown } from './plan.js';
 import { chargeOf, kerbAt } from './charge.js';
+import { bridgeCuts } from './bridgeplan.js';
 
 export const AB_EDGE = 10.5; // Asphaltrand der Autobahn (ROAD.right)
 export const AB_RAIL = 11.05; // Schutzplanke der Autobahn (ROAD.right + 0.55)
@@ -526,6 +527,10 @@ export function buildPiece(mats, sec, prev, next, sa, sb, inCurve) {
   // Einfahrt des Ladeparks (charge.js): der Bordstein rechts ist dort abgesenkt, mit Übergängen davor und dahinter
   const dw = chargeOf(sec)?.drive ?? null;
   if (dw) extra.push(dw.s0 - dw.ramp, dw.s0, dw.s1, dw.s1 + dw.ramp);
+  // Brücken (bridgeplan.js): dort liegen statt der Bankette die Kappen
+  const cuts = sec.kind === 'stadt' ? [] : bridgeCuts(sec);
+  for (const [c0, c1] of cuts) extra.push(c0, c0 + 0.01, c1 - 0.01, c1);
+  const onBridge = (s) => cuts.some(([c0, c1]) => s > c0 + 0.005 && s < c1 - 0.005);
   if (extra.length) {
     for (const e of extra) if (e > sa + 0.005 && e < sb - 0.005 && !ss.some((q) => Math.abs(q - e) < 0.005)) ss.push(e);
     ss.sort((a, b) => a - b);
@@ -663,9 +668,9 @@ export function buildPiece(mats, sec, prev, next, sa, sb, inCurve) {
       }
     };
     // rechts
-    strip((i) => X[i].aR + O[i] - 0.02, (i) => X[i].aR + O[i] + X[i].verge);
+    strip((i) => X[i].aR + O[i] - 0.02, (i) => X[i].aR + O[i] + X[i].verge, (i) => !onBridge(ss[i]));
     // links (im Bogen nur bis zur Winkelhalbierenden des Keils)
-    strip((i) => (inCurve ? Math.max(X[i].aL + O[i] - X[i].verge, wedge(ss[i])) : X[i].aL - X[i].verge), (i) => X[i].aL + O[i] + 0.02, (i) => X[i].vergeL);
+    strip((i) => (inCurve ? Math.max(X[i].aL + O[i] - X[i].verge, wedge(ss[i])) : X[i].aL - X[i].verge), (i) => X[i].aL + O[i] + 0.02, (i) => X[i].vergeL && !onBridge(ss[i]));
   }
 
   // --- Gehweg und Bordstein (Ortsdurchfahrt) ---------------------------------------------------------------------
@@ -753,7 +758,7 @@ export function buildPiece(mats, sec, prev, next, sa, sb, inCurve) {
     const k0 = Math.ceil(sa / 50);
     for (let k = k0; k * 50 < sb; k++) {
       const s = k * 50;
-      if (s - sec.s0 < 8 || sec.s1 - s < 8) continue;
+      if (s - sec.s0 < 8 || sec.s1 - s < 8 || onBridge(s)) continue;
       const x = crossSection(sec, prev, next, s, {});
       const inMouth = st && s > st.a - 3 && s < st.b + 3;
       const o = off(s);

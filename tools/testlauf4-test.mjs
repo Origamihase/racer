@@ -326,7 +326,7 @@ console.log('2. Schöner Brunnen in jeder Folge:');
   const at = (ep, dt) => ep.marks.find((m) => m.dt === dt);
   // bis drei Folgen am Ziel aufgezeichnet sind und die letzte ganz vorbei ist
   const done = () => episodes.filter((e) => !e.way).length >= 3 && g.t > episodes[episodes.length - 1].t0 + TV.end + 1;
-  for (let i = 0; i < 2400 * 30 && !done(); i++) {
+  for (let i = 0; i < 3600 * 30 && !done(); i++) {
     // vor der Ankunft am Brunnen: eine Sprachdurchsage läuft noch, OMI hat einen langen Satz in der Schlange
     if (g.halt && injected !== g.halt) {
       injected = g.halt;
@@ -715,7 +715,8 @@ console.log('8. Gegenverkehr:');
   const P = { s: trip.s, x: trip.x, speed: 0, len: 4.7, w: 1.92 };
   const st = { steps: 0, wrong: 0, fast: 0, lane: 0, crash: 0, max: 0, km: { stadt: 0, land: 0 }, seen: { stadt: new Set(), land: new Set() }, kinds: {}, ab: 0, island: 0, born: [], grown: [] };
   let t = 0;
-  for (let i = 0; i < (30 * 60) / DT; i++) {
+  // (45 min: so viele Entgegenkommende, dass auch Transporter und Wohnmobile dabei sind)
+  for (let i = 0; i < (45 * 60) / DT; i++) {
     const sec = trip.section;
     const prof = trip.profile();
     P.speed = prof.limit > 0 ? prof.limit / 3.6 : 130 / 3.6;

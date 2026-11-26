@@ -9,8 +9,9 @@
 // Kartenkoordinaten: project() aus graph.js (Mercator, x = Länge, y nach Süden, Einheit = Grad Länge am Äquator).
 import { places, nodes, edges, roads, project, distKm } from './graph.js';
 import { Q, LAND, PATCHES, REGIONS, COUNTRIES, SEAS } from './land.js';
-import { FONT, drawShield, drawTransitBadge, drawHeart, fillRiver } from './symbols.js';
+import { FONT, drawShield, drawTransitBadge, drawHeart } from './symbols.js';
 import { Warp } from './warp.js';
+import { waterData, WATER_CLASS } from './water.js';
 
 export { project, REGIONS, COUNTRIES, SEAS };
 /** Deutscher Name eines Lands des Spiels nach Kürzel ('DE' → 'Deutschland'). */
@@ -981,6 +982,20 @@ function tileGeo(lod) {
   };
   return GEO[lod];
 }
+let WATERGEO = null;
+/** Flüsse (je Klasse) und Seen in Stücken, zum Zuschneiden auf Kacheln. */
+function waterGeo() {
+  if (WATERGEO) return WATERGEO;
+  const W = waterData();
+  const rivers = WATER_CLASS.map(() => []);
+  for (const r of W.rivers) rivers[r.cls].push(Object.assign(chunked(r.pts), { river: r.i }));
+  const lakes = W.lakes.map((l) => {
+    const c = chunked(l.pts);
+    return { pts: l.pts, box: c.box, chunks: c.chunks };
+  });
+  WATERGEO = { rivers, lakes };
+  return WATERGEO;
+}
 let NETGEO = null;
 /** Straßennetz in Stücken, nach Art (Zubringer mit ihrem Ort). */
 function netGeo() {
@@ -1072,13 +1087,6 @@ function smoothRing(path, P) {
 }
 
 /**
- * Flüsse der Orte in den statischen Ebenen, in CSS-Bildpunkten: min = halbe Breite, unter die das Wasser nie fällt, len =
- * erst ab dieser halben Länge wird ein Fluss gezeichnet. Die Flüsse liegen immer auf der Karte; weit herausgezoomt wäre
- * jeder nur ein blauer Krümel neben dem Punkt seiner Stadt – er erscheint, sobald er als Fluss zu lesen ist.
- */
-const RIVER_PX = { min: 1.1, len: 12 };
-
-/**
  * Zeichnet Karten. Ein Zeichner hält seine Zwischenspeicher (Kacheln, Ausschnitt).
  * theme: 'light' | 'dark'; look: 'menu' (große Karte) | 'navi' (Mittelbildschirm: kräftigere Linien und Punkte);
  * labels: false – renderStatic lässt die Namen weg (wer selbst darüber zeichnet, setzt sie danach mit renderLabels).
@@ -1099,9 +1107,6 @@ export class MapPainter {
     // Orte, durch die der Wagen fuhr, mit Punkt und Zubringer, und die Landstraßen, auf denen er fuhr
     // ({ places: Set Ortsindex, edges: Set Kante } oder null)
     this.keep = null;
-    this.rivers = []; // Flüsse der Karte (setRivers)
-    this.riverList = null;
-    this.riverKey = '';
   }
   get T() {
     return THEMES[this.theme];
@@ -1113,25 +1118,6 @@ export class MapPainter {
     this.cache = null;
     this.lv = [null, null];
     this.jobs = [null, null];
-  }
-
-  /**
-   * Flüsse der Karte (navroute.js mapRivers: [{place, x, y, wx, wy, half, reach}], Karteneinheiten): Sie liegen in den
-   * statischen Ebenen über den Ortsflächen und unter dem Weg des Wagens, der so als Brücke darüber läuft. Ändert sich
-   * die Liste, entstehen die Ebenen neu: Kacheln und gedrehter Ausschnitt sofort, die schrägen Ausschnitte im
-   * Hintergrund (bis dahin bleibt der alte stehen, das Navi blinkt nicht). Dieselbe Liste noch einmal kostet nichts.
-   */
-  setRivers(list) {
-    if (list === this.riverList) return;
-    this.riverList = list;
-    const key = list.map((r) => [r.place, r.x, r.y, r.wx, r.wy, r.half, r.reach].join(':')).join('|');
-    if (key === this.riverKey) return;
-    this.riverKey = key;
-    this.rivers = list.slice();
-    this.trim(0);
-    this.cache = null;
-    this.jobs = [null, null];
-    for (const l of this.lv) if (l) l.stale = true;
   }
 
   /**
@@ -1181,11 +1167,21 @@ export class MapPainter {
     }
     ctx.globalAlpha = 1;
     if (k >= 1.5) this.renderTowns(ctx, wx, wy, cw / s, ch / s, k, u);
-    // Flüsse: mindestens ein feiner Strich, sobald sie ein paar Bildpunkte lang sind
-    for (const q of this.rivers) {
-      if (q.reach < RIVER_PX.len * u || isOut([q.x - q.reach, q.y - q.reach, q.x + q.reach, q.y + q.reach], r[0], r[1], r[2], r[3])) continue;
-      fillRiver(ctx, q.x - q.wx * q.reach, q.y - q.wy * q.reach, q.x + q.wx * q.reach, q.y + q.wy * q.reach, Math.max(q.half, RIVER_PX.min * u), T.sea);
+    // Flüsse und Seen der ganzen Karte (water.js): je Klasse ab ihrem Maßstab, nah so breit wie in echt
+    const WG = waterGeo();
+    ctx.fillStyle = T.sea;
+    ctx.fill(landPath(WG.lakes, r[0], r[1], r[2], r[3]), 'nonzero');
+    ctx.strokeStyle = T.sea;
+    for (let c = WATER_CLASS.length - 1; c >= 0; c--) {
+      const C = WATER_CLASS[c];
+      if (k < C.from) continue;
+      const fade = C.from > 0 ? clamp((k - C.from) / C.from, 0, 1) : 1;
+      const px = Math.max(C.px[0] + (C.px[1] - C.px[0]) * clamp(Math.log2(k / Math.max(C.from, 0.1)) / 5, 0, 1), C.km * k);
+      ctx.globalAlpha = fade;
+      ctx.lineWidth = px * u;
+      ctx.stroke(solidPath(WG.rivers[c], r));
     }
+    ctx.globalAlpha = 1;
     ctx.strokeStyle = T.borderUnder;
     ctx.lineWidth = clamp(2 + Math.log2(k * 4), 2, 6) * u;
     ctx.stroke(solidPath(G.borders, r));

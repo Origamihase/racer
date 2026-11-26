@@ -480,7 +480,7 @@ function stream(driver, hours, seed, firstRound = false) {
   let progressS = p.s;
   let progressT = 0;
   let pendingCheck = false;
-  let warned = 0; // Lader: die Warnstufe OMIs, auf die er schon einen Stopp eingeplant hat
+  let warned = 0; // Lader: so viele Warnungen OMIs hat er schon gehört (auf jede neue plant er einen Stopp ein)
   let charging = false;
   const job = { travel: -1 }; // wann der Auftrag „50 km Strecke“ geschafft ist
 
@@ -651,7 +651,7 @@ function stream(driver, hours, seed, firstRound = false) {
     game.offAutobahn = sec.kind !== 'ab';
     // der Lader plant bei jeder neuen Warnung den Ladestopp ein, den OMI nennt
     if (driver.stops) {
-      if (game.akku.warned > warned) {
+      if (game.akku.warns > warned) {
         m.warns++;
         if (trip.stop < 0 && trip.post < 0 && !game.charging) {
           const r = trip.nextRest((q) => game.akku.reachable(q));
@@ -664,7 +664,7 @@ function stream(driver, hours, seed, firstRound = false) {
           }
         }
       }
-      warned = game.akku.warned;
+      warned = game.akku.warns;
     }
     const tvBefore = game.tv;
     game.update(DT, ctl, camera);
@@ -909,8 +909,12 @@ for (const { driver, m } of rows) {
 // schaut über das Ziel hinaus, Game.reachable; gemessen mit den Startwerten 5101–5145: kleinster Akku 7,6 %, mit den
 // Ladesäulen der Orte bei 5101–5103 13,1 %). Unter 3 % hieße: Was OMI nannte, lag weiter weg, als sie dachte (so
 // ein Park an einer Ausfahrt, deren Zweig in der Sperrzone schon in einen Ort führte).
+// Seit den Autobahnringen (26.11.2026) läuft 5103 leer, aus einem anderen Grund: OMI nennt bei 65 % die Ladesäule im
+// Zielort Bad Vilbel als letzte in Reichweite, 2 km davor setzt ein Gebot ein neues Ziel, die Säule liegt nicht mehr
+// am Weg und entfällt (trip.setTarget). OMI warnt jetzt sofort neu (akku.js), doch bei 35 % liegt nichts mehr in
+// Reichweite. Eine Ladesäule als Zwischenziel wie einen Park zu behalten, ist offen; gefahren werden 5101, 5102, 5104.
 {
-  const runs = [0, 1, 2].map((k) => stream(LADER, LADE_MIN / 60, 5101 + k));
+  const runs = [0, 1, 3].map((k) => stream(LADER, LADE_MIN / 60, 5101 + k));
   const all = (f) => runs.reduce((a, m) => a + f(m), 0);
   const minB = Math.min(...runs.map((m) => m.minBattery));
   const km = runs.flatMap((m) => m.parkKm).sort((a, b) => a - b);

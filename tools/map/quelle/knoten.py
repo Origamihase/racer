@@ -151,7 +151,9 @@ def legen(netz, roads, routen, log):
         E = eintraege[nid]
         n = N[nid]
         H = (n['lat0'], n['lon0'])
-        if nid in haefen or n['kind'] == 'ort':
+        # "hand": Knoten, deren echte Lage Natural Earth nicht kennt (dort fehlt eine Straße, etwa die A661 oder die
+        # Flughafenbrücke der A44): eine Kreuzung anderer Linien in der Nähe zöge sie sonst kilometerweit an die falsche Stelle
+        if nid in haefen or n['kind'] == 'ort' or n.get('hand'):
             lage[nid] = H
             fest.add(nid)
             zaehler['hafen' if nid in haefen else 'ort'] += 1

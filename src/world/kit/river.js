@@ -3,7 +3,7 @@
 // selbst bleibt, wie der Straßenbau sie baut (Fahrbahn, Bordstein, Gehweg laufen eben durch): die Brücke ist alles
 // darunter und daneben – Platte, Randbalken mit Geländer, Endpfeiler und Strompfeiler. So gibt es an ihren Enden
 // keine Fuge, keinen Sprung und keine zwei Flächen in derselben Ebene.
-// Der Boden der Welt bekommt über dem Wasser ein Loch (xxl/ground.js setRiver); seine Kante liegt unter der Uferkante.
+// Der Boden der Welt bekommt über dem Wasser ein Loch (xxl/ground.js setHoles); seine Kante liegt unter der Uferkante.
 // Alles Feste ist ein verschmolzenes Mesh im matten Material des Baukastens, das Wasser ein zweites mit eigenem
 // Material (ruhige, wandernde Wellen; die Zeit kommt aus core.uWater, kostet also nichts je Bild).
 import * as THREE from 'three';
@@ -43,7 +43,7 @@ const RIVER_FRAG = /* glsl */ `#include <color_fragment>
 `;
 
 /** Das Wasser der Flüsse: ein Material für alle (am Baukasten hängend), deckend, glatt, mit wandernden Wellen. */
-function riverWater(core) {
+export function riverWater(core) {
   if (core.riverWater) return core.riverWater;
   const mat = core.F.std({ color: RIVER_WATER, roughness: 0.24, metalness: 0, envMapIntensity: 1 });
   const curved = mat.onBeforeCompile;

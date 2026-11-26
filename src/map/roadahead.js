@@ -20,6 +20,7 @@
 import { J, PROFILES } from '../game/trip.js';
 import { places } from './graph.js';
 import { riverOfSec, riverAt } from './rivers.js';
+import { bridgesOf } from '../world/xxl/bridgeplan.js';
 
 /** Abtastung der Linie in Metern. */
 export const STEP = 10;
@@ -31,6 +32,7 @@ export const RIVER_SCENE = { X: [-900, -450, -200, -60, 0, 60, 200, 450, 900], l
 
 let source = null;
 let layoutSource = null;
+let reachSource = null;
 const RP = [0, 0];
 const straight = { n: 0, x: new Float64Array(0), z: new Float64Array(0), psi: NaN };
 
@@ -67,6 +69,15 @@ export function setTownLayout(fn) {
 }
 export function townLayout(trip, sec) {
   return layoutSource ? layoutSource(trip, sec) : null;
+}
+
+/**
+ * Schließt die Brücken der Welt an: fn(key) → [links, rechts], wie weit (Meter längs des Flusses ab der Straße) die Welt
+ * das Wasser der Brücke key (bridgeplan.js: b.key + '@' + Math.round(b.sc)) gerade zeigt, oder null (nicht gebaut).
+ * Ohne Welt zeigt die Nahansicht das Wasser jeder Brücke auf einer gezeichneten Straße bis RIVER_SCENE.X.
+ */
+export function setBridgeReach(fn) {
+  reachSource = fn || null;
 }
 
 /** Mitte der Fahrbahn eines Querschnitts (Mittel der Spuren in unserer Richtung und der Gegenrichtung). */
@@ -121,6 +132,8 @@ function chord(L, i) {
  * towns: [{place, sec, pts, streets: [{pts, w}], square: {d, X, r} | null, river: {name, near: [d, X, …], far: [d, X,
  * …]} | null}], marks: [{type, d, X, …}], carX}. river: der Fluss des Orts (rivers.js – dasselbe Band, das die Welt
  * baut) als seine beiden Wasserkanten diesseits und jenseits, von links nach rechts; dazu die Marke 'river' (sein Name).
+ * waters: [{name, near, far, key}]: das Wasser unter den Brücken der gezeichneten Straßen (bridgeplan.js, so weit, wie die
+ * Welt es zeigt: setBridgeReach), ebenso als Ufer diesseits und jenseits; auf dem eigenen Weg dazu die Marke 'river'.
  * kind: Querschnitt ('ab', 'rampe', 'verbindung', 'land', 'stadt'); role: 'cur' | 'branch' | 'ghost' | 'ahead';
  * fade 0…1 (verlassene Wege verschwinden, wo die Welt sie verschwinden lässt); marks: 'exit' (angesagte Ausfahrt;
  * name: ihr Schildtext), 'pin' (Zielpunkt), 'term' (Terminal), 'town' (Ortsanfang). ins: die Ansage des Navis (für
@@ -131,7 +144,7 @@ export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = 
   const lo = s - behind;
   const hi = s + ahead;
   const sh = trip.shears();
-  const scene = { roads: [], route: [], trail: [], towns: [], marks: [], carX: 0 };
+  const scene = { roads: [], route: [], trail: [], towns: [], waters: [], marks: [], carX: 0 };
   const lat = (sec, so, x) => {
     const l = trip.locate(sec, so, x);
     const f = sh.get(l.frame);
@@ -159,6 +172,40 @@ export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = 
     }
     return pts;
   };
+  // das Wasser unter den Brücken eines Abschnitts, soweit die Straße darüber in [a, b] gezeichnet ist
+  const seen = new Set();
+  const waters = (sec, a, b, own) => {
+    for (const br of bridgesOf(sec)) {
+      if (br.sc < a || br.sc > b) continue;
+      const key = br.key + '@' + Math.round(br.sc);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const reach = reachSource ? reachSource(key) : [Infinity, Infinity];
+      if (!reach) continue;
+      const Xs = [-reach[0]];
+      for (const X of RIVER_SCENE.X) if (X > -reach[0] && X < reach[1]) Xs.push(X);
+      Xs.push(reach[1]);
+      for (let i = 0; i < Xs.length; i++) Xs[i] = Math.min(Math.max(Xs[i], RIVER_SCENE.X[0]), RIVER_SCENE.X[RIVER_SCENE.X.length - 1]);
+      // Fluss → Straße: x = X·cos − D·sin, s = sc + D·cos + X·sin
+      const bank = (D) => {
+        const q = [];
+        for (const X of Xs) {
+          const so = br.sc + D * br.cos + X * br.sin;
+          const Xl = lat(sec, so, X * br.cos - D * br.sin);
+          if (Number.isFinite(Xl)) q.push(so - s, Xl);
+        }
+        return q;
+      };
+      const w = { name: br.name, key, near: bank(-br.half), far: bank(br.half) };
+      if (w.near.length < 4 || w.far.length < 4) continue;
+      scene.waters.push(w);
+      const L = RIVER_SCENE.label;
+      if (own && br.name && L < reach[1]) {
+        const so = br.sc + L * br.sin;
+        scene.marks.push({ type: 'river', name: br.name, d: so - s, X: lat(sec, so, L * br.cos) });
+      }
+    }
+  };
   scene.carX = lat(trip.section, s, trip.x);
   if (!Number.isFinite(scene.carX)) scene.carX = trip.x;
 
@@ -182,6 +229,7 @@ export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = 
         if (g) fade = Math.min(Math.max((g.until - s) / 150, 0), 1);
       }
       scene.roads.push({ kind: 'ab', role: av.role, fade, pts });
+      for (const c of av.secs) if (c.kind === 'ab') waters(c, a, b, av.role !== 'ghost');
     }
   }
 
@@ -199,6 +247,7 @@ export function closeScene(trip, ahead = 2200, behind = 500, ins = null, step = 
       if (!(b > a) || !trip.visible(sec, path)) continue;
       const pts = sample(sec, a, b, MID[sec.profile], []);
       if (pts.length >= 4) scene.roads.push({ kind: sec.profile, role, fade, pts, sec });
+      waters(sec, a, b, own);
       if (sec.kind === 'stadt' && sec.place >= 0) {
         const town = { place: sec.place, sec, role, pts: pts.slice(), streets: [], square: null, river: null };
         // der Fluss nur, wo auch die Straße des Orts über ihn gezeichnet ist

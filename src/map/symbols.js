@@ -324,31 +324,6 @@ export function drawFlag(ctx, x, y, k = 1, pole = '#1d1f22') {
   ctx.restore();
 }
 
-/** Auf diesem Anteil seiner Länge läuft ein Fluss der Karte an jedem Ende aus. */
-export const RIVER_FADE = 0.2;
-/**
- * Fluss der Karte: Wasser in der Farbe color ('#rrggbb') als Band der halben Breite hw um die Achse von (ax, ay) nach
- * (bx, by). An beiden Enden läuft es aus – der Fluss endet nicht an einer Kante, er verliert sich im Land.
- */
-export function fillRiver(ctx, ax, ay, bx, by, hw, color) {
-  const len = Math.hypot(bx - ax, by - ay);
-  if (!(len > 0)) return;
-  const nx = (-(by - ay) / len) * hw;
-  const ny = ((bx - ax) / len) * hw;
-  const g = ctx.createLinearGradient(ax, ay, bx, by);
-  g.addColorStop(0, color + '00');
-  g.addColorStop(RIVER_FADE, color);
-  g.addColorStop(1 - RIVER_FADE, color);
-  g.addColorStop(1, color + '00');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.moveTo(ax + nx, ay + ny);
-  ctx.lineTo(bx + nx, by + ny);
-  ctx.lineTo(bx - nx, by - ny);
-  ctx.lineTo(ax - nx, ay - ny);
-  ctx.closePath();
-  ctx.fill();
-}
 /**
  * Name eines Flusses auf seinem Wasser: Mitte bei x, y, längs der Richtung a (Bogenmaß; die Schrift steht nie kopf),
  * schräg gesetzt wie Gewässernamen auf Karten. size = Schriftgröße, color = Schrift, water = Farbe des Wassers als

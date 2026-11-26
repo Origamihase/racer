@@ -384,6 +384,98 @@ function layoutLocal(items, lo, hi) {
   return out;
 }
 
+/**
+ * Wie layoutLocal, aber keine Bögen in den Zonen zones ([[a, b], …]: Brücken, map/crossings.js – dort ist die Straße
+ * gerade). Jeder Bogen gehört in das freie Stück, in dem seine Wunschmitte liegt (der Knick am Anfang ins erste, der am
+ * Ende ins letzte); reicht einem Stück sein Platz nicht, wandern seine Bögen ins größere Nachbarstück. Der Winkel des
+ * Abschnitts bleibt.
+ */
+export function layoutZones(items, lo, hi, zones) {
+  const Z = zones
+    .map(([a, b]) => [Math.max(a, lo), Math.min(b, hi)])
+    .filter(([a, b]) => b > a)
+    .sort((p, q) => p[0] - q[0]);
+  if (!Z.length) return layoutLocal(items, lo, hi);
+  const I = [];
+  let s = lo;
+  for (const [a, b] of Z) {
+    if (a > s + 1e-6) I.push({ a: s, b: a, items: [] });
+    s = Math.max(s, b);
+  }
+  if (hi > s + 1e-6) I.push({ a: s, b: hi, items: [] });
+  const list = items.filter((it) => Math.abs(it.A) > 2e-4);
+  if (!list.length) return [];
+  if (!I.length) return layoutLocal(items, lo, hi);
+  for (const it of list) {
+    let k = 0;
+    if (it.at > 0) k = I.length - 1;
+    else if (!(it.at < 0)) {
+      let bd = Infinity;
+      I.forEach((J, j) => {
+        const d = it.c < J.a ? J.a - it.c : it.c > J.b ? it.c - J.b : 0;
+        if (d < bd) {
+          bd = d;
+          k = j;
+        }
+      });
+    }
+    I[k].items.push({ ...it });
+  }
+  for (let guard = 0; guard <= I.length; guard++) {
+    const out = [];
+    let failed = -1;
+    for (let k = 0; k < I.length && failed < 0; k++) {
+      const J = I[k];
+      if (!J.items.length) continue;
+      const want = J.items.reduce((v, it) => v + it.A, 0);
+      const els = layoutLocal(J.items.map((it) => ({ ...it, c: clamp(it.c, J.a, J.b) })), J.a, J.b);
+      const got = els.reduce((v, e) => v + e.k * (e.b - e.a - e.t), 0);
+      if (Math.abs(got - want) > 1e-4) failed = k;
+      else out.push(...els);
+    }
+    if (failed < 0) return out;
+    // ins größere Nachbarstück (die Knicke an den Knoten verlieren dabei ihren Platz am Rand)
+    const k = failed;
+    const left = k > 0 ? I[k - 1] : null;
+    const right = k + 1 < I.length ? I[k + 1] : null;
+    const nb = !left ? right : !right ? left : left.b - left.a >= right.b - right.a ? left : right;
+    if (!nb) break;
+    for (const it of I[k].items) {
+      if ((it.at < 0 && nb !== I[0]) || (it.at > 0 && nb !== I[I.length - 1])) it.at = 0;
+      nb.items.push(it);
+    }
+    I[k].items = [];
+  }
+  // passt es nirgends (sollte nicht vorkommen: die Brücken lassen an beiden Enden Platz), gilt der Winkel
+  return layoutLocal(items, lo, hi);
+}
+
+/**
+ * Steigung in den Zonen zones ([[a, b], …] in Metern) genau 0, davor und dahinter so weich, dass keine Kuppe enger als
+ * R_CREST und keine Wanne enger als R_SAG wird (wie realGrade an den Enden).
+ */
+export function flattenZones(g, zones) {
+  const n = g.length;
+  if (!zones.length || n < 3) return;
+  const flat = new Uint8Array(n);
+  for (const [a, b] of zones) for (let i = Math.max(0, Math.floor(a / DS)); i <= Math.min(n - 1, Math.ceil(b / DS)); i++) flat[i] = 1;
+  const dc = DS / R_CREST;
+  const dsg = DS / R_SAG;
+  // Abstand (Schritte) zur letzten und zur nächsten Zone
+  const u = new Float64Array(n).fill(Infinity);
+  const v = new Float64Array(n).fill(Infinity);
+  for (let i = 0; i < n; i++) u[i] = flat[i] ? 0 : i ? u[i - 1] + 1 : Infinity;
+  for (let i = n - 1; i >= 0; i--) v[i] = flat[i] ? 0 : i + 1 < n ? v[i + 1] + 1 : Infinity;
+  for (let i = 0; i < n; i++) {
+    if (flat[i]) g[i] = 0;
+    else g[i] = clamp(g[i], Math.max(-u[i] * dc, -v[i] * dsg), Math.min(u[i] * dsg, v[i] * dc));
+  }
+  for (let pass = 0; pass < 4; pass++) {
+    for (let i = 1; i < n; i++) if (!flat[i]) g[i] = clamp(g[i], g[i - 1] - dc, g[i - 1] + dsg);
+    for (let i = n - 2; i >= 0; i--) if (!flat[i]) g[i] = clamp(g[i], g[i + 1] - dsg, g[i + 1] + dc);
+  }
+}
+
 // --- Kartenverlauf -----------------------------------------------------------------------------------------------
 /** Gauß-Glättung mit konstant fortgesetzten Enden (der Gesamtwinkel bleibt erhalten). sigma in Abtastschritten. */
 function gauss(src, sigma) {
@@ -597,6 +689,7 @@ class Profile {
     this.matched = -1; // Güte des Kartenverlaufs (−1: Abschnitt ohne Kante)
     this.calm = [0, 0];
     this.guess = null; // {h}: geplant mit einer Vorhersage der Fortsetzung (MapPlanner.nextHead)
+    this.zones = []; // [[a, b]]: Brücken (gerade und eben), Meter ab Anfang
   }
   get th1() {
     return this.th0 + this.theta[this.n - 1];
@@ -795,7 +888,10 @@ export class Course {
         if (best) best.A += diff;
         else items.push({ A: diff, c: (lo + hi) / 2, kd: Math.min(spec.kmax, 1 / 1500), kmax: spec.kmax, t: spec.t, grp: 0 });
       }
-      P.bends = spec.kmax > 0 && hi > lo ? layoutLocal(items, lo, hi) : [];
+      // Brücken (plan.zones): dort gerade und eben
+      const zones = plan.zones || [];
+      P.bends = spec.kmax > 0 && hi > lo ? (zones.length ? layoutZones(items, lo, hi, zones) : layoutLocal(items, lo, hi)) : [];
+      P.zones = zones;
       P.calm = [lo, L - hi];
       P.target = P.th0 + plan.net;
     }
@@ -804,6 +900,7 @@ export class Course {
     if (!plan) P.target = P.th1;
     if (plan && plan.grade) P.grade.set(plan.grade);
     else paint(P.grade, gel);
+    if (plan && plan.zones && plan.zones.length) flattenZones(P.grade, plan.zones);
     integrate(P.grade, P.y);
     return P;
   }
@@ -1241,9 +1338,11 @@ export class Course {
  * new Course({ planner: new MapPlanner({ graph, shapes }) }) mit graph = src/map/graph.js, shapes = src/map/shapes.js.
  */
 export class MapPlanner {
-  constructor({ graph, shapes = null, seed = 7 }) {
+  constructor({ graph, shapes = null, seed = 7, water = null }) {
     this.graph = graph;
     this.shapes = shapes;
+    // Brücken eines Abschnitts (map/crossings.js sectionWater): dort bleibt die Straße gerade und eben
+    this.water = water;
     this.seed = seed;
     this.mapCache = new Map();
   }
@@ -1613,7 +1712,8 @@ export class MapPlanner {
         }
       }
     }
-    return { items, net, lo, hi, grade: gradeArr };
+    const zones = this.water ? this.water(sec).map((b) => [b.s - b.zone, b.s + b.zone]) : [];
+    return { items, net, lo, hi, grade: gradeArr, zones };
   }
 
   /** Freie Stücke [a, b, sa, sb] in [lo, hi] zwischen geplanten Bögen (Abstand margin), sa/sb: Drehsinn der Nachbarn. */

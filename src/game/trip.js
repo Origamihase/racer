@@ -29,6 +29,7 @@ import {
   stateOfNode, transitions, townLen, zubLen, spotIn, visitList, nodeTitle, exitNumber, dePos, turnAngle, PACE,
 } from '../map/graph.js';
 import { PARK, PARK_STOP_AFTER, PARKS, POST, postAt, postName, parkAt, parkZub, parkExcursion, routeToPark, nearestParks } from '../map/parks.js';
+import { zubWaterLen } from '../map/crossings.js';
 
 /** So weit (Reisekilometer) sucht nextRest geradeaus nach dem nächsten Ladepark. */
 const WALK_KM = 1500;
@@ -170,7 +171,9 @@ export class Trip {
     this.home = pl; // der Ort, in dem die Fahrt begonnen hat (−1: keiner)
     const len = pl >= 0 ? townLen(places[pl].pop) : 300;
     this.add(path, 'stadt', Math.max(len, 500), { node: startNode, place: pl, start: true, spotS: 0 });
-    this.add(path, 'zub', J.feed, { node: startNode, place: pl, back: true });
+    // führt er über Wasser (kein Startort der Spiele, starts.js; aber jeder Knoten kann Start sein), so lang, dass die
+    // Brücke Platz hat (map/crossings.js)
+    this.add(path, 'zub', Math.max(J.feed, pl >= 0 ? zubWaterLen(pl, startNode, true) : 0), { node: startNode, place: pl, back: true, start: true });
     path.frontier = { t: 'node', n: startNode, via: -1 };
     this.country = nd.cc;
     this.extendAll();
@@ -320,11 +323,15 @@ export class Trip {
    */
   addVisits(path, node, visits, fromKm) {
     let km = fromKm;
+    let from = -1;
     for (const pi of visits) {
       const p = places[pi];
       const far = Math.max(p.zubKm - km, 0);
-      const zl = zubLen(far);
-      this.add(path, 'zub', zl, { node, place: pi, kmPerM: far * 1000 > zl ? far / zl : J.real });
+      // führt der Zubringer über Wasser, ist er so lang, dass seine Brücken Platz haben (map/crossings.js); from: der
+      // Ort davor, wenn er nicht am Knoten beginnt (von Ort zu Ort)
+      const zl = Math.max(zubLen(far), zubWaterLen(pi, node, false, from));
+      this.add(path, 'zub', zl, { node, place: pi, kmPerM: far * 1000 > zl ? far / zl : J.real, from });
+      from = pi;
       const tl = townLen(p.pop);
       const town = this.add(path, 'stadt', tl, { node, place: pi });
       town.spotS = town.s0 + spotIn(tl);

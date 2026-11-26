@@ -6,13 +6,15 @@
 // kit/layout.js Regel 8), das Spiel prüft ihn aus demselben Plan (game/parts/ereignisse.js) – eine Wahrheit. Gemessen
 // wird das Tempolimit, das dort gilt (im Ort 50, auf der Landstraße 100, wie die Anzeige es zeigt). Eine Warnung vorher
 // gibt es nur mit dem Radarwarner aus dem Shop.
-import { places } from '../../map/graph.js';
+import { places, nodes, edges, roads, deTo } from '../../map/graph.js';
+import { PARKS } from '../../map/parks.js';
 import { PROFILES } from '../../game/trip.js';
 import { hashKey } from '../kit/layout.js';
 import { squareOf } from './plan.js';
 import { chargeOf, steleOf, CHARGE } from './charge.js';
 import { schrankeOf } from './schranke.js';
 import { RIVER, riverOfSec, riverSpan } from '../../map/rivers.js';
+import { bridgesOf } from './bridgeplan.js';
 
 export const BLITZER = {
   town: 0.3, // Anteil der Orte (Ortsdurchfahrten) mit Blitzer
@@ -70,6 +72,12 @@ const cache = new WeakMap();
  * y, limit (km/h), frame, place }]. Im Ort (nicht am Start, nicht im Ladepark hinter einer Ausfahrt) für BLITZER.town
  * der Orte, auf einer Landstraße je nach Länge (BLITZER.landPerM). Derselbe Abschnitt bekommt dieselbe Liste.
  */
+/** Name einer gerichteten Landstraßen-Kante: Straße, von, nach. */
+const landKey = (de) => {
+  const e = edges[de >> 1];
+  return ['L', roads[e.road].id, nodes[deTo(de ^ 1)].id, nodes[deTo(de)].id].join('|');
+};
+
 export function camerasOf(sec) {
   if (!sec) return [];
   let list = cache.get(sec);
@@ -84,12 +92,19 @@ export function camerasOf(sec) {
     }
   } else if ((sec.kind === 'land' || sec.kind === 'zub') && len > 2 * BLITZER.landEdge + 200) {
     // die Straße der Karte: eine Landstraße ist ihre gerichtete Kante, ein Zubringer sein Knoten mit Ort bzw. Park
-    // und Richtung
-    const road = sec.kind === 'land' ? 'L' + sec.de : ['Z', sec.node, sec.place ?? -1, sec.park ?? -1, sec.back ? 1 : 0, sec.transitTo ?? -1].join('|');
+    // und Richtung – benannt, nicht nummeriert: ein Umbau des Netzes an anderer Stelle versetzt keinen Blitzer
+    const road = sec.kind === 'land' ? landKey(sec.de) : ['Z', nodes[sec.node].id, places[sec.place]?.key ?? '', PARKS[sec.park]?.name ?? '', sec.back ? 1 : 0, nodes[sec.transitTo]?.id ?? ''].join('|');
     const h = hashKey('Blitzer Landstraße ' + road);
     if (frac(h) < Math.min(BLITZER.landMax, len * BLITZER.landPerM)) {
-      const u = BLITZER.landEdge + frac(hashKey('Blitzerplatz Landstraße ' + road)) * (len - 2 * BLITZER.landEdge);
-      list.push({ kind: 'land', u: Math.round(u * 10) / 10, limit: PROFILES.land.limit, place: -1 });
+      // nicht auf einer Brücke und nicht an ihren Ufern (bridgeplan.js): dann eine der nächsten Stellen
+      const wet = bridgesOf(sec).map((b) => [b.c0 - sec.s0 - BLITZER.keep, b.c1 - sec.s0 + BLITZER.keep]);
+      const h2 = hashKey('Blitzerplatz Landstraße ' + road);
+      for (let k = 0; k < 12; k++) {
+        const u = BLITZER.landEdge + frac(h2 + k * 7919) * (len - 2 * BLITZER.landEdge);
+        if (wet.some(([lo, hi]) => u > lo && u < hi)) continue;
+        list.push({ kind: 'land', u: Math.round(u * 10) / 10, limit: PROFILES.land.limit, place: -1 });
+        break;
+      }
     }
   }
   for (const c of list) {

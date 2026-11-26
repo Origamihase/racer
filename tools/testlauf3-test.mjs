@@ -25,6 +25,7 @@ import { mainSource, gameSource } from './lib/main-source.mjs';
 import { readFileSync } from 'node:fs';
 import * as G from '../src/map/graph.js';
 import * as shapes from '../src/map/shapes.js';
+import { sectionWater } from '../src/map/crossings.js';
 import { Trip, J, PROFILES } from '../src/game/trip.js';
 import { Player } from '../src/game/player.js';
 import { Course, MapPlanner } from '../src/game/course.js';
@@ -81,7 +82,7 @@ function drive(trip, metres, who, { park = false } = {}) {
   p.x = trip.x;
   p.speed = 40 / 3.6;
   if (who === 'tempomat') p.cruiseSet = AUTO.cruise;
-  const course = new Course({ planner: new MapPlanner({ graph: G, shapes }) });
+  const course = new Course({ planner: new MapPlanner({ graph: G, shapes, water: sectionWater }) });
   const env = { kappa: 0, grade: 0 };
   course.fill(trip, p.s, curveTable, DT);
   const lim = {};

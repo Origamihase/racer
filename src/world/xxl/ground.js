@@ -2,8 +2,8 @@
 // breit wie die Sicht und an den Rändern sanft abfallend (so verschwindet das Ende der Welt im Dunst). Er wird nie geschert und läuft nur mit s mit, darf also kein Muster haben, dessen Gleiten man
 // neben einem gescherten Rahmen bemerken würde: nur feines, richtungsloses Gras. Felder, Wege und Teiche sind
 // aufgenähte Flicken der Rahmen (siehe roadkit/forest), nie Teil dieses Bodens.
-// Wo ein Fluss durch einen Ort fließt (kit/river.js), hat er ein Loch: ein Band, das der Shader ausspart (setRiver) –
-// Wasser und Kaimauern liegen tiefer als er.
+// Wo ein Fluss durch einen Ort fließt (kit/river.js) oder unter einer Brücke (bridges.js), hat er ein Loch: ein Band,
+// das der Shader ausspart (setHoles, bis zu HOLES zugleich) – Wasser, Ufer und Kaimauern liegen tiefer als er.
 import * as THREE from 'three';
 import { W } from '../../curve.js';
 import { GRASS_RGB } from '../../textures.js';
@@ -99,11 +99,18 @@ function groundCols() {
   return xs;
 }
 
-// Loch des Flusses: die Lage vor der Krümmung kommt aus dem Vertex-Shader (dort, wo curve.js sie berechnet)
+// Löcher der Flüsse: die Lage vor der Krümmung kommt aus dem Vertex-Shader (dort, wo curve.js sie berechnet). Je Loch
+// uHoleA = (Punkt der Achse x, z, Richtung des Flusses x, z), uHoleB = (halbe Breite quer, Anfang und Ende längs,
+// Schräge der Enden: längs je quer, aus der Scherung des Rahmens)
+export const HOLES = 8;
 const HOLE_AT = 'vec4 cwPos = modelMatrix * mvPosition;';
-const HOLE_FRAG = /* glsl */ `{
-  vec2 rd = vRiverXZ - uRiver.xy;
-  if (abs(dot(rd, uRiver.zw)) < uRiverSize.x && abs(dot(rd, vec2(-uRiver.w, uRiver.z))) < uRiverSize.y) discard;
+const HOLE_FRAG = /* glsl */ `for (int i = 0; i < ${HOLES}; i++) {
+  vec4 ha = uHoleA[i];
+  vec4 hb = uHoleB[i];
+  vec2 rd = vRiverXZ - ha.xy;
+  float across = dot(rd, vec2(-ha.w, ha.z));
+  float along = dot(rd, ha.zw) - hb.w * across;
+  if (abs(across) < hb.x && along > hb.y && along < hb.z) discard;
 }
 #include <clipping_planes_fragment>`;
 
@@ -111,17 +118,16 @@ export class Ground {
   constructor(parent) {
     this.tex = meadowTexture();
     this.mat = W.lambert({ map: this.tex, ...LAYER.ground });
-    // Flussband im Raum vor der Krümmung: (Punkt der Achse x, z, Einheitsvektor quer dazu x, z) und (halbe Breite, halbe
-    // Länge); Breite 0 = kein Fluss in Sicht
-    this.uRiver = { value: new THREE.Vector4(0, 0, 0, 1) };
-    this.uRiverSize = { value: new THREE.Vector2(0, 0) };
+    // Flussbänder im Raum vor der Krümmung (siehe HOLE_FRAG); Breite 0 = kein Loch
+    this.uHoleA = { value: Array.from({ length: HOLES }, () => new THREE.Vector4(0, 0, 1, 0)) };
+    this.uHoleB = { value: Array.from({ length: HOLES }, () => new THREE.Vector4(0, 0, 0, 0)) };
     const curved = this.mat.onBeforeCompile;
     this.mat.onBeforeCompile = (shader, renderer) => {
       curved(shader, renderer);
-      shader.uniforms.uRiver = this.uRiver;
-      shader.uniforms.uRiverSize = this.uRiverSize;
+      shader.uniforms.uHoleA = this.uHoleA;
+      shader.uniforms.uHoleB = this.uHoleB;
       shader.vertexShader = 'varying vec2 vRiverXZ;\n' + shader.vertexShader.replace(HOLE_AT, HOLE_AT + '\nvRiverXZ = cwPos.xz;');
-      shader.fragmentShader = 'uniform vec4 uRiver;\nuniform vec2 uRiverSize;\nvarying vec2 vRiverXZ;\n' + shader.fragmentShader.replace('#include <clipping_planes_fragment>', HOLE_FRAG);
+      shader.fragmentShader = `uniform vec4 uHoleA[${HOLES}];\nuniform vec4 uHoleB[${HOLES}];\nvarying vec2 vRiverXZ;\n` + shader.fragmentShader.replace('#include <clipping_planes_fragment>', HOLE_FRAG);
     };
     this.mat.customProgramCacheKey = () => 'curved-world|flussloch';
     const uv = (x, y, z) => [x / TILE, -z / TILE];
@@ -144,9 +150,22 @@ export class Ground {
     this.mat.color.setScalar(1 - wet * 0.27);
   }
 
-  /** Das Loch für den Fluss stellen: band wie Towns.band (xxl/towns.js); ohne Fluss in Sicht bleibt der Boden ganz. */
-  setRiver(band) {
-    this.uRiverSize.value.set(band.on ? band.half : 0, band.reach);
-    if (band.on) this.uRiver.value.set(band.x, band.z, band.nx, band.nz);
+  /**
+   * Die Löcher stellen: band wie Towns.band (xxl/towns.js, der Fluss eines Orts), holes wie Bridges.holes (nach Nähe:
+   * [{ x, z, tx, tz, half, r0, r1 }]). Mehr als HOLES: die fernsten bleiben zu (dort liegt der Boden über dem Wasser).
+   */
+  setHoles(band, holes) {
+    let k = 0;
+    if (band.on) {
+      // Towns.band: (nx, nz) quer zum Fluss, längs also (nz, −nx)
+      this.uHoleA.value[k].set(band.x, band.z, band.nz, -band.nx);
+      this.uHoleB.value[k++].set(band.half, -band.reach, band.reach, 0);
+    }
+    for (let i = 0; i < holes.length && k < HOLES; i++) {
+      const h = holes[i];
+      this.uHoleA.value[k].set(h.x, h.z, h.tx, h.tz);
+      this.uHoleB.value[k++].set(h.half, h.r0, h.r1, h.skew || 0);
+    }
+    for (; k < HOLES; k++) this.uHoleB.value[k].set(0, 0, 0, 0);
   }
 }

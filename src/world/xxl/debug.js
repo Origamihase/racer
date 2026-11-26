@@ -6,6 +6,7 @@ import { W } from '../../curve.js';
 import { J } from '../../game/trip.js';
 import { autoTarget } from './plan.js';
 import { camerasAlong } from './blitzer.js';
+import { bridgesOf } from './bridgeplan.js';
 
 const FRAME_COLORS = [0xff6b6b, 0x4dabf7, 0x51cf66, 0xfcc419, 0xcc5de8, 0xff922b, 0x22b8cf];
 
@@ -143,6 +144,18 @@ export function installDebug(M, world, getPlayer, hooks = {}) {
       p.vx = 0;
       if (jump > 20 && hooks.afterWarp) hooks.afterWarp(p);
       return { s: +p.s.toFixed(3), x: +p.x.toFixed(3), view: world.view ? world.view.frame : null };
+    },
+    /**
+     * Brücken auf dem eigenen Weg bis ahead Meter voraus (bridgeplan.js): [{ sc (Mitte, Meter der Fahrt), name, kind,
+     * cls, half, drop, ang, key }], nach Lage geordnet.
+     */
+    bridges(ahead = 5000) {
+      const T = world.trip;
+      const out = [];
+      for (const c of T.cur.sections) {
+        for (const b of bridgesOf(c)) if (b.sc > T.s - 200 && b.sc < T.s + ahead) out.push({ sc: b.sc, name: b.name, kind: b.kind, cls: b.cls, half: b.half, drop: b.drop, ang: b.w.ang, key: b.key, c0: b.c0, c1: b.c1 });
+      }
+      return out.sort((a, b) => a.sc - b.sc);
     },
     /** Autopilot an/aus (folgt dem Navi, hält die Spur und das Tempolimit). */
     auto: false,

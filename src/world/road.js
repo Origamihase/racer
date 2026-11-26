@@ -73,10 +73,13 @@ export function stripGeometry(segments, rows = ROWS) {
 // Keils (das Gebiet der Rampe) · rail: rechte Planke, Pfosten und Leitpfosten offen, bis Rampe und Autobahn Platz
 // für eigene Planken haben (w 0…railGap). Alles: nur zwischen Anfang und Ende der Fahrbahn.
 // Z: { railGap, gore, lane (Länge der Streifen), cap, kappa, wedgeSum (Asphaltränder von Autobahn + Rampe) }
+/** So viele Brücken der gezeichneten Autobahn spart das Bankett höchstens aus (gerade Zahl; Abstand ≥ 310 m). */
+export const BR_SLOTS = 8;
 function zoneGlsl(Z) {
   return /* glsl */ `
 uniform vec4 uXxlJ;
 uniform vec2 uXxlClip;
+uniform vec4 uXxlBr[${BR_SLOTS / 2}];
 varying float vXxlX;
 varying float vXxlD;
 float xxlW(float dj, float t) { return t > 0.5 ? vXxlD - dj : t < -0.5 ? dj - vXxlD : -1e6; }
@@ -109,6 +112,12 @@ function zonePatch(material, kind, uniforms, Z) {
       float xxlW0 = xxlW(uXxlJ.x, uXxlJ.y);
       float xxlW1 = xxlW(uXxlJ.z, uXxlJ.w);`;
     if (kind === 'verge') {
+      // auf Brücken liegen statt der Bankette die Kappen (xxl/bridges.js)
+      frag += /* glsl */ `
+      for (int i = 0; i < ${BR_SLOTS / 2}; i++) {
+        vec4 br = uXxlBr[i];
+        if ((vXxlD > br.x && vXxlD < br.y) || (vXxlD > br.z && vXxlD < br.w)) discard;
+      }`;
       frag += /* glsl */ `
       if (vXxlX > ${ROAD.right.toFixed(2)}) {
         if (xxlW0 >= 0.0 && vXxlX > (${Z.wedgeSum.toFixed(3)} + xxlR(xxlW0)) * 0.5) discard;
@@ -279,7 +288,7 @@ export class Road {
     }
     this.delin = delin;
     this.group.add(delin);
-    this.zoneU = { uXxlJ: { value: new THREE.Vector4(1e6, 0, 1e6, 0) }, uXxlClip: { value: new THREE.Vector2(-1e6, 1e6) } };
+    this.zoneU = { uXxlJ: { value: new THREE.Vector4(1e6, 0, 1e6, 0) }, uXxlClip: { value: new THREE.Vector2(-1e6, 1e6) }, uXxlBr: { value: Array.from({ length: BR_SLOTS / 2 }, () => new THREE.Vector4(1e6, 1e6, 1e6, 1e6)) } };
     zonePatch(this.roadMat, 'road', this.zoneU, opts.zone);
     zonePatch(this.grassMat, 'verge', this.zoneU, opts.zone);
     for (const m of [this.railMat, postMat, whiteMat, blackMat, reflMat]) zonePatch(m, 'rail', this.zoneU, opts.zone);
@@ -350,6 +359,21 @@ export class Road {
   setZones(d0, t0, d1, t1, begin, end) {
     this.zoneU.uXxlJ.value.set(d0, t0, d1, t1);
     this.zoneU.uXxlClip.value.set(begin, end);
+  }
+
+  /**
+   * Bis zu BR_SLOTS Brücken der Autobahn in Metern vor dem Spieler: [[a, b], …] (dort kein Bankett, die Kappen der
+   * Brücke liegen darüber).
+   */
+  setBridges(spans) {
+    const v = this.zoneU.uXxlBr.value;
+    for (let i = 0; i < BR_SLOTS; i++) {
+      const sp = spans[i];
+      const a = sp ? sp[0] : 1e6;
+      const b = sp ? sp[1] : 1e6;
+      if (i & 1) v[i >> 1].z = a, v[i >> 1].w = b;
+      else v[i >> 1].x = a, v[i >> 1].y = b;
+    }
   }
 
   /** Nässe 0…1 (Regen): Asphalt dunkler und spiegelnder. */

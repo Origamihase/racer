@@ -8,7 +8,8 @@
 // - die Orte der Karte an ihren Ortsdurchfahrten aus dem Stadtbaukasten (towns.js): Häuser, Plätze, Brunnen, Menschen
 //   und Wahrzeichen, solange ein Stück ihres Abschnitts im Sichtbereich liegt,
 // - die Tafeln (signs.js nach signplan.js: Vorwegweiser, Entfernungstafeln, Ortstafeln …, alle Texte aus der Fahrt),
-// - der eine Boden (ground.js).
+// - die Brücken über Flüsse und Seen, wo die Karte den Weg über Wasser führt (bridges.js), mit Wasser und Ufern,
+// - der eine Boden (ground.js), mit Löchern über dem Wasser.
 // Jeder Zufall hängt an stabilen Schlüsseln der Abschnitte (Art, Knoten, Kante, Ort …), nie an IDs: ein neu
 // geplanter Zweig sieht genauso aus wie vorher.
 import * as THREE from 'three';
@@ -18,6 +19,7 @@ import { FramePool } from './frames.js';
 import { Ground, LAYER } from './ground.js';
 import { RoadMaterials, buildPiece, VIS, VERGE, KERB, AB_EDGE, RAIL_U, ISLAND_H, crossSection, curveShift, linShift, stubOf } from './roadkit.js';
 import { Towns } from './towns.js';
+import { Bridges, bridgesOf, inWater } from './bridges.js';
 import { PropSet, PROP, addProp, forestSide, openSide, fieldSide, houseSide } from './forest.js';
 import { Junctions, closeLine } from './junction.js';
 import { Signs } from './signs.js';
@@ -80,6 +82,11 @@ export class XxlWorld {
     this.arrival = new Arrival();
     // Orte und Brunnen aus dem Stadtbaukasten
     this.towns = new Towns(this.root);
+    // Brücken mit Wasser und Ufern (Materialien und Wasser des Stadtbaukastens)
+    this.bridges = new Bridges(this.towns.kit, this.root);
+    this.brSpans = [];
+    this.viewBridges = []; // Brücken der gezeichneten Autobahn (bridgeplan.js), für Szenerie und Road
+    this.roadSpans = []; // die Straßen der Welt je Rahmen [{frame, s0, s1}] (Bridges.update: Wasser endet davor)
     /**
      * Haken für das Spiel: baut den Brunnen eines Brunnenplatzes, fn({r, place, seed, heading}) → Object3D mit
      * Ursprung in der Mitte am Boden, Vorderseite +z (zum haltenden Wagen). Standard: der Hauptbrunnen des Orts aus
@@ -111,6 +118,7 @@ export class XxlWorld {
     for (const p of this.pieces.values()) this.dropPiece(p);
     this.pieces.clear();
     this.towns.reset();
+    this.bridges.reset();
     this.trip = new Trip({ start });
     this.s = this.trip.s;
     this.arrival.reset();
@@ -173,7 +181,8 @@ export class XxlWorld {
     this.ground.update(s, wet);
     this.mats.setWet(wet);
     this.towns.update(s, this.shear, time, wet, T.cur);
-    this.ground.setRiver(this.towns.band);
+    this.bridges.update(s, this.shear, this.roadSpans);
+    this.ground.setHoles(this.towns.band, this.bridges.holes);
     this.updateRoad(s);
     this.junctions.update(s, wet);
     if (this.maskAutobahn !== this.maskOn) this.setMask(this.maskAutobahn);
@@ -232,6 +241,12 @@ export class XxlWorld {
       }
     }
     this.road.setZones(d0, t0, d1, t1, isFinite(v.s0) ? v.s0 - s : -1e6, isFinite(v.s1) ? v.s1 - s : 1e6);
+    // die Brücken der gezeichneten Autobahn: dort kein Bankett (die Kappen liegen darüber); die vor dem Auto zuerst
+    const br = this.brSpans;
+    br.length = 0;
+    for (const b of this.viewBridges) br.push([b.c0 - s, b.c1 - s]);
+    br.sort((p, q) => (p[1] < -20 ? 1e5 - p[1] : p[0]) - (q[1] < -20 ? 1e5 - q[1] : q[0]));
+    this.road.setBridges(br);
   }
 
   // --- Abgleich -----------------------------------------------------------------------------------------------
@@ -251,12 +266,15 @@ export class XxlWorld {
     want.clear();
     const signGroups = view ? [[view.secs, view.secs]] : [];
     this.towns.begin();
+    this.bridges.begin();
+    const drawnSecs = new Set();
     eachPiece(
       T,
       view,
       (key, path, sec, prev, next, ch, forest) => {
         want.add(key);
         if (kitTown(sec)) this.towns.need(sec, path);
+        drawnSecs.add(sec);
         const p = this.pieces.get(key);
         if (!p) this.pieces.set(key, this.buildPiece(key, path, sec, prev, next, ch, forest));
         else {
@@ -274,6 +292,17 @@ export class XxlWorld {
       this.pieces.delete(key);
     }
     this.towns.sweep();
+    // Brücken: auf allen gezeichneten Straßen (fremde Wege eingeschlossen: ihr Wasser endet vor unserer Straße)
+    for (const sec of drawnSecs) this.bridges.need(sec, lo, hi);
+    this.viewBridges = [];
+    if (view) {
+      for (const c of view.secs) {
+        if (c.kind !== 'ab') continue;
+        this.bridges.need(c, Math.max(lo, view.s0), Math.min(hi, view.s1), view.frame);
+        for (const b of bridgesOf(c)) if (b.c1 > view.s0 && b.c0 < view.s1) this.viewBridges.push(b);
+      }
+    }
+    this.bridges.sweep();
     // Tafeln (und ihre Stellen am Rand der gezeichneten Autobahn, an denen die Szenerie Platz lässt)
     this.signs.sync(T, signGroups, lo, hi + 400, hi);
     this.boards.length = 0;
@@ -303,6 +332,7 @@ export class XxlWorld {
     for (const p of this.pieces.values()) keep.add(p.frame);
     for (const id of this.junctions.frames()) keep.add(id);
     for (const id of this.signs.frames()) keep.add(id);
+    for (const id of this.bridges.frames()) keep.add(id);
     for (const id of keep) this.frames.acquire(id);
     // Road und Szenerie hängen in der Ansicht der gezeichneten Autobahn
     if (view) {
@@ -323,6 +353,17 @@ export class XxlWorld {
     }
     this.junctions.attach();
     this.signs.attach();
+    this.bridges.attach(this.frames);
+    // die Straßen je Rahmen für das Wasser der Brücken
+    // (aneinanderstoßende Stücke eines Rahmens zusammengefasst; eine Lücke bleibt Lücke, dort darf das Wasser hin)
+    const ps = [...this.pieces.values()].sort((p, q) => (p.frame < q.frame ? -1 : p.frame > q.frame ? 1 : p.a - q.a));
+    this.roadSpans = [];
+    let q = null;
+    for (const p of ps) {
+      if (q && q.frame === p.frame && p.a <= q.s1 + 1) q.s1 = Math.max(q.s1, p.b);
+      else this.roadSpans.push((q = { frame: p.frame, s0: p.a, s1: p.b }));
+    }
+    if (view) this.roadSpans.push({ frame: view.frame, s0: Math.max(view.s0, lo), s1: Math.min(view.s1, hi) });
     if (this.maskOn) this.setMask(true);
     if (this.afterSync) this.afterSync();
     // Bewuchs je Rahmen neu sammeln, wenn sich seine Stücke geändert haben
@@ -413,14 +454,17 @@ export class XxlWorld {
         const left = X.aL + off(s);
         return (e + left) / 2 + 1.5;
       },
-      // im Stummel und seinen Ecken wächst nichts (sein Ende verschwindet unten zwischen eigens gesetzten Bäumen)
+      // im Stummel und seinen Ecken wächst nichts (sein Ende verschwindet unten zwischen eigens gesetzten Bäumen), im
+      // Wasser und an den Ufern unter einer Brücke auch nicht
       blocked: (x, s, r) => {
+        if (wet.length && inWater(wet, x, s, r + 3)) return true;
         if (!st || x > Math.max(st.near, st.far)) return false;
         if (s > st.s - st.w / 2 - 3 - r && s < st.s + st.w / 2 + 3 + r && x > st.x1 - 9) return true;
         return s > st.a - 2 - r && s < st.b + 2 + r && x > Math.min(st.near, st.far) - st.R - 3 - r;
       },
     };
     const st = stubOf(sec, prev, next);
+    const wet = bridgesOf(sec);
     const inForest = (a, b) => forest.filter((r) => r.s1 > a && r.s0 < b).map((r) => [Math.max(a, r.s0), Math.min(b, r.s1)]);
     const segs = [];
     let at = ch.a;
@@ -490,6 +534,8 @@ export class XxlWorld {
   sceneryKeepOut(x, s) {
     const v = this.view;
     if (!v || s > v.s1 - 2 || s < v.s0 + 2) return true;
+    // Wasser und Ufer an den Brücken
+    if (this.viewBridges.length && inWater(this.viewBridges, x, s, 12)) return true;
     // Tafeln am Rand: davor, dahinter und dahinter im Grünen nichts (Bäume, Büsche, Häuser)
     if (x > AB_EDGE && x < AB_EDGE + 12) for (let i = 0; i < this.boards.length; i++) if (Math.abs(s - this.boards[i]) < 9) return true;
     for (let i = 0; i < this.zones.length; i++) {
@@ -504,6 +550,7 @@ export class XxlWorld {
   sceneryNoCross(s0, s1) {
     const v = this.view;
     if (!v || s1 > v.s1 - 60 || s0 < v.s0 + 60) return true;
+    for (const b of this.viewBridges) if (s1 > b.c0 - 80 && s0 < b.c1 + 80) return true;
     for (let i = 0; i < this.boards.length; i++) if (this.boards[i] > s0 && this.boards[i] < s1) return true;
     for (let i = 0; i < this.zones.length; i++) {
       const z = this.zones[i];

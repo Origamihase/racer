@@ -66,6 +66,8 @@ export class Akku {
     this.sugarDue = false;
     this.meter = meterAkku();
     this.warned = 0;
+    this.warns = 0;
+    this.hadPlan = false;
     this.low = { lvl: 0, t: 0 };
     this.hint = false;
     this.hintT = 0;
@@ -111,8 +113,8 @@ export class Akku {
    * Entfernung (trip.nextRest: auf dem Weg, sonst der nächste Park über Straßen, ein Abstecher). Schon früher, unter
    * REISE_AKKU.early, warnt sie, sobald er der letzte in Reichweite ist (reachable): Der übernächste und das Ziel liegen
    * weiter weg, wer an ihm vorbeifährt, kommt nicht mehr an. Ist ein Stopp geplant, sagt sie nur, wie weit es bis dorthin
-   * ist. warned: 1 früh, 2 bei 25 %, 3 bei 10 %; nach dem Laden wieder 0. Einmal je Sekunde misst sie dazu den
-   * Verbrauch je Meter Straße (meter, perM).
+   * ist. warned: 1 früh, 2 bei 25 %, 3 bei 10 %; nach dem Laden wieder 0, ebenso, wenn ein geplanter Stopp entfällt
+   * (warns zählt alle Warnungen). Einmal je Sekunde misst sie dazu den Verbrauch je Meter Straße (meter, perM).
    */
   journeyBattery() {
     const p = this.g.player;
@@ -139,6 +141,11 @@ export class Akku {
       a.park = q ? { name: q.name, at: trip.km + q.km, planned: q.planned } : null;
     }
     if (p.battery > A.early + 5) this.warned = 0;
+    // ein geplanter Stopp ist ohne Laden entfallen (neues Ziel, dessen Weg nicht an der Säule vorbeiführt, oder an der
+    // Ausfahrt des Parks vorbei): OMI sieht neu nach und nennt, was jetzt in Reichweite liegt
+    const planned = trip.stop >= 0 || trip.post >= 0;
+    if (this.hadPlan && !planned) this.warned = 0;
+    this.hadPlan = planned;
     const lvl = p.battery < A.warn[1] ? 3 : p.battery < A.warn[0] ? 2 : 0;
     if (lvl && lvl <= this.warned) return;
     if (!lvl && (this.warned || p.battery > A.early)) return;
@@ -152,6 +159,7 @@ export class Akku {
     const beyond = () => open || rests.some((q) => q.km >= r.km + A.past && fits(q)) || fits(trip.pastTarget() ?? NOWHERE);
     if (!lvl && (!r || r.planned || (fits(r) && beyond()))) return;
     this.warned = lvl || 1;
+    this.warns++;
     const vars = { pct: Math.round(p.battery), park: r ? r.name : '', km: r ? kmWords(r.km) : '' };
     const text = !r ? A.none : r.planned ? A.planned : lvl === 3 ? A.veryLow : lvl || !fits(r) ? A.low : A.last;
     this.g.say(fillTemplate(text, vars), 'worried');
