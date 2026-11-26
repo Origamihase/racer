@@ -8,7 +8,7 @@
 // Die Wahrzeichen am Fluss: Eiserner Steg und Hohenzollernbrücke quer im Strom links neben der Straßenbrücke (ihr
 // Flussstück so breit wie der Fluss, ihr Wasser unter seinem, ihr Ufer unter dem Uferweg), der Hafen am jenseitigen
 // Ufer der Elbe rechts, zwei Containerbrücken auf dem Kai links – nichts davon berührt Straße, Häuser oder Plätze;
-// die Containerbrücken von Bremen, Bremerhaven und Kiel stehen ohne Fluss am Ortsende hinter der rechten Zeile.
+// die Containerbrücken von Bremen, Bremerhaven und Kiel stehen ohne Fluss am Ortsende rechts, das Heck über der Straße.
 // Die Karte: jeder Fluss liegt fest in dem Winkel zwischen den Autobahnen, den rivers.js nennt, keine Straße der Karte
 // berührt ihn, und auf Fahrten von allen Seiten hinein, hinaus und am Ort vorbei ist das Auto der Karte genau dort
 // über Wasser, wo der Wagen in der Welt über die Brücke fährt (Abschnitte 6 und 7).
@@ -367,14 +367,28 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
   ok(cranes.length === 1 && plan.landmarks.some((l) => l.name === 'containerCrane' && l.slot === 'open' && l.placed), `${key}: eine Containerbrücke, als gesetzt gemeldet`);
   ok(!plan.river && !plan.riverside, `${key}: kein Fluss im Plan`);
   for (const it of cranes) {
+    const info = city.info(it.name);
     const [x0, x1, z0, z1] = L.aabb(it.fp);
-    ok(x0 > STREET.curbR + STREET.pave + 10 && -z0 < len && -z1 > len - 120, `${key}: die Containerbrücke steht am Ortsende rechts hinter dem Gehweg (x ab ${x0.toFixed(0)}, u ${(-z1).toFixed(0)}–${(-z0).toFixed(0)})`);
+    const line = STREET.curbR + STREET.pave;
+    const rail = it.x + info.rail;
+    ok(-z0 < len && -z1 > len - 120 && near(it.ry, -Math.PI / 2), `${key}: die Containerbrücke steht am Ortsende, der Ausleger zeigt von der Straße weg (u ${(-z1).toFixed(0)}–${(-z0).toFixed(0)})`);
+    // die Straße ist ihre Kaistraße: Die landseitige Schiene liegt gleich hinter dem rechten Gehweg, ihr Grundriss
+    // (Kaiplatte, Schienen, Beine, Ausleger) beginnt an der Häuserflucht, und ihr Heck davor reicht in der Luft über
+    // Gehweg und Fahrbahn bis zur linken Bordsteinkante, aber nicht über die linke Zeile. Über der Straße verdeckt es
+    // kein Haus: Vom Auto aus sieht man es die ganze Straße entlang
+    ok(rail > line + 3 && rail < line + 8, `${key}: die landseitige Schiene der Containerbrücke liegt gleich hinter dem Gehweg (x ${rail.toFixed(1)})`);
+    ok(info.overhang > 0 && info.overhang < info.rail - 2 && near(x0, it.x + info.overhang) && x0 >= line - 0.01, `${key}: der Grundriss der Containerbrücke beginnt hinter dem Gehweg (x ${x0.toFixed(1)})`);
+    ok(it.x <= STREET.curbL && it.x >= STREET.curbL - STREET.pave, `${key}: das Heck der Containerbrücke reicht über die Fahrbahn, nicht über die linke Zeile (bis x ${it.x.toFixed(1)})`);
     for (const o of plan.items) {
       if (o === it || GROUND.has(o.name.split(':')[0])) continue;
       const [a0, a1, b0, b1] = L.aabb(o.fp);
-      ok(a1 < x0 || a0 > x1 || b1 < z0 || b0 > z1, `${key}: ${o.name} bei u ${(-o.z).toFixed(0)} steht in der Containerbrücke`);
-      // vor ihr bleibt die rechte Zeile frei: man sieht sie von der Straße
-      if (HOUSES.has(city.info(o.name).kind) && o.x > STREET.curbR) ok(-b0 < -z1 - 30, `${key}: ${o.name} verstellt die Containerbrücke`);
+      const house = HOUSES.has(city.info(o.name).kind);
+      // vor ihr bleibt die rechte Zeile frei: man sieht ihre Beine von der Straße
+      if (house && o.x > STREET.curbR) ok(-b0 < -z1 - 30, `${key}: ${o.name} verstellt die Containerbrücke`);
+      if (b1 < z0 || b0 > z1) continue;
+      ok(a1 < x0 || a0 > x1, `${key}: ${o.name} bei u ${(-o.z).toFixed(0)} steht in der Containerbrücke`);
+      // unter dem Heck steht nur, was an jeder Straße steht (Laternen, Bäume, Autos) – 30 m unter ihm
+      if (a1 > it.x && a0 < x0) ok(!house && o.fp.h < 16, `${key}: ${o.name} bei u ${(-o.z).toFixed(0)} steht unter dem Heck der Containerbrücke`);
     }
   }
   for (const f of plan.fountains) ok(L.sightBlockers(plan, f).length === 0, `${key}: freie Sicht auf Brunnen ${f.id}`);
@@ -387,7 +401,8 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
 // gleich und für alle drei Orte, im Maßstab 1:1 in dem Winkel zwischen den Autobahnen, den rivers.js nennt – keine
 // Straße der Karte berührt ihn. Die Ortsdurchfahrt kreuzt ihn, wo das Auto auf der Karte steht, wenn es in der Welt
 // über die Flussachse fährt, im Winkel der Welt; das Auto ist auf der Karte genau so lange über Wasser wie in der Welt
-// auf der Brücke; der Zeichner legt ihn unter die Straßen; er bleibt, wenn der Ort hinter dem Auto liegt.
+// auf der Brücke; der Zeichner legt ihn unter die Straßen; er bleibt, wenn der Ort hinter dem Auto liegt, und die Karte
+// des Abspanns zeigt ihn, wenn die Fahrt durch seinen Ort ging.
 {
   const { Trip, J } = await import('../src/game/trip.js');
   const { NavModel, RIVER_MAP, roadGap, riverOnMap, mapRivers, riverTouch } = await import('../src/map/navroute.js');
@@ -395,6 +410,7 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
   const { MapPainter, THEMES, PLACE_BY_INDEX, townKm, kmPerUnit, bucketOf, netData } = await import('../src/map/mapview.js');
   const { RIVER_FADE } = await import('../src/map/symbols.js');
   const { STARTS, startPlace } = await import('../src/game/starts.js');
+  const { routeKeep, routeRivers } = await import('../src/ui/routemap.js');
   /** Liegt (x, y) im Vieleck P = [x, y, …]? */
   const inside = (P, x, y) => {
     let c = false;
@@ -591,7 +607,11 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
     for (let n = 0; n < 40000 && trip.cur.sections.includes(sec); n++) step(trip.section.kind === 'stadt' ? 5 : 12);
     ok(!trip.cur.sections.includes(sec), `${key}: der Ort fällt hinter dem Auto aus dem Weg`);
     ok(nav.rivers === mapRivers() && nav.rivers.includes(r), `${key}: hinter dem Ort zeigt die Karte seinen Fluss weiter`);
+    // die Karte des Abspanns (ui/routemap.js): wer durch den Ort fuhr, sieht dort seinen Fluss – und nur den
+    const drawn = routeRivers(routeKeep({ secs: [{ kind: 'zub', place: sec.place }, { kind: 'stadt', place: sec.place }] }));
+    ok(drawn.length === 1 && drawn[0] === r, `${key}: die Karte des Abspanns zeigt den Fluss des durchfahrenen Orts`);
   }
+  ok(routeRivers(routeKeep({ secs: [{ kind: 'stadt', place: G.places.findIndex((q) => q.key === 'Bremen') }, { kind: 'ab', place: -1 }] })).length === 0, 'eine Fahrt ohne Flussort: die Karte des Abspanns zeigt keinen Fluss');
   ok(widths.Rhein > widths.Main && widths.Elbe > widths.Main, 'Rhein und Elbe sind auf der Karte breiter als der Main');
   const far = RIVER_MAP.label.map(Math.abs);
   ok(Math.min(...far) - RIVER_MAP.span > 0.15 && Math.max(...far) + RIVER_MAP.span < 1 - 2 * RIVER_FADE + 0.1, 'Flussnamen der Karte stehen neben dem Weg und auf deckendem Wasser');

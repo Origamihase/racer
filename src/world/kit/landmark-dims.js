@@ -8,7 +8,7 @@ export const LANDMARK_DIMS = {
   "hohenzollernbruecke": {"w":301.52,"d":70,"h":21.5,"river":{"half":112,"len":70,"y":0.05}},
   "michel": {"w":61.2,"d":44,"h":112.5},
   "elbphilharmonie": {"w":105.4,"d":72.3,"h":95.6},
-  "containerCrane": {"w":36,"d":122,"h":66},
+  "containerCrane": {"w":36,"d":122,"h":66,"rail":22,"overhang":17},
   "containerStack": {"w":38,"d":6,"h":10.4},
   "hamburgHafen": {"w":200,"d":142,"h":125.7,"quay":{"d":58,"y":3.2}},
   "fernsehturmBerlin": {"w":52,"d":60,"h":313},

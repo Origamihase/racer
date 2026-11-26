@@ -1281,13 +1281,15 @@ function crane(b, raised = false) {
   // Warnlichter
   L.ball(0, 65.4, -44, 0.5, 0xff5a4a, { ws: 6, hs: 3 });
   L.ball(0, 57.6, -12, 0.4, 0xff5a4a, { ws: 6, hs: 3 });
-  return { w: 36, d: 122, h: raised ? 110 : 66 };
+  return { w: 36, d: 122, h: raised ? 110 : 66, rail: 22 };
 }
 
 landmark('containerCrane', { places: ['Hamburg', 'Bremen', 'Kiel'], slot: 'open', title: 'Containerbrücke' }, (b) => {
-  // Kaiplatte unter beiden Schienen: wo sie ohne Hafen steht (am Rand eines Orts), steht sie nicht auf der Wiese
-  b.F.box(0, 0, -37, 36, 0.06, 40, 0xa8a49c, { skip: 'b' });
-  return crane(b);
+  // Kaiplatte unter beiden Schienen: wo sie ohne Hafen steht (am Rand eines Orts), steht sie nicht auf der Wiese.
+  // overhang: bis zur Platte hängt das Heck nur in der Luft – dort beginnt ihr Grundriss (kit/layout.js footprint)
+  const slab = { z: -37, d: 40 };
+  b.F.box(0, 0, slab.z, 36, 0.06, slab.d, 0xa8a49c, { skip: 'b' });
+  return { ...crane(b), overhang: -slab.z - slab.d / 2 };
 });
 landmark('containerStack', { places: [], slot: 'open', title: 'Containerstapel' }, (b) => {
   containers(b, 0, -3, 3, 2, 4, 3);
@@ -1312,18 +1314,21 @@ landmark('hamburgHafen', { places: ['Hamburg'], slot: 'river', far: true, title:
     containers(b, 30, -10, 3, 4, 4, 5);
     containers(b, 82, -6, 2, 2, 2, 9);
   });
-  // Containerschiff: dunkler Rumpf mit rotem Unterwasserschiff, weißes Deckshaus hinten, bunte Ladung
+  // Containerschiff: dunkler Rumpf, weißes Deckshaus hinten, bunte Ladung. Es liegt beladen im Wasser: Vom roten
+  // Unterwasserschiff schaut nur ein Streifen von red Metern über die Wasserlinie, das Deck liegt deck Meter hoch
   const len = 150;
   const hull = [[-len / 2, -6], [len / 2 - 14, -6], [len / 2, 0], [len / 2 - 14, 6], [-len / 2, 6]];
   const shipZ = -76;
+  const red = 0.6;
+  const deck = 10.6;
   b.at(0, 0, shipZ, 0, () => {
-    prism(F, hull, 0, 3, 0xb5443a);
-    prism(F, hull, 3, 13, 0x3f4a5c, { g: [0.9, 1.05] });
-    F.box(-len / 2 + 10, 13, 0, 12, 14, 11, 0xf4f1ea, { g: [0.9, 1.02] });
-    F.box(-len / 2 + 10, 27, 0, 14, 1, 12, 0xf4f1ea);
-    F.box(-len / 2 + 4, 13, 0, 3, 22, 3, 0x3f4a5c);
-    if (near) for (let i = 0; i < 6; i++) b.G.rect(-len / 2 + 5 + i * 2, 24.5, 5.52, 1.4, 1.2, GLASS);
-    b.at(10, 13, 0, 0, () => containers(b, 0, 0, 8, 4, 3, 4));
+    prism(F, hull, 0, red, 0xb5443a);
+    prism(F, hull, red, deck, 0x3f4a5c, { g: [0.9, 1.05] });
+    F.box(-len / 2 + 10, deck, 0, 12, 14, 11, 0xf4f1ea, { g: [0.9, 1.02] });
+    F.box(-len / 2 + 10, deck + 14, 0, 14, 1, 12, 0xf4f1ea);
+    F.box(-len / 2 + 4, deck, 0, 3, 22, 3, 0x3f4a5c);
+    if (near) for (let i = 0; i < 6; i++) b.G.rect(-len / 2 + 5 + i * 2, deck + 11.5, 5.52, 1.4, 1.2, GLASS);
+    b.at(10, deck, 0, 0, () => containers(b, 0, 0, 8, 4, 3, 4));
   });
   return { w: 200, d: 142, h: q + 122.5, quay: { d: kd, y: q } };
 });

@@ -297,8 +297,11 @@ export function footprint(it, info) {
   const front = FRONT_KINDS.has(info.kind) && !info.centre;
   const c = Math.cos(it.ry);
   const s = Math.sin(it.ry);
-  const off = front ? -info.d / 2 : 0;
-  const fp = { cx: it.x + s * off, cz: it.z + c * off, hw: info.w / 2, hd: info.d / 2, ang: it.ry, h: info.h };
+  // overhang: so viele Meter seiner Tiefe hängt ein Stück vorn nur in der Luft (das Heck der Containerbrücke, 46 m
+  // hoch) – sein Grundriss beginnt erst dahinter, wie der einer Laterne an ihrem Mast und nicht an ihrem Arm
+  const air = front ? info.overhang || 0 : 0;
+  const off = front ? -(info.d + air) / 2 : 0;
+  const fp = { cx: it.x + s * off, cz: it.z + c * off, hw: info.w / 2, hd: (info.d - air) / 2, ang: it.ry, h: info.h };
   // Laternen, Ampeln und Bäume verdecken in Augenhöhe nur mit Mast oder Stamm (Arm und Krone hängen darüber)
   if (THIN.has(info.kind)) fp.thin = { cx: it.x, cz: it.z, hw: 0.25, hd: 0.25, ang: 0 };
   return fp;
@@ -851,13 +854,16 @@ export function planTown(place, opts = {}) {
       // 'square' steht am Hauptplatz, 'river' und 'open' am Fluss (Abschnitt 0)
       if (m.slot === 'square' || plan.landmarks.some((l) => l.name === m.name)) continue;
       if (m.slot === 'open') {
-        // ohne Fluss (Containerbrücke in Bremen, Bremerhaven, Kiel): am Ortsende rechts hinter dem Gehweg auf ihrer
-        // Kaiplatte, das Heck zur Straße, der Ausleger zeigt vom Ort weg. Die Zeile endet schon view Meter davor: man
-        // sieht sie beim Heranfahren schräg voraus neben den Speichern, wie am Rand eines Hafens
+        // ohne Fluss (Containerbrücke in Bremen, Bremerhaven, Kiel): am Ortsende rechts, die Straße ist ihre Kaistraße –
+        // die landseitige Schiene liegt gleich hinter dem Gehweg, der Ausleger zeigt vom Ort weg, und das Heck mit dem
+        // Maschinenhaus ragt 46 m hoch über die Fahrbahn, wie über die Fahrspuren eines Terminals. Neben der Straße
+        // verdecken die Häuser der Zeile jedes Stück, das weiter als ein paar Meter hinter dem Gehweg steht, bis kurz
+        // davor; über der Straße sieht man das Heck vom Auto aus schon von weitem, die Beine ab der Lücke der Zeile
         const info = infoOf(m.name);
         const u = len - OPEN_MARK.end - info.w / 2;
         busy.push({ side: 1, u0: u - info.w / 2 - OPEN_MARK.view, u1: len });
-        add(m.name, sx(1, lineD + OPEN_MARK.back), 0, -u, toRoad(1));
+        views.push({ side: 1, u0: u - info.w / 2 - OPEN_MARK.view, u1: len });
+        add(m.name, sx(1, lineD + OPEN_MARK.rail) - info.rail, 0, -u, toRoad(1));
         plan.landmarks.push({ name: m.name, slot: m.slot, placed: true, u });
         continue;
       }
@@ -1110,8 +1116,9 @@ const RIVERSIDE = { trees: 9, step: 16, benches: 4, y: 0.03 };
 // so viele Containerbrücken, gap Meter Luft dazwischen (so viel, dass sich auch ihre achsparallelen Hüllen nicht
 // berühren: sie stehen um den Winkel des Flusses gedreht)
 const RIVER_MARK = { sink: 0.09, bridge: 12, court: 1, beside: 6, quay: 58, cranes: 2, gap: 18 };
-// Containerbrücke ohne Fluss: end Meter vor dem Ortsende, back Meter hinter der Häuserflucht, davor view Meter ohne Haus
-const OPEN_MARK = { end: 30, back: 14, view: 40 };
+// Containerbrücke ohne Fluss: end Meter vor dem Ortsende (hinter dem Ladepark), ihre landseitige Schiene rail Meter
+// hinter der Häuserflucht (so reicht ihr Heck genau über Fahrbahn und Gehwege), davor view Meter ohne Haus und Baum
+const OPEN_MARK = { end: 20, rail: 5, view: 40 };
 
 const r1 = (v) => Math.round(v * 100) / 100;
 const HOUSE_KINDS = new Set(['village', 'shop', 'town', 'city', 'region']);
