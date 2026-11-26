@@ -8,6 +8,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { ball, box, rod, cone, prism, fuse, move } from './kit/shapes.js';
 import { PAL } from './kit/palette.js';
 import { VIEW_BEHIND } from './road.js';
+import { ringAt } from '../map/skyline.js';
 
 // Schattenkasten der Sonne (Licht-Einheiten bei 2048er Schattenkarte, „mittel“ mit 1024 nimmt 0,7 davon): u quer
 // zur Straße (±63 m), v längs (rund 220 m, davon 40 m hinter der Kamera, der Rest in Blickrichtung). Am Boden
@@ -582,118 +583,251 @@ export class Sky {
       vertexColors: true,
       fog: false,
     });
-    // Drei Ketten hintereinander: ferne blaue Berge, mittlere blaugrüne Höhen, nahe grüne Kuppen mit Wald
+    // Drei Ketten hintereinander: ferne blaue Berge, mittlere blaugrüne Höhen, nahe grüne Kuppen mit Wald. Ihre Höhen
+    // kommen aus dem Horizont der Gegend (map/skyline.js, setSkyline); ohne ihn (Titel, keine Daten) aus erfundenen
+    // Kuppen. Die erfundenen bleiben schwach dabei, damit auch ein flacher Horizont lebt.
     const far = humps(31, 13, 0.5, 1.1, 110, 270, 60);
     const mid = humps(47, 19, 0.35, 0.8, 55, 150, 30);
     const near = humps(59, 30, 0.2, 0.5, 12, 62, 8);
-    this.nearHeight = near;
-    const layers = [
-      { R: 2350, n: 720, H: far, top: [0.17, 0.42, 1.0], haze: 0.12, foot: 0.52 },
-      { R: 2080, n: 900, H: mid, top: [0.11, 0.38, 0.32], haze: 0.04, foot: 0.55 },
-      { R: 1820, n: 720, H: near, top: [0.15, 0.46, 0.1], haze: 0, foot: 0.6, woods: true },
+    this.gen = [far, mid, near];
+    this.horizon = null; // { cur: {near, mid, far, wood, snow, rockN, rockM}, to: … } je 360 Richtungen
+    this.nearHeight = (a) => this.layerH(2, a);
+    this.hillLayers = [
+      { R: 2350, n: 720, top: [0.17, 0.42, 1.0], haze: 0.12, foot: 0.52, key: 'far', ex: 4, base: 40, max: 420 },
+      { R: 2080, n: 900, top: [0.11, 0.38, 0.32], haze: 0.04, foot: 0.55, key: 'mid', ex: 3.5, base: 20, max: 380 },
+      { R: 1820, n: 720, top: [0.15, 0.46, 0.1], haze: 0, foot: 0.6, woods: true, key: 'near', ex: 3.5, base: 6, max: 330 },
     ];
-    // Wald: unten dunkel, die Kronen oben im Licht
-    const woodLow = [0.06, 0.2, 0.075];
-    const woodTop = [0.115, 0.34, 0.1];
     const TAU = Math.PI * 2;
-    const ridges = [];
-    for (const L of layers) {
-      const pos = [];
-      const col = [];
-      const haze = [];
-      const idx = [];
+    // Aufbau je Kette (fest): Stützstellen rund um den Horizont, unter den Waldkronen der nahen Kette viermal so dicht
+    let verts = 0;
+    for (const L of this.hillLayers) {
       const rnd = mulberry32(L.R);
-      // Stützstellen rund um den Horizont; unter den Waldkronen der nahen Kette viermal so dicht
       const angles = [];
       for (let i = 0; i < L.n; i++) angles.push((i / L.n) * TAU);
-      // Waldstücke auf der nahen Kette: Reihen runder Kronen auf dem Kamm
       const crowns = [];
       if (L.woods) {
         const fine = TAU / (L.n * 4);
         for (let a = 0.02; a < TAU - 0.3;) {
+          // Kronen rundum dicht an dicht (ob dort Wald steht, sagt der Horizont der Gegend, siehe woodAt)
           const len = 0.05 + rnd() * 0.16;
-          if (rnd() < 0.5) {
-            let b = a;
-            while (b < a + len) {
-              const r = 13 + rnd() * 12;
-              crowns.push({ a: b, r, k: 0.9 + rnd() * 0.2 });
-              b += (r * (1.1 + rnd() * 0.5)) / L.R;
-            }
-            for (let f = Math.ceil((a - 0.016) / fine) * fine; f < b + 0.016; f += fine) angles.push(f);
+          let b = a;
+          while (b < a + len) {
+            const r = 13 + rnd() * 12;
+            crowns.push({ a: b, r, k: 0.9 + rnd() * 0.2, gen: false });
+            b += (r * (1.1 + rnd() * 0.5)) / L.R;
           }
+          // ohne Horizont der Gegend: nur jede zweite Gruppe (wie früher)
+          const on = rnd() < 0.5;
+          for (const c of crowns) if (c.gen === false && c.a >= a) c.gen = on;
+          for (let f = Math.ceil((a - 0.016) / fine) * fine; f < b + 0.016; f += fine) angles.push(f);
           a += len + 0.03 + rnd() * 0.12;
         }
         angles.sort((p, q) => p - q);
       }
       angles.push(TAU);
-      let ci = 0;
-      let n = 0;
+      const A = [];
       let last = -1;
       for (const a of angles) {
         if (a - last < 1e-5) continue;
         last = a;
+        A.push(a);
+      }
+      L.angles = A;
+      L.crowns = crowns;
+      L.rows = L.woods ? 5 : 4;
+      L.v0 = verts;
+      verts += A.length * L.rows;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(verts * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('aHaze', new THREE.BufferAttribute(new Float32Array(verts), 1));
+    const idx = [];
+    for (const L of this.hillLayers) {
+      for (let k = 1; k < L.angles.length; k++) {
+        for (let r = 0; r < L.rows - 1; r++) {
+          const p = L.v0 + (k - 1) * L.rows + r;
+          idx.push(p, p + L.rows, p + 1, p + 1, p + L.rows, p + L.rows + 1);
+        }
+      }
+    }
+    geo.setIndex(idx);
+    this.ridgeGeo = geo;
+    this.fillRidges();
+    const mesh = new THREE.Mesh(geo, this.hillMat);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = -12;
+    group.add(mesh);
+    // Ferndetails (Dörfer, Turm, Windräder) als eigenes Netz: sie stehen auf der nahen Kette und rücken mit ihr
+    const det = this.buildFarDetails(group, 1800);
+    const P = det.attributes.position;
+    this.detBase = new Float32Array(P.count); // Höhe über der Kette am eigenen Winkel
+    this.detAng = new Float32Array(P.count);
+    for (let i = 0; i < P.count; i++) {
+      const a = Math.atan2(P.getX(i), -P.getZ(i));
+      this.detAng[i] = a;
+      this.detBase[i] = P.getY(i) - this.nearHeight(a);
+    }
+    P.setUsage(THREE.DynamicDrawUsage);
+    const dm = new THREE.Mesh(det, this.hillMat);
+    dm.frustumCulled = false;
+    dm.renderOrder = -12;
+    group.add(dm);
+    this.detGeo = det;
+    return group;
+  }
+
+  /** Höhe der Kette i (0 fern, 1 mittel, 2 nah) bei Winkel a (Peilung im Kartenrahmen). */
+  layerH(i, a) {
+    const L = this.hillLayers[i];
+    const g = this.gen[i](a);
+    const H = this.horizon;
+    if (!H) return g;
+    // Erhebungswinkel der Gegend (überhöht, wie aus der Ferne gesehen) auf den Radius der Kette, dazu ein Hauch der
+    // erfundenen Kuppen
+    const e = ringAt(H.cur[L.key], a);
+    const real = e > 0 ? L.R * Math.tan(Math.min(1.2, e * L.ex)) : 0;
+    return Math.min(L.max, L.base + real + (g - L.base) * 0.18);
+  }
+
+  /** Wald auf der nahen Kette bei a (0..1). */
+  woodAt(a) {
+    return this.horizon ? clamp((ringAt(this.horizon.cur.wood, a) - 0.22) / 0.3, 0, 1) : -1;
+  }
+
+  /** Positionen, Farben und Dunst der drei Ketten aus den Höhen von layerH. */
+  fillRidges() {
+    const geo = this.ridgeGeo;
+    const P = geo.attributes.position.array;
+    const C = geo.attributes.color.array;
+    const Hz = geo.attributes.aHaze.array;
+    const woodLow = [0.06, 0.2, 0.075];
+    const woodTop = [0.115, 0.34, 0.1];
+    const rock = [0.46, 0.47, 0.46];
+    const snow = [0.93, 0.95, 0.98];
+    const H = this.horizon;
+    this.hillLayers.forEach((L, li) => {
+      let ci = 0;
+      let v = L.v0;
+      const rockOf = H ? (L.key === 'far' ? null : H.cur[L.key === 'near' ? 'rockN' : 'rockM']) : null;
+      for (const a of L.angles) {
         const x = Math.sin(a) * L.R;
         const z = -Math.cos(a) * L.R;
-        const h = L.H(a);
+        const h = this.layerH(li, a);
         let tree = 0;
         let shade = 1;
-        while (ci < crowns.length - 1 && crowns[ci].a + crowns[ci].r / L.R < a) ci++;
-        for (let k = Math.max(0, ci - 1); k < Math.min(crowns.length, ci + 3); k++) {
-          const d = (a - crowns[k].a) * L.R;
-          const r = crowns[k].r;
-          const t = Math.abs(d) < r ? Math.sqrt(r * r - d * d) * 0.85 + r * 0.25 : 0;
-          if (t > tree) {
-            tree = t;
-            shade = crowns[k].k;
+        if (L.woods) {
+          const w = this.woodAt(a);
+          const cr = L.crowns;
+          while (ci < cr.length - 1 && cr[ci].a + cr[ci].r / L.R < a) ci++;
+          for (let k = Math.max(0, ci - 1); k < Math.min(cr.length, ci + 3); k++) {
+            const scale = w < 0 ? (cr[k].gen ? 1 : 0) : w;
+            if (scale <= 0.02) continue;
+            const d = (a - cr[k].a) * L.R;
+            const r = cr[k].r * (0.6 + 0.4 * scale);
+            const t = Math.abs(d) < r ? Math.sqrt(r * r - d * d) * 0.85 + r * 0.25 : 0;
+            if (t > tree) {
+              tree = t;
+              shade = cr[k].k;
+            }
           }
         }
         // leichte Farbwechsel entlang der Kette (Wiesen, Felder); rundum periodisch, sonst gäbe es voraus eine Naht
-        const v = 0.92 + 0.08 * (0.5 * Math.sin(3 * a + L.R) + 0.3 * Math.sin(7 * a + 0.4) + 0.2 * Math.sin(13 * a + 2.1));
-        const top = [L.top[0] * v, L.top[1] * v, L.top[2] * v];
-        // Reihen von unten: tief unten ganz Dunst, am Fuß dunstig, zum Kamm hin klar; die nahe Kette hat darüber
-        // noch zwei Reihen für den Wald (ohne Wald fallen sie mit dem Kamm zusammen)
-        pos.push(x, -70, z, x, 0, z);
-        col.push(...top, ...top);
-        haze.push(1, L.foot);
+        const vv = 0.92 + 0.08 * (0.5 * Math.sin(3 * a + L.R) + 0.3 * Math.sin(7 * a + 0.4) + 0.2 * Math.sin(13 * a + 2.1));
+        let top = [L.top[0] * vv, L.top[1] * vv, L.top[2] * vv];
+        // Hochgebirge: oben Fels, darüber Schnee (fern bläulich im Dunst, nah und mittel nach der Gipfelhöhe)
+        if (H) {
+          const sn = ringAt(H.cur.snow, a);
+          const rk = rockOf ? ringAt(rockOf, a) : 0;
+          if (rk > 0) top = top.map((c, j) => lerp(c, rock[j], rk * 0.7));
+          if (sn > 0) top = top.map((c, j) => lerp(c, L.key === 'far' ? 0.78 + j * 0.06 : snow[j], sn * (L.key === 'far' ? 0.55 : 0.35)));
+        }
+        const put = (y, col, hz) => {
+          P[v * 3] = x;
+          P[v * 3 + 1] = y;
+          P[v * 3 + 2] = z;
+          C[v * 3] = col[0];
+          C[v * 3 + 1] = col[1];
+          C[v * 3 + 2] = col[2];
+          Hz[v] = hz;
+          v++;
+        };
+        put(-70, top, 1);
+        put(0, top, L.foot);
         if (L.woods) {
           const y = Math.max(0.5 * h, h - 6);
-          pos.push(x, y, z, x, h + tree * 0.45, z, x, h + tree, z);
-          col.push(...top, ...(tree > 0 ? woodLow.map((c) => c * shade) : top), ...(tree > 0 ? woodTop.map((c) => c * shade) : top));
-          haze.push(lerp(L.foot, L.haze, y / h), L.haze, L.haze);
+          put(y, top, lerp(L.foot, L.haze, y / h));
+          put(h + tree * 0.45, tree > 0 ? woodLow.map((c) => c * shade) : top, L.haze);
+          put(h + tree, tree > 0 ? woodTop.map((c) => c * shade) : top, L.haze);
         } else {
           // weiches Relief für die fernen Ketten: die Flanke zur Sonne hin heller, die abgewandte dunkler (Steigung
           // längs der Kette gegen die Sonnenrichtung), knapp unter dem Kamm etwas tiefer im Ton, der Kamm selbst mit
           // einem hellen Saum – so liest sich jede Kuppe als Form statt als flacher Schleier
-          const g = (L.H(a + 0.002) - L.H(a - 0.002)) / (0.004 * L.R);
-          const along = Math.cos(a) * this.sunDir.x + Math.sin(a) * this.sunDir.z;
-          const lit = clamp(1 - (0.95 * g * along) / this.sunDir.y, 0.7, 1.3);
+          const g = (this.layerH(li, a + 0.002) - this.layerH(li, a - 0.002)) / (0.004 * L.R);
+          const along = Math.cos(a) * this.sunDirMap.x + Math.sin(a) * this.sunDirMap.z;
+          const lit = clamp(1 - (0.95 * g * along) / this.sunDirMap.y, 0.7, 1.3);
           const tone = (k) => top.map((c) => Math.min(1, c * k));
-          pos.push(x, 0.72 * h, z, x, h, z);
-          col.push(...tone(0.95 * lerp(1, lit, 0.6)), ...tone(1.04 * lit));
-          haze.push(lerp(L.foot, L.haze, 0.72), L.haze);
+          put(0.72 * h, tone(0.95 * lerp(1, lit, 0.6)), lerp(L.foot, L.haze, 0.72));
+          put(h, tone(1.04 * lit), L.haze);
         }
-        const rows = L.woods ? 5 : 4;
-        if (n > 0) {
-          for (let r = 0; r < rows - 1; r++) {
-            const p = (n - 1) * rows + r;
-            idx.push(p, p + rows, p + 1, p + 1, p + rows, p + rows + 1);
-          }
-        }
-        n++;
       }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-      g.setAttribute('aHaze', new THREE.Float32BufferAttribute(haze, 1));
-      g.setIndex(idx);
-      ridges.push(g);
+    });
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+    geo.attributes.aHaze.needsUpdate = true;
+  }
+
+  /**
+   * Horizont der Gegend setzen (map/skyline.js skyline): die Ketten wachsen in einigen Sekunden in die neue Form.
+   * null: zurück zu den erfundenen Kuppen; snap: sofort (neue Fahrt).
+   */
+  setSkyline(sk, snap = false) {
+    if (!sk) {
+      if (this.horizon) {
+        this.horizon = null;
+        this.refreshHills();
+      }
+      return;
     }
-    // alle Ketten und die Ferndetails in einem Stück (ein Draw-Call), nur die Rotoren drehen sich für sich
-    const mesh = new THREE.Mesh(mergeGeometries([...ridges, this.buildFarDetails(group, 1800)]), this.hillMat);
-    mesh.frustumCulled = false;
-    mesh.renderOrder = -12;
-    group.add(mesh);
-    return group;
+    const to = { near: sk.near, mid: sk.mid, far: sk.far, wood: sk.wood, snow: sk.snow, rockN: sk.rockN, rockM: sk.rockM };
+    if (!this.horizon || snap || this.horizon.cur.near.length !== sk.near.length) {
+      const copy = {};
+      for (const k in to) copy[k] = Float32Array.from(to[k]);
+      this.horizon = { cur: copy, to, moving: true };
+      this.refreshHills();
+    } else {
+      this.horizon.to = to;
+      this.horizon.moving = true;
+    }
+  }
+
+  /** Ketten und Ferndetails neu aus den Höhen (nach jeder Änderung des Horizonts). */
+  refreshHills() {
+    this.fillRidges();
+    const P = this.detGeo.attributes.position;
+    for (let i = 0; i < P.count; i++) P.setY(i, this.detBase[i] + this.nearHeight(this.detAng[i]));
+    P.needsUpdate = true;
+    for (const r of this.rotorSpots) r.pos.y = this.nearHeight(r.a) - 2 + r.hub;
+  }
+
+  /** Den Horizont weich zum Ziel führen (je Bild; schreibt die Netze höchstens jedes zweite Bild neu). */
+  stepHorizon(dt) {
+    const H = this.horizon;
+    if (!H || !H.moving) return;
+    const k = 1 - Math.exp(-dt * 1.6);
+    let diff = 0;
+    for (const key in H.to) {
+      const c = H.cur[key];
+      const t = H.to[key];
+      for (let i = 0; i < c.length; i++) {
+        const d = t[i] - c[i];
+        c[i] += d * k;
+        if (Math.abs(d) > diff) diff = Math.abs(d);
+      }
+    }
+    if (diff < 2e-4) H.moving = false;
+    this.hillTick = (this.hillTick || 0) + 1;
+    if (!H.moving || this.hillTick % 2 === 0) this.refreshHills();
   }
 
   /**
@@ -749,6 +883,8 @@ export class Sky {
     this.rotors.frustumCulled = false;
     this.rotors.renderOrder = -11;
     this.rotorSpots = mills.map((a, i) => ({
+      a,
+      hub,
       pos: new THREE.Vector3(Math.sin(a) * (R - 22), this.nearHeight(a) - 2 + hub, -Math.cos(a) * (R - 22)),
       yaw: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -a),
       phase: i * 1.7,
@@ -876,7 +1012,10 @@ export class Sky {
     // bei klarem Himmel die (unsichtbar kleinen) Regenwolken gar nicht erst zeichnen
     this.cloudMesh.count = o > 0.04 ? this.cloudMesh.instanceMatrix.count : this.fairClouds;
     this.hills.position.y = view && view.hillY ? view.hillY : 0;
-    if (this.hills.visible) this.spinRotors(t);
+    if (this.hills.visible) {
+      this.stepHorizon(dt);
+      this.spinRotors(t);
+    }
 
     this.placeShadow(camera, s);
     this.envGround.material.color.setRGB(lerp(0.2, 0.12, o), lerp(0.24, 0.13, o), lerp(0.15, 0.13, o));

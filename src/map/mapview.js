@@ -606,6 +606,25 @@ export function placeLabel(i, bucket, measure = measureText) {
   const [x0, y0] = spotBox(0, 0, c.r, 3, c.w, c.h, 0);
   return { kind: 'place', text: c.text, font: c.font, x: c.x, y: c.y, dx: x0, dy: y0, w: c.w, h: c.h, i: c.i };
 }
+/**
+ * Landschaften der großen Karte (Name, Länge, Breite, Rang): 0 Hochgebirge Europas, 1 die großen Mittelgebirge, 2 die
+ * kleineren. Sie stehen dort, wo landpaint.js Relief und Wald malt, gesperrt und kursiv wie in einem Atlas.
+ */
+export const LANDSCAPES = [
+  ['Alpen', 10.6, 46.75, 0], ['Pyrenäen', 0.6, 42.7, 0], ['Karpaten', 24.6, 47.6, 0], ['Apennin', 13.4, 42.4, 0], ['Skandinavisches Gebirge', 14.6, 65.4, 0],
+  ['Dinarisches Gebirge', 17.6, 43.9, 0], ['Zentralmassiv', 2.9, 45.3, 0],
+  ['Schwarzwald', 8.15, 48.25, 1], ['Harz', 10.75, 51.75, 1], ['Bayerischer Wald', 13.15, 48.95, 1], ['Erzgebirge', 13.05, 50.6, 1], ['Thüringer Wald', 10.75, 50.65, 1],
+  ['Schwäbische Alb', 9.45, 48.42, 1], ['Fränkische Alb', 11.35, 49.25, 1], ['Vogesen', 7.05, 48.1, 1], ['Eifel', 6.7, 50.3, 1], ['Sauerland', 8.1, 51.2, 1],
+  ['Hunsrück', 7.25, 49.85, 1], ['Rhön', 10.05, 50.4, 1], ['Ardennen', 5.6, 50.05, 1], ['Jura', 6.3, 46.85, 1], ['Riesengebirge', 15.65, 50.75, 1],
+  ['Böhmerwald', 13.6, 48.9, 2], ['Taunus', 8.3, 50.25, 2], ['Spessart', 9.4, 50.0, 2], ['Odenwald', 8.95, 49.6, 2], ['Vogelsberg', 9.25, 50.52, 2],
+  ['Westerwald', 7.85, 50.6, 2], ['Pfälzerwald', 7.8, 49.3, 2], ['Teutoburger Wald', 8.55, 52.02, 2], ['Weserbergland', 9.45, 51.95, 2],
+  ['Fichtelgebirge', 11.85, 50.05, 2], ['Frankenwald', 11.5, 50.35, 2], ['Elbsandsteingebirge', 14.1, 50.9, 2], ['Lüneburger Heide', 10.1, 53.1, 2],
+  ['Hohe Tauern', 12.7, 47.1, 2], ['Allgäuer Alpen', 10.3, 47.4, 2], ['Berchtesgadener Alpen', 12.9, 47.55, 2],
+].map(([name, lon, lat, rank]) => [name, lon, -Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) * (180 / Math.PI), rank]);
+/** Je Rang: Maßstab von–bis (Bildpunkte je Einheit), Schriftgröße, Sperrung. */
+/** Ausweichlagen eines Landschaftsnamens: Anteil seiner Breite quer, Bildpunkte hoch und runter. */
+const LANDSCAPE_SHIFT = [[0, 0], [0, -16], [0, 16], [-0.3, 0], [0.3, 0], [-0.25, -14], [0.25, 14], [0.25, -14], [-0.25, 14], [0, -30], [0, 30], [-0.6, 0], [0.6, 0], [-0.5, -24], [0.5, 24], [0.5, -24], [-0.5, 24]];
+const LANDSCAPE_STYLE = [[[3, 48], 13, 4], [[22, 520], 11, 2.5], [[44, 520], 10, 1.5]];
 const SHIELD_H = 16; // Höhe der Autobahnschilder in der großen Karte
 const BADGE_R = 10; // Halbmesser der Bildzeichen an Fähren, Autozügen und Flügen
 const layoutCache = new Map();
@@ -618,7 +637,7 @@ const layoutCache = new Map();
  * ganz weg (näher heran erscheint er). Vorrang: wichtige Orte, Länder, Meere, Überfahrten, Schilder, die übrigen Orte.
  * measure(text, font, spacing) → Breite in Bildpunkten (unter Node genügt eine Schätzung).
  * Liefert {labels, shown}: shown = Set der Orte mit Punkt; labels = [{kind, text, font, x, y, dx, dy, w, h, i}] mit kind
- * 'place' | 'country' | 'sea' | 'shield' | 'faehre' | 'zug' | 'flug', (x, y) Anker in Kartenkoordinaten, (dx, dy) linke
+ * 'place' | 'country' | 'sea' | 'land' | 'shield' | 'faehre' | 'zug' | 'flug', (x, y) Anker in Kartenkoordinaten, (dx, dy) linke
  * obere Ecke des Kastens zum Anker in Bildpunkten, i = Ortsindex (Orte).
  */
 export function menuLayout(bucket, measure) {
@@ -646,7 +665,7 @@ export function menuLayout(bucket, measure) {
       const y1 = y0 + c.h;
       if (taken.hits(x0, y0, x1, y1) || (strict && dots.hits(x0, y0, x1, y1))) continue;
       taken.add(x0 - 2, y0 - 1, x1 + 2, y1 + 1);
-      labels.push({ kind: c.kind, text: c.text, font: c.font, x: c.x, y: c.y, dx: x0 - sx, dy: y0 - sy, w: c.w, h: c.h, i: c.i });
+      labels.push({ kind: c.kind, text: c.text, font: c.font, sp: c.sp, x: c.x, y: c.y, dx: x0 - sx, dy: y0 - sy, w: c.w, h: c.h, i: c.i });
       return true;
     }
     return false;
@@ -706,6 +725,19 @@ export function menuLayout(bucket, measure) {
     }
   }
   for (const p of minor) place(p);
+  // Landschaften: gesperrt und kursiv, zuletzt, nur wo nach Orten und Schildern noch Platz ist
+  for (const [name, x, y, rank] of LANDSCAPES) {
+    const [[b0, b1], size, sp] = LANDSCAPE_STYLE[rank];
+    if (bs < b0 || bs >= b1) continue;
+    const text = rank ? name : name.toUpperCase();
+    const font = `italic 600 ${size}px ${FONT}`;
+    const w = measure(text, font, sp) + 2;
+    // in der Mitte der Landschaft, sonst ein Stück daneben (die Orte liegen oft genau dort); alle Orte stehen schon,
+    // also genügt der Abstand zu dem, was gesetzt ist
+    for (const [ox, oy] of LANDSCAPE_SHIFT) {
+      if (put({ kind: 'land', text, font, sp, x: x + (ox * w) / s, y: y + oy / s, w, h: size + 4, r: 0 }, false)) break;
+    }
+  }
   out = { labels, shown };
   layoutCache.set(bucket, out);
   return out;
@@ -773,7 +805,7 @@ export const THEMES = {
     road: '#ffffff', roadCase: '#cdc5b8', hwy: '#ffd36a', hwyCase: '#d9a640', ferry: '#4d86c6', rail: '#6d7078',
     flight: '#7b74c9', route: '#2f6fe4', routeCase: '#1e4fb0', routeGlow: 'rgba(47,111,228,0.18)', driven: '#9aaccb',
     drivenCase: '#7d8fae', text: '#1d1f22', sub: '#4b5058', halo: 'rgba(250,248,244,0.92)', dot: '#ffffff',
-    dotRing: '#5f646c', city: '#3a3e45', cityRing: '#ffffff', seaText: '#4f7fa6', countryText: '#86778f',
+    dotRing: '#5f646c', city: '#3a3e45', cityRing: '#ffffff', seaText: '#4f7fa6', countryText: '#86778f', landText: '#7d6a4b', landHalo: 'rgba(250,247,240,0.75)',
     badge: '#ffffff', heart: '#e5486a', check: '#2e9d5b',
   },
   dark: {
@@ -783,7 +815,7 @@ export const THEMES = {
     road: '#4a4e55', roadCase: '#2c2e33', hwy: '#9c7b30', hwyCase: '#664f1f', ferry: '#5d8cc4', rail: '#8a8e96',
     flight: '#8f88dd', route: '#4c8dff', routeCase: '#2a5fc0', routeGlow: 'rgba(76,141,255,0.22)', driven: '#56657e',
     drivenCase: '#3e4a5d', text: '#f2f3f5', sub: '#b7bcc4', halo: 'rgba(30,32,36,0.92)', dot: '#d9dce1',
-    dotRing: '#1b1c1f', city: '#f2f3f5', cityRing: '#1b1c1f', seaText: '#7fa6c8', countryText: '#a796b3',
+    dotRing: '#1b1c1f', city: '#f2f3f5', cityRing: '#1b1c1f', seaText: '#7fa6c8', countryText: '#a796b3', landText: '#b7a684', landHalo: 'rgba(24,26,30,0.7)',
     badge: '#2b2d32', heart: '#ff6f8e', check: '#55c985',
   },
 };
@@ -1299,15 +1331,15 @@ export class MapPainter {
       else if (l.kind === 'faehre' || l.kind === 'zug' || l.kind === 'flug') drawTransitBadge(ctx, l.kind, l.w / 2, l.h / 2, BADGE_R, T.badge);
       else {
         ctx.font = l.font;
-        ctx.letterSpacing = l.kind === 'country' ? '2px' : l.kind === 'sea' ? '1px' : '0px';
+        ctx.letterSpacing = l.kind === 'country' ? '2px' : l.kind === 'sea' ? '1px' : l.kind === 'land' ? `${l.sp}px` : '0px';
         ctx.textAlign = l.kind === 'place' ? 'left' : 'center';
         const x = l.kind === 'place' ? 1 : l.w / 2;
-        if (l.kind === 'place') {
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = T.halo;
+        if (l.kind === 'place' || l.kind === 'land') {
+          ctx.lineWidth = l.kind === 'land' ? 2.5 : 3;
+          ctx.strokeStyle = l.kind === 'land' ? T.landHalo : T.halo;
           ctx.strokeText(l.text, x, l.h / 2);
         }
-        ctx.fillStyle = l.kind === 'country' ? T.countryText : l.kind === 'sea' ? T.seaText : T.text;
+        ctx.fillStyle = l.kind === 'country' ? T.countryText : l.kind === 'sea' ? T.seaText : l.kind === 'land' ? T.landText : T.text;
         ctx.fillText(l.text, x, l.h / 2);
         ctx.letterSpacing = '0px';
       }

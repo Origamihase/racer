@@ -16,7 +16,9 @@ export function fieldTexture() {
   c.width = S;
   c.height = S;
   const ctx = c.getContext('2d');
-  const img = ctx.createImageData(S, S);
+  // unter Node (Prüfstände ohne Leinwand) bleibt das Bild leer
+  const made = ctx.createImageData(S, S);
+  const img = made && made.data ? made : { data: new Uint8ClampedArray(S * S * 4) };
   const rnd = mulberry32(5);
   const N = 8;
   const cells = Array.from({ length: N * N }, () => rnd() - 0.5);
@@ -38,7 +40,7 @@ export function fieldTexture() {
       img.data[o + 3] = 255;
     }
   }
-  ctx.putImageData(img, 0, 0);
+  if (img === made) ctx.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
