@@ -195,6 +195,14 @@ for (const { p, len, rv } of towns) {
       ok(water < -rv.drop - 0.01 && water > -rv.drop - 0.15, `${what}: sein Wasser liegt knapp unter dem des Flusses (${water.toFixed(2)} m)`);
       // Sichtbarkeit: neben der Straßenbrücke, höchstens 90 m von ihrem Gehweg
       ok(stX(0) - hwDeck - (box[0] + box[1]) / 2 < 90, `${what} steht nah an der Straßenbrücke`);
+      // reicht sein Ufer hinter den Uferweg (Rampen der Eisenbahnbrücke), deckt dort auf beiden Ufern Pflaster den
+      // Uferblock: vom Gehweg der Straße bis hinter das Stück
+      if (box[3] > rv.half + rv.bank) {
+        for (const sg of [-1, 1]) {
+          const court = plan.riverside.aprons.filter((a) => a.lx < 0 && a.X < box[0] && Math.min(a.D0 * sg, a.D1 * sg) <= rv.half + rv.bank + 1e-9 && Math.max(a.D0 * sg, a.D1 * sg) > box[3]);
+          ok(court.length === 1, `${what}: sein Ufer liegt ${sg < 0 ? 'diesseits' : 'jenseits'} unter einem gepflasterten Vorplatz`);
+        }
+      }
       parts.push({ it, far: false });
     } else if (info.quay) {
       ok(near(D, rv.half + info.quay.d, 1e-6) && box[0] > 0, `${what}: der Kai liegt am jenseitigen Ufer rechts der Straße`);

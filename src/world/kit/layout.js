@@ -599,6 +599,12 @@ export function planTown(place, opts = {}) {
         const X0 = Math.min(stX(-river.half), stX(river.half)) - hw - RIVER_MARK.bridge;
         const u = put(m, X0, 0, -river.drop - RIVER_MARK.sink, river.ang + Math.PI / 2, -1);
         taken.push({ sg: 0, X0: X0 - info.d - 3, X1: X0 + 3 });
+        // reicht ihr Ufer (mit den Rampen der Eisenbahnbrücke) hinter den Uferweg, liegt dort ein gepflasterter
+        // Vorplatz bis an den Gehweg der Straße: aus ihm steigt die Rampe, sein Pflaster deckt den Uferblock
+        const far = info.w / 2 + RIVER_MARK.court;
+        if (far > river.half + river.bank + RIVER_MARK.court) {
+          for (const sg of [-1, 1]) plan.riverside.aprons.push({ lx: -hw, X: X0 - info.d - RIVER_MARK.court, D0: sg * (river.half + river.bank), D1: sg * far });
+        }
         plan.landmarks.push({ name: m.name, slot: m.slot, placed: true, u });
       } else if (m.slot === 'river' && info.quay) {
         // Hafen: der Kai am jenseitigen Ufer rechts der Straße (seine Oberkante knapp über dem Boden), Schiff und
@@ -1098,11 +1104,12 @@ const RIVER_CLEAR = 1;
 // Uferweg eines Flusses: Bäume je Reihe, ihr Abstand, Bänke je Reihe, Höhe des Pflasters (river.js RIVER_KIT.pave)
 const RIVERSIDE = { trees: 9, step: 16, benches: 4, y: 0.03 };
 // Wahrzeichen am Fluss. sink: so tief liegt das Wasser einer Brücke unter dem des Flusses · bridge: Abstand ihres
-// Flussstücks vom Gehweg der Straßenbrücke · beside: Abstand von Hafenkai und Containerbrücken zum Gehweg · quay: Tiefe
+// Flussstücks vom Gehweg der Straßenbrücke · court: so weit reicht das Pflaster des Vorplatzes über ihr Ufer hinaus,
+// wo es hinter dem Uferweg hervorkäme · beside: Abstand von Hafenkai und Containerbrücken zum Gehweg · quay: Tiefe
 // des Kais der Containerbrücken (wie der des Hafens: die Schienen liegen 6 und 36 m hinter der Wasserkante) · cranes:
 // so viele Containerbrücken, gap Meter Luft dazwischen (so viel, dass sich auch ihre achsparallelen Hüllen nicht
 // berühren: sie stehen um den Winkel des Flusses gedreht)
-const RIVER_MARK = { sink: 0.09, bridge: 12, beside: 6, quay: 58, cranes: 2, gap: 18 };
+const RIVER_MARK = { sink: 0.09, bridge: 12, court: 1, beside: 6, quay: 58, cranes: 2, gap: 18 };
 // Containerbrücke ohne Fluss: end Meter vor dem Ortsende, back Meter hinter der Häuserflucht, davor view Meter ohne Haus
 const OPEN_MARK = { end: 30, back: 14, view: 40 };
 
