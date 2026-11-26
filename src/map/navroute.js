@@ -660,8 +660,7 @@ export class NavModel {
     this.target = -2;
     this.cur = new Line(); // eigener Weg (mit s-Zuordnung)
     this.route = null; // geplanter Weg bis zum Ziel: {line, a0 (Auto), stops, dest, kmTotal}
-    this.rivers = []; // Flüsse der Orte am eigenen und am geplanten Weg und die schon überquerten (riverOnMap)
-    this.crossed = new Map(); // Ort → sein Fluss, wie der eigene Weg ihn zuletzt gekreuzt hat
+    this.rivers = []; // Flüsse der Orte am eigenen und am geplanten Weg (riverOnMap)
     this.trail = []; // gefahrener Weg (Kartenpunkte)
     this.trailKm = TRAIL.km; // Mindestabstand seiner älteren Punkte (wächst, wenn das Ausdünnen nicht reicht, thinTrail)
     this.pose = { x: 0, y: 0, dx: 0, dy: -1, a: 0, kind: 'ab' };
@@ -803,8 +802,8 @@ export class NavModel {
     for (const p of pieces) cur.push(p.pts, p.s0, p.s1, p.kind);
     this.cur = cur;
     this.curPen = pen;
-    this.rivers = [...this.crossed.values()];
-    this.addRivers(pieces, true);
+    this.rivers = [];
+    this.addRivers(pieces);
     // Abschnitte, die es nicht mehr gibt, vergessen
     const alive = new Set();
     for (const { path } of trip.paths()) for (const c of path.sections) alive.add(c.id);
@@ -812,20 +811,13 @@ export class NavModel {
     this.buildRoute(pieces);
   }
 
-  /**
-   * Flüsse der Ortsdurchfahrten unter den Stücken merken (je Ort einer). own: Stücke des eigenen Wegs – ihr Fluss
-   * bleibt auf der Karte, auch wenn der Ort hinter dem Auto aus dem Weg fällt: der gefahrene Weg führt weiter über ihn.
-   */
-  addRivers(pieces, own) {
+  /** Flüsse der Ortsdurchfahrten unter den Stücken merken (je Ort einmal). */
+  addRivers(pieces) {
     for (const p of pieces) {
       if (p.kind !== 'stadt') continue;
       const sec = this.secById(p.sec);
       const r = sec && riverOnMap(sec, p);
-      if (!r) continue;
-      if (own) this.crossed.set(r.place, r);
-      const i = this.rivers.findIndex((q) => q.place === r.place);
-      if (i < 0) this.rivers.push(r);
-      else if (own) this.rivers[i] = r;
+      if (r && !this.rivers.some((q) => q.place === r.place)) this.rivers.push(r);
     }
   }
 
@@ -882,7 +874,7 @@ export class NavModel {
     if (exitFork && !reached) {
       const pen = this.cache.get(exitFork.sec.id).pen;
       const b = this.build(exitFork.branch, pen);
-      this.addRivers(b.pieces, false);
+      this.addRivers(b.pieces);
       take(b.pieces, Infinity);
       path = exitFork.branch;
       frontier = path.frontier;

@@ -562,12 +562,12 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
       ok(lastTown >= 0 && lastTown < iw, `${key}: der Fluss liegt über der Ortsfläche`);
     }
 
-    // weiter, bis der Ort hinter dem Auto aus dem Weg fällt: der Fluss bleibt auf der Karte, wo der gefahrene Weg ihn
-    // gekreuzt hat
+    // weiter, bis der Ort hinter dem Auto aus dem Weg fällt: dann zeigt die Karte seinen Fluss nicht mehr. Der Weg
+    // hinaus führt auf der Karte oft über dieselbe Straße zurück – bliebe das Band, führe das Auto dort über Wasser,
+    // wo die Welt keines hat
     for (let n = 0; n < 40000 && trip.cur.sections.includes(sec); n++) step(trip.section.kind === 'stadt' ? 5 : 12);
     ok(!trip.cur.sections.includes(sec), `${key}: der Ort fällt hinter dem Auto aus dem Weg`);
-    const kept = nav.rivers.filter((q) => q.place === target);
-    ok(kept.length === 1 && near(kept[0].x, r.x, 1e-12) && near(kept[0].y, r.y, 1e-12) && near(kept[0].wx, r.wx, 1e-12) && kept[0].label === r.label, `${key}: der überquerte Fluss bleibt unverändert auf der Karte`);
+    ok(!nav.rivers.some((q) => q.place === target), `${key}: hinter dem Ort zeigt die Karte seinen Fluss nicht mehr`);
   }
   ok(widths.Rhein > widths.Main && widths.Elbe > widths.Main, 'Rhein und Elbe sind auf der Karte breiter als der Main');
   const far = RIVER_MAP.label.map(Math.abs);
