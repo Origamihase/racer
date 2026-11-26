@@ -16,10 +16,11 @@ import * as THREE from 'three';
 import { Trip, J, R as rampR, dR as rampSlope } from '../../game/trip.js';
 import { hashString, mulberry32 } from '../../util.js';
 import { FramePool } from './frames.js';
-import { Ground, LAYER } from './ground.js';
+import { Ground, LAYER, HOLES } from './ground.js';
 import { RoadMaterials, buildPiece, VIS, VERGE, KERB, AB_EDGE, RAIL_U, ISLAND_H, crossSection, curveShift, linShift, stubOf } from './roadkit.js';
 import { Towns } from './towns.js';
 import { Bridges, bridgesOf, inWater } from './bridges.js';
+import { RiverBands, bandsOf, inBand } from './riverbands.js';
 import { PropSet, PROP, addProp, forestSide, openSide, fieldSide, houseSide } from './forest.js';
 import { Junctions, closeLine } from './junction.js';
 import { Signs } from './signs.js';
@@ -84,6 +85,10 @@ export class XxlWorld {
     this.towns = new Towns(this.root);
     // Brücken mit Wasser und Ufern (Materialien und Wasser des Stadtbaukastens)
     this.bridges = new Bridges(this.towns.kit, this.root);
+    // Flüsse neben der Straße (riverbands.js), mit denselben Böschungen
+    this.bands = new RiverBands(this.towns.kit, this.bridges.bankMat, this.bridges.plugMat);
+    this.viewBands = []; // Flüsse neben der gezeichneten Autobahn (bandplan.js), für die Szenerie
+    this.holeList = [];
     this.brSpans = [];
     this.viewBridges = []; // Brücken der gezeichneten Autobahn (bridgeplan.js), für Szenerie und Road
     this.roadSpans = []; // die Straßen der Welt je Rahmen [{frame, s0, s1}] (Bridges.update: Wasser endet davor)
@@ -119,6 +124,7 @@ export class XxlWorld {
     this.pieces.clear();
     this.towns.reset();
     this.bridges.reset();
+    this.bands.reset();
     this.trip = new Trip({ start });
     this.s = this.trip.s;
     this.arrival.reset();
@@ -182,10 +188,37 @@ export class XxlWorld {
     this.mats.setWet(wet);
     this.towns.update(s, this.shear, time, wet, T.cur);
     this.bridges.update(s, this.shear, this.roadSpans);
-    this.ground.setHoles(this.towns.band, this.bridges.holes);
+    this.bands.update(s, this.shear, this.roadSpans);
+    this.ground.setHoles(this.towns.band, this.mergeHoles());
     this.updateRoad(s);
     this.junctions.update(s, wet);
     if (this.maskAutobahn !== this.maskOn) this.setMask(this.maskAutobahn);
+  }
+
+  /**
+   * Die Löcher der Brücken und der Flüsse neben der Straße zusammen, nach Nähe; die fernsten bleiben zu (eines hält
+   * der Fluss eines Orts frei). Was nicht alle seine Löcher bekommt, zeigt das Navi nicht (reachOf).
+   */
+  mergeHoles() {
+    const all = this.holeList;
+    all.length = 0;
+    for (const h of this.bridges.holes) all.push(h);
+    for (const h of this.bands.holes) all.push(h);
+    all.sort((p, q) => p.d - q.d);
+    // je Brücke bzw. Fluss alle seine Löcher oder keines: ein halb gelochter Fluss zeigte Wasser ohne Arme
+    const need = new Map();
+    for (const h of all) need.set(h.it, (need.get(h.it) || 0) + 1);
+    let free = HOLES - 1;
+    for (const [it, n] of need) {
+      it.holed = n <= free;
+      if (it.holed) free -= n;
+    }
+    let j = 0;
+    for (const h of all) if (h.it.holed) all[j++] = h;
+    all.length = j;
+    // ein Fluss ohne Loch bleibt ganz unsichtbar (seine Wiesen an den Ecken lägen sonst auf dem Boden)
+    this.bands.showHoled();
+    return all;
   }
 
   /**
@@ -267,6 +300,7 @@ export class XxlWorld {
     const signGroups = view ? [[view.secs, view.secs]] : [];
     this.towns.begin();
     this.bridges.begin();
+    this.bands.begin();
     const drawnSecs = new Set();
     eachPiece(
       T,
@@ -293,16 +327,23 @@ export class XxlWorld {
     }
     this.towns.sweep();
     // Brücken: auf allen gezeichneten Straßen (fremde Wege eingeschlossen: ihr Wasser endet vor unserer Straße)
-    for (const sec of drawnSecs) this.bridges.need(sec, lo, hi);
+    for (const sec of drawnSecs) {
+      this.bridges.need(sec, lo, hi);
+      this.bands.need(sec, lo, hi);
+    }
     this.viewBridges = [];
+    this.viewBands = [];
     if (view) {
       for (const c of view.secs) {
         if (c.kind !== 'ab') continue;
         this.bridges.need(c, Math.max(lo, view.s0), Math.min(hi, view.s1), view.frame);
         for (const b of bridgesOf(c)) if (b.c1 > view.s0 && b.c0 < view.s1) this.viewBridges.push(b);
+        this.bands.need(c, Math.max(lo, view.s0), Math.min(hi, view.s1), view.frame);
+        for (const b of bandsOf(c)) if (b.c1 > view.s0 && b.c0 < view.s1) this.viewBands.push(b);
       }
     }
     this.bridges.sweep();
+    this.bands.sweep();
     // Tafeln (und ihre Stellen am Rand der gezeichneten Autobahn, an denen die Szenerie Platz lässt)
     this.signs.sync(T, signGroups, lo, hi + 400, hi);
     this.boards.length = 0;
@@ -333,6 +374,7 @@ export class XxlWorld {
     for (const id of this.junctions.frames()) keep.add(id);
     for (const id of this.signs.frames()) keep.add(id);
     for (const id of this.bridges.frames()) keep.add(id);
+    for (const id of this.bands.frames()) keep.add(id);
     for (const id of keep) this.frames.acquire(id);
     // Road und Szenerie hängen in der Ansicht der gezeichneten Autobahn
     if (view) {
@@ -354,6 +396,7 @@ export class XxlWorld {
     this.junctions.attach();
     this.signs.attach();
     this.bridges.attach(this.frames);
+    this.bands.attach(this.frames);
     // die Straßen je Rahmen für das Wasser der Brücken
     // (aneinanderstoßende Stücke eines Rahmens zusammengefasst; eine Lücke bleibt Lücke, dort darf das Wasser hin)
     const ps = [...this.pieces.values()].sort((p, q) => (p.frame < q.frame ? -1 : p.frame > q.frame ? 1 : p.a - q.a));
@@ -458,6 +501,7 @@ export class XxlWorld {
       // Wasser und an den Ufern unter einer Brücke auch nicht
       blocked: (x, s, r) => {
         if (wet.length && inWater(wet, x, s, r + 3)) return true;
+        if (banks.length && inBand(banks, x, s, r + 2)) return true;
         if (!st || x > Math.max(st.near, st.far)) return false;
         if (s > st.s - st.w / 2 - 3 - r && s < st.s + st.w / 2 + 3 + r && x > st.x1 - 9) return true;
         return s > st.a - 2 - r && s < st.b + 2 + r && x > Math.min(st.near, st.far) - st.R - 3 - r;
@@ -465,6 +509,7 @@ export class XxlWorld {
     };
     const st = stubOf(sec, prev, next);
     const wet = bridgesOf(sec);
+    const banks = bandsOf(sec);
     const inForest = (a, b) => forest.filter((r) => r.s1 > a && r.s0 < b).map((r) => [Math.max(a, r.s0), Math.min(b, r.s1)]);
     const segs = [];
     let at = ch.a;
@@ -536,6 +581,7 @@ export class XxlWorld {
     if (!v || s > v.s1 - 2 || s < v.s0 + 2) return true;
     // Wasser und Ufer an den Brücken
     if (this.viewBridges.length && inWater(this.viewBridges, x, s, 12)) return true;
+    if (this.viewBands.length && inBand(this.viewBands, x, s, 6)) return true;
     // Tafeln am Rand: davor, dahinter und dahinter im Grünen nichts (Bäume, Büsche, Häuser)
     if (x > AB_EDGE && x < AB_EDGE + 12) for (let i = 0; i < this.boards.length; i++) if (Math.abs(s - this.boards[i]) < 9) return true;
     for (let i = 0; i < this.zones.length; i++) {

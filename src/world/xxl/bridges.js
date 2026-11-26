@@ -33,7 +33,8 @@ const MUD = [0.5, 0.45, 0.36];
 const STATIONS = [0, 34, 70, 110, 160, 230, 320, 440, 600, 800, 1050, 1300, BRIDGE.reach];
 // so viel Abstand hält das Wasser von einer fremden Straße (ihr halber Querschnitt und Luft)
 const CLEAR = 46;
-// so viele Löcher im Boden bekommen Brücken (eines bleibt für den Fluss eines Orts); weitere bleiben zu (reachOf: null)
+// so viele Löcher im Boden bekommen Brücken und Flüsse neben der Straße zusammen (eines bleibt für den Fluss eines
+// Orts, world.js mergeHoles); weitere bleiben zu (reachOf: null)
 export const MAX_HOLES = HOLES - 1;
 
 /** Querschnitt der Straße an der Brücke b (Abschnittsart kind, Profil profile): Asphaltränder, Kappen, Mittelstreifen. */

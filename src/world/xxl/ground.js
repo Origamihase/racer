@@ -2,8 +2,9 @@
 // breit wie die Sicht und an den Rändern sanft abfallend (so verschwindet das Ende der Welt im Dunst). Er wird nie geschert und läuft nur mit s mit, darf also kein Muster haben, dessen Gleiten man
 // neben einem gescherten Rahmen bemerken würde: nur feines, richtungsloses Gras. Felder, Wege und Teiche sind
 // aufgenähte Flicken der Rahmen (siehe roadkit/forest), nie Teil dieses Bodens.
-// Wo ein Fluss durch einen Ort fließt (kit/river.js) oder unter einer Brücke (bridges.js), hat er ein Loch: ein Band,
-// das der Shader ausspart (setHoles, bis zu HOLES zugleich) – Wasser, Ufer und Kaimauern liegen tiefer als er.
+// Wo ein Fluss durch einen Ort fließt (kit/river.js), unter einer Brücke (bridges.js) oder neben der Straße her
+// (riverbands.js, drei Löcher je Fluss), hat er ein Loch: ein Band, das der Shader ausspart (setHoles, bis zu HOLES
+// zugleich, verteilt von world.js mergeHoles) – Wasser, Ufer und Kaimauern liegen tiefer als er.
 import * as THREE from 'three';
 import { W } from '../../curve.js';
 import { GRASS_RGB } from '../../textures.js';
@@ -102,7 +103,7 @@ function groundCols() {
 // Löcher der Flüsse: die Lage vor der Krümmung kommt aus dem Vertex-Shader (dort, wo curve.js sie berechnet). Je Loch
 // uHoleA = (Punkt der Achse x, z, Richtung des Flusses x, z), uHoleB = (halbe Breite quer, Anfang und Ende längs,
 // Schräge der Enden: längs je quer, aus der Scherung des Rahmens)
-export const HOLES = 8;
+export const HOLES = 12;
 const HOLE_AT = 'vec4 cwPos = modelMatrix * mvPosition;';
 const HOLE_FRAG = /* glsl */ `for (int i = 0; i < ${HOLES}; i++) {
   vec4 ha = uHoleA[i];
