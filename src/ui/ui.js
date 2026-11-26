@@ -177,6 +177,7 @@ export class UI {
     el('span', 'sub-sign durchsage-icon', this.subEl, '🎙️');
     el('span', 'sub-sign megafon-icon', this.subEl, '📢');
     el('span', 'sub-sign adam-icon', this.subEl, '🎤');
+    el('span', 'sub-sign navi-icon', this.subEl, '📡');
     const words = el('span', 'sub-words', this.subEl);
     this.subLabel = el('span', 'sub-label', words, '');
     this.subText = el('span', 'sub-text', words, '');
@@ -626,6 +627,11 @@ export class UI {
     this.subEl.className = 'sub-bar sub-' + l.who + (!l.label && l.text.length <= SHORT_LINE ? ' short' : '');
     this.subLabel.textContent = l.label;
     this.subText.textContent = l.text;
+  }
+
+  /** Die Navi-Durchsage zu einem neuen Ziel (game.js say navi): OMIs Satz, groß und rot wie früher der Bieterbalken. */
+  naviDurchsage(text, dur) {
+    return this.speak('navi', text, Math.max(4, dur), 'Navi-Durchsage');
   }
 
   nomi(text, dur = 3) {

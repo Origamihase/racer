@@ -2,10 +2,12 @@
 // Lkw-Spiel: weit weg von der nächsten Handlung die echte Karte (Straßen, Orte, Route), nah an ihr und abseits der
 // Autobahn die Nahansicht – die Straße so, wie die Welt sie baut (roadahead.js, COMMON.md §9), mit ihren echten
 // Querschnitten (Fahrbahnen, Mittelstreifen, Leitlinien); beide liegen auf demselben Boden, blenden mit gleichem Kurs
-// und Maßstab über und gehen zum Horizont hin in Dunst über. Darüber die Ansage (Pfeil, Entfernung in Metern der Fahrt,
-// Schildtext, Spurhinweis), unten das Ziel mit Kartenkilometern und Ankunft in der Uhr des Spiels, ein schmaler Streifen
-// mit der ganzen Route und den Orten darauf und wie gewohnt der Bieter mit seinem Gebot. Überfahrten hüpfen, ein neues
-// Ziel zeichnet seine Route ein.
+// und Maßstab über und gehen zum Horizont hin in Dunst über. Die Karte bekommt fast die ganze Fläche (Besitzer,
+// 26.11.2026: „eine große (korrekte) Karte und eine Zeile darüber“): oben eine einzige Zeile mit der Ansage als Satz
+// („In 800 m bei Ausfahrt 7 Hanau rechts abfahren“, naviLine), unten eine schmale Zeile mit dem Ziel, Kartenkilometern
+// und Ankunft in der Uhr des Spiels, darunter dünn der Fortschritt. Kein Bieterbalken (das Gebot steht im Chat), kein
+// zweites Schild für die nächste Ausfahrt (sie steht als Knopf auf der Karte). Überfahrten hüpfen, ein neues Ziel
+// zeichnet seine Route ein.
 //
 // Zeichnet in einen Ausschnitt der Leinwand von CenterScreen (src/cockpit/screen.js), etwa 15-mal je Sekunde. Die
 // statischen Ebenen der Karte kommen aus dem Zwischenspeicher des Zeichners (MapPainter.drawTilted: WebGL legt ihn
@@ -20,7 +22,7 @@ import { Persp, TiltView, ribbon } from './persp.js';
 import { places } from './graph.js';
 import { goalName } from '../world/kit/layout.js';
 import { fmtOdo, waterAlong, waterLabelOk } from './navroute.js';
-import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawCar, drawShield, drawFlag, drawHeart, drawRiverName } from './symbols.js';
+import { FONT, TRANSIT_COLOR, rrect, fit, drawTurnIcon, drawTransitShape, drawShield, drawFlag, drawHeart, drawRiverName } from './symbols.js';
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -39,7 +41,10 @@ const AHEAD_MAX = 4000;
 export const TILT = (50 * Math.PI) / 180;
 export const FOCAL = 760;
 /** Dunst zum Horizont: ganz bis Bildzeile FOG_Y[0] (hinter der Ansage), frei ab FOG_Y[1]. */
-export const FOG_Y = [150, 202];
+export const FOG_Y = [118, 170];
+/** Die Zeile der Ansage oben (Bildzeilen y … y + h) und die Zeile des Ziels unten (h Bildpunkte hoch, gap vom Rand). */
+const LINE = { y: 56, h: 72 };
+const GOAL = { h: 46, gap: 10 };
 const FOG = { light: [220, 230, 238], dark: [18, 24, 33] };
 /**
  * Querschnitte der Welt (Paket Engine, VIS/Autobahntextur) relativ zur Linie, die closeScene liefert (MID): Asphalt
@@ -56,8 +61,6 @@ const XS = {
 
 /** Blau der Wegweiser an der Autobahn (wie drawShield): Schilder der Ausfahrten im Navi, weiß beschriftet. */
 const SIGN = '#2a5bb8';
-/** Kopfzeile des Schilds der nächsten Ausfahrt (drawNext) je Art (trip.nextExit). */
-const NEXT_HEAD = { ausfahrt: 'Nächste Ausfahrt', kreuz: 'Nächstes Kreuz', ende: 'Gleich' };
 /**
  * Nummer der Anschlussstelle im weiß umrandeten Kästchen wie auf den Tafeln (trip.signs no), linke Kante x, Mitte y,
  * Höhe h. Liefert die Breite samt Abstand dahinter (0 ohne Nummer).
@@ -138,7 +141,12 @@ function flagPop(m) {
   return rv < 2 ? 1 + 0.35 * Math.max(0, Math.sin(clamp((rv - 1.1) / 0.5, 0, 1) * Math.PI)) : 1;
 }
 /** Lage des Autos im Bild (Anteil der Höhe): knapp über der Zielkarte, der Boden davor zählt. */
-const CAR_Y = 0.69;
+const CAR_Y = 0.79;
+/**
+ * So weit vor dem Auto (Bezugs-Bildpunkte auf dem Boden) endet eine Überfahrt im Bild (hopK): gut unter der Ansage, und
+ * nicht weiter, als die Reserve der Karte reicht, die vor der Überfahrt entsteht.
+ */
+const HOP_DEPTH = 346;
 /** Größe eines aufrechten Zeichens auf dem Boden: mit der Tiefe kleiner, aber immer gut lesbar. */
 const upright = (m) => clamp(0.55 + 0.45 * m, 0.78, 1);
 /**
@@ -247,7 +255,7 @@ export class NaviScreen {
     this.closeOn = false;
     this.prev = new Map(); // Lage der Namen vom letzten Bild
     this.tags = []; // Rechtecke der Ausfahrt-Knöpfe auf der Karte (die Namen weichen ihnen aus)
-    this.top = 168; // bis hierher (Bildzeile) reichen Ansage und Schild der nächsten Ausfahrt
+    this.top = LINE.y + LINE.h + 4; // bis hierher (Bildzeile) reicht die Ansage (mit dem Hinweis auf eine neue Route)
     this.progress = { target: -1, km: 0 }; // Kilometer zum Ziel, als es kam (Streifen unten)
     this.arrival = { target: -1, min: 0 }; // die angezeigte Minute der Ankunft (arrivalMinute)
     this.t = 0;
@@ -271,7 +279,7 @@ export class NaviScreen {
 
   /** Maßstab einer Überfahrt von km Kartenkilometern: sie liegt ganz zwischen Auto und Ansage. */
   hopK(km) {
-    return clamp(this.cam.depthAtY(232) / Math.max(km, 1), 0.05, 40);
+    return clamp(HOP_DEPTH / Math.max(km, 1), 0.05, 40);
   }
 
   /**
@@ -299,7 +307,7 @@ export class NaviScreen {
     const sec = m.trip.section;
     // die Stelle der Handlung knapp unter der Ansage, damit man sieht, wie der Weg dort abgeht: die Marke einer
     // Ausfahrt (am Ende der Sperrfläche) oder eines Terminals gut 20 px darunter, die Zielfahne mit ihrem ganzen Mast
-    const room = this.cam.depthAtY(ins.turn === 'arrive' ? 268 : 244);
+    const room = this.cam.depthAtY(FOG_Y[1] + (ins.turn === 'arrive' ? 66 : 42));
     const fitQ = (d) => room / Math.max(d + 60, 1);
     const act = ins.dist > 0 && (ins.turn === 'exit' || ins.turn === 'arrive' || ins.turn === 'stop' || TRANSIT_TURN[ins.turn]);
     if (sec.kind === 'ab' || sec.kind === 'land') {
@@ -400,12 +408,9 @@ export class NaviScreen {
       ctx.globalAlpha = 1;
     }
     if (!flat) this.drawFog(ctx, w, theme);
-    // die nächste Ausfahrt als Schild unter der Ansage – nicht, solange die Ansage selbst sie nennt (unter dem Hinweis
-    // auf eine neue Route, solange er steht); darunter beginnen die Namen der Karte
-    const nx = !hop && ins.next && ins.next.fork !== ins.fork ? ins.next : null;
+    // unter der Ansage kurz der Hinweis auf eine neue Route; darunter beginnen Namen und Knöpfe der Karte
     const rerouting = m.trip.target >= 0 && m.reroute < REROUTE_NOTE;
-    const nextY = rerouting ? 216 : 170;
-    this.top = nx ? nextY + 60 : 168;
+    this.top = LINE.y + LINE.h + (rerouting ? 46 : 4);
     // aufrecht auf dem Boden: Namen, Schilder, Knopf der Handlung, Fahne (je Ansicht mit ihrem Anteil)
     if (cw < 1) {
       ctx.globalAlpha = 1 - cw;
@@ -431,7 +436,6 @@ export class NaviScreen {
 
     this.drawBanner(ctx, ins, w, theme, hop);
     if (rerouting) this.drawReroute(ctx, w, theme, m.reroute);
-    if (nx) this.drawNext(ctx, nx, w, nextY);
     this.drawBottom(ctx, m, ins, nav, w, h, theme);
     ctx.restore();
 
@@ -547,7 +551,7 @@ export class NaviScreen {
     const o = [0, 0, 0];
     const tags = this.tags;
     tags.length = 0;
-    // ein Knopf nur ganz unter Ansage und Schild der nächsten Ausfahrt (this.top), nie halb von ihnen verdeckt
+    // ein Knopf nur ganz unter der Ansage (this.top), nie halb von ihr verdeckt
     const top = Math.max(FOG_Y[1] - 20, this.top + 19);
     const seen = (p) => {
       tv.toScreen(p.x, p.y, o);
@@ -751,7 +755,7 @@ export class NaviScreen {
       if (mk.type === 'town') {
         // Name links der Straße, wo das Ortsschild steht (nicht unter Ansage und Karten)
         const name = places[mk.place].name;
-        const y = clamp(o[1], FOG_Y[1] + 20, h - 186);
+        const y = clamp(o[1], FOG_Y[1] + 20, h - GOAL.h - GOAL.gap - 20);
         if (Math.abs(y - o[1]) > 120) continue;
         ctx.font = `700 ${Math.round(21 * k)}px ${FONT}`;
         ctx.textAlign = 'right';
@@ -904,7 +908,7 @@ export class NaviScreen {
     }
     const all = cands.concat(shields).sort((a, c) => c.imp - a.imp);
     // frei bleiben: Dunst und Ansage oben, Karten unten, Auto, Fahne
-    const avoid = [[0, 0, w, Math.max(this.top, yTop)], [0, h - 168, w, h], [w / 2 - 34, h * CAR_Y - 30, w / 2 + 34, h * CAR_Y + 26]];
+    const avoid = [[0, 0, w, Math.max(this.top, yTop)], [0, h - GOAL.h - GOAL.gap - 6, w, h], [w / 2 - 34, h * CAR_Y - 30, w / 2 + 34, h * CAR_Y + 26]];
     if (flagAt) avoid.push([flagAt[0] - 6 * flagAt[2], flagAt[1] - 40 * flagAt[2], flagAt[0] + 26 * flagAt[2], flagAt[1] + 4]);
     for (const r of tags) avoid.push(r);
     const placed = placeLabels(tv, all, { dots, avoid, pad: 6, gap: 4, prev: this.prev });
@@ -937,54 +941,98 @@ export class NaviScreen {
     }
   }
 
-  /** Ansage oben: Pfeil, Entfernung, Ziel der Handlung, Nebenzeile, Spurhinweis. */
+  /**
+   * Die Ansage oben in einer einzigen Zeile: links der Pfeil, daneben der Satz aus naviLine – die Entfernung fett
+   * vorn, dann was dort zu tun ist, die Nummer der Ausfahrt im Kästchen der Tafeln. Passt der Satz nicht, wird die
+   * Schrift kleiner, dann tritt die kürzere Fassung an (Ort statt Brunnen, „bei“ statt „bei Ausfahrt“), zuletzt wird
+   * der Name gekürzt. Liefert den gezeigten Text (für Prüfstände).
+   */
   drawBanner(ctx, ins, w, theme, hop) {
     const x = 14;
-    const y = 58;
+    const y = LINE.y;
     const bw = w - 28;
-    const bh = 104;
+    const bh = LINE.h;
     ctx.fillStyle = CARD[theme];
-    rrect(ctx, x, y, bw, bh, 18);
+    rrect(ctx, x, y, bw, bh, 16);
     ctx.fill();
-    // Pfeil im Feld links
     ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    rrect(ctx, x + 10, y + 10, 84, 84, 14);
+    rrect(ctx, x + 8, y + 8, bh - 16, bh - 16, 11);
     ctx.fill();
-    drawTurnIcon(ctx, hop ? hop.kind : ins.turn, x + 52, y + 52, 70, '#ffffff');
-    const tx = x + 108;
-    const right = x + bw - 16;
+    drawTurnIcon(ctx, hop ? hop.kind : ins.turn === 'none' ? 'straight' : ins.turn, x + bh / 2, y + bh / 2, bh - 24, '#ffffff');
+    const tx = x + bh + 6;
+    const room = x + bw - 14 - tx;
+    const L = naviLine(ins, hop);
+    const mid = y + bh / 2 + 1;
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    let head = ins.head;
-    let sub = ins.sub;
-    // Entfernung zur Stelle der Ansage in Worten (ins.say). Weit vor einer Ausfahrt ist sie eine ruhige Vorschau
-    // (ins.calm): der Name groß, „in 55 km“ in der Nebenzeile – die große Zahl links gehört allein den Metern, die ab
-    // dem ersten Vorwegweiser bis zur Gabelung herunterzählen
-    let dist = ins.dist > 0 && ins.turn !== 'none' && ins.turn !== 'straight' && ins.turn !== 'merge' && !ins.calm ? ins.say : '';
-    if (ins.calm && ins.say) sub = 'in ' + ins.say + (sub ? ' · ' + sub : '');
-    if (hop) {
-      head = ins.head && ins.turn === hop.kind ? ins.head : { faehre: 'Überfahrt mit der Fähre', zug: 'Mit dem Autozug', flug: 'Im Frachtflieger' }[hop.kind];
-      sub = 'Gute Reise – gleich geht es weiter';
-      dist = '';
+    ctx.textBaseline = 'middle';
+    // Fassungen von lang nach kurz, je von voller bis kleinster Schrift
+    const BOX = 1; // Kästchen der Nummer im Verhältnis zur Schrift
+    const measure = (parts, k) => {
+      let wsum = 0;
+      if (L.lead) {
+        ctx.font = `700 ${Math.round(34 * k)}px ${FONT}`;
+        wsum += ctx.measureText(L.lead).width;
+      }
+      ctx.font = `600 ${Math.round(29 * k)}px ${FONT}`;
+      const sp = ctx.measureText(' ').width;
+      for (const q of parts) {
+        if (wsum > 0) wsum += sp;
+        wsum += q.no ? numBoxWidth(ctx, q.no, Math.round(29 * k * BOX)) - sp : ctx.measureText(q.t).width;
+      }
+      return wsum;
+    };
+    let pick = null;
+    for (const parts of L.forms) {
+      for (let k = 1; k >= 0.7 - 1e-9; k -= 0.04) {
+        if (measure(parts, k) <= room) {
+          pick = { parts, k };
+          break;
+        }
+      }
+      if (pick) break;
     }
-    // Spurpfeile rechts in der zweiten Zeile: der Name der Ausfahrt oben behält die ganze Breite
-    let lanesW = 0;
-    if (ins.lanes && !hop) lanesW = this.drawLanes(ctx, ins.lanes, right, y + 61);
-    ctx.fillStyle = '#ffffff';
-    // eine Ausfahrt mit Nummer: das Kästchen der Tafeln vor dem Namen
-    const no = ins.turn === 'exit' && !hop ? ins.no : 0;
-    if (dist) {
-      ctx.font = `700 40px ${FONT}`;
-      ctx.fillText(dist, tx, y + 48);
-      let dx = tx + ctx.measureText(dist).width + 16;
-      dx += numBox(ctx, no, dx, y + 38, 30);
-      ctx.fillText(shrink(ctx, prefer(ctx, head, ins.short, right - dx, 600, 21), right - dx, 600, 27, 21), dx, y + 47);
-    } else {
-      const nx = tx + numBox(ctx, no, tx, y + 37, 32);
-      ctx.fillText(shrink(ctx, prefer(ctx, head, ins.short, right - nx, 700, 22), right - nx, 700, 30, 22), nx, y + 47);
+    if (!pick) {
+      // auch die kürzeste Fassung in der kleinsten Schrift zu lang: den Namen kürzen
+      const k = 0.7;
+      const parts = L.forms[L.forms.length - 1].map((q) => ({ ...q }));
+      const nm = parts.find((q) => q.name);
+      if (nm) {
+        ctx.font = `600 ${Math.round(29 * k)}px ${FONT}`;
+        const rest = measure(parts.filter((q) => q !== nm), k) + ctx.measureText(' ').width;
+        ctx.font = `600 ${Math.round(29 * k)}px ${FONT}`;
+        nm.t = fit(ctx, nm.t, Math.max(room - rest, 40));
+      }
+      pick = { parts, k };
     }
-    ctx.fillStyle = '#c9d6ff';
-    ctx.fillText(shrink(ctx, sub || '', right - lanesW - tx, 500, 22, 18), tx, y + 84);
+    const { parts, k } = pick;
+    let cx = tx;
+    const shown = [];
+    if (L.lead) {
+      ctx.font = `700 ${Math.round(34 * k)}px ${FONT}`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(L.lead, cx, mid);
+      cx += ctx.measureText(L.lead).width;
+      shown.push(L.lead);
+    }
+    ctx.font = `600 ${Math.round(29 * k)}px ${FONT}`;
+    const sp = ctx.measureText(' ').width;
+    for (const q of parts) {
+      if (cx > tx) cx += sp;
+      if (q.no) {
+        cx += numBox(ctx, q.no, cx, mid - 1, Math.round(29 * k * BOX)) - sp;
+        ctx.font = `600 ${Math.round(29 * k)}px ${FONT}`;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        shown.push(String(q.no));
+        continue;
+      }
+      // der Ort oder die Ausfahrt hell wie auf dem Schild, das Übrige etwas ruhiger
+      ctx.fillStyle = q.name ? '#ffffff' : '#c9d6ff';
+      ctx.fillText(q.t, cx, mid);
+      cx += ctx.measureText(q.t).width;
+      shown.push(q.t);
+    }
+    return shown.join(' ');
   }
 
   /**
@@ -995,100 +1043,20 @@ export class NaviScreen {
     const text = '🔄 Route wird neu berechnet …';
     ctx.font = `600 20px ${FONT}`;
     const bw = ctx.measureText(text).width + 36;
-    const y = 172;
+    const y = LINE.y + LINE.h + 6;
     ctx.globalAlpha = clamp((REROUTE_NOTE - t) / 0.4, 0, 1);
     ctx.fillStyle = CARD[theme];
-    rrect(ctx, (w - bw) / 2, y, bw, 38, 19);
+    rrect(ctx, (w - bw) / 2, y, bw, 36, 18);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, w / 2, y + 20);
+    ctx.fillText(text, w / 2, y + 19);
     ctx.globalAlpha = 1;
   }
 
   /**
-   * Die nächste Ausfahrt (ins.next) unter der Ansage, wie ein Wegweiser: blau mit weißem Rand, links der Pfeil, oben
-   * klein „Nächste Ausfahrt“, darunter groß ihr Name, rechts die Entfernung in den Worten der Ansage. Führt die Route
-   * dort hinaus, sagt es die Kopfzeile. y: Oberkante.
-   */
-  drawNext(ctx, nx, w, y) {
-    const x = 14;
-    const bw = w - 28;
-    const bh = 54;
-    ctx.fillStyle = SIGN;
-    rrect(ctx, x, y, bw, bh, 12);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-    ctx.lineWidth = 2;
-    rrect(ctx, x + 4, y + 4, bw - 8, bh - 8, 9);
-    ctx.stroke();
-    drawTurnIcon(ctx, 'exit', x + 33, y + bh / 2, 36, '#ffffff');
-    const right = x + bw - 18;
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    ctx.font = `700 26px ${FONT}`;
-    ctx.fillText(nx.say, right, y + bh / 2 + 1);
-    const tx = x + 62;
-    const room = right - ctx.measureText(nx.say).width - 18 - tx;
-    ctx.textAlign = 'left';
-    ctx.font = `600 14px ${FONT}`;
-    ctx.fillStyle = 'rgba(255,255,255,0.82)';
-    ctx.fillText(fit(ctx, NEXT_HEAD[nx.kind] + (nx.exit ? ' · hier fährt die Route ab' : ''), room), tx, y + 16);
-    ctx.fillStyle = '#ffffff';
-    // die Nummer im Kästchen vor dem Namen, wie auf den Tafeln am Rand
-    const bx = numBox(ctx, nx.no, tx, y + 36, 22);
-    ctx.fillText(shrink(ctx, nx.name, room - bx, 700, 23, 17), tx + bx, y + 36);
-  }
-
-  /**
-   * Spurpfeile (rechts in der zweiten Zeile der Ansage): die genutzten Spuren hell, exit = es gibt einen
-   * Verzögerungsstreifen. Liefert die belegte Breite.
-   */
-  drawLanes(ctx, lanes, right, y) {
-    const n = lanes.n;
-    const lw = 22;
-    const x = right - n * lw;
-    for (let i = 0; i < n; i++) {
-      const use = lanes.use.includes(i);
-      ctx.save();
-      ctx.globalAlpha = use ? 1 : 0.32;
-      const cx = x + i * lw + lw / 2;
-      ctx.strokeStyle = '#ffffff';
-      ctx.fillStyle = '#ffffff';
-      ctx.lineWidth = 3.2;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(cx, y + 26);
-      if (use) ctx.quadraticCurveTo(cx, y + 10, cx + 7, y + 6);
-      else ctx.lineTo(cx, y + 6);
-      ctx.stroke();
-      ctx.beginPath();
-      if (use) {
-        ctx.moveTo(cx + 10, y + 3);
-        ctx.lineTo(cx + 3, y + 1);
-        ctx.lineTo(cx + 6, y + 10);
-      } else {
-        ctx.moveTo(cx, y);
-        ctx.lineTo(cx - 5, y + 7);
-        ctx.lineTo(cx + 5, y + 7);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-      if (i < n - 1) {
-        // vor dem Verzögerungsstreifen (letzte Spur) die breite, unterbrochene Linie wie auf der Fahrbahn
-        ctx.fillStyle = 'rgba(255,255,255,0.25)';
-        if (i === n - 2 && lanes.exit) for (let q = 0; q < 3; q++) ctx.fillRect(x + (i + 1) * lw - 1.25, y + 2 + q * 9, 2.5, 6);
-        else ctx.fillRect(x + (i + 1) * lw - 0.75, y + 2, 1.5, 24);
-      }
-    }
-    return n * lw + 12;
-  }
-
-  /**
-   * Die Minute der Ankunft, die das Kärtchen zeigt: abgerundet wie die Uhr (wer im Tempo des Navis fährt, kommt in
+   * Die Minute der Ankunft, die die Zeile zeigt: abgerundet wie die Uhr (wer im Tempo des Navis fährt, kommt in
    * genau dieser Minute an) und erst neu, wenn die Rechnung eine Viertelminute aus ihr herausläuft – kein Flackern.
    */
   arrivalMinute(target, min) {
@@ -1100,41 +1068,32 @@ export class NaviScreen {
     return A.min;
   }
 
-  /** Unten: Ziel mit Kilometern und Ankunft, Streifen mit der ganzen Route, darunter der Bieter (wie gewohnt). */
+  /**
+   * Unten eine schmale Zeile: links das Ziel (der Brunnen und sein Ort), rechts Kartenkilometer und Ankunft, an ihrer
+   * Unterkante dünn der Fortschritt seit das Ziel kam. Ohne Ziel sagt sie, worauf das Navi wartet (nav.wait).
+   */
   drawBottom(ctx, m, ins, nav, w, h, theme) {
     const x = 14;
     const bw = w - 28;
-    // Bieter (rot wie das Navi-Gebot im Chat)
-    const by = h - 64;
-    ctx.fillStyle = 'rgba(200,16,46,0.94)';
-    rrect(ctx, x, by, bw, 50, 14);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    ctx.font = `700 25px ${FONT}`;
-    const bid = nav.bid || '';
-    ctx.fillText(bid, x + bw - 16, by + 26);
-    const bidW = ctx.measureText(bid).width;
-    ctx.textAlign = 'left';
-    ctx.font = `700 22px ${FONT}`;
-    // ohne Gebot (XXL-Welt zwischen Ankunft und erstem Gebot der Runde) sagt der Balken, was gerade gilt (nav.bar)
-    ctx.fillText(fit(ctx, !nav.bidder && nav.bar ? nav.bar : '📡 Ferngesteuert von ' + (nav.bidder || '—'), bw - bidW - 44), x + 16, by + 26);
-    // Ziel und Route
-    const cy = h - 160;
+    const bh = GOAL.h;
+    const cy = h - GOAL.gap - bh;
     ctx.fillStyle = CARD[theme];
-    rrect(ctx, x, cy, bw, 88, 16);
+    rrect(ctx, x, cy, bw, bh, 14);
     ctx.fill();
     const trip = m.trip;
-    ctx.textBaseline = 'alphabetic';
+    const mid = cy + bh / 2;
+    ctx.textBaseline = 'middle';
     if (trip.target < 0 || !m.route) {
-      ctx.font = `600 22px ${FONT}`;
-      ctx.fillStyle = '#c9d6ff';
-      ctx.textAlign = 'left';
-      ctx.fillText(fit(ctx, nav.wait || '⏳ Warte auf das nächste Gebot …', bw - 36), x + 18, cy + 36);
-      ctx.font = `500 19px ${FONT}`;
+      // derselbe Kilometerzähler wie HUD und Pause-Karte
+      const odo = 'Gefahren: ' + fmtOdo(trip.km);
+      ctx.font = `500 18px ${FONT}`;
+      const ow = ctx.measureText(odo).width;
+      ctx.textAlign = 'right';
       ctx.fillStyle = 'rgba(255,255,255,0.75)';
-      ctx.fillText('Gefahren: ' + fmtOdo(trip.km), x + 18, cy + 68); // derselbe Kilometerzähler wie HUD und Pause-Karte
+      ctx.fillText(odo, x + bw - 16, mid);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#c9d6ff';
+      ctx.fillText(shrink(ctx, nav.wait || '⏳ Warte auf das nächste Gebot …', bw - ow - 50, 600, 20, 16), x + 16, mid);
       return;
     }
     const pl = places[trip.target];
@@ -1143,78 +1102,108 @@ export class NaviScreen {
     const eta = nav.eta || (isFinite(ins.clock) && nav.clockMin !== undefined ? 'Ankunft ' + clock(this.arrivalMinute(trip.target, nav.clockMin + ins.clock / 60)) : '');
     // die Entfernung zum Ziel in Worten: dieselbe wie in der HUD-Zeile und, im Zielort, in der Ansage (fmtDistance)
     const right = ins.toTarget + (eta ? ' · ' + eta : '');
-    ctx.font = `600 21px ${FONT}`;
+    ctx.font = `600 20px ${FONT}`;
     const rw = ctx.measureText(right).width;
     ctx.textAlign = 'right';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(right, x + bw - 16, cy + 31);
+    ctx.fillText(right, x + bw - 16, mid - 1);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#c9d6ff';
     // das Ziel: der Brunnen und sein Ort, der Name wie auf der Ortstafel; lange Namen kleiner gesetzt, nie um einen
     // Zusatz gekürzt – passt beides nicht, steht der Ort allein da
-    ctx.fillText(shrink(ctx, prefer(ctx, '⛲ ' + goalName(pl), '⛲ ' + pl.name, bw - rw - 50, 700, 16), bw - rw - 50, 700, 22, 16), x + 16, cy + 31);
-    this.drawStrip(ctx, m, x + 18, cy + 68, bw - 36, km);
+    ctx.fillText(shrink(ctx, prefer(ctx, '⛲ ' + goalName(pl), '⛲ ' + pl.name, bw - rw - 46, 700, 15), bw - rw - 46, 700, 21, 15), x + 16, mid - 1);
+    this.drawProgress(ctx, trip.target, x + 16, cy + bh - 5, bw - 32, km);
   }
 
-  /**
-   * Der ganze Weg als Streifen: links der Start dieses Ziels, rechts das Ziel, das Auto wandert mit den gefahrenen
-   * Kilometern nach rechts (der Weg hinter ihm wird hell); dazwischen die Orte, durch die die Route noch führt.
-   */
-  drawStrip(ctx, m, x, y, len, km) {
-    const R = m.route;
-    const a0 = Math.max(m.routeA(), 0);
-    const total = Math.max(R.line.len - a0, 1e-9);
-    // Fortschritt seit das Ziel kam (wird der Weg länger, wächst der Streifen mit, ohne dass das Auto springt)
+  /** Fortschritt seit das Ziel kam, als dünne Linie (wird der Weg länger, wächst sie mit, ohne zurückzuspringen). */
+  drawProgress(ctx, target, x, y, len, km) {
     const P = this.progress;
-    if (P.target !== m.trip.target || !(P.km > 0)) {
-      P.target = m.trip.target;
+    if (P.target !== target || !(P.km > 0)) {
+      P.target = target;
       P.km = Math.max(km, 1e-6);
     } else if (km > P.km) P.km = km;
     const f = clamp(1 - km / P.km, 0, 1);
-    const cx = x + 10 + (len - 20) * f;
     ctx.lineCap = 'round';
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = 'rgba(255,255,255,0.32)';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
     ctx.beginPath();
     ctx.moveTo(x, y);
-    ctx.lineTo(cx, y);
-    ctx.stroke();
-    ctx.strokeStyle = '#4c8dff';
-    ctx.beginPath();
-    ctx.moveTo(cx, y);
     ctx.lineTo(x + len, y);
     ctx.stroke();
-    // Orte: wichtige zuerst, mit Abstand, damit sich die Namen nicht berühren
-    const stops = R.stops.filter((q) => q.a > a0 + total * 0.02 && q.place !== R.dest);
-    stops.sort((p, q) => PLACE_BY_INDEX[q.place].imp - PLACE_BY_INDEX[p.place].imp);
-    const used = [[cx - 14, cx + 14], [x + len - 24, x + len + 4]];
-    ctx.font = `600 16px ${FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    for (const q of stops) {
-      const sx = cx + ((q.a - a0) / total) * (x + len - cx);
-      const name = places[q.place].name;
-      const tw = Math.min(ctx.measureText(name).width, 150);
-      const lo = sx - tw / 2 - 6;
-      const hi = sx + tw / 2 + 6;
-      if (lo < x - 4 || hi > x + len + 4) continue;
-      const tick = used.some(([a, b]) => sx > a - 2 && sx < b + 2);
-      ctx.fillStyle = '#ffffff';
+    if (f > 0.002) {
+      ctx.strokeStyle = '#4c8dff';
       ctx.beginPath();
-      ctx.arc(sx, y, 3.4, 0, Math.PI * 2);
-      ctx.fill();
-      if (tick || used.some(([a, b]) => lo < b && hi > a)) continue;
-      used.push([lo, hi]);
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText(fit(ctx, name, 150), sx, y - 9);
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + len * f, y);
+      ctx.stroke();
     }
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.beginPath();
-    ctx.arc(x + 3, y, 4.5, 0, Math.PI * 2);
-    ctx.fill();
-    drawFlag(ctx, x + len - 6, y + 9, 0.55, '#ffffff');
-    drawCar(ctx, cx, y, Math.PI / 2, 20, null);
   }
+}
+
+/** Überfahrten in der Ansage: so heißt es in der Zeile („auf die Fähre nach …“). */
+const HOP_INTO = { faehre: 'auf die ', zug: 'auf den ', flug: 'zur ' };
+const HOP_HEAD = { faehre: 'Überfahrt mit der Fähre', zug: 'Mit dem Autozug', flug: 'Im Frachtflieger' };
+
+/**
+ * Die Ansage als ein Satz für die Zeile über der Karte (Besitzer, 26.11.2026: „zB in Xm (oder km) bei Ausfahrt Y
+ * rechts abbiegen“), nur aus der Ansage (NavModel.instruction) – dieselben Namen, Nummern und Entfernungen wie Tafeln
+ * und HUD. {lead: die Entfernung („In 800 m“, fett) oder '', forms: Fassungen von lang nach kurz, je eine Liste von
+ * Stücken {t} bzw. {no} (Nummer im Kästchen); name: das Stück, das zuletzt gekürzt werden darf}.
+ */
+export function naviLine(ins, hop) {
+  if (hop) {
+    const head = ins.head && ins.turn === hop.kind ? ins.head : HOP_HEAD[hop.kind];
+    return { lead: '', forms: [[{ t: head, name: true }, { t: '– gleich geht es weiter' }], [{ t: head, name: true }]] };
+  }
+  const act = ins.dist > 0 && ins.turn !== 'none' && ins.turn !== 'straight' && ins.turn !== 'merge';
+  const lead = act && ins.say ? 'In ' + ins.say : '';
+  const head = ins.head || '';
+  const N = (t) => ({ t, name: true });
+  const T = (t) => ({ t });
+  if (ins.turn === 'exit') {
+    if (head === 'Autobahnende') {
+      const end = lead ? 'endet die Autobahn:' : 'Autobahnende:';
+      return { lead, forms: [[T(end), T('rechts abfahren')]] };
+    }
+    const turn = ins.wende ? 'rechts abfahren und wenden' : 'rechts abfahren';
+    if (head.startsWith('Ausfahrt ')) {
+      const name = head.slice(9);
+      const no = ins.no ? [{ no: ins.no }] : [];
+      return {
+        lead,
+        forms: [
+          [T('bei Ausfahrt'), ...no, N(name), T(turn)],
+          [T('bei'), ...no, N(name), T(turn)],
+          [T('bei'), ...no, N(name), T('rechts')],
+        ],
+      };
+    }
+    // Kreuz oder Dreieck: weiter auf der Straße dahinter, wenn die Fahrt sie schon kennt
+    const onto = ins.road && !ins.wende ? 'rechts auf die ' + ins.road : turn;
+    const no = ins.no ? [{ no: ins.no }] : [];
+    return { lead, forms: [[T('am'), ...no, N(head), T(onto)], [T('am'), ...no, N(head), T('rechts')]] };
+  }
+  if (ins.turn === 'arrive') {
+    const forms = [[T(lead ? 'am Ziel:' : 'Ziel:'), N(head)]];
+    if (ins.short && ins.short !== head) forms.push([T(lead ? 'am Ziel:' : 'Ziel:'), N(ins.short)]);
+    return { lead, forms };
+  }
+  if (ins.turn === 'stop') return { lead, forms: [[T('Ladestopp:'), N(head)], [T('Laden:'), N(head)]] };
+  if (HOP_INTO[ins.turn]) {
+    const [what, ...to] = head.split(' nach ');
+    const dest = to.join(' nach ');
+    if (dest) return { lead, forms: [[T((lead ? HOP_INTO[ins.turn] + what : what) + ' nach'), N(dest)]] };
+    return { lead, forms: [[N(head)]] };
+  }
+  if ((ins.turn === 'straight' || ins.turn === 'merge') && ins.road) {
+    const verb = ins.turn === 'straight' ? ' folgen' : '';
+    const pre = ins.turn === 'straight' ? ins.road : head;
+    const forms = [];
+    if (ins.towards) forms.push([T(pre), T('Richtung'), N(ins.towards + verb)]);
+    forms.push([N(pre + verb)]);
+    return { lead: '', forms };
+  }
+  return { lead: '', forms: [[N(head || 'Der Straße folgen')]] };
 }
 
 /** Text in die Breite: erst die Schrift von px bis minPx verkleinern, dann kürzen (setzt ctx.font). */

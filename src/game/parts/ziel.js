@@ -292,8 +292,12 @@ export class ZielPart {
   }
 
   /**
-   * Ein neues Ziel steht (das letzte Gebot eines Rennens, ein einzelnes ruhiges Gebot oder der Zuschlag): OMI sagt
-   * es mit Brunnen und Ort an („Neues Ziel: Marktbrunnen in Würzburg!“), und die Navi-Zeile zeigt es hervorgehoben.
+   * Ein neues Ziel steht (das letzte Gebot eines Rennens, ein einzelnes ruhiges Gebot oder der Zuschlag): die
+   * Navi-Durchsage – Gong, OMI sagt, wer das Ziel geändert hat und wohin („Dachs hat das Navi-Ziel geändert. Neues
+   * Ziel: Würzburg.“), großer Untertitel unten (Besitzer, 26.11.2026: „muss auf jeden Fall abgespielt werden und wenn
+   * die Durchsage kommt, ist es ein großes Ding“; sie ersetzt „Ferngesteuert von“ im Navi). Sie geht nie verloren: in
+   * einer Szene wartet sie bis zu deren Ende (say, heldSay), in der Warteschlange veraltet sie nicht. Die Navi-Zeile
+   * zeigt das Ziel hervorgehoben.
    * Was das Navi sonst dazu sagt – die Zeile zum Ort, „Bitte wenden“ –, steht als Hinweis mit dem Schlüssel 'navi'
    * darunter: immer nur einer, und er geht mit dem Ziel, zu dem er gehört.
    */
@@ -301,7 +305,7 @@ export class ZielPart {
     if (this.auction.said === t) return;
     this.auction.said = t;
     this.naviSaidT = this.t;
-    this.say(fillTemplate(BOARD.neuesZiel, { ziel: fountainIn(t) }), 'think');
+    this.say(fillTemplate(BOARD.neuesZiel, { wer: this.navi.bidder || 'Der Chat', ort: t.name }), 'happy', { navi: true });
     this.ui.naviNews();
   }
 

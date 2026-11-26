@@ -57,6 +57,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
     chat: (m) => log.chat.push({ t: game.t, name: m.name, text: m.text, bot: m.bot || null, gag: !!m.gag, at: state() }),
     toast: (text, kind, key) => log.toast.push({ t: game.t, text, kind, key, at: state() }),
     nomi: (text) => log.speak.push({ t: game.t, who: 'nomi', text, at: state() }),
+    naviDurchsage: (text) => log.speak.push({ t: game.t, who: 'navi', text, label: 'Navi-Durchsage', at: state() }),
     studio: (text) => log.speak.push({ t: game.t, who: 'studio', text, at: state() }),
     megafon: (text, dur, buyer, label) => log.speak.push({ t: game.t, who: 'megafon', text, label: label || 'Megafon-Wunsch von ' + buyer, at: state() }),
     durchsage: (voice, text) => log.speak.push({ t: game.t, who: 'durchsage', text, voice, at: state() }),

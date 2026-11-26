@@ -324,10 +324,12 @@ console.log('3. Blitzer im Ort und auf der Landstraße:');
   // im Spiel: zu schnell und langsam genug, mit und ohne Radarwarner (stream-sim; der brave Fahrer fährt das Tempo, das
   // ihm sein Begrenzer gibt – hier 20 km/h über dem Limit oder genau das Limit)
   for (const [radar, over, kind] of [[false, true, 'stadt'], [false, false, 'stadt'], [true, true, 'stadt'], [false, true, 'land'], [true, false, 'land']]) {
-    // (der Stream mit dem ersten Keim, der in einer halben Stunde an einem Blitzer dieser Art vorbeikommt)
+    // (der Stream mit dem ersten Keim, der in einer halben Stunde an einem Blitzer dieser Art vorbeikommt – Blitzer auf
+    // der Landstraße sind ab Erlensee selten, und jede Änderung am Ablauf eines Streams mischt die Keime neu: darum
+    // hinter den bewährten Keimen weitere der Reihe nach)
     let S = null;
     let cam = null;
-    for (const seed of [5, 2, 3, 7, 11, 13]) {
+    for (const seed of [5, 2, 3, 7, 11, 13, ...Array.from({ length: 50 }, (_, i) => 14 + i)]) {
       S = makeStream({ driver: DRIVERS.zuegig, seed, endless: true, upgrades: radar ? { radar: 1 } : {} });
       for (let i = 0; i < 30 * 60 && !cam && !S.game.over; i++) {
         S.step(1);

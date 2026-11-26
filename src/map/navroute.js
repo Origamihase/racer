@@ -1407,8 +1407,8 @@ export class NavModel {
   /**
    * Die Ansage für Navi und HUD-Zeile, nur aus trip.guidance() und den Schildtexten (trip.signs): {turn, dist (Meter
    * der Fahrt bis zur genannten Stelle), km (Kartenkilometer bis dorthin auf der Karte, für ihren Maßstab), say (die
-   * Entfernung in Worten, '' ohne Stelle), calm, head (Hauptzeile), sub (Nebenzeile), road (Schild), lanes
-   * (Spurpfeile), fork (die Gabelung, die die Ansage meint), node, mapKm (Reisekilometer bis zum Ziel), toTarget
+   * Entfernung in Worten, '' ohne Stelle), calm, head (Hauptzeile), sub (Nebenzeile), road (Schild), towards (seine
+   * Richtung), wende (hinter der Ausfahrt zurück), lanes (Spurpfeile), fork (die Gabelung, die die Ansage meint), node, mapKm (Reisekilometer bis zum Ziel), toTarget
    * (dieselben in Worten, wie Kärtchen und HUD-Zeile sie nennen), clock (Restfahrzeit in Sekunden der Uhr), mins,
    * target, next}. Ohne bekannte Stelle (dem Straßenverlauf folgen) ist dist 0 und wird nicht gezeigt.
    * Ohne Ziel nennt die Ansage nur die Straße – und ein Autobahnende, das auf dem eigenen Weg liegt.
@@ -1425,7 +1425,7 @@ export class NavModel {
     let g = trip.guidance();
     const sec = trip.section;
     const out = {
-      turn: 'none', dist: 0, km: 0, say: '', calm: false, head: '', no: 0, short: '', sub: '', road: '', lanes: null, node: -1, fork: null,
+      turn: 'none', dist: 0, km: 0, say: '', calm: false, head: '', no: 0, short: '', sub: '', road: '', towards: '', wende: false, lanes: null, node: -1, fork: null,
       mapKm: g.km, toTarget: g.type === 'none' ? '' : fmtDistance(g), clock: g.clock, mins: g.mins, target: trip.target, next: null,
     };
     const nx = trip.nextExit();
@@ -1496,7 +1496,11 @@ export class NavModel {
       out.no = g.fork ? trip.signs(g.fork).no : 0;
       // am Autobahnende, solange hinter der Rampe noch nichts gebaut ist: der Name der Ausfahrt, an der sie endet
       out.sub = thenText(g.then) || (g.fork && g.fork.forced ? nodeTitle(g.node) : '');
-      if (g.then && (g.then.type === 'ab' || g.then.type === 'land')) out.road = g.then.road;
+      if (g.then && (g.then.type === 'ab' || g.then.type === 'land')) {
+        out.road = g.then.road;
+        out.towards = g.then.towards;
+        out.wende = !!g.then.wende;
+      }
       // Spurpfeile ab dem 1000-m-Schild: vier Spuren geradeaus, rechts der Verzögerungsstreifen, der abgeht (am
       // Autobahnende führen alle Spuren hinaus)
       if (!out.calm && sec.kind === 'ab' && g.fork) out.lanes = { n: 5, use: g.fork.forced ? [0, 1, 2, 3, 4] : [4], exit: true };
@@ -1523,6 +1527,7 @@ export class NavModel {
     out.turn = on ? 'straight' : 'merge';
     if (road) {
       out.road = road;
+      out.towards = towards;
       out.head = on ? road + ' folgen' : kind === 'ab' ? 'Auffahrt ' + road : 'Weiter auf der ' + road;
       out.sub = 'Richtung ' + towards;
     } else if (sec.place >= 0) out.head = 'Richtung ' + places[sec.place].name;

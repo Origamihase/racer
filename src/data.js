@@ -1039,8 +1039,9 @@ export const DURCHSAGEN_REGEN = [
 // Boardcomputer-Sätze
 export const BOARD = {
   leftLane: 'Die linke Fahrspur ist freigeschaltet.',
-  // jedes neue Ziel, sobald es steht (game.js announceTarget): {ziel} „Marktbrunnen in Würzburg“
-  neuesZiel: 'Neues Ziel: {ziel}!',
+  // die Navi-Durchsage zu jedem neuen Ziel, sobald es steht (ziel.js announceTarget; Besitzer, 26.11.2026: statt
+  // „Ferngesteuert von“ im Navi): {wer} wer es geboten hat, {ort} der Ort wie auf der Ortstafel
+  neuesZiel: '{wer} hat das Navi-Ziel geändert. Neues Ziel: {ort}.',
   // die nächste Ausfahrt am ersten Vorwegweiser (game.js exitLine): {name} wie auf dem Schild, {d} „1000 Metern“
   exit: {
     ausfahrt: 'Nächste Ausfahrt: {name} in {d}.',

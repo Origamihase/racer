@@ -932,11 +932,11 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
       navi.drawBanner(ctx, { turn: 'arrive', dist: 1900, head: goalName(p), short: name, sub: 'Halt am Brunnen in der Ortsmitte', lanes: null }, W, 'light', null);
       if (texts.includes(goalName(p))) e.bannerGoal++;
       else if (!texts.includes(name)) wrong.push(`${name}: Ansage der Ankunft zeigt „${texts.find((q) => q.includes(name.slice(0, 3)))}“`);
-      // Nebenzeile vor der Ausfahrt des Ziels, neben fünf Spurpfeilen
+      // die Zeile der Ansage vor einer Ausfahrt mit dem Namen des Orts und einer zweistelligen Nummer, in einem Satz
       texts.length = 0;
-      navi.drawBanner(ctx, { turn: 'exit', dist: 950, head: 'Ausfahrt', sub: 'dann zum Ziel ' + name, lanes: { n: 5, use: [4], exit: true } }, W, 'light', null);
-      const sub = texts.find((q) => q.startsWith('dann zum Ziel '));
-      if (!sub || !shown(sub, i)) wrong.push(`${name}: Nebenzeile zeigt „${sub}“`);
+      navi.drawBanner(ctx, { turn: 'exit', dist: 950, say: '950 m', head: 'Ausfahrt ' + name, no: 37, sub: '', lanes: { n: 5, use: [4], exit: true } }, W, 'light', null);
+      const sub = texts.find((q) => q.includes(name.slice(0, keepLen[i])));
+      if (!texts.includes('In 950 m') || !texts.includes('37') || !sub || !shown(sub, i)) wrong.push(`${name}: Zeile der Ausfahrt zeigt „${texts.join(' ')}“`);
       else if (!sub.includes(name)) e.subCut++;
       // Routenstreifen (Orte unterwegs, höchstens 150 Bildpunkte)
       ctx.font = '600 16px x';
