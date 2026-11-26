@@ -218,8 +218,12 @@ const placeXY = (p) => PLACE_BY_INDEX[p];
 const nextKey = (n) => (n ? [n.kind, n.de, n.node, n.place, n.back ? 1 : 0, n.transitTo ?? -1].join('|') : '');
 /** Wendekreis von Rampen und Zubringern auf der Karte (Einheiten). */
 const RAMP_R = (y) => ku(0.14, y);
-/** Wendekreis zum Punkt P: wie auf Rampen, liegt P aber hinter dem Stift, eine weite Schleife statt einer Haarnadel. */
-const turnR = (pen, P, y) => ((P.x - pen.x) * pen.dx + (P.y - pen.y) * pen.dy < 0 ? ku(0.3, y) : RAMP_R(y));
+/**
+ * Wendekreis zum Punkt P (mit Richtung dx, dy): wie auf Rampen; liegt P aber hinter dem Stift oder führt die neue
+ * Straße zurück, eine weite Schleife statt einer Haarnadel.
+ */
+const turnR = (pen, P, y) =>
+  (P.x - pen.x) * pen.dx + (P.y - pen.y) * pen.dy < 0 || (P.dx !== undefined && P.dx * pen.dx + P.dy * pen.dy < -0.5) ? ku(0.3, y) : RAMP_R(y);
 /** Halbmesser der Ortsfläche in Karteneinheiten. */
 const townR = (p) => ku(townKm(places[p].pop), placeXY(p).y);
 
@@ -247,7 +251,10 @@ export function sectionPieces(sec, pen, next, way = -1, inDir = null) {
       let j = nearestOn(P, pen.x, pen.y, Math.max(polyLength(P) * 0.5, ku(6, pen.y)));
       out.push(pen.x, pen.y);
       let [dx, dy] = unit(P[j.i * 2 + 2] - P[j.i * 2], P[j.i * 2 + 3] - P[j.i * 2 + 1]);
-      if (pen.dx * dx + pen.dy * dy < -0.7) {
+      // liegt der Anschluss hinter dem Stift (der Ort oder die Verbindung endet jenseits der Straße), wäre der kurze
+      // Bogen dorthin eine Haarnadel auf der Stelle
+      const behind = j.d > ku(0.03, pen.y) && (j.x - pen.x) * pen.dx + (j.y - pen.y) * pen.dy < 0;
+      if (pen.dx * dx + pen.dy * dy < -0.7 || behind) {
         // die Fahrt kehrt am Knoten um (dieselbe Straße zurück): in einer weiten Schleife statt auf der Stelle
         const q = pointAlong(P, arcAt(P, j) + ku(0.6, pen.y));
         dubins(out, pen.x, pen.y, pen.dx, pen.dy, q.x, q.y, q.dx, q.dy, ku(0.3, pen.y));

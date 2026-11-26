@@ -1000,7 +1000,10 @@ const SIGNS = { checks: 0, warn: 0, chev: 0, bends: 0, worst: '', kept: 0, withC
 function nearSigns(lo, hi) {
   const out = [];
   for (let i = 0; i < signs.n; i++) {
-    if (signs.st[i] !== 1 || signs.sAt[i] < lo || signs.sAt[i] > hi) continue;
+    // gerundet wie der Text: so vergleicht checkSigns die Liste von vorher (eine Tafel genau am Rand zählt sonst
+    // einmal mit 18508.00 und einmal mit 18507.996)
+    const at = +fix(signs.sAt[i], 2);
+    if (signs.st[i] !== 1 || at < lo || at > hi) continue;
     out.push(`${fix(signs.sAt[i], 2)} ${fix(signs.x[i], 2)} ${signs.type[i]} ${signs.flip[i]} ${signs.adv[i]}`);
   }
   return out.sort();

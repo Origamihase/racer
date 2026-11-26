@@ -252,7 +252,9 @@ console.log('3. Blitzer im Ort und auf der Landstraße:');
   // eine lange Reise über viele Ziele: wie viele Blitzer stehen am Weg, wo, und bleiben sie dieselben?
   Math.random = mulberry32(33);
   const trip = new Trip({ rng: Math.random });
-  const goals = ['Fulda', 'Kassel', 'Marburg', 'Gießen', 'Limburg an der Lahn', 'Koblenz', 'Wetzlar', 'Aschaffenburg', 'Würzburg', 'Schweinfurt', 'Bamberg'].map(findPlace).filter((i) => i >= 0);
+  // (mit Gersfeld, Bischofsheim, Bad Hersfeld, Alsfeld und Eltville: Orte an Landstraßen, damit genug davon gefahren
+  // wird – ob dort ein Blitzer steht, entscheidet der Name der Straße)
+  const goals = ['Fulda', 'Gersfeld', 'Bischofsheim in der Rhön', 'Bad Hersfeld', 'Alsfeld', 'Kassel', 'Marburg', 'Gießen', 'Limburg an der Lahn', 'Koblenz', 'Eltville am Rhein', 'Wetzlar', 'Aschaffenburg', 'Würzburg', 'Schweinfurt', 'Bamberg'].map(findPlace).filter((i) => i >= 0);
   let gi = 0;
   trip.setTarget(goals[gi]);
   let s = trip.s;
@@ -329,7 +331,9 @@ console.log('3. Blitzer im Ort und auf der Landstraße:');
       S = makeStream({ driver: DRIVERS.zuegig, seed, endless: true, upgrades: radar ? { radar: 1 } : {} });
       for (let i = 0; i < 30 * 60 && !cam && !S.game.over; i++) {
         S.step(1);
-        cam = camerasAlong(S.trip.cur.sections, S.p.s + 400, S.p.s + 3000).find((c) => c.kind === kind) || null;
+        // (der nächste Blitzer überhaupt: davor steht kein anderer, der den Wagen schon blitzt)
+        const next = camerasAlong(S.trip.cur.sections, S.p.s - 50, S.p.s + 3000)[0];
+        cam = next && next.kind === kind && next.s >= S.p.s + 400 ? next : null;
       }
       if (cam) break;
     }

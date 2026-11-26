@@ -369,8 +369,13 @@ export class StreamGags {
     // das Paket ist immer dort, wo der Wagen gerade war
     if (P.step === 2) text = fillTemplate(text, { stadt: (this.lastTown && this.lastTown.i !== sec.place ? this.lastTown : this.somewhere()).name });
     if (P.step === 4) {
-      // die Packstation steht am Navi-Ziel (ohne Ziel: irgendwo)
+      // die Packstation steht am Navi-Ziel (ohne Ziel: irgendwo), nie in dem Ort, durch den der Wagen gerade fährt (am
+      // Ziel angekommen, ehe das nächste gewählt ist: dann etwas später)
       const t = g.navi?.target;
+      if (t && sec.kind === 'stadt' && sec.place === t.place) {
+        P.due = g.t + PAKET.wait;
+        return;
+      }
       P.pack = t ? { place: t.place, name: t.name } : (({ i, name }) => ({ place: i, name }))(this.somewhere());
       text = fillTemplate(text, { stadt: P.pack.name });
     }

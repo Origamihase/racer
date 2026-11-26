@@ -312,7 +312,8 @@ let parkLine = '';
     // (vor dem ersten Gebot eingeplant, stürzt das erste Gebot ab – ein Fehler der Navi-Auktion von vorher, siehe NOTES)
     for (let i = 0; i < 30 * 900 && g.navi.opening; i++) S.step(1 / 30);
     if (park) {
-      const r = S.trip.restsAhead(60).find((q) => q.park >= 0);
+      // (ein Ladepark: liegt keiner am Weg, der nächste über Straßen, ein Abstecher)
+      const r = S.trip.restsAhead(60, (q) => q.park >= 0).find((q) => q.park >= 0);
       if (r) S.trip.setStop(r.park);
     } else g.akku.planStop();
     out.post = S.trip.post;

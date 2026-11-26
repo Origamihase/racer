@@ -283,13 +283,16 @@ for (const scale of SCALES) {
 // höchstens 400 m Weg um mehr als 150 Grad. Gewollte Wenden im Kreisverkehr einer Ortsdurchfahrt zählen nicht.
 // Die Prüfung hängt an ihren 16 Fahrten: die Ziele kommen aus den Reisekilometern (15–150 km), mit anderen
 // Startwerten findet sie Haarnadeln, die in der Zeichnung der Karte liegen (LOG.md der Bahn, Eintrag 8, OPEN).
+// Seit den Autobahnringen (26.11.2026) und dem weiten Bogen, wenn der Anschluss hinter dem Stift liegt
+// (navroute.js sectionPieces), finden je 16 Fahrten mit sechs Startwerten zusammen 10 statt 30 Haarnadeln; die alten
+// Startwerte ab 505 treffen davon sechs (Auffahrt Görlitz, Füssen, Schaffhausen), die ab 3505 keine.
 {
   let pins = 0;
   let km = 0;
   const towns = new Set();
   const where = [];
   for (let r = 0; r < 16; r++) {
-    const R = rng(505 + r);
+    const R = rng(3505 + r);
     const demo = new MapDemo({ start: Math.floor(R() * nodes.length), rng: R });
     // nahe Ziele (15–150 km), damit viele Orte angefahren werden
     const near = () => {
@@ -575,10 +578,10 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
   // Ohne Ziel nennt das Navi nur eine Stelle, die die Straße erzwingt: das Autobahnende auf dem eigenen Weg – an der
   // Gabelung der Fahrt, mit dem Text des Schilds dort, ab 1000 m mit den Pfeilen aller Spuren, und die Nahansicht
   // führt dort die Rampe hinaus. Sonst nennt es keine Stelle, nur wo die Fahrt gerade ist (die erste Fahrt beginnt
-  // wie die XXL-Welt in Erlensee).
+  // wie die XXL-Welt in Erlensee). 60 Fahrten: seit den Autobahnringen enden weniger Autobahnen in den Städten.
   {
     const e = { trips: 0, ends: 0, said: 0, lanes: 0, scenes: 0, quiet: 0, onramp: 0 };
-    for (let t = 0; t < 40; t++) {
+    for (let t = 0; t < 60; t++) {
       const demo = new MapDemo({ start: t ? starts[Math.floor(r() * starts.length)] : undefined, rng: rng(300 + t) });
       const trip = demo.trip;
       e.trips++;
