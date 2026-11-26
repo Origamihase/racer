@@ -102,11 +102,14 @@ Die Schritte:
    den Ersatzwegen anderer Straßen; im flachen Land der geglättete Handverlauf mit deterministischen Mäandern
    (Seed = Kante) von wenigen Prozent der Länge, an Land gehalten.
    **Uferstraßen** (`ufer.py`): Wo Natural Earth eine Straße am Fluss nicht kennt (B9 und B42 im Mittelrheintal,
-   B42 im Rheingau, B34 am Hochrhein), läge ihr Ersatzverlauf mal links, mal rechts des Flusses, und die Karte
-   zeigte Brücken, die es nicht gibt. Diese Etappen folgen der Flusslinie 0,4 km neben ihr auf ihrem Ufer (links
-   und rechts in Fließrichtung, Liste `UFERSTRASSEN`); Orte am Ufer, deren gerundete Koordinaten im Fluss lagen
-   (Bad Salzig, St. Goar, Bacharach, St. Goarshausen, Rüdesheim, Eltville), rücken mit ihrem Knoten auf dieselbe
-   Linie. `export.mjs` vereinfacht Uferstraßen fein (80 m statt 1,5 km), sonst schnitte die grobe Linie die
+   B42 im Rheingau, am Hochrhein die Etappe Lörrach–Schaffhausen), läge ihr Ersatzverlauf mal links, mal rechts des
+   Flusses, und die Karte zeigte Brücken, die es nicht gibt. Diese Etappen folgen der Flusslinie 0,4 km neben ihr
+   auf ihrem Ufer (links und rechts in Fließrichtung, Liste `UFERSTRASSEN`; am Hochrhein nur von Rheinfelden bis
+   Waldshut, dann landeinwärts durch den Klettgau). Orte am Ufer (Bad Salzig, St. Goar, Bacharach, St. Goarshausen,
+   Rüdesheim, Eltville) rücken mit ihrem Knoten an dieselbe Linie, denn die Karte zeigt die Flusslinie von Natural
+   Earth: Bad Salzig lag mit gerundeten Koordinaten im Fluss, Eltville jenseits der Linie, die dort zwischen den
+   Inseln verläuft.
+   `export.mjs` vereinfacht Uferstraßen fein (80 m statt 1,5 km), sonst schnitte die grobe Linie die
    Flussbögen. Weil der Grobverlauf einer Uferstraße den Korridor ihrer Nachbaretappen mitbestimmt, braucht eine
    Änderung der Liste zwei Läufe, bis `netz.json` wieder byte-gleich bleibt.
 7. **Fähren** (`faehren.py`): Natural-Earth-Fährlinien, wo sie passen, sonst ein Weg übers Wasser: A* auf einem

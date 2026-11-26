@@ -208,14 +208,22 @@ export function abgleich(rivers, lakes, net) {
       if (d < c[2] + o[2] + 1) c[2] = Math.max(0.15, Math.min(c[2], (d - 1) * (c[2] / (c[2] + o[2]))));
     }
   }
-  // Ein Kreis drückt das Wasser höchstens bis knapp vor die nächste fremde Straße (die nicht durch seinen Mittelpunkt
-  // führt): sonst schöbe er einen Fluss über die Straße am anderen Ufer (Bad Salzig, Uferstraßen im Rheintal)
+  // Ein Kreis drückt das Wasser höchstens bis knapp vor die nächste fremde Straße: sonst schöbe er einen Fluss über
+  // die Straße am anderen Ufer (Bad Salzig, Uferstraßen im Rheintal). Eigene Straßen zählen nicht: die durch seinen
+  // Mittelpunkt und die an einem Knoten bis 1 km daneben enden (die Etappen am Knoten eines Ortspunkts); einen
+  // Knoten am anderen Ufer so nah hält schon die Regel darüber klein.
+  const endsNear = (P, c, k) => {
+    const n = P.length;
+    return Math.hypot(P[0] - c[0], P[1] - c[1]) * k < 1 || Math.hypot(P[n - 2] - c[0], P[n - 1] - c[1]) * k < 1;
+  };
   for (const c of circles) {
     const k = kmAt(c[1]);
     const R = (c[2] * 2.3) / k;
     let dmin = Infinity;
     for (const li of new Set([...grid.query(c[0] - R, c[1] - R, c[0] + R, c[1] + R)].map((it) => it.li))) {
-      const d = footOn(net.lines[li], c[0], c[1]).d * k;
+      const P = net.lines[li];
+      if (endsNear(P, c, k)) continue;
+      const d = footOn(P, c[0], c[1]).d * k;
       if (d > 0.05) dmin = Math.min(dmin, d);
     }
     if (dmin < Infinity) c[2] = Math.max(0.15, Math.min(c[2], dmin * 0.45));
@@ -420,17 +428,21 @@ export function abgleich(rivers, lakes, net) {
     }
     return out;
   };
-  /** Abstand (Einheiten) vom Punkt (x, y) in Richtung (nx, ny) bis zur ersten anderen Straße als li, höchstens L. */
+  /**
+   * Abstand (Einheiten) vom Punkt (x, y) in Richtung (nx, ny) bis zur ersten anderen Straße als li, höchstens L.
+   * Straßen, die schon im Punkt selbst beginnen (am Knoten, auf dem er liegt), zählen nicht.
+   */
   const rayHit = (x, y, nx, ny, L, li) => {
     const ex = x + nx * L;
     const ey = y + ny * L;
+    const eps = 0.02 / kmAt(y);
     let best = L;
     for (const it of grid.query(Math.min(x, ex), Math.min(y, ey), Math.max(x, ex), Math.max(y, ey))) {
       if (it.li === li) continue;
       const P = net.lines[it.li];
       const k = it.k * 2;
       const q = segCross(x, y, ex, ey, P[k], P[k + 1], P[k + 2], P[k + 3]);
-      if (q) best = Math.min(best, q[0] * L);
+      if (q && q[0] * L > eps) best = Math.min(best, q[0] * L);
     }
     return best;
   };
@@ -447,7 +459,8 @@ export function abgleich(rivers, lakes, net) {
       const off = ABGLEICH.off / kmAt(p[1]);
       const [nx, ny] = normalAt(P, f, sg);
       const h = rayHit(f.x, f.y, nx, ny, 2 * off, li);
-      if (sideOf(P, f, p[0], p[1]) === sg && f.d >= Math.min(off, h / 2) && f.d < h) continue;
+      // schon auf der Seite, weit genug von der Straße und diesseits der nächsten Straße (ohne eine: wie weit auch immer)
+      if (sideOf(P, f, p[0], p[1]) === sg && f.d >= Math.min(off, h / 2) && (h >= 2 * off || f.d < h)) continue;
       const o = Math.min(off, h / 2);
       W[i] = [f.x + nx * o, f.y + ny * o];
     }

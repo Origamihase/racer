@@ -1,8 +1,10 @@
 # Uferstraßen: Landstraßen, die in Wahrheit an einem Ufer eines Flusses bleiben, wo Natural Earth sie nicht kennt
-# (B9 und B42 im Mittelrheintal, B42 im Rheingau, B34 am Hochrhein). Ihr Ersatzverlauf (verlauf.py) liegt sonst mal links, mal rechts
-# des Flusses, und die Karte zeigt Brücken, die es nicht gibt (COMMON.md §9: jede Brücke der Karte steht in der
-# Welt). Hier folgt die Etappe dem Fluss im Abstand ABSTAND_KM auf ihrem Ufer; die Orte am Ufer (deren Koordinaten
-# auf zwei Stellen gerundet oft im Fluss liegen) rücken mit ihrem Knoten auf dieselbe Linie.
+# (B9 und B42 im Mittelrheintal, B42 im Rheingau, am Hochrhein die Etappe Lörrach–Schaffhausen, im Netz A98, in
+# Wahrheit dort meist B34). Ihr Ersatzverlauf (verlauf.py) liegt sonst mal links, mal rechts des Flusses, und die
+# Karte zeigt Brücken, die es nicht gibt (COMMON.md §9: jede Brücke der Karte steht in der Welt). Hier folgt die
+# Etappe dem Fluss im Abstand ABSTAND_KM auf ihrem Ufer; die Orte am Ufer rücken mit ihrem Knoten auf dieselbe Linie
+# (die Karte zeigt die Flusslinie von Natural Earth, und neben ihr muss der Ort stehen: Bad Salzig lag mit auf zwei
+# Stellen gerundeten Koordinaten im Fluss, Eltville am anderen Ufer der Linie, die dort zwischen den Inseln liegt).
 #
 # Ufer wie in der Geographie: links und rechts in Fließrichtung (Natural Earth zeichnet Flüsse von der Quelle zur
 # Mündung). Der Fluss kommt aus ne/ne_10m_rivers_lake_centerlines.geojson und ne/ne_10m_rivers_europe.geojson im
@@ -19,7 +21,8 @@ SCHRITT_KM = 0.1
 GLATT_KM = 0.25  # Gauß-σ der Uferlinie (der Fluss ist ein Polygonzug mit Ecken)
 ANLAUF_KM = 0.6  # so weit vom Knoten beginnt das Stück am Ufer, wenn der Knoten selbst nicht am Ufer liegt
 
-# Fluss, Ufer, Etappen (Knoten a, b in beliebiger Reihenfolge) und die Orte am Ufer, die mitrücken
+# Fluss, Ufer, Etappen und die Orte am Ufer, die mitrücken. Eine Etappe ist (a, b) oder (a, b, {…}) mit 'von' und
+# 'bis' (lat, lon): nur dazwischen am Ufer, und 'vor' / 'nach': Wegpunkte von a zum Ufer bzw. vom Ufer nach b.
 UFERSTRASSEN = [
     {'fluss': ('Rhine', 'Rhein'), 'ufer': 'links',
      'etappen': [('Koblenz', 'Bad Salzig'), ('Bad Salzig', 'St. Goar'), ('St. Goar', 'Bacharach'), ('Bacharach', 'Bingen am Rhein')],
@@ -28,8 +31,12 @@ UFERSTRASSEN = [
      'etappen': [('Lahnstein', 'St. Goarshausen'), ('St. Goarshausen', 'Rüdesheim'), ('Rüdesheim', 'Eltville am Rhein'),
                  ('Eltville am Rhein', 'Wiesbaden')],
      'orte': ['St. Goarshausen', 'Rüdesheim', 'Eltville am Rhein']},
-    # Hochrhein: die B34 bleibt auf der deutschen Seite, Schaffhausen liegt am Nordufer (die Aare mündet von Süden)
-    {'fluss': ('Rhin', 'Rhine', 'Rhein'), 'ufer': 'rechts', 'etappen': [('Lörrach', 'Schaffhausen')], 'orte': []},
+    # Hochrhein: von Rheinfelden bis Waldshut am Nordufer (die Aare mündet von Süden), dann wie die B34 landeinwärts
+    # durch den Klettgau nach Schaffhausen (der Rhein macht dort den Bogen über Eglisau und Rheinau nach Süden)
+    {'fluss': ('Rhin', 'Rhine', 'Rhein'), 'ufer': 'rechts',
+     'etappen': [('Lörrach', 'Schaffhausen', {'von': (47.562, 7.79), 'bis': (47.604, 8.215),
+                                              'nach': [(47.626, 8.262), (47.645, 8.33), (47.662, 8.43), (47.682, 8.54)]})],
+     'orte': []},
 ]
 
 
@@ -87,7 +94,7 @@ class Ufer:
             l = math.hypot(tx, ty) or 1.0
             # links in Fließrichtung: (−ty, tx)
             ufer.append((xy[i][0] - ty / l * ABSTAND_KM * sg, xy[i][1] + tx / l * ABSTAND_KM * sg))
-        # Innenbögen enger als der Abstand falten die Linie: glätten und jeden Punkt auf den Abstand zurückschieben
+        # Innenbögen enger als der Abstand falten die Linie: noch einmal glätten (dort liegt sie dann etwas näher am Fluss)
         ufer = _glatt(ufer, GLATT_KM, SCHRITT_KM)
         self.pts = [e.ll(*q) for q in ufer]
         self.s = form.kum(self.pts)
@@ -116,14 +123,16 @@ def legen(netz, daten, lage, formen, log):
     N = netz['nodes']
     P = netz['places']
     pos = lambda nid: lage.get(nid, (N[nid]['lat0'], N[nid]['lon0']))  # noqa: E731
+    strassen = {r['id'] for r in netz['roads'] if r['kind'] in ('ab', 'land')}
     kanten = {}
     for i, e in enumerate(netz['edges']):
-        kanten[(e['a'], e['b'])] = i
-        kanten[(e['b'], e['a'])] = i
-    strassen = {r['id'] for r in netz['roads'] if r['kind'] in ('ab', 'land')}
+        if e['road'] not in strassen:
+            continue
+        for k in ((e['a'], e['b']), (e['b'], e['a'])):
+            kanten.setdefault(k, []).append(i)
     neu = set()
     for U in UFERSTRASSEN:
-        knoten_ids = {k for et in U['etappen'] for k in et}
+        knoten_ids = {k for et in U['etappen'] for k in et[:2]}
         linien = flusslinien(daten, U['fluss'])
         # die Linie des Flusses, an der alle Knoten der Etappen am nächsten liegen
         def summe(L):
@@ -133,8 +142,9 @@ def legen(netz, daten, lage, formen, log):
         u = Ufer(linie, U['ufer'])
         for ort in U['orte']:
             # nur Knoten, an denen keine andere Straße hängt (Fähren werden erst danach gelegt)
-            fremd = [e for e in netz['edges'] if ort in (e['a'], e['b']) and (e['a'], e['b']) not in U['etappen']
-                     and (e['b'], e['a']) not in U['etappen'] and e['road'] in strassen]
+            paare = {et[:2] for et in U['etappen']}
+            fremd = [e for e in netz['edges'] if ort in (e['a'], e['b']) and (e['a'], e['b']) not in paare
+                     and (e['b'], e['a']) not in paare and e['road'] in strassen]
             if fremd:
                 log(f'  Ufer {U["fluss"][-1]}: {ort} bleibt (auch an {fremd[0]["road"]})')
                 continue
@@ -150,19 +160,31 @@ def legen(netz, daten, lage, formen, log):
             for p, dist in N[ort]['places0']:
                 if dist < 0.05:
                     P[p]['lat'], P[p]['lon'] = lat, lon
-        for a, b in U['etappen']:
-            i = kanten[(a, b)]
+        for et in U['etappen']:
+            a, b = et[:2]
+            extra = et[2] if len(et) > 2 else {}
+            assert len(kanten[(a, b)]) == 1, f'mehrere Straßen zwischen {a} und {b}'
+            i = kanten[(a, b)][0]
             e = netz['edges'][i]
-            A, B = pos(e['a']), pos(e['b'])
+            A, B = pos(a), pos(b)
             sA, dA = u.lot(*A)
             sB, dB = u.lot(*B)
             # liegt ein Knoten nicht am Ufer (Koblenz, Wiesbaden), beginnt das Stück am Ufer ANLAUF_KM neben ihm
             r = 1.0 if sB >= sA else -1.0
             s0 = sA if dA < ABSTAND_KM * 1.5 else sA + r * ANLAUF_KM
             s1 = sB if dB < ABSTAND_KM * 1.5 else sB - r * ANLAUF_KM
+            # nur zwischen 'von' und 'bis' am Ufer (Lörrach läge sonst am Rhein in Basel, der dort nach Norden fließt)
+            if 'von' in extra:
+                s0 = u.lot(*extra['von'])[0]
+            if 'bis' in extra:
+                s1 = u.lot(*extra['bis'])[0]
             mitte = u.stueck(s0, s1)
-            pts = [A] + [p for p in mitte if geo.hav(*p, *A) > 0.15 and geo.hav(*p, *B) > 0.15] + [B]
+            vor = [tuple(p) for p in extra.get('vor', [])]
+            nach = [tuple(p) for p in extra.get('nach', [])]
+            pts = [A] + vor + [p for p in mitte if geo.hav(*p, *A) > 0.15 and geo.hav(*p, *B) > 0.15] + nach + [B]
             pts = form.verdichten(pts, SCHRITT_KM)
+            if (e['a'], e['b']) != (a, b):
+                pts = pts[::-1]
             f = formen.setdefault(i, {})
             f.update({'herkunft': 'ersatz', 'grund': f'Uferstraße am {U["ufer"][:-1]}en Ufer: {U["fluss"][-1]}', 'pts': pts,
                       'ersatz': True, 'ufer': U['fluss'][-1]})
