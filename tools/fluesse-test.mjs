@@ -4,7 +4,9 @@
 // Brücke nur ihre Laternen; Insel und Zielbrunnen bleiben, wo der Straßenbau sie baut, und kein Brunnen geht
 // verloren; der Plan ist für denselben Ort derselbe; die Ortsdurchfahrt ist gerade; der gebaute Fluss
 // (kit/river.js) liegt, wo die Rechnung ihn hat (Wasserspiegel, Mauern, nichts über der Fahrbahn); das Band für das
-// Loch im Boden (Towns.riverBand) trifft die Ufer auch in einem gescherten Rahmen.
+// Loch im Boden (Towns.riverBand) trifft die Ufer auch in einem gescherten Rahmen, und nur der Ort auf dem Weg des
+// Wagens zeigt seinen Fluss und schneidet es (Towns.update) – unter der Autobahn, die an einem Flussort vorbeiführt,
+// liegt kein Wasser.
 // Die Wahrzeichen am Fluss: Eiserner Steg und Hohenzollernbrücke quer im Strom links neben der Straßenbrücke (ihr
 // Flussstück so breit wie der Fluss, ihr Wasser unter seinem, ihr Ufer unter dem Uferweg), der Hafen am jenseitigen
 // Ufer der Elbe rechts, zwei Containerbrücken auf dem Kai links – nichts davon berührt Straße, Häuser oder Plätze;
@@ -351,6 +353,20 @@ for (const { p, len, rv } of towns) {
     // ein näherer Fluss bleibt stehen, ein fernerer verdrängt ihn nicht
     Towns.prototype.riverBand.call(self, { matrix: new THREE.Matrix4() }, rv, d0 + 5000);
     ok(near(self.band.d, Math.abs(d0 + rv.u)), `${name}: das Band gehört dem nächsten Fluss`);
+  }
+  // Wasser nur auf dem Weg des Wagens (Towns.update): der Ort am Abzweig zeigt keinen Fluss und schneidet kein Loch –
+  // sein Band läge sonst unter der Autobahn, die an ihm vorbeiführt und auf der Karte über Land läuft
+  {
+    const own = {};
+    const g = { matrix: new THREE.Matrix4(), river: {}, visible: false, pending: false, update() {} };
+    const it = { sec: { s0: 1000, s1: 1000 + len, frame: 7 }, path: {}, plan: { river: rv }, group: g, hidden: false };
+    const self = { kit: { setWater() {} }, items: new Map([['k', it]]), band: { on: true, x: 0, z: 0, nx: 0, nz: 1, half: 0, reach: 0, d: 0 }, riverBand: Towns.prototype.riverBand };
+    const shear = new Map([[7, { a: 40, b: 0.2 }]]);
+    Towns.prototype.update.call(self, 0, shear, 0, 0, own);
+    ok(g.visible && g.river.visible === false && !self.band.on, `${name}: am Abzweig neben dem Weg des Wagens kein Fluss, der Boden bleibt ganz`);
+    it.path = own;
+    Towns.prototype.update.call(self, 0, shear, 0, 0, own);
+    ok(g.river.visible === true && self.band.on && near(self.band.d, 1000 + rv.u), `${name}: auf dem Weg des Wagens fließt er in seinem Loch`);
   }
 }
 

@@ -137,7 +137,7 @@ export class Towns {
     /**
      * Das Flussband für den Boden der Welt (ground.js setRiver), im Raum vor der Krümmung wie die Rahmen: on, Punkt
      * der Achse (x, z), Einheitsvektor quer zum Fluss (nx, nz), halbe Breite des Lochs und seine halbe Länge. Je Bild
-     * neu aus dem nächsten Ort mit gebautem Fluss (update); ein Objekt für alle Bilder.
+     * neu aus dem nächsten Ort mit gebautem Fluss auf dem Weg des Wagens (update); ein Objekt für alle Bilder.
      */
     this.band = { on: false, x: 0, z: 0, nx: 0, nz: 1, half: 0, reach: 0, d: 0 };
   }
@@ -242,7 +242,14 @@ export class Towns {
 
   /**
    * Einmal je Bild: Orte planen, in ihre Rahmen stellen, weiterbauen, bewegen. s: Ort des Wagens, shear: Scherungen
-   * der Rahmen (trip.shearsInto), t: Spielzeit in Sekunden, rain: Regen 0 … 1 (Wasser der Brunnen).
+   * der Rahmen (trip.shearsInto), t: Spielzeit in Sekunden, rain: Regen 0 … 1 (Wasser der Brunnen), cur: der Weg des
+   * Wagens (trip.cur).
+   *
+   * Wasser hat die Welt nur auf dem Weg des Wagens: das Band eines Flusses reicht quer weit über seinen Ort hinaus und
+   * läge sonst unter der Autobahn, die an ihm vorbeiführt – dort zeigt die Karte Land, und eine Brücke hat nur die
+   * Ortsstraße. Der Fluss eines Orts am Abzweig voraus oder am verlassenen Abzweig bleibt deshalb weg (Wasser, Ufer,
+   * Geländer) und der Boden ganz; er erscheint samt seinem Loch, sobald der Wagen die Ausfahrt nimmt – dann liegt er
+   * über einen Kilometer voraus im Dunst.
    *
    * Ein Rahmen mit Scherung {a, b} zeigt seine Straße geschert (x' = x + a + b·d, die Tiefe bleibt). Häuser sollen
    * dabei rechtwinklige Kästen bleiben: der Ort wird stattdessen um den Winkel der Scherung gedreht, längs wie die
@@ -251,7 +258,7 @@ export class Towns {
    * Winkel bleiben rechte. Bezug ist die Mitte der eigenen Spur. Im eigenen Rahmen (b = 0, alles näher als die
    * nächste Gabelung) ist das eine reine Verschiebung.
    */
-  update(s, shear, t, rain) {
+  update(s, shear, t, rain, cur) {
     this.kit.setWater(t, rain);
     const xr = STREET.lane;
     let planning = false;
@@ -283,7 +290,10 @@ export class Towns {
         else if (g.pendingFar || d0 < BUILD_NEAR) g.step();
       }
       if (here && d0 < ALIVE) g.update(t);
-      if (g.river && g.visible) this.riverBand(g, it.plan.river, d0);
+      if (g.river) {
+        g.river.visible = it.path === cur;
+        if (g.river.visible && g.visible) this.riverBand(g, it.plan.river, d0);
+      }
     }
   }
 
