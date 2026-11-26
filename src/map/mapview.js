@@ -12,6 +12,9 @@ import { Q, LAND, PATCHES, REGIONS, COUNTRIES, SEAS } from './land.js';
 import { FONT, drawShield, drawTransitBadge, drawHeart } from './symbols.js';
 import { Warp } from './warp.js';
 import { waterData, WATER_CLASS } from './water.js';
+import { paintLandscape } from './landpaint.js';
+import { coverAt } from './landscape.js';
+const COV = { forest: 0, urban: 0, crop: 0, rock: 0 };
 
 export { project, REGIONS, COUNTRIES, SEAS };
 /** Deutscher Name eines Lands des Spiels nach Kürzel ('DE' → 'Deutschland'). */
@@ -1166,6 +1169,9 @@ export class MapPainter {
       ctx.fill(landPath(c.rings, r[0], r[1], r[2], r[3]), 'nonzero');
     }
     ctx.globalAlpha = 1;
+    // Landschaft (landpaint.js): Relief, Wald, Siedlungsflächen, Fels und Eis – unter Orten, Wasser und Straßen
+    paintLandscape(ctx, wx, wy, s, cw, ch, dx, dy, k, this.theme, kmPerUnit(wy + ch / s / 2), this.navi);
+    ctx.setTransform(s, 0, 0, s, dx - wx * s, dy - wy * s);
     if (k >= 1.5) this.renderTowns(ctx, wx, wy, cw / s, ch / s, k, u);
     // Flüsse und Seen der ganzen Karte (water.js): je Klasse ab ihrem Maßstab, nah so breit wie in echt
     const WG = waterGeo();
@@ -1316,6 +1322,8 @@ export class MapPainter {
       const R = townKm(p.pop) / kmPerUnit(p.y);
       if (p.x + R < wx || p.y + R < wy || p.x - R > wx + ww || p.y - R > wy + wh) continue;
       if (townKm(p.pop) * k < 2.5) continue;
+      // wo die Landschaft die echte Siedlungsfläche zeigt (landpaint.js), braucht der Ort keinen gedachten Fleck
+      if (coverAt(p.x, p.y, COV).urban > 0.4) continue;
       // leicht unrunder Fleck: zehn Stützpunkte mit festem Zufall je Ort, weich verbunden
       const pts = [];
       for (let j = 0; j < 10; j++) {

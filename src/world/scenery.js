@@ -15,8 +15,21 @@ import { MEDIAN_X, ONCOMING, GRASS_TINT } from './road.js';
 import { dropInGeo } from './kit/nature.js';
 import { box, rod, ball, lathe, bar, sweep, move, fuse, tone, blend } from './kit/shapes.js';
 import { PAL } from './kit/palette.js';
+import { fieldTexture, FIELD_V } from './xxl/fieldtex.js';
+import { CROPS } from './xxl/fieldplan.js';
+import { LAYER } from './xxl/ground.js';
 
 export const SEG = 100;
+// Äcker neben der Autobahn (XXL, wo die Karte Ackerland zeigt): Felder in Zellen längs der Strecke (Länge FC.len mit
+// festem Zufall, über Abschnittsgrenzen hinweg), zwei Reihen tief, ab x0 von der Fahrbahnmitte; Raine dazwischen
+const FC = { len: 140, jit: 0.4, rain: 3, x0: [37, 19], depth: [55, 130], quads: 900 };
+const fhash = (i, j) => {
+  let h = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(j + 0x632be5ab, 0xc2b2ae35);
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+  return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
+};
+/** Grenze der Feldzelle i (Strecke s). */
+const fcEdge = (i) => i * FC.len + (fhash(i, 7) - 0.5) * FC.jit * FC.len;
 const AHEAD = 17;
 const BEHIND = 2;
 const NSLOTS = AHEAD + BEHIND + 1;
@@ -168,11 +181,16 @@ export class Scenery {
       glassBlue: W.std({ color: 0x5f7fa3, metalness: 0.8, roughness: 0.15, envMapIntensity: 1.2 }),
     };
     this.mats.grass.color = GRASS_TINT;
+    this.mats.field = W.lambert({ map: fieldTexture(), vertexColors: true, side: THREE.DoubleSide, ...LAYER.patch });
     // Gebiete anderer Straßen (Keil an Knotenpunkten, vor dem Anfang und hinter dem Ende der Autobahn) bleiben frei
     // (setzt die Welt). keepOut(x, s) → true: dort steht nichts · noCross(s0, s1) → true: keine Brücken,
     // Schilderbrücken und Lärmschutzwände in diesem Stück. null = alles erlaubt.
     this.keepOut = null;
     this.noCross = null;
+    // XXL: Landschaft der Karte neben der Autobahn (world/xxl/landcover.js): coverKind(s, side) → 'wald' | 'dorf' |
+    // 'feld' | 'wiese' oder null (keine Daten: dann Zufall wie früher), undefined (dort ist noch keine Strecke geplant). Wald und Dörfer stehen so, wie das Navi sie zeigt.
+    this.coverKind = null;
+    this.kindCache = new Map();
     // die Welt beschriftet die Schilderbrücken (COMMON.md 9: kein Zufallstext auf Schildern): gantryTexts(sSign) →
     // {a, b} (Zeilen {left, right} der beiden Tafeln) oder null (dann steht dort keine Schilderbrücke)
     this.gantryTexts = () => null;
@@ -183,13 +201,14 @@ export class Scenery {
   /** XXL: Abschnitte ab Strecke sFrom beim nächsten update neu bauen (neue Knotenpunkte in der Ferne). */
   invalidate(sFrom) {
     for (const slot of this.slots) if (slot.k * SEG >= sFrom) slot.k = -1;
+    for (const k of [...this.kindCache.keys()]) if (k * SEG >= sFrom - SEG) this.kindCache.delete(k);
   }
 
   makeInstanced() {
     const mat = W.lambert({ vertexColors: true });
     const defs = {
-      conifer: [coniferGeo(), 90],
-      decid: [decidGeo(), 60],
+      conifer: [coniferGeo(), 150],
+      decid: [decidGeo(), 110],
       bush: [bushGeo(), 50],
       house: [houseGeo(), 34],
       roof: [roofGeo(), 34],
@@ -252,6 +271,7 @@ export class Scenery {
 
   /** Alles abbauen (neue Fahrt beginnt wieder bei 0 km). */
   reset() {
+    this.kindCache.clear();
     for (const slot of this.slots) {
       for (const it of slot.items) this.release(it);
       slot.items = [];
@@ -295,11 +315,19 @@ export class Scenery {
     const sc = new THREE.Vector3();
     const col = new THREE.Color();
     const up = new THREE.Vector3(0, 1, 0);
+    // Äcker dieses Abschnitts (je Seite, wo die Karte Ackerland zeigt): Rechtecke [x0, x1, s0, s1]
+    const fields = this.planFields(k);
+    const inFields = (x, z, r) => {
+      const ss = -z;
+      for (const f of fields) if (x > f[0] - r && x < f[1] + r && ss > f[2] - r && ss < f[3] + r) return true;
+      return false;
+    };
     const put = (name, x, y, z, scale, rotY, color, sx, sy, sz) => {
       const def = this.inst[name];
       const n = counts[name];
       if (n >= def.cap) return false;
       if (this.keepOut && this.keepOut(x, -z)) return false;
+      if (fields.length && name !== 'house' && name !== 'roof' && inFields(x, z, 2.5)) return false;
       counts[name]++;
       q.setFromAxisAngle(up, rotY);
       sc.set(sx ?? scale, sy ?? scale, sz ?? scale);
@@ -314,13 +342,16 @@ export class Scenery {
     const village = this.villageSide(k);
     for (const side of [1, -1]) {
       const seed = side > 0 ? 11 : 23;
-      const forest = smoothstep(0.05, 0.38, fbm1(k / 9, seed));
+      // Landschaft der Karte (XXL) oder, ohne Daten, ein ruhiges Rauschen
+      const kind = this.kinds(k)[side > 0 ? 1 : 0];
+      const forest = kind ? (kind === 'wald' ? 1 : kind === 'wiese' ? 0.22 : 0.08) : smoothstep(0.05, 0.38, fbm1(k / 9, seed));
       const xMin = side > 0 ? 17 : 34;
       if (village === side) continue;
-      // Wald
-      const nForest = Math.floor(forest * 46);
+      // Wald: wo die Karte Wald zeigt ein dichter Bestand bis an den Rand, sonst Baumgruppen in der Flur
+      const wood = kind === 'wald';
+      const nForest = Math.floor(forest * (wood ? 120 : 46));
       for (let i = 0; i < nForest; i++) {
-        const x = side * (xMin + 4 + Math.pow(rnd(), 0.7) * 120);
+        const x = side * (xMin + (wood ? 1.5 : 4) + Math.pow(rnd(), wood ? 0.85 : 0.7) * 120);
         const z = z0 - rnd() * SEG;
         const s = 0.75 + rnd() * 0.65;
         if (rnd() < 0.62) put('conifer', x, 0, z, s, rnd() * 6, TREE_TINTS[Math.floor(rnd() * TREE_TINTS.length)]);
@@ -408,6 +439,7 @@ export class Scenery {
         }
       }
     }
+    if (fields.length) this.buildFields(slot, fields);
     // Lärmschutzwand am Dorf (mit Lücken vor Wahrzeichen)
     const cross = !this.noCross || !this.noCross(s0 - 60, s0 + SEG + 60);
     if (this.hasWall(k) && cross) this.buildWall(slot);
@@ -474,8 +506,124 @@ export class Scenery {
     }
   }
 
+  /**
+   * Äcker im Abschnitt k: je Seite mit Ackerland (kinds) die Feldzellen, die ihn berühren, auf ihn zugeschnitten, in
+   * zwei Reihen quer zur Straße: [[x0, x1, s0, s1, Feldfrucht, längs]]. Rein aus Zahlen (fester Zufall je Zelle), so
+   * passen die Stücke zweier Abschnitte aneinander.
+   */
+  planFields(k) {
+    const out = [];
+    const kinds = this.kinds(k);
+    const s0 = k * SEG;
+    const s1 = s0 + SEG;
+    if (this.villageSide(k)) return out;
+    for (const side of [-1, 1]) {
+      if (kinds[side > 0 ? 1 : 0] !== 'feld') continue;
+      const sd = side > 0 ? 1 : 2;
+      let i = Math.floor(s0 / FC.len) - 1;
+      while (fcEdge(i + 1) <= s0) i++;
+      for (; fcEdge(i) < s1; i++) {
+        const a = Math.max(s0, fcEdge(i) + FC.rain / 2);
+        const b = Math.min(s1, fcEdge(i + 1) - FC.rain / 2);
+        if (b - a < 0.5) continue;
+        const x0 = FC.x0[side > 0 ? 1 : 0] + fhash(i, sd * 11) * 4;
+        const d1 = FC.depth[0] + fhash(i, sd * 13) * (FC.depth[1] - FC.depth[0]);
+        const d2 = FC.depth[0] + fhash(i, sd * 17) * (FC.depth[1] - FC.depth[0]);
+        const crop = (r) => {
+          let w = r * CROPS.reduce((q, c) => q + c.w, 0);
+          for (let c = 0; c < CROPS.length; c++) if ((w -= CROPS[c].w) <= 0) return c;
+          return 0;
+        };
+        const rows = [[x0, x0 + d1, crop(fhash(i, sd * 19)), fhash(i, sd * 23) < 0.6]];
+        if (fhash(i, sd * 29) < 0.75) rows.push([x0 + d1 + FC.rain, x0 + d1 + FC.rain + d2, crop(fhash(i, sd * 31)), fhash(i, sd * 37) < 0.6]);
+        for (const [n0, n1, c, along] of rows) {
+          const xa = side * n0;
+          const xb = side * n1;
+          out.push([Math.min(xa, xb), Math.max(xa, xb), a, b, c, along, i * 2 + (n0 > x0 ? 1 : 0)]);
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Die Äcker eines Abschnitts als eine Fläche (gebogen wie alles: alle 10 m längs, alle 20 m quer eine Stütze). */
+  buildFields(slot, fields) {
+    const m = this.acquire('fields', () => {
+      const geo = new THREE.BufferGeometry();
+      const nv = FC.quads * 4;
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(nv * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nv * 3), 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(nv * 2), 2).setUsage(THREE.DynamicDrawUsage));
+      geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(nv * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      const idx = new Uint32Array(FC.quads * 6);
+      for (let q = 0; q < FC.quads; q++) idx.set([q * 4, q * 4 + 1, q * 4 + 2, q * 4, q * 4 + 2, q * 4 + 3], q * 6);
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      const nrm = geo.attributes.normal;
+      for (let v = 0; v < nv; v++) nrm.setXYZ(v, 0, 1, 0);
+      const mesh = new THREE.Mesh(geo, this.mats.field);
+      mesh.frustumCulled = false;
+      mesh.receiveShadow = true;
+      mesh.name = 'Äcker';
+      return mesh;
+    });
+    const geo = m.geometry;
+    const P = geo.attributes.position;
+    const U = geo.attributes.uv;
+    const C = geo.attributes.color;
+    const col = new THREE.Color();
+    let q = 0;
+    for (const [x0, x1, a, b, c, along, id] of fields) {
+      const cr = CROPS[c];
+      const j = fhash(id, 41);
+      col.setRGB(cr.rgb[0] * (0.92 + j * 0.14), cr.rgb[1] * (0.92 + j * 0.12), cr.rgb[2] * (0.94 + j * 0.1), THREE.SRGBColorSpace);
+      const ns = Math.max(1, Math.ceil((b - a) / 10));
+      const nx = Math.max(1, Math.ceil((x1 - x0) / 20));
+      for (let iz = 0; iz < ns; iz++) {
+        for (let ix = 0; ix < nx; ix++) {
+          if (q >= FC.quads) break;
+          const sA = a + ((b - a) * iz) / ns;
+          const sB = a + ((b - a) * (iz + 1)) / ns;
+          const xA = x0 + ((x1 - x0) * ix) / nx;
+          const xB = x0 + ((x1 - x0) * (ix + 1)) / nx;
+          const corners = [[xA, sA], [xB, sA], [xB, sB], [xA, sB]];
+          for (let v = 0; v < 4; v++) {
+            const [x, ss] = corners[v];
+            const vi = q * 4 + v;
+            P.setXYZ(vi, x, -0.02, -ss);
+            const d = Math.abs(x);
+            U.setXY(vi, along ? d / cr.row : ss / cr.row, along ? ss / FIELD_V : d / FIELD_V);
+            C.setXYZ(vi, col.r, col.g, col.b);
+          }
+          q++;
+        }
+      }
+    }
+    geo.setDrawRange(0, q * 6);
+    P.needsUpdate = true;
+    U.needsUpdate = true;
+    C.needsUpdate = true;
+    slot.items.push(m);
+  }
+
+  /** Landschaft der Karte im Abschnitt k: [links, rechts] (Art oder null), zwischengespeichert. */
+  kinds(k) {
+    let v = this.kindCache.get(k);
+    if (!v) {
+      const s = k * SEG + SEG / 2;
+      v = this.coverKind ? [this.coverKind(s, -1), this.coverKind(s, 1)] : [null, null];
+      // undefined: die Strecke dort ist noch nicht geplant – nicht merken, später noch einmal fragen
+      if (v[0] === undefined || v[1] === undefined) return [v[0] ?? null, v[1] ?? null];
+      this.kindCache.set(k, v);
+      if (this.kindCache.size > 400) this.kindCache.delete(this.kindCache.keys().next().value);
+    }
+    return v;
+  }
+
   villageSide(k) {
     if (k < 4) return 0;
+    // XXL mit Landschaft der Karte: Dörfer stehen nur dort, wo die Karte Siedlung zeigt
+    const [l, r] = this.kinds(k);
+    if (l || r) return r === 'dorf' ? 1 : l === 'dorf' ? -1 : 0;
     if (k % 37 === 5 || k % 37 === 6) return 1;
     if (k % 53 === 20 || k % 53 === 21) return -1;
     return 0;

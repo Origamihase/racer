@@ -50,6 +50,7 @@ import { Menus } from './ui/menus.js';
 import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
 import { SHOP, UPGRADE_LIMITS, shopPrice, canBuy } from './data.js';
 import { NavModel } from './map/navroute.js';
+import { loadLandscape } from './map/landscape.js';
 import { nextStart, startNode } from './game/starts.js';
 import { setRoadAhead, setTownLayout, setBridgeReach, setBandReach } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
@@ -2089,4 +2090,5 @@ function teleport(sNew) {
   scenery.update(sNew, 0);
 }
 
-boot();
+// die Landschaft der Karte (Relief, Wald, Siedlungen) erst auspacken: Karte, Navi und Welt bauen darauf
+loadLandscape().catch((e) => console.warn('Landschaft nicht geladen', e)).finally(boot);
