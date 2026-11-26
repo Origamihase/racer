@@ -572,7 +572,7 @@ export class MapScreen {
     const v = this.viewNow();
     const ps = this.ps;
     const T = THEMES[this.painter.theme];
-    // Flüsse der Orte am Weg liegen in den Kacheln, unter den Straßen (navroute.js riverOnMap)
+    // die Flüsse liegen in den Kacheln, unter dem Weg (navroute.js mapRivers)
     this.painter.setRivers(this.nav ? this.nav.rivers : []);
     this.done = this.painter.drawTiles(ctx, v, ps, 5);
     ctx.setTransform(ps, 0, 0, ps, 0, 0);
@@ -665,8 +665,8 @@ export class MapScreen {
   }
 
   /**
-   * Name eines Flusses am Weg (sein Wasser liegt in den Kacheln): neben dem Weg auf dem Wasser, wo zwischen den
-   * Straßen am meisten Platz ist (r.label), längs des Flusses – sobald er dort weder den Weg berührt noch über das
+   * Name eines Flusses (sein Wasser liegt in den Kacheln): neben der Brücke auf dem Wasser, wo zwischen den Straßen
+   * am meisten Platz ist (r.label), längs des Flusses – sobald er dort weder die Brücke berührt noch über das
    * auslaufende Ende hinausragt.
    */
   riverName(ctx, v, T, r) {

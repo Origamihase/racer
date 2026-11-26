@@ -9,6 +9,9 @@
 // Flussstück so breit wie der Fluss, ihr Wasser unter seinem, ihr Ufer unter dem Uferweg), der Hafen am jenseitigen
 // Ufer der Elbe rechts, zwei Containerbrücken auf dem Kai links – nichts davon berührt Straße, Häuser oder Plätze;
 // die Containerbrücken von Bremen, Bremerhaven und Kiel stehen ohne Fluss am Ortsende hinter der rechten Zeile.
+// Die Karte: jeder Fluss liegt fest in dem Winkel zwischen den Autobahnen, den rivers.js nennt, keine Straße der Karte
+// berührt ihn, und auf Fahrten von allen Seiten hinein, hinaus und am Ort vorbei ist das Auto der Karte genau dort
+// über Wasser, wo der Wagen in der Welt über die Brücke fährt (Abschnitte 6 und 7).
 import * as THREE from 'three';
 
 // Minimaler DOM-Ersatz: die Baukästen malen ihre Schilder auf Canvas (hier ohne Bild)
@@ -380,15 +383,18 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
 // --- 6. Das Navi zeigt dasselbe Wasser -------------------------------------------------------------------------------
 // Eine echte Fahrt in jeden Flussort. Nahansicht (map/roadahead.js closeScene): Das gebaute Wasser der Welt liegt im
 // Wasser des Navis, dessen Kanten liegen auf den Kaimauern der Rechnung, die Ortsdurchfahrt kreuzt beide Ufer und der
-// Name steht auf dem Wasser. Karte (map/navroute.js riverOnMap): Der Fluss kreuzt den Weg dort, wo das Auto auf der
-// Karte steht, wenn es in der Welt über die Flussachse fährt, im Winkel der Welt; das Auto ist auf der Karte genau so
-// lange über Wasser wie in der Welt auf der Brücke; der Zeichner legt ihn unter die Straßen.
+// Name steht auf dem Wasser. Karte (map/navroute.js riverOnMap): Der Fluss liegt fest auf der Karte, für jede Fahrt
+// gleich und für alle drei Orte, im Maßstab 1:1 in dem Winkel zwischen den Autobahnen, den rivers.js nennt – keine
+// Straße der Karte berührt ihn. Die Ortsdurchfahrt kreuzt ihn, wo das Auto auf der Karte steht, wenn es in der Welt
+// über die Flussachse fährt, im Winkel der Welt; das Auto ist auf der Karte genau so lange über Wasser wie in der Welt
+// auf der Brücke; der Zeichner legt ihn unter die Straßen; er bleibt, wenn der Ort hinter dem Auto liegt.
 {
   const { Trip, J } = await import('../src/game/trip.js');
-  const { NavModel, RIVER_MAP, roadGap } = await import('../src/map/navroute.js');
+  const { NavModel, RIVER_MAP, roadGap, riverOnMap, mapRivers, riverTouch } = await import('../src/map/navroute.js');
   const { closeScene, RIVER_SCENE } = await import('../src/map/roadahead.js');
-  const { MapPainter, THEMES, PLACE_BY_INDEX, townKm, kmPerUnit, bucketOf } = await import('../src/map/mapview.js');
+  const { MapPainter, THEMES, PLACE_BY_INDEX, townKm, kmPerUnit, bucketOf, netData } = await import('../src/map/mapview.js');
   const { RIVER_FADE } = await import('../src/map/symbols.js');
+  const { STARTS, startPlace } = await import('../src/game/starts.js');
   /** Liegt (x, y) im Vieleck P = [x, y, …]? */
   const inside = (P, x, y) => {
     let c = false;
@@ -408,6 +414,8 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
     }
     return false;
   };
+  // so weit bleibt jede Straße der Karte vom Wasser weg (km): daneben führt der Zubringer um das Ende des Flusses
+  const CLEAR_KM = 0.6;
   globalThis.Path2D = class {};
   for (const k of ['moveTo', 'lineTo', 'closePath', 'quadraticCurveTo', 'bezierCurveTo', 'arc', 'ellipse', 'rect', 'addPath']) globalThis.Path2D.prototype[k] = () => {};
   const widths = {};
@@ -494,33 +502,49 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
       if (mk.length) ok(Math.abs(mk[0].X - RIVER.axis) > (RIVER.deck[1] - RIVER.deck[0]) / 2 + 20, `${key} (u ${u}): der Name steht neben der Brücke`);
     }
 
-    // Karte: ein Fluss für den Ort, wo das Auto über die Achse fährt, im Winkel der Welt
-    const rs = nav.rivers.filter((q) => q.place === target);
-    ok(rs.length === 1 && nav.rivers.length === 1 && rs[0].name === rv.name, `${key}: die Karte hat genau diesen Fluss`);
-    if (!rs.length) continue;
-    const r = rs[0];
-    const at = (u, out = [0, 0]) => (nav.cur.at(nav.cur.aOf(s0 + u), out), out);
-    const C = at(rv.u);
-    ok(near(C[0], r.x, 1e-9) && near(C[1], r.y, 1e-9), `${key}: der Fluss der Karte kreuzt den Weg, wo das Auto über seine Achse fährt`);
+    // Karte: der feste Fluss des Orts – dieselbe Liste für jede Fahrt, alle drei Flüsse, wo auch immer der Wagen ist
+    const r = riverOnMap(target);
+    ok(nav.rivers === mapRivers() && nav.rivers.length === towns.length && nav.rivers.includes(r), `${key}: die Karte hat immer alle Flüsse, auch den dieses Orts`);
+    ok(!!r && r.name === rv.name && r.place === target && riverOnMap(target) === r, `${key}: der Fluss der Karte trägt den Namen der Welt, für denselben Ort immer derselbe`);
+    if (!r) continue;
+    const C0 = PLACE_BY_INDEX[target];
+    const perM = 0.001 / kmPerUnit(C0.y);
+    const bear = (rv.map.deg * Math.PI) / 180;
+    ok(near(r.k, perM, perM * 1e-9) && near(r.half, rv.half * perM, perM * 1e-6), `${key}: der Fluss liegt 1:1 auf der Karte, so breit wie in der Welt`);
+    ok(near(r.x, C0.x + Math.sin(bear) * rv.map.km * 1000 * perM, 1e-12) && near(r.y, C0.y - Math.cos(bear) * rv.map.km * 1000 * perM, 1e-12), `${key}: die Brücke liegt ${rv.map.km} km vom Ortspunkt in Richtung ${rv.map.deg}°`);
+    ok(near(r.tx, -Math.sin(bear), 1e-12) && near(r.ty, Math.cos(bear), 1e-12) && near(r.reach, rv.map.reach * 1000 * perM, 1e-12), `${key}: die Ortsdurchfahrt läuft über die Brücke zum Ortspunkt, das Wasser reicht ${rv.map.reach} km nach beiden Seiten`);
     ok(near(Math.hypot(r.tx, r.ty), 1, 1e-9) && near(Math.hypot(r.wx, r.wy), 1, 1e-9), `${key}: Richtungen der Karte sind Einheitsvektoren`);
-    ok(near(r.wx * r.tx + r.wy * r.ty, rv.sin, 1e-9) && near(-r.ty * r.wx + r.tx * r.wy, rv.cos, 1e-9), `${key}: der Fluss der Karte liegt im Winkel der Welt quer zum Weg (rechts +)`);
-    const A = at(rv.u - 30);
-    const B = at(rv.u + 30);
-    ok((B[0] - A[0]) * r.tx + (B[1] - A[1]) * r.ty > 0, `${key}: die Richtung des Wegs auf der Karte zeigt voraus`);
-    ok(near(r.half / r.k, rv.half, 1e-6) && near(r.k, Math.hypot(B[0] - A[0], B[1] - A[1]) / 60, r.k * 0.02), `${key}: Breite im Maßstab des Wegs auf der Karte`);
-    const R0 = townKm(p.pop) / kmPerUnit(PLACE_BY_INDEX[target].y);
-    ok(r.reach > r.half * 3 && r.reach <= R0 * RIVER_MAP.reach + 1e-12, `${key}: der Fluss der Karte reicht durch den Ort, nicht ins leere Land`);
-    // sein Name: neben dem Weg auf deckendem Wasser, an der Stelle mit dem meisten Platz zwischen den Straßen der Karte
+    ok(near(r.wx * r.tx + r.wy * r.ty, rv.sin, 1e-9) && near(-r.ty * r.wx + r.tx * r.wy, rv.cos, 1e-9), `${key}: der Fluss der Karte liegt im Winkel der Welt quer zur Ortsdurchfahrt (rechts +)`);
+    const [u0, u1] = riverSpan(rv, RIVER.axis, RIVER.axis);
+    ok(near(r.u0, u0) && near(r.u1, u1) && u0 > 100 && u1 < sec.spotS - s0 - 100, `${key}: die Brücke der Karte beginnt und endet, wo die Straße der Welt über Wasser fährt (u ${u0.toFixed(1)} … ${u1.toFixed(1)}), vor dem Brunnen`);
+    for (const [name, Q, u] of [['Tor', r.gate, 0], ['äußere Wasserkante', r.near, u0], ['innere Wasserkante', r.far, u1]]) {
+      ok(near(Q[0], r.x + r.tx * (u - rv.u) * perM, 1e-12) && near(Q[1], r.y + r.ty * (u - rv.u) * perM, 1e-12), `${key}: ${name} der Karte liegt ${u.toFixed(0)} m hinter dem Ortsbeginn auf der Ortsdurchfahrt`);
+    }
+    // quer zum Fluss der Karte (voraus +): das Auto ist so lange über Wasser wie in der Welt auf der Brücke
+    const at = (u, out = [0, 0]) => (nav.cur.at(nav.cur.aOf(s0 + u), out), out);
+    const cross = (Q) => (Q[0] - r.x) * r.wy - (Q[1] - r.y) * r.wx;
+    const Cx = at(rv.u);
+    ok(near(Cx[0], r.x, 1e-9) && near(Cx[1], r.y, 1e-9), `${key}: der Fluss der Karte kreuzt den Weg, wo das Auto über seine Achse fährt`);
+    for (const [u, D] of [[u0, -rv.half], [u1, rv.half], [(u0 + rv.u) / 2, -rv.half / 2], [(u1 + rv.u) / 2, rv.half / 2], [u0 - 40, -rv.half - 40 * rv.cos], [20, (20 - rv.u) * rv.cos]]) {
+      ok(near(cross(at(u)) / r.k, D, 0.01), `${key}: bei u ${u.toFixed(0)} steht das Auto auf der Karte ${D.toFixed(0)} m quer zum Fluss wie in der Welt (${(cross(at(u)) / r.k).toFixed(2)})`);
+    }
+    // hinter der Brücke dehnt die Karte den Rest bis zum Brunnen am Ortspunkt: weiter vom Wasser weg als in der Welt
+    ok(cross(at(u1 + 40)) / r.k > rv.half + 40 * rv.cos, `${key}: 40 m hinter der Brücke steht das Auto auf der Karte an Land`);
+    const B = at(sec.spotS - s0);
+    ok(near(B[0], C0.x, 1e-9) && near(B[1], C0.y, 1e-9), `${key}: am Brunnen steht das Auto auf dem Ortspunkt der Karte`);
+    // er bleibt in der Ortsfläche (kein Fluss ohne Stadt im leeren Land) und fern von jeder Straße der Karte
+    const R0 = townKm(p.pop) / kmPerUnit(C0.y);
+    for (const sg of [-1, 1]) ok(Math.hypot(r.x + r.wx * r.reach * sg - C0.x, r.y + r.wy * r.reach * sg - C0.y) < R0, `${key}: das ${sg < 0 ? 'linke' : 'rechte'} Ende des Flusses liegt in der Ortsfläche`);
+    ok(r.reach > r.half * 12, `${key}: der Fluss der Karte ist ein Fluss, kein Teich (${(r.reach / r.half).toFixed(1)} halbe Breiten je Seite)`);
+    const net = netData();
+    const roads = [...net.lines.filter((l) => l.kind === 'ab' || l.kind === 'land').map((l) => l.pts), ...net.feeders.map((f) => f.pts)];
+    ok(roads.length > 400 && !roads.some((P) => riverTouch(P, r, CLEAR_KM * 1000 * perM)), `${key}: keine Autobahn, keine Landstraße und kein Zubringer der Karte kommt dem Fluss näher als ${CLEAR_KM} km`);
+    ok(roads.some((P) => riverTouch(P, r, R0)), `${key}: Gegenprobe – mit dem Halbmesser des Orts als Abstand träfe die Prüfung Straßen`);
+    widths[rv.name] = r.half / r.k;
+    // sein Name: neben der Brücke auf deckendem Wasser, an der Stelle mit dem meisten Platz zwischen den Straßen der Karte
     const gapAt = (t) => Math.min(...[-RIVER_MAP.span, 0, RIVER_MAP.span].map((e) => roadGap(r.x + r.wx * r.reach * (t + e), r.y + r.wy * r.reach * (t + e), r.reach)));
     ok(RIVER_MAP.label.includes(r.label) && RIVER_MAP.label.every((t) => gapAt(t) <= gapAt(r.label) + r.reach * 1e-6), `${key}: der Name steht, wo auf dem Wasser am meisten Platz zwischen den Straßen ist (${r.label})`);
     ok(gapAt(r.label) > 0, `${key}: der Name steht auf keiner Straße der Karte`);
-    // quer zum Fluss der Karte (voraus +): das Auto ist so lange über Wasser wie in der Welt auf der Brücke
-    const cross = (Q) => (Q[0] - r.x) * r.wy - (Q[1] - r.y) * r.wx;
-    const [u0, u1] = riverSpan(rv, RIVER.axis, RIVER.axis);
-    for (const [u, D] of [[u0, -rv.half], [u1, rv.half], [(u0 + rv.u) / 2, -rv.half / 2], [(u1 + rv.u) / 2, rv.half / 2], [u0 - 40, -rv.half - 40 * rv.cos], [u1 + 40, rv.half + 40 * rv.cos]]) {
-      ok(near(cross(at(u)) / r.k, D, 2.5), `${key}: bei u ${u.toFixed(0)} steht das Auto auf der Karte ${D.toFixed(0)} m quer zum Fluss wie in der Welt (${(cross(at(u)) / r.k).toFixed(1)})`);
-    }
-    widths[rv.name] = r.half / r.k;
 
     // der Zeichner legt ihn in die statischen Ebenen: über die Ortsfläche, unter alle Straßen
     const T = THEMES.light;
@@ -546,8 +570,9 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
     painter.setRivers(nav.rivers);
     ok(painter.tiles.size === 0 && painter.lv[0].stale === true, `${key}: ein neuer Fluss lässt die Ebenen der Karte neu entstehen`);
     painter.tiles.set('neu', { canvas: { width: 1, height: 1 }, used: 0 });
+    painter.setRivers(nav.rivers);
     painter.setRivers(nav.rivers.slice());
-    ok(painter.tiles.size === 1, `${key}: derselbe Fluss lässt die Kacheln stehen`);
+    ok(painter.tiles.size === 1, `${key}: dieselben Flüsse lassen die Kacheln stehen`);
     tile();
     const iw = rec.findIndex((q) => q[0] === 'fill' && q[1] && q[1].stops);
     const g = iw >= 0 ? rec[iw][1] : null;
@@ -562,17 +587,137 @@ for (const key of ['Bremen', 'Bremerhaven', 'Kiel']) {
       ok(lastTown >= 0 && lastTown < iw, `${key}: der Fluss liegt über der Ortsfläche`);
     }
 
-    // weiter, bis der Ort hinter dem Auto aus dem Weg fällt: dann zeigt die Karte seinen Fluss nicht mehr. Der Weg
-    // hinaus führt auf der Karte oft über dieselbe Straße zurück – bliebe das Band, führe das Auto dort über Wasser,
-    // wo die Welt keines hat
+    // weiter, bis der Ort hinter dem Auto aus dem Weg fällt: Der Fluss bleibt auf der Karte, er ist Landschaft
     for (let n = 0; n < 40000 && trip.cur.sections.includes(sec); n++) step(trip.section.kind === 'stadt' ? 5 : 12);
     ok(!trip.cur.sections.includes(sec), `${key}: der Ort fällt hinter dem Auto aus dem Weg`);
-    ok(!nav.rivers.some((q) => q.place === target), `${key}: hinter dem Ort zeigt die Karte seinen Fluss nicht mehr`);
+    ok(nav.rivers === mapRivers() && nav.rivers.includes(r), `${key}: hinter dem Ort zeigt die Karte seinen Fluss weiter`);
   }
   ok(widths.Rhein > widths.Main && widths.Elbe > widths.Main, 'Rhein und Elbe sind auf der Karte breiter als der Main');
   const far = RIVER_MAP.label.map(Math.abs);
   ok(Math.min(...far) - RIVER_MAP.span > 0.15 && Math.max(...far) + RIVER_MAP.span < 1 - 2 * RIVER_FADE + 0.1, 'Flussnamen der Karte stehen neben dem Weg und auf deckendem Wasser');
   ok(near(roadGap(1e6, 1e6, 0.5), 0.5), 'roadGap misst höchstens bis zur Grenze');
+  ok(!STARTS.some((id) => riverOnMap(startPlace(id))), 'kein Startort hat einen Fluss (die Startszene baut keinen, die Karte zeigte dort sonst einen)');
+  // riverTouch: Punkt im Wasser, Strecke quer hindurch, Strecke am Ende vorbei, Abstand
+  {
+    const r = mapRivers()[0];
+    const P = (X, D) => [r.x + r.wx * X + r.wy * D, r.y + r.wy * X - r.wx * D];
+    ok(riverTouch(P(0, 0), r) && riverTouch([...P(0, -3 * r.half), ...P(0, 3 * r.half)], r) && riverTouch([...P(-2 * r.reach, 0), ...P(2 * r.reach, 0)], r), 'riverTouch: Punkt im Wasser, Strecke quer und längs hindurch');
+    ok(!riverTouch([...P(r.reach * 1.01, -3 * r.half), ...P(r.reach * 1.01, 3 * r.half)], r) && !riverTouch([...P(-r.reach, 1.5 * r.half), ...P(r.reach, 1.5 * r.half)], r), 'riverTouch: am Ende vorbei und am Ufer entlang berührt nichts');
+    ok(riverTouch([...P(r.reach * 1.01, -3 * r.half), ...P(r.reach * 1.01, 3 * r.half)], r, r.reach * 0.02) && riverTouch([...P(-r.reach, 1.5 * r.half), ...P(r.reach, 1.5 * r.half)], r, r.half), 'riverTouch: mit Abstand zählt die Nähe');
+  }
+
+  // --- 7. Das Auto ist auf der Karte genau dort über Wasser, wo die Welt Wasser hat -----------------------------------
+  // Fahrten in jeden Flussort von allen Seiten (jede Straße an seinem Knoten, mindestens vier Richtungen) und wieder
+  // hinaus in drei Richtungen, dazu Fahrten über seinen Knoten hinweg zu einem anderen Ziel und eine mit neuem Ziel
+  // mitten auf dem Zubringer. Alle paar Meter: Liegt das Auto der Karte (NavModel.pose) im Wasser irgendeines Flusses,
+  // fährt der Wagen in der Welt gerade über die Brücke dieses Flusses – und umgekehrt. Dazu: kein Stück des Wegs auf
+  // Autobahn oder Landstraße kommt einem Fluss nahe, und ein Navi, das erst mitten im Ort entsteht, zeigt dasselbe.
+  {
+    const rivers = mapRivers();
+    const EDGE = 1.5; // Meter um die Wasserkante, in denen die Probe nichts behauptet (Schrittweite, Spur des Wagens)
+    const wetOnMap = (P) => rivers.filter((r) => Math.abs((P.x - r.x) * r.wx + (P.y - r.y) * r.wy) < r.reach && Math.abs((P.x - r.x) * r.wy - (P.y - r.y) * r.wx) < r.half);
+    const neighbours = (n) => G.transitions(G.stateOfNode(n)).filter((t) => t.type === 'enter').map((t) => G.deTo(t.de));
+    let all = 0;
+    let wetAll = 0;
+    for (const { p, rv } of towns) {
+      const key = p.key;
+      const target = G.places.indexOf(p);
+      const r = riverOnMap(target);
+      // Startknoten: hinter jeder Straße am Knoten der nächste Knoten mit einem Ort
+      const starts = [];
+      for (const n of neighbours(p.node)) {
+        let m = n;
+        for (let hop = 0; hop < 4 && !G.nodes[m].places.length; hop++) {
+          const nx = neighbours(m).filter((q) => q !== p.node && !starts.includes(q));
+          if (!nx.length) break;
+          m = nx[0];
+        }
+        if (G.nodes[m].places.length && m !== p.node && !starts.includes(m)) starts.push(m);
+      }
+      ok(starts.length >= 4, `${key}: Fahrten aus mindestens vier Richtungen (${starts.map((n) => G.nodes[n].name).join(', ')})`);
+      const drive = (from, to, mode) => {
+        const name = `${key} (${G.nodes[from].name} → ${mode === 'vorbei' ? '' : key + ' → '}${G.nodes[to].name}${mode === 'neu' ? ', neues Ziel auf dem Zubringer' : ''})`;
+        const away = G.nodes[to].places[0].place;
+        let seed = 11;
+        const trip = new Trip({ start: from, rng: () => ((seed = (seed * 16807) % 2147483647) / 2147483647) });
+        const nav = new NavModel(trip);
+        trip.setTarget(mode === 'vorbei' ? away : target);
+        let x = J.L0;
+        let town = null;
+        let end = Infinity;
+        let bad = 0;
+        let wet = 0;
+        let n = 0;
+        let fresh = mode === 'hin';
+        let swapped = false;
+        let lastWet = false;
+        for (; n < 60000 && trip.s < end; n++) {
+          const c = trip.section;
+          const s = trip.s + (c.kind === 'stadt' ? 2 : c.kind === 'ab' || c.kind === 'land' ? 6 : 3);
+          if (c.kind === 'ab') {
+            const f = c.fork;
+            if (f && !f.taken && f.s - s < J.decel - 20) x = trip.planFor(f) === 'exit' ? J.L0 : 5.625;
+            else if (s - c.s0 > J.accel) x = 5.625;
+          } else x = J.L0;
+          const q = trip.profile(s);
+          x = Math.min(Math.max(x, q.xmin), q.xmax);
+          for (const e of trip.update(s, x)) {
+            if ((e.type === 'arrive' || e.type === 'pass') && e.place === (mode === 'vorbei' ? away : target) && end === Infinity) {
+              trip.setTarget(away);
+              end = trip.s + (mode === 'vorbei' ? 500 : 9000);
+            }
+          }
+          nav.update(0.2);
+          const sec = trip.section;
+          if (!town && sec.kind === 'stadt' && sec.place === target && riverOfSec(sec, G.places)) town = sec;
+          if (mode === 'neu' && !swapped && sec.kind === 'zub' && !sec.back && sec.place === target && trip.s - sec.s0 > 200) {
+            // neues Ziel mitten auf dem Zubringer: der Weg unter dem Auto entsteht ab hier neu
+            swapped = true;
+            trip.setTarget(away);
+          }
+          const u = town && sec === town ? trip.s - town.s0 : NaN;
+          const D = Math.abs(riverCross(rv, RIVER.axis, u));
+          if (Math.abs(D - rv.half) < EDGE * rv.cos) continue;
+          const world = D < rv.half;
+          const onMap = wetOnMap(nav.pose);
+          if (onMap.length !== (world ? 1 : 0) || (world && onMap[0] !== r)) {
+            if (!bad++) ok(false, `${name}: bei ${sec.kind} ${(trip.s - sec.s0).toFixed(0)}/${sec.len} ist die Karte ${onMap.length ? 'im Wasser (' + onMap.map((o) => o.name).join(', ') + ')' : 'an Land'}, die Welt ${world ? 'über Wasser' : 'an Land'}`);
+          }
+          if (world) wet++;
+          if (fresh && (u > 100 || (fresh === 1 && u > rv.u))) {
+            // ein Navi, das erst jetzt entsteht (vor der Brücke, dann mitten auf ihr), steht an derselben Stelle der Karte
+            const nav2 = new NavModel(trip);
+            nav2.update(0);
+            ok(near(nav2.pose.x, nav.pose.x, r.k * 0.01) && near(nav2.pose.y, nav.pose.y, r.k * 0.01), `${name}: ein neu entstandenes Navi steht ${fresh === 1 ? 'auf' : 'vor'} der Brücke an derselben Stelle`);
+            fresh = fresh === 1 ? false : 1;
+            if (fresh && u > rv.u) fresh = false;
+          }
+          lastWet = world;
+        }
+        all += n;
+        wetAll += wet;
+        ok(end < Infinity && n < 60000, `${name}: die Fahrt kommt an und führt weiter (${n} Proben)`);
+        ok(!lastWet, `${name}: die Fahrt endet an Land`);
+        // am Ort vorbei führt kein Wasser – außer die Landstraße endet in ihm und die Fahrt führt hindurch (Hamburg, B73)
+        if (mode === 'vorbei' && !town) ok(wet === 0, `${name}: am Ort vorbei führt kein Wasser`);
+        else ok(wet * 2 > (2 * rv.half) / rv.cos - 2 * EDGE - 4 && !!town, `${name}: die Brücke wird in der Welt und auf der Karte gefahren (${wet} Proben über Wasser)`);
+        // Autobahn und Landstraße des Wegs bleiben dem Wasser fern (die Karte zeichnet sie als Straßen)
+        for (const c of trip.cur.sections) {
+          const cc = nav.cache.get(c.id);
+          if (!cc || (c.kind !== 'ab' && c.kind !== 'land')) continue;
+          for (const piece of cc.pieces) ok(!rivers.some((o) => riverTouch(piece.pts, o, o.half)), `${name}: ${c.kind} bei s ${c.s0} bleibt dem Wasser fern`);
+        }
+      };
+      for (let i = 0; i < starts.length; i++) {
+        drive(starts[i], starts[(i + 1) % starts.length], 'hin');
+        drive(starts[i], starts[(i + 2) % starts.length], 'weiter');
+        drive(starts[i], starts[i], 'zurück');
+        drive(starts[i], starts[(i + Math.ceil(starts.length / 2)) % starts.length], 'vorbei');
+      }
+      drive(starts[0], starts[1], 'neu');
+    }
+    ok(all > 100000 && wetAll > 2000, `Flussfahrten geprüft (${all} Proben, ${wetAll} über Wasser)`);
+  }
 }
 
 // Gegenprobe: ein längerer Abschnitt bekäme sein S (die Prüfung oben misst also etwas)

@@ -1072,10 +1072,11 @@ function smoothRing(path, P) {
 }
 
 /**
- * Flüsse der Orte in den statischen Ebenen, in CSS-Bildpunkten: min = halbe Breite, unter die das Wasser nie fällt (weit
- * herausgezoomt bleibt ein feiner blauer Strich), len = erst ab dieser halben Länge wird ein Fluss gezeichnet.
+ * Flüsse der Orte in den statischen Ebenen, in CSS-Bildpunkten: min = halbe Breite, unter die das Wasser nie fällt, len =
+ * erst ab dieser halben Länge wird ein Fluss gezeichnet. Die Flüsse liegen immer auf der Karte; weit herausgezoomt wäre
+ * jeder nur ein blauer Krümel neben dem Punkt seiner Stadt – er erscheint, sobald er als Fluss zu lesen ist.
  */
-const RIVER_PX = { min: 1.1, len: 3 };
+const RIVER_PX = { min: 1.1, len: 12 };
 
 /**
  * Zeichnet Karten. Ein Zeichner hält seine Zwischenspeicher (Kacheln, Ausschnitt).
@@ -1098,7 +1099,8 @@ export class MapPainter {
     // Orte, durch die der Wagen fuhr, mit Punkt und Zubringer, und die Landstraßen, auf denen er fuhr
     // ({ places: Set Ortsindex, edges: Set Kante } oder null)
     this.keep = null;
-    this.rivers = []; // Flüsse der Orte am Weg (setRivers)
+    this.rivers = []; // Flüsse der Karte (setRivers)
+    this.riverList = null;
     this.riverKey = '';
   }
   get T() {
@@ -1114,12 +1116,14 @@ export class MapPainter {
   }
 
   /**
-   * Flüsse der Orte am Weg (navroute.js riverOnMap: [{place, x, y, wx, wy, half, reach}], Karteneinheiten): Sie liegen
-   * in den statischen Ebenen über den Ortsflächen und unter allen Straßen, die so als Brücken darüber laufen. Ändert
-   * sich die Liste, entstehen die Ebenen neu: Kacheln und gedrehter Ausschnitt sofort, die schrägen Ausschnitte im
-   * Hintergrund (bis dahin bleibt der alte stehen, das Navi blinkt nicht).
+   * Flüsse der Karte (navroute.js mapRivers: [{place, x, y, wx, wy, half, reach}], Karteneinheiten): Sie liegen in den
+   * statischen Ebenen über den Ortsflächen und unter dem Weg des Wagens, der so als Brücke darüber läuft. Ändert sich
+   * die Liste, entstehen die Ebenen neu: Kacheln und gedrehter Ausschnitt sofort, die schrägen Ausschnitte im
+   * Hintergrund (bis dahin bleibt der alte stehen, das Navi blinkt nicht). Dieselbe Liste noch einmal kostet nichts.
    */
   setRivers(list) {
+    if (list === this.riverList) return;
+    this.riverList = list;
     const key = list.map((r) => [r.place, r.x, r.y, r.wx, r.wy, r.half, r.reach].join(':')).join('|');
     if (key === this.riverKey) return;
     this.riverKey = key;
@@ -1177,7 +1181,7 @@ export class MapPainter {
     }
     ctx.globalAlpha = 1;
     if (k >= 1.5) this.renderTowns(ctx, wx, wy, cw / s, ch / s, k, u);
-    // Flüsse der Orte am Weg: mindestens ein feiner Strich, sobald sie ein paar Bildpunkte lang sind
+    // Flüsse: mindestens ein feiner Strich, sobald sie ein paar Bildpunkte lang sind
     for (const q of this.rivers) {
       if (q.reach < RIVER_PX.len * u || isOut([q.x - q.reach, q.y - q.reach, q.x + q.reach, q.y + q.reach], r[0], r[1], r[2], r[3])) continue;
       fillRiver(ctx, q.x - q.wx * q.reach, q.y - q.wy * q.reach, q.x + q.wx * q.reach, q.y + q.wy * q.reach, Math.max(q.half, RIVER_PX.min * u), T.sea);

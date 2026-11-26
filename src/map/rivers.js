@@ -3,7 +3,7 @@
 // Wahrheit für alle, die den Fluss kennen müssen (COMMON.md §9): der Ortsplan hält sein Band frei und stellt die
 // Wahrzeichen hinein (kit/layout.js), der Flussbau baut Wasser, Kaimauern und Straßenbrücke (kit/river.js), der Boden
 // bekommt dort sein Loch (xxl/ground.js), der Blitzer bleibt weg (xxl/blitzer.js) – und das Navi zeichnet dasselbe Band
-// (map/roadahead.js, ui/mapscreen.js). Die Ortsdurchfahrt einer Großstadt ist gerade (game/course.js: Ruhezonen an
+// (Nahansicht: map/roadahead.js; Karte: map/navroute.js riverOnMap, fest für jede Fahrt). Die Ortsdurchfahrt einer Großstadt ist gerade (game/course.js: Ruhezonen an
 // Anfang und Ende), das Band also nirgends von einer Kurve gestaucht; tools/fluesse-test.mjs wacht darüber.
 //
 // Der Fluss ist ein gerades Band quer zur Ortsdurchfahrt. Ortskoordinaten wie im Ortsplan: x seitlich wie im
@@ -19,11 +19,17 @@ import { hashString } from '../util.js';
  * den Kaimauern – bei den Brücken die ihres Wahrzeichens, kit/landmark-dims.js river.half), drop (Wasserspiegel unter
  * der Straße: die Uferhöhe des Wahrzeichens plus so viel, dass dessen eigenes Ufer unter dem Uferweg verschwindet; am
  * Hafen so, dass sein Kai knapp über der Straße liegt), rail (Farbe des Brückengeländers, passend zum Wahrzeichen).
+ * map: wo er auf der Landkarte liegt – fest, für jede Fahrt gleich (map/navroute.js riverOnMap): die Brücke der
+ * Ortsdurchfahrt liegt km Kilometer vom Ortspunkt in Richtung deg (Kompass: 0 = Norden, 90 = Osten), das Wasser reicht
+ * von dort reach Kilometer nach beiden Seiten. Die Autobahnen der Karte laufen alle durch den Ortspunkt; der Fluss
+ * liegt deshalb in dem Winkel zwischen zweien, in dem keine Straße der Karte ist (Rhein östlich des Doms, Main und
+ * Elbe südöstlich der Mitte), und läuft vor ihnen aus: Keine Straße der Karte kreuzt ihn außer der Ortsdurchfahrt auf
+ * ihrer Brücke – was die Karte als Brücke zeigt, ist in der Welt eine (COMMON.md §9; tools/fluesse-test.mjs prüft es).
  */
 export const RIVERS = {
-  'Frankfurt am Main': { name: 'Main', half: 75, drop: 3.4, rail: 0x5f8f74 },
-  'Köln': { name: 'Rhein', half: 112, drop: 3.8, rail: 0x7b8584 },
-  Hamburg: { name: 'Elbe', half: 110, drop: 3.05, rail: 0x5a7694 },
+  'Frankfurt am Main': { name: 'Main', half: 75, drop: 3.4, rail: 0x5f8f74, map: { deg: 152, km: 2.0, reach: 3.0 } },
+  'Köln': { name: 'Rhein', half: 112, drop: 3.8, rail: 0x7b8584, map: { deg: 81, km: 3.0, reach: 1.9 } },
+  Hamburg: { name: 'Elbe', half: 110, drop: 3.05, rail: 0x5a7694, map: { deg: 126, km: 3.2, reach: 2.1 } },
 };
 
 export const RIVER = {
@@ -40,7 +46,7 @@ export const RIVER = {
 const cache = new Map();
 /**
  * Fluss des Orts key in einer Ortsdurchfahrt der Länge len oder null: { key, name, half, drop, rail, x, u, ang, sin,
- * cos, bank, wall, reach } (unveränderlich; für denselben Ort immer derselbe).
+ * cos, bank, wall, reach, map } (unveränderlich; für denselben Ort immer derselbe).
  */
 export function riverOf(key, len) {
   const R = RIVERS[key];
@@ -52,7 +58,7 @@ export function riverOf(key, len) {
     const ang = (((h >>> 10) & 1 ? 1 : -1) * deg * Math.PI) / 180;
     rv = Object.freeze({
       key, name: R.name, half: R.half, drop: R.drop, rail: R.rail, x: RIVER.axis, u: RIVER.u, ang, sin: Math.sin(ang), cos: Math.cos(ang),
-      bank: RIVER.bank, wall: RIVER.wall, reach: RIVER.reach,
+      bank: RIVER.bank, wall: RIVER.wall, reach: RIVER.reach, map: Object.freeze({ ...R.map }),
     });
     cache.set(key, rv);
   }

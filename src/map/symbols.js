@@ -325,7 +325,7 @@ export function drawFlag(ctx, x, y, k = 1, pole = '#1d1f22') {
 }
 
 /** Auf diesem Anteil seiner Länge läuft ein Fluss der Karte an jedem Ende aus. */
-export const RIVER_FADE = 0.3;
+export const RIVER_FADE = 0.2;
 /**
  * Fluss der Karte: Wasser in der Farbe color ('#rrggbb') als Band der halben Breite hw um die Achse von (ax, ay) nach
  * (bx, by). An beiden Enden läuft es aus – der Fluss endet nicht an einer Kante, er verliert sich im Land.

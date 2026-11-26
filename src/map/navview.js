@@ -388,7 +388,7 @@ export class NaviScreen {
     const rot = -Math.PI / 2 - Math.atan2(m.pose.dy, m.pose.dx);
     v.set(pose.x, pose.y, kNow * kmPerUnit(pose.y), rot, w, h, ox, oy);
     const reserve = this.reserveK(m, ins, kT, hop) * kmPerUnit(pose.y);
-    // Flüsse der Orte am Weg liegen in den statischen Ebenen der Karte, unter den Straßen (navroute.js riverOnMap)
+    // die Flüsse liegen in den statischen Ebenen der Karte, unter dem Weg (navroute.js mapRivers)
     this.painter.setRivers(m.rivers);
     if (cw < 1) this.drawMapGround(ctx, m, T, theme, hop, reserve);
     else if (this.tilt) {
@@ -567,8 +567,8 @@ export class NaviScreen {
       tv.toScreen(P.x, P.y, o);
       if (o[2] > 0 && o[0] > -40 && o[0] < w + 40 && o[1] > FOG_Y[1] - 10 && o[1] < h + 50) flagAt = [o[0], o[1], upright(o[2])];
     }
-    // Namen der Flüsse: neben dem Weg auf dem Wasser, wo zwischen den Straßen am meisten Platz ist (r.label), längs des
-    // Flusses – wenn er dafür groß genug im Bild liegt
+    // Namen der Flüsse: neben der Brücke auf dem Wasser, wo zwischen den Straßen am meisten Platz ist (r.label), längs
+    // des Flusses – wenn er dafür groß genug im Bild liegt
     const q = [0, 0, 0];
     for (const r of m.rivers) {
       const d = r.reach * r.label;
