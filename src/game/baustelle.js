@@ -99,7 +99,7 @@ export class Baustelle {
     } else if (Z.entered && !Z.done && u > BAU_LEN) this.finish();
   }
 
-  /** Neue Baustelle, wenn es Zeit ist und Platz: Autobahn ohne Ausfahrt, kein Blitzer, kein Brunnen, keine Folge. */
+  /** Neue Baustelle, wenn es Zeit ist und Platz: Autobahn ohne Ausfahrt, kein Blitzer, kein Brunnen, keine Folge, keine freigeschaltete linke Spur. */
   maybeStart() {
     const g = this.g;
     const p = g.player;
@@ -107,7 +107,7 @@ export class Baustelle {
     const trip = g.world.trip();
     const s0 = p.s + BAUSTELLE.ahead;
     const lm = g.landmark;
-    const ok = trip.section.kind === 'ab' && g.traffic.passive !== true && !g.tv && !g.blitzer && !(g.navi && g.navi.stopping) &&
+    const ok = trip.section.kind === 'ab' && !g.left?.open && g.traffic.passive !== true && !g.tv && !g.blitzer && !(g.navi && g.navi.stopping) &&
       !forkBetween(trip, s0 - BAUSTELLE.room, s0 + BAU_LEN + 60, p.s) && (!lm || lm.s < s0 - BAUSTELLE.sign - 200 || lm.s > s0 + BAU_LEN + 200);
     if (!ok) {
       this.next = p.s + 400;
