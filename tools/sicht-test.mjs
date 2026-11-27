@@ -95,11 +95,20 @@ const flat = (x) => (typeof x === 'string' ? [x] : x && typeof x === 'object' ? 
 const maxLen = (x) => Math.max(...flat(x).map((t) => t.length));
 // ({city} in einer Durchsage und {ort} in BrunnenTV werden ein Ortsname: dafür 20 Zeichen Luft; {n} ist die Folge)
 const town = (list, key) => list.map((t) => t.replace('{' + key + '}', 'x'.repeat(20)));
+// die Sätze, die eine Folge über ihren Brunnen sagt (brunnentexte.js), an jedem Ort mit seinen Namen eingesetzt
+const { folgeTexte, fuelle } = await import('../src/game/brunnentexte.js');
+const { places: allPlaces } = await import('../src/map/graph.js');
+const ortTexte = { omi: [], mega: [] };
+for (const p of allPlaces) {
+  const T = folgeTexte(p);
+  ortTexte.omi.push(...T.omi.map((l) => fuelle(l, T, '9.999')));
+  ortTexte.mega.push(...T.mega.map((l) => fuelle(l, T, 1)).filter((l) => l.length <= 40));
+}
 const spoken = {
-  nomi: [BOARD, DAMAGE_LINES, BRUNNEN_NOMI.map((t) => t.replace('{n}', '9.999'))],
+  nomi: [BOARD, DAMAGE_LINES, BRUNNEN_NOMI.map((t) => t.replace('{n}', '9.999')), ortTexte.omi],
   studio: [STUDIO],
   durchsage: [town(all, 'city')],
-  megafon: [MEGAFON_WUENSCHE, town(BRUNNEN_MEGAFON, 'ort')],
+  megafon: [MEGAFON_WUENSCHE, town(BRUNNEN_MEGAFON, 'ort'), ortTexte.mega],
 };
 for (const [who, lists] of Object.entries(spoken)) check(maxLen(lists) <= LONG[who].length, `${who}: längster Satz ${maxLen(lists)} Zeichen, gemessen wird mit ${LONG[who].length}`);
 check(all.includes(browser.match(/const BREIT = '([^']+)';/)[1]), 'die Sprachdurchsage mit den meisten Zeilen (BREIT) steht so in den Daten');

@@ -2084,7 +2084,7 @@ if (DEBUG) {
     /** BrunnenTV-Folge: Szene (tvRun) und Zustand für Prüfbilder: Zeit, Kamera, Fenster, Megafon. */
     get tv() {
       const t = game.brunnenT();
-      return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t) : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl.arrival.held, walteView: !!tvRun.walteView };
+      return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t, tvRun.shots) : null, plan: tvRun.on && tvRun.shots ? tvRun.shots.plan : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl.arrival.held, walteView: !!tvRun.walteView };
     },
     /** BrunnenTV-Album: Folgen im Spielstand, gespeicherte Bilder, zuletzt aufgenommenes Standbild. */
     get album() {

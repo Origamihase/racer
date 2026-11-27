@@ -20,7 +20,7 @@ import { PerspectiveCamera } from 'three';
 import { places, townLen } from '../src/map/graph.js';
 import { Trip, J } from '../src/game/trip.js';
 import { Game, AUKTION, WAY } from '../src/game/game.js';
-import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor, stillShot, stillKind, STILL } from '../src/world/xxl/brunnentv.js';
+import { TV, windowAt, megaphoneAt, lookAt, shotAt, tvShots, shotPose, dollyFor, stillShot, stillKind, STILL, tvPlan, POOL, CLASSIC, SLOTS, ONE_SIDED } from '../src/world/xxl/brunnentv.js';
 import { squareOf, Arrival, autoTarget } from '../src/world/xxl/plan.js';
 import { Economy } from '../src/game/economy.js';
 import { albumOf } from '../src/game/album.js';
@@ -28,6 +28,7 @@ import { FOUNTAIN_R, goalKind, goalName, sightBlockers } from '../src/world/kit/
 import { MEGA } from '../src/models/miniAdam.js';
 import { SHOP, UPGRADE_LIMITS, AKTIONEN, GAME_NAME, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, BOARD, BRUNNEN_NOMI, BRUNNEN_MEGAFON, SCHOENER_BRUNNEN, SCHOENNBRUN, VOICES, ABSPANN_REISE, fillTemplate } from '../src/data.js';
 import { estimateSpeech } from '../src/speech.js';
+import { folgeTexte, fuelle } from '../src/game/brunnentexte.js';
 import { readFileSync } from 'node:fs';
 import { loadSave, storeSave, refundMegafon, megafonNoteSeen, MEGAFON_PRICE, DEFAULT_SAVE } from '../src/save.js';
 
@@ -40,7 +41,7 @@ function ok(cond, msg) {
   fails++;
   const n = (seen.get(msg.slice(0, 40)) || 0) + 1;
   seen.set(msg.slice(0, 40), n);
-  if (n <= 3) console.error('FEHLER: ' + msg);
+  if (process.env.ALLF || n <= 3) console.error('FEHLER: ' + msg);
 }
 function mulberry32(a) {
   return () => {
@@ -73,8 +74,35 @@ const loose = (base = {}) => new Proxy(base, { get: (t, k) => (k in t ? t[k] : n
   ok(TV.card < TV.line && TV.line < TV.chat && TV.chat < TV.nomi && TV.nomi < TV.back[0] && TV.back[1] <= TV.end, 'Reihenfolge der Momente');
   ok(shotAt(0) === 'totale' && shotAt(TV.line) === 'fenster' && shotAt(TV.nomi) === 'brunnen' && shotAt(TV.back[0] + 0.01) === 'zurueck', 'Kameras: Totale, Fenster, Brunnen, zurück');
 }
+// Kamerafahrten je Folge (tvPlan): die erste klassisch, jede weitere anders, zwei hintereinander teilen höchstens zwei
+// Abschnitte, über viele Folgen kommt jede Einstellung des Vorrats vor; das Bild wechselt nur an den Abschnittsgrenzen
+{
+  ok(Object.entries(CLASSIC).every(([k, v]) => tvPlan(1, 'Würzburg')[k] === v), 'Folge 1 ist nicht klassisch');
+  const used = new Set();
+  let prev = tvPlan(1, 'Würzburg');
+  let maxSame = 0;
+  for (let n = 2; n <= 400; n++) {
+    const key = places[(n * 37) % places.length].key;
+    const pl = tvPlan(n, key, prev);
+    const same = ['a', 'b', 'c', 'd'].filter((x) => pl[x] === prev[x]).length;
+    maxSame = Math.max(maxSame, same);
+    for (const [slot, name] of Object.entries(pl)) {
+      ok(POOL[slot].includes(name), `Folge ${n}: ${name} gehört nicht in Abschnitt ${slot}`);
+      used.add(name);
+    }
+    ok(JSON.stringify(tvPlan(n, key, prev)) === JSON.stringify(pl), `Folge ${n}: Plan nicht fest`);
+    ok(!['a', 'b', 'c', 'd'].every((x) => pl[x] === CLASSIC[x]), `Folge ${n}: klassisch`);
+    const S = tvShots({ x: -6, z: -4 }, 4.6, { r: 3.4, h: 3 }, pl);
+    ok(shotAt(0, S) === S.seq[0][2] && shotAt(TV.call, S) === pl.c && shotAt(TV.nomi, S) === pl.d && shotAt(TV.back[0] + 0.01, S) === 'zurueck', `Folge ${n}: Schnitte ${JSON.stringify(S.seq)}`);
+    prev = pl;
+  }
+  ok(maxSame <= 2, `zwei Folgen hintereinander teilen ${maxSame} Abschnitte`);
+  ok(Object.values(POOL).flat().every((n) => used.has(n)), `Einstellungen nie gewählt: ${Object.values(POOL).flat().filter((n) => !used.has(n)).join(', ')}`);
+}
 // Kameras für jeden Ort: Brunnen (Mitte, Radius des Hauptbrunnens) im Rahmen des haltenden Wagens
-const cams = { places: 0, minFountain: Infinity, maxAngle: 0, maxPortrait: 0, lines: 0 };
+const cams = { places: 0, minFountain: Infinity, maxAngle: 0, maxPortrait: 0, lines: 0, shots: new Set() };
+// Pläne, die zusammen jede Einstellung des Vorrats einmal zeigen (die erste ist die klassische Folge)
+const CAM_PLANS = [CLASSIC, { a: 'kran', b: 'profil', c: 'kreis', d: 'frosch' }, { a: 'gegen', b: 'fenster', c: 'brunnen', d: 'figur' }, { a: 'totale', b: 'fenster', c: 'kreis', d: 'taube' }];
 // Der Ort wie in der Welt (towns.js townPlan mit dem Baukasten der Stadt; ihre Schilder malen auf Canvas, hier ohne Bild)
 const canvas = new Proxy({}, { get: (t, k) => (k === 'measureText' ? (x) => ({ width: String(x).length * 10 }) : k === 'getImageData' ? (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }) : k.startsWith?.('create') ? () => ({ addColorStop() {} }) : k in t ? t[k] : noop), set: (t, k, v) => ((t[k] = v), true) });
 globalThis.document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => canvas, style: {} }) };
@@ -135,13 +163,20 @@ const portraitHalf = (Math.atan(Math.tan((78 * Math.PI) / 360) * PORTRAIT) * 180
     const sq = squareOf(sec);
     const f = { x: sq.x - J.L0, z: -(sq.s - sq.stop) };
     const fr = FOUNTAIN_R[goalKind(p)];
-    const S = tvShots(f, sq.r);
+    const info = city.info(goalKind(p));
+    // jede Einstellung des Vorrats (POOL) in ihrem Abschnitt: vier Pläne decken alle ab
+    const shots = {};
+    for (const pl of CAM_PLANS) {
+      const S = tvShots(f, sq.r, { r: info.r, h: info.h, oneSided: ONE_SIDED.has(goalKind(p)) }, pl);
+      for (const [, , name] of S.seq) shots[name] = S[name];
+    }
     cams.places++;
     const plan = townPlan(city, sec);
     const main = plan.fountains[0];
     // Rahmen des Wagens → Plan: x ab der Spur, z ab dem Anfang des Abschnitts
     const toPlan = (q) => [q[0] + J.L0, q[1], q[2] - (sq.stop - sec.s0)];
-    for (const [name, s] of Object.entries(S)) {
+    for (const [name, s] of Object.entries(shots)) {
+      cams.shots.add(name);
       const dolly = dollyFor(PORTRAIT, s.dolly);
       ok(dollyFor(16 / 9, s.dolly) === 1 && dolly >= 1 && dolly <= s.dolly && (s.dolly === 1 || dolly > 1), `${name}: zurückfahren quer ${dollyFor(16 / 9, s.dolly)}, hochkant ${dolly}`);
       for (const t of [s.t[0], (s.t[0] + s.t[1]) / 2, s.t[1]]) {
@@ -155,16 +190,18 @@ const portraitHalf = (Math.atan(Math.tan((78 * Math.PI) / 360) * PORTRAIT) * 180
           cams.minFountain = Math.min(cams.minFountain, dF);
           ok(dF > 0.3, `${p.name}: Kamera ${name} (${fmt}) steht im Brunnen (${dF.toFixed(2)} m vom Becken)`);
           ok(Math.hypot(look[0] - pos[0], look[1] - pos[1], look[2] - pos[2]) > 0.5, `${p.name}: Kamera ${name} ohne Blickrichtung`);
-          for (const [what, q] of [['Fenster', toPlan(WINDOW)], ['Brunnen', [main.x, (main.y || 0) + 0.5, main.z]]]) {
+          const targets = s.sees === 'brunnen' ? [['Brunnen', [main.x, (main.y || 0) + 0.5, main.z]]] : [['Fenster', toPlan(WINDOW)], ['Brunnen', [main.x, (main.y || 0) + 0.5, main.z]]];
+          for (const [what, q] of targets) {
             const hit = sightOf(plan, main, fr, toPlan(pos), q, what === 'Fenster');
             if (what === 'Brunnen') hit.push(...sightBlockers(plan, main, [[toPlan(pos)[0], toPlan(pos)[2]]]).map((i) => plan.items[i].name));
             cams.lines++;
             ok(hit.length === 0, `${p.name}: Kamera ${name} (${fmt}) sieht ${what} nicht (${[...new Set(hit)].join(', ')})`);
           }
-          if (name === 'fenster') continue;
-          // Fenster und Mitte des Brunnens im Bild: quer gut 86° breit, hochkant nur so breit wie portraitHalf
-          const aw = angle(pos, look, WINDOW);
-          const af = angle(pos, look, [f.x, 0.5, f.z]);
+          if (s.sees === 'fenster') continue;
+          // Fenster und Mitte des Brunnens im Bild: quer gut 86° breit, hochkant nur so breit wie portraitHalf (über die
+          // Profil: hochkant nur das Fenster, der Brunnen darf dort am Rand angeschnitten sein)
+          const aw = s.sees === 'brunnen' ? 0 : angle(pos, look, WINDOW);
+          const af = s.sees === 'fensterplus' && k !== 1 ? 0 : angle(pos, look, [f.x, 0.5, f.z]);
           if (k === 1) cams.maxAngle = Math.max(cams.maxAngle, aw, af);
           else cams.maxPortrait = Math.max(cams.maxPortrait, aw, af);
           const lim = k === 1 ? 40 : portraitHalf - 3;
@@ -366,7 +403,10 @@ for (const [name, skipAt] of [['none', null]]) {
   const said = r.log.filter((e) => e.k === 'nomi');
   // (beim Halt sagt sie nichts: Die Folge hat genau ihren einen Satz)
   const inTv = said.filter((e) => e.tv);
-  ok(inTv.length === 1 && BRUNNEN_NOMI.some((l) => fillTemplate(l, { n: '1' }) === inTv[0].text), `Folge: OMI ${inTv.length}× (${inTv.map((e) => e.text).join(' | ')})`);
+  // (OMIs Satz: ein allgemeiner oder einer über diesen Brunnen, brunnentexte.js)
+  const T = folgeTexte(places.findIndex((p) => p.name === 'Würzburg'));
+  const omiLines = [...BRUNNEN_NOMI.map((l) => fillTemplate(l, { n: '1' })), ...T.omi.map((l) => fuelle(l, T, '1'))];
+  ok(inTv.length === 1 && omiLines.includes(inTv[0].text), `Folge: OMI ${inTv.length}× (${inTv.map((e) => e.text).join(' | ')})`);
   ok(!said.some((e) => e.text === BOARD.wiperPhantom) && said.filter((e) => !e.tv && e.text === 'Prüfsatz nach der Folge.').length === 1, `Folge: zurückgehalten ${said.map((e) => e.text).join(' | ')}`);
 }
 
@@ -586,7 +626,8 @@ const tl = (r) => `Ende ${r.endT.toFixed(2)} s, nächstes Gebot ${(r.bidT - r.re
 console.log(`BrunnenTV-Fahrplan: Bauchbinde ${TV.card} s, Gruß ${TV.line} s, Chat ${TV.chat} s, „Schöner Brunnen!“ ${TV.call} s, OMI ${TV.nomi} s, Ende ${TV.end} s; Fenster offen ${TV.window.down.join('–')} s, Megafon in der Hand ab ${MEGA.show * 100} % gehoben`);
 console.log(`Folge ohne Überspringen: ${tl(runs.none)}, der Ruf genau einmal`);
 console.log(`Standbilder an ${stills.places} Orten: ${Object.entries(stills.kinds).map(([k, v]) => `${k} ${v}`).join(', ')}; mindestens ${stills.minFountain.toFixed(2)} m vom Becken, Brunnen höchstens ${stills.maxAngle.toFixed(0)}° neben der Bildmitte, ${stills.lines} Sichtlinien frei`);
-console.log(`Kameras an ${cams.places} Orten: mindestens ${cams.minFountain.toFixed(2)} m vom Becken, Fenster und Brunnen höchstens ${cams.maxAngle.toFixed(0)}° neben der Blickrichtung (hochkant zurückgefahren ${cams.maxPortrait.toFixed(0)}° von ${portraitHalf.toFixed(0)}°), ${cams.lines} Sichtlinien zu Fenster und Brunnen frei von Häusern, Bäumen und Laternen`);
+ok(Object.values(POOL).flat().every((n) => cams.shots.has(n)), `Einstellungen ungeprüft: ${Object.values(POOL).flat().filter((n) => !cams.shots.has(n)).join(', ')}`);
+console.log(`Kameras (${[...cams.shots].join(', ')}) an ${cams.places} Orten: mindestens ${cams.minFountain.toFixed(2)} m vom Becken, Fenster und Brunnen höchstens ${cams.maxAngle.toFixed(0)}° neben der Blickrichtung (hochkant zurückgefahren ${cams.maxPortrait.toFixed(0)}° von ${portraitHalf.toFixed(0)}°), ${cams.lines} Sichtlinien zu Fenster und Brunnen frei von Häusern, Bäumen und Laternen`);
 console.log(`Unterwegs: Folge in ${way.place} (nicht das Ziel), angeboten ${WAY.before} m vor bis ${WAY.after} m hinter dem Halt, ${way.offers}× Hinweis „Taste B“; Brunnenspenden ${way.gifts.join(' + ')} € (im Schnitt ${way.wayMean.toFixed(2)} € gegen ${way.arrive.toFixed(2)} € Ortsspenden am Ziel), Runde und Ziel unverändert`);
 console.log(`Megafon: kein Shop-Artikel, Taste H ohne Upgrade (${mega.toasts.join(' / ')}), ein gekauftes einmal erstattet (${MEGAFON_PRICE} €, auf dem Titel bis zum ersten Besuch im Shop); Abspann der Reise mit „${ABSPANN_REISE.at(-1)[0]}: ${fillTemplate(ABSPANN_REISE.at(-1)[1], { folgen: '1 Folge' })}“`);
 console.log(fails ? `${fails} Fehler (${checks} Prüfungen)` : `brunnen-test: alles grün (${checks} Prüfungen)`);

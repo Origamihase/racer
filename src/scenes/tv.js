@@ -2,7 +2,9 @@
 // braucht, holt sie über den Szenen-Kontext m (scenes/context.js).
 import { Game } from '../game/game.js';
 import * as THREE from 'three';
-import { TV, dollyFor, megaphoneAt, shotAt, shotPose, lookAt as tvLookAt, tvShots, windowAt } from '../world/xxl/brunnentv.js';
+import { TV, ONE_SIDED, dollyFor, megaphoneAt, shotAt, shotPose, lookAt as tvLookAt, tvShots, tvPlan, windowAt } from '../world/xxl/brunnentv.js';
+import { goalKind } from '../world/kit/layout.js';
+import { places } from '../map/graph.js';
 import { buildHandMegaphone } from '../models/megaphone.js';
 import { clamp, smoothstep } from '../util.js';
 import { storeSave } from '../save.js';
@@ -13,15 +15,16 @@ import { m } from './context.js';
 // --- BrunnenTV am Navi-Ziel (world/xxl/brunnentv.js TV, Game.startBrunnenTV) ----------------------------------------
 // Der Wagen steht neben dem Brunnen, das Spiel läuft weiter und führt die Zeit der Folge (Sätze, Chat, OMI). Hier
 // gehen das Fahrerfenster herunter und wieder hoch, Mini Adam hebt das Megafon (das vom Beifahrersitz, gebaut bei der
-// ersten Folge) an den Mund und schaut zum Brunnen, und drei Kameras im Rahmen des Wagens zeigen die Folge (tvShots):
-// „Totale“, „Fenster“, „Brunnen“. Von der Drohne gleitet die Kamera in die Totale, aus dem Cockpit wird kurz
+// ersten Folge) an den Mund und schaut zum Brunnen, und Kameras im Rahmen des Wagens zeigen die Folge (tvShots): die
+// erste Folge klassisch „Totale“, „Fenster“, „Brunnen“, jede weitere mit eigenen Fahrten aus dem Vorrat (tvPlan: Kran,
+// Gegenüber, Profil, Kreis, Frosch, Figur, Taube). Von der Drohne gleitet die Kamera in die erste, aus dem Cockpit wird kurz
 // abgeblendet; zurück zur Kamera des Spielers geht es am Ende mit kurzem Abblenden. Überspringen lässt sich die Folge
 // nicht (brunnentv.js): Tasten, Tipps aufs Bild und Gamepad-Knöpfe ändern an ihr nichts, sie endet bei TV.end, und der
 // Spieler fährt los, wo er steht (Fenster zu, Megafon zurück).
 // tv: game.tv, f: Mitte des Brunnens im Rahmen des Wagens, shots: die drei Kameras, prop: das Megafon in der Hand,
 // inside: Kamera im Cockpit, from / fromLook: Kamera beim Halt
 export const tvRun = {
-  on: false, tv: null, f: new THREE.Vector3(), shots: null, prop: null, inside: false,
+  on: false, tv: null, plan: null, f: new THREE.Vector3(), shots: null, prop: null, inside: false,
   from: new THREE.Vector3(), fromLook: new THREE.Vector3(), pose: { pos: [0, 0, 0], look: [0, 0, 0] },
 };
 export const tvM = new THREE.Matrix4();
@@ -59,9 +62,17 @@ export function tvBegin(e) {
   m.updateCarMatrix();
   // Mitte des Brunnens im Rahmen des haltenden Wagens (er steht still, also bleibt sie dort)
   r.f.set(q.world.x, 0, q.world.z).applyMatrix4(tvM.copy(m.carMatrix).invert());
-  r.shots = tvShots({ x: r.f.x, z: r.f.z }, q.r);
-  // fürs Standbild: Radius der Insel und Maße des Brunnens (r, h seines Bausteins)
-  Object.assign(r, { on: true, tv: e, inside: m.view === 'cockpit', picDone: false, isl: q.r, fi: q.object ? q.object.userData.info : null });
+  // fürs Standbild und die Kameras: Radius der Insel und Maße des Brunnens (r, h seines Bausteins)
+  const fi = q.object ? q.object.userData.info : null;
+  const pl = places[e.place];
+  const key = pl ? pl.key : '';
+  const oneSided = !!pl && ONE_SIDED.has(goalKind(pl));
+  // die Kamerafahrten dieser Folge (fest für Folge und Ort, nie fast dieselben wie eben)
+  r.plan = tvPlan(e.n, key, r.plan);
+  // Wo ist Walte? Er steht am Rand der Brunnen-Kamera (city.js group.walte): in seiner Folge läuft sie ab dem Ruf
+  if (e.walte) r.plan = { ...r.plan, c: 'brunnen', d: 'brunnen' };
+  r.shots = tvShots({ x: r.f.x, z: r.f.z }, q.r, fi && fi.r > 0 ? { r: fi.r, h: fi.h, oneSided } : { oneSided }, r.plan);
+  Object.assign(r, { on: true, tv: e, inside: m.view === 'cockpit', picDone: false, isl: q.r, fi });
   r.from.copy(m.camera.position);
   m.camera.getWorldDirection(r.fromLook).multiplyScalar(20).add(m.camera.position);
   if (!r.prop) {
@@ -115,11 +126,14 @@ export function tvPlace(dt) {
   const ck = m.view === 'cockpit';
   let fade = 0;
   let inside = false;
-  const shot = shotAt(t);
   const S = r.shots;
+  const shot = shotAt(t, S);
+  // die erste Einstellung der Folge (dorthin gleitet die Drohne, aus dem Cockpit wird abgeblendet) und die letzte
+  const first = S.seq[0][2];
+  const lastS = S[S.seq[S.seq.length - 1][2]];
   // hochkant fährt jede Kamera etwas zurück, damit Wagen und Brunnen ins schmale Bild passen (dollyFor)
   const aspect = window.innerWidth / window.innerHeight;
-  if (shot === 'totale' && ck && t < TV.fade) {
+  if (shot === first && ck && t < TV.fade) {
     // aus dem Cockpit: erst abblenden, dann steht die Totale da
     m.cockpit.placeCamera(m.camera, m.carMatrix, m.simT, 0, 0, dt);
     m.setFov(58);
@@ -130,8 +144,8 @@ export function tvPlace(dt) {
     shotPose(s, t, r.pose, dollyFor(aspect, s.dolly));
     m.tmpV.fromArray(r.pose.pos).applyMatrix4(m.carMatrix);
     m.tmpV2.fromArray(r.pose.look).applyMatrix4(m.carMatrix);
-    if (shot === 'totale' && !ck) {
-      // von der Drohne gleitet die Kamera in die Totale
+    if (shot === first && !ck) {
+      // von der Drohne gleitet die Kamera in die erste Einstellung
       const k = smoothstep(0, TV.card, t);
       m.tmpV.lerpVectors(r.from, m.tmpV, k);
       m.tmpV2.lerpVectors(r.fromLook, m.tmpV2, k);
@@ -139,16 +153,17 @@ export function tvPlace(dt) {
     m.camera.position.copy(m.tmpV);
     m.camera.lookAt(m.tmpV2);
     m.setFov(s.fov);
-    if (shot === 'totale' && ck) fade = 1 - (t - TV.fade) / TV.fade;
+    if (shot === first && ck) fade = 1 - (t - TV.fade) / TV.fade;
   } else {
-    // zurück zur Kamera des Spielers: kurz abblenden, dann steht seine Kamera da (Cockpit oder Drohne hinter dem
-    // Wagen) und blendet auf – ein Gleiten von der Brunnen-Kamera vorn zur Drohne hinten führte quer über den Wagen
+    // zurück zur Kamera des Spielers: kurz abblenden (aus der letzten Einstellung), dann steht seine Kamera da (Cockpit
+    // oder Drohne hinter dem Wagen) und blendet auf – ein Gleiten von der Brunnen-Kamera vorn zur Drohne hinten führte
+    // quer über den Wagen
     const sw = TV.back[0] + TV.fade;
     if (t < sw) {
-      shotPose(S.brunnen, TV.back[0], r.pose, dollyFor(aspect, S.brunnen.dolly));
+      shotPose(lastS, TV.back[0], r.pose, dollyFor(aspect, lastS.dolly));
       m.camera.position.fromArray(r.pose.pos).applyMatrix4(m.carMatrix);
       m.camera.lookAt(m.tmpV2.fromArray(r.pose.look).applyMatrix4(m.carMatrix));
-      m.setFov(S.brunnen.fov);
+      m.setFov(lastS.fov);
       fade = (t - TV.back[0]) / TV.fade;
       m.drone.init = false;
     } else {
