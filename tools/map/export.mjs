@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const netz = JSON.parse(readFileSync(join(here, 'netz.json'), 'utf8'));
 const KINDS = ['ab', 'land', 'faehre', 'zug', 'flug'];
-const NODE_KINDS = ['ort', 'as', 'kreuz', 'via'];
+const NODE_KINDS = ['ort', 'as', 'kreuz', 'via', 'rast'];
 
 // Vereinfachung der Verläufe für shapes.js (Budget 300 kB roh, 120 kB gzip): jeder Punkt des Verlaufs aus netz.json
 // liegt höchstens TOL_KM neben dem vereinfachten Verlauf (dazu bis 7 m Raster) und TOL_M über oder unter ihm. Das
@@ -445,7 +445,14 @@ const EDGES = netz.edges.map((e, i) => {
       tB = towards(rn, k, -1);
     }
   }
-  return [a, b, r, e.km, coarse[i], tA, tB];
+  // Stück einer geteilten, gestauchten Etappe (rasthoefe.mjs): sein Anteil an deren Spiellänge
+  return e.spielKm !== undefined ? [a, b, r, e.km, coarse[i], tA, tB, e.spielKm] : [a, b, r, e.km, coarse[i], tA, tB];
+});
+
+// --- Zusätzliche Ladeparks (tools/map/ladeparks.mjs): Knoten, an denen ohnehin ein Ladepark liegt ---------------------
+const LADEPARKS = (netz.ladeparks ?? []).map((k) => {
+  if (!nodeIdx.has(k)) throw new Error('Ladepark an unbekanntem Knoten: ' + k);
+  return nodeIdx.get(k);
 });
 
 // --- Schreiben ----------------------------------------------------------------------------------------------
@@ -453,15 +460,17 @@ const lines = (name, rows) => `export const ${name} = [\n${rows.map((r) => JSON.
 const data =
   '// ERZEUGT von tools/map/export.mjs aus tools/map/netz.json – nicht von Hand ändern.\n' +
   '// Orte: [Wiki-Name, Anzeigename, Breite, Länge, Land, Zahl der Streams, Einwohner]\n' +
-  '// Knoten: [Kennung, Name, Breite, Länge, Art (0 Ort, 1 Anschlussstelle, 2 Kreuz, 3 Durchgangsort), Land, Einwohner, [[Ort, Zubringer-km] …]]\n' +
+  '// Knoten: [Kennung, Name, Breite, Länge, Art (0 Ort, 1 Anschlussstelle, 2 Kreuz, 3 Durchgangsort, 4 Rasthof), Land, Einwohner, [[Ort, Zubringer-km] …]]\n' +
   '// Straßen: [Kennung, Schildname, Art (0 Autobahn, 1 Landstraße, 2 Fähre, 3 Zug, 4 Flug), Land, [Knoten …]]\n' +
-  `// Kanten: [Knoten a, Knoten b, Straße, km, [[Breite, Länge] … Zwischenpunkte], Fernziel Richtung a, Fernziel Richtung b]\n` +
+  `// Kanten: [Knoten a, Knoten b, Straße, km, [[Breite, Länge] … Zwischenpunkte], Fernziel Richtung a, Fernziel Richtung b(, Spiel-km eines Stücks)]\n` +
   `// Die Zwischenpunkte sind der echte Verlauf aus shapes.js, auf ${GROB_KM} km vereinfacht; km ist seine Länge.\n` +
   '/* eslint-disable */\n' +
   lines('PLACES', PLACES) +
   lines('NODES', NODES) +
   lines('ROADS', ROADS) +
-  lines('EDGES', EDGES);
+  lines('EDGES', EDGES) +
+  '// Knoten mit zusätzlichem Ladepark (tools/map/ladeparks.mjs, src/map/parks.js placeParks)\n' +
+  `export const LADEPARKS = ${JSON.stringify(LADEPARKS)};\n`;
 
 const spalte = (name) => `const ${name} = ${JSON.stringify(spalten[name].join(' '))}.split(' ');\n`;
 const shapes =

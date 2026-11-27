@@ -56,9 +56,9 @@ let summary = '';
     return Math.abs(k - Math.round(k)) < 1e-6 && P.label === fmtWaehrung(P.local, P.cur) + '/kWh' && Math.abs(P.euro - P.local / W.kurs) < 1e-12;
   };
   ok(ab.every((x) => roundLocal(x.P)), `Ausland: kein runder Preis der Landeswährung (${ab.filter((x) => !roundLocal(x.P)).map((x) => x.P.label).slice(0, 3).join(', ')})`);
-  // Ladepark Salzburg steht an einer Ausfahrt in Deutschland: deutscher Preis, obwohl er nach Salzburg heißt
-  const sbg = PARKS.findIndex((p) => p.name === 'Ladepark Salzburg');
-  ok(sbg >= 0 && ladePreis({ park: sbg }).cc === 'DE' && ladePreis({ park: sbg }).euro <= 0.59, 'Ladepark Salzburg: das Land der Ausfahrt zählt');
+  // Ladepark Enschede steht an einer Ausfahrt in Deutschland (Gronau): deutscher Preis, obwohl er nach Enschede heißt
+  const ens = PARKS.findIndex((p) => p.name === 'Ladepark Enschede');
+  ok(ens >= 0 && ladePreis({ park: ens }).cc === 'DE' && ladePreis({ park: ens }).euro <= 0.59, 'Ladepark Enschede: das Land der Ausfahrt zählt');
   // Beispiele wie dem Besitzer versprochen: die Schweiz in Franken, Tschechien in Kronen, Österreich in Euro (teurer)
   const of = (cc) => ab.find((x) => x.cc === cc).P;
   ok(/^0,\d\d CHF\/kWh$/.test(of('CH').label.replace(NB, ' ')) && /^\d\d,\d0 Kč\/kWh$/.test(of('CZ').label.replace(NB, ' ')) && of('AT').cur === 'EUR' && of('AT').euro >= 0.65, `Beispiele: ${of('CH').label}, ${of('CZ').label}, ${of('AT').label}`);
@@ -247,13 +247,14 @@ let screens = '';
 const { OPENING } = await import('../src/game/navi.js');
 let crash = '';
 {
-  // so stürzte der Stream ab (Zufall 2, zügig): nach 5 s plant L den nächsten Ladepark ein, er liegt hinter dem Wagen
+  // so stürzte der Stream ab (Zufall 2, zügig): nach 5 s plant L den Ladepark Aschaffenburg ein (damals der nächste;
+  // heute ist es der Ladepark Offenbach am Main, und vor ihm liegen Orte ohne Wenden), er liegt hinter dem Wagen
   const S = makeStream({ driver: DRIVERS.zuegig, seed: 2, endless: true });
   const g = S.game;
   const T = S.trip;
   const nv = g.navi;
   S.step(5);
-  g.akku.planStop();
+  T.setStop(PARKS.findIndex((p) => p.name === 'Ladepark Aschaffenburg'));
   const park = T.stop;
   ok(park >= 0 && nv.opening && !nv.target, `Ausgangslage: Park ${park}, erste Runde ${nv.opening}, Ziel ${nv.target && nv.target.name}`);
   // die Auswahl der ersten Runde findet hier keinen Ort ohne Wenden (das war der Absturz) …

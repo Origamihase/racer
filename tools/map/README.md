@@ -1,7 +1,7 @@
 # Die Karte von „Navi ferngesteuert XXL“
 
-`netz.json` ist die Quelle der Spielkarte: 426 Orte aus dem SkylineTV-LIVE-Wiki, 603 Knoten (Ausfahrten, Kreuze,
-Endpunkte), 251 Straßen und 808 Etappen mit zusammen rund 65.900 km Autobahnen und Landstraßen von Lappland bis
+`netz.json` ist die Quelle der Spielkarte: 426 Orte aus dem SkylineTV-LIVE-Wiki, 892 Knoten (Ausfahrten, Kreuze,
+Endpunkte, 236 Rasthöfe), 256 Straßen und 1096 Etappen mit zusammen rund 65.900 km Autobahnen und Landstraßen von Lappland bis
 Malta, in den USA und Japan, dazu Fähren, Autozüge und Luftfracht ab Frankfurt.
 
     npm run map     # netz.json → src/map/data.js und src/map/shapes.js (kompakte Daten für das Spiel)
@@ -240,13 +240,41 @@ einen Weg übers Wasser. Jede Entscheidung mit Grund steht in `verlauf.log`.
   zurück (A5 in Frankfurt und Heidelberg): der Knoten bleibt am Ort (ROUTES §3.2), die Ecken halten den
   Mindestradius. Solche Etappen zählen oft nur als teilweise abgeglichen.
 
+### Rasthöfe und Ladeparks (Reicht der Akku überall?)
+
+Ladeparks stehen an den Ausfahrten der Autobahnen, alle 40 bis 70 km je Autobahn (`src/map/parks.js`), dazu hat jeder
+Ort seine Ladesäule. Das allein ließ Lücken: Im Ausland liegen die Knoten oft 100 bis 400 km auseinander (Spanien,
+Skandinavien, Polen, die USA), Landstraßen hatten gar keine Parks, und in Städteknäueln wie dem Rhein-Main-Gebiet
+wechselt die Route die Autobahn, bevor deren nächster Park kommt. `src/map/ladenetz.js` rechnet für jede Stelle des
+Netzes, wie viel Akku es zwischen zwei Ladeplätzen, die OMI kennt, mindestens braucht (vorher bis über 200 %, jetzt
+höchstens 86 %; `tools/laden-test.mjs` hält es unter 90 %). Zwei Werkzeuge schließen die Lücken:
+
+1. `rasthoefe.mjs` teilt lange Etappen an Rasthöfen (Knoten der Art `rast`, mit Ladepark; an der Landstraße liegt er
+   gleich an der Straße). Der Teilungspunkt liegt auf einem geraden, trockenen Stück des Verlaufs, fern von anderen
+   Knoten; benannt wird er nach einem Ort in der Nähe aus dem Ortsverzeichnis `cities500` von GeoNames (als Datei
+   übergeben, gehört nicht ins Repository). Gestauchte Etappen behalten ihre Spiellänge (`spielKm`), so ändert sich
+   die Fahrzeit nicht. Mit `--luecken` teilt er zusätzlich die Etappen, auf denen das Ladenetz noch zu viel verlangt.
+2. `ladeparks.mjs` setzt Parks an weitere Ausfahrten, wo das Netz sonst zu viel verlangt (`"ladeparks"` in
+   `netz.json`, in `data.js` als `LADEPARKS`).
+
+Der ganze Lauf (wiederholbar, ausgehend vom Netz ohne Rasthöfe):
+
+    node tools/map/rasthoefe.mjs <cities500.json>
+    npm run map
+    node tools/map/ladeparks.mjs
+    npm run map
+    node tools/map/rasthoefe.mjs <cities500.json> --luecken
+    npm run map
+    node tools/map/ladeparks.mjs
+    npm run map
+
 ### Quellen und Lizenzen
 
 - Straßenverläufe: Natural Earth (gemeinfrei)
 - Höhendaten: Terrain Tiles (Mapzen/AWS Open Data); Quellen u. a. SRTM, GMTED2010 und ETOPO1 (gemeinfrei) sowie
   EU-DEM: Produced using Copernicus data and information funded by the European Union – EU-DEM layers
 - Küsten und Grenzen der Prüfbilder: Natural Earth (gemeinfrei), als TopoJSON aus dem Paket world-atlas
-- Orte: GeoNames (CC BY 4.0)
+- Orte und Namen der Rasthöfe: GeoNames (CC BY 4.0)
 - Wald, Siedlungen, Äcker, Fels und Eis: ESA WorldCover 2021 v200 (CC BY 4.0): © ESA WorldCover project 2021 /
   Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium
 

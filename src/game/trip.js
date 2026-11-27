@@ -278,7 +278,9 @@ export class Trip {
     const here = pol && pol.place >= 0 && places[pol.place].node === fork.node;
     let visits = [];
     if (here) visits = this.visitList(fork.node, pol.place);
-    else if (this.planFor(fork) !== 'exit' && nd.places.length) visits = [nd.places[0].place];
+    // ohne Plan in den Ort an der Ausfahrt; am Ende der Autobahn (forced) immer: die Straße führt hinein, und seine
+    // Ladesäule liegt am Weg (am Ende einer Autobahn gibt es keinen Ladepark, parks.js parkCandidate)
+    else if ((fork.forced || this.planFor(fork) !== 'exit') && nd.places.length) visits = [nd.places[0].place];
     return { visits, sig: 'v' + visits.join(',') + (visits.length ? '' : ':' + this.pickLeave(fork.node, fork.de).key) };
   }
   /** Orte, die auf dem Abstecher zum Ziel durchfahren werden: erst der Ort an der Ausfahrt, dann das Ziel. */
@@ -459,14 +461,19 @@ export class Trip {
     }
   }
 
-  /** Landstraße bis zum nächsten Knoten, dort gleich die Ortsdurchfahrt. */
+  /** Landstraße bis zum nächsten Knoten, dort gleich die Ortsdurchfahrt (oder der Ladepark eines Rasthofs). */
   addLand(path, de) {
     const e = deEdge(de);
     const len = edgeLen(e);
     const h = deTo(de);
     this.border(this.add(path, 'land', len, { de, node: h, kmPerM: e.km / len }));
     const town = nodes[h].places.find((p) => p.zubKm < 1.5);
-    if (town) {
+    const pk = parkAt(h);
+    if (pk >= 0) {
+      // Rasthof an der Landstraße (parks.js): der Ladepark gleich an der Straße; gehalten wird nur mit geplantem Stopp
+      const sec = this.add(path, 'park', PARK.len, { node: h, park: pk, inline: true });
+      sec.spotS = sec.s0 + PARK.halt - PARK_STOP_AFTER;
+    } else if (town) {
       const tl = townLen(places[town.place].pop);
       const sec = this.add(path, 'stadt', tl, { node: h, place: town.place, inline: true });
       sec.spotS = sec.s0 + spotIn(tl);
@@ -641,7 +648,9 @@ export class Trip {
       // Ziel- oder Ortsmitte passiert?
       if (sec.spotS !== undefined && !sec.spotDone && s0 < sec.spotS && this.s >= sec.spotS) {
         sec.spotDone = true;
-        if (sec.kind === 'park') {
+        if (sec.kind === 'park' && sec.inline && sec.park !== this.stop) {
+          // am Ladepark eines Rasthofs an der Landstraße ohne Plan vorbei: kein Halt (laden ginge mit L)
+        } else if (sec.kind === 'park') {
           // geladen wird an jedem Park: ein geplanter Ladestopp ist damit erledigt
           ev.push({ type: 'park', park: sec.park, sec, planned: sec.park === this.stop });
           if (this.stop >= 0) this.setStop(-1);

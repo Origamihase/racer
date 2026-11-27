@@ -927,7 +927,7 @@ for (const [name, src] of [[SHAPES, shapes], ['künstlich', synth]]) {
     ok(t.hide <= 2.2, `${name} ${kind}: eine Kuppe verdeckt ein Auto ${fix(t.hide)} s lang`);
   }
 }
-console.log('\nSpaß-Kennzahlen (je Kante für sich entworfen; Ziele: gerade 35–60 %, meist Bögen R 700–3000, alle 3–5 km ein Erlebnis):');
+console.log('\nSpaß-Kennzahlen (je Kante für sich entworfen; Ziele: gerade 35–66 %, meist Bögen R 700–3000, alle 3–5 km ein Erlebnis):');
 console.log('Verläufe     Art   Kanten     km  gerade  Bögen/100km  davon R700–3000  eng<R700/100km (100/80)  S/100km  Kuppen+Senken/100km  Erlebnis alle  längste Gerade  Kuppe verdeckt');
 for (const t of table) {
   const per = (v) => fix((100 * v) / t.km, 1);
@@ -939,14 +939,17 @@ for (const t of table) {
 // 1,4-km-Kanten bis 57 % einer Kante. Ziel des Briefs: ein Erlebnis alle 3–5 km. Echte Autobahnen, 1:19 gestaucht,
 // wechseln die Richtung öfter (K1: 48 dicht gegensinnige Bögen der Karte je 100 km); der Kurs fährt diese Wechsel
 // gedämpft, aber mit (Karten-Treue), so kommt auf echten und ebenso unruhigen künstlichen Verläufen etwa alle
-// 2,3–2,5 km etwas, auf den groben Platzhalter-Polygonen (ein Knick an jedem Knoten, mehr Hügel) ähnlich oft: ab 2,2 km
+// 2,3–2,5 km etwas, auf den groben Platzhalter-Polygonen (ein Knick an jedem Knoten, mehr Hügel) ähnlich oft: ab 2,2 km.
+// Seit den Rasthöfen (tools/map/rasthoefe.mjs: lange Etappen geteilt, damit der Akku bis zum nächsten Ladepark reicht)
+// hat das Netz rund 230 Knoten mehr, jeder mit seiner Ruhezone: gemessen 64–65 % gerade und ein Erlebnis alle 2,0–2,1 km
+// (jede Hälfte einer geteilten Etappe bekommt ihre eigenen). Darum bis 66 % und ab 2,0 km.
 for (const t of table.filter((q) => q.kind === 'ab')) {
   ok(t.edges >= 30, `${t.name}: weniger als 30 Kanten in der Statistik`);
   const share = (100 * t.straight) / t.km;
-  ok(share >= 35 && share <= 60, `Autobahn (${t.name}): ${fix(share, 0)} % gerade statt 35–60 %`);
+  ok(share >= 35 && share <= 66, `Autobahn (${t.name}): ${fix(share, 0)} % gerade statt 35–66 %`);
   ok(t.sweep / Math.max(1, t.bends) > 0.5, `Autobahn (${t.name}): die meisten Bögen sollten lange Bögen sein`);
   const every = t.km / Math.max(1, t.ev);
-  ok(every >= 2.2 && every <= 5, `Autobahn (${t.name}): ein Erlebnis alle ${fix(every)} km`);
+  ok(every >= 2.0 && every <= 5, `Autobahn (${t.name}): ein Erlebnis alle ${fix(every)} km`);
   ok(t.longest <= 2500, `Autobahn (${t.name}): ${fix(t.longest / 1000)} km schnurgerade`);
 }
 

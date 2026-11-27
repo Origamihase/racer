@@ -4,7 +4,7 @@
 import { PLACES, NODES, ROADS, EDGES } from './data.js';
 
 export const KINDS = ['ab', 'land', 'faehre', 'zug', 'flug'];
-export const NODE_KINDS = ['ort', 'as', 'kreuz', 'via'];
+export const NODE_KINDS = ['ort', 'as', 'kreuz', 'via', 'rast'];
 
 /** Maßstab: 1 Spielmeter entspricht 19 Kartenmetern (wie beim Euro Truck Simulator 2). */
 export const K = 19;
@@ -23,13 +23,14 @@ export const nodes = NODES.map(([id, name, lat, lon, kind, cc, pop, pl], i) => (
   edges: [], // gerichtete Kanten, die hier losfahren
 }));
 export const roads = ROADS.map(([id, label, kind, cc, ns], i) => ({ i, id, label, kind: KINDS[kind], cc, nodes: ns }));
-export const edges = EDGES.map(([a, b, road, km, pts, tA, tB], i) => ({
+export const edges = EDGES.map(([a, b, road, km, pts, tA, tB, spielKm], i) => ({
   i,
   a,
   b,
   road,
   kind: roads[road].kind,
   km,
+  spielKm, // Stück einer sehr langen, gestauchten Etappe (Rasthof dazwischen): sein Anteil an deren Spiellänge, sonst undefined
   pts, // Zwischenpunkte [Breite, Länge] von a nach b
   towards: [tB, tA], // Fernziel (Knoten) je Fahrtrichtung: [a→b, b→a]
 }));
@@ -109,15 +110,22 @@ export function turnAngle(deIn, deOut) {
 const LMIN = { ab: 1400, land: 1000 };
 const lenCache = new Map();
 /**
- * Länge einer Kante auf der Spielstrecke in Metern. Bis 150 km gilt der Maßstab 1:19, sehr lange Etappen
- * (Interstates, Lappland) werden gestaucht, damit zwischen zwei Ausfahrten höchstens rund acht Minuten liegen.
- * Fähren, Züge und Flüge haben keine Strecke (Überblendung).
+ * Gestauchte Kilometer einer Etappe von km Kartenkilometern: bis 150 km dieselben, darüber wächst die Spielstrecke
+ * nur noch logarithmisch (Interstates, Lappland), damit zwischen zwei Knoten höchstens rund acht Minuten liegen.
+ */
+export function gameKm(km) {
+  return km <= 150 ? km : 150 + 60 * Math.log(1 + (km - 150) / 60);
+}
+/**
+ * Länge einer Kante auf der Spielstrecke in Metern: ihre gestauchten Kilometer (gameKm; das Stück einer geteilten
+ * Etappe trägt seinen Anteil an deren gestauchter Länge, spielKm) im Maßstab 1:19. Fähren, Züge und Flüge haben keine
+ * Strecke (Überblendung).
  */
 export function edgeLen(e) {
   if (e.kind !== 'ab' && e.kind !== 'land') return 0;
   let L = lenCache.get(e.i);
   if (L === undefined) {
-    const km = e.km <= 150 ? e.km : 150 + 60 * Math.log(1 + (e.km - 150) / 60);
+    const km = e.spielKm ?? gameKm(e.km);
     L = Math.max(LMIN[e.kind], Math.round((km * 1000) / K / 10) * 10);
     lenCache.set(e.i, L);
   }

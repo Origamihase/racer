@@ -578,10 +578,12 @@ ok(realRoad.join(' / ') === '1,2 km / 1,1 km / 1000 m / 1000 m / 2,6 km', 'Echte
   // Ohne Ziel nennt das Navi nur eine Stelle, die die Straße erzwingt: das Autobahnende auf dem eigenen Weg – an der
   // Gabelung der Fahrt, mit dem Text des Schilds dort, ab 1000 m mit den Pfeilen aller Spuren, und die Nahansicht
   // führt dort die Rampe hinaus. Sonst nennt es keine Stelle, nur wo die Fahrt gerade ist (die erste Fahrt beginnt
-  // wie die XXL-Welt in Erlensee). 60 Fahrten: seit den Autobahnringen enden weniger Autobahnen in den Städten.
+  // wie die XXL-Welt in Erlensee). 100 Fahrten: seit den Autobahnringen enden weniger Autobahnen in den Städten, und
+  // seit die Ausfahrt Aachen-Brand (richtig) in Deutschland liegt, verschiebt sich die Auswahl der Startorte: 60 Fahrten
+  // trafen nur noch zwei Enden.
   {
     const e = { trips: 0, ends: 0, said: 0, lanes: 0, scenes: 0, quiet: 0, onramp: 0 };
-    for (let t = 0; t < 60; t++) {
+    for (let t = 0; t < 100; t++) {
       const demo = new MapDemo({ start: t ? starts[Math.floor(r() * starts.length)] : undefined, rng: rng(300 + t) });
       const trip = demo.trip;
       e.trips++;

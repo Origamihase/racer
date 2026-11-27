@@ -272,6 +272,8 @@ export class Arrival {
       }
       const park = c.kind === 'park';
       if (!park && (c.kind !== 'stadt' || c.place !== trip.target || trip.target < 0)) continue;
+      // Ladepark eines Rasthofs an der Landstraße (trip.js addLand): Halt nur mit geplantem Stopp
+      if (park && c.inline && c.park !== trip.stop) continue;
       if (c.spotDone || c.spotS === undefined || c.start) continue;
       const after = park ? PARK_STOP_AFTER : STOP_AFTER_SPOT;
       if (c.spotS + after < trip.s || c.spotS - trip.s > 1500) continue;

@@ -879,6 +879,8 @@ def schreiben(netz, roads, lage, formen, status, log):
         f.write('{\n"places": {\n' + ',\n'.join(d(k) + ': ' + d(v) for k, v in P.items()) + '\n},\n')
         f.write('"nodes": {\n' + ',\n'.join(d(k) + ': ' + d(v) for k, v in N.items()) + '\n},\n')
         f.write('"roads": [\n' + ',\n'.join(d(v) for v in netz['roads']) + '\n],\n')
+        if 'ladeparks' in netz:  # zusätzliche Ladeparks (tools/map/ladeparks.mjs) bleiben
+            f.write('"ladeparks": ' + d(netz['ladeparks']) + ',\n')
         f.write('"edges": [\n' + ',\n'.join(d(v) for v in netz['edges']) + '\n]\n}\n')
     log(f'netz.json geschrieben ({os.path.getsize(NETZ) / 1024:.0f} kB)')
 
