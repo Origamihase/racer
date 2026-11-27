@@ -290,6 +290,11 @@ for (const row of PLACES) {
       const name = NB.variantName(kind, i);
       const info = city.info(name);
       ok(info && info.r === base.r && info.w === base.w && info.d === base.d && info.title === v.t && NB.baseKind(name) === kind, `${name}: Grundfläche oder Titel weicht ab`);
+      // die Maße ohne Bau (für den Plan in Raten) sind die nach dem Bau
+      if (i) {
+        const built = city.fountains.geo(name).info;
+        ok(['w', 'd', 'h', 'r', 'title', 'water', 'size'].every((k) => built[k] === info[k]), `${name}: Maße ohne Bau ${JSON.stringify(info)} ≠ gebaut ${JSON.stringify(built)}`);
+      }
     });
     for (const p of all) seen.add(NB.extraVariant(p.key, kind, L.profileOf(p).looks.map(([l]) => l), L.hashKey));
     ok(seen.size === list.length, `${kind}: nur ${seen.size} von ${list.length} Spielarten in den Orten`);

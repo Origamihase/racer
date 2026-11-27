@@ -366,8 +366,11 @@ function jetsFountain(b, v) {
     });
   }
   if (near) for (let i = 0; i < 16; i++) F.ball(Math.sin((i / 16) * TAU) * 3.75, 0.072, Math.cos((i / 16) * TAU) * 3.75, 0.07, 0xfff1c8, { ws: 8, hs: 2, sy: 0.35, lat: [0, Math.PI / 2], flat: true, k: 1.15 });
+  return jetsInfo(v, h);
+}
+function jetsInfo(v, h = v.centre === 'kugel' ? 1.8 : 3.6) {
   const top = Math.max(h, ...jetPattern(v.pat).map(([, , jh]) => jh));
-  return { w: 9.2, d: 9.2, h: Math.max(3.6, top), r: 4.6, title: v.t, size: 'stadt', water: wy, flat: true, cam: { pos: [1.4, 1.2, 4.6], look: [0, 1.3, 0] } };
+  return { w: 9.2, d: 9.2, h: Math.max(3.6, top), r: 4.6, title: v.t, size: 'stadt', water: 0.085, flat: true, cam: { pos: [1.4, 1.2, 4.6], look: [0, 1.3, 0] } };
 }
 defs.fountainJets = { kind: 'fountain', far: true, fade: 1.2, low: 0.88, make: (b) => jetsFountain(b, JETS_V[0]) };
 
@@ -559,6 +562,10 @@ function drinkFountain(b, v) {
     W.pool(0.16, wy, 0, 0.22, SURF, { seg: near ? 14 : 8, hit: 0.1, rings: 1 });
     W.jet([-0.03, 0.8, 0], [0.45, 0, 0], wy, 0.016, JET, { n: near ? 7 : 3, seg: 5, r1: 0.022, pulse: 0.2 });
   }
+  return drinkInfo(v, h, wy);
+}
+/** Maße eines Trinkbrunnens (auch ohne Bau, für den Plan in Raten). */
+function drinkInfo(v, h = { saeule: v.top ? 1.7 : 1.15, stein: v.top ? 1.5 : 1.15, poller: 1.2 }[v.shape] ?? 1.15, wy = { saeule: 0.95, poller: 0.07 }[v.shape] ?? 0.42) {
   return { w: 1.3, d: 1.3, h, r: 0.9, title: v.t, size: 'extra', water: wy, tiny: true, cam: { pos: [0.5, 1.2, 2.1], look: [0, 0.8, 0] } };
 }
 defs.fountainDrink = { kind: 'fountain', far: true, fade: 1, low: 0.86, make: (b) => drinkFountain(b, DRINK_V[0]) };
@@ -711,15 +718,19 @@ function pondFountain(b, v) {
     for (let i = 0; i < 5; i++) blossom(b, 4.9 + Math.sin(i * 2) * 0.2, 0.2, -1.4 + i * 0.2, 0.09, BLOOM[i % 4]);
     bench(b, -4.6, 0, 3.0, Math.PI + 0.9);
   }
-  return { w: 11.2, d: 7.4, h, r: 5.6, title: v.t, size: 'stadt', water: wy, flat: true, cam: { pos: [1.6, 1.2, 6.2], look: [0, 2.2, 0] } };
+  return pondInfo(v, h);
+}
+function pondInfo(v, h = { drei: 5.5, kranz: 2.2, insel: 3.0, figur: 2.3 }[v.centre] ?? (v.h ?? 6.2) + 0.5) {
+  return { w: 11.2, d: 7.4, h, r: 5.6, title: v.t, size: 'stadt', water: 0.12, flat: true, cam: { pos: [1.6, 1.2, 6.2], look: [0, 2.2, 0] } };
 }
 defs.fountainPond = { kind: 'fountain', far: true, fade: 1.4, low: 0.86, make: (b) => pondFountain(b, POND_V[0]) };
 
 // Die Spielarten der Nebenbrunnen als eigene Bausteine ('fountainDrink~1' …): gleiche Grundfläche wie die Art
-for (const [kind, list, fn] of [['fountainDrink', DRINK_V, drinkFountain], ['fountainPond', POND_V, pondFountain], ['fountainJets', JETS_V, jetsFountain]]) {
+// (dims: die Maße stehen ohne Bau fest, ein Plan in Raten muss für sie nicht warten)
+for (const [kind, list, fn, dims] of [['fountainDrink', DRINK_V, drinkFountain, drinkInfo], ['fountainPond', POND_V, pondFountain, pondInfo], ['fountainJets', JETS_V, jetsFountain, jetsInfo]]) {
   const base = defs[kind];
   list.forEach((v, i) => {
-    if (i) defs[variantName(kind, i)] = { kind: 'fountain', far: base.far, fade: base.fade, low: base.low, variant: kind, make: (b) => fn(b, v) };
+    if (i) defs[variantName(kind, i)] = { kind: 'fountain', far: base.far, fade: base.fade, low: base.low, variant: kind, dims: dims(v), make: (b) => fn(b, v) };
   });
 }
 
