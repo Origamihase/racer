@@ -10,6 +10,7 @@ import { tub, moss, pigeon, duck, blossom, bench, flowerBed, BLOOM } from './par
 import { STILL_LOW } from './layout.js';
 import { placeFigure, shieldPts } from './brunnenfiguren.js';
 import { STONES } from './brunnenpass.js';
+import { DRINK_V, POND_V, JETS_V, variantName } from './nebenbrunnen.js';
 
 const TAU = Math.PI * 2;
 const SURF = 0x7cc8ec; // Wasserfläche
@@ -306,41 +307,69 @@ defs.fountainBowls = {
 };
 
 // --- 4. Wasserspiel: Fontänen steigen direkt aus dem Pflaster ----------------------------------------------------
-defs.fountainJets = {
-  kind: 'fountain', far: true, fade: 1.2, low: 0.88,
-  make(b) {
-    const { F, W } = b;
-    const near = b.lod === 0;
-    const rnd = rng(41);
-    // Granitplatte mit hellem Randstreifen; in der Mitte steht ein dünner Wasserfilm
-    paving(b, 4.6, { col: mix(PAL.stone, 0xffffff, 0.1), h: 0.07 });
-    F.lathe(0, 0, 0, [[4.1, 0.058], [4.1, 0.075], [0, 0.075]], GRANITE, { seg: segs(4.1, !near), top: false, ks: [0.9, 0.96, 0.96] });
-    const wy = 0.085;
-    const film = mix(SURF, GRANITE, 0.4);
-    W.pool(0, wy, 0, 3.3, film, { hit: 1.9, rings: 1, seg: segs(3.3, !near) });
+// Spielarten (nebenbrunnen.js JETS_V): Muster der Düsen (Ring, Raster, Doppelring, Spirale, Kreuz), Pflaster, Mitte
+// (hoher Strahl, Edelstahlkugel oder frei). Grundfläche immer dieselbe.
+const JETS_PAVE = { granit: GRANITE, sand: mix(SAND, 0xffffff, 0.15), rot: mix(CITY.redStone, 0xffffff, 0.3), blau: 0x8193a3 };
+/** Düsen eines Musters: [x, z, Höhe des Strahls]. */
+function jetPattern(pat) {
+  const out = [];
+  const polar = (a, r, h) => out.push([Math.sin(a) * r, Math.cos(a) * r, h]);
+  if (pat === 'raster') {
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) if (i || j) out.push([i * 1.5, j * 1.5, (i + j) % 2 ? 1.2 : 2.3]);
+  } else if (pat === 'doppel') {
+    for (let i = 0; i < 6; i++) polar((i / 6) * TAU + Math.PI / 6, 1.1, 1.0);
+    for (let i = 0; i < 10; i++) polar((i / 10) * TAU, 2.6, i % 2 ? 1.5 : 2.2);
+  } else if (pat === 'spirale') {
+    for (let i = 0; i < 12; i++) polar(i * 0.95, 0.85 + i * 0.18, 0.6 + i * 0.2);
+  } else if (pat === 'kreuz') {
+    for (let k = 0; k < 4; k++) [[1.0, 2.4], [1.9, 1.6], [2.8, 0.9]].forEach(([r, h]) => polar((k / 4) * TAU + Math.PI / 4, r, h));
+  } else {
     const ring = [1.3, 2.6, 1.9, 0.9, 2.2, 1.5, 2.8, 1.1];
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * TAU;
-      const x = Math.sin(a) * 1.9;
-      const z = Math.cos(a) * 1.9;
-      F.cyl(x, 0.075, z, 0.1, 0.09, 0.03, PAL.steel, { seg: 10 });
-      fountainJet(b, x, 0.09, z, ring[i], wy, rnd, { r: 0.045 });
-      W.splash(x, wy + 0.012, z, 0.08, 0.5, film, { T: 1.2, ph: i * 0.37 });
-    }
+    for (let i = 0; i < 8; i++) polar((i / 8) * TAU, 1.9, ring[i]);
+  }
+  return out;
+}
+function jetsFountain(b, v) {
+  const { F, W } = b;
+  const near = b.lod === 0;
+  const rnd = rng(41);
+  const plate = JETS_PAVE[v.pave] ?? GRANITE;
+  // Platte mit hellem Randstreifen; in der Mitte steht ein dünner Wasserfilm
+  paving(b, 4.6, { col: mix(PAL.stone, 0xffffff, 0.1), h: 0.07 });
+  F.lathe(0, 0, 0, [[4.1, 0.058], [4.1, 0.075], [0, 0.075]], plate, { seg: segs(4.1, !near), top: false, ks: [0.9, 0.96, 0.96] });
+  const wy = 0.085;
+  const film = mix(SURF, plate, 0.4);
+  W.pool(0, wy, 0, 3.3, film, { hit: 1.9, rings: 1, seg: segs(3.3, !near) });
+  jetPattern(v.pat).forEach(([x, z, h], i) => {
+    F.cyl(x, 0.075, z, 0.1, 0.09, 0.03, PAL.steel, { seg: 10 });
+    fountainJet(b, x, 0.09, z, h, wy, rnd, { r: 0.045 });
+    if (near || i % 2 === 0) W.splash(x, wy + 0.012, z, 0.08, 0.5, film, { T: 1.2, ph: i * 0.37 });
+  });
+  let h = 3.6;
+  if (v.centre === 'jet') {
     F.cyl(0, 0.075, 0, 0.12, 0.11, 0.03, PAL.steel, { seg: 10 });
     fountainJet(b, 0, 0.09, 0, 3.4, wy, rnd, { r: 0.06, drops: 22 });
-    // Sitzwürfel mit Holzauflage am Rand, dazu Lichtpunkte im Pflaster
-    for (let i = 0; i < 3; i++) {
-      const a = 2.2 + i * 0.75;
-      b.at(Math.sin(a) * 4.0, 0.07, Math.cos(a) * 4.0, a, () => {
-        F.rbox(0, 0, 0, 0.9, 0.42, 0.9, 0.1, STONE, { seg: 2, ks: [0.84, 1], prof: [[0, 0], [0, 0.42]] });
-        if (near) F.rbox(0, 0.42, 0, 0.8, 0.05, 0.8, 0.08, CITY.wood, { seg: 2 });
-      });
-    }
-    if (near) for (let i = 0; i < 16; i++) F.ball(Math.sin((i / 16) * TAU) * 3.75, 0.072, Math.cos((i / 16) * TAU) * 3.75, 0.07, 0xfff1c8, { ws: 8, hs: 2, sy: 0.35, lat: [0, Math.PI / 2], flat: true, k: 1.15 });
-    return { w: 9.2, d: 9.2, h: 3.6, r: 4.6, title: 'Wasserspiel', size: 'stadt', water: wy, flat: true, cam: { pos: [1.4, 1.2, 4.6], look: [0, 1.3, 0] } };
-  },
-};
+  } else if (v.centre === 'kugel') {
+    // blanke Edelstahlkugel auf flachem Sockel, oben sprudelt es heraus und läuft als Film herab
+    F.cyl(0, 0.075, 0, 0.42, 0.46, 0.12, plate, { seg: near ? 20 : 10 });
+    F.ball(0, 0.75, 0, 0.58, mix(PAL.steel, 0xffffff, 0.25), { ws: near ? 24 : 12, hs: near ? 14 : 7 });
+    fountainJet(b, 0, 1.33, 0, 0.35, 0.75, rnd, { r: 0.05, drops: 10, spread: 0.35 });
+    if (near) for (let i = 0; i < 10; i++) W.jet([Math.sin((i / 10) * TAU) * 0.2, 1.31, Math.cos((i / 10) * TAU) * 0.2], [Math.sin((i / 10) * TAU) * 0.55, 0.2, Math.cos((i / 10) * TAU) * 0.55], wy, 0.02, JET, { n: 6, seg: 4, r1: 0.03, ph: i });
+    h = 1.8;
+  }
+  // Sitzwürfel mit Holzauflage am Rand, dazu Lichtpunkte im Pflaster
+  for (let i = 0; i < 3; i++) {
+    const a = 2.2 + i * 0.75;
+    b.at(Math.sin(a) * 4.0, 0.07, Math.cos(a) * 4.0, a, () => {
+      F.rbox(0, 0, 0, 0.9, 0.42, 0.9, 0.1, STONE, { seg: 2, ks: [0.84, 1], prof: [[0, 0], [0, 0.42]] });
+      if (near) F.rbox(0, 0.42, 0, 0.8, 0.05, 0.8, 0.08, CITY.wood, { seg: 2 });
+    });
+  }
+  if (near) for (let i = 0; i < 16; i++) F.ball(Math.sin((i / 16) * TAU) * 3.75, 0.072, Math.cos((i / 16) * TAU) * 3.75, 0.07, 0xfff1c8, { ws: 8, hs: 2, sy: 0.35, lat: [0, Math.PI / 2], flat: true, k: 1.15 });
+  const top = Math.max(h, ...jetPattern(v.pat).map(([, , jh]) => jh));
+  return { w: 9.2, d: 9.2, h: Math.max(3.6, top), r: 4.6, title: v.t, size: 'stadt', water: wy, flat: true, cam: { pos: [1.4, 1.2, 4.6], look: [0, 1.3, 0] } };
+}
+defs.fountainJets = { kind: 'fountain', far: true, fade: 1.2, low: 0.88, make: (b) => jetsFountain(b, JETS_V[0]) };
 
 // --- 5. Prachtbrunnen: zwei Becken, Schale, hohe Mittelfontäne, Bogenstrahlen und vier Frösche -------------------
 function grandBase(b, R, stone, rim, o = {}) {
@@ -456,18 +485,28 @@ defs.fountainWall = {
 };
 
 // --- 7. Trinkbrunnen: absichtlich winzig – zählt der überhaupt? ----------------------------------------------------
-defs.fountainDrink = {
-  kind: 'fountain', far: true, fade: 1, low: 0.86,
-  make(b) {
-    const { F, W } = b;
-    const near = b.lod === 0;
-    const rnd = rng(77);
-    const green = 0x3f7d55;
-    paving(b, 0.62, { col: STONE, h: 0.06, seg: near ? 20 : 10 });
+// Spielarten (nebenbrunnen.js DRINK_V): Gusseisensäule in einer Farbe, mit Figürchen obenauf; Steinpfeiler mit
+// Löwenmaul über einem Steintrog; Edelstahlpoller mit Bogenstrahl auf ein Gitter; Holzstock mit Zuber.
+/** Figürchen (Bronze oder Gold) auf einem Trinkbrunnen. */
+function drinkTopper(b, id, x, y, z, gold) {
+  const rc = b.recol;
+  b.recol = statueRecol(gold ? 'gold' : 'bronze', null, 0);
+  placeFigure(b, id, x, y, z, 0, { krone: 0.24, storch: 0.44, fisch: 0.36 }[id] ?? 0.32);
+  b.recol = rc;
+}
+function drinkFountain(b, v) {
+  const { F, W } = b;
+  const near = b.lod === 0;
+  const rnd = rng(77);
+  paving(b, 0.62, { col: STONE, h: 0.06, seg: near ? 20 : 10 });
+  let h = 1.15;
+  let wy = 0.95;
+  if (v.shape === 'saeule') {
+    const col = v.col;
     F.disc(0.36, 0.05, 0, 0.12, IRON, { up: true, seg: 10 });
-    F.lathe(0, 0.05, 0, [[0.2, 0], [0.2, 0.07], [0.12, 0.16], [0.085, 0.3], [0.085, 0.72], [0.13, 0.8]], green, { seg: near ? 14 : 8, top: false, ks: [0.8, 0.9, 0.95, 1, 1, 0.95] });
-    F.lathe(0, 0.85, 0, [[0.12, 0], [0.26, 0.07], [0.29, 0.12], [0.24, 0.12], [0.16, 0.06]], [green, green, green, green, FLOOR], { seg: near ? 16 : 8, ks: [0.8, 0.95, 1.05, 1, 0.8] });
-    const wy = 0.95;
+    F.lathe(0, 0.05, 0, [[0.2, 0], [0.2, 0.07], [0.12, 0.16], [0.085, 0.3], [0.085, 0.72], [0.13, 0.8]], col, { seg: near ? 14 : 8, top: false, ks: [0.8, 0.9, 0.95, 1, 1, 0.95] });
+    F.lathe(0, 0.85, 0, [[0.12, 0], [0.26, 0.07], [0.29, 0.12], [0.24, 0.12], [0.16, 0.06]], [col, col, col, col, FLOOR], { seg: near ? 16 : 8, ks: [0.8, 0.95, 1.05, 1, 0.8] });
+    if (v.gold) for (const y of [0.2, 0.74]) F.cyl(0, 0.05 + y, 0, 0.1, 0.1, 0.035, CITY.gold, { seg: near ? 14 : 8 });
     W.pool(0, wy, 0, 0.2, SURF, { seg: near ? 16 : 8, hit: 0.08, rings: 1 });
     // der Hahn zeigt nach oben
     F.rod([-0.17, 0.95, 0], [-0.17, 1.07, 0], 0.022, PAL.steel, { seg: 8, caps: true });
@@ -476,63 +515,213 @@ defs.fountainDrink = {
     // blaues Emailleschild mit weißem Tropfen
     b.G.disc(0, 0.5, 0.092, 0.07, PAL.signBlue, { seg: 14 });
     b.G.extrude([[0, 0.545], [0.03, 0.49], [0.02, 0.465], [0, 0.458], [-0.02, 0.465], [-0.03, 0.49]], 0.094, 0.096, PAL.frame, { caps: 'f', sides: false });
-    if (near) b.xf([0.2, 0.975, -0.2], [0, 2.3, 0], 0.55, () => pigeon(b, 0, 0, 0, 0, 0xb08a6a));
-    return { w: 1.3, d: 1.3, h: 1.15, r: 0.9, title: 'Trinkbrunnen', size: 'extra', water: wy, tiny: true, cam: { pos: [0.5, 1.2, 2.1], look: [0, 0.8, 0] } };
-  },
-};
+    if (v.top) {
+      // Stange hinten am Schalenrand, oben ein Teller mit dem Figürchen
+      F.rod([0, 0.9, -0.3], [0, 1.32, -0.3], 0.025, col, { seg: 8, caps: true });
+      F.cyl(0, 1.32, -0.3, 0.09, 0.08, 0.03, v.gold ? CITY.gold : col, { seg: 12 });
+      drinkTopper(b, v.top, 0, 1.35, -0.3, v.gold);
+      h = 1.7;
+    } else if (near) b.xf([0.2, 0.975, -0.2], [0, 2.3, 0], 0.55, () => pigeon(b, 0, 0, 0, 0, 0xb08a6a));
+  } else if (v.shape === 'stein') {
+    // Pfeiler hinten, vorn ein kleiner Trog; Wasser aus dem Löwenmaul oder einem Messingrohr
+    const st = v.stone;
+    F.rbox(0, 0.06, -0.3, 0.34, 1.02, 0.24, 0.03, st, { seg: 2 });
+    F.rbox(0, 1.08, -0.3, 0.42, 0.08, 0.32, 0.03, mix(st, 0xffffff, 0.12), { seg: 2 });
+    F.rbox(0, 0.06, 0.1, 0.66, 0.4, 0.4, 0.05, mix(st, CITY.ink, 0.06), { seg: 2 });
+    wy = 0.42;
+    W.poolRect(0, wy, 0.1, 0.54, 0.28, SURF, { c: [0, 0.05] });
+    if (v.mouth === 'loewe') mask(b, 0, 0.8, -0.17, 0.55, mix(CITY.gold, 0x8a5a1c, 0.25));
+    else F.rod([0, 0.76, -0.2], [0, 0.74, -0.06], 0.02, CITY.gold, { seg: 8, caps: true });
+    W.jet([0, 0.74, -0.05], [0, 0.1, 0.75], wy, 0.016, JET, { n: near ? 7 : 3, seg: 5, r1: 0.022, pulse: 0.2 });
+    W.splash(0, wy + 0.01, 0.2, 0.03, 0.18, SURF, { T: 1.1 });
+    if (v.top) {
+      drinkTopper(b, v.top, 0, 1.16, -0.3, false);
+      h = 1.5;
+    }
+  } else if (v.shape === 'poller') {
+    // Edelstahlpoller, Knopf vorn, der Strahl springt im Bogen auf ein Gitter im Pflaster
+    F.lathe(0, 0.06, 0, [[0.13, 0], [0.13, 0.86], [0.11, 0.94], [0.04, 0.98]], v.col, { seg: near ? 16 : 8, ks: [0.85, 1.05, 1.1, 1.15] });
+    if (v.ring) F.cyl(0, 0.68, 0, 0.135, 0.135, 0.07, v.ring, { seg: near ? 16 : 8 });
+    F.ball(0, 0.8, 0.125, 0.03, PAL.signBlue, { ws: 8, hs: 4, sz: 0.5 });
+    const hit = W.jet([0.06, 1.03, 0], [0.55, 0.9, 0], 0.07, 0.014, JET, { n: near ? 8 : 3, seg: 5, r1: 0.016, pulse: 0.2 });
+    F.disc(hit[0], 0.065, 0, 0.1, IRON, { up: true, seg: 10 });
+    W.splash(hit[0], 0.075, 0, 0.02, 0.12, SURF, { T: 1.0 });
+    wy = 0.07;
+    h = 1.2;
+  } else {
+    // Holzstock mit Messingrohr über einem Zuber mit Eisenreifen
+    F.rbox(-0.3, 0.06, 0, 0.16, 1.0, 0.16, 0.02, CITY.wood, { seg: 1 });
+    F.rbox(-0.3, 1.06, 0, 0.24, 0.05, 0.22, 0.02, CITY.woodDark, { seg: 1 });
+    F.rod([-0.22, 0.82, 0], [-0.04, 0.8, 0], 0.02, CITY.gold, { seg: 8, caps: true });
+    F.lathe(0.16, 0.06, 0, [[0.24, 0], [0.28, 0.2], [0.27, 0.4], [0.23, 0.4], [0.22, 0.12]], [CITY.wood, CITY.wood, CITY.wood, CITY.wood, FLOOR], { seg: near ? 14 : 8, ks: [0.8, 0.95, 1, 0.9, 0.8] });
+    for (const y of [0.12, 0.32]) F.cyl(0.16, 0.06 + y, 0, 0.275, 0.275, 0.025, IRON, { seg: near ? 14 : 8 });
+    wy = 0.42;
+    W.pool(0.16, wy, 0, 0.22, SURF, { seg: near ? 14 : 8, hit: 0.1, rings: 1 });
+    W.jet([-0.03, 0.8, 0], [0.45, 0, 0], wy, 0.016, JET, { n: near ? 7 : 3, seg: 5, r1: 0.022, pulse: 0.2 });
+  }
+  return { w: 1.3, d: 1.3, h, r: 0.9, title: v.t, size: 'extra', water: wy, tiny: true, cam: { pos: [0.5, 1.2, 2.1], look: [0, 0.8, 0] } };
+}
+defs.fountainDrink = { kind: 'fountain', far: true, fade: 1, low: 0.86, make: (b) => drinkFountain(b, DRINK_V[0]) };
 
 // --- 8. Fontäne im Teich: ein hoher Strahl, Seerosen, Schilf und zwei Enten ----------------------------------------
-defs.fountainPond = {
-  kind: 'fountain', far: true, fade: 1.4, low: 0.86,
-  make(b) {
-    const { F, W } = b;
-    const near = b.lod === 0;
-    const rnd = rng(89);
-    const sz = 0.66;
-    const seg = near ? 48 : 20;
-    // Ufer: weiche Rasenböschung, darauf ein Kranz runder Steine; innen der Teichboden
-    F.lathe(0, 0, 0, [[5.6, 0], [5.4, 0.1], [5.05, 0.17], [4.7, 0.17], [4.5, 0.1], [4.45, 0.03], [0, 0.03]], [PAL.grass[1], PAL.grass[0], mix(PAL.grass[0], STONE, 0.4), STONE, mix(STONE, FLOOR, 0.5), FLOOR], { seg, sz, top: false, ks: [0.86, 0.98, 1, 0.96, 0.8, 0.8, 0.8] });
-    const wy = 0.12;
-    W.pool(0, wy, 0, 4.55, SURF, { sz, seg, hit: 0.5, rings: 0.9 });
-    if (near) {
-      for (let i = 0; i < 26; i++) {
-        const a = (i / 26) * TAU + 0.1;
-        const rr = 4.72 + (i % 3) * 0.06;
-        F.ball(Math.sin(a) * rr, 0.15, Math.cos(a) * rr * sz, 0.17 + (i % 4) * 0.035, mix(STONE, i % 2 ? 0xffffff : CITY.slate, 0.15), { ws: 7, hs: 4, sy: 0.55 });
-      }
+// Spielarten (nebenbrunnen.js POND_V): in der Mitte ein Strahl, drei Strahlen, ein Kranz Bogenstrahlen, eine Insel
+// (mit Entenhaus) oder eine Bronzefigur auf einem Felsen; im Wasser Enten, Schwäne, Kois oder Frösche am Ufer.
+/** Schwan, Blick nach +z, schwimmt auf y. */
+function swan(b, x, y, z, ry) {
+  if (b.lod > 0) return;
+  const { F } = b;
+  const w = 0xf6f4ee;
+  b.at(x, y, z, ry, () => {
+    F.ball(0, 0.12, 0, 0.24, w, { ws: 10, hs: 5, sz: 1.5, sy: 0.65 });
+    F.ball(0, 0.22, -0.28, 0.12, w, { ws: 7, hs: 4, sy: 0.9 });
+    F.rod([0, 0.18, 0.22], [0, 0.42, 0.24], 0.05, w, { seg: 6 });
+    F.rod([0, 0.42, 0.24], [0, 0.56, 0.3], 0.045, w, { seg: 6, caps: true });
+    F.ball(0, 0.58, 0.34, 0.07, w, { ws: 7, hs: 4, sz: 1.2 });
+    b.xf([0, 0.57, 0.42], [Math.PI / 2 + 0.25, 0, 0], 1, () => F.frust(0, 0, 0, 0.05, 0.025, 0.035, 0.012, 0.1, PAL.orange));
+    for (const k of [-1, 1]) F.ball(k * 0.045, 0.6, 0.36, 0.014, CITY.ink, { ws: 5, hs: 3 });
+  });
+}
+function pondFountain(b, v) {
+  const { F, W } = b;
+  const near = b.lod === 0;
+  const rnd = rng(89);
+  const sz = 0.66;
+  const seg = near ? 48 : 20;
+  // Ufer: weiche Rasenböschung, darauf ein Kranz runder Steine; innen der Teichboden
+  F.lathe(0, 0, 0, [[5.6, 0], [5.4, 0.1], [5.05, 0.17], [4.7, 0.17], [4.5, 0.1], [4.45, 0.03], [0, 0.03]], [PAL.grass[1], PAL.grass[0], mix(PAL.grass[0], STONE, 0.4), STONE, mix(STONE, FLOOR, 0.5), FLOOR], { seg, sz, top: false, ks: [0.86, 0.98, 1, 0.96, 0.8, 0.8, 0.8] });
+  const wy = 0.12;
+  W.pool(0, wy, 0, 4.55, SURF, { sz, seg, hit: 0.5, rings: 0.9 });
+  if (near) {
+    for (let i = 0; i < 26; i++) {
+      const a = (i / 26) * TAU + 0.1;
+      const rr = 4.72 + (i % 3) * 0.06;
+      F.ball(Math.sin(a) * rr, 0.15, Math.cos(a) * rr * sz, 0.17 + (i % 4) * 0.035, mix(STONE, i % 2 ? 0xffffff : CITY.slate, 0.15), { ws: 7, hs: 4, sy: 0.55 });
     }
+  }
+  const nozzle = (x, z, s = 1) => F.lathe(x, wy - 0.02, z, [[0.3 * s, 0], [0.3 * s, 0.06], [0.1 * s, 0.12], [0.07 * s, 0.24]], PAL.steel, { seg: near ? 14 : 8, ks: [0.8, 1, 1, 1] });
+  const rocks = (x, z, r, top) => {
+    // Felsen aus runden Steinen, oben flach
+    for (let i = 0; i < (near ? 9 : 5); i++) {
+      const a = (i / (near ? 9 : 5)) * TAU + 0.3;
+      F.ball(x + Math.sin(a) * r * 0.62, wy + top * 0.35, z + Math.cos(a) * r * 0.5, r * 0.48, mix(STONE, i % 2 ? CITY.slate : 0xffffff, 0.2), { ws: 8, hs: 5, sy: 0.8 });
+    }
+    F.lathe(x, wy, z, [[r * 0.8, 0], [r * 0.72, top * 0.8], [r * 0.5, top]], mix(STONE, CITY.slate, 0.25), { seg: near ? 12 : 7, ks: [0.85, 0.95, 1.05] });
+  };
+  let h = 6.7;
+  if (v.centre === 'drei') {
+    [[-1.5, 3.2], [0, 5.0], [1.5, 3.2]].forEach(([x, jh], i) => {
+      nozzle(x, 0, 0.8);
+      fountainJet(b, x, wy + 0.2, 0, jh, wy, rnd, { r: 0.06, drops: 18, spread: 0.45, size: 0.045 });
+      W.splash(x, wy + 0.012, 0, 0.25, 1.2, SURF, { T: 2.0, ph: i / 3, w: 0.04, seg: 16 });
+    });
+    h = 5.5;
+  } else if (v.centre === 'kranz') {
+    // sechs Bogenstrahlen von einem Ring aus Düsen zur Mitte, dort ein Sprudel
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * TAU;
+      const x = Math.sin(a) * 1.6;
+      const z = Math.cos(a) * 1.6 * sz;
+      nozzle(x, z, 0.5);
+      const hit = W.jet([x, wy + 0.14, z], [-x * 0.75, 2.6, -z * 0.75], wy, 0.035, JET, { n: near ? 9 : 4, seg: near ? 6 : 3, r1: 0.05, ph: i });
+      W.splash(hit[0], wy + 0.012, hit[2], 0.06, 0.4, SURF, { T: 1.3, ph: i * 0.2 });
+    }
+    nozzle(0, 0, 0.6);
+    fountainJet(b, 0, wy + 0.16, 0, 0.7, wy, rnd, { r: 0.07, drops: 10, spread: 0.3 });
+    h = 2.2;
+  } else if (v.centre === 'insel') {
+    // Insel mit Busch (oder Entenhaus), davor ein Strahl
+    rocks(0, -0.7, 1.2, 0.45);
+    F.lathe(0, wy + 0.4, -0.7, [[0.7, 0], [0.5, 0.08], [0, 0.1]], PAL.grass[0], { seg: near ? 12 : 7 });
+    if (v.house) {
+      F.rod([0, wy + 0.4, -0.7], [0, wy + 1.3, -0.7], 0.05, CITY.wood, { seg: 6 });
+      b.at(0, wy + 1.3, -0.7, 0, () => {
+        F.rbox(0, 0, 0, 0.6, 0.42, 0.5, 0.03, CITY.wood, { seg: 1 });
+        F.ball(0, 0.2, 0.25, 0.1, CITY.woodDark, { ws: 8, hs: 4, sz: 0.2 });
+        F.extrude([[-0.38, 0.4], [0, 0.66], [0.38, 0.4]], -0.3, 0.3, PAL.red);
+      });
+    } else F.ball(0.1, wy + 0.85, -0.8, 0.45, CITY.leafDark, { ws: near ? 12 : 7, hs: near ? 8 : 5, sy: 0.9 });
+    nozzle(0, 1.0, 0.7);
+    fountainJet(b, 0, wy + 0.18, 1.0, 2.6, wy, rnd, { r: 0.05, drops: 16, spread: 0.35 });
+    W.splash(0, wy + 0.012, 1.0, 0.2, 1.0, SURF, { T: 1.8, w: 0.04, seg: 14 });
+    h = 3.0;
+  } else if (v.centre === 'figur') {
+    // Bronzefigur auf dem Felsen
+    rocks(0, -0.4, 1.0, 0.55);
+    const rc = b.recol;
+    b.recol = statueRecol('bronze', null, 0);
+    placeFigure(b, v.fig, 0, wy + 0.55, -0.4, v.fig === 'fisch' ? Math.PI / 2 : 0, 1.25);
+    b.recol = rc;
+    // gespien wird aus einem Löwenmaul vorn im Felsen, nicht von der Figur
+    mask(b, 0, wy + 0.36, 0.46, 0.7, mix(CITY.gold, 0x8a5a1c, 0.3));
+    const hit = W.jet([0, wy + 0.33, 0.56], [0, 0.6, 1.7], wy, 0.035, JET, { n: near ? 9 : 4, seg: near ? 6 : 3, r1: 0.05 });
+    W.splash(hit[0], wy + 0.012, hit[2], 0.08, 0.5, SURF, { T: 1.4 });
+    h = 2.3;
+  } else {
     // Düse auf einem kleinen Schwimmer
-    F.lathe(0, wy - 0.02, 0, [[0.3, 0], [0.3, 0.06], [0.1, 0.12], [0.07, 0.24]], PAL.steel, { seg: near ? 14 : 8, ks: [0.8, 1, 1, 1] });
-    fountainJet(b, 0, wy + 0.24, 0, 6.2, wy, rnd, { r: 0.07, drops: 30, spread: 0.55, size: 0.05 });
+    nozzle(0, 0);
+    const jh = v.h ?? 6.2;
+    fountainJet(b, 0, wy + 0.24, 0, jh, wy, rnd, { r: 0.07, drops: 30, spread: 0.55, size: 0.05 });
     for (let i = 0; i < 3; i++) W.splash(0, wy + 0.012, 0, 0.3, 1.7, SURF, { T: 2.1, ph: i / 3, w: 0.04, seg: 18 });
-    // Schilf, Seerosen
-    const reeds = (x, z, n, seed) => {
-      const r = rng(seed);
-      for (let i = 0; i < n; i++) {
-        const px = x + (r() - 0.5) * 0.7;
-        const pz = z + (r() - 0.5) * 0.5;
-        const h = 0.9 + r() * 0.7;
-        F.cyl(px, wy - 0.05, pz, 0.03, 0.012, h, CITY.leaf, { seg: 5, k: 0.9 + r() * 0.2 });
-        if (i % 2 === 0) F.lathe(px, wy + h - 0.1, pz, [[0.02, 0], [0.045, 0.04], [0.045, 0.2], [0.01, 0.26]], PAL.trunk, { seg: 6 });
+    h = jh + 0.5;
+  }
+  // Schilf, Seerosen
+  const reeds = (x, z, n, seed) => {
+    const r = rng(seed);
+    for (let i = 0; i < n; i++) {
+      const px = x + (r() - 0.5) * 0.7;
+      const pz = z + (r() - 0.5) * 0.5;
+      const rh = 0.9 + r() * 0.7;
+      F.cyl(px, wy - 0.05, pz, 0.03, 0.012, rh, CITY.leaf, { seg: 5, k: 0.9 + r() * 0.2 });
+      if (i % 2 === 0) F.lathe(px, wy + rh - 0.1, pz, [[0.02, 0], [0.045, 0.04], [0.045, 0.2], [0.01, 0.26]], PAL.trunk, { seg: 6 });
+    }
+  };
+  reeds(-3.6, -0.9, near ? 9 : 4, 3);
+  reeds(3.3, -1.5, near ? 7 : 3, 5);
+  if (near) {
+    const pads = [[-2.2, 1.2, 0.3, 1], [-1.7, 1.55, 0.24, 0], [-2.7, 1.5, 0.22, 0], [2.4, 1.3, 0.28, 1], [2.9, 0.9, 0.2, 0], [1.6, -1.9, 0.26, 1]];
+    if (v.lilies) pads.push([-3.1, 0.6, 0.26, 1], [-2.9, -0.2, 0.22, 0], [3.4, 0.2, 0.25, 1], [3.6, -0.5, 0.2, 1], [-1.2, -1.95, 0.24, 1], [0.4, -2.05, 0.22, 0]);
+    for (const [x, z, r, f] of pads) {
+      F.disc(x, wy + 0.015, z, r, 0x4f9a52, { up: true, seg: 12 });
+      if (f) blossom(b, x + 0.05, wy + 0.07, z, 0.09, v.lilies ? [0xf4a6c0, 0xffffff, 0xf7d36a][Math.round(x * 3 + 9) % 3] : 0xf4a6c0);
+    }
+    if (v.fauna === 'schwaene') {
+      swan(b, 1.7, wy, 0.9, 2.4);
+      swan(b, 2.5, wy, 0.35, 2.7);
+      W.splash(1.7, wy + 0.012, 0.9, 0.25, 0.7, SURF, { T: 2.6, ph: 0.3 });
+    } else if (v.fauna === 'koi') {
+      const KOI = [0xf08a3c, 0xf4f0e8, 0xe8553a, 0xf6b04a];
+      for (let i = 0; i < 7; i++) {
+        const a = i * 1.9 + 0.4;
+        const r = 1.9 + (i % 3) * 0.6;
+        b.at(Math.sin(a) * r, wy + 0.008, Math.cos(a) * r * sz, a + 1.3, () => {
+          F.ball(0, 0, 0, 0.16, KOI[i % 4], { ws: 8, hs: 3, sz: 2.2, sy: 0.25, lat: [0, Math.PI / 2] });
+          F.ball(0, 0, -0.33, 0.07, KOI[(i + 1) % 4], { ws: 6, hs: 2, sz: 1.4, sy: 0.2, lat: [0, Math.PI / 2] });
+        });
       }
-    };
-    reeds(-3.6, -0.9, near ? 9 : 4, 3);
-    reeds(3.3, -1.5, near ? 7 : 3, 5);
-    if (near) {
-      for (const [x, z, r, f] of [[-2.2, 1.2, 0.3, 1], [-1.7, 1.55, 0.24, 0], [-2.7, 1.5, 0.22, 0], [2.4, 1.3, 0.28, 1], [2.9, 0.9, 0.2, 0], [1.6, -1.9, 0.26, 1]]) {
-        F.disc(x, wy + 0.015, z, r, 0x4f9a52, { up: true, seg: 12 });
-        if (f) blossom(b, x + 0.05, wy + 0.07, z, 0.09, 0xf4a6c0);
-      }
+    } else if (v.fauna === 'froesche') {
+      frog(b, Math.PI / 2, 4.6, 0.12, wy);
+      frog(b, -Math.PI / 2, 4.6, 0.12, wy);
+      for (const [x, z] of [[-1.2, 1.7], [2.3, -1.1]]) b.xf([x, wy + 0.02, z], [0, x, 0], 0.55, () => F.ball(0, 0.12, 0, 0.2, 0x6fbf5a, { ws: 8, hs: 5, sy: 0.7 }));
+    } else {
       duck(b, 1.5, wy, 0.9, 2.2);
       duck(b, 2.05, wy, 0.55, 2.5, { col: 0xb08a6a, head: 0xb08a6a });
       W.splash(1.5, wy + 0.012, 0.9, 0.2, 0.6, SURF, { T: 2.4, ph: 0.3 });
       W.splash(2.05, wy + 0.012, 0.55, 0.2, 0.6, SURF, { T: 2.4, ph: 0.8 });
-      for (let i = 0; i < 5; i++) blossom(b, 4.9 + Math.sin(i * 2) * 0.2, 0.2, -1.4 + i * 0.2, 0.09, BLOOM[i % 4]);
-      bench(b, -4.6, 0, 3.0, Math.PI + 0.9);
     }
-    return { w: 11.2, d: 7.4, h: 6.7, r: 5.6, title: 'Fontäne im Teich', size: 'stadt', water: wy, flat: true, cam: { pos: [1.6, 1.2, 6.2], look: [0, 2.2, 0] } };
-  },
-};
+    for (let i = 0; i < 5; i++) blossom(b, 4.9 + Math.sin(i * 2) * 0.2, 0.2, -1.4 + i * 0.2, 0.09, BLOOM[i % 4]);
+    bench(b, -4.6, 0, 3.0, Math.PI + 0.9);
+  }
+  return { w: 11.2, d: 7.4, h, r: 5.6, title: v.t, size: 'stadt', water: wy, flat: true, cam: { pos: [1.6, 1.2, 6.2], look: [0, 2.2, 0] } };
+}
+defs.fountainPond = { kind: 'fountain', far: true, fade: 1.4, low: 0.86, make: (b) => pondFountain(b, POND_V[0]) };
+
+// Die Spielarten der Nebenbrunnen als eigene Bausteine ('fountainDrink~1' …): gleiche Grundfläche wie die Art
+for (const [kind, list, fn] of [['fountainDrink', DRINK_V, drinkFountain], ['fountainPond', POND_V, pondFountain], ['fountainJets', JETS_V, jetsFountain]]) {
+  const base = defs[kind];
+  list.forEach((v, i) => {
+    if (i) defs[variantName(kind, i)] = { kind: 'fountain', far: base.far, fade: base.fade, low: base.low, variant: kind, make: (b) => fn(b, v) };
+  });
+}
 
 // --- 9. Der Ursprung (Augsburg): achteckiger Marktbrunnen mit goldener Zirbelnuss und Emailleschild -----------------
 // Das Schild sitzt auf der vorderen Seite des achteckigen Beckens: flach auf flach, nichts schwebt.
