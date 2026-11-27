@@ -583,4 +583,79 @@ function houseSide(out, rnd, ctx, s0, s1, side) {
   }
 }
 
-export { forestSide, openSide, fieldSide, houseSide, spot };
+/**
+ * Dorf am Rand einer Landstraße (wo die Karte Siedlung zeigt, landcover.js): Gruppen aus zwei bis vier Häusern, mal
+ * näher, mal weiter von der Straße, Schauseite zur Straße, Gärten mit Bäumen dahinter, zwischen den Gruppen Wiese
+ * mit Obstbäumen. Dieselben Häuser wie houseSide, nur lockerer (dort steht eine geschlossene Reihe).
+ */
+function hamletSide(out, rnd, ctx, s0, s1, side) {
+  let s = s0 + 6 + rnd() * 14;
+  while (s < s1 - 10) {
+    const n = 2 + Math.floor(rnd() * 3);
+    const back = 2.5 + rnd() * 9; // Vorgarten
+    for (let i = 0; i < n && s < s1 - 8; i++) {
+      const k = rnd() < 0.12 ? 3 : Math.floor(rnd() * 3);
+      const { w, d, h } = HOUSES[k];
+      const sc = s + w / 2;
+      if (sc + w / 2 > s1) break;
+      const x = spotSpan(ctx, sc, w, side, back + (rnd() - 0.5) * 2 + d / 2);
+      if (x !== null && !ctx.blocked(x, sc, Math.max(w, d) / 2 + 0.5)) {
+        const wall = pickOf(rnd, PAL.wall);
+        const roof = pickOf(rnd, PAL.roof);
+        const rh = 0.32 * d + rnd() * 0.14 * d;
+        const rot = side < 0 ? 0 : Math.PI;
+        addProp(out, T.house, x, sc, d, h, w, rot, wall);
+        addProp(out, T.gable, x, sc, d, rh, w, rot, wall, h);
+        addProp(out, T.roof, x, sc, d, rh, w, rot, roof, h);
+        addProp(out, T['win' + k], x, sc, 1, 1, 1, rot, 0xffffff);
+        // Garten hinter dem Haus: ein, zwei Bäume, vorn mal ein Busch
+        for (let t = 0; t < 1 + Math.floor(rnd() * 2); t++) {
+          const gx = x + side * (d / 2 + 3 + rnd() * 6);
+          const gs = sc + (rnd() - 0.5) * w;
+          if (ctx.blocked(gx, gs, 2)) continue;
+          const kk = 0.8 + rnd() * 0.45;
+          addProp(out, rnd() < 0.75 ? T.decid : T.conifer, gx, gs, kk, kk, kk, rnd() * 6.3, tint(rnd));
+        }
+        if (rnd() < 0.5) {
+          const bx = x - side * (d / 2 + 1.2);
+          const bs = sc + (rnd() - 0.5) * w * 0.8;
+          const kk = 0.55 + rnd() * 0.3;
+          if (!ctx.blocked(bx, bs, 1)) addProp(out, T.bush, bx, bs, kk, kk, kk, rnd() * 6.3, tint(rnd));
+        }
+      }
+      s += w + 3 + rnd() * 6;
+    }
+    // Lücke mit Obstwiese
+    const gap = 18 + rnd() * 40;
+    for (let t = s + 4; t < Math.min(s + gap - 4, s1); t += 7 + rnd() * 5) {
+      const x = spot(ctx, t, side, 5 + rnd() * 16);
+      if (x === null || ctx.blocked(x, t, 3)) continue;
+      const kk = 0.75 + rnd() * 0.3;
+      addProp(out, T.decid, x, t, kk, kk * 0.9, kk, rnd() * 6.3, tint(rnd));
+    }
+    s += gap;
+  }
+}
+
+/**
+ * Offene Wiese (wo die Karte weder Wald noch Acker noch Dorf zeigt): Weideland mit einzelnen Bäumen, Buschgruppen und
+ * ab und zu einer Baumreihe am Bach, ohne die Feldhecken der Äcker.
+ */
+function meadowSide(out, rnd, ctx, s0, s1, side) {
+  for (let s = s0 + rnd() * 60; s < s1; s += 45 + rnd() * 110) {
+    const x = spot(ctx, s, side, 12 + rnd() * 40);
+    if (x === null || ctx.blocked(x, s, 4)) continue;
+    const k = 1.2 + rnd() * 0.6;
+    addProp(out, T.decid, x, s, k, k * (0.9 + rnd() * 0.2), k, rnd() * 6.3, tint(rnd));
+    // ein paar Büsche um den Baum
+    for (let b = 0; b < Math.floor(rnd() * 4); b++) {
+      const bs = s + (rnd() - 0.5) * 10;
+      const bx = x + (rnd() - 0.5) * 8;
+      if (bs < s0 || bs >= s1 || ctx.blocked(bx, bs, 1.5)) continue;
+      const kk = 0.6 + rnd() * 0.5;
+      addProp(out, T.bush, bx, bs, kk, kk, kk, rnd() * 6.3, tint(rnd));
+    }
+  }
+}
+
+export { forestSide, openSide, fieldSide, houseSide, hamletSide, meadowSide, spot };

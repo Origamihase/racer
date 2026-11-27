@@ -22,6 +22,8 @@ import { PAVEMENT } from '../kit/street.js';
 import { squareOf, squareWeight, kitTown } from './plan.js';
 import { chargeOf, kerbAt } from './charge.js';
 import { bridgeCuts } from './bridgeplan.js';
+import { fieldsOf, CROPS } from './fieldplan.js';
+import { fieldTexture, FIELD_V } from './fieldtex.js';
 
 export const AB_EDGE = 10.5; // Asphaltrand der Autobahn (ROAD.right)
 export const AB_RAIL = 11.05; // Schutzplanke der Autobahn (ROAD.right + 0.55)
@@ -264,6 +266,8 @@ function tilesTexture(colors, cols, rows) {
   t.anisotropy = 8;
   return t;
 }
+const GROUND_Y_FIELD = -0.02; // auf Höhe des Bodens (ground.js GROUND_Y), der Polygon-Versatz hebt die Äcker darüber
+
 /** Meter je Kachel längs: zwei Pflasterreihen von 0,5 m bzw. zwei Platten von 1 m; quer liegen drei Platten. */
 const STRIP_TILE = 1;
 const WALK_TILE = 2;
@@ -378,6 +382,8 @@ export class RoadMaterials {
     this.paveMats = new Map([['platten', { strip: this.strip, walk: this.walk }]]);
     this.cobble = W.std({ map: cobbleTexture(), roughness: 0.82, envMapIntensity: 0.6 });
     this.solid = W.std({ vertexColors: true, roughness: 0.6, metalness: 0.1 });
+    // Äcker (fieldplan.js): Farbe der Feldfrucht je Ecke, Reihen aus der Textur
+    this.field = W.lambert({ map: fieldTexture(), vertexColors: true, side: THREE.DoubleSide, ...LAYER.patch });
     this.wet = 0;
   }
 
@@ -403,6 +409,7 @@ export class RoadMaterials {
     this.cobble.envMapIntensity = 0.6 + w * 0.8;
     this.rail.roughness = 0.38 - w * 0.2;
     this.grass.color.setScalar(1 - w * 0.25);
+    this.field.color.setScalar(1 - w * 0.3);
     this.mark.roughness = this.mark2.roughness = 0.62 - w * 0.4;
   }
 }
@@ -772,6 +779,44 @@ export function buildPiece(mats, sec, prev, next, sa, sb, inCurve) {
     }
   }
 
+  // --- Äcker neben Landstraße und Zubringer (fieldplan.js) ---------------------------------------------------------
+  const fieldBuf = new GeoBuf({ color: true });
+  {
+    const XF = {};
+    const tone = new THREE.Color();
+    for (const f of fieldsOf(sec)) {
+      const a = Math.max(f.s0, sa);
+      const b = Math.min(f.s1, sb);
+      if (b - a < 0.25) continue;
+      const C = CROPS[f.crop];
+      // jedes Feld etwas anders: Helligkeit und Ton aus seiner Lage
+      const h = Math.sin(f.s0 * 12.9898 + f.d0 * 78.233) * 43758.5453;
+      const jit = h - Math.floor(h);
+      tone.setRGB(C.rgb[0] * (0.92 + jit * 0.14), C.rgb[1] * (0.92 + jit * 0.12), C.rgb[2] * (0.94 + jit * 0.1), THREE.SRGBColorSpace);
+      const step = inCurve ? 3 : 8;
+      let last = -1;
+      for (let s = a; ; s = Math.min(b, s + step)) {
+        crossSection(sec, prev, next, s, XF);
+        const band = XF.kerb ? KERB.pave + KERB.garden : XF.rails ? Math.max(VERGE, 1.6) : XF.verge;
+        const edge = (f.side < 0 ? XF.aL - band : XF.aR + band) + off(s);
+        const x0 = edge + f.side * f.d0;
+        const x1 = edge + f.side * f.d1;
+        const z = -(s - sRef);
+        const u0 = f.along ? f.d0 / C.row : s / C.row;
+        const u1 = f.along ? f.d1 / C.row : s / C.row;
+        const v0 = f.along ? s / FIELD_V : f.d0 / FIELD_V;
+        const v1 = f.along ? s / FIELD_V : f.d1 / FIELD_V;
+        const i0 = fieldBuf.vert(x0, GROUND_Y_FIELD, z, 0, 1, 0, u0, v0);
+        const i1 = fieldBuf.vert(x1, GROUND_Y_FIELD, z, 0, 1, 0, u1, v1);
+        fieldBuf.color(tone.r, tone.g, tone.b);
+        fieldBuf.color(tone.r, tone.g, tone.b);
+        if (last >= 0) fieldBuf.quad(last, last + 1, i1, i0);
+        last = i0;
+        if (s >= b) break;
+      }
+    }
+  }
+
   const g = new THREE.Group();
   g.position.z = -sRef;
   const add = (buf, mat, shadow = true) => {
@@ -794,6 +839,7 @@ export function buildPiece(mats, sec, prev, next, sa, sb, inCurve) {
   add(cobble, mats.cobble);
   add(marks, mats.mark);
   add(rails, mats.rail);
+  add(fieldBuf, mats.field);
   const sg = solid.build();
   if (sg) {
     const m = new THREE.Mesh(sg, mats.solid);

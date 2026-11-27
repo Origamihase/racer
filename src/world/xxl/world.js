@@ -21,7 +21,9 @@ import { RoadMaterials, buildPiece, VIS, VERGE, KERB, AB_EDGE, RAIL_U, ISLAND_H,
 import { Towns } from './towns.js';
 import { Bridges, bridgesOf, inWater } from './bridges.js';
 import { RiverBands, bandsOf, inBand } from './riverbands.js';
-import { PropSet, PROP, addProp, forestSide, openSide, fieldSide, houseSide } from './forest.js';
+import { PropSet, PROP, addProp, forestSide, openSide, fieldSide, houseSide, hamletSide, meadowSide } from './forest.js';
+import { sectionCover, coverKindAt } from './landcover.js';
+import { fieldsOf, inField } from './fieldplan.js';
 import { Junctions, closeLine } from './junction.js';
 import { Signs } from './signs.js';
 import { tableAt, tableS } from './signplan.js';
@@ -60,6 +62,7 @@ export class XxlWorld {
     this.scenery = scenery;
     scenery.keepOut = (x, s) => this.sceneryKeepOut(x, s);
     scenery.noCross = (s0, s1) => this.sceneryNoCross(s0, s1);
+    scenery.coverKind = (s, side) => this.sceneryCover(s, side);
     // keine Zufallstexte auf Schildern (COMMON.md 9): die Schilderbrücken tragen Entfernungstafeln aus der Fahrt
     scenery.gantryTexts = (s) => this.gantryTexts(s);
     this.ground = new Ground(this.root);
@@ -501,6 +504,13 @@ export class XxlWorld {
       // Wasser und an den Ufern unter einer Brücke auch nicht
       blocked: (x, s, r) => {
         if (wet.length && inWater(wet, x, s, r + 3)) return true;
+        // auf den Äckern wächst nichts (nur an ihren Rainen, siehe unten)
+        if (fields.length) {
+          const eR = ctx.edge(s, 1); // rechnet X für s
+          const side = x < (X.aL + X.aR) / 2 + off(s) ? -1 : 1;
+          const e = side > 0 ? eR : ctx.edge(s, -1);
+          if (inField(fields, side, side * (x - e), s, r)) return true;
+        }
         if (banks.length && inBand(banks, x, s, r + 2)) return true;
         if (!st || x > Math.max(st.near, st.far)) return false;
         if (s > st.s - st.w / 2 - 3 - r && s < st.s + st.w / 2 + 3 + r && x > st.x1 - 9) return true;
@@ -508,6 +518,7 @@ export class XxlWorld {
       },
     };
     const st = stubOf(sec, prev, next);
+    const fields = fieldsOf(sec);
     const wet = bridgesOf(sec);
     const banks = bandsOf(sec);
     const inForest = (a, b) => forest.filter((r) => r.s1 > a && r.s0 < b).map((r) => [Math.max(a, r.s0), Math.min(b, r.s1)]);
@@ -551,16 +562,37 @@ export class XxlWorld {
         else addProp(out, PROP.bench, x - 0.3, s1, 1, 1, 1, -Math.PI / 2, 0xffffff);
       }
     }
+    // Landschaft der Karte neben der Straße (landcover.js): Wald, Dorf, Acker, Wiese je Seite, wie das Navi sie zeigt
+    const base = sec.orig || sec;
+    const cover = !town && sec.kind !== 'ramp' && sec.kind !== 'auf' ? sectionCover(base) : null;
+    const alley = sec.kind === 'land' && rnd() < 0.4;
     for (const [a, b, wood] of kit ? [] : segs) {
       for (const side of [-1, 1]) {
         if (wood) forestSide(out, rnd, ctx, a, b, side, 22);
         else if (town) houseSide(out, rnd, ctx, a, b, side);
         else if (sec.kind === 'ramp' || sec.kind === 'auf') openSide(out, rnd, ctx, a, b, side, false);
-        else {
-          openSide(out, rnd, ctx, a, b, side, sec.kind === 'land' && rnd() < 0.4);
+        else if (cover) {
+          for (const [r0, r1, kind] of side < 0 ? cover.left : cover.right) {
+            const ra = Math.max(a, base.s0 + r0);
+            const rb = Math.min(b, base.s0 + r1);
+            if (rb - ra < 1) continue;
+            if (kind === 'wald') forestSide(out, rnd, ctx, ra, rb, side, 22);
+            else if (kind === 'dorf') hamletSide(out, rnd, ctx, ra, rb, side);
+            else if (kind === 'feld') {
+              openSide(out, rnd, ctx, ra, rb, side, alley);
+              fieldSide(out, rnd, ctx, ra, rb, side);
+            } else {
+              openSide(out, rnd, ctx, ra, rb, side, alley);
+              meadowSide(out, rnd, ctx, ra, rb, side);
+            }
+          }
+        } else {
+          openSide(out, rnd, ctx, a, b, side, alley);
           fieldSide(out, rnd, ctx, a, b, side);
         }
       }
+      // Hecken und Bäume an den Rainen zwischen den Äckern, eine Baumreihe dahinter
+      if (!wood && fields.length) fieldHedges(out, rnd, ctx, fields, a, b);
       // Lichtungen mit kleinen Freuden im Wald: ein Reh, ein Hochsitz, eine Bank
       if (wood && b - a > 120) {
         const s1 = a + 40 + rnd() * (b - a - 80);
@@ -591,6 +623,17 @@ export class XxlWorld {
       if (u >= 0 && u < TERRITORY && x > (AB_EDGE + VIS.rampe.aL + rampR(u)) / 2 - 8) return true;
     }
     return false;
+  }
+  /** Landschaft der Karte neben der gezeichneten Autobahn bei s (landcover.js): Art, null (keine Daten) oder undefined (dort noch keine Strecke). */
+  sceneryCover(s, side) {
+    const v = this.view;
+    if (!v) return undefined;
+    for (const c of v.secs) {
+      if (s < c.s0 || s >= c.s1) continue;
+      const base = c.orig || c;
+      return coverKindAt(base, s - base.s0, side);
+    }
+    return undefined;
   }
   /** true, wenn im Stück [s0, s1] keine Brücken, Schilderbrücken oder Wände stehen dürfen. */
   sceneryNoCross(s0, s1) {
@@ -685,5 +728,31 @@ export class XxlWorld {
       view: v ? { role: v.role, frame: v.frame, s0: v.s0, s1: v.s1 } : null,
       pieces: this.pieces.size, frames: this.frames.byId.size, towns: this.towns.items.size,
     };
+  }
+}
+
+/**
+ * Hecken an den Rainen der Äcker (fieldplan.js) im Stück [a, b]: quer an jedem zweiten Ende eines Felds, dazu hinter
+ * tiefen Feldern eine lockere Baumreihe. Nur Büsche und Bäume aus forest.js; ctx.blocked hält sie von den Flächen fern.
+ */
+function fieldHedges(out, rnd, ctx, fields, a, b) {
+  for (const f of fields) {
+    const sh = f.s1 + 1.4;
+    if (sh >= a && sh < b && rnd() < 0.55) {
+      for (let d = f.d0 + 1; d < f.d1 - 1; d += 2.2 + rnd() * 0.8) {
+        const x = ctx.edge(sh, f.side) + f.side * d;
+        const k = 0.75 + rnd() * 0.45;
+        if (rnd() < 0.12) addProp(out, PROP.decid, x, sh + (rnd() - 0.5) * 0.6, k * 1.3, k * 1.35, k * 1.3, rnd() * 6.3, 0xffffff);
+        else addProp(out, PROP.bush, x, sh + (rnd() - 0.5) * 0.6, k * 1.1, k * (0.85 + rnd() * 0.3), k * 1.1, rnd() * 6.3, 0xffffff);
+      }
+    }
+    // Baumreihe hinter dem Feld
+    if (rnd() < 0.4) {
+      for (let s = Math.max(a, f.s0); s < Math.min(b, f.s1); s += 7 + rnd() * 6) {
+        const x = ctx.edge(s, f.side) + f.side * (f.d1 + 3 + rnd() * 2);
+        const k = 1.1 + rnd() * 0.4;
+        addProp(out, rnd() < 0.75 ? PROP.decid : PROP.conifer, x, s, k, k * (0.9 + rnd() * 0.2), k, rnd() * 6.3, 0xffffff);
+      }
+    }
   }
 }

@@ -225,6 +225,7 @@ const { MAP_SOURCES, TERRAIN_NOTICES } = await import('../src/map/credits.js');
   for (const lead of ['Europe', 'Global ETOPO1', 'United States 3DEP']) ok(TERRAIN_NOTICES.some((n) => n.text.startsWith(lead)), `Hinweis „${lead} …“ fehlt`);
   ok(MAP_SOURCES.some((q) => q.name === 'GeoNames' && /geonames\.org/.test(q.url) && q.license === 'CC BY 4.0' && /creativecommons\.org\/licenses\/by\/4\.0/.test(q.licenseUrl) && q.changed), 'GeoNames ohne Link, Lizenz oder Hinweis auf die Anpassung');
   ok(MAP_SOURCES.some((q) => q.name === 'Natural Earth' && /naturalearthdata\.com/.test(q.url)) && MAP_SOURCES.some((q) => q.name === 'Terrain Tiles'), 'Natural Earth oder Terrain Tiles fehlen');
+  ok(MAP_SOURCES.some((q) => /WorldCover/.test(q.name) && q.license === 'CC BY 4.0' && /creativecommons/.test(q.licenseUrl) && /Copernicus Sentinel/.test(q.by) && q.changed), 'ESA WorldCover ohne Nachweis, Lizenz oder Hinweis auf die Anpassung');
   console.log(`Kartendaten: ${TERRAIN_NOTICES.length} Hinweise der Höhenquellen passen zur Karte (${cc.size} Länder, nördlichster Knoten ${north.toFixed(1)}°)`);
 }
 

@@ -1,7 +1,7 @@
 // Woher die Daten der Karte kommen und was ihre Lizenzen verlangen – für „Über das Spiel“ (src/ui/menus.js).
-// Quellen und Wege stehen in tools/map/README.md („Quellen und Lizenzen“). Zwei der drei Quellen bitten um einen
-// Nachweis dort, wo die Daten benutzt werden: GeoNames (CC BY 4.0: Quelle und Lizenz nennen und sagen, dass die Daten
-// angepasst wurden) und die Quellen der Höhenkacheln mit ihren Hinweisen im Wortlaut.
+// Quellen und Wege stehen in tools/map/README.md („Quellen und Lizenzen“). Drei der vier Quellen bitten um einen
+// Nachweis dort, wo die Daten benutzt werden: GeoNames und ESA WorldCover (CC BY 4.0: Quelle und Lizenz nennen und
+// sagen, dass die Daten angepasst wurden) und die Quellen der Höhenkacheln mit ihren Hinweisen im Wortlaut.
 
 /**
  * Die Quellen der Karte: was (what), von wem (name, url), unter welcher Lizenz (license, optional mit licenseUrl) und
@@ -14,6 +14,11 @@ export const MAP_SOURCES = [
     license: 'CC BY 4.0', licenseUrl: 'https://creativecommons.org/licenses/by/4.0/deed.de', changed: 'Auswahl und Namen fürs Spiel angepasst',
   },
   { what: 'Höhen', name: 'Terrain Tiles', by: 'Mapzen, AWS Open Data' },
+  {
+    what: 'Wald, Siedlungen und Äcker', name: 'ESA WorldCover 2021', url: 'https://esa-worldcover.org/',
+    by: '© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium',
+    license: 'CC BY 4.0', licenseUrl: 'https://creativecommons.org/licenses/by/4.0/deed.de', changed: 'vergröbert und zu Wald, Siedlung, Acker und Fels zusammengefasst',
+  },
 ];
 
 /**

@@ -247,6 +247,27 @@ einen Weg übers Wasser. Jede Entscheidung mit Grund steht in `verlauf.log`.
   EU-DEM: Produced using Copernicus data and information funded by the European Union – EU-DEM layers
 - Küsten und Grenzen der Prüfbilder: Natural Earth (gemeinfrei), als TopoJSON aus dem Paket world-atlas
 - Orte: GeoNames (CC BY 4.0)
+- Wald, Siedlungen, Äcker, Fels und Eis: ESA WorldCover 2021 v200 (CC BY 4.0): © ESA WorldCover project 2021 /
+  Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium
+
+## Landschaft (`landschaft.mjs` → `src/map/landscape-data.js`)
+
+Relief, Wald, Siedlungsflächen, Äcker sowie Fels und Eis der großen Karte und des Navis, und dieselben Daten für die
+Welt: Wald, Dörfer, Wiesen und Felder neben der Straße (`src/world/xxl/landcover.js`, `fieldplan.js`), der Horizont
+mit den Bergen der Gegend (`src/map/skyline.js`). COMMON.md §9: das Navi zeigt nur, was die Welt hat.
+
+    node tools/map/landschaft.mjs --arbeit <Zwischenspeicher>
+
+- **Bedeckung**: ESA WorldCover 2021 v200 (10 m, Cloud Optimized GeoTIFF auf AWS Open Data), gelesen über HTTP-Range
+  aus den Übersichtsstufen der 3°-Kacheln (`geotiff`, nur Entwicklungsabhängigkeit). Je Zelle des Rasters die Anteile
+  Wald (Klasse 10), Siedlung (50), Acker (40) und Fels/Eis (60, 70), in einem Byte: Bits 0–1 Wald 0..3, 2–3 Siedlung
+  0..3, 4 überwiegend Acker, 5 Fels/Eis.
+- **Höhen**: Terrain Tiles (Terrarium, z6/z5, `pngjs`), gespeichert als √(h/4800)·255, zeilenweise als Differenzen.
+- Zwei Raster in Kartenkoordinaten: fein über Mitteleuropa (Länge 2–20°, Breite 44,5–56°; Bedeckung 1/40, Höhe 1/24
+  Einheit), grob über Europa (Länge −11–31°, Breite 35–70°; 1/12 und 1/8 Einheit). Alles gepackt (deflate-raw,
+  base64, rund 490 KB), im Spiel einmal beim Start ausgepackt (`src/map/landscape.js`).
+- Die Schwellen der Karte (`src/map/landpaint.js` FOREST_T, URBAN_T) sind so gewählt, dass die gemalte Waldfläche
+  dem Waldanteil von WorldCover entspricht; `tools/landschaft-test.mjs` prüft das.
 
 ## Küsten, Grenzen und Länder (`land.mjs` → `src/map/land.js`)
 

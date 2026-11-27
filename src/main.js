@@ -50,6 +50,8 @@ import { Menus } from './ui/menus.js';
 import { bindFullscreenKey, onFullscreenChange } from './ui/fullscreen.js';
 import { SHOP, UPGRADE_LIMITS, shopPrice, canBuy } from './data.js';
 import { NavModel } from './map/navroute.js';
+import { loadLandscape } from './map/landscape.js';
+import { skyline } from './map/skyline.js';
 import { nextStart, startNode } from './game/starts.js';
 import { setRoadAhead, setTownLayout, setBridgeReach, setBandReach } from './map/roadahead.js';
 import { recordVisit } from './ui/mapscreen.js';
@@ -1702,7 +1704,8 @@ function step(dt, { render = true } = {}) {
       const st = course.fill(courseTrip, s, curveTable, dt);
       courseEnv.kappa = st.kappa;
       courseEnv.grade = st.grade;
-      sky.turn(st.psi);
+      // Prüfstand: Blickrichtung des Horizonts festhalten (__MA.horizonAt)
+      sky.turn(DEBUG && window.__MA && window.__MA.skyPsi != null ? window.__MA.skyPsi : st.psi);
       skyView.mapX = st.mapX;
       skyView.mapZ = st.mapZ;
     }
@@ -1869,6 +1872,7 @@ function xxlStart(title) {
   p.speed = title ? 0 : 40 / 3.6;
   xxl.update(p.s, p.x, 0);
   xxlNav.update(0);
+  xxlHorizon(true);
   p.setLimits(xxl.limitsFor(xxlLimits));
   scenery.reset();
   if (atCharger) chargeRun.parked = chargePlug();
@@ -1885,10 +1889,26 @@ function xxlSignShear(sec, path) {
   } else if (!path || !xxl.trip.visible(sec, path)) return null; // ohne Weg: längst zurückgelassen
   return xxl.shear.get(sec.frame) || null;
 }
+// Horizont der Gegend (map/skyline.js): neu gerechnet, sobald der Wagen ein Stück weiter ist (Kartenmaß), der Himmel
+// führt die Hügelketten dann in einigen Sekunden weich in die neue Form
+const HORIZON = { km: 2.5, n: 180 };
+const horizonAt = { x: NaN, y: NaN };
+function xxlHorizon(snap = false) {
+  if (DEBUG && window.__MA && window.__MA.skyPsi != null) return;
+  const P = xxlNav.pose;
+  const kpu = 111.32 * Math.cos(2 * Math.atan(Math.exp((-P.y * Math.PI) / 180)) - Math.PI / 2);
+  if (!snap && Math.hypot(P.x - horizonAt.x, P.y - horizonAt.y) * kpu < HORIZON.km) return;
+  const sk = skyline(P.x, P.y, HORIZON.n);
+  if (!sk) return;
+  horizonAt.x = P.x;
+  horizonAt.y = P.y;
+  sky.setSkyline(sk, snap);
+}
 /** Einmal pro Bild nach der Bewegung: Strecke und Navi fortschreiben, Grenzen setzen, Verkehr und Sammelsachen einordnen. */
 function xxlStep(p, w, dt) {
   xxl.update(p.s, p.x, w, p.speed, simT);
   xxlNav.update(dt);
+  xxlHorizon();
   p.setLimits(xxl.limitsFor(xxlLimits));
   const v = xxl.view;
   const frame = v ? v.frame : null;
@@ -1937,6 +1957,18 @@ function boot() {
   // compile geht auch an unsichtbaren Teilen vorbei (Schadensbild, Wölkchen); nur was erst später entsteht, muss
   // hier kurz da sein: das offene Fahrerfenster (eigenes Programm, BrunnenTV) und der Vorpass der nassen Scheibe
   tesla.setWindow(0.01);
+  // was nicht an jedem Ladepark des Titels liegt (die Karte entscheidet, ob dort Äcker oder ein Dorf mit Kirche sind):
+  // Äcker der Landstraße und der Autobahn, Schmuck der Dorfkirche – je ein unsichtbar kleines Stück zum Übersetzen
+  const fieldGeo = new THREE.BufferGeometry();
+  fieldGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, -50, 0, 0.01, -50, 0, 0, -50, 0.01], 3));
+  fieldGeo.setAttribute('color', new THREE.Float32BufferAttribute([1, 1, 1, 1, 1, 1, 1, 1, 1], 3));
+  fieldGeo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1], 2));
+  const fieldWarm = [xxl.mats.field, scenery.mats.field, W.lambert({ vertexColors: true })].map((m) => {
+    const mesh = new THREE.Mesh(fieldGeo, m);
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+    return mesh;
+  });
   try {
     // jedes Programm so, wie das erste Bild es braucht: Welt und Facecam zeichnen in ein Render-Ziel (ohne Tone-Mapping,
     // linear – ohne das gebundene Ziel übersetzte das erste Bild die ganze Welt noch einmal), Cockpit und Quads direkt
@@ -1961,6 +1993,8 @@ function boot() {
     renderer.setRenderTarget(null);
   }
   tesla.setWindow(0);
+  for (const m of fieldWarm) scene.remove(m);
+  fieldGeo.dispose();
   performance.mark('ma:compiled');
   state = 'title';
   menus.show('title', save);
@@ -2072,12 +2106,23 @@ if (DEBUG) {
     },
   };
   installDebug(window.__MA, xxl, () => game.player, {
-    afterWarp: () => { traffic.reset(); gegen.reset(); pickups.reset(); scenery.reset(); },
+    afterWarp: () => { traffic.reset(); gegen.reset(); pickups.reset(); scenery.reset(); xxlNav.update(0); xxlHorizon(true); },
     // ein Sprung plant den Kurs unterwegs wie eine Fahrt mit 30 m/s (ohne die Tabelle des Shaders zu schreiben)
     eachStep: (s, step) => course.fill(xxl.trip, s, null, step / 30),
   });
   window.__MA.kit = { ...window.__MA.kit, nature: createNatureKit(W) };
   window.__MA.gegen = gegen;
+  window.__MA.pose = () => xxlNav && { ...xxlNav.pose };
+  // Horizont von (lat, lon) mit Blick nach bearing (Grad, im Uhrzeigersinn ab Norden); null: wieder der Fahrt folgen
+  window.__MA.horizonAt = (lat, lon, bearing) => {
+    if (lat == null) {
+      window.__MA.skyPsi = null;
+      return xxlHorizon(true);
+    }
+    const y = -Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) * (180 / Math.PI);
+    window.__MA.skyPsi = (-bearing * Math.PI) / 180;
+    sky.setSkyline(skyline(lon, y, HORIZON.n), true);
+  };
 }
 
 /** Prüfstand: den Spieler an die Stelle s setzen (Verkehr, Sammelsachen und Landschaft neu). */
@@ -2090,4 +2135,5 @@ function teleport(sNew) {
   scenery.update(sNew, 0);
 }
 
-boot();
+// die Landschaft der Karte (Relief, Wald, Siedlungen) erst auspacken: Karte, Navi und Welt bauen darauf
+loadLandscape().catch((e) => console.warn('Landschaft nicht geladen', e)).finally(boot);
