@@ -382,7 +382,7 @@ let stream12 = [];
     limitsFor(trip, lim, arrival.stop(trip));
     p.setLimits(lim);
     const want = autoTarget(trip);
-    const dx = want - (p.x + p.vx * AUTO.look);
+    const dx = game.bau.steer(want, p.s) - (p.x + p.vx * AUTO.look); // (Baustelle: in der Gasse, game/baustelle.js)
     ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
     ctl.throttle = p.speed < Math.min(lim.vmax, 120 / 3.6) - 0.5 ? 1 : 0;
     game.offAutobahn = trip.section.kind !== 'ab';

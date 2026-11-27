@@ -303,6 +303,9 @@ let parkLine = '';
    */
   const charge = ({ seed, mid = -1, skip = -1, after = 0, park = false }) => {
     const S = makeStream({ driver: DRIVERS.zuegig, seed, endless: true, wallet: -500, charge: true });
+    // (ohne Baustelle: Ihre 80 km/h verschieben die Fahrt so, dass vor der nächsten Ankunft ein zweiter Ladestopp
+    // fällig wird – geprüft wird hier die Rundenzeile des einen Stopps)
+    S.game.bau.next = Infinity;
     const g = S.game;
     const p = g.player;
     const toasts = [];

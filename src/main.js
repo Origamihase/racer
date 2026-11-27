@@ -406,6 +406,7 @@ const uiFacade = {
   damage: () => ui.damage(),
   jobs: (j) => ui.jobs(j),
   jobDone: (text) => ui.jobDone(text),
+  wette: (row) => ui.wette(row),
   photo: (kmh, clock, limit) => {
     photoRequest = { kmh, clock, limit };
   },
@@ -1957,7 +1958,8 @@ function xxlStep(p, w, dt) {
 function xxlAuto(p, ctl) {
   let k = 0;
   for (let d = 0; d <= AUTO.ahead; d += 20) k = Math.max(k, Math.abs(curveAt(d).k));
-  autoDrive(ctl, p, autoTarget(xxl.trip, xxl.choice), xxlLimits.vmax, k);
+  // (in einer Baustelle mitten durch die Gasse und mit ihren 80: game/baustelle.js)
+  autoDrive(ctl, p, game.bau.steer(autoTarget(xxl.trip, xxl.choice), p.s), Math.min(xxlLimits.vmax, game.bau.zoneLimit(p.s)), k);
 }
 
 /** Start: Welt der Titelfahrt, Shader, Titel (die Marken ma:… messen die Ladezeit). */

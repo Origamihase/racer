@@ -108,9 +108,12 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
         want = 5.625;
         if (f && !f.taken && f.s - trip.s < J.decel - 10 && (f.forced || trip.planFor(f) === 'exit')) want = J.L0;
       }
+      // (in der Baustelle mitten in der Gasse – ein braver Fahrer streift keine Bake, game/baustelle.js steer)
+      want = game.bau.steer(want, p.s);
       const dx = want - (p.x + p.vx * AUTO.look);
       ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
-      const v = Math.min(lim.vmax, driver.cruise / 3.6);
+      // (die 80 der Baustelle hält er ein, game/baustelle.js zoneLimit)
+      const v = Math.min(lim.vmax, driver.cruise / 3.6, game.bau.zoneLimit(p.s));
       const idle = game.t < waitUntil;
       ctl.throttle = !idle && p.speed < v - 0.5 ? 1 : 0;
       ctl.brake = idle ? 1 : p.speed > v + 3 ? 0.4 : 0;

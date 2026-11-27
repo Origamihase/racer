@@ -86,6 +86,21 @@ export const STAMM_LINES = {
   },
 };
 
+// Baustelle (game/baustelle.js): omi kündigt sie an (das Schild steht einen Kilometer davor) · chatSign danach ·
+// chatStart an den ersten Baken · touch eine Bake gestreift · clean sauber durch (cleanFast: mit Tempo) · messy mit
+// Berührungen ({n}: so viele)
+export const BAUSTELLE_LINES = {
+  omi: 'Achtung, Baustelle in einem Kilometer. Die linken Spuren sind gesperrt, bitte rechts einordnen.',
+  chatSign: ['Baustelle 🚧', 'Oh nein, eine Baustelle 😩', 'Jetzt wird es eng 😬', 'Baken-Slalom! 🚧🚧🚧', 'Rechts rüber, Mini Adam!'],
+  chatStart: ['Ganz ruhig jetzt 🙏', 'Nicht die Baken küssen 😅', 'Präzisionsarbeit gefragt 🎯', 'Schön in der Gasse bleiben',
+    'Ich halte die Luft an 😮‍💨'],
+  touch: ['Bake! 🚧😬', 'Die Bake hat gewackelt 😂', 'Kratz kratz 🚧', 'Bauarbeiter sind sauer 👷', 'Ups, das war eng'],
+  clean: ['Sauber durch! 👏', 'Keine Bake berührt 🫡', 'Wie auf Schienen 🚆', 'Präzise! 🎯', 'Baustellen-Profi 👷‍♂️'],
+  cleanFast: ['Und das mit Tempo! 🔥', 'Sauber UND schnell 😱', 'Baustellen-Rennfahrer 🏁', 'Keine Bake, volles Tempo 👏'],
+  messy: ['{n} Baken umarmt 😂', 'Die Baustelle hat Spuren hinterlassen: {n} Mal Kratz 🚧', 'Nächstes Mal ohne Baken-Kuscheln 😅',
+    'Die Bauarbeiter schicken eine Rechnung 👷📄'],
+};
+
 // Spontan-Wetten (game/wetten.js): text je Wette ({k}, {secs}, {kmh}, {ort}, {min}, {dauer}) · angebot im Chat
 // ({text}, {betrag}) · top: angenommen · feige: das Angebot verfällt · verloren: der Wettende verliert (Mini Adam hat
 // es geschafft) · zahlt: James sagt die Spende an ({name}, {betrag}, {text}) · gewonnen: der Wettende hat recht
@@ -942,6 +957,13 @@ export const STUDIO = {
       'Tacho {kmh}. Der Chat jubelt, und das Plüsch flattert.',
       '{kmh} auf der Uhr. So schnell war heute noch keiner.',
       'Neue Bestmarke, {kmh}. Der Chat feiert jeden Kilometer.',
+    ],
+    // sauber durch die Baustelle (game/baustelle.js; {kmh}: im Schnitt)
+    baustelle: [
+      'Durch die Baustelle, und keine einzige Bake berührt. Der Chat applaudiert.',
+      'Saubere Fahrt durch die Baustelle. So geht Präzision.',
+      'Keine Bake hat gewackelt. Die Bauarbeiter würden winken.',
+      'Mit {kmh} im Schnitt durch die Gasse, und alles heil. Respekt.',
     ],
     // eine Spontan-Wette gewonnen (game/wetten.js; {name}: wer gewettet hat und nun zahlt)
     wette: [

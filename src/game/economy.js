@@ -68,6 +68,7 @@ export const CHEER = {
   challenge: [0.015, 20, 'job'], // Job erledigt
   megafon: [0.008, 10, 'spass'],
   mitleid: [0.04, 15, 'spass'], // Mitleidskauf in einem kleinen Laden (game/gags.js)
+  baustelle: [0.05, 40, 'manoever'], // durch die Baustelle, ohne eine Bake zu streifen (game/baustelle.js)
   wetteGewonnen: [0.04, 40, 'spass'], // eine Spontan-Wette gewonnen (game/wetten.js)
   wetteVerloren: [-0.015, 10], // … verloren: Der Chat lacht, ein bisschen enttäuscht ist er doch
   // und was ihn verstimmt
@@ -112,7 +113,7 @@ const ALTER_GAP = 90;
 // kleine Spende eines begeisterten Zuschauers (nach einem haarscharfen Manöver, einem Brunnen …)
 const THRILL_VALUES = [1, 1.5, 2, 2, 2.5, 3, 3.33, 4.2, 5, 7.77];
 /** Wie oft ein schöner Moment jemanden zum Spenden bringt (bei neutraler Stimmung). Nie ein fester Lohn. */
-const THRILL = { nearMiss: 0.2, nearMissSerie: 0.55, greet: 0.45, banana: 0.12, blitzerClean: 0.3, topSpeed: 0.5, cleanMinute: 0.22, wiperTwitch: 0.05 };
+const THRILL = { nearMiss: 0.2, nearMissSerie: 0.55, baustelle: 0.6, greet: 0.45, banana: 0.12, blitzerClean: 0.3, topSpeed: 0.5, cleanMinute: 0.22, wiperTwitch: 0.05 };
 
 // Sekunden zwischen zwei Ereignissen bei 1.000 Zuschauern und neutraler Stimmung
 const EVERY = { donation: [8.5, 15.5], sub: [30, 70], vip: [80, 190], sammel: [9, 20] };

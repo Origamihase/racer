@@ -263,9 +263,9 @@ function stream(skip, plan = true) {
       want = 5.625;
       if (f && !f.taken && f.s - trip.s < J.decel - 10 && (f.forced || trip.planFor(f) === 'exit' || (!plan && parkAt(f.node) >= 0))) want = J.L0;
     }
-    const dx = want - (p.x + p.vx * AUTO.look);
+    const dx = game.bau.steer(want, p.s) - (p.x + p.vx * AUTO.look); // (Baustelle: in der Gasse, game/baustelle.js)
     ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
-    const v = Math.min(lim.vmax, 130 / 3.6);
+    const v = Math.min(lim.vmax, game.bau.zoneLimit(p.s), 130 / 3.6);
     ctl.throttle = game.charging ? 0 : p.speed < v - 0.5 ? 1 : 0;
     ctl.brake = p.speed > v + 3 ? 0.4 : 0;
     const was = !!game.charging;
@@ -388,9 +388,9 @@ function postStream() {
       want = 5.625;
       if (f && !f.taken && f.s - trip.s < J.decel - 10 && (f.forced || trip.planFor(f) === 'exit')) want = J.L0;
     }
-    const dx = want - (p.x + p.vx * AUTO.look);
+    const dx = game.bau.steer(want, p.s) - (p.x + p.vx * AUTO.look); // (Baustelle: in der Gasse, game/baustelle.js)
     ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
-    const v = Math.min(lim.vmax, 130 / 3.6);
+    const v = Math.min(lim.vmax, game.bau.zoneLimit(p.s), 130 / 3.6);
     ctl.throttle = game.charging ? 0 : p.speed < v - 0.5 ? 1 : 0;
     ctl.brake = p.speed > v + 3 ? 0.4 : 0;
     const was = !!game.charging;
@@ -489,7 +489,7 @@ function emptyRun({ target = null, battery = 10.6, reach = null, secs = 600 } = 
       want = 5.625;
       if (f && !f.taken && f.s - trip.s < J.decel - 10 && (f.forced || trip.planFor(f) === 'exit')) want = J.L0;
     }
-    const dx = want - (p.x + p.vx * AUTO.look);
+    const dx = game.bau.steer(want, p.s) - (p.x + p.vx * AUTO.look); // (Baustelle: in der Gasse, game/baustelle.js)
     ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
     game.offAutobahn = sec.kind !== 'ab';
     const v0 = p.speed;

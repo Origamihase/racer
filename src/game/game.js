@@ -18,6 +18,7 @@ import { WaveRule, WAVE, chatGap } from './wave.js';
 import { StreamGags } from './gags.js';
 import { Stammgaeste } from './stamm.js';
 import { Wetten } from './wetten.js';
+import { Baustelle } from './baustelle.js';
 import { startMemory, rekordMemory, GEDAECHTNIS } from './gedaechtnis.js';
 import { Akku } from './akku.js';
 import { Studio } from './studio.js';
@@ -80,6 +81,7 @@ export class Game {
     // die Stammzuschauer mit Gedächtnis (stamm.js): eigener Zufall, ihr Gedächtnis steht im Spielstand (save.stamm)
     this.stamm = new Stammgaeste(this);
     this.wetten = new Wetten(this);
+    this.bau = new Baustelle(this);
     // die Sprachdurchsagen der Zuschauer: Stapel, Momente und eigener Zufall je Stream (durchsagen.js)
     this.ds = new Durchsagen(this);
     // Akku und Ladestopps (akku.js): eigener Zustand, liest vom Spiel nur AKKU_HOST
@@ -135,6 +137,7 @@ export class Game {
     // Spontan-Wetten (wetten.js): ebenso mit eigenem Zufall
     this.wetten.reset((this.stammSeed ?? this.streamT) ^ 0x3e77);
     this.ui.wette(null);
+    this.bau.reset((this.stammSeed ?? this.streamT) ^ 0xba57);
     // das Gedächtnis des Sprachstudios (gedaechtnis.js): nach der Begrüßung erinnert es an frühere Streams, und fällt
     // der Streckenrekord aller Streams, sagt es das einmal
     const memo = startMemory(save);
@@ -577,6 +580,8 @@ export class Game {
     }
 
     // --- Fahren ------------------------------------------------------------
+    // die Baustelle (baustelle.js): Ihre Baken sind die Grenzen des Wagens in diesem Bild
+    this.bau.update();
     const sBefore = p.s;
     // Krümmung und Steigung unter dem Wagen (Kurven-Paket, sonst 0); den Rückwärtsgang gibt es nur auf die eigenen
     // Eingaben des Spielers (ctl.reverse aus main.js) und nie, während die Welt den Wagen am Brunnen anhält
@@ -585,13 +590,15 @@ export class Game {
     for (const e of p.events) {
       if (e.type === 'rail') {
         this.audio.scrape();
+        // in der Baustelle war es eine Bake (baustelle.js rail): Die zählt der Chat selbst
+        const bake = this.bau.rail(e);
         this.fx.shake(e.hard ? 0.5 : 0.2);
         // wer an der Leitplanke entlangschrammt, verstimmt den Chat nicht mit jedem Funken neu
         if (this.t - this.scrapeT > 1.5) {
           this.scrapeT = this.t;
           this.eco.cheer(e.hard ? 'scrapeHard' : 'scrape');
         }
-        if (e.hard && chance(0.4)) this.chat(pick(['Leitplanke! 😬', 'Uff, die Leitplanke', 'Kratz kratz']));
+        if (e.hard && !bake && chance(0.4)) this.chat(pick(['Leitplanke! 😬', 'Uff, die Leitplanke', 'Kratz kratz']));
       } else if (e.type === 'understeer' && this.t > (this.understeerSaid ?? -99) + 25) {
         // zu schnell für die Kurve: OMI sagt es freundlich (höchstens alle 25 s)
         this.understeerSaid = this.t;
