@@ -163,14 +163,14 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8');
       sum.arrivals++;
       const z = zs.filter((x) => x.t < a.t).pop();
       ok(z && z.text.endsWith(' · ' + a.name), `${drv} ${seed}: Ankunft in ${a.name} um ${a.t.toFixed(0)} s ohne Zuschlag dafür`);
-      const said = log.speak.filter((x) => x.who === 'nomi' && x.t < a.t && x.text.startsWith('Neues Ziel: ')).pop();
-      const ok2 = said && said.text.endsWith(' in ' + a.name + '!');
+      const said = log.speak.filter((x) => x.who === 'navi' && x.t < a.t && x.text.includes(' hat das Navi-Ziel geändert. Neues Ziel: ')).pop();
+      const ok2 = said && said.text.endsWith(' Neues Ziel: ' + a.name + '.') && said.label === 'Navi-Durchsage';
       if (ok2) sum.announced++;
       ok(ok2, `${drv} ${seed}: Ankunft in ${a.name}, aber OMI sagte zuletzt „${said ? said.text : '–'}“`);
     }
   }
   ok(sum.zuschlag >= 6 && sum.arrivals >= 4, `Auktion zu wenig geprüft: ${sum.zuschlag} Zuschläge, ${sum.arrivals} Ankünfte`);
-  console.log(`  Auktion: ${sum.bids} Gebote, alle mehr als ${AUKTION.lock} km vor dem Ziel (${sum.late} zu spät) · ${sum.zuschlag} Zuschläge (${sum.cut} beendeten ein Rennen) · ${sum.arrivals} Ankünfte, ${sum.announced} mit OMIs Ansage „Neues Ziel: … in <Ort>!“`);
+  console.log(`  Auktion: ${sum.bids} Gebote, alle mehr als ${AUKTION.lock} km vor dem Ziel (${sum.late} zu spät) · ${sum.zuschlag} Zuschläge (${sum.cut} beendeten ein Rennen) · ${sum.arrivals} Ankünfte, ${sum.announced} mit der Navi-Durchsage „… hat das Navi-Ziel geändert. Neues Ziel: <Ort>.“`);
 }
 
 // --- Bieterfenster und Streamende --------------------------------------------------------------------------------

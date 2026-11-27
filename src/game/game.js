@@ -383,15 +383,19 @@ export class Game {
     }
   }
 
-  /** OMI spricht (mit Gong, Untertitel und Augen-Animation). */
-  say(text, mood = 'talk', { priority = true, scene = false } = {}) {
+  /**
+   * OMI spricht (mit Gong, Untertitel und Augen-Animation). navi: die Navi-Durchsage zu einem neuen Ziel (ziel.js
+   * announceTarget) – eigener Gong, großer Untertitel, veraltet nie in der Warteschlange.
+   */
+  say(text, mood = 'talk', { priority = true, scene = false, navi = false } = {}) {
     // eine Szene (Ladestopp, BrunnenTV) hat genau einen Satz OMIs, ihren eigenen (scene): Zufälliges Geplauder
     // (priority false) entfällt dort, Wichtiges wartet bis zum Ende der Szene (sayHeld)
     if (!scene && (this.charging || this.tv)) {
-      if (priority && !this.heldSay.some((h) => h[0] === text)) this.heldSay.push([text, mood]);
+      if (priority && !this.heldSay.some((h) => h[0] === text)) this.heldSay.push([text, mood, navi]);
       return;
     }
-    this.audio.nomiChime();
+    if (navi) this.audio.naviGong();
+    else this.audio.nomiChime();
     const nomi = this.cockpit.nomi;
     nomi.setMood(mood, 3.2);
     const go = () => {
@@ -401,9 +405,10 @@ export class Game {
       const dur = this.speech.say(text, 'board', {
         priority,
         episode: scene && !!this.tv,
+        ...(navi ? { stale: Infinity } : {}),
         onStart: (d) => {
           nomi.speak(d);
-          line = this.ui.nomi(text, d + 0.8);
+          line = navi ? this.ui.naviDurchsage(text, d + 1.5) : this.ui.nomi(text, d + 0.8);
         },
         onDrop: () => line && (line.t = 0),
       });
@@ -413,13 +418,14 @@ export class Game {
     // geht mit (wie bei jedem abgebrochenen Satz), statt nach ihrem halb gesagt wieder dazustehen
     this.voiceUntil = Math.max(this.voiceUntil, this.t + 1.2);
     this.studio.hush();
-    if (this.running) this.later(0.35, go);
+    // (die Navi-Durchsage beginnt nach ihrem Gong)
+    if (this.running) this.later(navi ? 1.3 : 0.35, go);
     else go();
   }
 
   /** Nach einer Szene: was OMI darin Wichtiges sagen wollte (say hielt es zurück), der Reihe nach. */
   sayHeld() {
-    this.heldSay.forEach(([text, mood], i) => this.later(0.5 + 3.5 * i, () => this.say(text, mood)));
+    this.heldSay.forEach(([text, mood, navi], i) => this.later(0.5 + 3.5 * i, () => this.say(text, mood, { navi })));
     this.heldSay.length = 0;
   }
 

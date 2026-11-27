@@ -393,6 +393,7 @@ const uiFacade = {
   noticeBusy: () => ui.noticeBusy(),
   naviNews: () => ui.naviNews(),
   nomi: (t, d) => ui.nomi(t, d),
+  naviDurchsage: (t, d) => ui.naviDurchsage(t, d),
   studio: (t, d) => ui.studio(t, d),
   money: (a, l) => ui.money(a, l),
   durchsage: (l, t, d, b) => ui.durchsage(l, t, d, b),

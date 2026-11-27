@@ -489,6 +489,14 @@ export class Audio {
   }
 
   /** Zuschlag der Auktion: ein Hammerschlag, dann eine kurze Fanfare. */
+  /** Gong der Navi-Durchsage (ein neues Ziel): drei Töne abwärts wie am Bahnsteig, laut genug für ein großes Ding. */
+  naviGong() {
+    [[0, 987.77], [0.32, 783.99], [0.64, 659.25]].forEach(([t, f]) => {
+      this.tone(f, 0.7, 'sine', 0.13, t);
+      this.tone(f * 2, 0.35, 'sine', 0.02, t);
+    });
+  }
+
   zuschlag() {
     this.noiseBurst(0.08, 0.12, { type: 'lowpass', freq: 900 });
     [392, 523.25, 659.25].forEach((f, i) => this.tone(f, 0.11, 'square', 0.035, 0.12 + i * 0.1));
