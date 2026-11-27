@@ -7,7 +7,7 @@ export const DEFAULT_SAVE = {
   upgrades: {},
   best: { earned: 0, viewers: 0, reise: 0 }, // reise: Rekord der Strecke eines Streams in Reisemetern
   stats: { runs: 0, naviReached: 0, crashes: 0, reiseKm: 0 },
-  settings: { sound: true, speech: true, chat: true, facecam: true, quality: 'auto', volume: 0.8 },
+  settings: { sound: true, speech: true, chat: true, facecam: true, quality: 'auto', volume: 0.8, radioVolume: 0.5 },
   // besuchte Orte der großen Karte: Wiki-Name → Zahl der Besuche
   visits: {},
   // das gekaufte Megafon ist erstattet (refundMegafon): so viele Euro, einmal; 0: nichts erstattet
@@ -53,6 +53,7 @@ const SETTING_OK = {
   facecam: (v) => typeof v === 'boolean',
   quality: (v) => ['auto', 'hoch', 'mittel', 'niedrig'].includes(v),
   volume: (v) => Number.isFinite(v) && v >= 0 && v <= 1,
+  radioVolume: (v) => Number.isFinite(v) && v >= 0 && v <= 1,
 };
 export function cleanSettings(raw) {
   const s = { ...DEFAULT_SAVE.settings, ...part(raw) };

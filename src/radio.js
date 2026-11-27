@@ -9,7 +9,7 @@
 
 /**
  * stations: Name, Kürzel fürs Display und Adressen der Streams (https: Die Seite läuft über https, http-Ströme würde
- * der Browser sperren). vol: Lautstärke des Radios (0…1), duck: Anteil davon, solange jemand spricht, fade: Sekunden
+ * der Browser sperren). vol: Lautstärke des Radios bei vollem Regler (0…1, mal gain), duck: Anteil davon, solange jemand spricht, fade: Sekunden
  * (Zeitkonstante) fürs Ein- und Ausblenden, wait: so viele Sekunden darf ein Sender zum Anlaufen brauchen.
  */
 export const RADIO = {
@@ -25,7 +25,9 @@ export const RADIO = {
       urls: ['https://dispatcher.rndfnk.com/br/br1/obb/mp3/mid', 'https://dispatcher.rndfnk.com/br/br1/obb/mp3/high', 'https://dispatcher.rndfnk.com/br/br1/obb/mp3/low'],
     },
   ],
-  vol: 0.28,
+  // (gain aus den Einstellungen: Radio-Lautstärke mal Lautstärke; mit 0,5 und 0,8 sind es 0,28 – der Eigentümer fand 0,55
+  // „ein wenig laut“ und wollte einen Regler)
+  vol: 0.7,
   duck: 0.3,
   fade: 0.25,
   wait: 12,
@@ -141,14 +143,14 @@ export class Radio {
    * Jedes Bild: Lautstärke (sound: Ton an, duck: gerade spricht jemand), und wer zu lange sucht, versucht die nächste
    * Adresse.
    */
-  update(dt, { sound = true, duck = false } = {}) {
+  update(dt, { sound = true, duck = false, gain = 1 } = {}) {
     if (this.index < 0 || !this.el) return;
     this.since += dt;
     if (this.status === 'sucht' && this.since > RADIO.wait) {
       this.failed();
       return;
     }
-    const want = sound && this.status === 'an' ? RADIO.vol * (duck ? RADIO.duck : 1) : 0;
+    const want = sound && this.status === 'an' ? RADIO.vol * gain * (duck ? RADIO.duck : 1) : 0;
     this.level += (want - this.level) * Math.min(1, dt / RADIO.fade);
     this.el.volume = Math.max(0, Math.min(1, this.level));
   }
