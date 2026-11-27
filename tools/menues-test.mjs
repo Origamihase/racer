@@ -73,6 +73,8 @@ if (PAD_DRIVE.stick === 0 || PAD_DRIVE.stick === 2) realPad.add(PAD_DRIVE.stick 
 // Touch: die Knöpfe der Liste, Lenken und Pedale und drei Dinge, die es im Spiel wirklich gibt (Quelle geprüft)
 const realTouch = new Set([...TOUCH_BUTTONS.map((t) => touchOf(t.action)), ...TOUCH_BUTTONS.filter((t) => t.now).map((t) => touchNowOf(t.action)), ...Object.values(TOUCH_LABELS), '⛶ im Menü', '✕ am Tipp']);
 ok(/⛶/.test(src('src/ui/fullscreen.js')) && /fs-btn/.test(src('src/ui/menus.js')), 'Vollbild-Knopf ⛶ im Menü fehlt');
+// auch im Abspann (Akku leer, Stream vorbei): neben „Nochmal fahren“, „Shop“ und „Hauptmenü“
+ok(/render_over[\s\S]*?over-menu[\s\S]{0,600}?'vollbild', 'fs-btn'[\s\S]*?this\.routeBlock/.test(src('src/ui/menus.js')), 'Vollbild-Knopf im Abspann fehlt');
 ok(/hint-close', card, '✕'/.test(src('src/ui/drive-hint.js')), 'das ✕ am Tipp fehlt');
 ok(/renderer\.domElement\.addEventListener\('pointerdown'[\s\S]{0,120}anyKey = true/.test(mainSource()), 'Tipp aufs Bild überspringt keine Szene mehr');
 for (const r of rows) {

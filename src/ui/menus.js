@@ -446,6 +446,9 @@ export class Menus {
     button(menu, '↻ Nochmal fahren', 'restart', 'primary');
     button(menu, '🛒 Shop', 'shop');
     button(menu, '🏠 Hauptmenü', 'menu');
+    // Vollbild wie im Titel und in der Pause: Der Knopf sagt, was ein Klick jetzt tut („Vollbild“ / „Vollbild beenden“),
+    // und wechselt mit jedem fullscreenchange (onFullscreenChange oben, auch nach Esc oder Taste F)
+    if (canFullscreen()) button(menu, fullscreenLabel(), 'vollbild', 'fs-btn');
     // die Route des Tages auf der Karte, daneben die Summen
     this.routeObs?.disconnect();
     this.quoteObs?.disconnect();
