@@ -11,7 +11,11 @@ export class SpurWetterPart {
     const p = this.player;
     if (!L.open) {
       if (!this.offAutobahn) L.next -= dt;
-      if (L.next <= 0) this.openLeftLane();
+      // (nicht in einer Baustelle: Dort sind die linken Spuren gesperrt, eine Freischaltung wartet bis dahinter)
+      if (L.next <= 0) {
+        if (this.bau?.active) L.next = 10;
+        else this.openLeftLane();
+      }
     } else if (this.offAutobahn) {
       // abseits der Autobahn gibt es keine linke Spur: Die Freischaltung endet an der Ausfahrt (sonst bettelt der Chat
       // im Ort darum, sie zu nutzen)

@@ -169,9 +169,12 @@ const src = (f) => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8')
   const reqOrig = g.scenery.request;
   g.scenery.request = (type, s, data) => (req.push({ type, s, data }), reqOrig(type, s, data));
   const lm = [];
+  let links = 0;
   for (let t = 0; t < 1400 && !g.over; t += 0.5) {
     S.step(0.5);
     if (g.landmark && g.bau.zone) lm.push({ s: g.landmark.s, s0: g.bau.zone.s0 });
+    // (die linken Spuren sind dort gesperrt: keine Freischaltung „Linke Spur frei“, solange eine Baustelle steht)
+    if (g.bau.zone && g.left.open && g.player.s > g.bau.zone.s0 - 300) links++;
   }
   const b = g.bau.stats;
   ok(b.built >= 2 && b.clean >= 1 && b.touched === 0, `Baustellen im Stream: ${JSON.stringify(b)}`);
@@ -179,6 +182,7 @@ const src = (f) => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8')
   const s0 = req.find((r) => r.type === 'bauSchild');
   ok(s0 && req.some((r) => r.type === 'speed' && r.data.limit === 80) && req.filter((r) => r.type === 'baken').length === Math.ceil(BAU_LEN / 100) * b.built, `Schild, 80, Baken: ${req.map((r) => r.type).join(',')}`);
   ok(S.log.toast.some((x) => x.key === 'baustelle' && /ohne Kratzer/.test(x.text)), 'sauber durch: kein Hinweis am Rand');
+  ok(links === 0, `„Linke Spur frei“ in der Baustelle (${links}×)`);
   ok(lm.every((x) => x.s < x.s0 - 1000 || x.s > x.s0 + BAU_LEN), 'Brunnen oder Elsa mitten in der Baustelle');
 
   // wer die Gasse nicht beachtet (bleibt rechts, fährt 130), streift Baken: das zählt und kostet Kratzer
