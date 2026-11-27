@@ -46,6 +46,46 @@ export function viewerNameAt(n) {
   return NAME_A[(n * 7 + 3) % NAME_A.length] + NAME_B[(n * 5 + 1) % NAME_B.length];
 }
 
+// Stammzuschauer (game/stamm.js): frei erfundene Stammgäste, die sich an frühere Streams erinnern. spruch: ihr eigener
+// Gruß, wenn sie wieder da sind
+export const STAMM = [
+  { name: 'RingtennisRudi', spruch: 'Rudi meldet sich zum Dienst. Ringtennisschläger liegt bereit 🏓' },
+  { name: 'KaffeekassenKarin', spruch: 'Kaffee ist gekocht, ich bin da ☕' },
+  { name: 'HandkäsHorst', spruch: 'Mit Musik! Horst ist wieder da 🧀' },
+  { name: 'Blinkerfreund77', spruch: 'Blinker links, Chat rein. Hallo zusammen!' },
+  { name: 'AkkuAnke', spruch: 'Anke hier. Wie viel Prozent haben wir? 🔋' },
+  { name: 'RasthofRalf', spruch: 'Ralf ist da, Bockwurst steht bereit 🌭' },
+  { name: 'WischerWilma', spruch: 'Wilma ist da. Zuckt der Wischer noch? 🌧️' },
+  { name: 'PommesPaule', spruch: 'Paule mit Pommes, wie immer 🍟' },
+  { name: 'ElsaEdith', spruch: 'Edith hier, Elsa sitzt neben mir 👑🐟' },
+  { name: 'NaviNadine', spruch: 'Nadine meldet sich. Wohin heute? 🧭' },
+  { name: 'PlüschopaGerd', spruch: 'Opa Gerd hat den Fernseher wieder lauter gestellt 📺' },
+  { name: 'BrunnenBine', spruch: 'Bine ist da. Ich will heute mindestens einen Brunnen sehen ⛲' },
+];
+export const STAMM_LINES = {
+  // Gruß beim Vorbeischauen: erst zum ersten Mal da · wieder ({n}: Streams, {m}: Monate) · letzter ({last}: der zuletzt
+  // gemeinsam besuchte Ort) · orte ({ort}: einer davon)
+  hallo: {
+    erst: ['Zum ersten Mal hier, aber bestimmt nicht zum letzten Mal 👋', 'Hab gerade abonniert. Was ist BrunnenTV?? 😄',
+      'Neu hier! Mein Kumpel sagt, hier gibt es Brunnen.', 'Hallo! Erster Stream für mich, ich bin gespannt 🤩'],
+    wieder: ['Stream Nummer {n} für mich! 🫡', 'Wieder da! {m} Monate dabei und kein bisschen müde', 'Bin wieder da, hab ich was verpasst?',
+      'Hallo Mini Adam! Das ist schon mein {n}. Stream 🥳', '{m} Monate Abo und immer noch Gänsehaut beim Intro'],
+    letzter: ['Letztes Mal ging es bis {last}. Wohin heute?', 'Seit {last} hab ich auf diesen Stream gewartet!',
+      'In {last} war es so schön. Heute bitte wieder so ⛲', 'Ich hab das Bild aus {last} als Hintergrund 😄'],
+    orte: ['Weißt du noch, {ort}? Da war ich dabei!', 'Ich denk noch oft an {ort} 🥲', '{ort} war mein Lieblingsstream bisher'],
+  },
+  // nach einer Folge BrunnenTV: rund ({b}: so viele Folgen hat er gesehen) · wieder ({ort}: dort war er schon mit
+  // Mini Adam) · zaehlt (er zählt mit)
+  folge: {
+    rund: ['Das war meine {b}. Folge BrunnenTV! 🎉⛲', '{b} Brunnen hab ich jetzt mit dir gesehen. Jubiläum! 🥳',
+      'Folge Nummer {b} für mich. Darauf einen Bananensaft 🍌'],
+    wieder: ['{ort}! Da war ich schon mal mit dir ⛲', 'Wieder in {ort}, ich erkenne den Brunnen 😍', '{ort} kennen wir doch! Schön wie beim letzten Mal',
+      'Der Brunnen in {ort} sieht noch genauso schön aus wie damals'],
+    zaehlt: ['Brunnen Nummer {b} für mich ⛲', 'Ich zähle mit: {b} Brunnen 📋', '{b}. Brunnen. Und jeder ist schöner',
+      'Strichliste: Brunnen {b} ✅'],
+  },
+};
+
 /**
  * Für schmale Chats (Handy hochkant): eine Umbruchstelle zwischen den beiden Namensteilen, damit ein langer Name
  * wie „Superchargerprinzessin“ als „Supercharger-“ / „prinzessin“ umbricht statt irgendwo mitten im Wort. Ein
@@ -878,6 +918,26 @@ export const STUDIO = {
       '{kmh} auf der Uhr. So schnell war heute noch keiner.',
       'Neue Bestmarke, {kmh}. Der Chat feiert jeden Kilometer.',
     ],
+  },
+  // Das Gedächtnis des Studios (game/gedaechtnis.js; der Eigentümer, 27.11.2026: „Auch das Sprachstudio soll eine
+  // Erinnerung haben“): was es aus früheren Streams weiß – aus Album, Rekorden und Statistik des Spielstands
+  memory: {
+    // zu Beginn eines Streams: ein Gruß ({nr}: der wievielte Stream) und ein, zwei Dinge, an die es sich erinnert
+    hallo: ['Willkommen zu Stream Nummer {nr}.', 'Stream Nummer {nr}, schön, dass ihr alle wieder da seid.', 'Das ist unser {nr}. Stream zusammen.'],
+    erster: ['Unser allererster Stream. Ich bin gespannt, wohin es geht.'],
+    zuletzt: ['Beim letzten Mal gab es {folgen}, zuletzt in {ort}.', 'Letztes Mal endete die Reise mit einem Brunnen in {ort}.',
+      'Ich denke noch an {ort}, dort war die letzte Folge.'],
+    album: ['Im Album stehen schon {n} Folgen BrunnenTV.', '{n} Brunnen haben wir schon besucht. Jeder einzelne ist im Album.'],
+    rekord: ['Unser Streckenrekord liegt bei {km}. Mal sehen, ob heute mehr geht.', 'Rekord bisher: {km}. Der Chat wettet schon.'],
+    geld: ['Der beste Stream brachte {geld}. Kein Druck.', 'Rekord-Einnahmen bisher: {geld}. Der Chat ist bereit.'],
+    // nach einer Folge: wieder ({k}: der wievielte Besuch, {ort}) · rund ({n}: eine runde Zahl im Album) · neu ({n})
+    wieder: ['Das war schon unser {k}. Besuch in {ort}. Der Brunnen hat uns wiedererkannt.', '{ort}, zum {k}. Mal. Wir sind hier schon Stammgäste.',
+      'In {ort} waren wir schon {vorher}. Der Chat erinnert sich auch.'],
+    rund: ['Folge {n} im Album. Darauf einen Bananensaft.', 'Das war Folge Nummer {n}. Herr Schönnbrun wäre stolz.',
+      '{n} Folgen BrunnenTV. Wir schreiben Geschichte.'],
+    neu: ['Ein neuer Brunnen fürs Album. Nummer {n}.', '{ort} ist neu im Album. Folge {n}.'],
+    // die Strecke dieses Streams übertrifft den Rekord aller Streams ({km}: der alte Rekord)
+    streckenrekord: ['Neuer Streckenrekord! So weit wie heute sind wir noch nie gekommen.', 'Wir haben eben den alten Rekord von {km} geknackt. Der Chat feiert.'],
   },
   // woran es liegt (Stichworte aus game/economy.js): was die Stimmung gehoben (up) oder gedrückt (down) hat
   why: {

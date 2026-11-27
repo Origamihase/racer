@@ -16,8 +16,12 @@ export const STUDIO_HOST = [
   'audio', 'ui',
 ];
 
-/** Lob für ein Manöver (praise): so lange wartet es auf eine Lücke, so viele Sekunden liegen zwischen zwei Loben. */
-export const PRAISE = { wait: 7, gap: 45 };
+/**
+ * Lob für ein Manöver (praise): so lange wartet es auf eine Lücke (wait), so viele Sekunden liegen zwischen zwei Loben
+ * (gap); eine Erinnerung (remember) wartet bis zu memory Sekunden. Beides kommt frühestens pause Sekunden nach dem letzten
+ * Satz des Studios und nach OMIs letztem Satz (wenn sie dem Studio ins Wort fiel, redet es nicht gleich wieder los).
+ */
+export const PRAISE = { wait: 10, gap: 45, memory: 60, pause: 4 };
 
 export class Studio {
   /** g: das Spiel (Game), von dem nur STUDIO_HOST benutzt wird. */
@@ -86,8 +90,22 @@ export class Studio {
   praise(kind, vars = {}) {
     const g = this.g;
     if (kind !== 'serie' && g.t - this.cheerT < PRAISE.gap) return;
-    if (this.cheer?.kind === 'serie' && kind !== 'serie' && g.t < this.cheer.until) return;
-    this.cheer = { kind, vars, until: g.t + PRAISE.wait };
+    this.queueCheer({ kind, vars, pool: STUDIO.praise[kind], rank: kind === 'serie' ? 2 : 1, until: g.t + PRAISE.wait });
+  }
+
+  /**
+   * Etwas, woran sich das Studio erinnert (game/gedaechtnis.js): text ist schon ausgefüllt. Es wartet länger auf eine
+   * Lücke als ein Lob (wait, etwa bis eine Folge vorbei ist), und nur eine Serie geht ihm vor.
+   */
+  remember(text, wait = PRAISE.memory) {
+    this.queueCheer({ text, rank: 1.5, until: this.g.t + wait });
+  }
+
+  /** Das nächste Lob oder die nächste Erinnerung vormerken – ein wichtigeres, das noch wartet, bleibt (rank). */
+  queueCheer(c) {
+    const now = this.cheer;
+    if (now && this.g.t < now.until && now.rank > c.rank) return;
+    this.cheer = c;
   }
 
   /**
@@ -142,7 +160,7 @@ export class Studio {
     const alter = x?.kind === 'alter' && g.t - this.last > 3;
     const mood = !alter && this.due <= 0 && g.t - this.last > 8;
     // ein Lob fürs Manöver gleich, sobald niemand spricht (der Moment ist schnell vorbei), vor Gruß und Zugabe
-    const cheer = !alter && !mood && this.cheer && g.t - this.last > 4;
+    const cheer = !alter && !mood && this.cheer && g.t - this.last > PRAISE.pause && g.t - g.voiceUntil > PRAISE.pause;
     const greet = !alter && !mood && !cheer && this.greet && g.t - this.last > 10 && this.due > 6;
     if (!alter && !mood && !cheer && !greet && !(x && g.t - this.extraT > 75 && g.t - this.last > 15 && this.due > 10)) return;
     // (in einer Szene – Folge, Ladestopp – schweigt das Studio und spricht danach)
@@ -165,7 +183,7 @@ export class Studio {
       this.due = rand(52, 72);
     } else if (cheer) {
       const c = this.cheer;
-      text = fillTemplate(this.fresh(STUDIO.praise[c.kind], 'praise' + c.kind), c.vars);
+      text = c.text || fillTemplate(this.fresh(c.pool, 'praise' + c.kind), c.vars);
       this.cheer = null;
       this.cheerT = g.t;
       // (die Stimmungsansage wartet danach einen Moment, damit nicht Satz an Satz kommt)

@@ -80,6 +80,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
     world: { trip: () => trip, stopping: () => !!arrival.pending, release: () => arrival.reset(), square: () => null, town: () => null },
   });
   game.endless = endless;
+  game.stammSeed = seed; // (Stammgäste: wie die Gags mit der Saat)
   game.start({ upgrades, best: {}, wallet });
   game.gags.reset(seed); // (im Spiel würfeln die Gags je Stream neu – hier mit der Saat, damit jeder Lauf gleich ist)
   const p = game.player;

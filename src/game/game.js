@@ -16,6 +16,8 @@ import { Satisfaction } from './satisfaction.js';
 import { RouteLog } from './routelog.js';
 import { WaveRule, WAVE, chatGap } from './wave.js';
 import { StreamGags } from './gags.js';
+import { Stammgaeste } from './stamm.js';
+import { startMemory, rekordMemory, GEDAECHTNIS } from './gedaechtnis.js';
 import { Akku } from './akku.js';
 import { Studio } from './studio.js';
 import { Durchsagen, DS } from './durchsagen.js';
@@ -37,6 +39,8 @@ export { QUOTE_DT, TROEDEL, untag } from './parts/stream.js';
  * Höchstgeschwindigkeit ab praiseKmh lobt es auch.
  */
 export const MANOEUVRE = { window: 25, serie: 3, rumble: [0.45, 110], second: 0.35, praiseKmh: 220 };
+/** So viele Sekunden nach dem Start erinnert das Sprachstudio an frühere Streams (nach Gruß und ersten Geboten). */
+const MEMORY_AT = 40;
 const ZAHLWORT = ['null', 'eins', 'zwei', 'Drei', 'Vier', 'Fünf', 'Sechs', 'Sieben', 'Acht', 'Neun', 'Zehn', 'Elf', 'Zwölf'];
 
 export class Game {
@@ -72,6 +76,8 @@ export class Game {
     this.waves = new WaveRule();
     // die Running Gags aus dem Stream des Eigentümers (gags.js): mit eigenem Zufall, damit der Stream sonst gleich verläuft
     this.gags = new StreamGags(this);
+    // die Stammzuschauer mit Gedächtnis (stamm.js): eigener Zufall, ihr Gedächtnis steht im Spielstand (save.stamm)
+    this.stamm = new Stammgaeste(this);
     // die Sprachdurchsagen der Zuschauer: Stapel, Momente und eigener Zufall je Stream (durchsagen.js)
     this.ds = new Durchsagen(this);
     // Akku und Ladestopps (akku.js): eigener Zustand, liest vom Spiel nur AKKU_HOST
@@ -122,6 +128,13 @@ export class Game {
     // Reise: Beginn des Streams (Datum im BrunnenTV-Album) und seine Route für den Abspann (routelog.js)
     this.streamT = Date.now();
     this.gags.reset(this.streamT);
+    // (Prüfstände setzen stammSeed, damit jeder Lauf gleich ist; im Spiel würfeln die Stammgäste je Stream neu)
+    this.stamm.reset(this.stammSeed ?? this.streamT ^ 0x5a17);
+    // das Gedächtnis des Sprachstudios (gedaechtnis.js): nach der Begrüßung erinnert es an frühere Streams, und fällt
+    // der Streckenrekord aller Streams, sagt es das einmal
+    const memo = startMemory(save);
+    this.later(MEMORY_AT, () => this.studio.remember(memo));
+    this.rekordSaid = !((save.best?.reise || 0) >= GEDAECHTNIS.rekordKm * 1000);
     this.route = new RouteLog();
     this.travel = null; // Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
     this.eco.reset(up);
@@ -586,6 +599,10 @@ export class Game {
     this.route.add(this.world.trip().section, go.m);
     const dm = go.m;
     st.distance = this.odometer;
+    if (!this.rekordSaid && st.distance > this.save.best.reise) {
+      this.rekordSaid = true;
+      this.studio.remember(rekordMemory(this.save.best.reise));
+    }
     st.maxSpeedKmh = Math.max(st.maxSpeedKmh, p.kmh);
     // neue Höchstgeschwindigkeit dieser Fahrt: Der Chat schaut auf den Tacho
     const mark = this.eco.speedMark(p.kmh);

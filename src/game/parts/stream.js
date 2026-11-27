@@ -32,6 +32,12 @@ const MEME_SHARE = 0.18;
 /** Der Satz ohne seine Stichworte: „[ab] Wir sind …“ → „Wir sind …“. */
 export const untag = (line) => (line.charCodeAt(0) === 91 ? line.slice(line.indexOf(']') + 2) : line);
 
+/** Name für eine Spende des Streams: gewürfelt wie immer, außer ein Stammgast gibt sie (Game.stamm.donor). */
+function pickName(g) {
+  const name = viewerName();
+  return g.stamm.donor() || name;
+}
+
 export class StreamPart {
   // --- Zuschauer, Spenden, Chat ------------------------------------------------------
   updateViewers(dt) {
@@ -156,11 +162,18 @@ export class StreamPart {
   onStream(e) {
     switch (e.type) {
       case 'donation':
-        this.donate(viewerName(), e.amount, chance(0.35) ? pick(SPENDEN_ZWECKE) : '');
+        // (manche Spende kommt von einem Stammgast, stamm.js; der Name wird trotzdem gewürfelt, damit der Zufall gleich bleibt)
+        this.donate(pickName(this), e.amount, chance(0.35) ? pick(SPENDEN_ZWECKE) : '');
         if (chance(0.25)) this.later(0.9, () => this.chat(this.chatLine(CHAT.thanks)));
         break;
       case 'sub': {
-        const name = viewerName();
+        let name = viewerName();
+        // eine Verlängerung kommt gern von einem Stammgast, mit seinen echten Monaten (stamm.js)
+        const regular = e.kind === 'resub' ? this.stamm.resub() : null;
+        if (regular) {
+          name = regular.name;
+          e.months = regular.months;
+        }
         const gift = e.kind === 'gift';
         const tier = e.tier > 1 ? ` (Stufe ${e.tier})` : '';
         this.bot('james', gift ? `${name} verschenkt ${e.count === 1 ? 'ein Abo' : e.count + ' Abos'} an den Chat! 🎁`
