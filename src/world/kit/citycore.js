@@ -805,7 +805,9 @@ class Part {
    * Nur Wasser: o.kind (Art der Bewegung), o.flow ([x, y, z, w] für alle Eckpunkte) oder FL (je Eckpunkt vier Werte).
    */
   _tris(P, N, idx, col, o, K, UV, FL) {
-    const rgb = lin(col);
+    // b.recol: Farben beim Bauen umfärben (Ortsbrunnen: Stein der Gegend, Figur in Bronze oder Gold; nie das Wasser)
+    const rc = this.bau.recol;
+    const rgb = lin(rc && !this.fl && typeof col === 'number' ? rc(col) : col);
     const B = this.bau;
     const e = B.m.elements;
     const q = B.nm.elements;
@@ -1441,6 +1443,7 @@ export class Bau {
     this.nm = new THREE.Matrix3();
     this.flip = false;
     this.stack = [];
+    this.recol = null;
     this.T = new Part(this, false);
     this.F = new Part(this, false);
     this.G = new Part(this, true);
@@ -2005,6 +2008,10 @@ export function makeKit(F, defs) {
       }
       refs.delete(name);
       for (const key of [...cache.keys()]) if (key.startsWith(name + '|') || key.startsWith(name + ':spin')) cache.delete(key);
+    },
+    /** Ein Stück eines Bausteins mehr in der Welt, das unref wieder freigibt (Ortsbrunnen: je Ort ein eigener). */
+    hold(name) {
+      refs.set(name, (refs.get(name) || 0) + 1);
     },
     /** Zusätzliche Meshes eines Bausteins (Tafeln mit freiem Text), in dessen eigenen Koordinaten. */
     extras(name, opts = {}) {

@@ -577,3 +577,6 @@ export function createPeopleKit(F) {
   };
   return kit;
 }
+
+// Für die Brunnenfiguren (brunnenfiguren.js): dieselbe Plüschfigur als Standbild, mit Hüten und dem Blick-Rahmen
+export { figure as plushFigure, flatCap, helmet, strawHat, beanie, facing, POSES };
