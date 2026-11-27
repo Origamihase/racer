@@ -92,6 +92,7 @@ let turnIns = null; // ihre letzte Ansage (NavModel.instruction), auch für die 
 const app = document.getElementById('app');
 const loadingEl = document.getElementById('loading');
 let settings = save.settings;
+let tempoFeel = true; // Tempo-Gefühl aus den Fahr-Einstellungen (applyDrive, speedFov)
 
 function qualityPreset() {
   const q = settings.quality;
@@ -524,6 +525,8 @@ function adamMood(name, k = 1, o = null) {
   }
 }
 game.onMood = adamMood;
+// haarscharf überholt (Game.onNearMiss): ein kurzer Impuls am Gamepad oder Handy
+game.onFeel = (k, ms) => input.rumble(k, ms);
 
 // Fußgänger auf dem Gehweg eines Orts: alle 0,25 s nachsehen, ob gleich einer vorbeizieht – dann winkt Mini Adam ihm
 // zu (zum Gehweg hin geschaut), einmal je Durchfahrt, frühestens WAVE.cool Sekunden nach dem letzten Gruß und nur im
@@ -670,6 +673,7 @@ function applyDrive() {
   const ds = driveSettings(settings);
   game.player.configure(playerOptions(ds));
   input.vibration = ds.vibration;
+  tempoFeel = ds.tempoFeel;
   touch.configure(ds);
 }
 
@@ -850,6 +854,19 @@ function updateLookAhead(dt, p) {
   const k = 1 - Math.exp(-dt / 0.42);
   lookAhead.yaw += (yaw - lookAhead.yaw) * k;
   lookAhead.pitch += (pitch - lookAhead.pitch) * k;
+}
+
+/**
+ * Tempo-Gefühl (Einstellung „Tempo-Gefühl“): Ab from km/h weitet sich der Blick im Cockpit langsam um bis zu add Grad
+ * (voll ab full km/h) – so wirkt 230 schneller als 130. Weich nachgeführt (tau s), damit Bremsen nicht ruckt.
+ */
+export const TEMPO_FOV = { from: 150, full: 240, add: 6, tau: 0.6 };
+let fovAdd = 0;
+function speedFov(kmh, dt) {
+  const T = TEMPO_FOV;
+  const want = tempoFeel ? clamp((kmh - T.from) / (T.full - T.from), 0, 1) ** 1.5 * T.add : 0;
+  fovAdd += (want - fovAdd) * (1 - Math.exp(-dt / T.tau));
+  return fovAdd;
 }
 
 function setFov(vfovCockpit) {
@@ -1635,7 +1652,7 @@ function step(dt, { render = true } = {}) {
         camera.rotateOnWorldAxis(UP_AXIS, lookAhead.yaw * 0.5);
         camera.rotateOnAxis(RIGHT_AXIS, lookAhead.pitch * 0.45);
         jolt.apply(camera, carMatrix);
-        setFov(58);
+        setFov(58 + speedFov(p.kmh, dt));
         cockpitOn = true;
       } else placeDrone(dt, 'follow');
       if (game.over) {

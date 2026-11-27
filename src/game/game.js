@@ -29,6 +29,16 @@ export { fountainIn, EXIT_CALL, exitLine, TOWN_HOLD, AUKTION, WAY } from './part
 export { ELEFANT, FACTS, RADAR, ZONE_LEAD } from './parts/ereignisse.js';
 export { QUOTE_DT, TROEDEL, untag } from './parts/stream.js';
 
+/**
+ * Gelungene Manöver spüren (der Eigentümer, 27.11.2026: „ein Feedback für ein gutes Manöver fehlt“ – ohne Zischen):
+ * Jedes haarscharfe Überholen gibt einen kurzen Impuls (Gamepad, Handy: rumble [Stärke, ms]), einen leisen hellen
+ * Ton und eine Zeile im Chat, das Sprachstudio lobt es (mit Abstand). Kommen serie Manöver innerhalb von window
+ * Sekunden, ist es eine Serie: Der Chat rastet aus, der Rand oben sagt es, und das Studio lobt sie immer. Eine neue
+ * Höchstgeschwindigkeit ab praiseKmh lobt es auch.
+ */
+export const MANOEUVRE = { window: 25, serie: 3, rumble: [0.45, 110], second: 0.35, praiseKmh: 220 };
+const ZAHLWORT = ['null', 'eins', 'zwei', 'Drei', 'Vier', 'Fünf', 'Sechs', 'Sieben', 'Acht', 'Neun', 'Zehn', 'Elf', 'Zwölf'];
+
 export class Game {
   /**
    * @param {object} ctx traffic, scenery, windshield, cockpit, audio, speech, ui, fx, pickups;
@@ -74,6 +84,8 @@ export class Game {
     this.onCharge = () => {};
     // Reise: eine Marke der Route des Streams (Folge, Ladestopp); main.js trägt ihre Lage auf der Karte nach
     this.onRouteMark = () => {};
+    // ein kurzer Impuls am Gamepad oder Handy (main.js: input.rumble) – Stärke 0 … 1, Dauer in ms
+    this.onFeel = () => {};
   }
 
   /** Der laufende Ladestopp (akku.js start) oder null: Szenen, Ereignisse und Gags ruhen, solange er läuft. */
@@ -123,6 +135,8 @@ export class Game {
     this.quote = { dt: QUOTE_DT, v: [], tv: [], next: 0 };
     this.recordShown = false;
     this.lastHorn = -99;
+    // die haarscharfen Manöver der letzten MANOEUVRE.window Sekunden (Spielzeit), für die Serie
+    this.manoeuvres = [];
     // wann OMI zuletzt „zu schnell für die Kurve“ und den Rückwärtsgang gesagt hat und der Chat ihn kommentiert hat
     // (Spielzeit: die beginnt in jedem Stream bei 0)
     this.understeerSaid = this.reverseSaid = this.reverseChat = -99;
@@ -578,6 +592,7 @@ export class Game {
     if (mark) {
       this.chat(fillTemplate(pick(CHAT.speedMark), { kmh: mark }));
       this.thrill('topSpeed', `${mark} km/h`);
+      if (mark >= MANOEUVRE.praiseKmh) this.studio.praise('tempo', { kmh: mark });
     }
     st.cleanDistance += dm;
     if (W.level > 0.3) st.rainDistance += dm;
@@ -727,11 +742,30 @@ export class Game {
     this.ui.toast(left === 1 ? `${what} Nur noch ein Karosserie-Punkt!` : `${what} Noch ${left} Karosserie-Punkte`, 'bad');
   }
 
+  /** Haarscharf überholt (MANOEUVRE): Impuls, Ton, Chat und Lob – und nach mehreren kurz hintereinander die Serie. */
   onNearMiss(e) {
+    const M = MANOEUVRE;
     this.stats.nearMisses++;
+    const list = (this.manoeuvres = this.manoeuvres.filter((t) => this.t - t < M.window));
+    list.push(this.t);
+    const n = list.length;
     this.thrill('nearMiss', 'dieses Manöver');
     this.onMood('startled', 0.75);
-    if (chance(0.5)) this.chat(pick(CHAT.nearMiss));
+    this.onFeel(Math.min(1, M.rumble[0] + 0.12 * (n - 1)), M.rumble[1]);
+    this.audio.clip(n);
+    if (n >= M.serie && n % M.serie === 0) {
+      // eine Serie: einmal je volle serie Manöver (3, 6, 9 …), danach zählt sie weiter
+      this.thrill('nearMissSerie', `${n} Manöver am Stück`);
+      this.ui.toast(`🔥 ${n}× haarscharf in Folge!`, 'good', 'serie');
+      if (n === M.serie) this.chat('HATTRICK 🎩🎩🎩');
+      this.burst(CHAT.nearMissSerie, n === M.serie ? 3 : 4, 2.2);
+      this.studio.praise('serie', { n: ZAHLWORT[n] || String(n) });
+      this.onMood('proud', 0.8);
+      return;
+    }
+    this.chat(this.chatLine(CHAT.nearMiss));
+    if (chance(M.second)) this.later(rand(0.5, 1.3), () => this.chat(this.chatLine(CHAT.nearMiss)));
+    this.studio.praise('knapp');
   }
 
   // --- Ende ------------------------------------------------------------------------------------

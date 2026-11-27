@@ -14,6 +14,7 @@ export function driveDefaults(touch = IS_TOUCH) {
     cruise: !!touch, // Tempomat: auf Handy und Tablet an
     touchMode: 'wischen', // Touch-Bedienung: wischen | tasten
     vibration: true,
+    tempoFeel: true, // Tempo-Gefühl: ab 150 km/h weitet sich der Blick im Cockpit (main.js TEMPO_FOV)
   };
 }
 
@@ -28,6 +29,7 @@ export function driveSettings(settings = {}, touch = IS_TOUCH) {
     cruise: (v) => typeof v === 'boolean',
     touchMode: (v) => ['wischen', 'tasten'].includes(v),
     vibration: (v) => typeof v === 'boolean',
+    tempoFeel: (v) => typeof v === 'boolean',
   };
   for (const k of Object.keys(d)) if (ok[k](settings[k])) d[k] = settings[k];
   return d;
@@ -98,5 +100,6 @@ export function renderDriveSettings(list, ds, setting, button) {
     choice('touchMode', 'Touch-Bedienung', [['wischen', 'Wischen'], ['tasten', 'Tasten']],
       'Wischen: Daumen links aufsetzen und zur Seite ziehen, kurz wischen wechselt die Spur. Tasten: zwei Lenkknöpfe.');
   }
-  toggle('vibration', 'Vibration', 'Ein kurzes Rütteln bei Remplern und an der Leitplanke (Handy und Gamepad).');
+  toggle('vibration', 'Vibration', 'Ein kurzes Rütteln bei Remplern, an der Leitplanke und nach einem haarscharfen Manöver (Handy und Gamepad).');
+  toggle('tempoFeel', 'Tempo-Gefühl', 'Ab 150 km/h weitet sich der Blick im Cockpit ein wenig. Aus: Der Blick bleibt immer gleich.');
 }

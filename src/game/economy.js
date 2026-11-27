@@ -45,6 +45,7 @@ const GRACE = 20;
 export const CHEER = {
   nearMiss: [0.06, 15, 'manoever'], // haarscharf überholt
   overtake: [0.0025, 2, 'manoever'], // überholt (jedes Fahrzeug)
+  nearMissSerie: [0.05, 30, 'manoever'], // mehrere haarscharfe Manöver kurz hintereinander (Game.onNearMiss)
   topSpeed: [0.03, 25, 'tempo'], // neue Höchstgeschwindigkeit dieser Fahrt (ab 200 km/h, in 10er-Schritten)
   arrive: [0.08, 120, 'ziel'], // Navi-Ziel erreicht
   // eine Folge BrunnenTV, beim Ruf „Schöner Brunnen!“ (am Ziel und unterwegs): Der Chat ist begeistert, und es spricht
@@ -109,7 +110,7 @@ const ALTER_GAP = 90;
 // kleine Spende eines begeisterten Zuschauers (nach einem haarscharfen Manöver, einem Brunnen …)
 const THRILL_VALUES = [1, 1.5, 2, 2, 2.5, 3, 3.33, 4.2, 5, 7.77];
 /** Wie oft ein schöner Moment jemanden zum Spenden bringt (bei neutraler Stimmung). Nie ein fester Lohn. */
-const THRILL = { nearMiss: 0.2, greet: 0.45, banana: 0.12, blitzerClean: 0.3, topSpeed: 0.5, cleanMinute: 0.22, wiperTwitch: 0.05 };
+const THRILL = { nearMiss: 0.2, nearMissSerie: 0.55, greet: 0.45, banana: 0.12, blitzerClean: 0.3, topSpeed: 0.5, cleanMinute: 0.22, wiperTwitch: 0.05 };
 
 // Sekunden zwischen zwei Ereignissen bei 1.000 Zuschauern und neutraler Stimmung
 const EVERY = { donation: [8.5, 15.5], sub: [30, 70], vip: [80, 190], sammel: [9, 20] };

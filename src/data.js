@@ -573,7 +573,13 @@ export const CHAT = {
     'Pflaster für den Tesla! 🩹', 'James schreibt schon die Rechnung'],
   // der Chat will einen Gruß – kurz danach winkt Mini Adam (game/wave.js, Anlass „chat“)
   winkMal: ['Wink mal! 👋', 'Mini Adam, wink mal!', 'Einmal winken bitte! 👋', 'Wink mal in die Kamera!'],
-  nearMiss: ['WAS WAR DAS 😱', 'Knapp!!!', 'Millimeterarbeit', 'CLIP!', 'Clip it!', 'Puh…', 'Mutig!'],
+  nearMiss: ['WAS WAR DAS 😱', 'Knapp!!!', 'Millimeterarbeit', 'CLIP!', 'Clip it!', 'Puh…', 'Mutig!', 'Zentimeter! 📏',
+    'Wie auf Schienen 🚄', 'Saubere Lücke!', 'Durch! 👌', 'Der hat nicht mal geblinkt 😅', 'Herzinfarkt-TV 😂', 'Präzise wie ein Uhrwerk ⏱️',
+    'Ich hab die Luft angehalten', 'Mini Adam fädelt ein wie Oma die Nadel 🪡', 'Das Plüsch hat Nerven aus Stahl'],
+  // mehrere haarscharfe Manöver kurz hintereinander (Game.onNearMiss, MANOEUVRE): der Chat rastet aus
+  nearMissSerie: ['Der ist heute nicht zu bremsen 🔥', 'Slalom-Weltmeister! 🏆', 'CLIP IT, CLIP IT, CLIP IT 🎬',
+    'Ich kann nicht hinsehen 🙈', 'Das ist kein Stream, das ist ein Actionfilm 🎬', 'Mini Adam im Tunnel 🌀', 'WAS GEHT HIER AB 😱🔥',
+    'Mods, sichert den Clip!', 'Schon wieder?! 😂', 'Fahrschule Mini Adam, Kapitel Einfädeln', 'Ich brauch einen Bananensaft 🍌'],
   rainStart: ['Regen 🌧', 'Jetzt wird es spannend', 'Wischer.exe reagiert nicht', 'Auto-Wischer (Beta) 😂',
     'Der Herr mit den Schirmen freut sich', 'Regen! Jetzt wird der Chat wach', 'Alle ans Fenster, es regnet 👀'],
   wiper: ['Der Wischer zuckt wieder 😂', 'Der Wischer wischt nicht, der winkt nur', 'Software-Update wann?',
@@ -845,6 +851,33 @@ export const STUDIO = {
     up: ['Der Chat fängt sich wieder.', 'Im Chat hellt es sich auf.', 'Die Stimmung im Chat erholt sich.'],
     down: ['Die Stimmung im Chat hat einen kleinen Dämpfer bekommen.', 'Im Chat ist es etwas ruhiger geworden.',
       'Der Chat war eben noch besser gelaunt.'],
+  },
+  // gelungene Manöver (Game.onNearMiss, speedMark; Studio.praise): knapp ein haarscharfes Überholen, serie mehrere kurz
+  // hintereinander ({n}: als Wort), tempo eine neue Höchstgeschwindigkeit ({kmh})
+  praise: {
+    knapp: [
+      'Das war knapp, aber sauber. Der Chat hat kurz die Luft angehalten.',
+      'Schöne Lücke gefunden. Im Chat klatschen sie.',
+      'Millimeterarbeit. Ich lese gerade sehr viele Ausrufezeichen.',
+      'Saubere Linie. Der Chat will das in Zeitlupe sehen.',
+      'Da hat der Chat gezuckt, du aber nicht.',
+      'Elegant vorbei. Die Mods sichern schon den Clip.',
+      'Gut eingefädelt. So sieht Fahrkunst aus.',
+      'Präzise vorbei. Jemand fragt, ob du heimlich Rennfahrer bist.',
+    ],
+    serie: [
+      '{n} Mal haarscharf hintereinander. Der Chat steht Kopf.',
+      '{n} Manöver am Stück. Im Chat fliegen die Mützen.',
+      'Das war Nummer {n} in Folge. Ich komme mit dem Vorlesen nicht mehr hinterher.',
+      '{n} Mal knapp vorbei, und kein Kratzer. Der Chat ist begeistert.',
+      'Eine Serie von {n}. Das wird der Clip des Abends.',
+    ],
+    tempo: [
+      '{kmh} Sachen. Im Chat hält sich jemand an der Tischkante fest.',
+      'Tacho {kmh}. Der Chat jubelt, und das Plüsch flattert.',
+      '{kmh} auf der Uhr. So schnell war heute noch keiner.',
+      'Neue Bestmarke, {kmh}. Der Chat feiert jeden Kilometer.',
+    ],
   },
   // woran es liegt (Stichworte aus game/economy.js): was die Stimmung gehoben (up) oder gedrückt (down) hat
   why: {

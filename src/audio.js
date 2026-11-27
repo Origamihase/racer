@@ -238,6 +238,17 @@ export class Audio {
     this.tone(1318.5, 0.3, 'square', 0.04, 0.07);
   }
 
+  /**
+   * Haarscharf überholt (Game.onNearMiss): zwei leise, helle Töne nach oben – kein Rauschen, kein Zischen. Mit jedem
+   * Manöver einer Serie (n) liegen sie einen Ganzton höher, höchstens fünf Stufen.
+   */
+  clip(n = 1) {
+    if (!this.ready) return;
+    const k = 2 ** ((2 * Math.min(Math.max(n, 1) - 1, 5)) / 12);
+    this.tone(784 * k, 0.09, 'triangle', 0.045);
+    this.tone(1175 * k, 0.16, 'triangle', 0.04, 0.075);
+  }
+
   chime() {
     [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.tone(f, 0.25, 'triangle', 0.07, i * 0.07));
   }

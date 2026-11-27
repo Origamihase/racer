@@ -16,6 +16,9 @@ export const STUDIO_HOST = [
   'audio', 'ui',
 ];
 
+/** Lob für ein Manöver (praise): so lange wartet es auf eine Lücke, so viele Sekunden liegen zwischen zwei Loben. */
+export const PRAISE = { wait: 7, gap: 45 };
+
 export class Studio {
   /** g: das Spiel (Game), von dem nur STUDIO_HOST benutzt wird. */
   constructor(g) {
@@ -45,6 +48,9 @@ export class Studio {
     this.used = {};
     this.voices = 0;
     this.until = 0;
+    // ein gelungenes Manöver, das es gleich lobt (praise), und wann es zuletzt eins gelobt hat
+    this.cheer = null;
+    this.cheerT = -99;
   }
 
   /** Die Uhren des Studios laufen mit den Ereignis-Uhren des Spiels (Game.update, gleich vor updateEvents). */
@@ -69,6 +75,19 @@ export class Studio {
    */
   donated(name, amount) {
     if (amount >= 50 && !(this.extra?.amount >= amount)) this.extra = { kind: amount >= 100 ? 'alter' : 'thanks', name, amount, until: this.g.t + 20 };
+  }
+
+  /**
+   * Ein gelungenes Manöver (Game.onNearMiss, die neue Höchstgeschwindigkeit; der Eigentümer, 27.11.2026: „Das
+   * Sprachstudio könnte es zB kommentieren“): kind knapp · serie (n Manöver kurz hintereinander) · tempo (kmh). Das
+   * Lob kommt nur gleich (PRAISE.wait Sekunden, sonst ist der Moment vorbei) und nicht öfter als alle PRAISE.gap
+   * Sekunden – eine Serie darf immer, denn die ist selten.
+   */
+  praise(kind, vars = {}) {
+    const g = this.g;
+    if (kind !== 'serie' && g.t - this.cheerT < PRAISE.gap) return;
+    if (this.cheer?.kind === 'serie' && kind !== 'serie' && g.t < this.cheer.until) return;
+    this.cheer = { kind, vars, until: g.t + PRAISE.wait };
   }
 
   /**
@@ -114,6 +133,7 @@ export class Studio {
     }
     if (this.extra && g.t > this.extra.until) this.extra = null;
     if (this.greet && g.t > this.greet.until) this.greet = null;
+    if (this.cheer && g.t > this.cheer.until) this.cheer = null;
     const x = this.extra;
     // Außer der Reihe nur mit Abstand: zur letzten Zugabe, zum letzten Satz und zur nächsten Stimmungsansage. Nur ein
     // „Alter!“ muss gleich raus, sobald niemand spricht – die Stimmungsansage wartet dann einen Moment (und hält auch
@@ -121,8 +141,10 @@ export class Studio {
     // wartet nicht auf die Pause zwischen den Zugaben: Der Neue hat ja schon Hallo gesagt.
     const alter = x?.kind === 'alter' && g.t - this.last > 3;
     const mood = !alter && this.due <= 0 && g.t - this.last > 8;
-    const greet = !alter && !mood && this.greet && g.t - this.last > 10 && this.due > 6;
-    if (!alter && !mood && !greet && !(x && g.t - this.extraT > 75 && g.t - this.last > 15 && this.due > 10)) return;
+    // ein Lob fürs Manöver gleich, sobald niemand spricht (der Moment ist schnell vorbei), vor Gruß und Zugabe
+    const cheer = !alter && !mood && this.cheer && g.t - this.last > 4;
+    const greet = !alter && !mood && !cheer && this.greet && g.t - this.last > 10 && this.due > 6;
+    if (!alter && !mood && !cheer && !greet && !(x && g.t - this.extraT > 75 && g.t - this.last > 15 && this.due > 10)) return;
     // (in einer Szene – Folge, Ladestopp – schweigt das Studio und spricht danach)
     if (g.funkloch > 0 || g.tv || g.charging || g.t < g.voiceUntil + 0.6 || g.t < this.until || g.speech.busy || g.speech.queue.length) return;
     let text;
@@ -141,6 +163,13 @@ export class Studio {
       this.trend = null;
       this.moodT = g.t;
       this.due = rand(52, 72);
+    } else if (cheer) {
+      const c = this.cheer;
+      text = fillTemplate(this.fresh(STUDIO.praise[c.kind], 'praise' + c.kind), c.vars);
+      this.cheer = null;
+      this.cheerT = g.t;
+      // (die Stimmungsansage wartet danach einen Moment, damit nicht Satz an Satz kommt)
+      this.due = Math.max(this.due, 10);
     } else if (greet) {
       text = fillTemplate(this.fresh(STUDIO.greet, 'greet'), { name: this.greet.name });
       this.greet = null;
