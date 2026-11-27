@@ -170,7 +170,8 @@ const src = (f) => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8')
   g.scenery.request = (type, s, data) => (req.push({ type, s, data }), reqOrig(type, s, data));
   const lm = [];
   let links = 0;
-  for (let t = 0; t < 1400 && !g.over; t += 0.5) {
+  // (40 Minuten Stream: in so viel Zeit kommen sicher mehrere Baustellen, egal wie der Zufall sonst verbraucht wird)
+  for (let t = 0; t < 2400 && !g.over; t += 0.5) {
     S.step(0.5);
     if (g.landmark && g.bau.zone) lm.push({ s: g.landmark.s, s0: g.bau.zone.s0 });
     // (die linken Spuren sind dort gesperrt: keine Freischaltung „Linke Spur frei“, solange eine Baustelle steht)
