@@ -25,7 +25,7 @@ export const RADIO = {
       urls: ['https://dispatcher.rndfnk.com/br/br1/obb/mp3/mid', 'https://dispatcher.rndfnk.com/br/br1/obb/mp3/high', 'https://dispatcher.rndfnk.com/br/br1/obb/mp3/low'],
     },
   ],
-  vol: 0.55,
+  vol: 0.28,
   duck: 0.3,
   fade: 0.25,
   wait: 12,
