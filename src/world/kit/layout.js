@@ -14,6 +14,7 @@ import { STECKBRIEFE as DE } from './steckbriefe-de.js';
 import { STECKBRIEFE as AUSLAND } from './steckbriefe-ausland.js';
 import { riverSpan, riverHits, riverAt } from '../../map/rivers.js';
 import { passOf } from './brunnenpass.js';
+import { extraVariant } from './nebenbrunnen.js';
 
 const STECKBRIEFE = { ...DE, ...AUSLAND };
 
@@ -791,10 +792,11 @@ export function planTown(place, opts = {}) {
   plan.squares.push(sq);
   const fountains = [];
   const fountainAt = (kind, x, y, u, ry, o = {}) => {
-    const info = infoOf(kind);
+    // o.def: eine Spielart der Art (nebenbrunnen.js, gleiche Grundfläche), sonst die Art selbst
+    const info = infoOf(o.def ?? kind);
     const z = -u;
     const id = fountains.length;
-    const it = add(kind, x, y, z, ry, o.external ? { fountain: id, external: true } : { fountain: id });
+    const it = add(o.def ?? kind, x, y, z, ry, o.external ? { fountain: id, external: true } : { fountain: id });
     const c = Math.cos(ry);
     const s = Math.sin(ry);
     const tr = ([px, py, pz]) => [x + px * c + pz * s, y + py, z - px * s + pz * c];
@@ -958,7 +960,8 @@ export function planTown(place, opts = {}) {
     plan.squares.push(sq2);
     busy.push({ side: -1, u0: sq2.u0, u1: sq2.u1 });
     for (let u = sq2.u0 + 4; u < sq2.u1; u += 8) for (let d = lineD + 4; d < sq2.d1; d += 8) add(plazaKind, sx(-1, d), 0, -u, 0);
-    placeFountain(kind, -1, lineD + d2 / 2, u2);
+    // jeder Ort seine eigene Spielart (Trinkbrunnen in Farbe mit Figürchen, Schwanenteich, Kugel-Wasserspiel …)
+    placeFountain(kind, -1, lineD + d2 / 2, u2, 0, { def: extraVariant(place.key ?? place.name, kind, profileOf(place).looks.map(([l]) => l), hashKey) });
     add(lamp, sx(-1, lineD + d2 / 2 + r + 1.3), top, -(u2 - r * 0.5), 0);
     add('bench', sx(-1, lineD + d2 - 1.0), top, -(u2 + r * 0.4), Math.PI / 2);
     // Baum in der hinteren Ecke, wenn seine Krone den Brunnen nicht berührt; sonst ein Blumenkübel

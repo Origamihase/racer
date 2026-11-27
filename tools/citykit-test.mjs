@@ -278,6 +278,34 @@ for (const row of PLACES) {
   ok(withFig >= all.length * 0.9 && figs.size >= 30 && top <= all.length * 0.12, `Figuren zu gleichförmig: ${withFig} mit Figur, ${figs.size} verschiedene, häufigste ${top}×`);
   console.log(`Ortsbrunnen: ${seen.size} verschiedene (Art|Figur|Stein) bei ${all.length} Orten, ${withFig} mit Figur aus ${figs.size} Figuren (häufigste ${top}×)`);
 }
+// Nebenbrunnen (Besitzer, 27.11.2026: „Mehr Abwechslung ist immer gut.“): Trinkbrunnen, Teich und Wasserspiel haben
+// Spielarten mit derselben Grundfläche wie ihre Art; über die Orte kommt jede vor, Nachbarorte haben selten dieselbe.
+{
+  const { places: all } = await import('../src/map/graph.js');
+  const NB = await import('../src/world/kit/nebenbrunnen.js');
+  for (const [kind, list] of Object.entries(NB.EXTRA_VARIANTS)) {
+    const base = city.info(kind);
+    const seen = new Set();
+    list.forEach((v, i) => {
+      const name = NB.variantName(kind, i);
+      const info = city.info(name);
+      ok(info && info.r === base.r && info.w === base.w && info.d === base.d && info.title === v.t && NB.baseKind(name) === kind, `${name}: Grundfläche oder Titel weicht ab`);
+      // die Maße ohne Bau (für den Plan in Raten) sind die nach dem Bau
+      if (i) {
+        const built = city.fountains.geo(name).info;
+        ok(['w', 'd', 'h', 'r', 'title', 'water', 'size'].every((k) => built[k] === info[k]), `${name}: Maße ohne Bau ${JSON.stringify(info)} ≠ gebaut ${JSON.stringify(built)}`);
+      }
+    });
+    for (const p of all) seen.add(NB.extraVariant(p.key, kind, L.profileOf(p).looks.map(([l]) => l), L.hashKey));
+    ok(seen.size === list.length, `${kind}: nur ${seen.size} von ${list.length} Spielarten in den Orten`);
+  }
+  // im Plan steht die Spielart, die Art bleibt in plan.fountains
+  const p = all.find((q) => q.name === 'Frankfurt am Main');
+  const plan = city.planTown({ key: p.key, name: p.name, lat: p.lat, cc: p.cc, pop: p.pop }, { seed: 1, size: 'gross' });
+  const extras = plan.fountains.filter((f) => ['fountainDrink', 'fountainPond', 'fountainJets'].includes(f.kind) && !f.goal);
+  ok(extras.length > 0 && extras.every((f) => plan.items.some((it) => it.fountain === f.id && NB.baseKind(it.name) === f.kind && it.name === NB.extraVariant(p.key, f.kind, L.profileOf(p).looks.map(([l]) => l), L.hashKey))), 'Nebenbrunnen im Plan ohne ihre Spielart');
+  console.log(`Nebenbrunnen: ${Object.entries(NB.EXTRA_VARIANTS).map(([k, l]) => `${k} ${l.length} Spielarten`).join(', ')}; Frankfurt: ${extras.map((f) => f.title).join(', ')}`);
+}
 // Der Brunnen passt zum Ort (Besitzer, 27.11.2026: „Das Spiel braucht noch mehr Arten von Brunnen“): Jede Art des
 // Hauptbrunnens kommt aus den Brunnen seiner Bauweisen (layout.js STYLE_KINDS) oder dem allgemeinen Angebot seiner
 // Größe; im Ausland nie ein typisch deutscher (Gänseliesel, Frosch, Ziehbrunnen, Dorftrog); jede Art der dritten
