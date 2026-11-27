@@ -33,6 +33,8 @@ const fcEdge = (i) => i * FC.len + (fhash(i, 7) - 0.5) * FC.jit * FC.len;
 const AHEAD = 17;
 const BEHIND = 2;
 const NSLOTS = AHEAD + BEHIND + 1;
+// leerer Platz im Vorrat der Bäume und Häuser (Größe 0)
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 
 // Elsa-Statue: aus Mini Adams Sicht deckt der Innenspiegel rechts oben etwa 17–41° ab. Nah hinter der
 // Leitplanke (der Sockel bleibt gut einen halben Meter hinter den Leitpfosten) und etwas größer als früher
@@ -214,20 +216,51 @@ export class Scenery {
       roof: [roofGeo(), 34],
     };
     this.inst = {};
-    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    // Jeder Abschnitt hat feste Plätze (cap je Art) in einem Vorrat (mat, col); gezeichnet werden davon nur die besetzten,
+    // dicht hintereinander in der Reihenfolge der Plätze (pack). Früher liefen alle Plätze durch die Grafikkarte, die
+    // leeren als Punkt ohne Größe: gut 1,2 Mio. Dreiecke je Durchgang (Sicht, Rückspiegel, Schatten), obwohl meist
+    // nur ein Viertel bis ein Drittel davon steht.
     for (const [name, [geo, cap]] of Object.entries(defs)) {
       const m = name === 'house' ? W.lambert({ vertexColors: true }) : mat;
       const mesh = new THREE.InstancedMesh(geo, m, cap * NSLOTS);
       mesh.frustumCulled = false;
       mesh.castShadow = true;
       mesh.receiveShadow = name === 'house' || name === 'roof';
-      for (let i = 0; i < cap * NSLOTS; i++) {
-        mesh.setMatrixAt(i, zero);
-        mesh.setColorAt(i, new THREE.Color(1, 1, 1));
-      }
+      mesh.setColorAt(0, new THREE.Color(1, 1, 1));
+      mesh.count = 0;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       this.track.add(mesh);
-      this.inst[name] = { mesh, cap };
+      const store = { mat: new Float32Array(cap * NSLOTS * 16), col: new Float32Array(cap * NSLOTS * 3).fill(1) };
+      for (let i = 0; i < cap * NSLOTS; i++) ZERO.toArray(store.mat, i * 16);
+      this.inst[name] = { mesh, cap, ...store };
+    }
+    this.instDirty = false;
+  }
+
+  /** Die besetzten Plätze aller Arten dicht in die Netze legen (nach jeder Änderung, vor dem nächsten Bild). */
+  pack() {
+    this.instDirty = false;
+    for (const def of Object.values(this.inst)) {
+      const { mesh, mat, col } = def;
+      const M = mesh.instanceMatrix;
+      const C = mesh.instanceColor;
+      const total = def.cap * NSLOTS;
+      let n = 0;
+      for (let i = 0; i < total; i++) {
+        const o = i * 16;
+        if (mat[o] === 0 && mat[o + 1] === 0 && mat[o + 2] === 0) continue; // leerer Platz
+        M.array.set(mat.subarray(o, o + 16), n * 16);
+        C.array.set(col.subarray(i * 3, i * 3 + 3), n * 3);
+        n++;
+      }
+      mesh.count = n;
+      // hochgeladen wird nur, was gezeichnet wird
+      M.clearUpdateRanges();
+      M.addUpdateRange(0, Math.max(1, n) * 16);
+      M.needsUpdate = true;
+      C.clearUpdateRanges();
+      C.addUpdateRange(0, Math.max(1, n) * 3);
+      C.needsUpdate = true;
     }
   }
 
@@ -282,6 +315,7 @@ export class Scenery {
 
   // --- Segment-Aufbau ------------------------------------------------------
   update(s, dt) {
+    this.updating = true;
     this.time += dt;
     this.track.position.z = s;
     const kNow = Math.floor(s / SEG);
@@ -298,6 +332,8 @@ export class Scenery {
     }
     // alte Anfragen aufräumen
     if (this.requests.length > 40) this.requests = this.requests.filter((r) => r.s > s - 500);
+    this.updating = false;
+    if (this.instDirty) this.pack();
   }
 
   buildSlot(slotIdx, k) {
@@ -333,8 +369,8 @@ export class Scenery {
       sc.set(sx ?? scale, sy ?? scale, sz ?? scale);
       m4.compose(v.set(x, y, z), q, sc);
       const i = slotIdx * def.cap + n;
-      def.mesh.setMatrixAt(i, m4);
-      def.mesh.setColorAt(i, col.setHex(color));
+      m4.toArray(def.mat, i * 16);
+      col.setHex(color).toArray(def.col, i * 3);
       return true;
     };
 
@@ -499,11 +535,9 @@ export class Scenery {
 
     for (const name of Object.keys(this.inst)) {
       const def = this.inst[name];
-      const zero = new THREE.Matrix4().makeScale(0, 0, 0);
-      for (let n = counts[name]; n < def.cap; n++) def.mesh.setMatrixAt(slotIdx * def.cap + n, zero);
-      def.mesh.instanceMatrix.needsUpdate = true;
-      if (def.mesh.instanceColor) def.mesh.instanceColor.needsUpdate = true;
+      for (let n = counts[name]; n < def.cap; n++) ZERO.toArray(def.mat, (slotIdx * def.cap + n) * 16);
     }
+    this.instDirty = true;
   }
 
   /**
@@ -771,24 +805,23 @@ export class Scenery {
 
   /** Bäume und Büsche (oder names) entfernen, deren Fußpunkt (x, z) test erfüllt – nur in Segment slotIdx oder überall. */
   clearPlants(test, slotIdx = -1, names = ['conifer', 'decid', 'bush']) {
-    const m = new THREE.Matrix4();
-    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
     for (const name of names) {
-      const { mesh, cap } = this.inst[name];
+      const { mat, cap } = this.inst[name];
       const i0 = slotIdx < 0 ? 0 : slotIdx * cap;
       const i1 = slotIdx < 0 ? cap * NSLOTS : i0 + cap;
       let hit = false;
       for (let i = i0; i < i1; i++) {
-        mesh.getMatrixAt(i, m);
-        const e = m.elements;
-        if (e[0] === 0 && e[1] === 0 && e[2] === 0) continue; // leerer Platz
-        if (test(e[12], e[14])) {
-          mesh.setMatrixAt(i, zero);
+        const o = i * 16;
+        if (mat[o] === 0 && mat[o + 1] === 0 && mat[o + 2] === 0) continue; // leerer Platz
+        if (test(mat[o + 12], mat[o + 14])) {
+          ZERO.toArray(mat, o);
           hit = true;
         }
       }
-      if (hit) mesh.instanceMatrix.needsUpdate = true;
+      if (hit) this.instDirty = true;
     }
+    // außerhalb von update (eine Bestellung mitten im Bild) gleich neu legen, sonst am Ende von update
+    if (this.instDirty && !this.updating) this.pack();
   }
 
   /** Grundfläche eines angefragten Orts, auf der keine Bäume stehen dürfen, als Test (x, z), sonst null. */
