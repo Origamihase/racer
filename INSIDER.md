@@ -28,6 +28,38 @@ Die Texte selbst stehen gesammelt in [`src/data.js`](src/data.js).
 | Konfetti und Satellit | Konfetti-Kanone und Satelliten-Schüssel im Shop (nach dem ersten Stream über Satellit). | [01.11.2021 Konfetti vor dem Kölner Dom](https://skylinetv.live/wiki/index.php?title=01.11.2021_Konfetti_vor_dem_K%C3%B6lner_Dom)<br>[16.01.2022 Erster Starlink-Stream](https://skylinetv.live/wiki/index.php?title=16.01.2022_Erster_Starlink-Stream) |
 | Live-Eskalationen immer woanders | Der Untertitel auf der Hauptseite des Wikis ist die Tagline im Titelbildschirm. | [Hauptseite](https://skylinetv.live/wiki/index.php?title=Hauptseite) |
 
+## Memes aus Wiki, Medien und Podcast (seit 27.11.2026)
+
+Gesammelt aus dem Wiki-Export vom 15.11.2026, aus Zeitungs- und Radioberichten und aus dem Podcast [Henke's Corner #72](https://www.youtube.com/watch?v=ptA5QyqOMfQ) (21.02.2025). Der Besitzer wünschte sich: „Versuch alles zu verwenden.“ Die Texte stehen in `src/data-memes.js`, die Abläufe in `src/game/memes.js`. Echte Menschen tragen nur den Namen, den der Insider ihnen gibt. Berichte über Adams Tod kommen nie in einen Gag.
+
+| Meme | Im Spiel | Quelle |
+| --- | --- | --- |
+| Glücksrad-Spende | Ab und zu spendet jemand fürs Glücksrad (mindestens die Hälfte des führenden Gebots). Am oberen Rand dreht ein kleines Rad über die gebotenen Orte, wo es stehen bleibt, ist das neue Navi-Ziel. | Wiki: Live-Bereich, Glücksrad |
+| Adam lernt Wischwasser kennen | Jeder Wisch kostet Wischwasser. Ist der Tank leer, zieht der Wischer nur noch Schlieren, OMI sagt es einmal, der Chat lacht. Am Ladestopp füllt Mini Adam nach. | Wiki: 21.08.2021, Heimfahrt mit Mond |
+| Trier, das ewige Ziel | Trier wird seltener geboten, der Chat glaubt nicht daran. Kommt Mini Adam doch an, gibt es Jubel, eine Durchsage und eine Zeile im Abspann. | Wiki: Schlössertour 23.01.2021, Moseltour 13.02.2021 |
+| Pizzaautomat defekt | In jedem Ladepark und an den Rasthöfen steht ein Pizzaautomat mit Zettel „DEFEKT“, der Chat spottet beim Laden. | Wiki: 12.04.2022 |
+| Zoom-Zähler | Jeder Kamerawechsel und die Kofferraum-Kamera zählen als Zoom, der Chat zählt mit, die Abrechnung auch. | Wiki: Augsburg 04.05.2017, Hannover 22.06.2017 |
+| Fleetball-Set | Liegt in der Kofferraum-Kamera auf der Rückbank, der Chat streitet, ob es die Fleetball-WM gab. | Wiki: Buxtehude 15.06.2017 |
+| Wo ist Walte? | In manchen Folgen steht Walte halb versteckt hinter dem Brunnen und filmt. Wer ihn in der Brunnen-Kamera entdeckt und hupt, hat ihn gefunden: Der Chat jubelt und jemand spendet. | Wiki: Laboe 30.01.2022 |
+| Sammelaktion Streamabbruch | Nach sehr langen Fahrten startet Claudia selten die Aktion „Reicht für heute“. Wird sie voll, endet der Stream liebevoll mit dem Abspann. | Wiki: Moseltour 13.02.2021 |
+| Countdown-Ampel | Ab der Kleinstadt steht am Brunnenplatz eine Fußgängerampel mit Countdown und QR-Schild „Grün kaufen · 5 Cent“. | Wiki: Jerewan 24.05.2025 |
+| Knöllchen am Ladepark | Selten klemmt nach dem Laden ein Knöllchen unter dem Wischer: 50 € Verwarngeld auf der Abrechnung. | Wiki: Laboe 30.01.2022 |
+| Chat-Zeilen | Drei Kinder und zwei Atomkraftwerke, die KiBa-Schuld in Bonn, Pappe ablecken in Dortmund, Physalis mit immer neuem Namen, die Ein-Guide-Regel, „Hallo Chat, ich wurde geboren“, der Kaktus, 15 SIM-Karten beim Funkloch, der Tigerangriff beim Raid, Hase mit Sitzplatz, Kopfhörer im Gulli, Reutlingen, Walte als Sparfuchs, Elsa im Schaufenster, Krabbencocktail-Chips, Laternen-Superkraft. | Wiki-Trivia, Instagram @skylinetv_live |
+| Rekord 14:36 | Hugo sagt zu jeder vollen zweiten Stunde, wie weit es noch bis zum Rekord von 14 Stunden 36 Minuten ist. | Wiki: 06.02.2021 |
+| Fulda | Der Chat warnt vor dem Ordnungsamt, eine Durchsage erinnert an den Glühwein zur Versöhnung. | Fuldaer Nachrichten (09.12.2021 und 16.12.2021) |
+| Reingeschlichen ins Fernsehen | Auf der Autobahn steht ab und zu ein Übertragungswagen von „LOKAL-TV“. Wer hupt, ist kurz im Fernsehen. | Stuttgarter Zeitung, 26.10.2026 |
+| Konstanz und das Sprachstudio | Am Ziel Konstanz erzählt das Sprachstudio stolz, dass es hier seinen Namen bekam. | Wiki: Konstanz 18.05.2017 (Südkurier) |
+| Container-Sieger, seit 2013 | Abspann: Sieger des Großen Bruders (König-Knolli-Edition) und die stille Zeile „Live von überall, seit 2013.“ | Stuttgarter Zeitung, 20.10.2026 |
+| Gifhorn | „Sie löschen jetzt alle Frequenzen!“ in Chat und Laufschrift der Polizei, lustige Namen in der Supermarkt-Durchsage. | Henke's Corner #72 |
+| Biografie | „Dreizehn SIM-Karten waren nicht genug“ sagt OMI beim Funkloch und steht im Abspann. | Henke's Corner #72 |
+| Mini Adams eigene Zeilen | Mini Adam schreibt selbst in den Chat, immer mit 🙌, 🌠 oder 🙂. | Henke's Corner #72 |
+| Pi | Bei der Synchro-Zahl schreibt jemand Pi in den Chat. | Henke's Corner #72 |
+| Kindheit und Jugend | Die 0900-Tombola (Zettel an der Countdown-Ampel), „Moment, ich rechne kurz“ bei der Altersfrage, Klinkenputzen bei BrunnenTV, Homepage-Unternehmer mit 15 und Goldschmied in Travemünde als Berufe im Abspann, TV Total in Köln. | Henke's Corner #72 |
+| Sitcom-Lachen | Spammt der Chat LOL, kommt ein Konserven-Lachen, und das Sprachstudio sagt es an. | Henke's Corner #72 |
+| Kanzler Adam | Durchsagen: Mobil wird nur noch in Vier K gestreamt, und wer Falsches twittert, muss sich entschuldigen. | Henke's Corner #72 |
+| Polnisch statt Französisch | In Polen grüßt Mini Adam per Megafon auf Polnisch, in Frankreich kommt nur ein verlegenes „Bonjour?“. | Henke's Corner #72 |
+| Rollstuhl-Holger | Er wurde 2018 im Miniatur Wunderland in Hamburg vergessen und wartet seitdem: Hamburg trägt die Navi-Notiz „Rollstuhl-Holger abholen“, Durchsagen fragen nach ihm, am Ziel ruft der Chat „HOLGER! HOLGER!“. Der Witz ist immer, dass er wartet, nie der Rollstuhl. Dazu eine warme Erinnerung an das Rollstuhlexperiment 2020 in Hamburg (Perspektivwechsel). | Wiki: [Sprachdurchsagen](https://skylinetv.live/wiki/index.php?title=Sprachdurchsagen), 29.03.2018, 27.08.2020 |
+
 ## Frei erfunden
 
 - **OMI** ist der Boardcomputer (schwarze Kugel mit rundem Display und zwei Augen). Er sagt „Die linke Fahrspur ist freigeschaltet.“ und „Das Navi-Ziel wurde geändert.“ Die Aktion „Linke Spur freischalten“ selbst stammt aus dem Live-Bereich (siehe oben).

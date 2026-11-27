@@ -63,7 +63,7 @@ import { ORBIT, createOrbitCam } from './camera/orbit.js';
 import { setSceneContext } from './scenes/context.js';
 import { chargeRun, chargePlug, chargeBegin, chargeTitle, chargeStep, streamStart, liveOff, chargeGreet } from './scenes/start.js';
 import { STOP_CTL, STOP_FADE, stopRun, stopPose, stopTick, stopPlace, hookStop } from './scenes/stop.js';
-import { tvRun, sceneSkip, tvTick, tvStop, tvPlace, hookTv } from './scenes/tv.js';
+import { tvRun, sceneSkip, tvTick, tvStop, tvPlace, tvHorn, hookTv } from './scenes/tv.js';
 
 // Ladezeit: Marken für die Messung (performance.mark ma:…, zu lesen mit performance.getEntriesByType('mark')): alle
 // Module ausgewertet
@@ -435,6 +435,8 @@ const gameWorld = {
 const game = new Game({ traffic, scenery, windshield, cockpit, audio, speech, ui: uiFacade, fx, pickups, world: gameWorld, touchUI: IS_TOUCH });
 // Mini Adams Gruß zu Beginn kommt von hier (streamStart): Der Chat grüßt erst danach zurück (Game.greet)
 game.greetFirst = true;
+// die Memes greifen im Spiel selbst auch in Gebote, Geld und Stimmen ein (memes.js live; in den Prüfständen nur Chat)
+game.memes.live = true;
 // Ankunft, Halt am Brunnen, Ausfahrten und verpasste Abzweige der Fahrt gehen ans Spiel (Ziel erreicht, BrunnenTV,
 // Mimik, Chat); jeder Ort, durch dessen Mitte der Spieler fährt, zählt als Besuch auf der großen Karte
 xxl.on((e) => {
@@ -1595,6 +1597,8 @@ function step(dt, { render = true } = {}) {
         STOP_CTL.device = input.lastDevice;
         p.speed = 0;
         game.update(dt, STOP_CTL, camera);
+        // Wo ist Walte? Hupen, wenn er im Bild ist (die Hupe selbst bleibt in der Folge stumm)
+        if (input.take('horn')) tvHorn();
         tvTick();
         if (tvRun.on) break;
         // vorbei: ab dem nächsten Bild fährt der Spieler, die Kamera ist schon seine
@@ -1611,6 +1615,8 @@ function step(dt, { render = true } = {}) {
         view = view === 'cockpit' ? 'drone' : 'cockpit';
         drone.init = false;
         ui.cameraLabel(view === 'cockpit' ? '🎥 Cockpit' : '🎥 Drohne');
+        // der Chat zählt die Zooms mit (Memes: der Zoom-Zähler)
+        game.memes.zoom();
       }
       ctl = {
         // Lenktasten mit Zeitstempel (steerLog) und Tastenstand am Bildende, Stick/Touch-Zug, Wisch-Spurwechsel
@@ -2078,7 +2084,7 @@ if (DEBUG) {
     /** BrunnenTV-Folge: Szene (tvRun) und Zustand für Prüfbilder: Zeit, Kamera, Fenster, Megafon. */
     get tv() {
       const t = game.brunnenT();
-      return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t) : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl.arrival.held };
+      return { on: tvRun.on, t: +t.toFixed(2), shot: tvRun.on ? shotAt(t) : null, window: +windowAt(t).toFixed(2), megafon: tesla.adam.megaphoneShown, seat: !tesla.adam.megaphoneShown, game: game.tv ? { n: game.tv.n, goal: game.tv.goal, said: game.tv.said } : null, released: !xxl.arrival.held, walteView: !!tvRun.walteView };
     },
     /** BrunnenTV-Album: Folgen im Spielstand, gespeicherte Bilder, zuletzt aufgenommenes Standbild. */
     get album() {

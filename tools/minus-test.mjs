@@ -350,7 +350,7 @@ let parkLine = '';
     return out;
   };
   // a) eingeplante Säule, voll geladen, tief im Minus
-  const a = charge({ seed: 3, after: 600 });
+  const a = charge({ seed: 3, after: 1200 });
   const g = a.g;
   const want = ladeKosten(100 - (a.c ? a.c.from : 0), g.player.capacity, a.c ? a.c.price.euro : 0);
   const aPreis = a.c && a.c.price;

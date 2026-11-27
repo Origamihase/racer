@@ -44,7 +44,7 @@ const NOWHERE = { m: Infinity, realM: 0 };
  */
 export const AKKU_HOST = [
   'player', 'world', 't', 'running', 'over', 'tv', 'halt', 'offAutobahn', 'up', 'touchUI', 'ui', 'audio', 'eco', 'stats',
-  'say', 'sayHeld', 'chat', 'burst', 'thrill', 'routeMark', 'onCharge', 'payCharge',
+  'say', 'sayHeld', 'chat', 'burst', 'thrill', 'routeMark', 'onCharge', 'payCharge', 'memes',
 ];
 
 export class Akku {
@@ -296,6 +296,8 @@ export class Akku {
     this.charging = { t0: this.g.t, from: p.battery, park: e.park, post, name: e.name, sec: e.sec, plan, said: 0, price: ladePreis({ park: e.park, post }) };
     this.g.routeMark('laden', e.post >= 0 ? { post: e.post } : { park: e.park });
     this.g.onCharge(this.charging);
+    // im Ladepark: Pizzaautomat (defekt), Wischwasser nachfüllen (memes.js)
+    this.g.memes.chargeStart();
   }
 
   /** Sekunden seit dem Halt im Park (Fahrplan des Ladestopps). */
@@ -387,6 +389,8 @@ export class Akku {
       this.g.ui.toast(parts.map((x) => x[0]).join(''), 'good', 'ladestrom', parts);
     } else this.g.ui.toast('🔋 Akku voll', 'good');
     this.g.sayHeld();
+    // selten ein Knöllchen unter dem Wischer (memes.js)
+    this.g.memes.chargeEnd();
     // der Zuckerschub des Bananensafts, sobald der Wagen wieder auf der Autobahn ist (im Park und auf dem Zubringer
     // gilt ohnehin ein Tempolimit)
     this.sugarDue = true;

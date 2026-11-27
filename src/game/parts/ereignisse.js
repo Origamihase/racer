@@ -2,7 +2,7 @@
 // Funkloch, Elefantenrennen.
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
 import { CHAT, BOARD, RAHMEN, RAHMEN_GAP, VOICES, CREW, CREW_LINES, AKTIONEN, MEGAFON_WUENSCHE, SAMMELAKTIONEN, BUSSGELD, viewerName, fillTemplate } from '../../data.js';
-import { clamp, rand, randInt, chance, pick, fmtEuro, fmtClock } from '../../util.js';
+import { clamp, rand, randInt, chance, pick, fmtEuro, fmtClock, fmtNum } from '../../util.js';
 import { Vector3 } from 'three';
 import { elephantPair } from '../../world/traffic.js';
 import { EYE } from '../../cockpit/cockpit.js';
@@ -10,8 +10,28 @@ import { ELSA_STATUE } from '../../world/scenery.js';
 import { curvePoint } from '../../curve.js';
 import { camerasAlong, triggerKmh } from '../../world/xxl/blitzer.js';
 import { DS, ALL as DS_ALL } from '../durchsagen.js';
+import { places } from '../../map/graph.js';
 
-const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN'];
+/** Der Schlüssel des Orts i der Karte ('' ohne Ort). */
+const placeKey = (i) => (i >= 0 && places[i] ? places[i].key : '');
+/** Der Ort, durch den der Wagen gerade fährt (Index in places, −1 außerhalb). */
+function townHere(g) {
+  const tr = g.world.trip ? g.world.trip() : null;
+  const sec = tr && tr.section;
+  return sec && sec.kind === 'stadt' ? sec.place : -1;
+}
+/** Ist der Ort key das Navi-Ziel, oder fährt der Wagen gerade durch ihn? (die Orts-Stichworte der Memes) */
+const hier = (g, key) => (!!g.navi.target && placeKey(g.navi.target.place) === key) || placeKey(townHere(g)) === key;
+/** Liegt das Navi-Ziel im Land cc, oder fährt der Wagen gerade dort? */
+function imLand(g, cc) {
+  const t = g.navi.target;
+  if (t && places[t.place] && places[t.place].cc === cc) return true;
+  const tr = g.world.trip ? g.world.trip() : null;
+  return !!tr && tr.country === cc;
+}
+
+// (FREQUENZEN LÖSCHEN: der Hausmeister vom ersten Gifhorn-Stream, Podcast Henke's Corner #72)
+const POLICE_TEXTS = ['POLIZEI GIFHORN', 'GUTE FAHRT, ADAM!', 'GIFHORN GRÜSST', 'BITTE LÄCHELN', 'FREQUENZEN LÖSCHEN!'];
 // Rechts oben deckt der Innenspiegel aus Mini Adams Sicht ab etwa 17,8° rechts der Blickrichtung ab
 // (auf dem Handy hochkant endet dort fast schon das Bild): bis 16° steht Elsa frei in der Scheibe.
 const ELSA_VIEW = (16 * Math.PI) / 180;
@@ -85,6 +105,21 @@ export const FACTS = {
   folge: (g) => g.ds.just('folge'),
   geladen: (g) => g.ds.just('geladen'),
   spende: (g) => g.ds.just('spende'),
+  // … und für die Memes aus Wiki, Medien und Podcast (data-memes.js, game/memes.js): der Ort ist das Navi-Ziel oder
+  // der Wagen fährt gerade durch ihn · polen/frankreich ebenso fürs Land · raid König Knolli raidet seit höchstens
+  // anderthalb Minuten · uewagen ein Übertragungswagen steht gerade voraus am Rand
+  hamburg: (g) => hier(g, 'Hamburg'),
+  trier: (g) => hier(g, 'Trier'),
+  fulda: (g) => hier(g, 'Fulda'),
+  bonn: (g) => hier(g, 'Bonn'),
+  dortmund: (g) => hier(g, 'Dortmund'),
+  koeln: (g) => hier(g, 'Köln'),
+  konstanz: (g) => hier(g, 'Konstanz'),
+  luebeck: (g) => hier(g, 'Lübeck'),
+  polen: (g) => imLand(g, 'PL'),
+  frankreich: (g) => imLand(g, 'FR'),
+  raid: (g) => g.t - g.raidT < 90,
+  uewagen: (g) => !!(g.memes && g.memes.wagen && g.memes.wagen.seen),
 };
 // Radarwarner (Shop): so viele Meter vor dem Tempo-120-Schild eines Blitzers schlägt er an (ahead); erst piept das
 // Kästchen (audio.js RADAR_BEEP, gut 0,6 s), lead Sekunden später – wenn es fertig ist – folgen OMIs Gong und ihre Ansage
@@ -297,7 +332,8 @@ export class EreignissePart {
         this.fx.glitch(this.funkloch);
         this.ui.funkloch(true);
         this.burst(CHAT.funkloch, 5, 1.6);
-        if (chance(0.5)) this.later(0.5, () => this.say(BOARD.funkloch, 'worried', { priority: false }));
+        const omi = BOARD.funkloch[this.funklochN++ % BOARD.funkloch.length];
+        if (chance(0.5)) this.later(0.5, () => this.say(omi, 'worried', { priority: false }));
       } else if (chance(0.5)) {
         this.chat(pick(['Satellit sei Dank: kein Funkloch 🛰️', 'Bild bleibt stabil ✔️', 'Schüssel 🔥']));
       }
@@ -322,8 +358,10 @@ export class EreignissePart {
       if (a.id === 'trunk') {
         this.fx.trunk(7);
         this.burst(CHAT.trunk, 3, 2.5);
+        // die Kofferraum-Kamera ist ein Zoom, und darin liegt das Fleetball-Set (memes.js)
+        this.memes.trunk();
       } else if (a.id === 'hupe') {
-        this.later(0.9, () => this.honk());
+        this.later(0.9, () => this.honk(true));
         this.later(1.4, () => this.chat('Bimmel hurra! 📯'));
       } else {
         const text = pick(MEGAFON_WUENSCHE);
@@ -362,6 +400,8 @@ export class EreignissePart {
       nums.forEach((n, i) => this.later(0.6 + i * rand(0.2, 0.45), () => this.chat(n)));
       const dupe = nums.find((n, i) => nums.indexOf(n) !== i);
       if (dupe) this.later(4.5, () => this.chat(`Synchron mit ${dupe}! 🤝`));
+      // … und manchmal schreibt einer Pi (memes.js)
+      this.memes.numbers(0.9 + nums.length * 0.35);
     }
 
     // Polizei Gifhorn einfach mal so
@@ -483,7 +523,10 @@ export class EreignissePart {
       this.lastHugo = hour;
       if (hour === 21) this.bot('hugo', '21 Uhr: Ortsspenden-Schluss! … Verlängerung um 5 Minuten 😉');
       else if (hour === 22) this.bot('hugo', 'Eigentlich wäre jetzt Sendeschluss. Wir fahren einfach weiter!');
-      else if (hour >= 19) this.bot('hugo', `Es ist ${hour} Uhr. Sendezeit läuft.`);
+      // (nach einer Stunde Sendezeit: der Streckenrekord von 14 Stunden 36 Minuten, 06.02.2021)
+      else if (hour >= 19 && this.t > 3600 && this.t < 14.6 * 3600 && hour % 2 === 0) {
+        this.bot('hugo', `Es ist ${hour} Uhr. Bis zum Rekord von 14 Stunden 36 Minuten fehlen nur noch ${((h) => (h === 1 ? 'eine Stunde' : fmtNum(h) + ' Stunden'))(Math.ceil(14.6 - this.t / 3600))} 🙂`);
+      } else if (hour >= 19) this.bot('hugo', `Es ist ${hour} Uhr. Sendezeit läuft.`);
       else if (hour === 0) this.bot('hugo', 'Mitternacht! Der Stream läuft einfach weiter. 🌙');
       else if (hour < 6) this.bot('hugo', `Es ist ${hour} Uhr nachts. Sendezeit läuft immer noch.`);
     }

@@ -49,7 +49,8 @@ const LANDMARK_OFFSET = 75;
 // draußen), Blitzer, Tempo-Schild (zwei Pfosten: rechts und am Mittelstreifen)
 const FOUNTAIN_X = ROAD.right + 9;
 const LANDMARK_X = [FOUNTAIN_X, ELSA_STATUE.x, ELSA_FAR.x];
-const REQUEST_X = { brunnen: [FOUNTAIN_X], elsa: [ELSA_STATUE.x, ELSA_FAR.x], blitzer: [ROAD.right + 1.6], speed: [ROAD.right + 1.3, MEDIAN_X], bauSchild: [ROAD.right + 1.3, MEDIAN_X] };
+const UEWAGEN_X = ROAD.right + 4.5; // Übertragungswagen (Memes): gleich hinter der Leitplanke
+const REQUEST_X = { uewagen: [UEWAGEN_X], brunnen: [FOUNTAIN_X], elsa: [ELSA_STATUE.x, ELSA_FAR.x], blitzer: [ROAD.right + 1.6], speed: [ROAD.right + 1.3, MEDIAN_X], bauSchild: [ROAD.right + 1.3, MEDIAN_X] };
 const WAVE_T = 2.6; // so lange winkt Elsa zurück (s)
 
 // Bildseiten von Schildern, Tafeln und Fenstern vor einer Fläche: Die Tiefenauflösung reicht in 450 m
@@ -62,7 +63,7 @@ const FRONT = { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits
 const WALL_X = ROAD.right + 2.35;
 // Vor Wahrzeichen rechts der Fahrbahn bleibt die Wand offen: ab 140 m davor, damit man sie aus dem Cockpit schon
 // aus ≈ 250 m sieht, bis 25 m dahinter. Kürzere Reststücke als 20 m entfallen.
-const WALL_GAP = new Set(['brunnen', 'elsa']);
+const WALL_GAP = new Set(['brunnen', 'elsa', 'uewagen']);
 const GAP_BEFORE = 140;
 const GAP_AFTER = 25;
 const WALL_MIN = 20;
@@ -866,6 +867,11 @@ export class Scenery {
         this.animated.add(obj);
         break;
       }
+      // Übertragungswagen (Memes, memes.js): längs der Straße, die Schrift zur Fahrbahn, die Kamera auf den Wagen
+      case 'uewagen':
+        obj = this.acquire('uewagen', () => this.makeUeWagen());
+        obj.position.set(UEWAGEN_X, 0, z);
+        break;
       case 'blitzer':
         obj = this.acquire('blitzer', () => this.makeBlitzer());
         obj.userData.flash.material.color.setScalar(1); // falls eine Fahrt mitten im Blitz endete
@@ -1322,6 +1328,99 @@ export class Scenery {
       sign.position.set(x, 2.45, 0.1);
       g.add(post, sign);
     }
+    return g;
+  }
+
+  /**
+   * Übertragungswagen eines Lokalsenders (Memes: Adam schlich sich in Quizshow, Bundesliga und Lokalzeit): weißer
+   * Kastenwagen (6,2 m, Front in Fahrtrichtung, −z), Sat-Schüssel auf dem Dach, Aufschrift „LOKAL-TV · LIVE“ zur
+   * Fahrbahn (−x), davor eine Kamera auf dem Stativ mit rotem Licht, die auf die Straße zielt. Keine echte Marke.
+   */
+  makeUeWagen() {
+    const g = new THREE.Group();
+    const white = W.std({ color: 0xf1f1ee, roughness: 0.45, metalness: 0.1 });
+    const dark = W.std({ color: 0x24262b, roughness: 0.6 });
+    const glass = W.std({ color: 0x1b2430, roughness: 0.15, metalness: 0.6 });
+    // Kasten und Fahrerhaus
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.5, 4.4), white);
+    body.position.set(0, 1.65, 0.8);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.8, 1.8), white);
+    cab.position.set(0, 1.3, -2.3);
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.9, 0.6), white);
+    hood.position.set(0, 0.85, -3.4);
+    const wind = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.8), W.std({ ...FRONT, color: 0x1b2430, roughness: 0.15, metalness: 0.6 }));
+    wind.position.set(0, 1.75, -3.21);
+    wind.rotation.set(-0.35, Math.PI, 0);
+    const side = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.7), glass);
+    side.position.set(-1.06, 1.75, -2.4);
+    side.rotation.y = -Math.PI / 2;
+    const wheels = [];
+    for (const [x, z] of [[-1.0, -2.7], [1.0, -2.7], [-1.0, 1.9], [1.0, 1.9]]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 14), dark);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(x, 0.42, z);
+      wheels.push(w);
+    }
+    // Aufschrift auf der Seite zur Fahrbahn und hinten
+    const tex = this.canvasTex('uewagen', 512, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#f1f1ee';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#1f5fbf';
+      ctx.fillRect(0, h * 0.68, w, h * 0.14);
+      ctx.fillStyle = '#e5483a';
+      ctx.fillRect(0, h * 0.84, w, h * 0.05);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#1f5fbf';
+      ctx.font = 'bold 92px Arial Black, Arial, sans-serif';
+      fitTextCenter(ctx, 'LOKAL-TV', w / 2, h * 0.3, w - 40);
+      ctx.fillStyle = '#e5483a';
+      ctx.font = 'bold 54px Arial, sans-serif';
+      fitTextCenter(ctx, '● LIVE', w / 2, h * 0.56, w - 40);
+    });
+    const label = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.1), W.std({ ...FRONT, map: tex, roughness: 0.5 }));
+    label.position.set(-1.105, 1.65, 0.8);
+    label.rotation.y = -Math.PI / 2;
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 1.0), W.std({ ...FRONT, map: tex, roughness: 0.5 }));
+    back.position.set(0, 1.9, 3.005);
+    // ausgefahrener Teleskopmast mit Sat-Schüssel: ragt weit über das Dach, so sieht man den Wagen schon von fern
+    // (auch über Innenspiegel und Bildschirm hinweg)
+    const mast = new THREE.Group();
+    for (const [r, y0, y1] of [[0.11, 2.9, 5.2], [0.08, 5.2, 7.2], [0.06, 7.2, 8.6]]) {
+      const seg = new THREE.Mesh(new THREE.CylinderGeometry(r, r, y1 - y0, 10), this.mats.steel);
+      seg.position.y = (y0 + y1) / 2;
+      mast.add(seg);
+    }
+    mast.position.set(0.3, 0, 1.8);
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(0.95, 20, 8, 0, Math.PI * 2, 0, 0.75), W.std({ color: 0xe9eaec, roughness: 0.35, side: THREE.DoubleSide }));
+    dish.position.set(0.3, 8.75, 1.8);
+    dish.rotation.set(0.5, 0, -0.9);
+    const feed = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6), this.mats.steel);
+    feed.position.set(0.0, 8.9, 2.05);
+    feed.rotation.set(0.5, 0, -0.9);
+    // rote Warnleuchte oben am Mast
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), W.basic({ color: 0xff3020 }));
+    beacon.position.set(0.3, 8.66, 1.8);
+    // Kamera auf dem Stativ vor dem Wagen, zielt schräg auf die Fahrbahn
+    const cam = new THREE.Group();
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.45, 6), dark);
+      leg.position.set(Math.sin(a) * 0.22, 0.7, Math.cos(a) * 0.22);
+      leg.rotation.set(Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3);
+      cam.add(leg);
+    }
+    const camBody = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.32, 0.6), dark);
+    camBody.position.set(0, 1.55, 0);
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.3, 12), glass);
+    lens.rotation.x = Math.PI / 2;
+    lens.position.set(0, 1.55, -0.42);
+    const tally = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), W.basic({ color: 0xff3020 }));
+    tally.position.set(0, 1.76, -0.18);
+    cam.add(camBody, lens, tally);
+    cam.position.set(-0.4, 0, -4.7);
+    cam.rotation.y = 2.3;
+    g.add(body, cab, hood, wind, side, ...wheels, label, back, mast, dish, feed, beacon, cam);
     return g;
   }
 

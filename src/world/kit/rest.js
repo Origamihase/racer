@@ -654,6 +654,60 @@ defs.lade_saeule = {
   },
 };
 
+/**
+ * Pizzaautomat (Memes: „Der Pizzaautomat ist schon wieder defekt“): ein roter Kasten (0,9 × 0,8 × 2,0 m) mit
+ * Fenster, Tasten und Ausgabe; vorne (+z) die Schrift „PIZZA 24/7“ und ein schief angeklebter Zettel „DEFEKT“ (extras).
+ */
+const PIZZA_AT = { w: 0.9, d: 0.8, h: 2.0 };
+defs.pizza_automat = {
+  kind: 'rest', far: true,
+  make(b) {
+    const { F, G } = b;
+    const near = !b.lod;
+    const { w, d, h } = PIZZA_AT;
+    F.rbox(0, 0, 0, w + 0.06, 0.08, d + 0.06, 0.03, C.footing, { seg: 1 });
+    F.rbox(0, 0.08, 0, w, h - 0.08, d, 0.06, 0xc8322b, { seg: near ? 2 : 1 });
+    if (!near) return { w, d, h, centre: true };
+    // dunkles Fenster (dahinter wäre der Ofen), Tastenfeld, Ausgabeklappe
+    G.rect(-0.1, 0.95, d / 2 + 0.003, 0.5, 0.5, 0x1d2227);
+    G.rect(0.3, 1.0, d / 2 + 0.003, 0.18, 0.36, 0x2b2f35);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) G.disc(0.26 + j * 0.08, 1.28 - i * 0.09, d / 2 + 0.006, 0.025, 0xd8d8d8, { seg: 8 });
+    F.rbox(-0.1, 0.38, d / 2 - 0.02, 0.5, 0.22, 0.06, 0.02, 0x2b2f35, { seg: 1 });
+    return { w, d, h, centre: true };
+  },
+  extras(kit) {
+    const { w, d, h } = PIZZA_AT;
+    const top = textPanel(kit.core, 'pizza:top', w - 0.1, 0.32, 256, (c, cw, ch) => {
+      c.fillStyle = '#fff3d6';
+      c.fillRect(0, 0, cw, ch);
+      c.fillStyle = '#c8322b';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      fitFont(c, 'PIZZA 24/7', Math.round(ch * 0.62), cw * 0.9);
+      c.fillText('PIZZA 24/7', cw / 2, ch * 0.54);
+    });
+    top.position.set(0, h - 0.3, d / 2 + 0.006);
+    const note = textPanel(kit.core, 'pizza:defekt', 0.34, 0.24, 160, (c, cw, ch) => {
+      c.fillStyle = '#ffffff';
+      c.fillRect(0, 0, cw, ch);
+      c.strokeStyle = '#c8322b';
+      c.lineWidth = 4;
+      c.strokeRect(3, 3, cw - 6, ch - 6);
+      c.fillStyle = '#c8322b';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      fitFont(c, 'DEFEKT', Math.round(ch * 0.42), cw * 0.86);
+      c.fillText('DEFEKT', cw / 2, ch * 0.42);
+      c.fillStyle = '#333';
+      fitFont(c, 'Sorry!', Math.round(ch * 0.2), cw * 0.8);
+      c.fillText('Sorry!', cw / 2, ch * 0.78);
+    });
+    note.position.set(-0.1, 1.0, d / 2 + 0.009);
+    note.rotation.z = -0.12;
+    return [top, note];
+  },
+};
+
 /** Popcorn-Eimer für die Ladepause: rot-weiß gestreift, oben voll Popcorn (0,3 m hoch, Mitte der Grundfläche). */
 defs.popcorn_eimer = {
   kind: 'rest', far: true,

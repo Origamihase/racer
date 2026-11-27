@@ -540,6 +540,24 @@ export class Audio {
     [659.25, 783.99, 987.77, 1318.5].forEach((f, i) => this.tone(f, 0.35, 'triangle', 0.08, i * 0.1));
   }
 
+  /**
+   * Lachen vom Band (game/memes.js, der Lach-Schwall im Chat): ein kurzes Sitcom-Publikum – viele „Ha“ aus gefiltertem
+   * Rauschen in der Höhe von Stimmen, versetzt und leiser werdend, darunter ein warmer Teppich.
+   */
+  sitcomLaugh() {
+    if (!this.ready) return;
+    this.noiseBurst(1.6, 0.03, { type: 'bandpass', freq: 650, q: 1.2 });
+    for (let v = 0; v < 5; v++) {
+      const f = 520 + v * 170 + Math.random() * 80;
+      const off = v * 0.045 + Math.random() * 0.05;
+      const n = 6 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) {
+        const fall = 1 - i / (n + 2);
+        this.noiseBurst(0.11, 0.05 * fall, { type: 'bandpass', freq: f * (1 + 0.06 * Math.sin(i)), q: 5, when: off + i * (0.16 + v * 0.01) });
+      }
+    }
+  }
+
   confetti() {
     this.noiseBurst(0.15, 0.3, { type: 'lowpass', freq: 600 });
     for (let i = 0; i < 8; i++) this.tone(1500 + Math.random() * 2500, 0.05, 'sine', 0.02, 0.1 + i * 0.04);

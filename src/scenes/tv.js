@@ -7,6 +7,7 @@ import { buildHandMegaphone } from '../models/megaphone.js';
 import { clamp, smoothstep } from '../util.js';
 import { storeSave } from '../save.js';
 import { stopRun } from './stop.js';
+import { standSeen } from '../world/xxl/popstand.js';
 import { m } from './context.js';
 
 // --- BrunnenTV am Navi-Ziel (world/xxl/brunnentv.js TV, Game.startBrunnenTV) ----------------------------------------
@@ -71,6 +72,9 @@ export function tvBegin(e) {
   }
   // Mini Adam schaut zum Brunnen (Körperkoordinaten: +x zum Fenster, +z nach vorn)
   m.adamDo((a) => a.lookAt([-r.f.x, 0.85, -r.f.z], TV.look.off[0]));
+  // Wo ist Walte? (memes.js folgeStart): Heute steht er halb hinter dem Brunnen (city.js group.walte)
+  r.walte = (e.walte && e.town && e.town.group && e.town.group.walte) || null;
+  if (r.walte) r.walte.visible = true;
 }
 
 /** Nach game.update: Ist die Folge vorbei (ihr Fahrplan zu Ende), übernimmt der Spieler, wo er steht. */
@@ -86,8 +90,16 @@ export function tvTick() {
 }
 
 /** Fenster zu, Megafon zurück auf den Sitz, Szene aus (auch bei einer neuen Fahrt). */
+/** Hupe während der Folge (main.js): Ist Walte gerade im Bild, ist er gefunden (memes.js walteSeen, einmal je Folge). */
+export function tvHorn() {
+  if (tvRun.walteView) m.game.memes.walteSeen();
+}
+
 export function tvStop() {
   tvRun.on = false;
+  if (tvRun.walte) tvRun.walte.visible = false;
+  tvRun.walte = null;
+  tvRun.walteView = false;
   m.tesla.setWindow(0);
   m.tesla.seatMegaphone(true);
   if (tvRun.prop) tvRun.prop.visible = false;
@@ -150,6 +162,8 @@ export function tvPlace(dt) {
   }
   m.fxState.fade = clamp(fade, 0, 1);
   r.inside = inside;
+  // Walte im Bild der Brunnen-Kamera (nicht im Abblenden): Wer ihn jetzt entdeckt und hupt, hat ihn gefunden (tvHorn)
+  r.walteView = !!(r.walte && shot === 'brunnen' && fade < 0.5 && standSeen(r.walte, [{ cam: m.camera, far: 60 }]));
   // das Megafon vom Beifahrersitz ist in seiner Hand
   m.tesla.seatMegaphone(!m.tesla.adam.megaphoneShown);
   // das Standbild fürs Album: in der Brunnen-Kamera mit dem Megafon am Fenster

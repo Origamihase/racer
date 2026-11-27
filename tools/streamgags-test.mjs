@@ -17,6 +17,7 @@ import { thanksGroups } from '../src/ui/abspann.js';
 import { UI } from '../src/ui/ui.js';
 import { SCHRANKE, schrankeOf, buildSchranke } from '../src/world/xxl/schranke.js';
 import { places } from '../src/map/graph.js';
+import { WALTE, UEWAGEN, KNOELLCHEN, WISCHWASSER, INSELRADIO, ABBRUCH } from '../src/data-memes.js';
 import { STREET } from '../src/world/kit/layout.js';
 
 let fails = 0;
@@ -596,6 +597,10 @@ function fakeGame(secs, { gate = true } = {}) {
   // kurz wie jeder Hinweis am Rand
   const longest = M.inhalt.map(([, w]) => `🎁 Mysterybox: ${w}`).sort((a, b) => chars(b) - chars(a))[0];
   ok(chars(longest) <= chars(LONGEST_NOTICE), `Mysterybox: „${longest}“ ist länger als der längste Hinweis „${LONGEST_NOTICE}“`);
+  // die Hinweise der Memes (memes.js, stream.js) ebenso: mit der längsten Taste und dem höchsten Betrag
+  for (const t of [WALTE.tipp.replace('{taste}', 'Leertaste'), UEWAGEN.gesehen.replace('{taste}', 'Leertaste'), KNOELLCHEN.toast.replace('{betrag}', '100 €'), WISCHWASSER.voll, `📻 ${INSELRADIO.name}: ${INSELRADIO.gruss}`, `🎉 Sammelaktion geschafft: ${ABBRUCH.name}`]) {
+    ok(chars(t) <= chars(LONGEST_NOTICE), `Memes: „${t}“ ist länger als der längste Hinweis „${LONGEST_NOTICE}“`);
+  }
   // den Witz erzählt der Schenker im Chat, gleich nach dem Auspacken
   {
     const sim = makeStream({ seed: 2 });
