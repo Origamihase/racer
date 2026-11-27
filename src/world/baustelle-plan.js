@@ -13,8 +13,8 @@ import { ROAD } from '../textures.js';
  * (x ohne Verschwenkung), by: so weit schwenkt sie in der Mitte nach links (eine Spurbreite).
  */
 export const BAU = {
-  taper: 120, a: 130, shift: 70, mid: 150, back: 70, b: 110, out: 100,
-  left: 0.4, right: 7.0, edge: -7.5, roadRight: 7.5, by: ROAD.laneWidth,
+  taper: 120, a: 110, shift: 110, mid: 120, back: 110, b: 100, out: 100,
+  left: 0.2, right: 7.2, edge: -7.5, roadRight: 7.5, by: ROAD.laneWidth,
   // Abstand der Baken: in Verengung und Verschwenkung dichter
   gap: { bend: 9, straight: 16 },
 };

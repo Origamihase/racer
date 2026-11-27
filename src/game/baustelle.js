@@ -12,19 +12,23 @@ import { mulberry32 } from '../util.js';
  * every: so viele Meter liegen zwischen zwei Baustellen (die erste nach first), ahead: so weit vor dem Wagen beginnt
  * die Verengung, wenn sie eingerichtet wird (das Schild steht sign Meter davor, Tempo 80 limit davor), room: so viel
  * Autobahn ohne Gabelung braucht sie davor, cool: Sekunden zwischen zwei gezählten Berührungen, zone: Tempo
- * des Tempomaten darin (km/h, ab brake Metern vor dem Schild), tidy: so weit hinter ihrem Ende ist sie abgebaut (der Verkehr fährt wieder frei).
+ * des Tempomaten darin (km/h, ab brake Metern vor dem Schild), pad: Luft zwischen Wagen und Gasse, touch: so nah an
+ * ihrer Grenze liegt der Wagen an den Baken an, tidy: so weit hinter ihrem Ende ist sie abgebaut (der Verkehr fährt wieder frei).
  */
-export const BAUSTELLE = { first: [5000, 8000], every: [10000, 16000], ahead: 1300, sign: 1000, limit: 200, room: 250, cool: 1.2, zone: 80, brake: 250, tidy: 300, pad: 0.04 };
+export const BAUSTELLE = { first: [5000, 8000], every: [10000, 16000], ahead: 1300, sign: 1000, limit: 200, room: 250, cool: 1.2, zone: 80, brake: 250, tidy: 300, pad: 0.04, touch: 0.01, look: 0.9 };
 
 /**
  * Liegt zwischen s0 und s1 eine Gabelung dieser Autobahn (Ausfahrt, Kreuz, Ende)? Dort darf keine Baustelle stehen:
- * Ihre Gasse ließe die Ausfahrt nicht erreichen. (Vor der Baustelle darf eine liegen – wer dort abfährt, verlässt sie.)
+ * Ihre Gasse ließe die Ausfahrt nicht erreichen. Davor (ab from, dem Wagen) darf eine liegen, an der der Plan
+ * geradeaus fährt – nimmt er sie, käme der Wagen nie bis zur Baustelle.
  */
-function forkBetween(trip, s0, s1) {
+function forkBetween(trip, s0, s1, from = s0) {
   if (!trip.cur) return false;
   for (const c of trip.cur.sections) {
     const f = c.fork;
-    if (f && !f.taken && f.s > s0 && f.s < s1) return true;
+    if (!f || f.taken || f.s <= from || f.s >= s1) continue;
+    // (davor nur eine Ausfahrt, die der Plan nimmt: Dann käme der Wagen gar nicht bis zur Baustelle)
+    if (f.s > s0 || f.forced || trip.planFor(f) === 'exit') return true;
   }
   // (reicht der gebaute Weg nicht bis hinter die Baustelle, weiß niemand, was dort kommt: lieber nicht)
   const last = trip.cur.sections[trip.cur.sections.length - 1];
@@ -87,9 +91,10 @@ export class Baustelle {
       const L = p.limits;
       const left = Math.max(L.left, G.left + half);
       const right = Math.min(L.right, G.right - half);
-      // rückt eine Bake auf den Wagen zu (Verengung, Verschwenkung), schiebt sie ihn – das zählt wie Streifen
-      if (p.x < left - 0.05) this.touch(-1, true);
-      else if (p.x > right + 0.05) this.touch(1, true);
+      // liegt der Wagen an den Baken an (die Verengung oder Verschwenkung schiebt ihn, oder er lehnt sich an), zählt das
+      // wie Streifen (wer aktiv hineinlenkt, schrammt dazu wie an der Leitplanke: rail)
+      if (p.x < left + BAUSTELLE.touch) this.touch(-1, true);
+      else if (p.x > right - BAUSTELLE.touch) this.touch(1, true);
       p.setLimits({ left, right });
     } else if (Z.entered && !Z.done && u > BAU_LEN) this.finish();
   }
@@ -103,7 +108,7 @@ export class Baustelle {
     const s0 = p.s + BAUSTELLE.ahead;
     const lm = g.landmark;
     const ok = trip.section.kind === 'ab' && g.traffic.passive !== true && !g.tv && !g.blitzer && !(g.navi && g.navi.stopping) &&
-      !forkBetween(trip, s0 - BAUSTELLE.room, s0 + BAU_LEN + 60) && (!lm || lm.s < s0 - BAUSTELLE.sign - 200 || lm.s > s0 + BAU_LEN + 200);
+      !forkBetween(trip, s0 - BAUSTELLE.room, s0 + BAU_LEN + 60, p.s) && (!lm || lm.s < s0 - BAUSTELLE.sign - 200 || lm.s > s0 + BAU_LEN + 200);
     if (!ok) {
       this.next = p.s + 400;
       return;
@@ -133,7 +138,8 @@ export class Baustelle {
   steer(want, s) {
     const Z = this.zone;
     if (!Z || s < Z.s0 - 300 || s > Z.s0 + BAU_LEN || this.g.offAutobahn) return want;
-    return 1.875 + bauShift(s - Z.s0);
+    // (er schaut voraus wie ein Mensch: dorthin, wo die Gasse in BAUSTELLE.look Sekunden ist)
+    return 1.875 + bauShift(s + this.g.player.speed * BAUSTELLE.look - Z.s0);
   }
 
   /** Tempo der Baustelle für den Tempomaten an der Stelle s des Wagens (Infinity außerhalb). */

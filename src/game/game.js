@@ -19,6 +19,7 @@ import { StreamGags } from './gags.js';
 import { Stammgaeste } from './stamm.js';
 import { Wetten } from './wetten.js';
 import { Baustelle } from './baustelle.js';
+import { Verkehrsmuster } from './muster.js';
 import { startMemory, rekordMemory, GEDAECHTNIS } from './gedaechtnis.js';
 import { Akku } from './akku.js';
 import { Studio } from './studio.js';
@@ -82,6 +83,7 @@ export class Game {
     this.stamm = new Stammgaeste(this);
     this.wetten = new Wetten(this);
     this.bau = new Baustelle(this);
+    this.muster = new Verkehrsmuster(this);
     // die Sprachdurchsagen der Zuschauer: Stapel, Momente und eigener Zufall je Stream (durchsagen.js)
     this.ds = new Durchsagen(this);
     // Akku und Ladestopps (akku.js): eigener Zustand, liest vom Spiel nur AKKU_HOST
@@ -138,6 +140,7 @@ export class Game {
     this.wetten.reset((this.stammSeed ?? this.streamT) ^ 0x3e77);
     this.ui.wette(null);
     this.bau.reset((this.stammSeed ?? this.streamT) ^ 0xba57);
+    this.muster.reset((this.stammSeed ?? this.streamT) ^ 0x7a11);
     // das Gedächtnis des Sprachstudios (gedaechtnis.js): nach der Begrüßung erinnert es an frühere Streams, und fällt
     // der Streckenrekord aller Streams, sagt es das einmal
     const memo = startMemory(save);
@@ -632,6 +635,8 @@ export class Game {
     this.gags.update(dt);
     // Spontan-Wetten: ein Angebot am Rand, die laufende Wette in der Jobliste
     this.wetten.update(dt);
+    // Verkehrsmuster (muster.js): Wohnmobil-Kolonne, Drängler, Schwertransport
+    this.muster.update();
 
     // --- Eingaben ------------------------------------------------------------
     if (ctl.device) this.device = ctl.device;
@@ -658,6 +663,7 @@ export class Game {
     for (const e of tev) {
       if (e.type === 'crash') this.onCrash(e);
       else if (e.type === 'nearMiss') this.onNearMiss(e);
+      else if (e.type === 'passSchwer') this.muster.passed();
       else if (e.type === 'passPolice') {
         this.chat(pick(['Polizei überholt?! Mutig! 😅', 'Tschüss Polizei Gifhorn 👋', 'Das gibt einen Eintrag ins Fahrtenbuch']));
       }
@@ -712,8 +718,9 @@ export class Game {
   honk() {
     this.audio.horn();
     this.lastHorn = this.t;
-    // steht ein Wettangebot am Rand, gilt die Wette (wetten.js horn)
+    // steht ein Wettangebot am Rand, gilt die Wette (wetten.js horn); der reisende Brunnen freut sich über den Gruß
     if (this.wetten.horn()) return;
+    if (this.muster.horn()) return;
     this.onMood('startled', 0.45);
     if (chance(0.12)) this.chat(pick(['Bimmel hurra! 📯', 'HUP HUP', 'Hupkonzert!']));
   }

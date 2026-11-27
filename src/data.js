@@ -86,6 +86,24 @@ export const STAMM_LINES = {
   },
 };
 
+// Verkehrsmuster (game/muster.js): kolonne Wohnmobile · draengler klebt hinten (omiDraengler) · platz Mini Adam macht
+// gleich Platz · endlich erst nach einer Weile · schwer der reisende Brunnen (omiSchwer) · gruss angehupt · tschuess
+// vorbei
+export const MUSTER_LINES = {
+  kolonne: ['Urlaubszeit! 🚐🚐🚐', 'Wohnmobil-Konvoi 😄', 'Die fahren bestimmt alle an die Nordsee', 'Campingstühle on tour 🏕️',
+    'Vier Wohnmobile, ein Ziel: Gardasee', 'Kolonne! Schön vorbei, Mini Adam'],
+  draengler: ['Drängler! 😤', 'Der klebt ja an der Stoßstange 😬', 'Links blinken, ganz klassisch 🙄', 'Ruhig bleiben, Mini Adam 🧘',
+    'Hat der es eilig 😅', 'Abstand! 📏'],
+  omiDraengler: 'Hinter uns drängelt jemand. Ruhig bleiben, wenn rechts frei ist, lassen wir ihn vorbei.',
+  platz: ['Souverän, lass ihn ziehen 👍', 'Platz gemacht. So geht das 🫡', 'Mini Adam bleibt entspannt 😎', 'Der ist weg, wir haben Zeit'],
+  endlich: ['Na endlich ist der vorbei 😅', 'Tschüss, Drängler 👋', 'Und weg ist er'],
+  omiSchwer: 'Achtung, Schwertransport voraus auf der rechten Spur. Da ist ein Brunnen drauf.',
+  schwer: ['Ein Brunnen auf Reisen! ⛲🚛', 'Zieht Herr Schönnbrun um? 😂', 'BrunnenTV unterwegs-Edition', 'Hupen! Der Brunnen will gegrüßt werden 📯',
+    'Wie viele Brunnen passen auf einen Lkw? Einer.', 'Das ist der schönste Lkw der Welt 😍'],
+  gruss: ['Der Brunnen grüßt zurück ⛲👋', 'Gruß angekommen! 📯', 'Schönster Gruß des Tages', 'Der Fahrer winkt! 😄'],
+  tschuess: ['Tschüss, reisender Brunnen 👋⛲', 'Gute Reise, Brunnen!', 'Der Brunnen kommt hoffentlich gut an 🙏'],
+};
+
 // Baustelle (game/baustelle.js): omi kündigt sie an (das Schild steht einen Kilometer davor) · chatSign danach ·
 // chatStart an den ersten Baken · touch eine Bake gestreift · clean sauber durch (cleanFast: mit Tempo) · messy mit
 // Berührungen ({n}: so viele)
