@@ -543,7 +543,9 @@ export class CenterScreen {
     ctx.fillText('👤 Mini Adam', SPLIT + 20, 26);
     const left = SPLIT + 20 + ctx.measureText('👤 Mini Adam').width + 28;
     ctx.textAlign = 'right';
-    const status = st.clock + '   ' + st.temp + ' °C   ' + (st.funkloch > 0 ? 'Kein Netz' : 'LTE ▂▄▆█');
+    // (läuft das Radio, braucht sein Name den Platz: die Balken des Netzes weichen, „Kein Netz“ im Funkloch bleibt)
+    const net = st.funkloch > 0 ? '   Kein Netz' : st.radio ? '' : '   LTE ▂▄▆█';
+    const status = st.clock + '   ' + st.temp + ' °C' + net;
     ctx.fillText(status, CW - 18, 26);
     // das Autoradio, solange es an ist (main.js st.radio): zwischen Profil und Uhr, in Blau wie die Wischer-Anzeige
     if (st.radio) {
