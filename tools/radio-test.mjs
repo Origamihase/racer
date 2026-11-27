@@ -6,6 +6,7 @@ import { ACTIONS } from '../src/input.js';
 import { RADIO_LINES } from '../src/data.js';
 import { makeStream, DRIVERS } from './stream-sim.mjs';
 import { mainSource } from './lib/main-source.mjs';
+import { DEFAULT_SAVE, cleanSettings } from '../src/save.js';
 
 let fails = 0;
 let checks = 0;
@@ -66,6 +67,9 @@ ok(ACTIONS.KeyR === 'radio', 'Taste R schaltet das Radio nicht');
   ok(Math.abs(el.volume - RADIO.vol) < 0.01, `Lautstärke ${el.volume}`);
   for (let i = 0; i < 60; i++) r.update(1 / 30, { sound: true, duck: true });
   ok(Math.abs(el.volume - RADIO.vol * RADIO.duck) < 0.01, `beim Sprechen ${el.volume}`);
+  // der Regler in den Einstellungen (gain = Radio-Lautstärke mal Lautstärke): Standard 0,5 · 0,8 ergibt 0,28
+  for (let i = 0; i < 60; i++) r.update(1 / 30, { sound: true, gain: DEFAULT_SAVE.settings.radioVolume * DEFAULT_SAVE.settings.volume });
+  ok(Math.abs(el.volume - 0.28) < 0.01, `Standard-Lautstärke ${el.volume.toFixed(3)} statt 0,28 (Michael: 0,55 „ein wenig laut“)`);
   for (let i = 0; i < 60; i++) r.update(1 / 30, { sound: false });
   ok(el.volume < 0.01, `ohne Ton ${el.volume}`);
   // Seite im Hintergrund: anhalten, danach wieder live
@@ -123,9 +127,17 @@ ok(ACTIONS.KeyR === 'radio', 'Taste R schaltet das Radio nicht');
 // main.js: das Radio gehört dem Wagen, ist zuerst aus und wird nicht gespeichert
 {
   const m = mainSource();
-  ok(/const radio = new Radio\(\)/.test(m) && !/settings\.radio|save\.radio/.test(m), 'Radio wird gespeichert oder fehlt');
+  ok(/const radio = new Radio\(\)/.test(m) && !/settings\.radio(?!Volume)|save\.radio/.test(m), 'Radio wird gespeichert oder fehlt');
   ok(/input\.take\('radio'\)\) radioCycle\(\)/.test(m) && /a === 'radio'/.test(m) && /radio\.update\(dt/.test(m) && /st\.radio = radio\.label/.test(m), 'Radio nicht verdrahtet');
   ok(/st\.radio/.test(readFileSync(new URL('../src/cockpit/screen.js', import.meta.url), 'utf8')), 'Mittelbildschirm zeigt das Radio nicht');
+}
+
+// Einstellungen: der Regler steht unter „Lautstärke“, sein Wert wird geprüft gespeichert
+{
+  ok(cleanSettings({ radioVolume: 2 }).radioVolume === 0.5 && cleanSettings({ radioVolume: 0.2 }).radioVolume === 0.2, 'Radio-Lautstärke im Spielstand');
+  const menus = readFileSync(new URL('../src/ui/menus.js', import.meta.url), 'utf8');
+  ok(/radioRow, '📻 Radio'/.test(menus) && /setting\('radioVolume'/.test(menus), 'Regler Radio-Lautstärke fehlt in den Einstellungen');
+  ok(/gain: settings\.radioVolume \* settings\.volume/.test(mainSource()), 'Regler wirkt nicht aufs Radio');
 }
 
 console.log(`radio-test: ${fails ? fails + ' Fehler' : 'alles gut'} (${checks} Prüfungen)`);

@@ -773,6 +773,16 @@ export class Menus {
     range.step = '0.05';
     range.value = String(d.volume);
     range.addEventListener('input', () => this.h.setting('volume', parseFloat(range.value)));
+    // das Autoradio (Taste R) für sich: leiser oder lauter als der Rest
+    const radioRow = el('div', 'set-row', list);
+    el('span', '', radioRow, '📻 Radio');
+    const radio = el('input', 'range', radioRow);
+    radio.type = 'range';
+    radio.min = '0';
+    radio.max = '1';
+    radio.step = '0.05';
+    radio.value = String(d.radioVolume ?? 0.5);
+    radio.addEventListener('input', () => this.h.setting('radioVolume', parseFloat(radio.value)));
     const qr = el('div', 'set-row', list);
     el('span', '', qr, 'Grafik');
     const qs = el('div', 'seg', qr);
