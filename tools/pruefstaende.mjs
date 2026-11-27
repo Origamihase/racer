@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 const ALLE = [
   'geld', 'journey', 'testlauf3', 'citykit', 'xxl', 'stopp', 'streamgags', 'course', 'wiper', 'map',
   'ansagen', 'laden2', 'trip', 'winken2', 'testlauf4', 'brunnen', 'rueckwaerts', 'verkehr', 'menues',
-  'radar', 'zwischenstand', 'orbit', 'steer', 'shape', 'album', 'sicht', 'tipps', 'save', 'testlauf5', 'testlauf6', 'steckbrief', 'minus', 'ladepreis', 'fluesse', 'bruecken', 'ufer', 'landschaft', 'laden', 'spielspass', 'radio',
+  'radar', 'zwischenstand', 'orbit', 'steer', 'shape', 'album', 'sicht', 'tipps', 'save', 'testlauf5', 'testlauf6', 'steckbrief', 'minus', 'ladepreis', 'fluesse', 'flusskarte', 'bruecken', 'ufer', 'landschaft', 'laden', 'spielspass', 'radio',
 ];
 // Messwerkzeuge, die wie Prüfstände heißen, aber nichts bestehen müssen.
 const NICHT_IM_LAUF = ['fine'];

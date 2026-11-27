@@ -12,6 +12,7 @@ import { Q, LAND, PATCHES, REGIONS, COUNTRIES, SEAS } from './land.js';
 import { FONT, drawShield, drawTransitBadge, drawHeart } from './symbols.js';
 import { Warp } from './warp.js';
 import { waterData, WATER_CLASS } from './water.js';
+import { makeDisplacer, overRuns } from './waterdraw.js';
 import { paintLandscape } from './landpaint.js';
 import { coverAt } from './landscape.js';
 const COV = { forest: 0, urban: 0, crop: 0, rock: 0 };
@@ -1018,18 +1019,122 @@ function tileGeo(lod) {
   return GEO[lod];
 }
 let WATERGEO = null;
-/** Flüsse (je Klasse) und Seen in Stücken, zum Zuschneiden auf Kacheln. */
+/** Seen in Stücken, zum Zuschneiden auf Kacheln (die Flüsse: displacedRiverPaths). */
 function waterGeo() {
   if (WATERGEO) return WATERGEO;
-  const W = waterData();
-  const rivers = WATER_CLASS.map(() => []);
-  for (const r of W.rivers) rivers[r.cls].push(Object.assign(chunked(r.pts), { river: r.i }));
-  const lakes = W.lakes.map((l) => {
+  const lakes = waterData().lakes.map((l) => {
     const c = chunked(l.pts);
     return { pts: l.pts, box: c.box, chunks: c.chunks };
   });
-  WATERGEO = { rivers, lakes };
+  WATERGEO = { lakes };
   return WATERGEO;
+}
+/** Breite eines Flusses der Klasse c auf der Karte (Bildpunkte) bei k Bildpunkten je km: nah so breit wie in echt. */
+export function riverPx(c, k) {
+  const C = WATER_CLASS[c];
+  return Math.max(C.px[0] + (C.px[1] - C.px[0]) * clamp(Math.log2(k / Math.max(C.from, 0.1)) / 5, 0, 1), C.km * k);
+}
+/** Ganze Breite des Strichs einer Straße (mit Rand) wie in renderStatic, in Bildpunkten. */
+function roadStroke(kind, k, navi) {
+  const w = roadWidth(kind, k, navi);
+  if (kind === 'ab') return w + (w > 1.6 ? 1.8 : 0);
+  return w + (kind === 'land' ? 1.6 : 1.4);
+}
+const DISPLACED = new Map();
+let RIVERCHUNKS = null;
+let ROADLINES = null;
+/** Autobahnen, Landstraßen und Zubringer der Karte als Linien für die Verdrängung der Flüsse (einmal). */
+function roadLines() {
+  if (ROADLINES) return ROADLINES;
+  const N = netData();
+  ROADLINES = [];
+  for (const l of N.lines) if (l.kind === 'ab' || l.kind === 'land') ROADLINES.push({ kind: l.kind, pts: l.pts, y: (l.box[1] + l.box[3]) / 2 });
+  for (const f of N.feeders) ROADLINES.push({ kind: 'zub', pts: f.pts, y: f.pts[1], f });
+  return ROADLINES;
+}
+/** Die Flüsse von water.js in Stücken (Rechtecke zum Zuschneiden), einmal. */
+function riverChunks() {
+  if (!RIVERCHUNKS) RIVERCHUNKS = waterData().rivers.map((r) => Object.assign(chunked(r.pts), { cls: r.cls, river: r.i }));
+  return RIVERCHUNKS;
+}
+/**
+ * Verdränger für einen Maßstab (waterdraw.js): die Straßen, die renderStatic bei ihm zeichnet, mit ihren Breiten.
+ * Gerechnet wird je Viertelstufe des Maßstabs (abgerundet: eher etwas mehr Abstand) und je Stufe der Ortspunkte (die
+ * Zubringer hängen an ihnen); die letzten zwölf bleiben gemerkt, je mit den schon gerechneten Flussstücken.
+ */
+function displacerFor(css, b, navi) {
+  const q = Math.floor(Math.log2(css) * 4);
+  const key = `${q}|${b}|${navi ? 1 : 0}`;
+  let hit = DISPLACED.get(key);
+  if (hit) {
+    DISPLACED.delete(key);
+    DISPLACED.set(key, hit);
+    return hit;
+  }
+  const cs = 2 ** (q / 4);
+  const vis = navi ? visiblePlaces(b) : menuLayoutOf(b).shown;
+  const kAt = (y) => pxPerKm(cs, y);
+  // immer dieselben Linien (das Gitter der Straßen bleibt), was bei diesem Maßstab fehlt, mit w = 0
+  const lines = roadLines();
+  const roads = lines.map((l) => {
+    const k = kAt(l.y);
+    const R = roadsShown(k, vis, null, navi);
+    const on = l.kind === 'ab' || (l.kind === 'land' ? !!R.land : !!R.zub && R.zub(l.f));
+    return { pts: l.pts, w: on ? roadStroke(l.kind, k, navi) : 0 };
+  });
+  roads.lines = lines;
+  hit = { D: makeDisplacer(roads, cs, (c, y) => riverPx(c, kAt(y))), done: new Map(), roads, css: cs, kAt };
+  DISPLACED.set(key, hit);
+  if (DISPLACED.size > 12) DISPLACED.delete(DISPLACED.keys().next().value);
+  return hit;
+}
+/** Stück ci des Flusses R verdrängt: { pts, over } von seinem ersten bis zu seinem letzten Punkt. */
+function displacedChunk(X, R, ci) {
+  const id = R.river * 4096 + ci;
+  let c = X.done.get(id);
+  if (c) return c;
+  const C = R.chunks;
+  // mit je einem Stück davor und danach rechnen: die Mitte ist dann dieselbe wie am ganzen Fluss
+  const a = C[Math.max(0, ci - 1)].i0;
+  const z = C[Math.min(C.length - 1, ci + 1)].i1;
+  const res = X.D.run(R.pts.subarray(a * 2, z * 2 + 2), R.cls);
+  const s0 = res.orig[C[ci].i0 - a];
+  const s1 = res.orig[C[ci].i1 - a];
+  c = { pts: res.pts.slice(s0 * 2, s1 * 2 + 2), over: res.over ? res.over.slice(s0, s1 + 1) : null };
+  X.done.set(id, c);
+  return c;
+}
+/** Für die Prüfungen (tools/flusskarte-test.mjs). */
+export const RIVER_DRAW = { displacerFor, displacedChunk, riverChunks };
+
+/**
+ * Die Flüsse der Klasse cls im Rechteck r, neben die Straßen dieses Maßstabs gerückt: Pfad darunter (under) und Pfad
+ * der Läufe, die über den Straßen liegen (over, zwischen zwei Uferstraßen; waterdraw.js).
+ */
+export function displacedRiverPaths(css, b, navi, cls, r) {
+  const X = displacerFor(css, b, navi);
+  const under = new Path2D();
+  const over = new Path2D();
+  for (const R of riverChunks()) {
+    if (R.cls !== cls || isOut(R.box, r[0], r[1], r[2], r[3])) continue;
+    let open = false;
+    R.chunks.forEach((ch, ci) => {
+      if (isOut(ch.box, r[0], r[1], r[2], r[3])) {
+        open = false;
+        return;
+      }
+      const c = displacedChunk(X, R, ci);
+      const P = c.pts;
+      if (!open) under.moveTo(P[0], P[1]);
+      for (let i = 2; i < P.length; i += 2) under.lineTo(P[i], P[i + 1]);
+      open = true;
+      for (const Q of overRuns(P, c.over)) {
+        over.moveTo(Q[0], Q[1]);
+        for (let i = 2; i < Q.length; i += 2) over.lineTo(Q[i], Q[i + 1]);
+      }
+    });
+  }
+  return { under, over };
 }
 let NETGEO = null;
 /** Straßennetz in Stücken, nach Art (Zubringer mit ihrem Ort). */
@@ -1206,20 +1311,8 @@ export class MapPainter {
     ctx.setTransform(s, 0, 0, s, dx - wx * s, dy - wy * s);
     if (k >= 1.5) this.renderTowns(ctx, wx, wy, cw / s, ch / s, k, u);
     // Flüsse und Seen der ganzen Karte (water.js): je Klasse ab ihrem Maßstab, nah so breit wie in echt
-    const WG = waterGeo();
-    ctx.fillStyle = T.sea;
-    ctx.fill(landPath(WG.lakes, r[0], r[1], r[2], r[3]), 'nonzero');
-    ctx.strokeStyle = T.sea;
-    for (let c = WATER_CLASS.length - 1; c >= 0; c--) {
-      const C = WATER_CLASS[c];
-      if (k < C.from) continue;
-      const fade = C.from > 0 ? clamp((k - C.from) / C.from, 0, 1) : 1;
-      const px = Math.max(C.px[0] + (C.px[1] - C.px[0]) * clamp(Math.log2(k / Math.max(C.from, 0.1)) / 5, 0, 1), C.km * k);
-      ctx.globalAlpha = fade;
-      ctx.lineWidth = px * u;
-      ctx.stroke(solidPath(WG.rivers[c], r));
-    }
-    ctx.globalAlpha = 1;
+    // Grenzen unter dem Wasser: Wo ein Fluss die Grenze ist (Oberrhein, Hochrhein, Inn, Oder, Neiße), bleibt er zu
+    // sehen, und das Band der Grenze liegt zu beiden Seiten
     ctx.strokeStyle = T.borderUnder;
     ctx.lineWidth = clamp(2 + Math.log2(k * 4), 2, 6) * u;
     ctx.stroke(solidPath(G.borders, r));
@@ -1228,6 +1321,20 @@ export class MapPainter {
     ctx.setLineDash([5 * u, 3.5 * u]);
     strokeDashed(ctx, G.borders, r);
     ctx.setLineDash([]);
+    const WG = waterGeo();
+    ctx.fillStyle = T.sea;
+    ctx.fill(landPath(WG.lakes, r[0], r[1], r[2], r[3]), 'nonzero');
+    ctx.strokeStyle = T.sea;
+    // die Flüsse so weit neben den gezeichneten Straßen, dass sie bei diesem Maßstab zu sehen sind (waterdraw.js)
+    const DR = WATER_CLASS.map((C, c) => (k < C.from ? null : displacedRiverPaths(css, b, this.navi, c, r)));
+    for (let c = WATER_CLASS.length - 1; c >= 0; c--) {
+      const C = WATER_CLASS[c];
+      if (!DR[c]) continue;
+      ctx.globalAlpha = C.from > 0 ? clamp((k - C.from) / C.from, 0, 1) : 1;
+      ctx.lineWidth = riverPx(c, k) * u;
+      ctx.stroke(DR[c].under);
+    }
+    ctx.globalAlpha = 1;
     ctx.restore();
     ctx.strokeStyle = T.coast;
     ctx.lineWidth = clamp(0.6 + 0.25 * Math.log2(k * 8), 0.6, 1.6) * u;
@@ -1284,6 +1391,16 @@ export class MapPainter {
       ctx.lineWidth = wa * u;
       ctx.stroke(ab);
     }
+    // Flussläufe, die bei diesem Maßstab nicht neben die Straßen passen (zwischen zwei Uferstraßen): über ihnen
+    ctx.strokeStyle = T.sea;
+    for (let c = WATER_CLASS.length - 1; c >= 0; c--) {
+      const C = WATER_CLASS[c];
+      if (!DR[c]) continue;
+      ctx.globalAlpha = C.from > 0 ? clamp((k - C.from) / C.from, 0, 1) : 1;
+      ctx.lineWidth = riverPx(c, k) * u;
+      ctx.stroke(DR[c].over);
+    }
+    ctx.globalAlpha = 1;
     // Ortspunkte
     const bs = bucketScale(b);
     const big = this.navi ? 1.3 : 1;

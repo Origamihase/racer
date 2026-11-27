@@ -12,9 +12,9 @@ import { WQ, WNAMES, WRIVERS, WLAKES } from './water-data.js';
  * Maßstab (Bildpunkte je km) er erscheint; km: echte Breite (so breit wird er ganz nah gezeichnet).
  */
 export const WATER_CLASS = [
-  { px: [1.4, 3.2], from: 0, km: 0.3 },
-  { px: [1.0, 2.4], from: 0.35, km: 0.12 },
-  { px: [0.8, 1.8], from: 1.2, km: 0.06 },
+  { px: [1.8, 3.4], from: 0, km: 0.3 },
+  { px: [1.3, 2.6], from: 0.35, km: 0.12 },
+  { px: [1.0, 1.9], from: 1.2, km: 0.06 },
 ];
 
 const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
