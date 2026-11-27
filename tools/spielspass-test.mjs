@@ -304,6 +304,31 @@ const src = (f) => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8')
     S.step(3);
     ok(S.log.chat.some((c) => MUSTER_LINES.schwer.includes(c.text)) && S.log.chat.some((c) => MUSTER_LINES.gruss.includes(c.text)), 'Chat sieht den reisenden Brunnen nicht');
   }
+
+  // von selbst: Muster kommen, und keines kurz vor einer Ausfahrt, die der Plan nimmt (man sähe es nie)
+  {
+    const tr = new Traffic({ add() {} }, { emit() {} });
+    const S = makeStream({ driver: DRIVERS.zuegig, seed: 5, endless: true, traffic: tr });
+    const g = S.game;
+    const { MUSTER } = await import('../src/game/muster.js');
+    // (der Fahrer der Prüfstände sieht echten Verkehr nicht und rempelt: Die Werkstatt soll die Fahrt hier nicht beenden)
+    g.end = () => {};
+    const offen = [];
+    const start = g.muster.start.bind(g.muster);
+    g.muster.start = (k) => {
+      const r = start(k);
+      if (r) offen.push({ k, s: g.player.s, ab: true });
+      return r;
+    };
+    for (let t = 0; t < 1500 && !g.over; t += 0.5) {
+      S.step(0.5);
+      for (const o of offen) if (o.ab && g.offAutobahn && g.player.s < o.s + (MUSTER.clear?.[o.k] ?? 1500)) o.ab = false;
+    }
+    const st = g.muster.stats;
+    ok(st.kolonne + st.draengler + st.schwer >= 3, `Muster im Stream: ${JSON.stringify(st)}`);
+    const weg = offen.filter((o) => !o.ab);
+    ok(weg.length === 0, `Muster kurz vor der Ausfahrt: ${JSON.stringify(weg)}`);
+  }
 }
 
 ok(CHAT.nearMissSerie && CHAT.nearMissSerie.length >= 4, 'Chat zur Serie');
