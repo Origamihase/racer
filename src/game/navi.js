@@ -114,7 +114,8 @@ export class WorldNavi {
       const far = near ? (near.has(t.place) ? 1 : 0) : placeWeight(D.toPlace(t.place).km);
       const w = ahead.includes(t.place) ? 0 : far * (1 + Math.log2(p.n)) * (this.visits.get(t.place) ?? 1);
       // Siegen wird oft geboten und setzt sich fast nie durch (ein Viertel des Gewichts, dafür der Siegen-Gag)
-      t.weight = t.special === 'siegen' ? w * 0.25 : w;
+      // (… und Trier, 2021 zweimal angesteuert und nie erreicht, etwas weniger)
+      t.weight = t.special === 'siegen' ? w * 0.25 : t.special === 'trier' ? w * 0.4 : w;
       if (w > 0) list.push(t);
     }
     return list;

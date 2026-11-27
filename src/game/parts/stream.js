@@ -2,6 +2,7 @@
 // Crew, „5 Cent, wenn du …“, Jobs.
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
 import { CHAT, CREW, CREW_LINES, SPENDEN_ZWECKE, viewerName, viewerNameAt, fillTemplate, fmtBetrag } from '../../data.js';
+import { ABBRUCH } from '../../data-memes.js';
 import { clamp, rand, randInt, chance, pick, shuffle, fmtCent, fmtEuro, fmtNum } from '../../util.js';
 import { ZUFRIEDEN } from '../satisfaction.js';
 import { WAVE, chatGap } from '../wave.js';
@@ -227,6 +228,19 @@ export class StreamPart {
     }
   }
 
+  /**
+   * Die Sammelaktion Streamabbruch (memes.js, ABBRUCH): Claudia eröffnet sie wie jede andere; wird sie voll, endet der
+   * Stream mit dem Abspann. Läuft schon eine Sammelaktion, gibt es keine (false).
+   */
+  startAbbruch() {
+    if (this.sammel || this.eco.sammel || !this.running) return false;
+    this.sammel = { id: 'abbruch', name: ABBRUCH.name };
+    const goal = this.eco.startSammel();
+    this.bot('claudia', fillTemplate(ABBRUCH.start, { name: ABBRUCH.name, ziel: fmtEuro(goal) }));
+    this.burst(ABBRUCH.chat, 3, 3);
+    return true;
+  }
+
   /** Sammelziel erreicht: Claudia verkündet es – und dann passiert, wofür gesammelt wurde. */
   finishSammel(S, sum) {
     this.sammel = null;
@@ -245,6 +259,14 @@ export class StreamPart {
         break;
       case 'kofferraum':
         this.fx.trunk(7);
+        this.memes.trunk();
+        break;
+      case 'abbruch':
+        // Streamabbruch (memes.js): Technik kaputt, dunkel, kalt, reicht für heute – liebevoll mit dem Abspann
+        this.bot('claudia', ABBRUCH.voll);
+        this.later(2.2, () => this.say(ABBRUCH.omi, 'sleepy'));
+        this.later(1.5, () => this.burst(CHAT.streamEnde, 3, 2.4));
+        this.later(7, () => this.running && this.end('abbruch'));
         break;
       case 'frosch':
         this.fx.green(1.4);
@@ -322,6 +344,8 @@ export class StreamPart {
     this.thank('raids', CREW.knolli, n);
     this.bot('nora', fillTemplate(CREW_LINES.raid, { name: CREW.knolli, n: fmtNum(n) }));
     this.ui.toast(`👑 Raid von ${CREW.knolli}: +${fmtNum(n)} Zuschauer`, 'good', 'raid');
+    this.raidT = this.t;
+    this.memes.raid();
     this.later(1.3, () => this.chat(pick(CREW_LINES.knolliHallo), CREW.knolli));
     shuffle([...CREW_LINES.raider]).slice(0, 4).forEach((line, i) => this.later(2.2 + i * rand(0.5, 1.1), () => this.chat(line)));
   }

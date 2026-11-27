@@ -873,6 +873,23 @@ export function planTown(place, opts = {}) {
     add(pick(rnd, ['mann_stand', 'frau_stand', 'frau2_stand']), fx + mr + 2.6, top, -(uc - 2), -Math.PI / 2);
   }
 
+  // Countdown-Ampel (Memes) ab der Kleinstadt: am Bordstein rechts, wo der Brunnenplatz beginnt (dort stehen keine
+  // Laternen), zur ankommenden Straße gedreht; mit QR-Schild „Grün kaufen“ und Tombola-Zettel. plan.ampel: ihre Lage
+  if (size !== 'dorf') {
+    const au = sq.u0 + 1.5;
+    add('countdownAmpel', sx(1, 0.45), top, -au, 0);
+    plan.ampel = { u: au };
+  }
+
+  // Walte (Memes, „Wo ist Walte?“): halb hinter dem Zielbrunnen, vom haltenden Wagen aus gesehen, und filmt zum Wagen
+  // (an der Insel hält der Wagen rechts von ihr: Walte steht drüben am Gehweg, gut 6 m vor dem Brunnen – so steht er
+  // klein am Bildrand der Brunnen-Kamera, brunnentv.js tvShots, und wer genau hinschaut, findet ihn). Versteckt gebaut (city.js group.walte), zu sehen nur in einer Folge, in der er
+  // sich versteckt (scenes/tv.js); zieht keinen Zufall. Er kommt erst ganz am Ende in den Plan: Die Regeln, die um den
+  // Brunnen und seine Sichtlinien freiräumen, gelten ihm nicht
+  const walteAt = isl
+    ? [isl.kerb(main.f.u - 6.3) - 0.7, top, -(main.f.u - 6.3), toRoad(-1)]
+    : [main.f.x + main.f.r + 0.7, top, -(main.f.u - main.f.r * 0.2), toRoad(1)];
+
   // --- 1b. Insel des Zielbrunnens: links weitet sich die Straße, der Straßenbau pflastert bis zur zurückgesetzten
   // Flucht. Dort stehen Häuser mit Blick auf den Brunnen, davor Bänke, Laternen und Blumen, in den Ecken Bäume
   if (isl) {
@@ -922,7 +939,10 @@ export function planTown(place, opts = {}) {
     const info = infoOf(c.kind);
     const x0 = sx(1, lineD);
     const park = add(c.kind, x0, 0, -c.u, toRoad(1), c.price ? { extras: { price: c.price } } : {});
-    const span = { side: 1, u0: c.u - info.w / 2 - 1, u1: c.u + info.w / 2 + 1 };
+    // gleich vor dem Park der Pizzaautomat, wie immer defekt (Memes): sein Platz gehört mit zum freien Stück
+    // (vor dem Park, nicht dahinter: dahinter kann am Ortsende die Containerbrücke stehen)
+    const span = { side: 1, u0: c.u - info.w / 2 - 3, u1: c.u + info.w / 2 + 1 };
+    add('pizza_automat', x0 + 1.0, 0, -(c.u - info.w / 2 - 1.7), toRoad(1));
     busy.push(span);
     keep.push(span);
     for (const [i, car] of info.parked) {
@@ -1235,6 +1255,9 @@ export function planTown(place, opts = {}) {
   // ragte, entfällt – bis auf das, was zum Fluss gehört (river: Laternen der Brücke) und die Wahrzeichen (die setzt der
   // Plan mit Abstand, tools/fluesse-test.mjs prüft es)
   if (river) plan.items = plan.items.filter((it) => it.river || infoOf(it.name).kind === 'landmark' || !inRiver(it, RIVER_CLEAR));
+  // (die Ampel kann den Sichtlinien zum Brunnen weichen: dann gibt es auch keine Ampel im Plan)
+  if (plan.ampel && !plan.items.some((it) => it.name === 'countdownAmpel')) delete plan.ampel;
+  add('walte', ...walteAt);
   plan.layout = townLayout(plan, infoOf);
   return plan;
 }
@@ -1600,6 +1623,8 @@ export function planPark(opts = {}) {
   // kleines Rasthaus hinter dem Park, Picknickwiese daneben
   const kiosk = add('shopKiosk', x0, 0, -(u + pi.w / 2 + 6), FACE);
   const uk = u + pi.w / 2 + 6;
+  // vor dem Rasthaus der Pizzaautomat, wie immer defekt (Memes)
+  add('pizza_automat', x0 + 1.3, 0, -(uk - infoOf('shopKiosk').w / 2 - 1.4), FACE);
   for (const [dx, du] of [[5.5, 19], [9, 25], [5.5, 31]]) add('picknick', x0 + dx, 0, -(uk + du), Math.PI / 2);
   add('bin', x0 + 2.2, 0, -(uk + 13), FACE);
   add('bench', x0 + 1.4, 0, -(uk + 37), FACE);

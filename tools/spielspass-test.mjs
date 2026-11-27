@@ -318,12 +318,14 @@ const src = (f) => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8')
     const start = g.muster.start.bind(g.muster);
     g.muster.start = (k) => {
       const r = start(k);
-      if (r) offen.push({ k, s: g.player.s, ab: true });
+      // (bietet danach jemand ein neues Ziel, darf dessen Weg früher abfahren: Gezählt wird nur, was der Plan beim Start
+      // schon wusste)
+      if (r) offen.push({ k, s: g.player.s, ab: true, ch: g.navi.changes });
       return r;
     };
     for (let t = 0; t < 1500 && !g.over; t += 0.5) {
       S.step(0.5);
-      for (const o of offen) if (o.ab && g.offAutobahn && g.player.s < o.s + (MUSTER.clear?.[o.k] ?? 1500)) o.ab = false;
+      for (const o of offen) if (o.ab && g.offAutobahn && g.navi.changes === o.ch && g.player.s < o.s + (MUSTER.clear?.[o.k] ?? 1500)) o.ab = false;
     }
     const st = g.muster.stats;
     ok(st.kolonne + st.draengler + st.schwer >= 3, `Muster im Stream: ${JSON.stringify(st)}`);

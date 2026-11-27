@@ -773,6 +773,16 @@ export class Cockpit {
     this.confettiNext = 0; // nächster Platz im Ring: Ist die Scheibe voll, ersetzen neue Schnipsel die ältesten
     this.confetti.frustumCulled = false;
     this.root.add(this.confetti);
+
+    // Knöllchen (Memes): ein Zettel außen unter dem geparkten Beifahrerwischer, nach einem Ladestopp
+    this.ticket = buildTicket();
+    this.ticket.visible = false;
+    this.root.add(this.ticket);
+  }
+
+  /** Knöllchen unter dem Wischer zeigen oder wegnehmen (Memes: nach dem Ladestopp, weht nach einer Weile weg). */
+  setTicket(v) {
+    this.ticket.visible = !!v;
   }
 
   addConfetti(n = 40) {
@@ -911,4 +921,59 @@ export class Cockpit {
     this.screen.update(dt, st.screen);
     this.rear.update(dt, !!st.rear, st.steer);
   }
+}
+
+/**
+ * Das Knöllchen: ein leicht gewellter Zettel (A5, 14 × 20 cm) außen auf der Scheibe, links vor dem Fahrer, unten vom
+ * Wischblatt gehalten (seine Unterkante liegt auf der Linie des Armaturenbretts, darüber ist er ganz zu sehen). Zum
+ * Fahrer hin lesbar: Kopf „VERWARNUNG“, ein paar Zeilen, der Betrag.
+ */
+function buildTicket() {
+  const W = WINDSHIELD;
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 180;
+  const x = c.getContext('2d');
+  x.fillStyle = '#f4f1e6';
+  x.fillRect(0, 0, 128, 180);
+  x.fillStyle = '#c8322b';
+  x.fillRect(0, 0, 128, 30);
+  x.fillStyle = '#fff';
+  x.font = 'bold 17px sans-serif';
+  x.textAlign = 'center';
+  x.fillText('VERWARNUNG', 64, 21);
+  x.fillStyle = '#2a2a2a';
+  x.font = '12px sans-serif';
+  x.fillText('Ordnungsamt', 64, 48);
+  x.fillStyle = '#9a9a9a';
+  for (let i = 0; i < 6; i++) x.fillRect(14, 62 + i * 13, i % 2 ? 72 : 100, 3);
+  x.fillStyle = '#2a2a2a';
+  x.font = 'bold 22px sans-serif';
+  x.fillText('50 €', 64, 160);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  const TW = 0.14;
+  const TH = 0.196;
+  const geo = new THREE.PlaneGeometry(TW, TH, 6, 6);
+  // leicht gewellt und an der Unterkante vom Wischblatt angedrückt
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const px = pos.getX(i);
+    const pv = pos.getY(i);
+    const k = (pv + TH / 2) / TH;
+    pos.setZ(i, -(0.005 * Math.sin(px * 30) * k + 0.008 * k * k)); // lokal −z: von der Scheibe weg nach außen
+  }
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geo, mat);
+  // Scheibenkoordinaten: x quer, U die Scheibe hinauf, N nach außen; die Vorderseite (lokal +z) zeigt zum Fahrer
+  // hinein (−N), so bleibt die Basis rechtshändig und die Schrift lesbar
+  const m = new THREE.Matrix4().makeBasis(W.X, W.U, W.N.clone().negate());
+  const zq = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.12);
+  mesh.quaternion.setFromRotationMatrix(m).multiply(zq);
+  mesh.position.copy(W.base).addScaledVector(W.U, 0.36).addScaledVector(W.N, 0.006);
+  mesh.position.x = -0.58;
+  mesh.renderOrder = 2;
+  return mesh;
 }

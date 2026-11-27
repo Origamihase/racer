@@ -433,6 +433,17 @@ for (const [kind, K] of Object.entries(KINDS)) {
   }
 }
 
+// Walte (Memes, „Wo ist Walte?“): versteckt sich in manchen Folgen hinter dem Zielbrunnen und filmt mit dem Handy –
+// gelbe Mütze, grüne Jacke. Eine eigene Art (kind 'walte'), damit ihn keine Zufallswahl unter die Leute mischt; der
+// Ort baut ihn als verstecktes Stück (city.js group.walte), das nur BrunnenTV zeigt (scenes/tv.js)
+defs.walte = {
+  kind: 'walte', tints: [0x2f8f5b], far: true, fade: 0.9, low: 0.84,
+  make: (b) => {
+    const info = figure(b, { skin: SKIN[1], hair: { style: 'short', col: HAIR[1] }, pants: PANTS[1], hat: beanie(0xf2c230), hatH: 0.12, pose: 'film', extra: phone });
+    return { w: info.w, d: info.d, h: info.h, pose: 'film', person: 'walte' };
+  },
+};
+
 // Begleiter als eigene kleine Bausteine; ihr Platz neben der Figur steht in info.at (in Figur-Koordinaten)
 defs.dog = { kind: 'animal', tints: [0xc9a477, 0x8a5a3c, 0xf2f0ea, 0x3a3f47], far: true, fade: 0.5, low: 0.86, make: (b) => (dog(b, 0xffffff), { w: 0.4, d: 0.7, h: 0.6, at: DOG_AT }) };
 /** Taube: rundlicher Körper, Köpfchen mit Schnabel, Schwanzfächer; pickt (o.peck) oder schaut geradeaus. */

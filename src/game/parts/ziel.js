@@ -15,6 +15,7 @@ import { goalName } from '../../world/kit/layout.js';
 import { estimateSpeech } from '../../speech.js';
 import { TROEDEL } from './stream.js';
 import { folgeTexte, fuelle, ANTEIL, FAKT } from '../brunnentexte.js';
+import { MEGAFON_AUSLAND } from '../../data-memes.js';
 
 /** Kratzer von der Leitplanke bisher: jede Schramme (damage.js scraped; gezeichnet sind höchstens drei je Seite). */
 export const scratchMarks = (damage) => damage.scraped || 0;
@@ -227,6 +228,8 @@ export class ZielPart {
     }
     if (snatched) this.later(1, () => this.burst(CHAT.brunnenWeg, 2, 2.5));
     if (t.special === 'siegen') this.later(1.4, () => this.chat('SIEGEN SETZT SICH DURCH?! 😱'));
+    // Trier: 2021 zweimal angesteuert, nie erreicht (data-memes.js) – der Chat glaubt nicht daran
+    if (t.special === 'trier') this.later(1.4, () => this.chat(pick(['TRIER?! Das schaffen wir nie 😂', 'Trier … der dritte Versuch 🍷', 'Ich glaub es erst, wenn wir da sind'])));
     // OMI und der Hinweis aufs neue Ziel kommen erst, wenn es kurz stehen bleibt – im Chaos und im Duell kämen sie
     // nicht hinterher
     if (next.delay > 6) {
@@ -286,6 +289,26 @@ export class ZielPart {
     this.bot('james', 'Keine Gebote mehr – niemand will weiter. Der Stream ist vorbei. Danke fürs Zuschauen! ❤');
     this.burst(CHAT.streamEnde, 3, 2.4);
     this.later(3.2, () => this.end('stream'));
+  }
+
+  /**
+   * Das Glücksrad hat gewählt (memes.js): Wer gespendet hat, setzt das Ziel t – ohne Gebot (das führende bleibt, wie es
+   * ist), aber mit allem, was zu einem neuen Ziel gehört: Navi-Durchsage, Hinweis zum Ort, „Bitte wenden“.
+   */
+  wheelTarget(name, t) {
+    const nv = this.navi;
+    if (this.auction.phase !== 'offen' || nv.stopping || t === nv.target) return;
+    nv.overbid(this.player.s, name, 0, t);
+    this.stats.naviChanges++;
+    this.ui.toast(`🎡 Glücksrad: ${t.name}`, 'good', 'auktion');
+    this.audio.naviAlert();
+    this.announceTarget(t);
+    this.onMood('curious', 1);
+    if (t.note) this.ui.toast('📍 ' + t.note, 'info', 'navi');
+    if (nv.wende) this.later(3.5, () => nv.target === t && this.ui.toast('↩️ Navi: „Bitte wenden“ – über die nächste Ausfahrt', 'warn', 'navi'));
+    // die nächste Bieterrunde plant sich neu: mit der Fahrzeit zum neuen Ziel
+    this.bidPlan = this.eco.nextBid({ bid: nv.bid, drive: nv.driveSecs(), opening: nv.opening });
+    this.T.bid = this.bidPlan.delay;
   }
 
   /** Das Gebot am Rand (oben, als Hinweis der Auktion – ein neues ersetzt das alte): wer vorn liegt, wie viel, wohin. */
@@ -378,6 +401,8 @@ export class ZielPart {
       this.audio.confetti();
       this.later(1, () => this.chat('KONFETTI! 🎉'));
     }
+    // Mini Adam bedankt sich im Chat; Trier merkt sich der Abspann (memes.js)
+    this.memes.arrive(t, places[t.place] ? places[t.place].key : '');
     switch (t.special) {
       case 'gifhorn':
         // (im Ort fährt kein Verkehr, also auch kein Streifenwagen vor: dort grüßt der Chat)
@@ -394,6 +419,12 @@ export class ZielPart {
         break;
       case 'bude':
         this.burst(['Diesmal die richtige Bude! 🌭', 'Falsche Bude? 😂', 'Currywurst!'], 3, 2);
+        break;
+      case 'trier':
+        this.burst(['TRIER!!! Wir sind wirklich in Trier 😱🍷', 'Nach Schlössertour und Moseltour: endlich!', 'Das muss ins Wiki! 📝', 'Porta Nigra, wir kommen 🏛️'], 4, 2);
+        break;
+      case 'holger':
+        this.burst(['HOLGER! HOLGER! 📣', 'Hat jemand Rollstuhl-Holger gesehen? 👀', 'Holger, wir sind da! Endlich abgeholt 🙌'], 3, 2.2);
         break;
       default:
         break;
@@ -597,7 +628,9 @@ export class ZielPart {
     // … und das Sprachstudio, ob wir hier schon waren (gedaechtnis.js); es spricht nach der Folge
     const memo = episodeMemory(this.save, entry, t.name);
     if (memo) this.studio.remember(memo, 90);
-    this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town, way });
+    // versteckt sich heute Walte am Platz? (memes.js; main.js stellt ihn auf)
+    const walte = this.memes.folgeStart();
+    this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town, way, walte });
   }
 
   /**
@@ -695,10 +728,13 @@ export class ZielPart {
     // (echte Stimmen sprechen oft langsamer als geschätzt: Der Gruß lässt dem Ruf Luft; passt keiner, der kürzeste)
     const room = (TV.call - TV.line - 0.3) / SPEECH_SLACK;
     const fit = (list) => list.filter((l) => estimateSpeech(l, VOICES.adam.rate) <= room);
-    const all = BRUNNEN_MEGAFON.map((l) => fillTemplate(l, { ort: tv.name }));
-    // meist ein Gruß, der zu diesem Brunnen passt (seine Figur, sein Name, der echte Brunnen), sonst ein allgemeiner
+    // (in Polen grüßt er auf Polnisch, in Frankreich nur verlegen: Podcast, Polnisch statt Französisch – data-memes.js;
+    // dieser Gag geht dem Gruß an den Brunnen vor)
+    const abroad = MEGAFON_AUSLAND[places[tv.place]?.cc];
+    const all = (abroad || BRUNNEN_MEGAFON).map((l) => fillTemplate(l, { ort: tv.name }));
+    // sonst meist ein Gruß, der zu diesem Brunnen passt (seine Figur, sein Name, der echte Brunnen), sonst ein allgemeiner
     const T = tv.texte;
-    const own = T ? fit(T.mega.map((l) => fuelle(l, T, tv.n))) : [];
+    const own = T && !abroad ? fit(T.mega.map((l) => fuelle(l, T, tv.n))) : [];
     const fits = own.length && chance(T.echt ? 0.9 : ANTEIL.mega) ? own : fit(all);
     const text = fits.length ? this.tvFresh(fits) : all.reduce((a, b) => (b.length < a.length ? b : a));
     this.audio.megafon();
@@ -777,6 +813,7 @@ export class ZielPart {
     const gain = this.tv && this.tv.viewers !== undefined ? Math.round(this.viewers - this.tv.viewers) : 0;
     if (gain >= 20) this.ui.toast(`📈 BrunnenTV: +${fmtNum(gain)} Zuschauer`, 'good', 'zuschauer');
     this.tv = null;
+    this.memes.folgeEnde();
     // was hinter der Folge gewartet hat, spricht jetzt (Veraltetes entfällt)
     this.speech.episode?.(false);
     this.ui.brunnenTV(0);

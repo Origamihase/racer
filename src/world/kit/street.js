@@ -430,6 +430,122 @@ prop('trafficLightRed', 'signal', (b) => trafficLight(b, 'red'));
 prop('trafficLightAmber', 'signal', (b) => trafficLight(b, 'amber'));
 prop('trafficLightGreen', 'signal', (b) => trafficLight(b, 'green'));
 
+// --- Countdown-Ampel (Memes: Adam wünscht sich Ampeln mit Countdown; der Chat will Grün für 5 Cent kaufen) ----------
+// Fußgängerampel am Bordstein, zur ankommenden Straße gedreht (+z): oben das rote, darunter das grüne Männchen, daneben
+// die Anzeige mit den Sekunden bis Grün. Am Mast ein Schild mit QR-Code („Grün kaufen · 5 Cent“) und ein angeklebter
+// Zettel der 0900-Tombola („Tolle Gewinne!“). Die Schrift kommt als Zusatz (extras, nur nah).
+const AMPEL_CD = { h: 3.0, box: [0.3, 0.62, 0.2], y: 2.2, cd: [0.26, 0.2], qr: { y: 1.5, w: 0.34, h: 0.42 }, flyer: { y: 1.05, w: 0.21, h: 0.3 } };
+prop('countdownAmpel', 'signal', (b) => {
+  const { F, G, L } = b;
+  const near = b.lod === 0;
+  const A = AMPEL_CD;
+  post(b, 0, 0, A.h, 0.06, PAL.darkMetal);
+  const dark = mix(PAL.darkMetal, 0x000000, 0.2);
+  const [bw, bh, bd] = A.box;
+  F.rbox(0, A.y, 0.12, bw, bh, bd, 0.06, dark, { seg: 3, ks: [0.9, 1], prof: [[0, 0], [0, bh]] });
+  // rotes Männchen leuchtet, das grüne ist dunkel
+  L.disc(0, A.y + bh * 0.72, 0.225, 0.1, LIT.red, { seg: near ? 16 : 8, flat: true });
+  G.disc(0, A.y + bh * 0.28, 0.224, 0.1, DARK.green, { seg: near ? 16 : 8 });
+  // Countdown-Kasten rechts daneben (die Ziffern als Zusatz)
+  F.rbox(bw / 2 + A.cd[0] / 2 - 0.015, A.y + bh * 0.62, 0.12, A.cd[0], A.cd[1], 0.1, 0.03, dark, { seg: 2 });
+  // Rücken der Schilder am Mast
+  F.box(0, A.qr.y + A.qr.h / 2, 0.075, A.qr.w + 0.02, A.qr.h + 0.02, 0.012, PAL.frame);
+  return { w: 0.75, d: 0.4, h: A.h + 0.1 };
+});
+defs.countdownAmpel.extras = (kit) => {
+  const A = AMPEL_CD;
+  const out = [];
+  const [bw, bh] = A.box;
+  // Sekunden bis Grün: groß und rot auf Schwarz
+  const cd = textPanel(kit.core, 'ampel:cd', A.cd[0] - 0.03, A.cd[1] - 0.03, 128, (c, w, h) => {
+    c.fillStyle = '#111';
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = '#ff4a3a';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.font = `bold ${Math.round(h * 0.86)}px ${FONT}`;
+    c.fillText('7', w / 2, h * 0.54);
+  });
+  cd.position.set(bw / 2 + A.cd[0] / 2 - 0.015, A.y + bh * 0.62 + A.cd[1] / 2, 0.172);
+  out.push(cd);
+  // QR-Schild: weiß, oben „Grün kaufen“, ein Muster wie ein QR-Code, unten „5 Cent“
+  const qr = textPanel(kit.core, 'ampel:qr', A.qr.w, A.qr.h, 256, (c, w, h) => {
+    c.fillStyle = '#ffffff';
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = '#2e9b4f';
+    c.fillRect(0, 0, w, h * 0.2);
+    c.fillStyle = '#ffffff';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    fitFont(c, 'Grün kaufen', Math.round(h * 0.12), w * 0.9);
+    c.fillText('Grün kaufen', w / 2, h * 0.1);
+    // QR-Muster aus einem festen Zufall: drei Ecken-Marken, dazwischen Punkte
+    const n = 21;
+    const q = (w * 0.66) / n;
+    const x0 = (w - n * q) / 2;
+    const y0 = h * 0.25;
+    c.fillStyle = '#111';
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      const corner = (i < 8 && j < 8) || (i >= n - 8 && j < 8) || (i < 8 && j >= n - 8);
+      if (!corner && rnd() < 0.48) c.fillRect(x0 + i * q, y0 + j * q, q + 0.5, q + 0.5);
+    }
+    for (const [ci, cj] of [[0, 0], [n - 7, 0], [0, n - 7]]) {
+      c.fillRect(x0 + ci * q, y0 + cj * q, 7 * q, 7 * q);
+      c.fillStyle = '#fff';
+      c.fillRect(x0 + (ci + 1) * q, y0 + (cj + 1) * q, 5 * q, 5 * q);
+      c.fillStyle = '#111';
+      c.fillRect(x0 + (ci + 2) * q, y0 + (cj + 2) * q, 3 * q, 3 * q);
+    }
+    c.fillStyle = '#111';
+    fitFont(c, '5 Cent', Math.round(h * 0.11), w * 0.9);
+    c.fillText('5 Cent', w / 2, h * 0.92);
+  });
+  qr.position.set(0, A.qr.y + A.qr.h / 2, 0.083);
+  out.push(qr);
+  // Tombola-Zettel, schief an den Mast geklebt
+  const fl = textPanel(kit.core, 'ampel:tombola', A.flyer.w, A.flyer.h, 192, (c, w, h) => {
+    c.fillStyle = '#fff6a8';
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = '#c8322b';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    fitFont(c, 'TOMBOLA!', Math.round(h * 0.15), w * 0.9);
+    c.fillText('TOMBOLA!', w / 2, h * 0.13);
+    c.fillStyle = '#2a2a2a';
+    fitFont(c, 'Tolle Gewinne!', Math.round(h * 0.1), w * 0.9);
+    c.fillText('Tolle Gewinne!', w / 2, h * 0.3);
+    c.font = `${Math.round(h * 0.07)}px ${FONT}`;
+    c.fillText('Jetzt anrufen:', w / 2, h * 0.45);
+    c.font = `bold ${Math.round(h * 0.075)}px ${FONT}`;
+    c.fillText('0900 …', w / 2, h * 0.55);
+    // Abreißstreifen unten
+    c.strokeStyle = '#888';
+    c.lineWidth = 1;
+    const k = 6;
+    for (let i = 0; i <= k; i++) {
+      c.beginPath();
+      c.moveTo((i * w) / k, h * 0.68);
+      c.lineTo((i * w) / k, h);
+      c.stroke();
+    }
+    c.save();
+    c.font = `${Math.round(h * 0.045)}px ${FONT}`;
+    for (let i = 0; i < k; i++) {
+      c.translate(((i + 0.5) * w) / k, h * 0.84);
+      c.rotate(-Math.PI / 2);
+      c.fillText('0900', 0, 0);
+      c.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    c.restore();
+  });
+  fl.position.set(0.0, A.flyer.y + A.flyer.h / 2, 0.066);
+  fl.rotation.z = 0.08;
+  out.push(fl);
+  return out;
+};
+
 // --- Haltestelle, Litfaßsäule ------------------------------------------------------------------------------------
 prop('busStop', 'stop', (b) => {
   const { F, G } = b;
