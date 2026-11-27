@@ -1,8 +1,8 @@
 // Teil der Regie einer Fahrt (Game, game.js): Navi-Ziel: Ausfahrten, die Auktion ums Ziel, Ankunft, Halt am Brunnen,
 // Rechnung und BrunnenTV.
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
-import { CHAT, BOARD, VOICES, REISE_AKKU, damageCost, damageCount, ladeKosten, viewerName, fillTemplate, BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, SCHOENNBRUN } from '../../data.js';
-import { rand, chance, pick, fmtCent, fmtEuro, fmtNum, fmtKwh, fmtKonto } from '../../util.js';
+import { CHAT, BOARD, VOICES, REISE_AKKU, damageCost, damageCount, ladeKosten, viewerName, viewerNameAt, fillTemplate, BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, SCHOENNBRUN } from '../../data.js';
+import { rand, chance, pick, mulberry32, fmtCent, fmtEuro, fmtNum, fmtKwh, fmtKonto } from '../../util.js';
 import { damageLine } from '../damage.js';
 import { BONTANA } from '../economy.js';
 import { ZUFRIEDEN } from '../satisfaction.js';
@@ -617,8 +617,11 @@ export class ZielPart {
     const entry = addEpisode(this.save, { place: t.place, t: this.streamT, clock: this.clock, kinds, way });
     const n = entry.n;
     // was diese Folge über ihren Brunnen weiß (brunnentexte.js: Figur, Stein, echter Brunnen, Steckbrief)
+    // (mit eigenem Zufall je Folge, aus Folgennummer und Ort: was die Folge über ihren Brunnen sagt, ändert nichts an
+    // dem, was der Zufall sonst im Stream bringt – Gebote, Verkehr, Chat –, und ein Lauf mit derselben Saat bleibt gleich)
     const texte = folgeTexte(t.place);
-    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, called: false, debate: entry.d || null, way, texte };
+    const rng = mulberry32((Math.imul(n, 7919) ^ Math.imul(t.place + 1, 104729)) >>> 0);
+    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, called: false, debate: entry.d || null, way, texte, rng };
     // ab jetzt gehört die Sprachausgabe der Folge: Was spricht, endet höflich, alles andere wartet dahinter (speech.js)
     this.speech.episode?.(true);
     this.quote.tv.push({ t: this.t, n });
@@ -705,11 +708,18 @@ export class ZielPart {
         this.gags.tvGreet();
         // der Chat sieht, was für ein Brunnen das ist (Figur, echter Brunnen): eine Zeile mitten im Jubel
         const T = tv.texte;
-        if (T && T.chat.length) this.later(rand(1.2, 2.2), () => this.chat(fuelle(this.chatLine(T.chat), T, tv.n)));
+        const R = tv.rng;
+        if (T && T.chat.length) {
+          const line = fuelle(this.tvFresh(T.chat, R, (this.tvChatSeen ??= [])), T, tv.n);
+          this.later(1.2 + R(), () => this.chat(line, viewerNameAt(Math.floor(R() * 9973))));
+        }
         // passt eine Streitfrage des Wikis (Trinkbrunnen, Kanal, Alsterfontäne), kommt sie nach dem Jubel
         if (tv.debate) this.later(3.2, () => this.chat(this.chatLine(BRUNNEN_DEBATTE[tv.debate])));
         // … und ab und zu weiß ein Zuschauer etwas über den Ort (bei berühmten Brunnen immer)
-        else if (T && T.fakt && (T.echt || chance(FAKT.chance))) this.later(5.6, () => this.chat(this.brunnenFakt(T)));
+        else if (T && T.fakt && (T.echt || R() < FAKT.chance)) {
+          const line = this.brunnenFakt(T, R);
+          this.later(5.6, () => this.chat(line, viewerNameAt(Math.floor(R() * 9973))));
+        }
       }],
       [TV.call, () => this.brunnenCall()],
       [TV.nomi, () => this.say(this.brunnenOmi(tv), 'love', { priority: false, scene: true })],
@@ -733,10 +743,12 @@ export class ZielPart {
     const abroad = MEGAFON_AUSLAND[places[tv.place]?.cc];
     const all = (abroad || BRUNNEN_MEGAFON).map((l) => fillTemplate(l, { ort: tv.name }));
     // sonst meist ein Gruß, der zu diesem Brunnen passt (seine Figur, sein Name, der echte Brunnen), sonst ein allgemeiner
+    // (der allgemeine wird immer gezogen wie früher, der eigene mit dem Zufall der Folge: siehe startBrunnenTV)
+    const fits = fit(all);
+    let text = fits.length ? pick(fits) : all.reduce((a, b) => (b.length < a.length ? b : a));
     const T = tv.texte;
     const own = T && !abroad ? fit(T.mega.map((l) => fuelle(l, T, tv.n))) : [];
-    const fits = own.length && chance(T.echt ? 0.9 : ANTEIL.mega) ? own : fit(all);
-    const text = fits.length ? this.tvFresh(fits) : all.reduce((a, b) => (b.length < a.length ? b : a));
+    if (own.length && tv.rng() < (T.echt ? 0.9 : ANTEIL.mega)) text = this.tvFresh(own, tv.rng);
     this.audio.megafon();
     // ein Satz der Folge (episode): Was sonst noch reden wollte, wartet dahinter; sein Untertitel kommt mit ihm
     const dur = this.speech.say(text, 'adam', { episode: true, onStart: (d) => this.ui.megafon(text, d + 1, '', SCHOENNBRUN.label) });
@@ -745,13 +757,14 @@ export class ZielPart {
   }
 
   /**
-   * Ein Satz aus list, der in den letzten Folgen nicht kam (tvSeen merkt sich die letzten zwölf Sätze der Folgen:
-   * Gruß und OMI); kommt jeder schon vor, der am längsten nicht gesagte.
+   * Ein Satz aus list, der zuletzt nicht kam (seen: die letzten zwölf Sätze, Standard tvSeen – Grüße und OMI-Sätze der
+   * Folgen; der Chat der Folgen hat tvChatSeen); kommt jeder schon vor, der am längsten nicht gesagte. R: der Zufall
+   * der Folge.
    */
-  tvFresh(list) {
-    const seen = (this.tvSeen ??= []);
+  tvFresh(list, R, seen = (this.tvSeen ??= [])) {
     const fresh = list.filter((l) => !seen.includes(l));
-    const text = fresh.length ? pick(fresh) : list.reduce((a, b) => (seen.indexOf(b) < seen.indexOf(a) ? b : a));
+    const from = fresh.length ? fresh : list;
+    const text = fresh.length ? from[Math.floor(R() * from.length)] : list.reduce((a, b) => (seen.indexOf(b) < seen.indexOf(a) ? b : a));
     seen.push(text);
     if (seen.length > 12) seen.shift();
     return text;
@@ -759,17 +772,17 @@ export class ZielPart {
 
   /** OMIs Satz nach dem Ruf: meist über diesen Brunnen (Stein, Fassung, Figur, echter Brunnen), sonst ein allgemeiner. */
   brunnenOmi(tv) {
+    const generic = fillTemplate(pick(BRUNNEN_NOMI), { n: fmtNum(tv.n) });
     const T = tv.texte;
     const own = T ? T.omi.map((l) => fuelle(l, T, fmtNum(tv.n))) : [];
-    if (own.length && chance(T.echt ? 0.9 : ANTEIL.omi)) return this.tvFresh(own);
-    return this.tvFresh(BRUNNEN_NOMI.map((l) => fillTemplate(l, { n: fmtNum(tv.n) })));
+    return own.length && tv.rng() < (T.echt ? 0.9 : ANTEIL.omi) ? this.tvFresh(own, tv.rng) : generic;
   }
 
   /** Ein Zuschauer weiß etwas über den Ort: der berühmte Brunnen oder die Zeile seines Steckbriefs. */
-  brunnenFakt(T) {
+  brunnenFakt(T, R) {
     const f = T.fakt;
     if (typeof f === 'string') return '📖 ' + f;
-    return fuelle(pick(f.tpl), T).replace('{t}', f.t);
+    return fuelle(f.tpl[Math.floor(R() * f.tpl.length)], T).replace('{t}', f.t);
   }
 
   /**
