@@ -26,6 +26,12 @@
 //    Park mit der Säule vor dem Brunnenplatz am Ortsanfang oder dahinter vor dem Ortsende (in Dörfern immer davor). Park,
 //    Stele, Tafel („Ladesäule 50 m“ hinter dem Platz), geplanter Halt (postS), Navi und Ortsplan folgen ihm; nichts davon
 //    liegt auf dem Brunnenplatz. (Halt erst am Brunnen, dann an der Säule: stopp-test; Laden mit L dort: laden2-test.)
+
+// Der Wochentag steht fest (ein Donnerstag, wie journey-test einen Mittwoch festhält): Das Stichwort „donnerstag“ der
+// Sprachdurchsagen (game/parts/ereignisse.js) fragt die echte Uhr, an anderen Tagen zögen die Streams anders – und die
+// Keime unten, die an einem Blitzer auf der Landstraße vorbeiführen, gelten für einen festen Lauf, nicht für den
+// Kalender (am Freitag, 27.11.2026 fand keiner einen).
+Date.prototype.getDay = () => 4;
 import { Group } from 'three';
 import { Trip, PROFILES } from '../src/game/trip.js';
 import { findPlace } from '../src/map/graph.js';
