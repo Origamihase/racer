@@ -123,55 +123,241 @@ export class CenterScreen {
    * Bitspende „Kofferraum öffnen“ (st.trunk: Sekunden, die sie noch läuft): An der Stelle der Spuransicht zeigt der
    * Bildschirm die Kofferraum-Kamera – was hinten mitfährt, mit REC-Punkt wie jedes Kamerabild des Wagens. Der
    * Innenspiegel bleibt dabei ein Spiegel.
+   *
+   * Das Bild schaut von der offenen Klappe schräg von oben in den Kofferraum: hinten die Rückbank, vorn die Ladekante,
+   * dazwischen die Stream-Technik als Kisten mit Tiefe. Alles ist so groß gezeichnet, dass man es auf dem Bildschirm im
+   * Cockpit noch erkennt (die Fläche erscheint dort nur etwa halb so groß): wenige Dinge, große Schrift, klare Formen.
+   * Die LEDs blinken, Konfetti stiebt aus der Kiste, und das Bild zittert leicht mit der Fahrt.
    */
   drawTrunkCam(ctx) {
     const x = 14;
     const y = 262;
     const w = SPLIT - 28;
     const h = CH - 84 - y;
+    const t = this.spin;
     ctx.save();
     roundRect(ctx, x, y, w, h, 14);
     ctx.clip();
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, '#2a2c30');
-    g.addColorStop(1, '#141517');
-    ctx.fillStyle = g;
+    ctx.fillStyle = '#121316';
     ctx.fillRect(x, y, w, h);
-    // der Kofferraum von oben-hinten: Kisten, Kabel, die Stream-Technik (Zeichnung 512 × 160, auf die Breite gesetzt)
-    const k = w / 512;
-    ctx.translate(x, y + 44 + (h - 44 - 160 * k) / 2);
+    // Bildinhalt in eigenen Koordinaten: 344 × 254 unter der Kopfzeile, auf die echte Breite gesetzt; leichtes Zittern
+    const k = w / 344;
+    ctx.translate(x + Math.sin(t * 23) * 0.6, y + 40 + Math.sin(t * 17.3) * 0.8);
     ctx.scale(k, k);
-    const box = (bx, by, bw, bh, col, label) => {
-      ctx.fillStyle = col;
-      roundRect(ctx, bx, by, bw, bh, 8);
-      ctx.fill();
-      ctx.fillStyle = '#e8e8e8';
-      ctx.font = 'bold 17px Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(label, bx + bw / 2, by + bh / 2 + 6);
-    };
-    box(24, 38, 120, 84, '#3b3f46', 'Akku-Pack');
-    box(160, 60, 96, 62, '#20242a', 'Router');
-    box(272, 28, 92, 94, '#5a2a2a', 'KONFETTI');
-    box(380, 52, 110, 70, '#1e3550', 'LTE ×3');
-    ctx.strokeStyle = '#d4a21a';
-    ctx.lineWidth = 3;
-    for (let i = 0; i < 4; i++) {
+    // Fluchtpunkt der Kisten (oberhalb des Bilds, die Kamera schaut schräg von oben hinein)
+    const VX = 172;
+    const VY = -150;
+    // Rückbank hinten: Polster mit Nähten
+    let g = ctx.createLinearGradient(0, -40, 0, 56);
+    g.addColorStop(0, '#26282d');
+    g.addColorStop(1, '#3a3d44');
+    ctx.fillStyle = g;
+    ctx.fillRect(-10, -40, 364, 100);
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 2;
+    for (const sx of [116, 228]) {
       ctx.beginPath();
-      ctx.moveTo(140 + i * 8, 88);
-      ctx.bezierCurveTo(180, 143 - i * 6, 330, 146, 380, 88 + i * 6);
+      ctx.moveTo(sx, -40);
+      ctx.lineTo(sx + (sx - VX) * 0.08, 50);
       ctx.stroke();
     }
+    // Seitenwände
+    ctx.fillStyle = '#2b2d32';
+    ctx.beginPath();
+    ctx.moveTo(-10, 0);
+    ctx.lineTo(48, 50);
+    ctx.lineTo(-4, 260);
+    ctx.lineTo(-10, 260);
+    ctx.closePath();
+    ctx.moveTo(354, 0);
+    ctx.lineTo(296, 50);
+    ctx.lineTo(348, 260);
+    ctx.lineTo(354, 260);
+    ctx.closePath();
+    ctx.fill();
+    // Ladeboden: Teppich, nach vorn heller (dort fällt das Tageslicht durch die offene Klappe herein)
+    g = ctx.createLinearGradient(0, 50, 0, 254);
+    g.addColorStop(0, '#2f3136');
+    g.addColorStop(1, '#4b4e55');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(48, 50);
+    ctx.lineTo(296, 50);
+    ctx.lineTo(348, 260);
+    ctx.lineTo(-4, 260);
+    ctx.closePath();
+    ctx.fill();
+    // Leuchte in der linken Seitenwand
+    ctx.fillStyle = '#fff3c4';
+    ctx.beginPath();
+    ctx.moveTo(14, 40);
+    ctx.lineTo(28, 52);
+    ctx.lineTo(26, 60);
+    ctx.lineTo(12, 48);
+    ctx.closePath();
+    ctx.fill();
+
+    // eine Kiste mit Tiefe: Vorderseite (fx, fy, fw, fh) und Deckel, der zum Fluchtpunkt hin zurückweicht (d: Tiefe 0…1)
+    const back = (px, py, d) => [px + (VX - px) * d, py + (VY - py) * d];
+    const box = (fx, fy, fw, fh, d, front, top, side) => {
+      const [ax, ay] = back(fx, fy, d);
+      const [bx, by] = back(fx + fw, fy, d);
+      ctx.fillStyle = top;
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.lineTo(fx + fw, fy);
+      ctx.closePath();
+      ctx.fill();
+      // die Seite, die man von der Mitte aus sieht
+      const right = fx + fw < VX;
+      const ex = right ? fx + fw : fx;
+      const [cx, cy] = back(ex, fy, d);
+      const [dx2, dy2] = back(ex, fy + fh, d);
+      ctx.fillStyle = side;
+      ctx.beginPath();
+      ctx.moveTo(ex, fy);
+      ctx.lineTo(cx, cy);
+      ctx.lineTo(dx2, dy2);
+      ctx.lineTo(ex, fy + fh);
+      ctx.closePath();
+      if (right || fx > VX) ctx.fill();
+      ctx.fillStyle = front;
+      ctx.fillRect(fx, fy, fw, fh);
+      // Schatten auf dem Boden
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fillRect(fx + 3, fy + fh, fw, 5);
+    };
+    const label = (text, cx, cy, size, col) => {
+      ctx.font = `800 ${size}px "Helvetica Neue", Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = col;
+      ctx.fillText(text, cx, cy);
+    };
+    const blink = (rate, ph) => Math.sin(t * rate + ph) > 0;
+
+    // Kabel auf dem Boden (unter den Kisten): vom Akku zum Router, zum LTE-Block und zur Konfetti-Kiste
+    ctx.lineCap = 'round';
+    const cable = (col, wdt, pts) => {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = wdt;
+      ctx.beginPath();
+      ctx.moveTo(pts[0], pts[1]);
+      ctx.bezierCurveTo(pts[2], pts[3], pts[4], pts[5], pts[6], pts[7]);
+      ctx.stroke();
+    };
+    cable('#e0a412', 6, [150, 122, 176, 150, 200, 150, 226, 128]);
+    cable('#1c1d20', 6, [140, 124, 200, 186, 230, 140, 262, 182]);
+    cable('#e0a412', 6, [266, 128, 300, 150, 300, 166, 280, 182]);
+    cable('#d23b3b', 5, [96, 122, 80, 140, 100, 150, 96, 160]);
+
+    // hinten links: der Akku-Pack (grau, mit großem Akku-Symbol, das sich mit der Zeit füllt)
+    box(40, 56, 112, 58, 0.12, '#565b64', '#6c727c', '#40444b');
+    ctx.strokeStyle = '#f2f3f5';
+    ctx.lineWidth = 3.5;
+    roundRect(ctx, 62, 63, 60, 24, 4);
+    ctx.stroke();
+    ctx.fillStyle = '#f2f3f5';
+    ctx.fillRect(122, 70, 5, 10);
+    const lvl = 1 + Math.floor((t * 2.2) % 4);
+    ctx.fillStyle = '#34c759';
+    for (let i = 0; i < lvl; i++) ctx.fillRect(66 + i * 14, 67, 11, 16);
+    label('AKKU', 96, 101, 20, '#ffffff');
+
+    // hinten rechts: der Router, flach, mit drei Antennen und blinkenden LEDs
+    ctx.strokeStyle = '#111215';
+    ctx.lineWidth = 5;
+    for (const [ax, lean] of [
+      [208, -8],
+      [246, 0],
+      [284, 8],
+    ]) {
+      ctx.beginPath();
+      ctx.moveTo(ax, 88);
+      ctx.lineTo(ax + lean, 32);
+      ctx.stroke();
+    }
+    box(192, 84, 106, 34, 0.1, '#1d1f24', '#30333a', '#15161a');
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = blink(9 + i * 3.1, i * 1.7) ? '#4dff88' : '#1f5a33';
+      ctx.fillRect(204 + i * 12, 89, 7, 5);
+    }
+    label('ROUTER', 245, 107, 20, '#f2f3f5');
+
+    // vorn links: die offene Konfetti-Kiste aus Pappe, Konfetti stiebt heraus
+    box(16, 166, 146, 76, 0.1, '#b9854a', '#8a5f30', '#9c6d3b');
+    // Klappen der offenen Kiste
+    ctx.fillStyle = '#c99659';
+    ctx.beginPath();
+    ctx.moveTo(16, 166);
+    ctx.lineTo(0, 148);
+    ctx.lineTo(26, 140);
+    ctx.lineTo(38, 158);
+    ctx.closePath();
+    ctx.moveTo(162, 166);
+    ctx.lineTo(180, 150);
+    ctx.lineTo(160, 138);
+    ctx.lineTo(142, 156);
+    ctx.closePath();
+    ctx.fill();
+    // Konfetti in der Kiste und in der Luft
+    const CONF = ['#ff4d6d', '#ffd23f', '#3bceac', '#4d8dff', '#c86bfa', '#ff8c42'];
+    for (let i = 0; i < 26; i++) {
+      const ph = (i * 0.6180339) % 1;
+      const life = (t * (0.55 + ph * 0.5) + ph) % 1;
+      const cx = 89 + Math.sin(i * 12.9898) * 52 + Math.sin(t * 3 + i) * 10 * life;
+      const cy = 162 - life * 62 + life * life * 26;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(t * (2 + ph * 4) + i);
+      ctx.fillStyle = CONF[i % CONF.length];
+      ctx.fillRect(-4, -2.5, 8, 5);
+      ctx.restore();
+    }
+    // Aufschrift wie mit dickem Filzstift
+    ctx.save();
+    ctx.translate(89, 206);
+    ctx.rotate(-0.05);
+    label('KONFETTI', 0, 0, 27, '#5a1f12');
+    ctx.restore();
+
+    // vorn rechts: drei LTE-Sticks auf einem Block, je mit Empfangsbalken
+    box(186, 194, 146, 48, 0.08, '#1e3a5c', '#2b4d75', '#173049');
+    for (let m = 0; m < 3; m++) {
+      const mx = 196 + m * 46;
+      box(mx, 140, 34, 54, 0.06, '#e8eaee', '#ffffff', '#b9bdc4');
+      // Empfangsbalken: mal mehr, mal weniger Netz (das Funkloch lässt grüßen)
+      const bars = 1 + ((Math.floor(t * 1.5 + m * 1.3) * 7 + m) % 4);
+      for (let b = 0; b < 4; b++) {
+        ctx.fillStyle = b < bars ? '#1e7be0' : '#c9ccd2';
+        const bh = 6 + b * 6;
+        ctx.fillRect(mx + 5 + b * 7, 184 - bh, 5, bh);
+      }
+      ctx.fillStyle = blink(6 + m * 2.3, m) ? '#4dff88' : '#2a6b44';
+      ctx.fillRect(mx + 13, 146, 8, 4);
+    }
+    label('LTE ×3', 259, 219, 24, '#ffffff');
+
+    // Ladekante vorn (Gummidichtung) und Tageslicht von der offenen Klappe
+    ctx.fillStyle = '#18191c';
+    ctx.fillRect(-10, 246, 364, 14);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    g = ctx.createRadialGradient(x + w / 2, y + h * 0.62, h * 0.35, x + w / 2, y + h * 0.62, h * 0.95);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
     // Kopfzeile des Kamerabilds
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(x, y, w, 40);
-    ctx.fillStyle = Math.sin(this.spin * 5) > -0.2 ? '#ff4d4d' : '#7a2a2a';
+    ctx.fillStyle = Math.sin(t * 5) > -0.2 ? '#ff4d4d' : '#7a2a2a';
     ctx.beginPath();
     ctx.arc(x + 22, y + 20, 7, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.font = '600 20px "Helvetica Neue", Arial, sans-serif';
+    ctx.font = '600 22px "Helvetica Neue", Arial, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText('Kofferraum-Kamera', x + 38, y + 21);
