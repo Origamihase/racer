@@ -13,6 +13,7 @@ import { resolveProfile, weighted } from './steckbrief.js';
 import { STECKBRIEFE as DE } from './steckbriefe-de.js';
 import { STECKBRIEFE as AUSLAND } from './steckbriefe-ausland.js';
 import { riverSpan, riverHits, riverAt } from '../../map/rivers.js';
+import { passOf } from './brunnenpass.js';
 
 const STECKBRIEFE = { ...DE, ...AUSLAND };
 
@@ -144,7 +145,7 @@ const MAIN = {
   gross: ['fountainGrand', 'fountainBowls', 'fountainJets'],
 };
 const EXTRA = { dorf: [], klein: ['fountainDrink'], stadt: ['fountainPond', 'fountainDrink'], gross: ['fountainPond', 'fountainJets', 'fountainDrink'] };
-const SPECIAL = { Augsburg: 'fountainOrigin', 'Nürnberg': 'fountainBoss' };
+export const SPECIAL = { Augsburg: 'fountainOrigin', 'Nürnberg': 'fountainBoss' };
 // Radius der Brunnen, die Hauptbrunnen eines Orts sein können (info.r aus fountains.js; tools/citykit-test.mjs prüft,
 // dass beide übereinstimmen): damit lässt sich die Insel eines Zielbrunnens ohne Grafik planen
 export const FOUNTAIN_R = {
@@ -253,7 +254,7 @@ export const STYLE_KINDS = {
 const STYLE_W = { DE: 0.8, abroad: 0.95 };
 // was im Ausland neben den Brunnen der Bauweise in Frage kommt: nichts typisch Deutsches
 // Orte, deren Brunnen jeder kennt: die Art steht fest (wenn sie auf den Platz passt)
-const OWN_KIND = { Rom: 'fountainDolphin', Tokio: 'fountainBamboo', Osaka: 'fountainBamboo', 'Baden-Baden': 'fountainTempel' };
+export const OWN_KIND = { Rom: 'fountainDolphin', Tokio: 'fountainBamboo', Osaka: 'fountainBamboo', 'Baden-Baden': 'fountainTempel' };
 // Arten, die nur in ihre Gegend gehören (Länder): Kacheln dorthin, wo die Mauren und ihre Erben bauten, Bambus nach Japan
 const ONLY_IN = {
   fountainStar: new Set(['ES', 'PT', 'MT', 'JO', 'MX', 'DO', 'CV']),
@@ -347,30 +348,27 @@ function slotKind(place, size) {
  * Name des Hauptbrunnens eines Orts: aus seiner Kennung (dem Ort) gezogen unter den Namen der Arten, die zur Größe des
  * Orts passen und auf die Insel seines Platzes passen; der Ursprung und der Endgegner heißen, wie sie heißen.
  */
+/** Feste Art eines Orts (OWN_KIND), wenn sie auf seine Insel und zu seiner Größe passt, sonst null. */
+export function ownKind(place, size = sizeOf(place.pop ?? 0)) {
+  const own = OWN_KIND[place.key ?? place.name];
+  return own && FOUNTAIN_R[own] <= FOUNTAIN_R[slotKind(place, size)] && sizeFits(own, size) ? own : null;
+}
+
 export function fountainName(place, size = sizeOf(place.pop ?? 0)) {
   const special = SPECIAL[place.key] ?? SPECIAL[place.name];
   if (special) return FOUNTAIN_TITLE[special];
+  // jeder Ort hat seinen eigenen Brunnen (brunnenpass.js): benannt nach seiner Figur oder wie der echte Brunnen
+  const pass = passOf(place);
+  return pass.name ?? kindName(place, pass.kind);
+}
+
+/** Name nach der Art allein (Brunnen ohne Figur): einer der Namen der Art, aus dem Ort gezogen. */
+function kindName(place, kind) {
   const key = place.key ?? place.name;
-  const own = OWN_KIND[key];
-  const named = (k) => {
-    const all = FOUNTAIN_NAMES[k];
-    const names = all.filter((n) => !NAME_ONLY[n] || NAME_ONLY[n].has(place.cc ?? 'DE'));
-    const list = names.length ? names : all;
-    return list[hashKey('Brunnenname ' + key) % list.length];
-  };
-  if (own && FOUNTAIN_R[own] <= FOUNTAIN_R[slotKind(place, size)] && sizeFits(own, size)) return named(own);
-  const choices = fountainChoices(place, size);
-  const total = choices.reduce((a, [, v]) => a + v, 0);
-  let x = (hashKey('Brunnenart ' + key) / 4294967296) * total;
-  let kind = choices[choices.length - 1][0];
-  for (const [k, v] of choices) {
-    if (x < v) {
-      kind = k;
-      break;
-    }
-    x -= v;
-  }
-  return named(kind);
+  const all = FOUNTAIN_NAMES[kind];
+  const names = all.filter((n) => !NAME_ONLY[n] || NAME_ONLY[n].has(place.cc ?? 'DE'));
+  const list = names.length ? names : all;
+  return list[hashKey('Brunnenname ' + key) % list.length];
 }
 
 /** Art eines Brunnens nach seinem Namen (FOUNTAIN_NAMES, Sonderbrunnen nach ihrem Titel) oder null. */
@@ -381,11 +379,11 @@ export function kindOfName(name) {
 }
 
 /**
- * Art des Hauptbrunnens eines Orts, an dem auch jede Fahrt dorthin endet: die beiden Sonderbrunnen in Augsburg und
- * Nürnberg, sonst die Art, die sein Name sagt (fountainName). Für denselben Ort immer dieselbe, unabhängig vom übrigen Plan.
+ * Art des Hauptbrunnens eines Orts, an dem auch jede Fahrt dorthin endet: aus seinem Brunnenpass (brunnenpass.js; die
+ * beiden Sonderbrunnen in Augsburg und Nürnberg). Für denselben Ort immer dieselbe, unabhängig vom übrigen Plan.
  */
-export function goalKind(place, size = sizeOf(place.pop ?? 0)) {
-  return kindOfName(fountainName(place, size));
+export function goalKind(place) {
+  return passOf(place).kind;
 }
 /** Radius der Insel, auf der der Zielbrunnen eines Orts mitten im Brunnenplatz der Straße steht. */
 export function islandRadius(place) {

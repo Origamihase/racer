@@ -7,6 +7,7 @@ import { W, curvePoint } from '../../curve.js';
 import { places } from '../../map/graph.js';
 import { createCityKit } from '../kit/city.js';
 import { goalKind, FOUNTAIN_R, STREET } from '../kit/layout.js';
+import { passOf } from '../kit/brunnenpass.js';
 import { XXL_BEHIND, squareOf, squareWeight, secSeedKey } from './plan.js';
 import { ISLAND_H } from './roadkit.js';
 import { CHARGE, chargeOf, steleOf } from './charge.js';
@@ -154,8 +155,10 @@ export class Towns {
     let kind = p ? goalKind(p) : BY_SIZE[0];
     // die Insel richtet sich nach dem Brunnen (plan.js FOUNTAIN.radius); passt er trotzdem nicht, der größte, der passt
     if (FOUNTAIN_R[kind] > r + 1e-6) kind = BY_SIZE.filter((k) => !K.info(k).special && FOUNTAIN_R[k] <= r + 1e-6).pop() ?? BY_SIZE[0];
-    // (ein kleinerer Brunnen bekommt auf seiner Insel einen Garten, fountains.js GARDEN)
-    const obj = K.fountains.onIsland(kind, r);
+    // (ein kleinerer Brunnen bekommt auf seiner Insel einen Garten, fountains.js GARDEN); jeder Ort hat seinen eigenen
+    // Brunnen (brunnenpass.js: Stein, Figur, Wappen), solange die Art auf die Insel passt
+    const pass = p ? passOf(p) : null;
+    const obj = pass && pass.kind === kind ? K.fountains.forPlace(pass, p.key, r) : K.fountains.onIsland(kind, r);
     obj.userData.dispose = () => K.release(obj);
     return obj;
   }

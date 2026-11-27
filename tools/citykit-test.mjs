@@ -28,6 +28,14 @@ globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext:
 const { W } = await import('../src/curve.js');
 const { createCityKit } = await import('../src/world/kit/city.js');
 const L = await import('../src/world/kit/layout.js');
+const BP = await import('../src/world/kit/brunnenpass.js');
+// der Name sagt den Brunnen: mit Figur oder als echter Brunnen nach dem Pass (Bergmannsbrunnen, Gerechtigkeitsbrunnen),
+// sonst nach der Art (Gänseliesel → Figur, Markt → Säule, Löwe → Löwen …)
+const nameFits = (place, kind) => {
+  const pass = BP.passOf(place);
+  const name = L.fountainName(place);
+  return pass.name ? name === pass.name && (pass.real || BP.FIG_NAMES[pass.fig] === name) : L.kindOfName(name) === kind;
+};
 const L_ = L;
 const dataPath = process.argv[2] ? pathToFileURL(resolve(process.argv[2])).href : new URL('../src/map/data.js', import.meta.url).href;
 // Die Kartendaten (src/map/data.js) kommen mit dem Karten-Paket; ohne sie den Pfad als erstes Argument angeben
@@ -215,8 +223,7 @@ for (const row of PLACES) {
   ok((city.info(kind).special === 'ursprung') === (place.name === 'Augsburg') && (city.info(kind).special === 'endgegner') === (place.name === 'Nürnberg'), `${place.name}: Sonderbrunnen ${kind}`);
   ok(ri >= 2.5 && ri <= L.ISLAND.max && L.FOUNTAIN_R[kind] + L.ISLAND.kerb <= ri + 1e-9, `${place.name}: ${kind} passt nicht auf die Insel (${ri} m)`);
   ok(L.goalKind(place) === kind, `${place.name}: Hauptbrunnen nicht reproduzierbar`);
-  // der Name sagt die Art (Gänseliesel → Figur, Markt → Säule, Löwe → Löwen …)
-  ok(L.kindOfName(L.fountainName(place)) === kind && L.goalName(place) === `${L.fountainName(place)}, ${place.name}`, `${place.name}: Name „${L.fountainName(place)}“ passt nicht zur Art ${kind}`);
+  ok(nameFits(place, kind) && L.goalName(place) === `${L.fountainName(place)}, ${place.name}`, `${place.name}: Name „${L.fountainName(place)}“ passt nicht zur Art ${kind}`);
 }
 // Abwechslung: viele Arten, und benachbarte Orte sehen selten gleich aus (die drei nächsten Orte jedes Orts)
 {
@@ -235,6 +242,41 @@ for (const row of PLACES) {
   const used = new Set(kinds).size;
   ok(used >= 12 && same / pairs < 0.15, `Brunnen zu gleichförmig: ${used} Arten, ${(100 * same / pairs).toFixed(1)} % gleiche Nachbarn`);
   console.log(`Hauptbrunnen: ${used} Arten, ${new Set(all.map((p) => L.fountainName(p))).size} Namen; gleiche Art bei den drei nächsten Orten: ${(100 * same / pairs).toFixed(1)} %`);
+}
+// Jeder Ort sein eigener Brunnen (Besitzer, 27.11.2026: „Ist es möglich jeder Stadt ihren eigenen Brunnen zu geben?
+// Jede Stadt sollte individuell und einzigartig werden.“): kein Paar aus Art, Figur und Stein kommt zweimal vor, die
+// Figur passt zum Steckbrief (Zeche → Bergmann …), die echten Brunnen stehen, wo sie hingehören, Nachbarn meiden die
+// Figur des anderen, und jeder Pass lässt sich bauen (Figur und Stein gibt es).
+{
+  const { places: all } = await import('../src/map/graph.js');
+  const { FIGURES } = await import('../src/world/kit/brunnenfiguren.js');
+  const table = BP.allPasses();
+  const seen = new Map();
+  const figs = new Map();
+  let withFig = 0;
+  for (const p of all) {
+    const pass = table.get(p.key);
+    ok(pass && pass === BP.passOf(p) && pass.kind === L.goalKind(p), `${p.name}: kein fester Brunnenpass`);
+    if (!pass) continue;
+    ok(pass.fig === null || FIGURES[pass.fig], `${p.name}: Figur ${pass.fig} fehlt`);
+    ok(pass.stone in BP.STONES && BP.MATS.includes(pass.mat) && pass.crest.length === 2, `${p.name}: Pass unvollständig ${JSON.stringify(pass)}`);
+    if (L.SPECIAL[p.key]) continue;
+    const id = `${pass.kind}|${pass.fig}|${pass.stone}`;
+    ok(!seen.has(id), `${p.name}: Brunnen gleicht dem in ${seen.get(id)} (${id})`);
+    seen.set(id, p.name);
+    if (pass.fig) {
+      withFig++;
+      figs.set(pass.fig, (figs.get(pass.fig) ?? 0) + 1);
+    }
+  }
+  const real = (name) => table.get(all.find((p) => p.name === name).key);
+  ok(real('Frankfurt am Main').fig === 'justitia' && real('Brüssel').fig === 'manneken' && real('Genf').extra === 'hochstrahl' && real('Hanau').name === 'Märchenbrunnen', 'echte Brunnen fehlen');
+  ok(real('Ahlen').fig === 'bergmann', `Zechenstadt Ahlen ohne Bergmann: ${real('Ahlen').fig}`);
+  ok(real('Tokio').kind === 'fountainBamboo' && !['kaiser', 'justitia', 'madonna'].includes(real('Tokio').fig), 'Tokio: Figur passt nicht');
+  ok(!all.some((p) => table.get(p.key).fig === 'manneken' && p.name !== 'Brüssel'), 'Manneken Pis gibt es nur in Brüssel');
+  const top = Math.max(...figs.values());
+  ok(withFig >= all.length * 0.9 && figs.size >= 30 && top <= all.length * 0.12, `Figuren zu gleichförmig: ${withFig} mit Figur, ${figs.size} verschiedene, häufigste ${top}×`);
+  console.log(`Ortsbrunnen: ${seen.size} verschiedene (Art|Figur|Stein) bei ${all.length} Orten, ${withFig} mit Figur aus ${figs.size} Figuren (häufigste ${top}×)`);
 }
 // Der Brunnen passt zum Ort (Besitzer, 27.11.2026: „Das Spiel braucht noch mehr Arten von Brunnen“): Jede Art des
 // Hauptbrunnens kommt aus den Brunnen seiner Bauweisen (layout.js STYLE_KINDS) oder dem allgemeinen Angebot seiner
@@ -330,7 +372,7 @@ for (const p of places) {
   ok(side > 55 && side < 75 && main.x + isl.r < J.L0 - 1.2, `${where}: am Halt nicht im Seitenfenster (${side.toFixed(0)}°)`);
   const halt = L.sightBlockers(plan, main, [eye]);
   ok(halt.length === 0, `${where}: am Halt verstellt ${halt.map((i) => plan.items[i].name).join(', ')} den Brunnen`);
-  ok(L.goalName(p) === `${L.fountainName(p)}, ${p.name}` && L.kindOfName(L.fountainName(p)) === main.kind, `${where}: Navi-Ziel „${L.goalName(p)}“ ist nicht der Brunnen`);
+  ok(L.goalName(p) === `${L.fountainName(p)}, ${p.name}` && nameFits(p, main.kind), `${where}: Navi-Ziel „${L.goalName(p)}“ ist nicht der Brunnen`);
   ok(plan.fountains.slice(1).every((f) => Math.abs(f.u - isl.u) >= 40 && !f.special), `${where}: zweiter Brunnen neben dem Zielbrunnen`);
   const lay = plan.layout;
   ok(lay.goal && near(lay.goal.x, isl.x) && near(lay.goal.z, -isl.u) && lay.squares[lay.goal.square].kind === 'island' && lay.squares[lay.goal.square].fountain === 0, `${where}: Lageplan zeigt nicht auf die Insel`);

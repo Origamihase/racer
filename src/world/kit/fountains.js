@@ -8,6 +8,8 @@
 import { PAL, CITY, mix, rng, makeKit, compose, Bau, textPanel, fitFont, FONT } from './citycore.js';
 import { tub, moss, pigeon, duck, blossom, bench, flowerBed, BLOOM } from './parts.js';
 import { STILL_LOW } from './layout.js';
+import { placeFigure, shieldPts } from './brunnenfiguren.js';
+import { STONES } from './brunnenpass.js';
 
 const TAU = Math.PI * 2;
 const SURF = 0x7cc8ec; // Wasserfläche
@@ -26,6 +28,13 @@ const segs = (r, lo) => (lo ? Math.max(12, Math.round(r * 5)) : Math.min(64, Mat
  * o.sx / o.sz: elliptisch, o.h: Höhe, o.col: Pflasterfarbe.
  */
 function paving(b, r, o = {}) {
+  // das Pflaster gehört zum Platz, nicht zum Stein des Brunnens (Ortsbrunnen färben nur den Brunnen um)
+  const rc = b.recol;
+  b.recol = null;
+  pavingRings(b, r, o);
+  b.recol = rc;
+}
+function pavingRings(b, r, o) {
   const h = o.h ?? 0.1;
   const lo = b.lod > 0;
   const seg = o.seg ?? segs(r * Math.max(o.sx ?? 1, o.sz ?? 1), lo);
@@ -180,7 +189,7 @@ defs.fountainTrough = {
     // Brunnenstock mit Kappe und Kugel
     F.rbox(-1.3, y0, 0, 0.46, 1.5, 0.46, 0.08, STONE, { prof: [[0.02, 0], [0, 0.1], [0, 1.38], [-0.05, 1.42], [-0.05, 1.5]], ks: [0.8, 0.9, 1, 1, 1.03] });
     F.frust(-1.3, y0 + 1.5, 0, 0.5, 0.5, 0.2, 0.2, 0.2, STONE, { skip: 'b' });
-    F.ball(-1.3, y0 + 1.84, 0, 0.16, STONE, { ws: near ? 12 : 8, hs: near ? 7 : 5 });
+    topFig(b, -1.3, y0 + 1.7, 0, 0.66, () => F.ball(-1.3, y0 + 1.84, 0, 0.16, STONE, { ws: near ? 12 : 8, hs: near ? 7 : 5 }));
     // Auslauf
     F.rod([-1.1, 1.2, 0], [-0.6, 1.2, 0], 0.042, IRON, { seg: 8 });
     F.rod([-0.62, 1.215, 0], [-0.5, 1.07, 0], 0.046, IRON, { seg: 8, caps: true });
@@ -223,7 +232,8 @@ function marketFountain(b, o = {}) {
   const cs = o.oct ? { seg: 8, facet: true, a0: Math.PI / 8, a1: Math.PI / 8 + TAU } : { seg: near ? 20 : 10 };
   F.lathe(0, by, 0, [[0.66, 0], [0.66, 0.95], [0.72, 1.0], [0.72, 1.1], [0.5, 1.16], [0.36, 1.34], [0.3, ch - 0.34], [0.4, ch - 0.2], [0.54, ch - 0.12], [0.54, ch], [0.3, ch + 0.05]], stone, { ...cs, ks: [0.72, 0.9, 0.95, 1, 0.96, 0.94, 1, 1, 1, 1.04, 1] });
   b.W.pool(0, wy, 0, rw, SURF, { r0: 0.6, hit: 1.56, rings: 1, seg: o.oct ? 8 : segs(R, !near), a0: o.oct ? Math.PI / 8 : 0, a1: o.oct ? Math.PI / 8 + TAU : TAU });
-  for (let i = 0; i < 4; i++) spout(b, (i / 4) * TAU + Math.PI / 4, 0.42, by + 1.78, wy, { len: 0.42, v: 1.55, col: o.spoutCol });
+  const ns = o.spouts ?? 4;
+  for (let i = 0; i < ns; i++) spout(b, (i / ns) * TAU + Math.PI / ns, 0.42, by + 1.78, wy, { len: 0.42, v: 1.55, col: o.spoutCol });
   if (near) {
     // Blumenschmuck auf dem Sockelgesims, Moos am Fuß, Tauben
     for (let i = 0; i < 8; i++) {
@@ -240,8 +250,8 @@ function marketFountain(b, o = {}) {
 defs.fountainMarket = {
   kind: 'fountain', far: true, fade: 1.4, low: 0.84,
   make(b) {
-    const m = marketFountain(b);
-    bear(b, 0, m.ch, 0, 0.95, CITY.gold);
+    const m = marketFountain(b, DECO?.form ?? {});
+    topFig(b, 0, m.ch, 0, 1.2, () => bear(b, 0, m.ch, 0, 0.95, CITY.gold));
     return { w: 8.4, d: 8.4, h: m.ch + 0.95, r: 4.2, title: 'Marktbrunnen', size: 'klein', water: m.wy, cam: { pos: [1.2, 1.2, 5.3], look: [0, 2.3, 0] } };
   },
 };
@@ -264,11 +274,14 @@ defs.fountainBowls = {
     F.lathe(0, 1.95, 0, [[0.3, 0], [0.2, 0.2], [0.16, 0.9], [0.22, 1.04]], stone, { seg: near ? 16 : 8, top: false, ks: [0.8, 0.95, 1, 0.9] });
     const [w2, r2] = bowl(b, 0, 2.95, 0, 0.85, { col: pale });
     // Knospe als Spitze, daraus sprudelt es
-    F.lathe(0, 3.05, 0, [[0.12, 0], [0.1, 0.3], [0.17, 0.42], [0.12, 0.6], [0.05, 0.66]], stone, { seg: near ? 14 : 8, ks: [0.8, 1, 1, 1.05, 1] });
+    const bud = () => F.lathe(0, 3.05, 0, [[0.12, 0], [0.1, 0.3], [0.17, 0.42], [0.12, 0.6], [0.05, 0.66]], stone, { seg: near ? 14 : 8, ks: [0.8, 1, 1, 1.05, 1] });
     W.pool(0, wy, 0, rw, SURF, { r0: 0.55, hit: 1.78, rings: 1, seg: segs(R, !near) });
     W.pool(0, w1, 0, r1, SURF, { r0: 0.2, hit: 0.98, rings: 1, seg: segs(1.5, !near) });
     W.pool(0, w2, 0, r2, SURF, { r0: 0.1, hit: 0.2, rings: 1, seg: segs(0.85, !near) });
-    fountainJet(b, 0, 3.68, 0, 0.42, w2, rnd, { r: 0.045, drops: 8, spread: 0.3 });
+    topFig(b, 0, 3.05, 0, 0.95, () => {
+      bud();
+      fountainJet(b, 0, 3.68, 0, 0.42, w2, rnd, { r: 0.045, drops: 8, spread: 0.3 });
+    }, { ped: 0.3, pr: 0.15, col: stone });
     // Wasserfäden von Schale zu Schale
     const strands = (n, r, y, yEnd, v, a0) => {
       for (let i = 0; i < n; i++) {
@@ -354,12 +367,15 @@ defs.fountainGrand = {
     // Schaft mit Schale
     F.lathe(0, 1.2, 0, [[0.7, 0], [0.7, 0.5], [0.5, 0.62], [0.34, 0.9], [0.3, 1.9], [0.42, 2.1]], SAND, { seg: near ? 20 : 10, top: false, ks: [0.75, 0.95, 0.95, 1, 1, 0.9] });
     const [w3, r3] = bowl(b, 0, 3.3, 0, 1.45, { col: stone });
-    F.lathe(0, 3.6, 0, [[0.26, 0], [0.16, 0.25], [0.2, 0.5], [0.1, 0.62]], CITY.gold, { seg: near ? 14 : 8, ks: [0.85, 1, 1, 1] });
+    const finial = () => F.lathe(0, 3.6, 0, [[0.26, 0], [0.16, 0.25], [0.2, 0.5], [0.1, 0.62]], CITY.gold, { seg: near ? 14 : 8, ks: [0.85, 1, 1, 1] });
     W.pool(0, wy, 0, rw, SURF, { r0: 2.7, hit: 3.45, rings: 1, seg: segs(R, !near) });
     W.pool(0, w2, 0, r2, SURF, { r0: 0.65, hit: 1.75, rings: 1, seg: segs(2.8, !near) });
     W.pool(0, w3, 0, r3, SURF, { r0: 0.2, hit: 0.7, rings: 1, seg: segs(1.45, !near) });
     // hohe Mittelfontäne
-    fountainJet(b, 0, 4.2, 0, 3.0, w3, rnd, { r: 0.08, drops: 34, spread: 0.42, size: 0.045 });
+    topFig(b, 0, 3.6, 0, 1.6, () => {
+      finial();
+      fountainJet(b, 0, 4.2, 0, 3.0, w3, rnd, { r: 0.08, drops: 34, spread: 0.42, size: 0.045 });
+    }, { ped: 0.35, pr: 0.24, col: SAND });
     // Fäden aus der Schale ins innere Becken, Überlauf ins große Becken
     const n1 = near ? 12 : 6;
     for (let i = 0; i < n1; i++) {
@@ -676,6 +692,7 @@ defs.fountainWell = {
       });
     }
     F.rod([0, 3.06, -0.9], [0, 3.06, 0.9], 0.06, wood, { seg: 8, caps: true });
+    topFig(b, 0, 3.1, 0, 0.55, null);
     // Welle mit Seiltrommel und Kurbel, das Seil hinab zum Eimer
     F.rod([-1.08, 1.86, 0], [1.3, 1.86, 0], 0.055, CITY.wood, { seg: 10, caps: true });
     F.rod([-0.32, 1.86, 0], [0.32, 1.86, 0], 0.1, 0xd9c49a, { seg: 12, caps: true });
@@ -1223,8 +1240,10 @@ defs.fountainGothic = {
       }
     }
     F.ball(0, ys + 1.62, 0, 0.09, CITY.gold, { ws: near ? 12 : 8, hs: near ? 7 : 5 });
-    F.rod([0, ys + 1.6, 0], [0, ys + 1.98, 0], 0.012, IRON, { seg: 5 });
-    if (near) b.at(0.012, ys + 1.96, 0, 0, () => F.extrude([[0, 0], [0.24, -0.05], [0, -0.13]], -0.006, 0.006, PAL.red));
+    topFig(b, 0, ys + 1.69, 0, 0.6, () => {
+      F.rod([0, ys + 1.6, 0], [0, ys + 1.98, 0], 0.012, IRON, { seg: 5 });
+      if (near) b.at(0.012, ys + 1.96, 0, 0, () => F.extrude([[0, 0], [0.24, -0.05], [0, -0.13]], -0.006, 0.006, PAL.red));
+    });
     // vier Röhren aus Messing
     for (let i = 0; i < 4; i++) spout(b, (i / 4) * TAU, 0.6, by + 0.94, wy, { len: 0.48, v: 1.55, col: mix(CITY.gold, IRON, 0.35) });
     if (near) {
@@ -1259,7 +1278,7 @@ defs.fountainPump = {
     F.lathe(0, y0, pz, [[0.3, 0], [0.3, 0.09], [0.23, 0.15], [0.21, 0.32], [0.15, 0.4], [0.13, 0.52], [0.13, 1.56], [0.18, 1.62], [0.18, 1.7], [0.13, 1.74], [0.15, 1.92], [0.23, 2.0], [0.23, 2.07], [0.1, 2.12]], CAST, { seg: near ? 16 : 8, ks: [0.75, 0.82, 0.9, 0.95, 0.95, 1, 1, 1.05, 1.05, 1, 1, 1.08, 1.08, 1] });
     for (const y of [0.62, 0.98, 1.34]) F.torus(0, y0 + y, pz, 0.135, 0.022, hi, { seg: near ? 16 : 8, tube: 4 });
     if (near) beads(b, 0, y0 + 1.66, pz, 0.19, 14, 0.022, hi);
-    F.lathe(0, y0 + 2.1, pz, [[0.05, 0], [0.09, 0.06], [0.08, 0.16], [0.03, 0.24], [0, 0.26]], CITY.gold, { seg: near ? 10 : 6, ks: [0.9, 1, 1.05, 1.1, 1.1] });
+    topFig(b, 0, y0 + 2.1, pz, 0.55, () => F.lathe(0, y0 + 2.1, pz, [[0.05, 0], [0.09, 0.06], [0.08, 0.16], [0.03, 0.24], [0, 0.26]], CITY.gold, { seg: near ? 10 : 6, ks: [0.9, 1, 1.05, 1.1, 1.1] }));
     // Auslauf: Rohr mit Tierkopf nach vorn, darunter der Strahl
     F.rod([0, y0 + 0.92, pz + 0.12], [0, y0 + 0.92, pz + 0.5], 0.04, CAST, { seg: 8 });
     F.ball(0, y0 + 0.9, pz + 0.55, 0.07, CAST, { ws: near ? 10 : 6, hs: 5, sz: 1.3 });
@@ -1384,7 +1403,7 @@ defs.fountainCascade = {
     b.at(0, y0, wz, 0, () => F.extrude(pts, -0.22, 0.22, trim, { g: [0.86, 1.04], crease: 0.5 }));
     // Voluten an den Ecken, Kugel obenauf
     for (const k of [-1, 1]) F.ball(k * 1.5, y0 + 2.3, wz, 0.18, stone, { ws: near ? 12 : 8, hs: 6, sz: 1.4 });
-    F.ball(0, y0 + 3.1, wz, 0.16, CITY.gold, { ws: near ? 12 : 8, hs: near ? 7 : 5 });
+    topFig(b, 0, y0 + 2.96, wz, 0.8, () => F.ball(0, y0 + 3.1, wz, 0.16, CITY.gold, { ws: near ? 12 : 8, hs: near ? 7 : 5 }));
     // Muschelnische: Halbkreis aus Rippen
     const nz = wz + 0.23;
     b.at(0, y0 + 1.95, nz, 0, () => {
@@ -1665,7 +1684,7 @@ defs.fountainTempel = {
     const yl = ye + 0.42 + RD * SY - 0.06;
     F.cyl(0, yl, 0, 0.26, 0.24, 0.36, marble, { seg: near ? 12 : 6 });
     F.ball(0, yl + 0.36, 0, 0.27, copper, { lat: [0, Math.PI / 2], sy: 0.7, ws: near ? 14 : 8, hs: 5 });
-    F.ball(0, yl + 0.6, 0, 0.08, CITY.gold, { ws: near ? 10 : 6, hs: 5 });
+    topFig(b, 0, yl + 0.57, 0, 0.8, () => F.ball(0, yl + 0.6, 0, 0.08, CITY.gold, { ws: near ? 10 : 6, hs: 5 }));
     // Quellschale
     const rw = basin(b, 0, yp, 0, 0.92, 0.55, { col: trim, t: 0.13, depth: 0.32, lip: 0.04 });
     const wy = yp + 0.55 - 0.09;
@@ -1737,6 +1756,7 @@ defs.fountainWallace = {
         }
       }
     }
+    topFig(b, 0, yd + 0.66, 0, 0.42, null);
     // der Strahl fällt aus der Mitte der Kuppel
     const hit = W.jet([0, yd - 0.02, 0], [0, -0.05, 0], wy, 0.018, JET, { n: near ? 8 : 3, seg: near ? 6 : 3, r1: 0.024, pulse: 0.2 });
     W.splash(hit[0], wy + 0.012, hit[2], 0.03, 0.24, SURF, { T: 1.0 });
@@ -1976,6 +1996,183 @@ defs.fountainBamboo = {
   },
 };
 
+// --- Ortsbrunnen: jeder Ort seinen eigenen (brunnenpass.js) -----------------------------------------------------------
+// Der Brunnen seiner Art, aber im Stein der Gegend, mit der Figur des Orts obenauf oder am Rand und dem Wappenschild in
+// seinen Farben. Gebaut wird er wie jede Art (einmal, im Cache des Baukastens), solange der Ort in der Welt steht.
+
+/** Während ein Ortsbrunnen gebaut wird: { fig, statue (Umfärben der Figur), placed, form (Bauform, brunnenpass.js) }. */
+let DECO = null;
+
+const hsv = (hex) => {
+  const r = ((hex >> 16) & 255) / 255;
+  const g = ((hex >> 8) & 255) / 255;
+  const b = (hex & 255) / 255;
+  const v = Math.max(r, g, b);
+  const d = v - Math.min(r, g, b);
+  const s = v ? d / v : 0;
+  let h = 0;
+  if (d) h = v === r ? ((g - b) / d + 6) % 6 : v === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, v];
+};
+const fromHsv = (h, s, v) => {
+  const f = (n) => {
+    const k = (n + h / 60) % 6;
+    return v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+  };
+  const c = (x) => Math.round(Math.min(1, Math.max(0, x)) * 255);
+  return (c(f(5)) << 16) | (c(f(3)) << 8) | c(f(1));
+};
+const lum = (hex) => (0.3 * ((hex >> 16) & 255) + 0.59 * ((hex >> 8) & 255) + 0.11 * (hex & 255)) / 255;
+
+/** Stein-Umfärbung: helle, wenig gesättigte Töne von Grau über Sand bis Rot werden zum Stein des Orts. */
+function stoneRecol(target) {
+  const [th, ts, tv] = hsv(target);
+  const memo = new Map();
+  return (hex) => {
+    let out = memo.get(hex);
+    if (out !== undefined) return out;
+    const [h, s, v] = hsv(hex);
+    const stone = v >= 0.55 && ((s <= 0.47 && (h <= 62 || h >= 345)) || s <= 0.07);
+    out = stone ? fromHsv(th, Math.min(1, ts * Math.min(1.1, Math.max(0.4, 0.45 + (0.4 * s) / 0.3))), Math.min(1, (tv * v) / 0.86 + 0.04)) : hex;
+    memo.set(hex, out);
+    return out;
+  };
+}
+
+// Fassungen der Figuren: einfarbig nach der Helligkeit (Bronze, Gold, dunkle Bronze, Stein) oder bunt bemalt
+const STATUE = { bronze: 0xb07c46, gold: 0xf0c04a, dunkel: 0x6f8f7e, stein: 0xece6d8 };
+function statueRecol(mat, stone, robe) {
+  const memo = new Map();
+  if (mat === 'bunt') return (hex) => (hex === 0xffffff ? robe : hex);
+  const base = mat === 'stein' && stone ? mix(stone, 0xffffff, 0.35) : STATUE[mat] ?? STATUE.bronze;
+  const [bh, bs, bv] = hsv(base);
+  return (hex) => {
+    let out = memo.get(hex);
+    if (out === undefined) {
+      const l = hex === 0xffffff ? 0.82 : lum(hex);
+      out = fromHsv(bh, bs * (mat === 'gold' ? 1 : 0.9), Math.min(1, bv * (0.5 + 0.62 * l)));
+      memo.set(hex, out);
+    }
+    return out;
+  };
+}
+
+/** Die Figur des Ortsbrunnens auf (x, y, z), so hoch wie h (in ihrer Fassung gefärbt). */
+function figureAt(b, x, y, z, ry, h) {
+  const rc = b.recol;
+  b.recol = DECO.statue;
+  placeFigure(b, DECO.fig, x, y, z, ry, h * (FIG_H[DECO.fig] ?? 1));
+  b.recol = rc;
+  DECO.placed = true;
+}
+// Figuren, die breit oder flach sind, dürfen niedriger sein als Menschen
+const FIG_H = { kogge: 0.85, krone: 0.85, ochse: 0.75, pferd: 0.85, adler: 0.8, gans: 0.8, baer: 0.85, loewe: 0.85, fisch: 0.8, zahnrad: 0.85, globus: 0.8, zirbel: 0.75, anker: 0.85, hahn: 0.8 };
+
+/**
+ * Obenauf (Säule, Brunnenstock, Kuppel, Giebel): steht im Ortsbrunnen eine Figur, kommt sie hierher (auf einen kleinen
+ * Sockel o.ped, Radius o.pr), sonst zeichnet fallback, was die Art dort sonst trägt.
+ */
+function topFig(b, x, y, z, h, fallback, o = {}) {
+  if (!DECO || !DECO.fig) {
+    if (fallback) fallback();
+    return;
+  }
+  let yy = y;
+  if (o.ped) {
+    const pr = o.pr ?? 0.15;
+    b.F.lathe(x, y, z, [[pr * 0.8, 0], [pr * 0.7, o.ped * 0.4], [pr, o.ped * 0.85], [pr * 1.12, o.ped]], o.col ?? STONE, { seg: b.lod ? 8 : 14, ks: [0.85, 0.95, 1, 1.05] });
+    yy += o.ped;
+  }
+  figureAt(b, x, yy, z, o.ry ?? 0, h);
+}
+
+// Wo die Figur einer Art steht, die oben keinen Platz hat: [x, y, z, Blick, Sockelhöhe] (auf dem Rand, links vorn)
+const rimAt = (r, y, a = -0.8) => [Math.sin(a) * r, y, Math.cos(a) * r, a * 0.6, 0.14];
+const RIM = {
+  fountainFrog: rimAt(1.85, 0.7),
+  fountainGoose: rimAt(1.88, 0.74, -Math.PI / 4),
+  fountainFish: rimAt(1.95, 0.68),
+  fountainRing: rimAt(3.14, 0.58),
+  fountainObelisk: rimAt(2.83, 0.94),
+  fountainDolphin: rimAt(2.74, 0.9),
+  fountainSphere: rimAt(1.86, 0.49),
+  fountainPilz: [-2.35, 0.6, 1.355, -0.6, 0.14],
+  fountainStar: [-1.39, 0.49, 0.58, -0.7, 0.12],
+  fountainLion: [-1.32, 2.03, -0.85, 0, 0.1],
+  fountainWood: [1.75, 0.08, 0.8, 0.3, 0.55],
+  fountainCube: [-2.0, 0.07, 1.55, -0.4, 0.55],
+  fountainJets: [-2.69, 0.075, 2.61, -0.5, 0.6],
+  fountainBamboo: [-1.25, 0.08, 1.3, -0.3, 0.35],
+};
+// Wappenschild auf der Vorderseite: [x, Mitte y, z, Höhe] (auf dem Becken bzw. am Trog); fehlt die Art, trägt es der Sockel
+const CREST = {
+  fountainMarket: [0, 0.68, 2.5, 0.4],
+  fountainBowls: [0, 0.46, 2.7, 0.33],
+  fountainGrand: [0, 0.59, 5.6, 0.31],
+  fountainFrog: [0, 0.39, 2.0, 0.27],
+  fountainGoose: [0, 0.42, 1.894, 0.3],
+  fountainFish: [0, 0.38, 2.1, 0.27],
+  fountainRing: [0, 0.32, 3.3, 0.2],
+  fountainGothic: [0, 0.68, 2.772, 0.42],
+  fountainObelisk: [0, 0.6, 3.0, 0.34],
+  fountainDolphin: [0, 0.56, 2.9, 0.33],
+  fountainTrough: [-0.45, 0.47, 0.52, 0.4],
+  fountainLion: [0, 0.43, 0.23, 0.36],
+  fountainCascade: [0, 0.4, 2.42, 0.38],
+  fountainPump: [0, 0.33, 0.81, 0.26],
+  fountainTempel: [0, 0.24, 3.0, 0.2],
+};
+
+/** Wappenschild, gespalten in den beiden Farben, mit goldenem Rand; Mitte (x, y, z), Blick ry, Höhe h. */
+function crestAt(b, x, y, z, ry, h, [c0, c1]) {
+  const rc = b.recol;
+  b.recol = null;
+  const w = h / 1.2;
+  b.at(x, y + h / 2, z, ry, () => {
+    b.F.extrude(shieldPts(w * 1.14, h * 1.1).map(([px, py]) => [px, py + h * 0.05]), 0, 0.02, CITY.gold);
+    b.F.extrude(shieldPts(w, h), 0.02, 0.03, c0);
+    if (b.lod === 0) {
+      const half = shieldPts(w, h).filter(([px]) => px >= -1e-6);
+      b.F.extrude([[0, 0], [0, -h], ...half.filter(([px]) => px > 1e-6)], 0.03, 0.034, c1);
+    }
+  });
+  b.recol = rc;
+}
+
+/** Der Ortsbrunnen (Def 'Ort:…' im Baukasten): Art des Passes, umgefärbt, mit Figur, Wappen und Besonderheit. */
+function makeTownFountain(b, lod, pass) {
+  const kind = pass.kind;
+  const stone = STONES[pass.stone]?.hex ?? null;
+  const robe = mix(pass.crest[0], 0xffffff, 0.15);
+  b.recol = stone ? stoneRecol(stone) : null;
+  DECO = { fig: pass.fig, statue: statueRecol(pass.mat, stone, robe), placed: false, form: pass.form };
+  let info;
+  try {
+    info = defs[kind].make(b, lod);
+    const rim = RIM[kind];
+    if (DECO.fig && !DECO.placed && rim) {
+      const [x, y, z, ry, ph] = rim;
+      b.F.lathe(x, y, z, [[0.17, 0], [0.17, ph - 0.05], [0.21, ph - 0.02], [0.21, ph]], STONE, { seg: b.lod ? 8 : 12, ks: [0.85, 1, 1.05, 1.05] });
+      figureAt(b, x, y + ph, z, ry, ph > 0.3 ? 0.9 : pass.real ? 1.15 : 0.82); // ein berühmter Brunnen zeigt seine Figur größer
+      if (ph > 0.3 && !CREST[kind]) crestAt(b, x + Math.sin(ry) * 0.215, y + ph * 0.52, z + Math.cos(ry) * 0.215, ry, Math.min(0.3, ph * 0.6), pass.crest);
+    }
+    const cr = CREST[kind];
+    // (am achteckigen Becken liegt die vordere Seite um cos 22,5° näher)
+    if (cr) crestAt(b, cr[0], cr[1], cr[2] * (pass.form?.oct ? Math.cos(Math.PI / 8) : 1) + 0.012, 0, cr[3], pass.crest);
+    if (pass.extra === 'hochstrahl') {
+      // ein Strahl weit über die Dächer (Jet d’eau in Genf, Hochstrahlbrunnen in Wien)
+      const rnd = rng(301);
+      const wy = info.water ?? 0.5;
+      fountainJet(b, 0, wy + 0.05, 0, 24, wy, rnd, { r: 0.14, drops: b.lod ? 20 : 60, spread: 1.2, size: 0.055 });
+      b.F.cyl(0, wy - 0.1, 0, 0.22, 0.18, 0.16, PAL.steel, { seg: 12 });
+    }
+  } finally {
+    b.recol = null;
+    DECO = null;
+  }
+  return { ...info, h: Math.max(info.h, pass.extra === 'hochstrahl' ? 25 : info.h), title: pass.name ?? info.title, place: true };
+}
+
 // Garten um einen Brunnen, der kleiner ist als seine Insel (die Insel richtet sich nach dem Platz des Orts, layout.js
 // slotKind): ab min Metern Rand ein Rasenring mit Steinkante, runde Blumenbeete, Buchskugeln, Tauben und hinten Bänke
 // mit Blick auf den Brunnen. Alles bleibt unter Kniehöhe, nur die Bänke stehen hinten: vom Wagen und aus den Kameras
@@ -2029,10 +2226,11 @@ function islandGarden(b, ri, ro, cam, seed) {
 export function createFountainKit(F) {
   const kit = makeKit(F, defs);
   const gardens = new Map();
-  kit.onIsland = (kind, r) => {
-    const g = kit.geo(kind);
+  kit.onIsland = (kind, r, def = kind) => {
+    const g = kit.geo(def);
     const ri = g.info.r;
-    if (!(r - ri >= GARDEN.min) || g.info.special) return kit.build(kind);
+    if (!(r - ri >= GARDEN.min) || g.info.special) return kit.build(def);
+    // der Garten hängt nur an der Art und den Radien (ein Ortsbrunnen teilt ihn mit seiner Art)
     const key = ri + '|' + r.toFixed(2) + '|' + kind;
     let gg = gardens.get(key);
     if (!gg) {
@@ -2042,9 +2240,27 @@ export function createFountainKit(F) {
       gardens.set(key, gg);
     }
     const group = compose(kit.core, [{ g }, { g: gg }]);
-    for (const m of kit.extras(kind)) group.add(m);
-    group.name = kind;
+    for (const m of kit.extras(def)) group.add(m);
+    group.name = def;
     group.userData.info = { name: kind, kind: 'fountain', ...g.info };
+    return group;
+  };
+  /**
+   * Der Hauptbrunnen eines Orts nach seinem Pass (brunnenpass.js) auf einer Insel vom Radius r: eigener Stein, eigene
+   * Figur, Wappen. Er bleibt im Cache, solange ein Stück von ihm in der Welt steht (release gibt ihn wieder frei).
+   */
+  kit.forPlace = (pass, key, r) => {
+    const plain = !pass.fig && !pass.extra && !STONES[pass.stone]?.hex && !CREST[pass.kind];
+    if (plain) return kit.onIsland(pass.kind, r);
+    const def = 'Ort:' + key;
+    if (!defs[def]) {
+      const base = defs[pass.kind];
+      defs[def] = { kind: 'fountain', far: base.far, fade: base.fade, low: base.low, make: (b, lod) => makeTownFountain(b, lod, pass) };
+    }
+    kit.hold(def);
+    const group = kit.onIsland(pass.kind, r, def);
+    group.userData.info = { ...group.userData.info, name: pass.kind, def, pass };
+    group.userData.unref = () => kit.unref(def);
     return group;
   };
   return kit;
