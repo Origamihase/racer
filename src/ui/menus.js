@@ -102,9 +102,10 @@ export class Menus {
       this.action(b.dataset.action, b);
     });
     window.addEventListener('keydown', (e) => this.onKey(e));
-    // Vollbild an oder aus (Knopf, Taste F oder Esc): die Knöpfe sagen, was ein Klick jetzt tut
+    // Vollbild an oder aus (Knopf, Taste F oder Esc): die Knöpfe sagen, was ein Klick jetzt tut. Nur die Vollbild-Knöpfe:
+    // das Radio in der Pause trägt fs-btn nur für sein Aussehen und behält seine Aufschrift
     onFullscreenChange(() => {
-      for (const b of this.root.querySelectorAll('.fs-btn')) b.textContent = fullscreenLabel();
+      for (const b of this.root.querySelectorAll('.fs-btn[data-action="vollbild"]')) b.textContent = fullscreenLabel();
     });
   }
 
