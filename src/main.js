@@ -1806,7 +1806,7 @@ function step(dt, { render = true } = {}) {
   }
   sky.update(frozen ? 0 : dt, camera, s, simT, skyView);
   // (leiser, solange OMI oder das Sprachstudio sprechen oder BrunnenTV läuft; ohne Ton stumm)
-  radio.update(dt, { sound: settings.sound, duck: game.t < game.voiceUntil || !!game.tv });
+  radio.update(dt, { sound: settings.sound, duck: game.t < game.voiceUntil || !!game.tv, gain: settings.radioVolume * settings.volume });
   audio.update(dt, {
     speed: p.speed, throttle: p.throttle, rain: w, sirenLevel: game.sirenLevel || 0, inCabin: cockpitOn, paused: frozen || state === 'over',
     // Quietschen an der Haftgrenze; Klappern wächst mit den verbrauchten Karosserie-Punkten (0 … 3)
