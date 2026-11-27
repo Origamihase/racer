@@ -16,6 +16,11 @@ import { Satisfaction } from './satisfaction.js';
 import { RouteLog } from './routelog.js';
 import { WaveRule, WAVE, chatGap } from './wave.js';
 import { StreamGags } from './gags.js';
+import { Stammgaeste } from './stamm.js';
+import { Wetten } from './wetten.js';
+import { Baustelle } from './baustelle.js';
+import { Verkehrsmuster } from './muster.js';
+import { startMemory, rekordMemory, GEDAECHTNIS } from './gedaechtnis.js';
 import { Akku } from './akku.js';
 import { Studio } from './studio.js';
 import { Durchsagen, DS } from './durchsagen.js';
@@ -28,6 +33,18 @@ export { AKKU_CARD, akkuLevel } from './akku.js';
 export { fountainIn, EXIT_CALL, exitLine, TOWN_HOLD, AUKTION, WAY } from './parts/ziel.js';
 export { ELEFANT, FACTS, RADAR, ZONE_LEAD } from './parts/ereignisse.js';
 export { QUOTE_DT, TROEDEL, untag } from './parts/stream.js';
+
+/**
+ * Gelungene Manöver spüren (der Eigentümer, 27.11.2026: „ein Feedback für ein gutes Manöver fehlt“ – ohne Zischen):
+ * Jedes haarscharfe Überholen gibt einen kurzen Impuls (Gamepad, Handy: rumble [Stärke, ms]), einen leisen hellen
+ * Ton und eine Zeile im Chat, das Sprachstudio lobt es (mit Abstand). Kommen serie Manöver innerhalb von window
+ * Sekunden, ist es eine Serie: Der Chat rastet aus, der Rand oben sagt es, und das Studio lobt sie immer. Eine neue
+ * Höchstgeschwindigkeit ab praiseKmh lobt es auch.
+ */
+export const MANOEUVRE = { window: 25, serie: 3, rumble: [0.45, 110], second: 0.35, praiseKmh: 220 };
+/** So viele Sekunden nach dem Start erinnert das Sprachstudio an frühere Streams (nach Gruß und ersten Geboten). */
+const MEMORY_AT = 40;
+const ZAHLWORT = ['null', 'eins', 'zwei', 'Drei', 'Vier', 'Fünf', 'Sechs', 'Sieben', 'Acht', 'Neun', 'Zehn', 'Elf', 'Zwölf'];
 
 export class Game {
   /**
@@ -62,6 +79,11 @@ export class Game {
     this.waves = new WaveRule();
     // die Running Gags aus dem Stream des Eigentümers (gags.js): mit eigenem Zufall, damit der Stream sonst gleich verläuft
     this.gags = new StreamGags(this);
+    // die Stammzuschauer mit Gedächtnis (stamm.js): eigener Zufall, ihr Gedächtnis steht im Spielstand (save.stamm)
+    this.stamm = new Stammgaeste(this);
+    this.wetten = new Wetten(this);
+    this.bau = new Baustelle(this);
+    this.muster = new Verkehrsmuster(this);
     // die Sprachdurchsagen der Zuschauer: Stapel, Momente und eigener Zufall je Stream (durchsagen.js)
     this.ds = new Durchsagen(this);
     // Akku und Ladestopps (akku.js): eigener Zustand, liest vom Spiel nur AKKU_HOST
@@ -74,6 +96,8 @@ export class Game {
     this.onCharge = () => {};
     // Reise: eine Marke der Route des Streams (Folge, Ladestopp); main.js trägt ihre Lage auf der Karte nach
     this.onRouteMark = () => {};
+    // ein kurzer Impuls am Gamepad oder Handy (main.js: input.rumble) – Stärke 0 … 1, Dauer in ms
+    this.onFeel = () => {};
   }
 
   /** Der laufende Ladestopp (akku.js start) oder null: Szenen, Ereignisse und Gags ruhen, solange er läuft. */
@@ -110,6 +134,18 @@ export class Game {
     // Reise: Beginn des Streams (Datum im BrunnenTV-Album) und seine Route für den Abspann (routelog.js)
     this.streamT = Date.now();
     this.gags.reset(this.streamT);
+    // (Prüfstände setzen stammSeed, damit jeder Lauf gleich ist; im Spiel würfeln die Stammgäste je Stream neu)
+    this.stamm.reset(this.stammSeed ?? this.streamT ^ 0x5a17);
+    // Spontan-Wetten (wetten.js): ebenso mit eigenem Zufall
+    this.wetten.reset((this.stammSeed ?? this.streamT) ^ 0x3e77);
+    this.ui.wette(null);
+    this.bau.reset((this.stammSeed ?? this.streamT) ^ 0xba57);
+    this.muster.reset((this.stammSeed ?? this.streamT) ^ 0x7a11);
+    // das Gedächtnis des Sprachstudios (gedaechtnis.js): nach der Begrüßung erinnert es an frühere Streams, und fällt
+    // der Streckenrekord aller Streams, sagt es das einmal
+    const memo = startMemory(save);
+    this.later(MEMORY_AT, () => this.studio.remember(memo));
+    this.rekordSaid = !((save.best?.reise || 0) >= GEDAECHTNIS.rekordKm * 1000);
     this.route = new RouteLog();
     this.travel = null; // Fahrt, Stelle und Kilometerzähler beim letzten Schritt (travelStep)
     this.eco.reset(up);
@@ -123,6 +159,8 @@ export class Game {
     this.quote = { dt: QUOTE_DT, v: [], tv: [], next: 0 };
     this.recordShown = false;
     this.lastHorn = -99;
+    // die haarscharfen Manöver der letzten MANOEUVRE.window Sekunden (Spielzeit), für die Serie
+    this.manoeuvres = [];
     // wann OMI zuletzt „zu schnell für die Kurve“ und den Rückwärtsgang gesagt hat und der Chat ihn kommentiert hat
     // (Spielzeit: die beginnt in jedem Stream bei 0)
     this.understeerSaid = this.reverseSaid = this.reverseChat = -99;
@@ -545,6 +583,8 @@ export class Game {
     }
 
     // --- Fahren ------------------------------------------------------------
+    // die Baustelle (baustelle.js): Ihre Baken sind die Grenzen des Wagens in diesem Bild
+    this.bau.update();
     const sBefore = p.s;
     // Krümmung und Steigung unter dem Wagen (Kurven-Paket, sonst 0); den Rückwärtsgang gibt es nur auf die eigenen
     // Eingaben des Spielers (ctl.reverse aus main.js) und nie, während die Welt den Wagen am Brunnen anhält
@@ -553,13 +593,15 @@ export class Game {
     for (const e of p.events) {
       if (e.type === 'rail') {
         this.audio.scrape();
+        // in der Baustelle war es eine Bake (baustelle.js rail): Die zählt der Chat selbst
+        const bake = this.bau.rail(e);
         this.fx.shake(e.hard ? 0.5 : 0.2);
         // wer an der Leitplanke entlangschrammt, verstimmt den Chat nicht mit jedem Funken neu
         if (this.t - this.scrapeT > 1.5) {
           this.scrapeT = this.t;
           this.eco.cheer(e.hard ? 'scrapeHard' : 'scrape');
         }
-        if (e.hard && chance(0.4)) this.chat(pick(['Leitplanke! 😬', 'Uff, die Leitplanke', 'Kratz kratz']));
+        if (e.hard && !bake && chance(0.4)) this.chat(pick(['Leitplanke! 😬', 'Uff, die Leitplanke', 'Kratz kratz']));
       } else if (e.type === 'understeer' && this.t > (this.understeerSaid ?? -99) + 25) {
         // zu schnell für die Kurve: OMI sagt es freundlich (höchstens alle 25 s)
         this.understeerSaid = this.t;
@@ -572,12 +614,17 @@ export class Game {
     this.route.add(this.world.trip().section, go.m);
     const dm = go.m;
     st.distance = this.odometer;
+    if (!this.rekordSaid && st.distance > this.save.best.reise) {
+      this.rekordSaid = true;
+      this.studio.remember(rekordMemory(this.save.best.reise));
+    }
     st.maxSpeedKmh = Math.max(st.maxSpeedKmh, p.kmh);
     // neue Höchstgeschwindigkeit dieser Fahrt: Der Chat schaut auf den Tacho
     const mark = this.eco.speedMark(p.kmh);
     if (mark) {
       this.chat(fillTemplate(pick(CHAT.speedMark), { kmh: mark }));
       this.thrill('topSpeed', `${mark} km/h`);
+      if (mark >= MANOEUVRE.praiseKmh) this.studio.praise('tempo', { kmh: mark });
     }
     st.cleanDistance += dm;
     if (W.level > 0.3) st.rainDistance += dm;
@@ -586,6 +633,10 @@ export class Game {
     this.megafonCd = Math.max(0, this.megafonCd - dt);
     // die Running Gags (gags.js) mit eigenem Zufall: Bezahlschranke, Verein, Paketsuche, Mitleidskauf …
     this.gags.update(dt);
+    // Spontan-Wetten: ein Angebot am Rand, die laufende Wette in der Jobliste
+    this.wetten.update(dt);
+    // Verkehrsmuster (muster.js): Wohnmobil-Kolonne, Drängler, Schwertransport
+    this.muster.update();
 
     // --- Eingaben ------------------------------------------------------------
     if (ctl.device) this.device = ctl.device;
@@ -612,6 +663,7 @@ export class Game {
     for (const e of tev) {
       if (e.type === 'crash') this.onCrash(e);
       else if (e.type === 'nearMiss') this.onNearMiss(e);
+      else if (e.type === 'passSchwer') this.muster.passed();
       else if (e.type === 'passPolice') {
         this.chat(pick(['Polizei überholt?! Mutig! 😅', 'Tschüss Polizei Gifhorn 👋', 'Das gibt einen Eintrag ins Fahrtenbuch']));
       }
@@ -666,6 +718,9 @@ export class Game {
   honk() {
     this.audio.horn();
     this.lastHorn = this.t;
+    // steht ein Wettangebot am Rand, gilt die Wette (wetten.js horn); der reisende Brunnen freut sich über den Gruß
+    if (this.wetten.horn()) return;
+    if (this.muster.horn()) return;
     this.onMood('startled', 0.45);
     if (chance(0.12)) this.chat(pick(['Bimmel hurra! 📯', 'HUP HUP', 'Hupkonzert!']));
   }
@@ -727,11 +782,30 @@ export class Game {
     this.ui.toast(left === 1 ? `${what} Nur noch ein Karosserie-Punkt!` : `${what} Noch ${left} Karosserie-Punkte`, 'bad');
   }
 
+  /** Haarscharf überholt (MANOEUVRE): Impuls, Ton, Chat und Lob – und nach mehreren kurz hintereinander die Serie. */
   onNearMiss(e) {
+    const M = MANOEUVRE;
     this.stats.nearMisses++;
+    const list = (this.manoeuvres = this.manoeuvres.filter((t) => this.t - t < M.window));
+    list.push(this.t);
+    const n = list.length;
     this.thrill('nearMiss', 'dieses Manöver');
     this.onMood('startled', 0.75);
-    if (chance(0.5)) this.chat(pick(CHAT.nearMiss));
+    this.onFeel(Math.min(1, M.rumble[0] + 0.12 * (n - 1)), M.rumble[1]);
+    this.audio.clip(n);
+    if (n >= M.serie && n % M.serie === 0) {
+      // eine Serie: einmal je volle serie Manöver (3, 6, 9 …), danach zählt sie weiter
+      this.thrill('nearMissSerie', `${n} Manöver am Stück`);
+      this.ui.toast(`🔥 ${n}× haarscharf in Folge!`, 'good', 'serie');
+      if (n === M.serie) this.chat('HATTRICK 🎩🎩🎩');
+      this.burst(CHAT.nearMissSerie, n === M.serie ? 3 : 4, 2.2);
+      this.studio.praise('serie', { n: ZAHLWORT[n] || String(n) });
+      this.onMood('proud', 0.8);
+      return;
+    }
+    this.chat(this.chatLine(CHAT.nearMiss));
+    if (chance(M.second)) this.later(rand(0.5, 1.3), () => this.chat(this.chatLine(CHAT.nearMiss)));
+    this.studio.praise('knapp');
   }
 
   // --- Ende ------------------------------------------------------------------------------------

@@ -151,9 +151,9 @@ function journey(driver, minutes, seed, hook = null) {
         if (plan === 'exit' && !(sloppy.get(f) && !f.forced)) want = J.L0;
       }
     }
-    const dx = want - (p.x + p.vx * AUTO.look);
+    const dx = game.bau.steer(want, p.s) - (p.x + p.vx * AUTO.look); // (Baustelle: in der Gasse, game/baustelle.js)
     ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
-    const v = Math.min(lim.vmax, driver.cruise / 3.6);
+    const v = Math.min(lim.vmax, game.bau.zoneLimit(p.s), driver.cruise / 3.6);
     ctl.throttle = p.speed < v - 0.5 ? 1 : 0;
     ctl.brake = p.speed > v + 3 ? 0.4 : 0;
     if (game.tv && driver.skip) ctl.throttle = game.t - game.tv.t0 < 0.9 ? 0 : 1;

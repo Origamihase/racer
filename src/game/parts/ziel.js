@@ -8,6 +8,7 @@ import { BONTANA } from '../economy.js';
 import { ZUFRIEDEN } from '../satisfaction.js';
 import { TV } from '../../world/xxl/brunnentv.js';
 import { addEpisode } from '../album.js';
+import { episodeMemory } from '../gedaechtnis.js';
 import { places } from '../../map/graph.js';
 import { fmtWaehrung } from '../../map/ladepreis.js';
 import { goalName } from '../../world/kit/layout.js';
@@ -588,6 +589,11 @@ export class ZielPart {
     this.speech.episode?.(true);
     this.quote.tv.push({ t: this.t, n });
     this.routeMark('brunnen', way ? { n, place: t.place, way: true } : { n, place: t.place });
+    // die Stammgäste zählen die Folge mit und erinnern sich an den Ort (stamm.js)
+    this.stamm.episode(t.name);
+    // … und das Sprachstudio, ob wir hier schon waren (gedaechtnis.js); es spricht nach der Folge
+    const memo = episodeMemory(this.save, entry, t.name);
+    if (memo) this.studio.remember(memo, 90);
     this.onBrunnenTV({ n, entry, place: t.place, name: t.name, goal: this.tv.goal, sec, fountain: this.world.square(sec), town, way });
   }
 

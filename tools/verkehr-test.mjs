@@ -158,9 +158,9 @@ ok(ELEFANT.room >= 1000, 'Elefantenrennen: bestellt, obwohl gleich eine Ausfahrt
       want = 5.625;
       if (f && !f.taken && f.s - trip.s < TRIP.decel - 10 && (f.forced || trip.planFor(f) === 'exit')) want = TRIP.L0;
     }
-    const dx = want - (p.x + p.vx * AUTO.look);
+    const dx = game.bau.steer(want, p.s) - (p.x + p.vx * AUTO.look); // (Baustelle: in der Gasse, game/baustelle.js)
     ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
-    const v = Math.min(lim.vmax, 130 / 3.6);
+    const v = Math.min(lim.vmax, game.bau.zoneLimit(p.s), 130 / 3.6);
     ctl.throttle = p.speed < v - 0.5 ? 1 : 0;
     ctl.brake = p.speed > v + 3 ? 0.4 : 0;
     // alle 15 s eine andere Lage vor dem Wagen (fährt mit ihm mit)

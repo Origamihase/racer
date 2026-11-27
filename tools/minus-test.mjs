@@ -297,11 +297,15 @@ let parkLine = '';
    * Ein Stream mit Guthaben im Minus und echtem Akku: Nach der ersten Runde plant der Fahrer den nächsten Ladeplatz ein;
    * ist der Wagen dort im Ort bzw. im Park, steht der Akku auf 5 % (bis der Stopp beginnt) und die Kasse bei −300 €.
    * mid: so viele Sekunden nach Beginn des Ladens endet der Stream (Pause → Stream beenden); skip: so viele überspringt
-   * der Spieler; after: so lange geht es nach dem Laden weiter (bis zur Rundenzeile am nächsten Ziel); park: statt des
-   * nächsten Ladeplatzes der nächste Ladepark an der Autobahn (wie __parkGo der Bild-Aufrufe).
+   * der Spieler; after: so lange geht es nach dem Laden weiter (bis zur Rundenzeile am nächsten Ziel; die Fahrt
+   * zum Ladeplatz hat bis zu 600 s, after kommt dazu); park: statt des nächsten Ladeplatzes der nächste Ladepark an der
+   * Autobahn (wie __parkGo der Bild-Aufrufe).
    */
   const charge = ({ seed, mid = -1, skip = -1, after = 0, park = false }) => {
     const S = makeStream({ driver: DRIVERS.zuegig, seed, endless: true, wallet: -500, charge: true });
+    // (ohne Baustelle: Ihre 80 km/h verschieben die Fahrt so, dass vor der nächsten Ankunft ein zweiter Ladestopp
+    // fällig wird – geprüft wird hier die Rundenzeile des einen Stopps)
+    S.game.bau.next = Infinity;
     const g = S.game;
     const p = g.player;
     const toasts = [];
@@ -318,7 +322,7 @@ let parkLine = '';
     } else g.akku.planStop();
     out.post = S.trip.post;
     out.park = S.trip.stop;
-    for (let i = 0; i < 30 * 600 && !g.over; i++) {
+    for (let i = 0; i < 30 * (600 + after) && !g.over; i++) {
       const sec = S.trip.section;
       const near = out.post >= 0 ? sec.kind === 'stadt' && sec.place === out.post : sec.kind === 'park';
       if (!out.c && near) {

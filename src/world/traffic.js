@@ -6,6 +6,7 @@ import { ROAD } from '../textures.js';
 import { ONCOMING } from './road.js';
 import { curveAt } from '../curve.js';
 import { clamp, lerp, rand, chance, pick, smoothstep } from '../util.js';
+import { BAU_LEN, bauShift, bauLeftLogical } from './baustelle-plan.js';
 
 const LANE_SPEEDS = [
   [150, 205],
@@ -103,6 +104,21 @@ export class Traffic {
     // Teils, rampX(u): Versatz der Rampe u Meter hinter der Gabelung}) bzw. ihr Anfang (s), sonst null
     this.end = null;
     this.begin = null;
+    // die Baustelle (world/baustelle-plan.js), die das Spiel eingerichtet hat: { s0 } Beginn der Verengung, sonst null.
+    // Gerechnet wird ohne ihre Verschwenkung (Spuren wie sonst); erst beim Zeichnen und gegenüber dem Spieler rückt
+    // jedes Fahrzeug um bauShift zur Seite
+    this.work = null;
+  }
+
+  /** Seitlicher Versatz der Fahrbahn bei s durch die Verschwenkung der Baustelle (0 ohne). */
+  shiftAt(s) {
+    return this.work ? bauShift(s - this.work.s0) : 0;
+  }
+
+  /** Ist die Spur zwischen s und s + ahead von der Baustelle gesperrt (die linken beiden, samt Anlauf davor)? */
+  workClosed(lane, s, ahead = 0) {
+    const W = this.work;
+    return !!W && lane < 2 && s + ahead > W.s0 - WORK.lead && s < W.s0 + BAU_LEN;
   }
 
   acquire(kind) {
@@ -135,6 +151,7 @@ export class Traffic {
     // neue Fahrt = wieder entspannter Verkehr (auch nach „Neustart“ aus einer langen Fahrt)
     this.difficulty = 0;
     this.leftOpen = false;
+    this.work = null;
   }
 
   laneSpeed(lane, truck) {
@@ -146,7 +163,7 @@ export class Traffic {
   /** Neues Fahrzeug einsetzen. */
   spawn(s, lane, { kind, speed, behavior = 'normal' } = {}) {
     const k = kind || randomKind(lane >= 2, lane === 3 ? 0.3 : 0.22);
-    const truck = k === 'lkw';
+    const truck = k === 'lkw' || k === 'schwer';
     if (truck && lane < 2) lane = 2 + Math.round(Math.random());
     const v = this.acquire(k);
     const car = {
@@ -210,7 +227,7 @@ export class Traffic {
       const lane = pickLane();
       const s = sPlayer + 40 + i * 45 + rand(0, 30);
       // XXL: nur auf der Fahrbahn (nicht vor dem Anfang der Autobahn, nicht vor ihrem Ende)
-      if (this.laneFree(lane, s, 30) && !(this.begin !== null && s < this.begin + 40) && !(this.end && s > this.end.fs - END_ROOM)) this.spawn(s, lane);
+      if (this.laneFree(lane, s, 30) && !(this.begin !== null && s < this.begin + 40) && !(this.end && s > this.end.fs - END_ROOM) && !this.workClosed(lane, s)) this.spawn(s, lane);
     }
     for (let i = 0; i < 10; i++) this.spawnOncoming(sPlayer, false);
     this.growing = true;
@@ -232,7 +249,7 @@ export class Traffic {
   place(c, sPlayer) {
     const d = c.s - sPlayer;
     const sh = this.shear;
-    c.v.group.position.set(c.x + (sh ? sh.a + sh.b * d : 0), 0, -d);
+    c.v.group.position.set(c.x + this.shiftAt(c.s) + (sh ? sh.a + sh.b * d : 0), 0, -d);
     c.v.group.rotation.y = carYaw(c, sh, this.end);
     c.v.group.scale.setScalar(appearScale(this.t - c.born));
   }
@@ -267,7 +284,7 @@ export class Traffic {
     if (this.cars.length < target && !this.passive) {
       const lane = pickLane();
       const s = player.s + rand(620, 950);
-      if (this.laneFree(lane, s, 60) && !(E && s > E.fs - END_ROOM)) this.spawn(s, lane);
+      if (this.laneFree(lane, s, 60) && !(E && s > E.fs - END_ROOM) && !this.workClosed(lane, s)) this.spawn(s, lane);
     }
     // Schnelle Autos von hinten, wenn der Spieler gemütlich fährt
     if (player.speed < 34 && chance(dt * 0.35) && this.cars.length < target + 4 && !this.passive) {
@@ -275,20 +292,24 @@ export class Traffic {
       const s = player.s - rand(150, 190);
       // startet hinter dem Spieler: zählt nicht als „überholt“
       // nicht mehr kurz vor dem Ende der Autobahn: so schnell käme er dort nicht mehr sanft herunter (endSpeed)
-      if (this.laneFree(lane, s, 40) && !(this.begin !== null && s < this.begin + 40) && !(E && s > E.fs - 2 * END_ROOM)) this.spawn(s, lane, { speed: rand(170, 215) * KMH }).passed = true;
+      if (this.laneFree(lane, s, 40) && !(this.begin !== null && s < this.begin + 40) && !(E && s > E.fs - 2 * END_ROOM) && !this.workClosed(lane, s, 600)) this.spawn(s, lane, { speed: rand(170, 215) * KMH }).passed = true;
     }
 
     const objs = this.cars;
     // Spieler als Hindernis für die KI (rückwärts mit negativem Tempo: wer dahinter fährt, bremst entsprechend früher);
     // fährt er woanders (passive: schon auf der Ausfahrt), ist er für diese Autobahn weg – sonst bremsten die Autos
     // dahinter noch Hunderte Meter hinter der Gabelung vor einem Phantom auf der rechten Spur und wichen ihm aus
-    const P = this.passive ? AWAY : { s: player.s, x: player.x, speed: player.v ?? player.speed, len: player.len, w: player.w, isPlayer: true };
+    const P = this.passive ? AWAY : { s: player.s, x: player.x - this.shiftAt(player.s), speed: player.v ?? player.speed, len: player.len, w: player.w, isPlayer: true };
 
     for (const c of objs) {
       if (c.elefantUntil !== undefined && this.t >= c.elefantUntil) {
         c.behavior = 'normal';
         c.elefantUntil = undefined;
+        c.v0 = c.cruise ?? c.v0;
+        if (c.v.blinkDir) c.v.setBlink(0);
       }
+      // der Drängler: klebt am Spieler und blinkt links, bis der Platz macht (dann zieht er vorbei)
+      if (c.behavior === 'draengler') this.draengle(c, P);
       // Spurwechsel-Entscheidungen
       c.decideIn -= dt;
       if (!c.change && c.decideIn <= 0) {
@@ -311,19 +332,24 @@ export class Traffic {
         }
       }
       if (E) this.towardsEnd(c, objs, P);
+      else c.closed = false;
+      if (this.work) this.towardsWork(c, objs, P);
       // Abstandsregelung (Wunschtempo vor Kurven, am Berg und vor dem Ende der Autobahn gedeckelt)
       const lead = this.leader(c, objs, P);
-      const T = c.truck ? 1.7 : 1.25 + (c.careless ? -0.4 : 0);
+      const T = c.truck ? 1.7 : c.behavior === 'draengler' ? 0.35 : 1.25 + (c.careless ? -0.4 : 0);
       const aMax = c.truck ? 0.6 : 1.6;
       const b = 2.8;
       const s0 = 3;
-      const vc = E ? Math.min(curveSpeed(c, c.s - player.s), endSpeed(c, E)) : curveSpeed(c, c.s - player.s);
+      let vc = E ? Math.min(curveSpeed(c, c.s - player.s), endSpeed(c, E)) : curveSpeed(c, c.s - player.s);
+      if (this.work) vc = Math.min(vc, workSpeed(c, this.work));
       let acc = aMax * (1 - Math.pow(c.speed / Math.max(1, Math.min(c.v0, vc)), 4));
       if (lead) {
         const gap = Math.max(0.1, lead.s - c.s - (lead.len + c.len) / 2);
         const dv = c.speed - lead.speed;
         const sStar = s0 + Math.max(0, c.speed * T + (c.speed * dv) / (2 * Math.sqrt(aMax * b)));
         acc -= aMax * Math.pow(sStar / gap, 2);
+        // der Drängler rauscht heran und hängt sich dicht dran (statt wie alle vorausschauend zu bremsen)
+        if (c.behavior === 'draengler' && lead.isPlayer && !c.free) acc = clamp(0.35 * (gap - 10) - 1.25 * dv, -7, 3);
         if (gap < 4 && dv > 0) acc = Math.min(acc, -9);
       }
       // vor einer Kurve (und vor dem Ende der Autobahn) sichtbar (mit Bremslicht), aber sanft abbremsen
@@ -362,7 +388,8 @@ export class Traffic {
 
     // Spieler-Interaktion: Unfälle, knappe Überholmanöver, Auffahrschutz von hinten
     for (const c of this.passive ? NONE : objs) {
-      const dx = Math.abs(c.x - player.x);
+      const cx = c.x + this.shiftAt(c.s);
+      const dx = Math.abs(cx - player.x);
       const ds = c.s - player.s;
       const latOverlap = (c.w + player.w) / 2 - dx;
       const lonOverlap = (c.len + player.len) / 2 - Math.abs(ds);
@@ -373,7 +400,7 @@ export class Traffic {
           c.speed = Math.min(c.speed, player.speed * 0.95);
         } else {
           c.contactT = t; // wer gerade gestreift wurde, zählt beim Vorbeifahren nicht als „haarscharf“
-          this.events.push({ type: 'crash', car: c, ds, dx: c.x - player.x, latOverlap, lonOverlap });
+          this.events.push({ type: 'crash', car: c, ds, dx: cx - player.x, latOverlap, lonOverlap });
         }
       }
       // Knapp vorbei
@@ -384,6 +411,7 @@ export class Traffic {
         const touched = t - (c.contactT ?? -1e9) < 2;
         if (clearance < 0.85 && clearance > -0.05 && rel > 6 && !touched) this.events.push({ type: 'nearMiss', car: c, clearance, rel });
         if (c.behavior === 'polizei') this.events.push({ type: 'passPolice', car: c });
+        if (c.behavior === 'schwer') this.events.push({ type: 'passSchwer', car: c });
       }
       if (ds > 0) c.passed = false;
     }
@@ -404,7 +432,7 @@ export class Traffic {
       c.v.updateLights(t, c.sirens);
       if (rainy && rel > -10 && rel < 140) {
         const z = -(rel) + c.len / 2;
-        this.rain.emit(c.x, z, c.w, c.speed, c.truck ? 2.5 : 1, dt, c);
+        this.rain.emit(c.x + this.shiftAt(c.s), z, c.w, c.speed, c.truck ? 2.5 : 1, dt, c);
       }
     }
     this.cars = keep;
@@ -453,7 +481,9 @@ export class Traffic {
 
   /** Spurwechsel-Logik (vereinfachtes MOBIL mit Rechtsfahrgebot). */
   decide(c, objs, P) {
-    if (c.behavior === 'elefant' || c.lane === 4) return;
+    if (c.behavior === 'elefant' || c.behavior === 'kolonne' || c.behavior === 'schwer' || c.behavior === 'begleit' || c.lane === 4) return;
+    // der Drängler wechselt nur, um am Spieler vorbeizukommen, sobald der Platz gemacht hat (draengle)
+    if (c.behavior === 'draengler' && !c.free) return;
     if (this.end && c.s > this.end.fs - END_ROOM) return; // vor dem Ende der Autobahn nur noch nach rechts (towardsEnd)
     const lead = this.leader(c, objs, P);
     const minLane = c.truck ? 2 : 0;
@@ -462,7 +492,7 @@ export class Traffic {
       const gap = lead.s - c.s - (lead.len + c.len) / 2;
       if (gap < 70 && lead.speed < c.v0 - 2.5) {
         const to = c.lane - 1;
-        if (!(c.truck && to < 2) && this.safe(c, to, objs, P)) return this.startChange(c, to);
+        if (!(c.truck && to < 2) && !this.workClosed(to, c.s, WORK.look) && this.safe(c, to, objs, P)) return this.startChange(c, to);
       }
     }
     // Rechtsfahrgebot
@@ -476,7 +506,7 @@ export class Traffic {
     // Unachtsame Fahrer wechseln manchmal einfach so (schwieriger mit Fortschritt)
     if (c.careless && chance(0.04 + this.difficulty * 0.12)) {
       const to = c.lane + (chance(0.5) ? -1 : 1);
-      if (to >= minLane && to <= 3 && this.safe(c, to, objs, P, true)) this.startChange(c, to);
+      if (to >= minLane && to <= 3 && !this.workClosed(to, c.s, WORK.look) && this.safe(c, to, objs, P, true)) this.startChange(c, to);
     }
   }
 
@@ -528,6 +558,22 @@ export class Traffic {
     c.closed = !c.change && left(c.s + stop + c.len / 2 + 10 + c.speed * 1.2);
   }
 
+  /**
+   * Baustelle: rechtzeitig von den gesperrten linken Spuren nach rechts (wie vor dem Ende einer Autobahn,
+   * towardsEnd); wer nicht hinüberkommt, hält vor den Baken und wartet auf eine Lücke.
+   */
+  towardsWork(c, objs, P) {
+    const W = this.work;
+    if (c.lane >= 2 || c.s < W.s0 - WORK.lead || c.s > W.s0 + BAU_LEN) return;
+    const left = (s) => ROAD.laneCenter(c.lane) - c.w / 2 - 0.4 < bauLeftLogical(s - W.s0);
+    const stop = (c.speed * c.speed) / 8;
+    if (!c.change && left(c.s + stop + 30 + c.speed * 4) && this.safe(c, c.lane + 1, objs, P, true)) {
+      this.startChange(c, c.lane + 1);
+      c.change.delay = 0.3;
+    }
+    c.closed = c.closed || (!c.change && left(c.s + stop + c.len / 2 + 10 + c.speed * 1.2));
+  }
+
   startChange(c, to) {
     c.change = { from: c.lane, to, t: 0, delay: c.careless ? rand(0.15, 0.5) : rand(0.9, 1.6), dur: c.truck ? rand(4, 5.5) : rand(2.4, 3.6) };
   }
@@ -535,12 +581,12 @@ export class Traffic {
   /** Megafon-Durchsage: Autos vor dem Spieler machen Platz. */
   megafon(player) {
     let n = 0;
-    const P = { s: player.s, x: player.x, speed: player.speed, len: player.len, w: player.w, isPlayer: true };
+    const P = { s: player.s, x: player.x - this.shiftAt(player.s), speed: player.speed, len: player.len, w: player.w, isPlayer: true };
     for (const c of this.cars) {
       const ds = c.s - player.s;
-      if (ds > 0 && ds < 160 && Math.abs(c.x - player.x) < 2.6 && !c.change && c.behavior !== 'elefant') {
+      if (ds > 0 && ds < 160 && Math.abs(c.x - P.x) < 2.6 && !c.change && c.behavior !== 'elefant') {
         // nur auf freie Nachbarspuren ausweichen; bei Gleichstand lieber nach rechts
-        const opts = [c.lane + 1, c.lane - 1].filter((l) => l >= (c.truck ? 2 : 0) && l <= 3 && this.safe(c, l, this.cars, P, true));
+        const opts = [c.lane + 1, c.lane - 1].filter((l) => l >= (c.truck ? 2 : 0) && l <= 3 && !this.workClosed(l, c.s, WORK.look) && this.safe(c, l, this.cars, P, true));
         const to = opts.sort((a, b) => Math.abs(ROAD.laneCenter(b) - player.x) - Math.abs(ROAD.laneCenter(a) - player.x))[0];
         if (to !== undefined) {
           c.change = { from: c.lane, to, t: 0, delay: 0.3, dur: 1.8 };
@@ -570,6 +616,76 @@ export class Traffic {
     return [a, b];
   }
 
+  /**
+   * Verkehrsmuster (game/parts/ereignisse.js): eine Kolonne Wohnmobile auf der rechten Spur, ein Drängler von hinten,
+   * ein Schwertransport mit Begleitfahrzeug. Wie beim Elefantenrennen räumen sie sich ihren Platz voraus frei und
+   * fahren nach until Sekunden wieder wie alle (Wohnmobile, Drängler) – der Schwertransport bleibt, bis er hinter dem
+   * Spieler verschwindet.
+   */
+  clearAt(s, lanes, span = 60) {
+    for (const c of this.cars) {
+      if (c.s > s - span && c.s < s + span && lanes.includes(c.lane)) {
+        this.releaseVehicle(c.v);
+        c.s = -1e9;
+      }
+    }
+    this.cars = this.cars.filter((c) => c.s > -1e8);
+  }
+
+  /** Urlaubszeit: n Wohnmobile hintereinander auf der rechten Spur, gemütlich und ohne zu überholen. */
+  kolonne(sPlayer, n = 4) {
+    const s = sPlayer + 480;
+    this.clearAt(s + n * 14, [3], n * 16 + 60);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const c = this.spawn(s + i * 28, 3, { kind: 'wohnmobil', speed: (92 + i * 0.4) * KMH, behavior: 'kolonne' });
+      c.cruise = c.v0;
+      c.elefantUntil = this.t + 70;
+      out.push(c);
+    }
+    return out;
+  }
+
+  /** Ein Drängler von hinten auf der Spur des Spielers (nur links, nie hinter einer Baustelle). Liefert ihn oder null. */
+  draengler(player) {
+    const lane = Math.round((player.x - this.shiftAt(player.s) - ROAD.laneCenter(0)) / ROAD.laneWidth);
+    if (lane < 0 || lane > 1 || this.work) return null;
+    const s = this.begin !== null ? Math.max(player.s - 160, this.begin + 40) : player.s - 160;
+    if (s > player.s - 80 || !this.laneFree(lane, s, 40)) return null;
+    const c = this.spawn(s, lane, { kind: 'sport', speed: Math.max(player.speed + 12, 210 * KMH), behavior: 'draengler' });
+    c.v0 = 240 * KMH;
+    c.cruise = 200 * KMH;
+    c.careless = true;
+    c.passed = true;
+    c.free = false;
+    c.elefantUntil = this.t + 30;
+    return c;
+  }
+
+  /** Drängler: dicht auf, links blinken; hat der Spieler die Spur verlassen, darf er vorbei. */
+  draengle(c, P) {
+    const ds = P.s - c.s;
+    const same = laneOverlap(P, c.lane);
+    const behind = ds > 0 && ds < 60 && same;
+    if (behind && !c.change) c.v.setBlink(-1);
+    else if (!c.change && c.v.blinkDir === -1) c.v.setBlink(0);
+    c.close = behind && ds < 25;
+    // (Platz gemacht: Der Spieler ist von seiner Spur, solange er dicht dahinter war)
+    if (!same && ds > 0 && ds < 80) c.free = true;
+  }
+
+  /** Schwertransport: ein Brunnen auf dem Tieflader, rechts mit 60 km/h, dahinter sein Begleitfahrzeug mit Warnlicht. */
+  schwertransport(sPlayer) {
+    const s = sPlayer + 650;
+    this.clearAt(s, [2, 3], 90);
+    const a = this.spawn(s, 3, { kind: 'schwer', speed: 60 * KMH, behavior: 'schwer' });
+    const b = this.spawn(s - 30, 3, { kind: 'begleit', speed: 60 * KMH, behavior: 'begleit' });
+    a.v0 = 60 * KMH;
+    b.v0 = 62 * KMH;
+    b.v.setBlink(2);
+    return [a, b];
+  }
+
   /** Polizei Gifhorn kommt von hinten auf der Überholspur. */
   police(sPlayer, text) {
     this.policeText = text;
@@ -590,10 +706,21 @@ export class Traffic {
     const out = [];
     for (const c of this.cars) {
       const ds = c.s - player.s;
-      if (ds > -25 && ds < range) out.push({ dx: c.x, ds, len: c.len, w: c.w, kind: c.kind, brake: c.brake });
+      if (ds > -25 && ds < range) out.push({ dx: c.x + this.shiftAt(c.s), ds, len: c.len, w: c.w, kind: c.kind, brake: c.brake });
     }
     return out;
   }
+}
+
+// Baustelle: lead so weit vor der Verengung sind die linken Spuren für neue Fahrzeuge und Spurwechsel schon zu,
+// look so weit schaut ein Fahrer voraus, bevor er nach links wechselt; v Tempo in der Baustelle, dec sanftes Bremsen
+const WORK = { lead: 250, look: 400, v: 80 * KMH, dec: 1.0 };
+
+/** Höchsttempo vor und in der Baustelle: sanft herunter auf WORK.v, dahinter wieder frei. */
+function workSpeed(c, W) {
+  const u = c.s - W.s0;
+  if (u > BAU_LEN) return Infinity;
+  return Math.sqrt(WORK.v * WORK.v + 2 * WORK.dec * Math.max(0, -u));
 }
 
 // so weit vor der letzten Ausfahrt einer endenden Autobahn kommen keine Fahrzeuge mehr hinzu und alle ordnen sich rechts ein

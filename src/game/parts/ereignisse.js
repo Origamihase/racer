@@ -365,7 +365,7 @@ export class EreignissePart {
     }
 
     // Polizei Gifhorn einfach mal so
-    if (T.police <= 0 && p.s > 2500 && !this.offAutobahn) {
+    if (T.police <= 0 && p.s > 2500 && !this.offAutobahn && !this.bau.active) {
       T.police = rand(220, 340);
       this.eco.cheer('funny');
       this.callPolice(pick(POLICE_TEXTS));
@@ -392,6 +392,8 @@ export class EreignissePart {
     // langsam genug), bis zum Ende der Zone (Player.limits.zone; das Strompedal des Spielers kennt sie nicht)
     const zb = this.blitzer;
     p.setLimits({ zone: zb && p.s > zb.limitS - ZONE_LEAD && p.s < zb.endS ? 120 / 3.6 : Infinity });
+    // … und die 80 in der Baustelle (baustelle.js zoneLimit)
+    if (this.bau.active) p.setLimits({ zone: Math.min(p.limits.zone, this.bau.zoneLimit(p.s)) });
     if (this.blitzer) {
       const b = this.blitzer;
       // Einen Blitzer kündigt niemand an: Die Warnung vorher ist ein Artikel des Shops (hasRadar) – Blitz, Bußgeld

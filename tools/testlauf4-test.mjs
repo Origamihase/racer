@@ -143,7 +143,7 @@ function postRun({ plan, brakeAt, key }) {
       want = 5.625;
       if (f && !f.taken && f.s - trip.s < J.decel - 10 && (f.forced || trip.planFor(f) === 'exit')) want = J.L0;
     }
-    const dx = want - (p.x + p.vx * AUTO.look);
+    const dx = game.bau.steer(want, p.s) - (p.x + p.vx * AUTO.look); // (Baustelle: in der Gasse, game/baustelle.js)
     ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
     const u = sec.kind === 'stadt' && sec.place === town ? p.s - sec.s0 : -1;
     if (u >= 0) out.pa = sec.postAt;

@@ -93,7 +93,7 @@ function run({ target, park = -1, planPost = false, at, crawl = 0, key, secs = 9
       want = 5.625;
       if (f && !f.taken && f.s - trip.s < J.decel - 10 && (f.forced || trip.planFor(f) === 'exit')) want = J.L0;
     }
-    const dx = want - (p.x + p.vx * AUTO.look);
+    const dx = game.bau.steer(want, p.s) - (p.x + p.vx * AUTO.look); // (Baustelle: in der Gasse, game/baustelle.js)
     ctl.steer = Math.abs(dx) > AUTO.tol ? Math.max(-1, Math.min(1, dx * AUTO.gain)) : 0;
     const u = isSpot(sec) ? p.s - sec.s0 : -1;
     const v = sec.kind === 'stadt' || sec.kind === 'park' ? 50 / 3.6 : sec.kind === 'ab' ? 130 / 3.6 : 90 / 3.6;

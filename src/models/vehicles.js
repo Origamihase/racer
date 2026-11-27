@@ -85,6 +85,18 @@ function mats() {
   return M;
 }
 
+// gelbe Rundumleuchten des Begleitfahrzeugs (an, aus)
+let AMBER = null;
+function amberMats() {
+  if (!AMBER) {
+    AMBER = {
+      on: W.std({ color: 0x664400, emissive: 0xffaa10, emissiveIntensity: 5, roughness: 0.3 }),
+      off: W.std({ color: 0x664a10, emissive: 0x402800, emissiveIntensity: 0.4, roughness: 0.3 }),
+    };
+  }
+  return AMBER;
+}
+
 const groundGeos = new Map();
 /** Bodenschatten-Fläche passend zur Grundfläche (lange Flächen unterteilt, damit sie der Erdkrümmung folgen). */
 function groundGeometry(w, l) {
@@ -462,6 +474,67 @@ function truckGeometry() {
   return g;
 }
 
+/**
+ * Schwertransport „Brunnen auf Reisen“ (world/traffic.js schwertransport): die Zugmaschine des Sattelzugs mit einem
+ * flachen Tieflader, darauf ein ganzer Brunnen aus Sandstein (Becken, Säule, Schale, Wasser) der Firma Brunnenbau
+ * Schönnbrun, hinten die rot-weißen Warntafeln der Überbreite. Breiter als eine Spur ist er nicht ganz (SCHWER_W).
+ */
+export const SCHWER_W = 3.0;
+function schwerGeometry() {
+  if (geoCache.has('schwer')) return geoCache.get('schwer');
+  const z = (u) => u - TRUCK_L / 2;
+  const parts = [];
+  // Tieflader: flache Ladefläche, Rahmen, Achsen
+  parts.push(colorize(boxAt(SCHWER_W, 0.22, 13.4, 0, 1.08, z(9.8)), 0x3b3d42));
+  for (const s of [-1, 1]) parts.push(colorize(boxAt(0.08, 0.3, 13.4, s * (SCHWER_W / 2 - 0.04), 1.2, z(9.8)), 0xf2c230));
+  for (const u of [12.6, 13.9, 15.2]) {
+    for (const s of [-1, 1]) {
+      const tire = new THREE.CylinderGeometry(0.45, 0.45, 0.55, 16);
+      tire.rotateZ(Math.PI / 2);
+      tire.translate(s * 1.1, 0.45, z(u));
+      parts.push(colorize(tire, 0x121212));
+    }
+  }
+  // der Brunnen: achteckiges Becken, Säule, Schale, Kugel obenauf
+  const stone = 0xc9b48e;
+  const basin = new THREE.CylinderGeometry(1.42, 1.5, 0.85, 8);
+  basin.translate(0, 1.19 + 0.425, z(9.6));
+  parts.push(colorize(basin, stone));
+  const rim = new THREE.CylinderGeometry(1.5, 1.5, 0.1, 8);
+  rim.translate(0, 1.19 + 0.88, z(9.6));
+  parts.push(colorize(rim, 0xd9c6a0));
+  const col = new THREE.CylinderGeometry(0.22, 0.28, 1.5, 10);
+  col.translate(0, 2.0 + 0.75, z(9.6));
+  parts.push(colorize(col, stone));
+  const bowl = new THREE.CylinderGeometry(0.72, 0.38, 0.32, 12);
+  bowl.translate(0, 3.5 + 0.16, z(9.6));
+  parts.push(colorize(bowl, 0xd9c6a0));
+  const knob = new THREE.SphereGeometry(0.16, 10, 8);
+  knob.translate(0, 3.95, z(9.6));
+  parts.push(colorize(knob, stone));
+  // Wasser im Becken und in der Schale
+  const water = new THREE.CylinderGeometry(1.34, 1.34, 0.04, 8);
+  water.translate(0, 1.19 + 0.78, z(9.6));
+  parts.push(colorize(water, 0x6fb8e8));
+  const water2 = new THREE.CylinderGeometry(0.64, 0.64, 0.04, 12);
+  water2.translate(0, 3.78, z(9.6));
+  parts.push(colorize(water2, 0x6fb8e8));
+  // Spanngurte über das Becken
+  for (const du of [-0.9, 0.9]) parts.push(colorize(boxAt(SCHWER_W - 0.1, 0.05, 0.12, 0, 2.06, z(9.6 + du)), 0xe8661c));
+  // Holzklötze unter dem Becken
+  for (const du of [-1.1, 1.1]) parts.push(colorize(boxAt(2.2, 0.14, 0.3, 0, 1.19, z(9.6 + du)), 0x8a5a2b));
+  // hinten: Warntafeln der Überbreite (rot-weiß), Leuchten
+  for (const s of [-1, 1]) {
+    for (let i = 0; i < 4; i++) parts.push(colorize(boxAt(0.42, 0.12, 0.04, s * (SCHWER_W / 2 - 0.25), 1.35 + i * 0.12, z(16.5) + 0.02), i % 2 ? 0xffffff : 0xd0202a));
+  }
+  parts.push(colorize(boxAt(SCHWER_W, 0.15, 0.12, 0, 0.6, z(16.45)), 0x9aa0a6)); // Unterfahrschutz
+  const cargoGeo = mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)));
+  const tailGeo = mergeGeometries([boxAt(0.4, 0.14, 0.05, -1.0, 1.0, z(16.5) + 0.03), boxAt(0.4, 0.14, 0.05, 1.0, 1.0, z(16.5) + 0.03)]);
+  const g = { cargoGeo, tailGeo };
+  geoCache.set('schwer', g);
+  return g;
+}
+
 function trailerMaterials(idx) {
   const m = mats();
   if (!m.trailers.has(idx)) {
@@ -555,8 +628,26 @@ export class Vehicle {
     // jeder Blinker hat seinen eigenen Takt (sonst blinkt die ganze Autobahn im Gleichschritt)
     this.blinkPhase = Math.random();
     this.police = kind === 'polizei';
-    const typeKey = kind === 'polizei' ? 'kombi' : kind;
-    if (kind === 'lkw') {
+    // Begleitfahrzeug des Schwertransports: ein Transporter mit gelber Rundumleuchte und Warnblinker
+    const typeKey = kind === 'polizei' ? 'kombi' : kind === 'begleit' ? 'transporter' : kind;
+    if (kind === 'schwer') {
+      // Zugmaschine wie beim Sattelzug, dahinter der Tieflader mit dem Brunnen (schwerGeometry)
+      const g = truckGeometry();
+      const sg = schwerGeometry();
+      this.length = TRUCK_L;
+      this.width = SCHWER_W;
+      this.height = 4.0;
+      this.cab = new THREE.Mesh(g.bodyGeo, bodyMaterial(0x1d5fa8));
+      this.details = new THREE.Mesh(g.detailGeo, m.detail);
+      this.cargo = new THREE.Mesh(sg.cargoGeo, m.detail);
+      this.tail = new THREE.Mesh(sg.tailGeo, m.tail);
+      this.blinkL = new THREE.Mesh(g.blinkL, m.blink);
+      this.blinkR = new THREE.Mesh(g.blinkR, m.blink);
+      this.plate = new THREE.Mesh(g.plateGeo, plateMaterial('FD-BR 1887'));
+      this.group.add(this.cab, this.details, this.cargo, this.tail, this.blinkL, this.blinkR, this.plate);
+      this.cab.castShadow = true;
+      this.cargo.castShadow = true;
+    } else if (kind === 'lkw') {
       const g = truckGeometry();
       this.length = TRUCK_L;
       this.width = 2.55;
@@ -582,7 +673,7 @@ export class Vehicle {
       this.height = p.H;
       let mat;
       if (this.police) mat = bodyMaterial(0xffffff, policeTexture());
-      else if (kind === 'wohnmobil') mat = bodyMaterial(0xf4f4f0);
+      else if (kind === 'wohnmobil' || kind === 'begleit') mat = bodyMaterial(0xf4f4f0);
       else mat = bodyMaterial(color ?? weightedPick(COLORS, (c) => c[1])[0]);
       this.body = new THREE.Mesh(g.bodyGeo, mat);
       this.body.castShadow = true;
@@ -594,6 +685,10 @@ export class Vehicle {
       this.blinkR = new THREE.Mesh(g.blinkR, m.blink);
       this.plate = new THREE.Mesh(g.plateGeo, plateMaterial(plate ?? (this.police ? 'GF-3333' : pick(PLATES))));
       this.group.add(this.body, this.glass, this.details, this.liners, this.tail, this.blinkL, this.blinkR, this.plate);
+      if (kind === 'begleit') {
+        this.amber = g.lightbarGeo.map((geo) => new THREE.Mesh(geo, amberMats().off));
+        this.group.add(...this.amber);
+      }
       if (this.police) {
         this.bar = g.lightbarGeo.map((geo) => new THREE.Mesh(geo, m.blueOff));
         this.group.add(...this.bar);
@@ -662,8 +757,15 @@ export class Vehicle {
   updateLights(t, sirens = false) {
     const on = Math.sin((t * LIGHTS.blinkHz + this.blinkPhase) * Math.PI * 2) > 0;
     if (this.blinkDir) {
-      this.blinkL.visible = this.blinkDir < 0 && on;
+      // (2: Warnblinker, beide Seiten)
+      this.blinkL.visible = (this.blinkDir < 0 || this.blinkDir === 2) && on;
       this.blinkR.visible = this.blinkDir > 0 && on;
+    }
+    if (this.amber) {
+      const a = amberMats();
+      const ph = Math.floor(t * 5) % 2;
+      this.amber[0].material = ph ? a.on : a.off;
+      this.amber[1].material = ph ? a.off : a.on;
     }
     if (this.bar) {
       const m = mats();

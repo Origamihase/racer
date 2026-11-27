@@ -46,6 +46,103 @@ export function viewerNameAt(n) {
   return NAME_A[(n * 7 + 3) % NAME_A.length] + NAME_B[(n * 5 + 1) % NAME_B.length];
 }
 
+// Stammzuschauer (game/stamm.js): frei erfundene Stammgäste, die sich an frühere Streams erinnern. spruch: ihr eigener
+// Gruß, wenn sie wieder da sind
+export const STAMM = [
+  { name: 'RingtennisRudi', spruch: 'Rudi meldet sich zum Dienst. Ringtennisschläger liegt bereit 🏓' },
+  { name: 'KaffeekassenKarin', spruch: 'Kaffee ist gekocht, ich bin da ☕' },
+  { name: 'HandkäsHorst', spruch: 'Mit Musik! Horst ist wieder da 🧀' },
+  { name: 'Blinkerfreund77', spruch: 'Blinker links, Chat rein. Hallo zusammen!' },
+  { name: 'AkkuAnke', spruch: 'Anke hier. Wie viel Prozent haben wir? 🔋' },
+  { name: 'RasthofRalf', spruch: 'Ralf ist da, Bockwurst steht bereit 🌭' },
+  { name: 'WischerWilma', spruch: 'Wilma ist da. Zuckt der Wischer noch? 🌧️' },
+  { name: 'PommesPaule', spruch: 'Paule mit Pommes, wie immer 🍟' },
+  { name: 'ElsaEdith', spruch: 'Edith hier, Elsa sitzt neben mir 👑🐟' },
+  { name: 'NaviNadine', spruch: 'Nadine meldet sich. Wohin heute? 🧭' },
+  { name: 'PlüschopaGerd', spruch: 'Opa Gerd hat den Fernseher wieder lauter gestellt 📺' },
+  { name: 'BrunnenBine', spruch: 'Bine ist da. Ich will heute mindestens einen Brunnen sehen ⛲' },
+];
+export const STAMM_LINES = {
+  // Gruß beim Vorbeischauen: erst zum ersten Mal da · wieder ({n}: Streams, {m}: Monate) · letzter ({last}: der zuletzt
+  // gemeinsam besuchte Ort) · orte ({ort}: einer davon)
+  hallo: {
+    erst: ['Zum ersten Mal hier, aber bestimmt nicht zum letzten Mal 👋', 'Hab gerade abonniert. Was ist BrunnenTV?? 😄',
+      'Neu hier! Mein Kumpel sagt, hier gibt es Brunnen.', 'Hallo! Erster Stream für mich, ich bin gespannt 🤩'],
+    wieder: ['Stream Nummer {n} für mich! 🫡', 'Wieder da! {m} Monate dabei und kein bisschen müde', 'Bin wieder da, hab ich was verpasst?',
+      'Hallo Mini Adam! Das ist schon mein {n}. Stream 🥳', '{m} Monate Abo und immer noch Gänsehaut beim Intro'],
+    letzter: ['Letztes Mal ging es bis {last}. Wohin heute?', 'Seit {last} hab ich auf diesen Stream gewartet!',
+      'In {last} war es so schön. Heute bitte wieder so ⛲', 'Ich hab das Bild aus {last} als Hintergrund 😄'],
+    orte: ['Weißt du noch, {ort}? Da war ich dabei!', 'Ich denk noch oft an {ort} 🥲', '{ort} war mein Lieblingsstream bisher'],
+  },
+  // nach einer Folge BrunnenTV: rund ({b}: so viele Folgen hat er gesehen) · wieder ({ort}: dort war er schon mit
+  // Mini Adam) · zaehlt (er zählt mit)
+  folge: {
+    rund: ['Das war meine {b}. Folge BrunnenTV! 🎉⛲', '{b} Brunnen hab ich jetzt mit dir gesehen. Jubiläum! 🥳',
+      'Folge Nummer {b} für mich. Darauf einen Bananensaft 🍌'],
+    wieder: ['{ort}! Da war ich schon mal mit dir ⛲', 'Wieder in {ort}, ich erkenne den Brunnen 😍', '{ort} kennen wir doch! Schön wie beim letzten Mal',
+      'Der Brunnen in {ort} sieht noch genauso schön aus wie damals'],
+    zaehlt: ['Brunnen Nummer {b} für mich ⛲', 'Ich zähle mit: {b} Brunnen 📋', '{b}. Brunnen. Und jeder ist schöner',
+      'Strichliste: Brunnen {b} ✅'],
+  },
+};
+
+// Verkehrsmuster (game/muster.js): kolonne Wohnmobile · draengler klebt hinten (omiDraengler) · platz Mini Adam macht
+// gleich Platz · endlich erst nach einer Weile · schwer der reisende Brunnen (omiSchwer) · gruss angehupt · tschuess
+// vorbei
+export const MUSTER_LINES = {
+  kolonne: ['Urlaubszeit! 🚐🚐🚐', 'Wohnmobil-Konvoi 😄', 'Die fahren bestimmt alle an die Nordsee', 'Campingstühle on tour 🏕️',
+    'Vier Wohnmobile, ein Ziel: Gardasee', 'Kolonne! Schön vorbei, Mini Adam'],
+  draengler: ['Drängler! 😤', 'Der klebt ja an der Stoßstange 😬', 'Links blinken, ganz klassisch 🙄', 'Ruhig bleiben, Mini Adam 🧘',
+    'Hat der es eilig 😅', 'Abstand! 📏'],
+  omiDraengler: 'Hinter uns drängelt jemand. Ruhig bleiben, wenn rechts frei ist, lassen wir ihn vorbei.',
+  platz: ['Souverän, lass ihn ziehen 👍', 'Platz gemacht. So geht das 🫡', 'Mini Adam bleibt entspannt 😎', 'Der ist weg, wir haben Zeit'],
+  endlich: ['Na endlich ist der vorbei 😅', 'Tschüss, Drängler 👋', 'Und weg ist er'],
+  omiSchwer: 'Achtung, Schwertransport voraus auf der rechten Spur. Da ist ein Brunnen drauf.',
+  schwer: ['Ein Brunnen auf Reisen! ⛲🚛', 'Zieht Herr Schönnbrun um? 😂', 'BrunnenTV unterwegs-Edition', 'Hupen! Der Brunnen will gegrüßt werden 📯',
+    'Wie viele Brunnen passen auf einen Lkw? Einer.', 'Das ist der schönste Lkw der Welt 😍'],
+  gruss: ['Der Brunnen grüßt zurück ⛲👋', 'Gruß angekommen! 📯', 'Schönster Gruß des Tages', 'Der Fahrer winkt! 😄'],
+  tschuess: ['Tschüss, reisender Brunnen 👋⛲', 'Gute Reise, Brunnen!', 'Der Brunnen kommt hoffentlich gut an 🙏'],
+};
+
+// Baustelle (game/baustelle.js): omi kündigt sie an (das Schild steht einen Kilometer davor) · chatSign danach ·
+// chatStart an den ersten Baken · touch eine Bake gestreift · clean sauber durch (cleanFast: mit Tempo) · messy mit
+// Berührungen ({n}: so viele)
+export const BAUSTELLE_LINES = {
+  omi: 'Achtung, Baustelle in einem Kilometer. Die linken Spuren sind gesperrt, bitte rechts einordnen.',
+  chatSign: ['Baustelle 🚧', 'Oh nein, eine Baustelle 😩', 'Jetzt wird es eng 😬', 'Baken-Slalom! 🚧🚧🚧', 'Rechts rüber, Mini Adam!'],
+  chatStart: ['Ganz ruhig jetzt 🙏', 'Nicht die Baken küssen 😅', 'Präzisionsarbeit gefragt 🎯', 'Schön in der Gasse bleiben',
+    'Ich halte die Luft an 😮‍💨'],
+  touch: ['Bake! 🚧😬', 'Die Bake hat gewackelt 😂', 'Kratz kratz 🚧', 'Bauarbeiter sind sauer 👷', 'Ups, das war eng'],
+  clean: ['Sauber durch! 👏', 'Keine Bake berührt 🫡', 'Wie auf Schienen 🚆', 'Präzise! 🎯', 'Baustellen-Profi 👷‍♂️'],
+  cleanFast: ['Und das mit Tempo! 🔥', 'Sauber UND schnell 😱', 'Baustellen-Rennfahrer 🏁', 'Keine Bake, volles Tempo 👏'],
+  messy: ['{n} Baken umarmt 😂', 'Die Baustelle hat Spuren hinterlassen: {n} Mal Kratz 🚧', 'Nächstes Mal ohne Baken-Kuscheln 😅',
+    'Die Bauarbeiter schicken eine Rechnung 👷📄'],
+};
+
+// Spontan-Wetten (game/wetten.js): text je Wette ({k}, {secs}, {kmh}, {ort}, {min}, {dauer}) · angebot im Chat
+// ({text}, {betrag}) · top: angenommen · feige: das Angebot verfällt · verloren: der Wettende verliert (Mini Adam hat
+// es geschafft) · zahlt: James sagt die Spende an ({name}, {betrag}, {text}) · gewonnen: der Wettende hat recht
+// behalten · trost: der Chat tröstet · geplatzt: neues Navi-Ziel. Eigenes Geld steht nie auf dem Spiel.
+export const WETTEN_LINES = {
+  text: {
+    haarscharf: '{k}× haarscharf in {secs} Sekunden',
+    sauber: '{dauer} ohne Kratzer und Rempler',
+    tempo: 'In {secs} Sekunden auf {kmh} km/h',
+    ziel: '{ort} in unter {dauer}',
+  },
+  angebot: ['Ich wette {betrag}: {text}. Das schaffst du nie! 😏', 'Wette! {text}, und ich zahle {betrag} 🎲',
+    '{betrag} sagen: {text} klappt nicht. Hup, wenn du dich traust 📯', 'Kleine Wette gefällig? {text}. Einsatz {betrag} 🤝'],
+  top: ['Top, die Wette gilt! 🤝', 'Er hat gehupt! Die Wette läuft 😬', 'Angenommen! Ich hab den Geldbeutel schon in der Hand 👀',
+    'Mutig! Dann zeig mal 🎲'],
+  feige: ['Keine Antwort ist auch eine Antwort 🐔', 'Na gut, dann eben nicht 😄', 'Angebot verfällt. Feigling! 😂'],
+  verloren: ['Okay, okay, ich zahle 😅', 'Wie hat er das gemacht?! Respekt 🫡', 'Wette verloren. Und ich freu mich trotzdem 😂',
+    'Das kostet mich was, aber das war es wert 🤑'],
+  zahlt: ['{name} verliert die Wette und zahlt {betrag}: »{text}« geschafft!', 'Wettschulden sind Ehrenschulden: {name} zahlt {betrag} für »{text}«'],
+  gewonnen: ['Hab ich doch gesagt 😎', 'Knapp daneben ist auch vorbei 😏', 'Mein Geld bleibt bei mir 🤑', 'Nächstes Mal vielleicht 😄'],
+  trost: ['Trotzdem stark gefahren 💪', 'Egal, Hauptsache Brunnen ⛲', 'Kopf hoch, Mini Adam!', 'Die nächste Wette gewinnst du'],
+  geplatzt: ['Neues Ziel? Dann ist die Wette geplatzt 🤷', 'Das Navi hat meine Wette gerettet 😅', 'Wette ungültig, das Navi war schuld'],
+};
+
 /**
  * Für schmale Chats (Handy hochkant): eine Umbruchstelle zwischen den beiden Namensteilen, damit ein langer Name
  * wie „Superchargerprinzessin“ als „Supercharger-“ / „prinzessin“ umbricht statt irgendwo mitten im Wort. Ein
@@ -90,6 +187,7 @@ export const INCOME = {
   Aktionen: 'Aktion',
   Sammelaktionen: 'Sammelaktion',
   Challenges: 'Challenge',
+  Wetten: 'Wette',
 };
 // Abzüge stehen in der Abrechnung ganz unten
 export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Ladestrom', 'Mitleidskäufe'];
@@ -573,7 +671,13 @@ export const CHAT = {
     'Pflaster für den Tesla! 🩹', 'James schreibt schon die Rechnung'],
   // der Chat will einen Gruß – kurz danach winkt Mini Adam (game/wave.js, Anlass „chat“)
   winkMal: ['Wink mal! 👋', 'Mini Adam, wink mal!', 'Einmal winken bitte! 👋', 'Wink mal in die Kamera!'],
-  nearMiss: ['WAS WAR DAS 😱', 'Knapp!!!', 'Millimeterarbeit', 'CLIP!', 'Clip it!', 'Puh…', 'Mutig!'],
+  nearMiss: ['WAS WAR DAS 😱', 'Knapp!!!', 'Millimeterarbeit', 'CLIP!', 'Clip it!', 'Puh…', 'Mutig!', 'Zentimeter! 📏',
+    'Wie auf Schienen 🚄', 'Saubere Lücke!', 'Durch! 👌', 'Der hat nicht mal geblinkt 😅', 'Herzinfarkt-TV 😂', 'Präzise wie ein Uhrwerk ⏱️',
+    'Ich hab die Luft angehalten', 'Mini Adam fädelt ein wie Oma die Nadel 🪡', 'Das Plüsch hat Nerven aus Stahl'],
+  // mehrere haarscharfe Manöver kurz hintereinander (Game.onNearMiss, MANOEUVRE): der Chat rastet aus
+  nearMissSerie: ['Der ist heute nicht zu bremsen 🔥', 'Slalom-Weltmeister! 🏆', 'CLIP IT, CLIP IT, CLIP IT 🎬',
+    'Ich kann nicht hinsehen 🙈', 'Das ist kein Stream, das ist ein Actionfilm 🎬', 'Mini Adam im Tunnel 🌀', 'WAS GEHT HIER AB 😱🔥',
+    'Mods, sichert den Clip!', 'Schon wieder?! 😂', 'Fahrschule Mini Adam, Kapitel Einfädeln', 'Ich brauch einen Bananensaft 🍌'],
   rainStart: ['Regen 🌧', 'Jetzt wird es spannend', 'Wischer.exe reagiert nicht', 'Auto-Wischer (Beta) 😂',
     'Der Herr mit den Schirmen freut sich', 'Regen! Jetzt wird der Chat wach', 'Alle ans Fenster, es regnet 👀'],
   wiper: ['Der Wischer zuckt wieder 😂', 'Der Wischer wischt nicht, der winkt nur', 'Software-Update wann?',
@@ -845,6 +949,67 @@ export const STUDIO = {
     up: ['Der Chat fängt sich wieder.', 'Im Chat hellt es sich auf.', 'Die Stimmung im Chat erholt sich.'],
     down: ['Die Stimmung im Chat hat einen kleinen Dämpfer bekommen.', 'Im Chat ist es etwas ruhiger geworden.',
       'Der Chat war eben noch besser gelaunt.'],
+  },
+  // gelungene Manöver (Game.onNearMiss, speedMark; Studio.praise): knapp ein haarscharfes Überholen, serie mehrere kurz
+  // hintereinander ({n}: als Wort), tempo eine neue Höchstgeschwindigkeit ({kmh})
+  praise: {
+    knapp: [
+      'Das war knapp, aber sauber. Der Chat hat kurz die Luft angehalten.',
+      'Schöne Lücke gefunden. Im Chat klatschen sie.',
+      'Millimeterarbeit. Ich lese gerade sehr viele Ausrufezeichen.',
+      'Saubere Linie. Der Chat will das in Zeitlupe sehen.',
+      'Da hat der Chat gezuckt, du aber nicht.',
+      'Elegant vorbei. Die Mods sichern schon den Clip.',
+      'Gut eingefädelt. So sieht Fahrkunst aus.',
+      'Präzise vorbei. Jemand fragt, ob du heimlich Rennfahrer bist.',
+    ],
+    serie: [
+      '{n} Mal haarscharf hintereinander. Der Chat steht Kopf.',
+      '{n} Manöver am Stück. Im Chat fliegen die Mützen.',
+      'Das war Nummer {n} in Folge. Ich komme mit dem Vorlesen nicht mehr hinterher.',
+      '{n} Mal knapp vorbei, und kein Kratzer. Der Chat ist begeistert.',
+      'Eine Serie von {n}. Das wird der Clip des Abends.',
+    ],
+    tempo: [
+      '{kmh} Sachen. Im Chat hält sich jemand an der Tischkante fest.',
+      'Tacho {kmh}. Der Chat jubelt, und das Plüsch flattert.',
+      '{kmh} auf der Uhr. So schnell war heute noch keiner.',
+      'Neue Bestmarke, {kmh}. Der Chat feiert jeden Kilometer.',
+    ],
+    // sauber durch die Baustelle (game/baustelle.js; {kmh}: im Schnitt)
+    baustelle: [
+      'Durch die Baustelle, und keine einzige Bake berührt. Der Chat applaudiert.',
+      'Saubere Fahrt durch die Baustelle. So geht Präzision.',
+      'Keine Bake hat gewackelt. Die Bauarbeiter würden winken.',
+      'Mit {kmh} im Schnitt durch die Gasse, und alles heil. Respekt.',
+    ],
+    // eine Spontan-Wette gewonnen (game/wetten.js; {name}: wer gewettet hat und nun zahlt)
+    wette: [
+      'Wette gewonnen. {name} zahlt, und der Chat lacht mit.',
+      '{name} hat dagegen gewettet. Das war ein Fehler.',
+      'Die Wette geht an uns. Danke, {name}, für den Einsatz.',
+      'Gewettet, gefahren, gewonnen. {name} nimmt es sportlich.',
+    ],
+  },
+  // Das Gedächtnis des Studios (game/gedaechtnis.js; der Eigentümer, 27.11.2026: „Auch das Sprachstudio soll eine
+  // Erinnerung haben“): was es aus früheren Streams weiß – aus Album, Rekorden und Statistik des Spielstands
+  memory: {
+    // zu Beginn eines Streams: ein Gruß ({nr}: der wievielte Stream) und ein, zwei Dinge, an die es sich erinnert
+    hallo: ['Willkommen zu Stream Nummer {nr}.', 'Stream Nummer {nr}, schön, dass ihr alle wieder da seid.', 'Das ist unser {nr}. Stream zusammen.'],
+    erster: ['Unser allererster Stream. Ich bin gespannt, wohin es geht.'],
+    zuletzt: ['Beim letzten Mal gab es {folgen}, zuletzt in {ort}.', 'Letztes Mal endete die Reise mit einem Brunnen in {ort}.',
+      'Ich denke noch an {ort}, dort war die letzte Folge.'],
+    album: ['Im Album stehen schon {n} Folgen BrunnenTV.', '{n} Brunnen haben wir schon besucht. Jeder einzelne ist im Album.'],
+    rekord: ['Unser Streckenrekord liegt bei {km}. Mal sehen, ob heute mehr geht.', 'Rekord bisher: {km}. Der Chat wettet schon.'],
+    geld: ['Der beste Stream brachte {geld}. Kein Druck.', 'Rekord-Einnahmen bisher: {geld}. Der Chat ist bereit.'],
+    // nach einer Folge: wieder ({k}: der wievielte Besuch, {ort}) · rund ({n}: eine runde Zahl im Album) · neu ({n})
+    wieder: ['Das war schon unser {k}. Besuch in {ort}. Der Brunnen hat uns wiedererkannt.', '{ort}, zum {k}. Mal. Wir sind hier schon Stammgäste.',
+      'In {ort} waren wir schon {vorher}. Der Chat erinnert sich auch.'],
+    rund: ['Folge {n} im Album. Darauf einen Bananensaft.', 'Das war Folge Nummer {n}. Herr Schönnbrun wäre stolz.',
+      '{n} Folgen BrunnenTV. Wir schreiben Geschichte.'],
+    neu: ['Ein neuer Brunnen fürs Album. Nummer {n}.', '{ort} ist neu im Album. Folge {n}.'],
+    // die Strecke dieses Streams übertrifft den Rekord aller Streams ({km}: der alte Rekord)
+    streckenrekord: ['Neuer Streckenrekord! So weit wie heute sind wir noch nie gekommen.', 'Wir haben eben den alten Rekord von {km} geknackt. Der Chat feiert.'],
   },
   // woran es liegt (Stichworte aus game/economy.js): was die Stimmung gehoben (up) oder gedrückt (down) hat
   why: {

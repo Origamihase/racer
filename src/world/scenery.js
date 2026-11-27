@@ -15,6 +15,7 @@ import { MEDIAN_X, ONCOMING, GRASS_TINT } from './road.js';
 import { dropInGeo } from './kit/nature.js';
 import { box, rod, ball, lathe, bar, sweep, move, fuse, tone, blend } from './kit/shapes.js';
 import { PAL } from './kit/palette.js';
+import { bakenBetween } from './baustelle-plan.js';
 import { fieldTexture, FIELD_V } from './xxl/fieldtex.js';
 import { CROPS } from './xxl/fieldplan.js';
 import { LAYER } from './xxl/ground.js';
@@ -48,7 +49,7 @@ const LANDMARK_OFFSET = 75;
 // draußen), Blitzer, Tempo-Schild (zwei Pfosten: rechts und am Mittelstreifen)
 const FOUNTAIN_X = ROAD.right + 9;
 const LANDMARK_X = [FOUNTAIN_X, ELSA_STATUE.x, ELSA_FAR.x];
-const REQUEST_X = { brunnen: [FOUNTAIN_X], elsa: [ELSA_STATUE.x, ELSA_FAR.x], blitzer: [ROAD.right + 1.6], speed: [ROAD.right + 1.3, MEDIAN_X] };
+const REQUEST_X = { brunnen: [FOUNTAIN_X], elsa: [ELSA_STATUE.x, ELSA_FAR.x], blitzer: [ROAD.right + 1.6], speed: [ROAD.right + 1.3, MEDIAN_X], bauSchild: [ROAD.right + 1.3, MEDIAN_X] };
 const WAVE_T = 2.6; // so lange winkt Elsa zurück (s)
 
 // Bildseiten von Schildern, Tafeln und Fenstern vor einer Fläche: Die Tiefenauflösung reicht in 450 m
@@ -875,6 +876,16 @@ export class Scenery {
         obj.position.set(0, 0, z);
         break;
       }
+      // Baustelle (world/baustelle-plan.js): die Leitbaken eines Stücks (data.k: das wievielte 100-m-Stück ab dem
+      // Beginn; jedes Stück sieht in jeder Baustelle gleich aus) und das Warnschild davor
+      case 'baken':
+        obj = this.acquire('baken:' + r.data.k, () => this.makeBaken(r.data.k));
+        obj.position.set(0, 0, z);
+        break;
+      case 'bauSchild':
+        obj = this.acquire('bauSchild', () => this.makeBauSchild());
+        obj.position.set(0, 0, z);
+        break;
       default:
         return;
     }
@@ -1190,6 +1201,125 @@ export class Scenery {
       post.position.set(x, 1.3, 0);
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.0), mat);
       sign.position.set(x, 2.5, 0.1);
+      g.add(post, sign);
+    }
+    return g;
+  }
+
+  /**
+   * Die Leitbaken des k-ten 100-m-Stücks einer Baustelle: rot-weiß gestreifte Tafeln auf schwarzem Fuß, oben eine
+   * gelbe Warnleuchte – alles in drei Meshes (Tafeln, Füße, Leuchten). Die Streifen fallen zur Fahrbahn hin ab.
+   */
+  makeBaken(k) {
+    if (!this.mats.bake) {
+      const tex = this.canvasTex('leitbake', 64, 256, (ctx, w, h) => {
+        ctx.fillStyle = '#f4f4f0';
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = '#d0202a';
+        for (let i = -2; i < 8; i++) {
+          ctx.beginPath();
+          ctx.moveTo(0, i * 40);
+          ctx.lineTo(w, i * 40 + 34);
+          ctx.lineTo(w, i * 40 + 54);
+          ctx.lineTo(0, i * 40 + 20);
+          ctx.fill();
+        }
+        ctx.strokeStyle = '#9a9a96';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(0, 0, w, h);
+      });
+      this.mats.bake = W.std({ map: tex, roughness: 0.45, side: THREE.DoubleSide });
+      this.mats.bakeFoot = W.std({ vertexColors: true, roughness: 0.85 });
+      this.mats.bakeLamp = W.basic({ color: 0xffc21a });
+    }
+    const plates = [];
+    const feet = [];
+    const lamps = [];
+    const plate = new THREE.PlaneGeometry(0.25, 1.0);
+    plate.translate(0, 0.78, 0);
+    const foot = box(0.42, 0.1, 0.62, { col: 0x1c1c1e });
+    const post = box(0.05, 0.3, 0.05, { col: 0x2a2a2c });
+    const lamp = new THREE.CylinderGeometry(0.09, 0.09, 0.07, 10);
+    lamp.rotateX(Math.PI / 2);
+    for (const b of bakenBetween(k * 100, (k + 1) * 100)) {
+      const z = -(b.u - k * 100);
+      // (die Streifen fallen nach außen hin ab: links gespiegelt)
+      plates.push(move(plate, { at: [b.x, 0, z], s: [b.side < 0 ? -1 : 1, 1, 1] }));
+      feet.push(move([foot, post], { at: [b.x, 0, z] }));
+      lamps.push(move(lamp, { at: [b.x, 1.38, z] }));
+    }
+    const g = new THREE.Group();
+    if (!plates.length) return g;
+    g.add(new THREE.Mesh(mergeGeometries(plates.flat()), this.mats.bake));
+    g.add(new THREE.Mesh(fuse(feet), this.mats.bakeFoot));
+    g.add(new THREE.Mesh(mergeGeometries(lamps.flat()), this.mats.bakeLamp));
+    return g;
+  }
+
+  /** Warnschild „Baustelle“ (Zeichen 123) rechts und am Mittelstreifen, mit dem Zusatz „1 km“ darunter. */
+  makeBauSchild() {
+    const tex = this.canvasTex('bauSchild', 256, 300, (ctx, w) => {
+      ctx.clearRect(0, 0, w, 300);
+      ctx.fillStyle = '#c8102e';
+      ctx.beginPath();
+      ctx.moveTo(128, 6);
+      ctx.lineTo(250, 220);
+      ctx.lineTo(6, 220);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(128, 40);
+      ctx.lineTo(220, 202);
+      ctx.lineTo(36, 202);
+      ctx.closePath();
+      ctx.fill();
+      // der Arbeiter mit der Schaufel am Haufen
+      ctx.fillStyle = '#111';
+      ctx.strokeStyle = '#111';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(112, 108, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 11;
+      ctx.beginPath();
+      ctx.moveTo(108, 122);
+      ctx.lineTo(118, 158);
+      ctx.lineTo(104, 190);
+      ctx.moveTo(118, 158);
+      ctx.lineTo(132, 188);
+      ctx.moveTo(110, 128);
+      ctx.lineTo(140, 150);
+      ctx.stroke();
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(128, 136);
+      ctx.lineTo(160, 176);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(150, 194);
+      ctx.quadraticCurveTo(176, 160, 200, 194);
+      ctx.closePath();
+      ctx.fill();
+      // Zusatzzeichen
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(58, 232, 140, 60);
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(58, 232, 140, 60);
+      ctx.fillStyle = '#111';
+      ctx.font = 'bold 40px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('1 km', 128, 263);
+    });
+    const mat = W.std({ ...FRONT, map: tex, transparent: true, alphaTest: 0.4, roughness: 0.5 });
+    const g = new THREE.Group();
+    for (const x of [ROAD.right + 1.3, MEDIAN_X]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.9, 6), this.mats.steel);
+      post.position.set(x, 1.45, 0);
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.4), mat);
+      sign.position.set(x, 2.45, 0.1);
       g.add(post, sign);
     }
     return g;
