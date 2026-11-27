@@ -150,11 +150,16 @@ const SPECIAL = { Augsburg: 'fountainOrigin', 'Nürnberg': 'fountainBoss' };
 export const FOUNTAIN_R = {
   fountainTrough: 2.8, fountainMarket: 4.2, fountainBowls: 4.3, fountainJets: 4.6, fountainGrand: 7.5, fountainOrigin: 4.5, fountainBoss: 7.3,
   fountainPond: 5.6, fountainWell: 2.4, fountainFrog: 2.7, fountainGoose: 2.8, fountainFish: 2.8, fountainLion: 2.8, fountainCube: 2.8, fountainRing: 4.1,
+  fountainGothic: 4.2, fountainPump: 1.9, fountainSphere: 2.6, fountainCascade: 4.2, fountainObelisk: 4.2, fountainPilz: 4.2, fountainWood: 2.6,
+  fountainTempel: 3.4, fountainWallace: 1.9, fountainDolphin: 4.0, fountainStar: 2.8, fountainBamboo: 2.6,
 };
 // Namen derselben Brunnen (info.title, ebenso geprüft): so heißt die Art im Album
 export const FOUNTAIN_TITLE = {
   fountainTrough: 'Dorfbrunnen', fountainMarket: 'Marktbrunnen', fountainBowls: 'Schalenbrunnen', fountainJets: 'Wasserspiel', fountainGrand: 'Prachtbrunnen', fountainOrigin: 'Der Ursprung', fountainBoss: 'Der Endgegner',
   fountainPond: 'Fontäne im Teich', fountainWell: 'Ziehbrunnen', fountainFrog: 'Froschbrunnen', fountainGoose: 'Gänselieselbrunnen', fountainFish: 'Fischbrunnen', fountainLion: 'Löwenbrunnen', fountainCube: 'Wassertisch', fountainRing: 'Rundbecken',
+  fountainGothic: 'Gotischer Brunnen', fountainPump: 'Schwengelpumpe', fountainSphere: 'Kugelbrunnen', fountainCascade: 'Wassertreppe', fountainObelisk: 'Obeliskbrunnen',
+  fountainPilz: 'Pilzbrunnen', fountainWood: 'Holzbrunnen', fountainTempel: 'Brunnentempel', fountainWallace: 'Wallace-Brunnen', fountainDolphin: 'Delfinbrunnen',
+  fountainStar: 'Sternbrunnen', fountainBamboo: 'Bambusbrunnen',
 };
 // Die Namen, die ein Hauptbrunnen tragen kann, je Art: Jeder Brunnen bekommt aus seiner Kennung (dem Ort) einen Namen,
 // und der Name bestimmt, wie er aussieht – ein Gänselieselbrunnen hat seine Figur, ein Marktbrunnen die Säule, ein
@@ -174,6 +179,18 @@ export const FOUNTAIN_NAMES = {
   fountainJets: ['Wasserspiel', 'Fontänenfeld', 'Sprudelplatz'],
   fountainPond: ['Fontäne im Teich', 'Teichfontäne', 'Parkfontäne'],
   fountainGrand: ['Prachtbrunnen', 'Schlossbrunnen', 'Kurbrunnen'],
+  fountainGothic: ['Gotischer Brunnen', 'Fialenbrunnen', 'Turmbrunnen'],
+  fountainPump: ['Schwengelpumpe', 'Straßenpumpe', 'Stadtpumpe'],
+  fountainSphere: ['Kugelbrunnen', 'Granitkugel', 'Steinkugelbrunnen'],
+  fountainCascade: ['Wassertreppe', 'Kaskade', 'Stufenbrunnen'],
+  fountainObelisk: ['Obeliskbrunnen', 'Nadelbrunnen', 'Pyramidenbrunnen'],
+  fountainPilz: ['Pilzbrunnen', 'Betonpilze', 'Schirmbrunnen'],
+  fountainWood: ['Holzbrunnen', 'Almbrunnen', 'Baumstammbrunnen'],
+  fountainTempel: ['Brunnentempel', 'Quelltempel', 'Heilquelle'],
+  fountainWallace: ['Wallace-Brunnen', 'Karyatidenbrunnen', 'Gusseisenbrunnen'],
+  fountainDolphin: ['Delfinbrunnen', 'Muschelbrunnen', 'Fontana'],
+  fountainStar: ['Sternbrunnen', 'Kachelbrunnen', 'Patiobrunnen'],
+  fountainBamboo: ['Bambusbrunnen', 'Steinbecken', 'Wasserbambus'],
 };
 // Welche Arten zur Größe eines Orts passen (gewählt wird nur, was auch auf die Insel seines Platzes passt, slotKind)
 const KINDS = {
@@ -182,6 +199,108 @@ const KINDS = {
   stadt: ['fountainBowls', 'fountainJets', 'fountainMarket', 'fountainRing', 'fountainCube', 'fountainLion', 'fountainGoose', 'fountainFish', 'fountainFrog'],
   gross: ['fountainGrand', 'fountainBowls', 'fountainJets', 'fountainRing', 'fountainPond', 'fountainCube', 'fountainLion', 'fountainGoose', 'fountainFish', 'fountainMarket'],
 };
+// Die dritte Familie (27.11.2026) passt nicht überall hin: in welche Ortsgrößen jede Art gehört
+const NEW_SIZES = {
+  fountainGothic: ['dorf', 'klein', 'stadt', 'gross'],
+  fountainPump: ['dorf', 'klein', 'stadt'],
+  fountainSphere: ['klein', 'stadt', 'gross'],
+  fountainCascade: ['klein', 'stadt', 'gross'],
+  fountainObelisk: ['klein', 'stadt', 'gross'],
+  fountainPilz: ['klein', 'stadt', 'gross'],
+  fountainWood: ['dorf', 'klein'],
+  fountainTempel: ['dorf', 'klein', 'stadt'],
+  fountainWallace: ['dorf', 'klein', 'stadt', 'gross'],
+  fountainDolphin: ['klein', 'stadt', 'gross'],
+  fountainStar: ['dorf', 'klein', 'stadt'],
+  fountainBamboo: ['dorf', 'klein', 'stadt', 'gross'],
+};
+const sizeFits = (k, size) => KINDS[size].includes(k) || (NEW_SIZES[k] ?? []).includes(size);
+/**
+ * Brunnen, die zu einer Bauweise gehören (Steckbrief s, steckbrief.js LOOK_KEYS): Der Besitzer am 27.11.2026: „Das
+ * Spiel braucht noch mehr Arten von Brunnen“ – und sie sollen zum Ort passen: Gotik und Röhrbrunnen in der
+ * Fachwerkstadt, Holztrog in den Alpen, Pilzbrunnen vor der Platte, Brunnentempel im Kurort, Wallace-Brunnen in Paris,
+ * Delfine in Italien, Kacheln in Spanien, Bambus in Japan. Jede Bauweise hat mehrere, damit Nachbarorte gleicher
+ * Bauweise verschiedene bekommen.
+ */
+export const STYLE_KINDS = {
+  default: ['fountainPump', 'fountainMarket', 'fountainLion', 'fountainBowls', 'fountainGoose', 'fountainFrog', 'fountainRing', 'fountainFish'],
+  fachwerk: ['fountainGothic', 'fountainTrough', 'fountainGoose', 'fountainLion', 'fountainMarket', 'fountainWell', 'fountainFish'],
+  schiefer: ['fountainGothic', 'fountainTrough', 'fountainPump', 'fountainLion', 'fountainWell'],
+  kurort: ['fountainTempel', 'fountainCascade', 'fountainWallace', 'fountainBowls', 'fountainSphere', 'fountainGrand', 'fountainRing', 'fountainFrog'],
+  gruenderzeit: ['fountainPump', 'fountainBowls', 'fountainObelisk', 'fountainRing', 'fountainMarket', 'fountainLion', 'fountainWallace'],
+  sandstein: ['fountainGothic', 'fountainLion', 'fountainMarket', 'fountainBowls', 'fountainTrough'],
+  brick: ['fountainPump', 'fountainFish', 'fountainMarket', 'fountainSphere', 'fountainGothic', 'fountainRing'],
+  alpine: ['fountainWood', 'fountainTrough', 'fountainWell', 'fountainMarket'],
+  barock: ['fountainCascade', 'fountainObelisk', 'fountainTempel', 'fountainBowls', 'fountainLion', 'fountainDolphin'],
+  platte: ['fountainPilz', 'fountainSphere', 'fountainPump', 'fountainCube', 'fountainJets', 'fountainRing'],
+  nachkrieg: ['fountainPilz', 'fountainSphere', 'fountainCube', 'fountainPump', 'fountainJets', 'fountainRing'],
+  baeder: ['fountainTempel', 'fountainWallace', 'fountainCascade', 'fountainSphere', 'fountainRing', 'fountainFish'],
+  schwarzwald: ['fountainWood', 'fountainTrough', 'fountainWell'],
+  dutch: ['fountainPump', 'fountainFish', 'fountainSphere', 'fountainCube'],
+  med: ['fountainDolphin', 'fountainStar', 'fountainObelisk', 'fountainBowls', 'fountainLion'],
+  nordic: ['fountainSphere', 'fountainCube', 'fountainPump', 'fountainJets', 'fountainFish'],
+  british: ['fountainWallace', 'fountainPump', 'fountainObelisk', 'fountainBowls', 'fountainLion'],
+  american: ['fountainWallace', 'fountainSphere', 'fountainJets', 'fountainRing', 'fountainBowls', 'fountainPond'],
+  japanese: ['fountainBamboo', 'fountainSphere', 'fountainCube'],
+  haussmann: ['fountainWallace', 'fountainObelisk', 'fountainCascade', 'fountainBowls', 'fountainGrand'],
+  laube: ['fountainGothic', 'fountainLion', 'fountainTrough', 'fountainMarket', 'fountainWood'],
+  levante: ['fountainStar', 'fountainDolphin', 'fountainObelisk', 'fountainCube'],
+  kolonial: ['fountainDolphin', 'fountainStar', 'fountainObelisk', 'fountainBowls', 'fountainRing'],
+  altstadt: ['fountainGothic', 'fountainMarket', 'fountainObelisk', 'fountainLion', 'fountainGoose'],
+};
+// Gewicht der Bauweise gegen das allgemeine Angebot der Ortsgröße (im Ausland eigene Brunnen fast immer: Der
+// Besitzer am 25.11.: „Gerade das Ausland sollte sich doch von Deutschland abheben“)
+const STYLE_W = { DE: 0.8, abroad: 0.95 };
+// was im Ausland neben den Brunnen der Bauweise in Frage kommt: nichts typisch Deutsches
+// Orte, deren Brunnen jeder kennt: die Art steht fest (wenn sie auf den Platz passt)
+const OWN_KIND = { Rom: 'fountainDolphin', Tokio: 'fountainBamboo', Osaka: 'fountainBamboo', 'Baden-Baden': 'fountainTempel' };
+// Arten, die nur in ihre Gegend gehören (Länder): Kacheln dorthin, wo die Mauren und ihre Erben bauten, Bambus nach Japan
+const ONLY_IN = {
+  fountainStar: new Set(['ES', 'PT', 'MT', 'JO', 'MX', 'DO', 'CV']),
+  fountainBamboo: new Set(['JP']),
+};
+// Namen, die nur in ihre Gegend passen (sonst trägt der Brunnen einen seiner anderen Namen)
+const NAME_ONLY = {
+  'Wallace-Brunnen': new Set(['FR', 'MC', 'BE', 'LU', 'CH']),
+  Fontana: new Set(['IT', 'VA', 'MT', 'CH']),
+};
+// kleinster Anteil, den der Brunnen vom Radius seiner Insel einnimmt
+const MIN_FILL = 0.5;
+const NEUTRAL = new Set(['fountainBowls', 'fountainRing', 'fountainJets', 'fountainCube', 'fountainGrand', 'fountainPond', 'fountainMarket']);
+
+/**
+ * Brunnenarten, die für den Hauptbrunnen eines Orts in Frage kommen, mit Gewicht: die seiner Bauweisen (nach ihrem
+ * Anteil im Steckbrief) und, schwächer, das allgemeine Angebot seiner Größe; nur Arten, die zur Größe passen und auf
+ * die Insel seines Platzes. Ergebnis: [[Art, Gewicht], …] in fester Reihenfolge.
+ */
+export function fountainChoices(place, size = sizeOf(place.pop ?? 0)) {
+  const slot = FOUNTAIN_R[slotKind(place, size)];
+  // nicht zu klein für die Insel: Eine Schwengelpumpe ginge mitten auf dem Platz einer Stadt im Garten unter
+  const fits = (k) => FOUNTAIN_R[k] <= slot && FOUNTAIN_R[k] >= slot * MIN_FILL && sizeFits(k, size) && (!ONLY_IN[k] || ONLY_IN[k].has(place.cc));
+  const home = place.cc === 'DE' || !place.cc;
+  const sw = home ? STYLE_W.DE : STYLE_W.abroad;
+  const w = new Map();
+  const add = (k, v) => w.set(k, (w.get(k) ?? 0) + v);
+  const looks = profileOf(place).looks;
+  let styled = 0;
+  for (const [look, share] of looks) {
+    // die ersten Arten einer Bauweise sind ihre typischsten: mehr Gewicht; was nicht passt, gibt sein Gewicht an das
+    // allgemeine Angebot ab (sonst bekäme ein kleiner Platz immer dieselbe eine Art, die passt)
+    const list = STYLE_KINDS[look] ?? [];
+    const ws = list.map((_, i) => 1 / (1 + i * 0.45));
+    const sum = ws.reduce((a, c) => a + c, 0);
+    list.forEach((k, i) => {
+      if (!fits(k)) return;
+      add(k, (sw * share * ws[i]) / sum);
+      styled += (share * ws[i]) / sum;
+    });
+  }
+  const base = KINDS[size].filter((k) => fits(k) && (home || NEUTRAL.has(k)));
+  const rest = 1 - sw * styled;
+  for (const k of base) add(k, rest / base.length);
+  return [...w.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+}
+
 // Insel des Zielbrunnens im Straßenbau: Bordstein und ein schmaler Pflasterring um das Becken, höchstens 8 m Radius
 export const ISLAND = { kerb: 0.45, ring: 0.35, max: 8 };
 // Tiefes Standbild einer Folge (world/xxl/brunnentv.js stillShot): die Kamera steht neben dem Becken, um a (Bogenmaß)
@@ -231,9 +350,27 @@ function slotKind(place, size) {
 export function fountainName(place, size = sizeOf(place.pop ?? 0)) {
   const special = SPECIAL[place.key] ?? SPECIAL[place.name];
   if (special) return FOUNTAIN_TITLE[special];
-  const slot = FOUNTAIN_R[slotKind(place, size)];
-  const names = KINDS[size].filter((k) => FOUNTAIN_R[k] <= slot).flatMap((k) => FOUNTAIN_NAMES[k]);
-  return names[hashKey('Brunnenname ' + (place.key ?? place.name)) % names.length];
+  const key = place.key ?? place.name;
+  const own = OWN_KIND[key];
+  const named = (k) => {
+    const all = FOUNTAIN_NAMES[k];
+    const names = all.filter((n) => !NAME_ONLY[n] || NAME_ONLY[n].has(place.cc ?? 'DE'));
+    const list = names.length ? names : all;
+    return list[hashKey('Brunnenname ' + key) % list.length];
+  };
+  if (own && FOUNTAIN_R[own] <= FOUNTAIN_R[slotKind(place, size)] && sizeFits(own, size)) return named(own);
+  const choices = fountainChoices(place, size);
+  const total = choices.reduce((a, [, v]) => a + v, 0);
+  let x = (hashKey('Brunnenart ' + key) / 4294967296) * total;
+  let kind = choices[choices.length - 1][0];
+  for (const [k, v] of choices) {
+    if (x < v) {
+      kind = k;
+      break;
+    }
+    x -= v;
+  }
+  return named(kind);
 }
 
 /** Art eines Brunnens nach seinem Namen (FOUNTAIN_NAMES, Sonderbrunnen nach ihrem Titel) oder null. */

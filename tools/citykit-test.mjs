@@ -236,6 +236,38 @@ for (const row of PLACES) {
   ok(used >= 12 && same / pairs < 0.15, `Brunnen zu gleichförmig: ${used} Arten, ${(100 * same / pairs).toFixed(1)} % gleiche Nachbarn`);
   console.log(`Hauptbrunnen: ${used} Arten, ${new Set(all.map((p) => L.fountainName(p))).size} Namen; gleiche Art bei den drei nächsten Orten: ${(100 * same / pairs).toFixed(1)} %`);
 }
+// Der Brunnen passt zum Ort (Besitzer, 27.11.2026: „Das Spiel braucht noch mehr Arten von Brunnen“): Jede Art des
+// Hauptbrunnens kommt aus den Brunnen seiner Bauweisen (layout.js STYLE_KINDS) oder dem allgemeinen Angebot seiner
+// Größe; im Ausland nie ein typisch deutscher (Gänseliesel, Frosch, Ziehbrunnen, Dorftrog); jede Art der dritten
+// Familie steht in mindestens einem Ort; Japan hat Bambus, die Alpen Holzbrunnen, die Platte Pilzbrunnen.
+{
+  const { places: all } = await import('../src/map/graph.js');
+  const GERMAN = new Set(['fountainGoose', 'fountainFrog', 'fountainWell', 'fountainTrough']);
+  const THIRD = ['fountainGothic', 'fountainPump', 'fountainSphere', 'fountainCascade', 'fountainObelisk', 'fountainPilz', 'fountainWood', 'fountainTempel', 'fountainWallace', 'fountainDolphin', 'fountainStar', 'fountainBamboo'];
+  const count = new Map();
+  const byLook = new Map();
+  for (const p of all) {
+    const k = L.goalKind(p);
+    count.set(k, (count.get(k) ?? 0) + 1);
+    const looks = L.profileOf(p).looks.map(([l]) => l);
+    for (const l of looks) {
+      if (!byLook.has(l)) byLook.set(l, new Set());
+      byLook.get(l).add(k);
+    }
+    if (k === 'fountainOrigin' || k === 'fountainBoss') continue;
+    const choices = L.fountainChoices(p).map(([c]) => c);
+    const own = ['Rom', 'Tokio', 'Osaka', 'Baden-Baden'].includes(p.key);
+    ok(own || choices.includes(k), `${p.name}: ${k} gehört weder zu seiner Bauweise noch zu seiner Größe`);
+    ok(L.FOUNTAIN_R[k] <= L.islandRadius(p) - L.ISLAND.kerb + 1e-9, `${p.name}: ${k} passt nicht auf seine Insel`);
+    if (p.cc !== 'DE') ok(!GERMAN.has(k) || looks.some((l) => L.STYLE_KINDS[l]?.includes(k)), `${p.name} (${p.cc}): deutscher Brunnen ${k} im Ausland`);
+  }
+  for (const k of THIRD) ok((count.get(k) ?? 0) >= 1, `Brunnenart ${k} steht in keinem Ort`);
+  for (const [look, k] of [['japanese', 'fountainBamboo'], ['alpine', 'fountainWood'], ['platte', 'fountainPilz'], ['nachkrieg', 'fountainPilz'], ['med', 'fountainDolphin'], ['haussmann', 'fountainObelisk'], ['kurort', 'fountainTempel'], ['fachwerk', 'fountainGothic'], ['american', 'fountainWallace']]) {
+    ok(byLook.get(look)?.has(k), `Bauweise ${look}: kein ${k}`);
+  }
+  ok(L.goalKind({ key: 'Tokio', name: 'Tokio', cc: 'JP', pop: 14000000, lat: 35.7, lon: 139.7 }) === 'fountainBamboo', 'Tokio hat keinen Bambusbrunnen');
+  console.log(`Brunnen nach Bauweise: ${THIRD.map((k) => k.slice(8) + ' ' + (count.get(k) ?? 0)).join(', ')}`);
+}
 
 // Orte in der XXL-Welt (src/world/xxl/towns.js): der Straßenbau baut Fahrbahn, Bordstein, Gehweg und die Insel des
 // Zielbrunnens, der Plan kennt sie. Für jeden Ort der Karte mit der Insel, wie der Straßenbau sie legt: genau ein
