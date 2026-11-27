@@ -22,11 +22,18 @@ export const BAUSTELLE = { first: [5000, 8000], every: [10000, 16000], ahead: 13
  * Ihre Gasse ließe die Ausfahrt nicht erreichen. Davor (ab from, dem Wagen) darf eine liegen, an der der Plan
  * geradeaus fährt – nimmt er sie, käme der Wagen nie bis zur Baustelle.
  */
-function forkBetween(trip, s0, s1, from = s0) {
+export function forkBetween(trip, s0, s1, from = s0) {
   if (!trip.cur) return false;
   for (const c of trip.cur.sections) {
     const f = c.fork;
-    if (!f || f.taken || f.s <= from || f.s >= s1) continue;
+    if (!f || f.s >= s1) continue;
+    // (schon entschieden: Fährt der Wagen gerade ab – auf dem Verzögerungsstreifen, oder eben hinter der Gabelung –, kommt
+    // er nie dorthin)
+    if (f.taken) {
+      if (f.taken === 'exit' && f.s > from - 400) return true;
+      continue;
+    }
+    if (f.s <= from) continue;
     // (davor nur eine Ausfahrt, die der Plan nimmt: Dann käme der Wagen gar nicht bis zur Baustelle)
     if (f.s > s0 || f.forced || trip.planFor(f) === 'exit') return true;
   }

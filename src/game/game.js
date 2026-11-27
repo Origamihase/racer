@@ -5,7 +5,7 @@
 // und hängen ihre Methoden an Game an (attachParts, unten). Der Akku ist eine eigene Klasse (akku.js, this.akku).
 import {
   CHAT, BOTS, BOARD, JOB_TEMPLATES, REPARATUR, CREW, INCOME, viewerName, fillTemplate, alterReaction, berufFor, fmtBetrag, PARTYPEOPLE,
-  frontalCost, damageCost, BUSSGELD,
+  frontalCost, damageCost, BUSSGELD, RADIO_LINES,
 } from '../data.js';
 import { clamp, rand, chance, pick, shuffle, fmtCent, fmtEuro, fmtClock } from '../util.js';
 import { Player } from './player.js';
@@ -715,6 +715,17 @@ export class Game {
   }
 
   // --- Tasten ---------------------------------------------------------------------------
+  /**
+   * Mini Adam hat das Autoradio umgeschaltet (main.js, src/radio.js; id: Sender oder null für aus): Der Chat hört mit,
+   * aber nicht bei jedem schnellen Weiterschalten (höchstens alle 8 Sekunden).
+   */
+  onRadio(id) {
+    if (this.t - (this.radioT ?? -99) < 8) return;
+    this.radioT = this.t;
+    const lines = RADIO_LINES[id || 'aus'];
+    if (lines) this.later(1.2, () => this.burst(lines, id ? 2 : 1, 2));
+  }
+
   honk() {
     this.audio.horn();
     this.lastHorn = this.t;
