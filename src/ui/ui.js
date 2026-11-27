@@ -102,6 +102,8 @@ export class UI {
     this.dmgBadge = new DamageBadge(this.damageEl.parentNode, this.damageEl);
     this.cruiseBadge = new CruiseBadge(this.speedEl.parentNode);
     this.jobsEl = el('div', 'jobs-mini', info);
+    // die laufende Spontan-Wette (game/wetten.js) unter den Jobs: Text, Restzeit, Stand
+    this.wetteEl = el('div', 'wette-mini', info);
 
     // --- Streifen oben, zwischen Info-Feld und Chat: was das Navi sagt, darunter ein Hinweis nach dem anderen ---
     const strip = el('div', 'top-strip', this.hud);
@@ -748,6 +750,19 @@ export class UI {
         el('span', 'job-fill', b).style.width = Math.round(j.progress * 100) + '%';
       }
     }
+  }
+
+  /** Die laufende Spontan-Wette (row: { text, progress 0..1, left: Sekunden oder null }) oder keine (null). */
+  wette(row) {
+    const e = this.wetteEl;
+    e.textContent = '';
+    e.classList.toggle('on', !!row);
+    if (!row) return;
+    const top = el('div', 'wette-top', e);
+    el('span', 'wette-text', top, row.text);
+    if (row.left !== null) el('span', 'wette-left' + (row.left <= 10 ? ' eng' : ''), top, `${row.left} s`);
+    const b = el('span', 'job-bar wette-bar', e);
+    el('span', 'job-fill', b).style.width = Math.round(row.progress * 100) + '%';
   }
 
   /**

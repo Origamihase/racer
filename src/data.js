@@ -86,6 +86,30 @@ export const STAMM_LINES = {
   },
 };
 
+// Spontan-Wetten (game/wetten.js): text je Wette ({k}, {secs}, {kmh}, {ort}, {min}, {dauer}) · angebot im Chat
+// ({text}, {betrag}) · top: angenommen · feige: das Angebot verfällt · verloren: der Wettende verliert (Mini Adam hat
+// es geschafft) · zahlt: James sagt die Spende an ({name}, {betrag}, {text}) · gewonnen: der Wettende hat recht
+// behalten · trost: der Chat tröstet · geplatzt: neues Navi-Ziel. Eigenes Geld steht nie auf dem Spiel.
+export const WETTEN_LINES = {
+  text: {
+    haarscharf: '{k}× haarscharf in {secs} Sekunden',
+    sauber: '{dauer} ohne Kratzer und Rempler',
+    tempo: 'In {secs} Sekunden auf {kmh} km/h',
+    ziel: '{ort} in unter {dauer}',
+  },
+  angebot: ['Ich wette {betrag}: {text}. Das schaffst du nie! 😏', 'Wette! {text}, und ich zahle {betrag} 🎲',
+    '{betrag} sagen: {text} klappt nicht. Hup, wenn du dich traust 📯', 'Kleine Wette gefällig? {text}. Einsatz {betrag} 🤝'],
+  top: ['Top, die Wette gilt! 🤝', 'Er hat gehupt! Die Wette läuft 😬', 'Angenommen! Ich hab den Geldbeutel schon in der Hand 👀',
+    'Mutig! Dann zeig mal 🎲'],
+  feige: ['Keine Antwort ist auch eine Antwort 🐔', 'Na gut, dann eben nicht 😄', 'Angebot verfällt. Feigling! 😂'],
+  verloren: ['Okay, okay, ich zahle 😅', 'Wie hat er das gemacht?! Respekt 🫡', 'Wette verloren. Und ich freu mich trotzdem 😂',
+    'Das kostet mich was, aber das war es wert 🤑'],
+  zahlt: ['{name} verliert die Wette und zahlt {betrag}: »{text}« geschafft!', 'Wettschulden sind Ehrenschulden: {name} zahlt {betrag} für »{text}«'],
+  gewonnen: ['Hab ich doch gesagt 😎', 'Knapp daneben ist auch vorbei 😏', 'Mein Geld bleibt bei mir 🤑', 'Nächstes Mal vielleicht 😄'],
+  trost: ['Trotzdem stark gefahren 💪', 'Egal, Hauptsache Brunnen ⛲', 'Kopf hoch, Mini Adam!', 'Die nächste Wette gewinnst du'],
+  geplatzt: ['Neues Ziel? Dann ist die Wette geplatzt 🤷', 'Das Navi hat meine Wette gerettet 😅', 'Wette ungültig, das Navi war schuld'],
+};
+
 /**
  * Für schmale Chats (Handy hochkant): eine Umbruchstelle zwischen den beiden Namensteilen, damit ein langer Name
  * wie „Superchargerprinzessin“ als „Supercharger-“ / „prinzessin“ umbricht statt irgendwo mitten im Wort. Ein
@@ -130,6 +154,7 @@ export const INCOME = {
   Aktionen: 'Aktion',
   Sammelaktionen: 'Sammelaktion',
   Challenges: 'Challenge',
+  Wetten: 'Wette',
 };
 // Abzüge stehen in der Abrechnung ganz unten
 export const FINES = ['Bußgeld', 'Verwarngeld', 'Schäden', 'Ladestrom', 'Mitleidskäufe'];
@@ -917,6 +942,13 @@ export const STUDIO = {
       'Tacho {kmh}. Der Chat jubelt, und das Plüsch flattert.',
       '{kmh} auf der Uhr. So schnell war heute noch keiner.',
       'Neue Bestmarke, {kmh}. Der Chat feiert jeden Kilometer.',
+    ],
+    // eine Spontan-Wette gewonnen (game/wetten.js; {name}: wer gewettet hat und nun zahlt)
+    wette: [
+      'Wette gewonnen. {name} zahlt, und der Chat lacht mit.',
+      '{name} hat dagegen gewettet. Das war ein Fehler.',
+      'Die Wette geht an uns. Danke, {name}, für den Einsatz.',
+      'Gewettet, gefahren, gewonnen. {name} nimmt es sportlich.',
     ],
   },
   // Das Gedächtnis des Studios (game/gedaechtnis.js; der Eigentümer, 27.11.2026: „Auch das Sprachstudio soll eine

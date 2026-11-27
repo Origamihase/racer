@@ -17,6 +17,7 @@ import { RouteLog } from './routelog.js';
 import { WaveRule, WAVE, chatGap } from './wave.js';
 import { StreamGags } from './gags.js';
 import { Stammgaeste } from './stamm.js';
+import { Wetten } from './wetten.js';
 import { startMemory, rekordMemory, GEDAECHTNIS } from './gedaechtnis.js';
 import { Akku } from './akku.js';
 import { Studio } from './studio.js';
@@ -78,6 +79,7 @@ export class Game {
     this.gags = new StreamGags(this);
     // die Stammzuschauer mit Gedächtnis (stamm.js): eigener Zufall, ihr Gedächtnis steht im Spielstand (save.stamm)
     this.stamm = new Stammgaeste(this);
+    this.wetten = new Wetten(this);
     // die Sprachdurchsagen der Zuschauer: Stapel, Momente und eigener Zufall je Stream (durchsagen.js)
     this.ds = new Durchsagen(this);
     // Akku und Ladestopps (akku.js): eigener Zustand, liest vom Spiel nur AKKU_HOST
@@ -130,6 +132,9 @@ export class Game {
     this.gags.reset(this.streamT);
     // (Prüfstände setzen stammSeed, damit jeder Lauf gleich ist; im Spiel würfeln die Stammgäste je Stream neu)
     this.stamm.reset(this.stammSeed ?? this.streamT ^ 0x5a17);
+    // Spontan-Wetten (wetten.js): ebenso mit eigenem Zufall
+    this.wetten.reset((this.stammSeed ?? this.streamT) ^ 0x3e77);
+    this.ui.wette(null);
     // das Gedächtnis des Sprachstudios (gedaechtnis.js): nach der Begrüßung erinnert es an frühere Streams, und fällt
     // der Streckenrekord aller Streams, sagt es das einmal
     const memo = startMemory(save);
@@ -618,6 +623,8 @@ export class Game {
     this.megafonCd = Math.max(0, this.megafonCd - dt);
     // die Running Gags (gags.js) mit eigenem Zufall: Bezahlschranke, Verein, Paketsuche, Mitleidskauf …
     this.gags.update(dt);
+    // Spontan-Wetten: ein Angebot am Rand, die laufende Wette in der Jobliste
+    this.wetten.update(dt);
 
     // --- Eingaben ------------------------------------------------------------
     if (ctl.device) this.device = ctl.device;
@@ -698,6 +705,8 @@ export class Game {
   honk() {
     this.audio.horn();
     this.lastHorn = this.t;
+    // steht ein Wettangebot am Rand, gilt die Wette (wetten.js horn)
+    if (this.wetten.horn()) return;
     this.onMood('startled', 0.45);
     if (chance(0.12)) this.chat(pick(['Bimmel hurra! 📯', 'HUP HUP', 'Hupkonzert!']));
   }
