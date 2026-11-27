@@ -386,6 +386,8 @@ export class Menus {
     el('h2', '', head, '⏸ Pause');
     const tools = el('div', 'pause-tools', head);
     feedbackLink(tools);
+    // das Autoradio (Taste R): ein Klick schaltet weiter, aus → JAM FM → Bayern 1 → aus
+    if (this.h?.radioLabel) button(tools, this.h.radioLabel(), 'radio', 'fs-btn radio-btn');
     if (canFullscreen()) button(tools, fullscreenLabel(), 'vollbild', 'fs-btn');
     el('p', 'sub', card, 'Kappandramäßige Zusammenfassung für alle, die gerade erst reingekommen sind:');
     const grid = el('div', 'summary-grid', card);

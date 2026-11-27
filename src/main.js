@@ -41,6 +41,7 @@ import { TeslaDamage } from './models/damage-fx.js';
 import { CabinDamage } from './cockpit/damage-cabin.js';
 import { loadSave, storeSave, resetSave, refundMegafon, megafonNoteSeen, storePicture, loadPictures, PIC_MAX, settleStream, settlePending } from './save.js';
 import { Game } from './game/game.js';
+import { Radio } from './radio.js';
 import { WAVE, walkerToWave } from './game/wave.js';
 import { Chassis, CHASSIS } from './game/chassis.js';
 import { Pickups } from './game/pickups.js';
@@ -315,6 +316,8 @@ let albumLast = null; // zuletzt aufgenommen (Prüfbilder, __MA.album): { n, pos
 
 // --- Ton, Sprache, Eingabe, Oberfläche ---------------------------------------------
 const audio = new Audio();
+// das Autoradio (src/radio.js): zuerst aus, Taste R oder der Knopf in der Pause schaltet weiter
+const radio = new Radio();
 audio.enabled = settings.sound;
 audio.volume = settings.volume;
 const speech = new Speech();
@@ -598,7 +601,7 @@ const menus = new Menus(app, {
     audio.init();
     audio.click();
   },
-  action: (a) => {
+  action: (a, b) => {
     if (a === 'start' || a === 'restart') startRun();
     else if (a === 'resume') resume();
     else if (a === 'quit') {
@@ -606,8 +609,13 @@ const menus = new Menus(app, {
       menus.hide();
       game.end('quit');
     } else if (a === 'menu') toTitle();
+    else if (a === 'radio') {
+      radioCycle();
+      if (b) b.textContent = radioButtonLabel();
+    }
   },
   back: () => {},
+  radioLabel: () => radioButtonLabel(),
   dataFor: (name, data) => {
     if (name === 'shop' && save.megafonNote) {
       shopRefund = megafonNoteSeen(save);
@@ -1509,6 +1517,7 @@ function step(dt, { render = true } = {}) {
     ui.toast(settings.sound ? '🔊 Ton an' : '🔇 Ton aus', 'info');
     menus.refresh('settings');
   }
+  if (input.take('radio')) radioCycle();
   if (input.take('chat')) {
     settings.chat = !settings.chat;
     applySettings('chat');
@@ -1796,6 +1805,8 @@ function step(dt, { render = true } = {}) {
     if (fxState.trunk > 0) fxState.trunk = Math.max(0, fxState.trunk - dt);
   }
   sky.update(frozen ? 0 : dt, camera, s, simT, skyView);
+  // (leiser, solange OMI oder das Sprachstudio sprechen oder BrunnenTV läuft; ohne Ton stumm)
+  radio.update(dt, { sound: settings.sound, duck: game.t < game.voiceUntil || !!game.tv });
   audio.update(dt, {
     speed: p.speed, throttle: p.throttle, rain: w, sirenLevel: game.sirenLevel || 0, inCabin: cockpitOn, paused: frozen || state === 'over',
     // Quietschen an der Haftgrenze; Klappern wächst mit den verbrauchten Karosserie-Punkten (0 … 3)
@@ -1826,11 +1837,15 @@ function step(dt, { render = true } = {}) {
 }
 
 function safeScreen() {
+  let st;
   try {
-    return game.running || game.over ? game.screenState() : idleScreen();
+    st = game.running || game.over ? game.screenState() : idleScreen();
   } catch (e) {
-    return idleScreen();
+    st = idleScreen();
   }
+  // (das Radio gehört zum Wagen, nicht zur Fahrt: oben in der Leiste, solange es an ist)
+  st.radio = radio.label;
+  return st;
 }
 
 /** Mittelbildschirm ohne laufenden Stream (Titel): Navi ohne Gebot, Akku voll. */
@@ -1850,8 +1865,12 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     pause();
     audio.suspend();
+    radio.hold(true);
     storeInterim();
-  } else audio.resume();
+  } else {
+    audio.resume();
+    radio.hold(false);
+  }
 });
 // (pagehide kommt auch dort, wo die Seite ohne visibilitychange endet, etwa beim Neuladen)
 window.addEventListener('pagehide', storeInterim);
@@ -2156,3 +2175,20 @@ function teleport(sNew) {
 
 // die Landschaft der Karte (Relief, Wald, Siedlungen) erst auspacken: Karte, Navi und Welt bauen darauf
 loadLandscape().catch((e) => console.warn('Landschaft nicht geladen', e)).finally(boot);
+
+// --- Autoradio (src/radio.js) ------------------------------------------------------------------
+/** Weiterschalten (Taste R, Knopf in der Pause): Hinweis am Rand, und im Stream hört der Chat mit. */
+function radioCycle() {
+  audio.init();
+  const S = radio.cycle();
+  ui.toast(S ? `📻 ${S.name}` : '📻 Radio aus', 'info', 'radio');
+  if (game.running) game.onRadio(S && S.id);
+}
+
+/** Beschriftung des Radio-Knopfs in der Pause. */
+function radioButtonLabel() {
+  return '📻 ' + (radio.station ? radio.station.name : 'Radio aus');
+}
+radio.onChange = (r) => {
+  if (r.status === 'kein Empfang') ui.toast(`📻 ${r.station.name}: kein Empfang`, 'warn', 'radio');
+};

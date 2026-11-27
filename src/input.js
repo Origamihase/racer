@@ -13,7 +13,7 @@ import { escapeTaken } from './ui/fullscreen.js';
 export const ACTIONS = {
   ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'gas', KeyW: 'gas',
   ArrowDown: 'brake', KeyS: 'brake', Space: 'horn', KeyE: 'wiper', KeyH: 'megafon', Escape: 'pause', KeyP: 'pause',
-  KeyV: 'camera', KeyM: 'mute', Enter: 'confirm', KeyC: 'chat', KeyL: 'ladestopp', KeyB: 'brunnen',
+  KeyV: 'camera', KeyM: 'mute', Enter: 'confirm', KeyC: 'chat', KeyL: 'ladestopp', KeyB: 'brunnen', KeyR: 'radio',
 };
 export const PAD_BUTTONS = { 0: 'horn', 1: 'camera', 2: 'wiper', 3: 'megafon', 4: 'ladestopp', 5: 'brunnen', 8: 'confirm', 9: 'pause' };
 export const PAD_DRIVE = { stick: 0, gas: [7, 12], brake: [6, 13], left: 14, right: 15 };

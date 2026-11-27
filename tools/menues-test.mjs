@@ -70,8 +70,9 @@ ok(rowOf('gas')[0].touch.includes(TOUCH_LABELS.gas) && rowOf('brake')[0].touch.i
 const realKeys = new Set([...Object.keys(ACTIONS), FULLSCREEN_KEY].map(keyName));
 const realPad = new Set([...Object.keys(PAD_BUTTONS).map((i) => padName(+i)), ...PAD_DRIVE.gas.map(padName), ...PAD_DRIVE.brake.map(padName), '✚', '←', '→']);
 if (PAD_DRIVE.stick === 0 || PAD_DRIVE.stick === 2) realPad.add(PAD_DRIVE.stick === 0 ? 'Linker Stick' : 'Rechter Stick');
-// Touch: die Knöpfe der Liste, Lenken und Pedale und drei Dinge, die es im Spiel wirklich gibt (Quelle geprüft)
-const realTouch = new Set([...TOUCH_BUTTONS.map((t) => touchOf(t.action)), ...TOUCH_BUTTONS.filter((t) => t.now).map((t) => touchNowOf(t.action)), ...Object.values(TOUCH_LABELS), '⛶ im Menü', '✕ am Tipp']);
+// Touch: die Knöpfe der Liste, Lenken und Pedale und Dinge, die es im Spiel wirklich gibt (Quelle geprüft)
+const realTouch = new Set([...TOUCH_BUTTONS.map((t) => touchOf(t.action)), ...TOUCH_BUTTONS.filter((t) => t.now).map((t) => touchNowOf(t.action)), ...Object.values(TOUCH_LABELS), '⛶ im Menü', '✕ am Tipp', '📻 in der Pause']);
+ok(/radioLabel\(\), 'radio'/.test(src('src/ui/menus.js')), 'Radio-Knopf 📻 in der Pause fehlt');
 ok(/⛶/.test(src('src/ui/fullscreen.js')) && /fs-btn/.test(src('src/ui/menus.js')), 'Vollbild-Knopf ⛶ im Menü fehlt');
 ok(/hint-close', card, '✕'/.test(src('src/ui/drive-hint.js')), 'das ✕ am Tipp fehlt');
 ok(/renderer\.domElement\.addEventListener\('pointerdown'[\s\S]{0,120}anyKey = true/.test(mainSource()), 'Tipp aufs Bild überspringt keine Szene mehr');

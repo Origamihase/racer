@@ -6,6 +6,7 @@
 // Wann eines kommt, würfelt ein eigener Zufall (mulberry32, je Stream neu gesät) nach gefahrenen Metern.
 import { MUSTER_LINES } from '../data.js';
 import { mulberry32 } from '../util.js';
+import { forkBetween } from './baustelle.js';
 
 /**
  * Je Muster: first (Meter bis zum ersten), every (Meter bis zum nächsten), retry (passt es gerade nicht: so viele
@@ -18,6 +19,8 @@ export const MUSTER = {
   draengler: { first: [3000, 6000], every: [8000, 13000], retry: 300, kmh: 120, platz: 10 },
   schwer: { first: [9000, 13000], every: [15000, 24000], retry: 600, greet: 140 },
   gap: 1500,
+  // so viele Meter voraus darf der Plan die Autobahn nicht verlassen (sonst sieht man das Muster nie)
+  clear: { kolonne: 1500, draengler: 800, schwer: 2200 },
 };
 
 export class Verkehrsmuster {
@@ -45,11 +48,18 @@ export class Verkehrsmuster {
     return list[Math.floor(this.rnd() * list.length)];
   }
 
-  /** Passt gerade ein Muster? Auf der Autobahn, keine Folge, kein Halt, keine Baustelle, kein Elefantenrennen voraus. */
-  free() {
+  /**
+   * Passt gerade ein Muster (kind)? Auf der Autobahn, keine Folge, kein Halt, keine Baustelle, und die Fahrt bleibt
+   * noch MUSTER.clear Meter auf ihr (keine Ausfahrt, die der Plan nimmt: sonst fährt man am Muster vorbei ab).
+   */
+  free(kind) {
     const g = this.g;
     const trip = g.world.trip();
-    return !g.offAutobahn && trip.section.kind === 'ab' && g.traffic.passive !== true && !g.tv && !(g.navi && g.navi.stopping) && !g.bau.active && g.player.s > this.quietUntil;
+    const s = g.player.s;
+    if (g.offAutobahn || trip.section.kind !== 'ab' || g.traffic.passive === true || g.tv || (g.navi && g.navi.stopping) || g.bau.active || s <= this.quietUntil) return false;
+    const end = s + (MUSTER.clear[kind] ?? 1500);
+    // (Gabelungen, an denen der Plan geradeaus fährt, stören nicht: s0 = end)
+    return !forkBetween(trip, end, end, s);
   }
 
   update() {
@@ -59,7 +69,7 @@ export class Verkehrsmuster {
     if (this.schwer && (!g.traffic.cars?.includes(this.schwer.car) || g.offAutobahn)) this.schwer = null;
     for (const k of ['draengler', 'kolonne', 'schwer']) {
       if (p.s < this.next[k]) continue;
-      if (!this.free() || !this.start(k)) {
+      if (!this.free(k) || !this.start(k)) {
         this.next[k] = p.s + MUSTER[k].retry;
         continue;
       }

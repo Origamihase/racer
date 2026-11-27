@@ -24,7 +24,8 @@ export const NETZ_M = { ramp: 250, conn: 1650, auf: 250, back: 1850, feed: 350, 
 /**
  * So viel Akku (Prozent) darf das Netz zwischen zwei Ladeplätzen höchstens verlangen (gap): max überall (der Prüfstand
  * hält es), aim ist das Ziel von tools/map/ladeparks.mjs (darüber bleiben nur Stellen, an denen keine Ausfahrt einen
- * Park tragen kann, etwa in Den Haag oder Nancy).
+ * Park tragen kann, etwa in Den Haag oder Nancy). Gebaut wurde das Netz mit dem vollen Verbrauch; seit der Akku halb
+ * so schnell sinkt (data.js AKKU_TEMPO), verlangt es höchstens 43 %.
  */
 export const LADENETZ = { aim: 75, max: 90 };
 
