@@ -86,6 +86,15 @@ export const STAMM_LINES = {
   },
 };
 
+// Das Autoradio (src/radio.js, Game.onRadio): Was der Chat sagt, wenn Mini Adam umschaltet – je Sender und fürs Ausschalten
+export const RADIO_LINES = {
+  jamfm: ['JAM FM! Da war Adam doch auch 📻', 'Ahh, JAM FM, die alte Heimat ❤', 'JAM FM im Wagen, so muss das', 'Lauter! 🔊',
+    'Grüße an JAM FM aus dem Tesla 👋', 'Endlich Musik zum Fahren 🎶'],
+  bayern1: ['Bayern 1, jetzt wird es gemütlich 😄', 'Oldies für die Autobahn 🎶', 'Bayern 1? Respekt, Mini Adam', 'Die Musik von früher, schön ❤',
+    'Jetzt noch eine Brotzeit dazu 🥨', 'Mitsingen ist Pflicht'],
+  aus: ['Radio aus, Ohren auf den Motor 🤫', 'Ruhe im Wagen', 'Schade, war gerade ein gutes Lied', 'Okay, jetzt hören wir den Chat'],
+};
+
 // Verkehrsmuster (game/muster.js): kolonne Wohnmobile · draengler klebt hinten (omiDraengler) · platz Mini Adam macht
 // gleich Platz · endlich erst nach einer Weile · schwer der reisende Brunnen (omiSchwer) · gruss angehupt · tschuess
 // vorbei

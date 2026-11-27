@@ -541,8 +541,18 @@ export class CenterScreen {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText('👤 Mini Adam', SPLIT + 20, 26);
+    const left = SPLIT + 20 + ctx.measureText('👤 Mini Adam').width + 28;
     ctx.textAlign = 'right';
-    ctx.fillText(st.clock + '   ' + st.temp + ' °C   ' + (st.funkloch > 0 ? 'Kein Netz' : 'LTE ▂▄▆█'), CW - 18, 26);
+    const status = st.clock + '   ' + st.temp + ' °C   ' + (st.funkloch > 0 ? 'Kein Netz' : 'LTE ▂▄▆█');
+    ctx.fillText(status, CW - 18, 26);
+    // das Autoradio, solange es an ist (main.js st.radio): zwischen Profil und Uhr, in Blau wie die Wischer-Anzeige
+    if (st.radio) {
+      const right = CW - 18 - ctx.measureText(status).width - 24;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#4c8dff';
+      ctx.font = '600 22px "Helvetica Neue", Arial, sans-serif';
+      fitText(ctx, '📻 ' + st.radio, left, 26, right - left, 14);
+    }
     ctx.textBaseline = 'alphabetic';
   }
 
@@ -572,6 +582,14 @@ export class CenterScreen {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const icons = ['🚗', '❄️', '🎵', '📞', '📡', '🌧️', '⚙️'];
+    // (läuft das Radio, leuchtet die Musik: ein blauer Punkt darunter)
+    if (st.radio) {
+      ctx.fillStyle = '#4c8dff';
+      ctx.beginPath();
+      ctx.arc(70 + 2 * 90, CH - 8, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#e6e8eb';
+    }
     icons.forEach((ic, i) => ctx.fillText(ic, 70 + i * 90, CH - 32));
     ctx.font = '600 26px "Helvetica Neue", Arial, sans-serif';
     ctx.fillStyle = '#e6e8eb';

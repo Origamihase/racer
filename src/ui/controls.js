@@ -69,6 +69,7 @@ export function controlRows() {
     { ...one('confirm', 'Tipps der ersten Minuten abschalten'), touch: ['✕ am Tipp'] },
     one('chat', 'Chat ein oder aus', 'Auch unter Einstellungen.'),
     one('mute', 'Ton an oder aus', 'Auch unter Einstellungen.'),
+    { ...one('radio', 'Autoradio: aus, JAM FM, Bayern 1', 'Zuerst aus. Auch in der Pause.'), touch: ['📻 in der Pause'] },
     { id: 'fullscreen', text: 'Vollbild an oder aus', keys: [keyName(FULLSCREEN_KEY)], pad: [], touch: ['⛶ im Menü'] },
   ];
 }

@@ -26,7 +26,14 @@ export function forkBetween(trip, s0, s1, from = s0) {
   if (!trip.cur) return false;
   for (const c of trip.cur.sections) {
     const f = c.fork;
-    if (!f || f.taken || f.s <= from || f.s >= s1) continue;
+    if (!f || f.s >= s1) continue;
+    // (schon entschieden: Fährt der Wagen gerade ab – auf dem Verzögerungsstreifen, oder eben hinter der Gabelung –, kommt
+    // er nie dorthin)
+    if (f.taken) {
+      if (f.taken === 'exit' && f.s > from - 400) return true;
+      continue;
+    }
+    if (f.s <= from) continue;
     // (davor nur eine Ausfahrt, die der Plan nimmt: Dann käme der Wagen gar nicht bis zur Baustelle)
     if (f.s > s0 || f.forced || trip.planFor(f) === 'exit') return true;
   }
