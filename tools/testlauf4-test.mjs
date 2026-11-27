@@ -494,7 +494,7 @@ console.log('4. BrunnenTV macht die Zuschauer glücklich:');
     const g = S.game;
     const r = { eps: [] };
     let ep = null;
-    for (let i = 0; i < 30 * 1500 && r.eps.length < 3; i++) {
+    for (let i = 0; i < 30 * 2400 && r.eps.length < 3; i++) {
       S.step(1 / 30);
       if (g.tv && !ep) ep = { t0: g.t, way: g.tv.way };
       if (ep && !ep.pre && g.t - ep.t0 >= TV.call - 0.05) Object.assign(ep, { pre: g.eco.peek().mood, v0: g.viewers, z0: g.zufrieden.value });

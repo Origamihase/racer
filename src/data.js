@@ -26,6 +26,16 @@ export const INSIDER_ORTE = {
   Eisenach: { note: 'Zur Wartburg: Dort gibt es einen Automaten mit 0-Euro-Geldscheinen.' },
   Haunetal: { note: 'Zur Burg Hauneck, dem ersten Ziel, das 2022 wirklich erreicht wurde.' },
   Beverungen: { note: 'Zum Weser-Skywalk: Aussicht mit Wackelfaktor.' },
+  // die Memes aus Wiki, Medien und Podcast (data-memes.js): Trier wurde 2021 zweimal angesteuert und nie erreicht
+  // (wird geboten wie Siegen, setzt sich selten durch), in Hamburg wartet Rollstuhl-Holger aus den Sprachdurchsagen
+  Trier: { special: 'trier', note: 'Zweimal versucht, nie angekommen: Schlössertour und Moseltour 2021.' },
+  Hamburg: { special: 'holger', note: 'Rollstuhl-Holger abholen. Er wartet seit 2018.' },
+  Fulda: { note: 'Vorsicht am Weihnachtsmarkt. Seit 2021 gibt es dort Glühwein zur Versöhnung.' },
+  Konstanz: { note: 'Hier hat das Sprachstudio 2017 seinen Namen bekommen.' },
+  Bonn: { note: 'Der KiBa für den Herrn aus Bonn ist immer noch offen.' },
+  Köln: { note: 'Hier saß Adam früher im Studiopublikum von TV Total.' },
+  Lübeck: { note: 'Gleich nebenan Travemünde: Goldschmied wäre sein Handwerk geworden.' },
+  Sylt: { note: 'Moin! 2020 gab es hier ein Interview bei Radio Nordfriesland.' },
 };
 
 // ---------------------------------------------------------------------------
@@ -534,7 +544,7 @@ export const CHAT = {
     'Die Scheibe sieht aus wie mein Aquarium', 'Platsch!', 'Gemütlich bei euch im Tesla ☔', 'Ich hör den Regen bis hierher',
     'Wisch! … oder auch nicht 😂', 'Tropfen zählen: 1, 2, viele'],
   // jemand ist zum ersten Mal da – das Sprachstudio begrüßt ihn dann mit Namen
-  newViewer: ['Hallo! Bin zum ersten Mal hier 👋', 'Hi, bin neu. Warum fährt da ein Plüschtier? 😄',
+  newViewer: ['Hallo! Bin zum ersten Mal hier 👋', 'Hallo Chat, ich wurde geboren 👶', 'Hi, bin neu. Warum fährt da ein Plüschtier? 😄',
     'Moin aus {city}! Hab euch eben beim Zappen gefunden', 'Neu hier und schon Fan von OMI 😍',
     'Ein Kumpel hat mir den Stream empfohlen. Hallo zusammen!'],
   // Abos und VIP
@@ -702,7 +712,7 @@ export const CHAT = {
     'Fehlalarm, weiterfahren'],
   police: ['POLIZEI GIFHORN 🚓', 'Polizei Gifhorn kommt!', 'Benehmen jetzt!', 'Ganz ruhig bleiben…', '👮👮👮',
     'Wer hat die Polizei Gifhorn gerufen? 😂'],
-  funkloch: ['F', 'F', 'F', 'Ton f', '/cam2', 'F', 'Bild weg?', 'F', 'Null Balken 📵'],
+  funkloch: ['F', 'F', 'F', 'Ton f', '/cam2', 'F', 'Bild weg?', 'F', 'Null Balken 📵', 'Lösch alle Frequenzen! 📡', 'Mehr SIM-Karten! 📶'],
   funklochBack: ['✔️', '✔️', '✔️ Bild ist wieder da', 'Da ist es wieder ✔️', 'IST DAS LIVE?? 🤨', 'Funkloch vorbei. Tschüss, du Betrüger!'],
   frog: ['🐸', '🐸🐸', 'Frosch!', '🐸 HDMI-Kabel?', 'Wackel mal am Kabel'],
   blitzer: ['📸', 'Lächeln! 📸', 'Das Foto kommt in einen Rahmen', 'Tschüss, du Betrüger!', 'Teures Selfie'],
@@ -916,6 +926,7 @@ export const STUDIO = {
       'Stimmung so mittel. Nicht Mittelalter, einfach nur mittel.',
       'Nichts Besonderes im Chat. Jemand hat Hugo nach der Uhrzeit gefragt, das war der Höhepunkt.',
       'Ruhige Lage. Der Chat hält schon ein paar Dreien bereit, falls wieder nach einer Zahl gefragt wird.',
+      '[konstanz] Kleine Geschichte am Rande: In Konstanz hat mir ein Reporter meinen Namen gegeben.',
     ],
     [
       'Der Chat ist richtig gut drauf. Weiter so!',
@@ -930,6 +941,7 @@ export const STUDIO = {
       'Im Chat gibt es mehr Lob als Fragen und mehr Fragen als Gemecker. So mag ich das.',
       'Der Chat mag die Strecke. Ich soll ausrichten: weiter so, und Dachs grüßt Efeu.',
       'Ein paar Neue sind im Chat, und alle sind gut drauf. Herzlich willkommen!',
+      '[konstanz] Gute Stimmung, und es geht nach Konstanz. Dort habe ich meinen Namen bekommen.',
     ],
     [
       'Der Chat eskaliert komplett. Wenn das so weitergeht, brauchen wir ein zweites Sprachstudio.',
@@ -1197,6 +1209,18 @@ export const DURCHSAGEN = [
   { voice: 'fluester', text: 'Bis {ziel} ist es noch weit. Ich mache es mir schon mal gemütlich.', when: 'weit' },
   { voice: 'william', text: 'Die linke Spur ist frei! Aber bitte trotzdem schön vorsichtig, Mini Adam!', when: 'links' },
   { voice: 'turbo', text: 'Linke Spur frei, Chat dabei, Mini Adam fährt wie ein Profi!', when: 'links ab' },
+  // … und die Memes aus Wiki, Medien und Podcast (data-memes.js): Rollstuhl-Holger wartet in Hamburg (der Witz ist das
+  // Warten, nie der Rollstuhl), Kanzler Adams erstes Gesetz und die Entschuldigungspflicht (Podcast, ohne Parteien),
+  // lustige Namen über den Lautsprecher des Supermarkts in Gifhorn (Podcast)
+  { voice: 'kassandra', text: 'Achtung, Achtung. Rollstuhl-Holger wartet immer noch in Hamburg. Bitte abholen!' },
+  { voice: 'amtlich', text: 'Mitteilung: Rollstuhl-Holger schaut gleich im Stream vorbei. Bitte einen Platz freihalten.' },
+  { voice: 'weronika', text: 'Mini Adam, du bist ja in Hamburg! Holst du endlich Rollstuhl-Holger ab? Er wartet schon so lange.', when: 'hamburg' },
+  { voice: 'william', text: 'Erstes Gesetz von Kanzler Adam: Ab sofort wird unterwegs nur noch in Vier K gestreamt!' },
+  { voice: 'amtlich', text: 'Zweites Gesetz von Kanzler Adam: Wer etwas Falsches schreibt, muss sich entschuldigen. Höflich.' },
+  { voice: 'amtlich', text: 'Aus dem Supermarkt in Gifhorn: Herr Lade Säule, bitte zur Kasse drei. Herr Lade Säule, bitte.', when: 'gifhorn ort' },
+  { voice: 'kassandra', text: 'Aus dem Supermarkt in Gifhorn: Frau Anna Nas wird an der Information erwartet.', when: 'gifhorn ort' },
+  { voice: 'karla', text: 'Grüße nach Fulda! Der Glühwein steht bereit, und das Ordnungsamt hat heute frei.', when: 'fulda' },
+  { voice: 'turbo', text: 'Trier im Navi! Schnell, schnell, bevor jemand überbietet!', when: 'trier' },
 ];
 
 export const DURCHSAGEN_REGEN = [
@@ -1236,7 +1260,10 @@ export const BOARD = {
   elefant: 'Achtung. Elefantenrennen voraus.',
   blitzer: 'Hinweis: Tempolimit. Stationärer Blitzer voraus.',
   shoulder: 'Hinweis: Der Standstreifen ist keine Fahrspur.',
-  funkloch: 'Verbindung schwach. Mobilfunk wird neu gebündelt.',
+  // beim Funkloch der Reihe nach (Game.funklochN): Leipzig 2018 und die 15 SIM-Karten eines Streams 2026, der Titel
+  // seiner Biografie aus dem Podcast
+  funkloch: ['Verbindung schwach. Mobilfunk wird neu gebündelt.', 'Verbindung schwach. Alle fünfzehn SIM-Karten werden neu gebündelt.',
+    'Funkloch. Dreizehn SIM-Karten waren nicht genug.'],
   reverse: 'Rückwärtsgang eingelegt.',
   reverseEnd: 'Weiter zurück geht es hier nicht. Bitte wieder vorwärts fahren.',
 };
@@ -1277,6 +1304,10 @@ const BERUFE = [
   { km: 12, job: 'schreibt die Algorithmen für die roten und orangenen Stau-Bereiche auf Navi-Karten', src: '23.05.2019, Freising' },
   { km: 15, job: 'macht statistische Modelle für die Endzeit der Benzintankstellen', src: '07.10.2022, Golfen im Park' },
   { km: 20, job: 'Teilchenbeschleuniger', src: '06.02.2021, Tesla-Navi ferngesteuert' },
+  // (aus dem Podcast: diesmal fast wahr – mit 15 aufs Gewerbeamt, Homepages für einen alten Architekten; und das
+  // Handwerk, das es geworden wäre)
+  { km: 30, job: 'jüngster Homepage-Unternehmer Schleswig-Holsteins', src: '21.02.2025, Henke’s Corner #72' },
+  { km: 45, job: 'Goldschmied in Travemünde', src: '21.02.2025, Henke’s Corner #72' },
 ];
 
 export function berufFor(km) {
@@ -1507,7 +1538,12 @@ export const ABSPANN_REISE = [
   ['Discord', 'Wils und DomZe'],
   ['Raid-Kommando', 'König Knolli'],
   ['Moderation', 'Wils, Walte, AchPünktchen, Delta34st, Eismann077, Cptbalu1991, Kieskauer und Muyinnchen', 'wide'],
+  // aus Podcast und Presse (data-memes.js): der Titel seiner Biografie und der Sieg im Container 2024
+  ['Biografie', '»13 SIM-Karten waren nicht genug«', 'wide'],
+  ['Auszeichnung', 'Gewinner von »Großer Bruder«, König-Knolli-Edition', 'wide'],
   ['BrunnenTV', '{folgen} mit Herrn Schönnbrun', 'wide'],
 ];
+/** Eine stille Zeile im Abspann der Reise, vor dem Dank (Stuttgarter Zeitung, 20.10.2026: mobile Streams seit 2013). */
+export const SEIT_2013 = 'Live von überall, seit 2013.';
 /** Ganz am Ende des Abspanns der Reise, allein und leise (Wortlaut des Eigentümers, unverändert). */
 export const GEDENKEN = 'triazanonym (TriazNervensäge) und Pascal (pscldpr) – Behalten wir ewig in Gedanken wie seine historische Texte';

@@ -1,6 +1,6 @@
 // Menüs: Titel, Pause („Kappandramäßige Zusammenfassung“), Abspann, Shop, Steuerung,
 // Einstellungen, „Über das Spiel“ und die große Karte (src/ui/mapscreen.js). Alles per Maus, Tastatur (Pfeile + Enter + Esc) und Gamepad.
-import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, ladeCount, ladePreisText, MEGAFON_ERSTATTET, STREAM_GEBUCHT, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice, shopLocked, canBuy, SHOP_LOCK } from '../data.js';
+import { SHOP, UPGRADE_LIMITS, ABSPANN_CREW, ABSPANN_REISE, SEIT_2013, GEDENKEN, GAME_TITLE, GAME_SUBTITLE, GAME_XXL, GAME_NAME, TAGLINE, INCOME, FINES, damageCount, ladeCount, ladePreisText, MEGAFON_ERSTATTET, STREAM_GEBUCHT, GAGS, fmtBetrag, nameBreak, fillTemplate, shopPrice, shopLocked, canBuy, SHOP_LOCK } from '../data.js';
 import { fmtNum, fmtCent, fmtEuro, fmtSpan, fmtKonto, kontoMinus } from '../util.js';
 import { fmtOdo } from '../map/navroute.js';
 import { renderDriveSettings, driveSettings } from './drive-settings.js';
@@ -56,6 +56,8 @@ const REASONS = {
   quit: { title: 'Stream beendet', sub: 'Mini Adam hat den Stream vorzeitig beendet.' },
   // niemand hat nach einer Folge geboten (game.js streamOver)
   stream: { title: 'Keine Gebote mehr', sub: 'Nach der letzten Folge wollte niemand mehr bieten – der Chat sagt Gute Nacht.' },
+  // die Sammelaktion Streamabbruch ist voll (game/memes.js, Moseltour 13.02.2021)
+  abbruch: { title: 'Reicht für heute', sub: 'Technik kaputt, dunkel, kalt: Der Chat hat für den Streamabbruch gesammelt. Gute Nacht!' },
 };
 
 // Zeilen der Abrechnung: erst alles, was das Publikum gegeben hat (Reihenfolge wie in INCOME), ganz unten die Abzüge
@@ -490,6 +492,11 @@ export class Menus {
     // die Running Gags (game/gags.js); der Verein steht weder hier noch im Abspann (Eigentümer, 24.11.2026)
     if (o.gags?.mitleid.n) line('Mitleidskäufe', fmtNum(o.gags.mitleid.n) + ' · ' + fmtCent(o.gags.mitleid.sum));
     line('Wischer: gezuckt / gewischt', fmtNum(st.twitches) + ' / ' + fmtNum(st.wipes));
+    // die Memes aus Wiki, Medien und Podcast (game/memes.js): nur, was es in diesem Stream gab
+    const M = o.memes;
+    if (M?.zooms) line('Zooms gezählt', fmtNum(M.zooms));
+    if (M?.tv) line('Kurz im Fernsehen', M.tv === 1 ? 'einmal' : fmtNum(M.tv) + '-mal');
+    if (M?.walte) line('Walte gefunden', M.walte === 1 ? 'einmal' : fmtNum(M.walte) + '-mal');
     line('Sendezeit', fmtSpan(o.air) + ' (bis ' + o.clock + ' Uhr)');
     const beruf = el('div', 'beruf', right);
     el('div', 'beruf-k', beruf, 'Erlogene Berufsbezeichnung des Tages');
@@ -516,6 +523,10 @@ export class Menus {
     // die Leute des Streams, mit ausgedachten Berufen, und die BrunnenTV-Folgen der Reise
     const folgen = st.brunnenTV === 1 ? '1 Folge' : fmtNum(st.brunnenTV || 0) + ' Folgen';
     for (const [k, v, wide] of ABSPANN_REISE) if (st.brunnenTV || !v.includes('{folgen}')) credit(crew, k, [fillTemplate(v, { folgen })], wide === 'wide');
+    // Trier, 2021 zweimal verfehlt (game/memes.js): Kam Mini Adam diesmal an, steht es hier
+    if (o.memes?.trier) credit(crew, 'Trier', ['endlich erreicht 🍷'], true);
+    // eine stille Zeile (Stuttgarter Zeitung, 20.10.2026: mobile Streams seit 2013)
+    el('p', 'seit2013', card, SEIT_2013);
     // Wie im echten Abspann danach die Unterstützenden, alle mit Namen, je Art (src/ui/abspann.js); eine eigene Zeile
     // „Größte Spende“ gibt es nicht mehr (Besitzer, 25.11.: „Den Punkt sollte es auch gar nicht mehr geben“), die Spender
     // stehen nach ihrer Summe sortiert unter „Spenden“

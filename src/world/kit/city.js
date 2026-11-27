@@ -182,7 +182,8 @@ export function createCityKit(F, { bend = null } = {}) {
      * Straßenbau bei z = −s0 in die Strecke gehängt. Dazu group.fountains (Brunnenliste), fountainsInView,
      * watchFountains, resetFountains (siehe attachFountains), group.update(t) für die Fangruppe am Ziel und
      * group.layout, der Lageplan für das Navi (layout.js townLayout, im selben Rahmen); an einer Säule mit Ladestopp
-     * group.popcornStand (LOD mit Maschine und Eimer, versteckt: rest.js POPCORN_STAND); mit plan.river group.river
+     * group.popcornStand (LOD mit Maschine und Eimer, versteckt: rest.js POPCORN_STAND), group.walte (Walte hinter dem
+     * Zielbrunnen, versteckt: nur in einer Folge mit ihm, scenes/tv.js); mit plan.river group.river
      * (Wasser, Kaimauern und Straßenbrücke, river.js).
      * lazy: die verschmolzenen Stücke und die Wahrzeichen entstehen erst mit group.step() (eines je Aufruf, zuerst
      * alle Fernfassungen, dann die nahen vom Ortsbeginn an; true, solange noch etwas fehlt; group.pending zählt den
@@ -198,6 +199,7 @@ export function createCityKit(F, { bend = null } = {}) {
       const solo = [];
       const marks = [];
       const stand = [];
+      const walte = [];
       for (const it of plan.items) {
         // der Brunnen auf der Insel der Straße gehört dem Straßenbau (layout.js planTown, island)
         if (it.external) continue;
@@ -213,6 +215,11 @@ export function createCityKit(F, { bend = null } = {}) {
         // Popcorn-Maschine und Eimer an der Säule bringt Mini Adam erst zum Laden mit (rest.js POPCORN_STAND)
         if (POPCORN_STAND.has(it.name)) {
           stand.push(it);
+          continue;
+        }
+        // Walte hinter dem Zielbrunnen zeigt nur eine Folge, in der er sich versteckt (Memes, scenes/tv.js)
+        if (it.name === 'walte') {
+          walte.push(it);
           continue;
         }
         const ci = Math.floor(-it.z / CHUNK);
@@ -263,6 +270,18 @@ export function createCityKit(F, { bend = null } = {}) {
         lod.visible = false;
         root.add(lod);
         root.popcornStand = lod;
+        farJobs.push(() => level(lod, make(true), farAt));
+        nearJobs.push(() => level(lod, make(false), 0));
+      }
+      if (walte.length) {
+        const it = walte[0];
+        const lod = new THREE.LOD();
+        lod.name = 'Walte';
+        lod.position.set(it.x, it.y, it.z);
+        lod.visible = false;
+        root.add(lod);
+        root.walte = lod;
+        const make = (far) => compose(core, [{ g: kitOf(it.name).geo(it.name, far), x: 0, y: 0, z: 0, ry: it.ry, tint: it.tint }]);
         farJobs.push(() => level(lod, make(true), farAt));
         nearJobs.push(() => level(lod, make(false), 0));
       }

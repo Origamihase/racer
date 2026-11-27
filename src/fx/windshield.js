@@ -102,6 +102,7 @@ export class Windshield {
 
     // --- Tropfen ---
     this.drops = [];
+    this.smear = 0; // Wischwasser leer: Wische ziehen Schlieren (setSmear)
     this.pool = [];
     this.spawnAcc = 0;
     this.gridHead = new Int32Array(GRID.cols * GRID.rows);
@@ -956,8 +957,9 @@ export class Windshield {
       } else drops[n++] = p;
     }
     drops.length = n;
-    // nur was nass ist, schmiert
-    if (cleaning) this.paintFilm(i, lo, hi, true, 1);
+    // nur was nass ist, schmiert – ohne Wischwasser (setSmear) zieht auch der echte Wisch nur Schlieren
+    if (cleaning && this.smear) this.paintFilm(i, lo, hi, false, 0.55 + 0.35 * this.smear);
+    else if (cleaning) this.paintFilm(i, lo, hi, true, 1);
     else if (this.wet > 0.02) this.paintFilm(i, lo, hi, false, this.wet * Math.min(0.95, 0.6 + 0.35 * this.wet));
   }
 
@@ -1077,7 +1079,7 @@ export class Windshield {
       this.filmAcc = 0;
       const rain = this.intensity;
       const kr = Math.exp(-step * (0.25 + 0.25 * rain));
-      const ks = Math.exp(-step / (rain > 0.02 ? 6 : 2));
+      const ks = Math.exp(-step / (this.smear ? 9 : rain > 0.02 ? 6 : 2));
       const F = this.filmF;
       const D = this.filmData;
       let max = 0;
@@ -1231,7 +1233,16 @@ export class Windshield {
   }
 
   /** Scheibe trocken und sauber, Wischer in Parkstellung (neue Fahrt, Titelbild). */
+  /**
+   * Wischwasser leer (Memes, Wischwasser-Gag): v > 0 – jeder Wisch hinterlässt Schlieren statt eines sauberen
+   * Fächers, und sie halten länger; 0 – wieder sauber (nach dem Nachfüllen am Ladestopp).
+   */
+  setSmear(v) {
+    this.smear = clamp(v, 0, 1);
+  }
+
   clear() {
+    this.smear = 0;
     for (const d of this.drops) this.pool.push(d);
     this.drops.length = 0;
     this.dropGeo.instanceCount = 0;

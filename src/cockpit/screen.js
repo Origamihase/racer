@@ -187,6 +187,13 @@ export class CenterScreen {
     ctx.lineTo(-4, 260);
     ctx.closePath();
     ctx.fill();
+    const label = (text, cx, cy, size, col) => {
+      ctx.font = `800 ${size}px "Helvetica Neue", Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = col;
+      ctx.fillText(text, cx, cy);
+    };
     // Leuchte in der linken Seitenwand
     ctx.fillStyle = '#fff3c4';
     ctx.beginPath();
@@ -228,13 +235,6 @@ export class CenterScreen {
       // Schatten auf dem Boden
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.fillRect(fx + 3, fy + fh, fw, 5);
-    };
-    const label = (text, cx, cy, size, col) => {
-      ctx.font = `800 ${size}px "Helvetica Neue", Arial, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = col;
-      ctx.fillText(text, cx, cy);
     };
     const blink = (rate, ph) => Math.sin(t * rate + ph) > 0;
 
@@ -285,6 +285,48 @@ export class CenterScreen {
       ctx.fillRect(204 + i * 12, 89, 7, 5);
     }
     label('ROUTER', 245, 107, 20, '#f2f3f5');
+
+    // oben drauf, quer über Akku und Router: das Fleetball-Set (Memes: für 28 Euro gekauft, fährt seit Jahren mit, kaum
+    // ausgepackt) – eine Tasche mit zwei Schlägern, die oben herausschauen, daneben ein Federball
+    ctx.strokeStyle = '#d9dce2';
+    ctx.lineWidth = 4;
+    for (const [rx, ry, rot] of [[150, 6, -0.35], [176, 3, -0.15]]) {
+      ctx.save();
+      ctx.translate(rx, ry);
+      ctx.rotate(rot);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 13, 17, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 1.2;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * 5, -15);
+        ctx.lineTo(i * 5, 15);
+        ctx.moveTo(-12, i * 6);
+        ctx.lineTo(12, i * 6);
+        ctx.stroke();
+      }
+      ctx.lineWidth = 4;
+      ctx.restore();
+    }
+    ctx.fillStyle = '#1f8a70';
+    roundRect(ctx, 128, 16, 120, 34, 9);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(134, 20, 108, 5);
+    label('FLEETBALL', 188, 36, 19, '#ffffff');
+    // Federball: Korken und Federkrone
+    ctx.fillStyle = '#f5f5f0';
+    ctx.beginPath();
+    ctx.moveTo(262, 30);
+    ctx.lineTo(284, 20);
+    ctx.lineTo(286, 42);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#e0a412';
+    ctx.beginPath();
+    ctx.arc(261, 32, 6, 0, Math.PI * 2);
+    ctx.fill();
 
     // vorn links: die offene Konfetti-Kiste aus Pappe, Konfetti stiebt heraus
     box(16, 166, 146, 76, 0.1, '#b9854a', '#8a5f30', '#9c6d3b');

@@ -162,6 +162,10 @@ body { font-family: var(--font); color: var(--text); user-select: none; -webkit-
 /* eine Zeile in Teilen (Runde abgerechnet): jeder Teil bleibt beisammen, umbrochen wird zwischen ihnen */
 .toast > span { white-space: nowrap; }
 /* Mysterybox (game/gags.js): die Box wackelt, springt auf, dann erscheint, was drin war */
+.toast > .rad { display: inline-block; }
+.toast > .rad-spin { animation: rad-spin 0.5s linear infinite; }
+.toast > .rad-name { color: var(--gold); font-weight: 800; }
+@keyframes rad-spin { to { transform: rotate(360deg); } }
 .toast > .mystery-box { display: inline-block; animation: mystery-shake 0.2s ease-in-out 8 alternate, mystery-pop 0.4s ease-out 1.6s both; }
 .toast > .mystery-what { display: inline-block; white-space: normal; color: var(--gold); font-weight: 800; animation: mystery-in 0.45s ease-out 1.6s both; }
 @keyframes mystery-shake { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
@@ -708,6 +712,7 @@ body.drone .hud:has(> .drone-hud.on.over-chat) > .chat { top: var(--dh-chat-top)
 .thanks-names li { break-inside: avoid; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
 .thanks-what { font-weight: 500; color: var(--sub); white-space: nowrap; }
 /* Abspann der Reise: ganz am Ende eine leise Zeile des Gedenkens, allein, mit einem kurzen Strich davor */
+.seit2013 { margin: 14px auto 4px; text-align: center; font-size: 13px; color: var(--sub); letter-spacing: 0.02em; }
 .gedenken { margin: 26px auto 2px; max-width: 560px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--sub); font-style: italic; text-wrap: balance; }
 .gedenken::before { content: ''; display: block; width: 48px; height: 1px; margin: 0 auto 14px; background: var(--line); }
 

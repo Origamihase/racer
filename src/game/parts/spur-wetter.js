@@ -163,6 +163,8 @@ export class SpurWetterPart {
     if (type === 'wipe') {
       A.wiperSweep();
       this.stats.wipes++;
+      // jeder Wisch kostet Wischwasser (memes.js): leer schmiert er nur noch
+      if (this.running) this.memes.wiped();
       // mit früher Firmware ist ein ganzer Wisch ein kleines Wunder
       if (wet && this.windshield.firmware < 2 && chance(0.5)) this.later(1.3, () => this.chat(pick(CHAT.wiperWipe)));
     } else if (type === 'twitch') {

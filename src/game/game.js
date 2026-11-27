@@ -16,6 +16,7 @@ import { Satisfaction } from './satisfaction.js';
 import { RouteLog } from './routelog.js';
 import { WaveRule, WAVE, chatGap } from './wave.js';
 import { StreamGags } from './gags.js';
+import { Memes } from './memes.js';
 import { Stammgaeste } from './stamm.js';
 import { Wetten } from './wetten.js';
 import { Baustelle } from './baustelle.js';
@@ -79,6 +80,9 @@ export class Game {
     this.waves = new WaveRule();
     // die Running Gags aus dem Stream des Eigentümers (gags.js): mit eigenem Zufall, damit der Stream sonst gleich verläuft
     this.gags = new StreamGags(this);
+    // die Memes aus Wiki, Medien und Podcast (memes.js): ebenso mit eigenem Zufall; Glücksrad und Streamabbruch nur im
+    // Spiel selbst (main.js setzt memes.live)
+    this.memes = new Memes(this);
     // die Stammzuschauer mit Gedächtnis (stamm.js): eigener Zufall, ihr Gedächtnis steht im Spielstand (save.stamm)
     this.stamm = new Stammgaeste(this);
     this.wetten = new Wetten(this);
@@ -134,6 +138,9 @@ export class Game {
     // Reise: Beginn des Streams (Datum im BrunnenTV-Album) und seine Route für den Abspann (routelog.js)
     this.streamT = Date.now();
     this.gags.reset(this.streamT);
+    this.memes.reset(this.streamT);
+    this.raidT = -1e9; // wann König Knolli zuletzt raidete (FACTS.raid)
+    this.funklochN = 0; // wie viele Funklöcher bisher (OMIs Satz dazu wechselt: BOARD.funkloch)
     // (Prüfstände setzen stammSeed, damit jeder Lauf gleich ist; im Spiel würfeln die Stammgäste je Stream neu)
     this.stamm.reset(this.stammSeed ?? this.streamT ^ 0x5a17);
     // Spontan-Wetten (wetten.js): ebenso mit eigenem Zufall
@@ -633,6 +640,8 @@ export class Game {
     this.megafonCd = Math.max(0, this.megafonCd - dt);
     // die Running Gags (gags.js) mit eigenem Zufall: Bezahlschranke, Verein, Paketsuche, Mitleidskauf …
     this.gags.update(dt);
+    // die Memes aus Wiki, Medien und Podcast (memes.js): Chatzeilen, Glücksrad, Lach-Schwall …
+    this.memes.update(dt);
     // Spontan-Wetten: ein Angebot am Rand, die laufende Wette in der Jobliste
     this.wetten.update(dt);
     // Verkehrsmuster (muster.js): Wohnmobil-Kolonne, Drängler, Schwertransport
@@ -726,12 +735,18 @@ export class Game {
     if (lines) this.later(1.2, () => this.burst(lines, id ? 2 : 1, 2));
   }
 
-  honk() {
+  /**
+   * Die Hupe. byChat: Ein Zuschauer hat „Einmal hupen“ gekauft – das ist nicht Mini Adams Antwort auf ein Wettangebot
+   * (sonst nähme die gekaufte Hupe eine Wette an, die der Spieler gar nicht wollte).
+   */
+  honk(byChat = false) {
     this.audio.horn();
     this.lastHorn = this.t;
     // steht ein Wettangebot am Rand, gilt die Wette (wetten.js horn); der reisende Brunnen freut sich über den Gruß
-    if (this.wetten.horn()) return;
+    if (!byChat && this.wetten.horn()) return;
     if (this.muster.horn()) return;
+    // steht ein Übertragungswagen am Rand, ist Mini Adam jetzt kurz im Fernsehen (memes.js)
+    if (this.memes.honk()) return;
     this.onMood('startled', 0.45);
     if (chance(0.12)) this.chat(pick(['Bimmel hurra! 📯', 'HUP HUP', 'Hupkonzert!']));
   }
@@ -855,6 +870,8 @@ export class Game {
       peakViewers: Math.round(this.peakViewers),
       // was die Running Gags zur Abrechnung beitragen (gags.js report: der Verein …)
       gags: this.gags.report(),
+      // … und die Memes (memes.js report: Trier erreicht, Fernsehauftritte, Walte, Zooms)
+      memes: this.memes.report(),
       beruf: berufFor(km),
       clock: fmtClock(this.clock),
     };
