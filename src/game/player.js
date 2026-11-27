@@ -10,6 +10,7 @@ import { ROAD } from '../textures.js';
 import { TESLA } from '../models/tesla.js';
 import { STEER, CURVE_ASSIST, LANE_ASSIST, lateralStep, steerParams, SteerControl } from './steering.js';
 import { Damage } from './damage.js';
+import { AKKU_TEMPO } from '../data.js';
 
 export const KMH = 1 / 3.6;
 export const VMAX_KMH = [200, 215, 233, 261];
@@ -255,7 +256,7 @@ export class Player {
     // --- Akku --------------------------------------------------------------
     const vr = this.speed / 55;
     const drivePct = 0.25 * vr * vr * (0.4 + 0.6 * Math.max(this.throttle, 0.35));
-    const drain = (this.streamDrain + drivePct) * (75 / this.capacity);
+    const drain = (this.streamDrain + drivePct) * (75 / this.capacity) * AKKU_TEMPO;
     this.battery = Math.max(0, this.battery - drain * dt);
     this.empty = this.battery <= 0;
 

@@ -1299,6 +1299,12 @@ export const JOB_TEMPLATES = [
 // oder die Ladesäule eines Orts, „Ladesäule in …“); Taste L oder der Knopf „Ladestopp einplanen“ machen ihn zum
 // Zwischenziel. Dort parkt der Wagen an der freien Säule ein und lädt im Zeitraffer voll (Akku.start,
 // xxl/charge.js STOP). {pct} Prozent, {park} Name, {km} Weg.
+/**
+ * So schnell sinkt der Akku, gemessen am ursprünglichen Verbrauch (Player.update: Stream-Technik und Fahren; REISE_AKKU
+ * perM rechnet damit): halb so schnell (Besitzer, 27.11.2026: „etwa 50 % langsamer sinken“).
+ */
+export const AKKU_TEMPO = 0.5;
+
 export const REISE_AKKU = {
   warn: [25, 10], // Prozent: OMI warnt, und noch einmal, wenn es knapp wird
   early: 70, // darunter warnt sie früher, sobald der nächste Park der letzte in Reichweite ist
@@ -1308,10 +1314,10 @@ export const REISE_AKKU = {
   past: 15,
   look: 8,
   reserve: 0.85, // so viel des Akkus gilt als sicher nutzbar
-  // Prozent je Meter Straße, bis measure Meter davon seit dem Laden gemessen sind (Player.update: auf der Autobahn bei
-  // 38 m/s rund 0,0052; echte Straße mischt Rampen und Zubringer um 0,006 mit Orten um 0,0086 – gemessen 0,0053 bis
-  // 0,0061 samt dem Halt am Brunnen)
-  perM: { open: 0.0052, real: 0.0065 },
+  // Prozent je Meter Straße, bis measure Meter davon seit dem Laden gemessen sind (Player.update vor AKKU_TEMPO: auf der
+  // Autobahn bei 38 m/s rund 0,0052; echte Straße mischt Rampen und Zubringer um 0,006 mit Orten um 0,0086 – gemessen
+  // 0,0053 bis 0,0061 samt dem Halt am Brunnen; mal AKKU_TEMPO)
+  perM: { open: 0.0052 * AKKU_TEMPO, real: 0.0065 * AKKU_TEMPO },
   measure: 1500,
   low: 'Akku {pct} Prozent. Nächster Ladestopp: {park}, in {km}. Einplanen?',
   last: 'Akku {pct} Prozent. {park} in {km} liegt noch in Reichweite. Ladestopp einplanen?',

@@ -39,7 +39,7 @@ import { Trip, J, PROFILES } from '../src/game/trip.js';
 import { MapDemo } from './mapdemo.mjs';
 import { Game, TOWN_HOLD, AUKTION, EXIT_CALL, exitLine } from '../src/game/game.js';
 import { BID_PLACES, OPENING } from '../src/game/navi.js';
-import { INSIDER_ORTE, JOB_TEMPLATES, SCHOENER_BRUNNEN } from '../src/data.js';
+import { INSIDER_ORTE, JOB_TEMPLATES, SCHOENER_BRUNNEN, AKKU_TEMPO } from '../src/data.js';
 import { NavModel, BOARD_M, NEAR_M, fmtRoad, fmtKm } from '../src/map/navroute.js';
 import { limitsFor, Arrival, AUTO } from '../src/world/xxl/plan.js';
 import { goalName } from '../src/world/kit/layout.js';
@@ -835,8 +835,10 @@ function drift(N, a, b) {
 // Akku (REISE.md A5, Entscheidung der Projektleitung vom 19.11.): Ein voller Akku reicht für etwa 8 bis 12 Minuten
 // zügiger Fahrt, auch im Stand verbraucht der Stream etwas. Das Modell des Wagens (Player.update) trifft das (3 h je
 // Fahrer: im ganzen Stream 9,8 / 11,0 / 12,0 min, auf der offenen Autobahn 7,3 / 9,4 / 11,5 min, im Stand 16,7 min).
-// Grenzen in Minuten je 100 %:
-const AKKU_BOUNDS = { stream: [8, 13], ab: [6.5, 13] };
+// Seit dem 27.11.2026 sinkt der Akku halb so schnell (Besitzer: „etwa 50 % langsamer“, data.js AKKU_TEMPO): doppelt so
+// lange (gemessen 19,8 / 22,2 / 24,2 min im Stream, 15,8 / 19,6 / 23,2 min auf der Autobahn). Grenzen in Minuten je
+// 100 %, die ursprünglichen geteilt durch AKKU_TEMPO:
+const AKKU_BOUNDS = { stream: [8 / AKKU_TEMPO, 13 / AKKU_TEMPO], ab: [6.5 / AKKU_TEMPO, 13 / AKKU_TEMPO] };
 // Minuten, die 100 % Akku reichen (aus dem Verbrauch je Sekunde)
 const akkuMin = (used, t) => (used > 0 ? (100 / (used / t)) / 60 : Infinity);
 function akkuLine(a) {
