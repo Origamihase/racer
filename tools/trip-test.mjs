@@ -31,7 +31,7 @@ for (const n of G.nodes) ok(n.edges.length > 0, 'Knoten ohne Straße: ' + n.id);
 // --- Ladeparks an Ausfahrten (src/map/parks.js) -----------------------------------------
 {
   ok(JSON.stringify(placeParks()) === JSON.stringify(PARKS), 'Ladeparks: dieselbe Regel liefert dieselbe Liste');
-  ok(PARKS.length >= 150 && PARKS.length <= 230, 'Ladeparks: Anzahl ' + PARKS.length);
+  ok(PARKS.length >= 380 && PARKS.length <= 480, 'Ladeparks: Anzahl ' + PARKS.length);
   ok(G.places.length === 426 && PARKS.every((p) => !G.places.some((q) => q.name === p.name)), 'Ladeparks sind keine Orte');
   ok(new Set(PARKS.map((p) => p.name)).size === PARKS.length && PARKS.every((p) => p.name.startsWith('Ladepark ')), 'Ladeparks: Namen eindeutig');
   const hb = PARKS.find((p) => p.name === 'Ladepark Hammersbach');
@@ -62,7 +62,9 @@ for (const n of G.nodes) ok(n.edges.length > 0, 'Knoten ohne Straße: ' + n.id);
       if (pk < 0) continue;
       const g = km - (last ? last.km : 0);
       if (last) gaps.push(g);
-      if (g < PARK.min) ok(PARKS[pk].road !== r.i || (last && PARKS[last.pk].road !== r.i) || !last, `${r.label}: ${PARKS[pk].name} nur ${g.toFixed(0)} km hinter dem vorigen Park`);
+      // die Parks der Rasthöfe und die zusätzlichen (tools/map/ladeparks.mjs) stehen, wo das Ladenetz sie braucht
+      const frei = (k) => PARKS[k].rast || PARKS[k].extra;
+      if (g < PARK.min) ok(PARKS[pk].road !== r.i || (last && PARKS[last.pk].road !== r.i) || !last || frei(pk) || frei(last.pk), `${r.label}: ${PARKS[pk].name} nur ${g.toFixed(0)} km hinter dem vorigen Park`);
       if (g > PARK.max) {
         const from = last ? last.km : 0;
         ok(!cand.some((c) => c - from >= PARK.min && c - from <= PARK.max), `${r.label}: Lücke ${g.toFixed(0)} km vor ${PARKS[pk].name}, obwohl eine Ausfahrt im Fenster lag`);

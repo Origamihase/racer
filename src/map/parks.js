@@ -13,8 +13,14 @@
 // (dort führt das Abfahren ohne Navi sonst in den Ort), dann so nah wie möglich an PARK.aim; liegt keiner im Fenster,
 // am ersten dahinter (dort sind die Kanten länger als das Fenster). Benannt ist er nach dem nächsten Ort der Karte
 // (Luftlinie), mit der Kürzung der Ortsschilder.
+//
+// Dazu hat jeder Rasthof einen Ladepark (Knoten der Art 'rast': tools/map/rasthoefe.mjs teilt lange Etappen, auf denen
+// sonst kein Akku bis zum nächsten Park reichte). An der Autobahn ist er ein Park wie jeder andere hinter seiner
+// Ausfahrt und zählt bei der Regel oben mit; an einer Landstraße liegt er gleich an der Straße (trip.js addLand), und
+// der Wagen hält dort nur, wenn der Ladestopp geplant ist (sonst lädt L, wie an der Säule eines Orts).
 import { nodes, edges, roads, places, deKind, deRev, straight, distKm, bearing, nodeTitle, stateOfNode, zubLen, routeGoal, COST, PACE } from './graph.js';
 import { signName, hashKey } from '../world/kit/layout.js';
+import { LADEPARKS } from './data.js';
 
 /** Maße in Kartenkilometern (Abstände) und Metern Straße (Abschnitte, wie gefahren). */
 export const PARK = {
@@ -67,8 +73,9 @@ export function postName(place) {
   return `Ladesäule in ${places[place].name}`;
 }
 
-/** Ausfahrt, an der jede ankommende Autobahn weitergeht? (Kandidat für einen Ladepark) */
+/** Ausfahrt, an der jede ankommende Autobahn weitergeht, oder ein Rasthof? (Kandidat für einen Ladepark) */
 export function parkCandidate(nd) {
+  if (nd.kind === 'rast') return true;
   if (nd.kind === 'kreuz' || !nodeTitle(nd).startsWith('Ausfahrt ')) return false;
   const ins = nd.edges.map(deRev).filter((de) => deKind(de) === 'ab');
   return ins.length > 0 && ins.every((de) => straight(de) >= 0);
@@ -98,14 +105,43 @@ function nearestPlace(nd) {
 
 /**
  * Die Ladeparks nach der Regel oben, rein aus der Karte: [{ i, node, road (Index in roads, deren Lauf ihn gesetzt hat),
- * at (Kartenkilometer ab ihrem Anfang), gap (zum vorigen Park auf ihr), place (nächster Ort), name }].
+ * at (Kartenkilometer ab ihrem Anfang), gap (zum vorigen Park auf ihr; am Rasthof und bei extra NaN), place (nächster
+ * Ort), name, rast (true: Park eines Rasthofs), extra (true: gesetzt aus extra) }]. extra: Knoten (Indizes), an denen
+ * ohnehin ein Park liegt – die Liste LADEPARKS der Karte (tools/map/ladeparks.mjs setzt sie dorthin, wo das Netz sonst
+ * zu große Lücken hätte, src/map/ladenetz.js); sie zählen bei der Regel mit wie die Parks der Rasthöfe.
  */
-export function placeParks() {
+export function placeParks(extra = LADEPARKS) {
   const out = [];
   const byNode = new Map();
   const names = new Set();
+  // Jeder Rasthof (Knoten der Art 'rast', tools/map/rasthoefe.mjs: Teilungspunkt einer langen Etappe) hat seinen
+  // Ladepark, benannt nach dem Ort, nach dem er heißt; an einer Landstraße liegt er gleich an der Straße (trip.js addLand)
+  for (const nd of nodes) {
+    if (nd.kind !== 'rast') continue;
+    const name = 'Ladepark ' + signName(nd.name.replace(/^Rasthof /, ''));
+    names.add(name);
+    const r = nd.edges.length ? edges[nd.edges[0] >> 1].road : -1;
+    out.push({ i: out.length, node: nd.i, road: r, at: NaN, gap: NaN, place: nearestPlace(nd).place, name, rast: true });
+    byNode.set(nd.i, out.length - 1);
+  }
+  for (const n of extra) {
+    if (byNode.has(n) || !parkCandidate(nodes[n])) continue;
+    out.push({ i: out.length, node: n, road: -1, at: NaN, gap: NaN, place: -1, name: '', extra: true });
+    byNode.set(n, out.length - 1);
+  }
+  const nameOf = (nd) => {
+    // Name nach dem nächsten Ort; trägt ihn schon ein anderer Park, nach der Ausfahrt (wie auf ihren Schildern), und
+    // ist auch der vergeben, mit der Himmelsrichtung vom Ort aus (wie echte Autohöfe: „Alsfeld-Ost“)
+    const np = nearestPlace(nd);
+    const pl = places[np.place];
+    let name = 'Ladepark ' + signName(pl.name);
+    if (names.has(name)) name = 'Ladepark ' + signName(nd.name);
+    if (names.has(name)) name = 'Ladepark ' + signName(pl.name) + '-' + ['Nord', 'Ost', 'Süd', 'West'][Math.round(bearing(pl.lat, pl.lon, nd.lat, nd.lon) / 90) % 4];
+    names.add(name);
+    return { name, place: np.place };
+  };
   for (const r of roads) {
-    if (r.kind !== 'ab') continue;
+    if (r.kind !== 'ab' && r.kind !== 'land') continue;
     const ns = r.nodes;
     let km = 0;
     const cand = [];
@@ -116,8 +152,16 @@ export function placeParks() {
         km += e.km;
       }
       const nd = nodes[ns[i]];
+      // Lage der Parks der Rasthöfe und aus extra auf ihrer (ersten) Straße
+      const q = byNode.has(nd.i) ? out[byNode.get(nd.i)] : null;
+      if (q && (q.rast || q.extra) && (q.road === r.i || q.road < 0) && Number.isNaN(q.at)) {
+        q.road = r.i;
+        q.at = km;
+      }
       if (parkCandidate(nd)) cand.push({ node: nd.i, at: km, town: nd.places.some((p) => p.zubKm < 1.5) });
     }
+    // an Landstraßen gibt es nur die Parks der Rasthöfe
+    if (r.kind === 'land') continue;
     let last = 0;
     for (let k = 0; k < cand.length; ) {
       let pick = -1;
@@ -146,22 +190,16 @@ export function placeParks() {
       if (pick < 0) break;
       const c = cand[pick];
       if (!byNode.has(c.node)) {
-        // Name nach dem nächsten Ort; trägt ihn schon ein anderer Park, nach der Ausfahrt (wie auf ihren Schildern), und
-        // ist auch der vergeben, mit der Himmelsrichtung vom Ort aus (wie echte Autohöfe: „Alsfeld-Ost“)
-        const nd = nodes[c.node];
-        const np = nearestPlace(nd);
-        const pl = places[np.place];
-        let name = 'Ladepark ' + signName(pl.name);
-        if (names.has(name)) name = 'Ladepark ' + signName(nd.name);
-        if (names.has(name)) name = 'Ladepark ' + signName(pl.name) + '-' + ['Nord', 'Ost', 'Süd', 'West'][Math.round(bearing(pl.lat, pl.lon, nd.lat, nd.lon) / 90) % 4];
-        names.add(name);
-        out.push({ i: out.length, node: c.node, road: r.i, at: c.at, gap: c.at - last, place: np.place, name });
+        const { name, place } = nameOf(nodes[c.node]);
+        out.push({ i: out.length, node: c.node, road: r.i, at: c.at, gap: c.at - last, place, name });
         byNode.set(c.node, out.length - 1);
       }
       last = c.at;
       k = pick + 1;
     }
   }
+  // die Parks aus extra heißen wie die übrigen, nach ihnen (so behält jeder Park der Regel seinen Namen)
+  for (const q of out) if (q.extra) Object.assign(q, nameOf(nodes[q.node]));
   return out;
 }
 /** Alle Ladeparks (placeParks, einmal gerechnet). */
