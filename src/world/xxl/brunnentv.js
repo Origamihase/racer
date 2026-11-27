@@ -203,7 +203,7 @@ export function tvShots(f, r, fi = null, plan = CLASSIC) {
     // von hoch oben neben dem Becken, steil hinab auf Becken und Figur (der Wagen am Rand des Bilds)
     const y = h + 7.5;
     const D = fr + 2.2;
-    all.taube = { a: at(D, y, -0.6), b: at(D - 0.4, y - 1.2, 0), look: at(0, 0.3, 0.9), fov: 55, dolly: 1.4, sees: 'brunnen' };
+    all.taube = { a: at(D, y, -0.6), b: at(D - 0.4, y - 1.2, 0), look: at(0, 0.3, 0.78), fov: 55, dolly: 1.8, sees: 'brunnen' };
   }
   // die Abschnitte: gleiche Einstellung in c und d wird eine lange Fahrt
   const seq = [];
