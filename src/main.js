@@ -29,6 +29,7 @@ import { Cockpit, EYE } from './cockpit/cockpit.js';
 import { Facecam } from './cockpit/facecam.js';
 import { flushLiveCanvases } from './cockpit/livecanvas.js';
 import { AutoViews, AUTO_MIRROR } from './autoquality.js';
+import { rowStats, setRowCull } from './world/rowcull.js';
 import { Windshield, createCompositeMaterial } from './fx/windshield.js';
 import { Rain } from './fx/rain.js';
 import { Audio } from './audio.js';
@@ -1262,7 +1263,8 @@ function adaptResolution(dt) {
 
 // --- Rendern --------------------------------------------------------------------------
 let frameNo = 0;
-let shownInside = false; // das letzte Bild war eines mit Cockpit (für die Qualität „Auto“)
+let shownInside = false; // das letzte Bild war eines mit Cockpit (für die Qualität „Auto“ und __MA.redraw)
+let redrawAll = false; // __MA.redraw: jeden Durchgang neu zeichnen, auch die mit eigenem Takt
 // Lage der Facecam in diesem Bild (ui.placeFacecam) oder null
 let facecamBox = null;
 function renderWorld(cam, { cockpitOn, drops }) {
@@ -1283,8 +1285,10 @@ function renderFrame(cockpitOn) {
   frameNo++;
   // neue Bilder von Mittelbildschirm und OMI auf die Grafikkarte, bevor der erste Durchgang beginnt
   flushLiveCanvases(renderer);
+  // (__MA.redraw: Rückspiegel und Rückfahrkamera laufen vor renderWorld und läsen sonst die Schattenkarte des Bilds davor)
+  if (redrawAll) renderer.shadowMap.needsUpdate = quality.shadows;
   // Innen- und Außenspiegel: immer das Spiegelbild der Straße (die Kofferraum-Kamera zeigt der Mittelbildschirm)
-  if (cockpitOn && frameNo % mirrorEvery() === 0) {
+  if (cockpitOn && (redrawAll || frameNo % mirrorEvery() === 0)) {
     // Rückspiegel: Blick nach hinten
     rearCam.position.copy(localToWorld(tmpV2.set(0, 1.32, 0.9)));
     rearCam.lookAt(localToWorld(tmpV2.set(0, 1.05, 40)));
@@ -1295,7 +1299,7 @@ function renderFrame(cockpitOn) {
   // Rückfahrkamera für den Mittelbildschirm: nur in R und nur mit Cockpit (cockpit.rear.on), in halber Bildrate
   if (cockpitOn && cockpit.rear.on) {
     tesla.root.visible = false;
-    cockpit.rear.render(renderer, scene, localToWorld, simT, settings.quality);
+    cockpit.rear.render(renderer, scene, localToWorld, simT, settings.quality, redrawAll);
   }
   if (photoRequest) {
     takePhoto(photoRequest);
@@ -1326,7 +1330,7 @@ function renderFrame(cockpitOn) {
     const fc = facecamBox;
     if (fc) {
       // (nach einem Zeitsprung – Pause, Test – sofort, damit nie ein altes Bild stehen bleibt)
-      const due = !paused && (frameNo % Math.max(2, mirrorEvery()) === 0 || Math.abs(simT - facecam.shotT) > 0.3);
+      const due = redrawAll || (!paused && (frameNo % Math.max(2, mirrorEvery()) === 0 || Math.abs(simT - facecam.shotT) > 0.3));
       if (!facecam.ready || due) {
         if (sideOn()) renderSide();
         facecam.render(renderer, fc, settings.quality === 'auto' ? 'hoch' : settings.quality);
@@ -2064,6 +2068,16 @@ if (DEBUG) {
     get state() {
       return state;
     },
+    // Reihen der Bäume und Häuser (world/rowcull.js): gezeichnete und vorhandene Instanzen seit dem letzten Abruf;
+    // rowCull = false zeichnet in jedem Durchgang alle, in derselben Reihenfolge (für Vergleichsbilder und Messungen)
+    get rows() {
+      const r = { ...rowStats };
+      rowStats.drawn = rowStats.total = rowStats.bounds = 0;
+      return r;
+    },
+    set rowCull(on) {
+      setRowCull(on);
+    },
     // Qualität „Auto“ (adaptResolution): Sparstufe (Rückspiegel-Takt, Seitenfenster) und Schärfe; inside: Der Stand
     // der Bilder mit Cockpit ist an der Reihe, trial und wait gehören zu ihm
     get autoQuality() {
@@ -2099,6 +2113,17 @@ if (DEBUG) {
     step: (seconds, dt = 1 / 30) => {
       const n = Math.round(seconds / dt);
       for (let i = 0; i < n; i++) step(dt, { render: i === n - 1 });
+    },
+    // denselben Stand noch einmal zeichnen, ohne dass die Welt weiterläuft (Vergleichsbilder): Jeder Durchgang läuft
+    // neu, mit neuer Schattenkarte – auch Rückspiegel und Rückfahrkamera, die sonst ihren eigenen Takt haben, und
+    // Facecam und Seitenfenster, die sonst nur jedes zweite oder dritte Bild und in der Pause gar nicht gefilmt werden
+    redraw: () => {
+      redrawAll = true;
+      try {
+        renderFrame(shownInside);
+      } finally {
+        redrawAll = false;
+      }
     },
     setState: (s, t = 0) => {
       state = s;
