@@ -163,6 +163,17 @@ const same = (A, B) => Math.abs(A.sun - B.sun) < 1e-12 && Math.abs(A.hemi - B.he
   let rep = 0;
   for (let k = 0; k < 200; k++) rep = Math.max(rep, Math.abs(cloudSunAt(0, -k * 7) - cloudSunAt(0, -k * 7 - CLOUD.tile)));
   ok(rep > 0.2, `schräge Kachel: ${CLOUD.tile} m weiter liegt ein anderer Schatten (Unterschied bis ${rep.toFixed(2)})`);
+  // und auch nicht nach einigen Kacheln: Wie nah kommt die Kachel entlang der Straße (0 bis 12 km) wieder an dieselbe Stelle?
+  {
+    const T = CLOUD.tile, c = Math.cos(CLOUD.turn) / T, sn = Math.sin(CLOUD.turn) / T;
+    const f = (v) => Math.min(v - Math.floor(v), Math.ceil(v) - v);
+    let miss = Infinity, at = 0;
+    for (let d = 1000; d <= 12000; d += 5) {
+      const m = Math.hypot(f(sn * d), f(c * d)) * T;
+      if (m < miss) { miss = m; at = d; }
+    }
+    ok(miss >= 40, `entlang der Straße kehrt die Kachel in 12 km höchstens bis auf ${miss.toFixed(0)} m wieder (bei ${at} m)`);
+  }
   // aus: Stärke 0, überall volle Sonne; unter 0 und über 1 wird begrenzt
   setCloudShadows(777, 9, 0);
   let off = 1;
@@ -243,9 +254,21 @@ const same = (A, B) => Math.abs(A.sun - B.sun) < 1e-12 && Math.abs(A.hemi - B.he
   ok(before.equals(sunUniforms.uFarM.value) && U.x === 0, 'aus: place stellt nichts');
   // dieselben Ränder wie die feine Karte, und wer Schatten wirft, liegt auf der Ebene der weiten Karte
   const curveSrc = readFileSync(new URL('../src/curve.js', import.meta.url), 'utf8');
-  ok(Number(SHADOW_FADE.edge) === 0.04 && Number(SHADOW_FADE.far) === 0.29 && /1\.0 - smoothstep\( 0\.0, \$\{SHADOW_FADE\.edge\}, cwN\.x \)/.test(curveSrc),
-    'die weite Karte gilt mit dem Gegenstück des Gewichts der feinen (dieselben Ränder)');
-  ok(/if \( ! receiveShadow \) cwW = 0\.0;/.test(curveSrc), 'was keinen Schatten empfängt, bekommt auch keinen weiten');
+  ok(Number(SHADOW_FADE.edge) === 0.04 && Number(SHADOW_FADE.far) === 0.29, 'Ränder der feinen Karte wie zuvor');
+  // Übergabe zwischen den Karten: getShadow (sky.js) blendet linear vom Anteil der weiten zu dem der feinen. So
+  // bleibt ein Schatten, den beide sehen, im ganzen Übergang voll (früher multipliziert: bei halbem Gewicht 25 % Sonne)
+  const skySrc = readFileSync(new URL('../src/world/sky.js', import.meta.url), 'utf8');
+  ok(skySrc.includes('return mix( cwFarLit, mix( 1.0, shadow, shadowIntensity ), shFade );'), 'sky.js: feine und weite Karte linear überblendet');
+  ok(/#if ! \( defined\( USE_SHADOWMAP \) && NUM_DIR_LIGHT_SHADOWS > 0 \)\n    cwSunK \*= cwFarLit;/.test(curveSrc) && !/cwSunK \*= mix\( 1\.0, cwLit/.test(curveSrc),
+    'curve.js: mit feiner Karte steckt die weite nicht noch einmal in cwSunK (das bleibt den Wolken)');
+  const mix = (a, b, t) => a + (b - a) * t;
+  const hand = (near, far, fN) => mix(far, mix(1, near, 1), fN);
+  let worstBand = 0, worstLit = 1;
+  for (let fN = 0; fN <= 1.0001; fN += 0.05) {
+    worstBand = Math.max(worstBand, hand(0, 0, fN));
+    worstLit = Math.min(worstLit, hand(1, 1, fN));
+  }
+  ok(worstBand === 0 && worstLit === 1, `im Übergang: Schatten beider Karten bleibt voll (höchstens ${pct(worstBand)} Sonne), Sonne beider bleibt Sonne`);
   for (const f of ['world/xxl/forest.js', 'world/scenery.js', 'world/kit/citycore.js']) {
     ok(/layers\.enable\(FAR_LAYER\)/.test(readFileSync(new URL('../src/' + f, import.meta.url), 'utf8')), `${f}: Schattenwerfer liegen auf der Ebene der weiten Karte`);
   }

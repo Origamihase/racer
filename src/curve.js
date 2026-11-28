@@ -33,19 +33,20 @@ export const curveUniforms = {
 // --- Wolkenschatten -------------------------------------------------------------------------------------------
 // Weiche Flecken, die mit dem Wind über das Land ziehen: Wo einer liegt, kommt weniger Sonne an (das Himmelslicht
 // bleibt, der Schatten ist also bläulich wie jeder andere). Eine Abfrage je Bildpunkt in einer kleinen Kachel, die
-// sich schräg zur Straße wiederholt (so kommt entlang der Fahrt lange kein Fleck zweimal). Die Flecken liegen in der
+// sich schräg zur Straße wiederholt (Winkel mit tan ≈ 0,618, dem goldenen Schnitt: Entlang der Straße kommt die
+// Kachel erst nach gut 13 km wieder auf 60 m an dieselbe Stelle). Die Flecken liegen in der
 // ungebogenen Welt fest wie die Wiese (der Boden rückt mit s nach +z). Zwischen den Punkten der Kachel wird weich
 // überblendet (smoothstep statt geradlinig): Geradlinig gäbe an jeder Punktreihe einen Knick im Verlauf, und den
 // sieht man auf der Wiese als feine schräge Linien.
-// Ränder der beiden Schattenkarten als Anteil ihres Kastens (hier, weil der Shader beide braucht; sky.js und
-// farshadow.js lesen sie von hier): kurz an den Seiten, lang an der fernen Kante
+// Ränder der beiden Schattenkarten als Anteil ihres Kastens, kurz an den Seiten, lang an der fernen Kante: SHADOW_FADE
+// für die feine (getShadow in sky.js), FAR_EDGE und FAR_FAR für die weite (SUN_FAR unten)
 export const SHADOW_FADE = { edge: '0.040', far: '0.290' };
 const FAR_EDGE = '0.040';
 const FAR_FAR = '0.250';
 export const CLOUD = {
   n: 512, // Kachel in Punkten
   tile: 1400, // und in Metern
-  turn: 0.46, // Drehung der Kachel gegen die Straße (rad)
+  turn: 0.554, // Drehung der Kachel gegen die Straße (rad)
   strength: 0.42, // so viel Sonne nimmt die Mitte eines Flecks
   wind: [2.2, 4.5], // m/s nach rechts und entgegen der Fahrt
   end: 0.3, // ab dieser Bewölkung ist der Himmel zu: keine einzelnen Schatten mehr
@@ -337,6 +338,7 @@ uniform highp sampler2DShadow uFarMap;
 uniform vec4 uFar;
 varying vec2 vCwSunUv;
 varying vec3 vCwFar;
+float cwFarLit = 1.0;
 float cwSunAt() {
   vec2 q = vCwSunUv * ${CLOUD.n}.0 + 0.5;
   vec2 i = floor( q );
@@ -345,29 +347,26 @@ float cwSunAt() {
   return 1.0 - uCloud.z * texture2D( uCloudTex, ( i + f - 0.5 ) / ${CLOUD.n}.0 ).r;
 }
 `;
-// Weite Schattenkarte: gilt mit dem Gegenstück des Gewichts der feinen (shFade in world/sky.js, dieselbe Rechnung),
-// läuft an ihren eigenen Rändern aus und fällt nur auf das, was Schatten empfängt
+// Weite Schattenkarte: cwFarLit ist ihr Anteil der Sonne (an ihren eigenen Rändern läuft sie aus). Mit der feinen
+// Karte gilt sie dort, wo diese ausläuft, linear überblendet (getShadow in world/sky.js, mit demselben Gewicht): Wo
+// beide Schatten sehen, bleibt es ein voller Schatten. Ohne feine Karte (Schatten aus) ist auch die weite aus; für
+// den Fall rechnet sie hier selbst in cwSunK. cwSunK selbst bleibt sonst der Anteil unter den Wolken.
 const SUN_FAR = /* glsl */ `
 {
   float cwW = uFar.x * smoothstep( 0.0, ${FAR_EDGE}, vCwFar.x ) * smoothstep( 0.0, ${FAR_EDGE}, 1.0 - vCwFar.x )
     * smoothstep( 0.0, mix( ${FAR_EDGE}, ${FAR_FAR}, max( - uFar.z, 0.0 ) ), vCwFar.y )
     * smoothstep( 0.0, mix( ${FAR_EDGE}, ${FAR_FAR}, max( uFar.z, 0.0 ) ), 1.0 - vCwFar.y );
-  #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
-    vec3 cwN = vDirectionalShadowCoord[ 0 ].xyz / vDirectionalShadowCoord[ 0 ].w;
-    float cwNf = clamp( directionalLightShadows[ 0 ].shadowRadius, - 1.0, 1.0 );
-    cwW *= 1.0 - smoothstep( 0.0, ${SHADOW_FADE.edge}, cwN.x ) * smoothstep( 0.0, ${SHADOW_FADE.edge}, 1.0 - cwN.x )
-      * smoothstep( 0.0, mix( ${SHADOW_FADE.edge}, ${SHADOW_FADE.far}, max( - cwNf, 0.0 ) ), cwN.y )
-      * smoothstep( 0.0, mix( ${SHADOW_FADE.edge}, ${SHADOW_FADE.far}, max( cwNf, 0.0 ) ), 1.0 - cwN.y );
-    if ( ! receiveShadow ) cwW = 0.0;
-  #endif
   if ( cwW > 0.0 ) {
     // vier Abfragen, jede mittelt selbst vier Punkte: Die groben Punkte der weiten Karte gäben sonst Treppen
     vec3 cwC = vec3( vCwFar.xy, vCwFar.z - uFar.y );
     vec2 cwD = vec2( 0.75, 0.25 ) * uFar.w;
     float cwLit = texture( uFarMap, cwC + vec3( cwD.x, cwD.y, 0.0 ) ) + texture( uFarMap, cwC + vec3( - cwD.y, cwD.x, 0.0 ) )
       + texture( uFarMap, cwC + vec3( - cwD.x, - cwD.y, 0.0 ) ) + texture( uFarMap, cwC + vec3( cwD.y, - cwD.x, 0.0 ) );
-    cwSunK *= mix( 1.0, cwLit * 0.25, cwW );
+    cwFarLit = mix( 1.0, cwLit * 0.25, cwW );
   }
+  #if ! ( defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0 )
+    cwSunK *= cwFarLit;
+  #endif
 }
 `;
 const SUN_BEGIN = 'float cwSunK = cwSunAt();\n' + SUN_FAR

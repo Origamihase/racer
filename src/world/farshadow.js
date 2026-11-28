@@ -1,8 +1,8 @@
 // Weite Schattenkarte: Schatten der Landschaft. Die Schattenkarte der Sonne (sky.js, SHADOW) reicht nur gut 60 m
 // zur Seite und 180 m voraus: Bäume, Büsche und Häuser am Rand standen dahinter ohne Schatten auf der Wiese. Diese
 // zweite Karte fasst ein Vielfaches (FAR) und ist entsprechend gröber (bei „hoch“ rund 25 × 40 cm je Punkt): Sie
-// gilt nur dort, wo die feine ausläuft, mit dem Gegenstück von deren Gewicht (curve.js, cwSunK), so dass beide
-// zusammen überall genau einen Schatten geben.
+// gilt dort, wo die feine ausläuft, linear mit ihr überblendet (curve.js cwFarLit, getShadow in sky.js), so dass
+// beide zusammen überall genau einen Schatten geben.
 // Gezeichnet wird in jedem Bild, vor allen anderen Durchgängen: nur, was auf der Ebene FAR_LAYER liegt (Bewuchs,
 // Häuser), mit einem Tiefen-Material für alles, gebogen wie die Welt (curve.js biegt three.js' Tiefen-Shader mit).
 // Rückseiten statt Vorderseiten: Eine besonnte Fläche liegt dann sicher vor dem, was in der Karte steht, und kann
@@ -12,8 +12,8 @@ import { sunUniforms } from '../curve.js';
 
 /** Was einen weiten Schatten wirft, liegt zusätzlich auf dieser Ebene (mesh.layers.enable). */
 export const FAR_LAYER = 5;
-// Kasten in Licht-Einheiten wie SHADOW in sky.js (u quer, v längs der Blickrichtung), Ränder als Anteil des Kastens:
-// seitlich und hinten kurz, in der Ferne lang auslaufend
+// Kasten in Licht-Einheiten wie SHADOW in sky.js (u quer, v längs der Blickrichtung); seine Ränder stehen in curve.js
+// (FAR_EDGE, FAR_FAR)
 export const FAR = { u: 520, v: 800, back: 90, near: 10, depth: 1500, bias: 0.25 };
 
 const _dir = new THREE.Vector3();
@@ -43,7 +43,8 @@ export class FarShadow {
     const depth = new THREE.DepthTexture(n, n, THREE.UnsignedIntType);
     depth.compareFunction = THREE.LessEqualCompare; // als sampler2DShadow gelesen: vier Punkte, weich gemittelt
     depth.minFilter = depth.magFilter = THREE.LinearFilter;
-    this.rt = new THREE.WebGLRenderTarget(n, n, { depthTexture: depth, generateMipmaps: false });
+    // Farbe wird nie geschrieben noch gelesen: ein Kanal zu 8 Bit statt RGBA (bei 2048² 4 statt 16 MB)
+    this.rt = new THREE.WebGLRenderTarget(n, n, { depthTexture: depth, generateMipmaps: false, format: THREE.RedFormat, type: THREE.UnsignedByteType });
     this.size = n;
     this.clear = true;
     sunUniforms.uFarMap.value = depth;
@@ -62,7 +63,7 @@ export class FarShadow {
     const fz = len > 1e-3 ? _dir.z / len : -1;
     const halfZ = FAR.v / 2 / -eV.z;
     const x = camera.position.x * 0.5;
-    const z = camera.position.z + fz * (halfZ - FAR.back) + fx * 0;
+    const z = camera.position.z + fz * (halfZ - FAR.back);
     const tu = FAR.u / this.size;
     const tv = FAR.v / this.size;
     const u = Math.round((eU.x * x) / tu) * tu;
@@ -121,11 +122,22 @@ export class FarShadow {
     renderer.setRenderTarget(this.rt);
     if (this.on) {
       const shown = car.visible;
+      const { autoClear } = renderer;
+      const { background } = scene;
       car.visible = false;
       scene.overrideMaterial = this.material;
-      renderer.render(scene, this.camera);
-      scene.overrideMaterial = override;
-      car.visible = shown;
+      // nur die Tiefe löschen; ohne Hintergrund, der würde sonst als Kasten mitgezeichnet oder die Farbe gelöscht
+      scene.background = null;
+      renderer.autoClear = false;
+      renderer.clear(false, true, false);
+      try {
+        renderer.render(scene, this.camera);
+      } finally {
+        renderer.autoClear = autoClear;
+        scene.background = background;
+        scene.overrideMaterial = override;
+        car.visible = shown;
+      }
     } else renderer.clear();
     this.clear = false;
     renderer.setRenderTarget(target);

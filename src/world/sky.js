@@ -33,7 +33,12 @@ const FADE = /* glsl */ `
 		float shFade = smoothstep( 0.0, ${EDGE}, shadowCoord.x ) * smoothstep( 0.0, ${EDGE}, 1.0 - shadowCoord.x )
 			* smoothstep( 0.0, mix( ${EDGE}, ${FAR}, max( - shFar, 0.0 ) ), shadowCoord.y )
 			* smoothstep( 0.0, mix( ${EDGE}, ${FAR}, max( shFar, 0.0 ) ), 1.0 - shadowCoord.y );
-		return mix( 1.0, shadow, shadowIntensity * shFade );`;
+		#ifdef CW_SUN
+		// wo die feine Karte ausläuft, übernimmt die weite (cwFarLit, curve.js): ein Schatten, nicht zwei übereinander
+		return mix( cwFarLit, mix( 1.0, shadow, shadowIntensity ), shFade );
+		#else
+		return mix( 1.0, shadow, shadowIntensity * shFade );
+		#endif`;
 {
   const chunk = THREE.ShaderChunk.shadowmap_pars_fragment;
   const end = 'return mix( 1.0, shadow, shadowIntensity );';

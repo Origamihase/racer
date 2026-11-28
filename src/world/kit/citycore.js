@@ -658,15 +658,19 @@ if (vKind > 0.5 && vKind < 2.5) {
   totalEmissiveRadiance += vec3(0.22, 0.27, 0.32) * (0.35 + 0.65 * ckF * ckF);
 }
 #if NUM_DIR_LIGHTS > 0
+{
+float ckSunK = 1.0;
+#ifdef CW_SUN
+  // unter einer Wolke glitzert weniger (cwSunK gibt es hier noch nicht); außerhalb der Verzweigung gelesen, weil die
+  // Kachel Mipmaps hat und die Ableitungen in einer Verzweigung je Bildpunkt nicht feststehen
+  ckSunK = cwSunAt();
+#endif
 if (vKind < 0.5) {
   // Glitzern in der Sonne: wenige helle Punkte, die aufblitzen und wandern
   vec2 q = vWuv;
   float ckG = sin(q.x * 23.0 + uWater.x * 2.3) * sin(q.y * 27.0 - uWater.x * 1.9) * sin((q.x - q.y) * 11.0 + uWater.x * 3.1);
-  float ckSunK = 1.0;
-  #ifdef CW_SUN
-    ckSunK = cwSunAt(); // unter einer Wolke glitzert weniger (cwSunK gibt es hier noch nicht)
-  #endif
   totalEmissiveRadiance += directionalLights[0].color * (0.16 * ckSunK * smoothstep(0.62, 0.95, ckG));
+}
 }
 #endif
 `;
