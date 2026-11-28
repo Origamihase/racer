@@ -438,6 +438,13 @@ export class Audio {
     this.tone(900, 0.4, 'square', 0.04, 0, 1300);
   }
 
+  /** Der Brunnen antwortet im Interview (game/rubriken.js): Plätschern und ein paar Blasen, die aufsteigen. */
+  brunnenBlubb() {
+    this.noiseBurst(1.2, 0.05, { type: 'bandpass', freq: 900, q: 0.8, slideTo: 1600 });
+    const blasen = [[0.05, 320], [0.28, 410], [0.46, 290], [0.7, 480], [0.95, 360]];
+    for (const [w, f] of blasen) this.tone(f, 0.09, 'sine', 0.07, w, f * 2.4);
+  }
+
   /**
    * Ein Piepton mit flachem Dach: in 6 ms an, gleich laut gehalten, in 12 ms aus. Ein abklingender Ton (tone) hat seine
    * Kraft in den ersten 20 ms – so einer geht bei 130 km/h unter Abrollen und Wind unter.

@@ -61,7 +61,8 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
     studio: (text) => log.speak.push({ t: game.t, who: 'studio', text, at: state() }),
     megafon: (text, dur, buyer, label) => log.speak.push({ t: game.t, who: 'megafon', text, label: label || 'Megafon-Wunsch von ' + buyer, at: state() }),
     durchsage: (voice, text) => log.speak.push({ t: game.t, who: 'durchsage', text, voice, at: state() }),
-    brunnenTV: (n, name) => log.tv.push({ t: game.t, n, name }),
+    brunnenTV: (n, name, rubrik) => log.tv.push({ t: game.t, n, name, rubrik: rubrik || '' }),
+    brunnenAntwort: (text) => (log.speak.push({ t: game.t, who: 'quelle', text, at: state() }), { text }),
     funkloch: (on) => log.funk.push({ t: game.t, on, at: state() }),
   });
   game = new Game({

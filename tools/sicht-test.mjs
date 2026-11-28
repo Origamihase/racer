@@ -97,12 +97,18 @@ const maxLen = (x) => Math.max(...flat(x).map((t) => t.length));
 const town = (list, key) => list.map((t) => t.replace('{' + key + '}', 'x'.repeat(20)));
 // die Sätze, die eine Folge über ihren Brunnen sagt (brunnentexte.js), an jedem Ort mit seinen Namen eingesetzt
 const { folgeTexte, fuelle } = await import('../src/game/brunnentexte.js');
+const { INTERVIEW } = await import('../src/game/rubriken.js');
 const { places: allPlaces } = await import('../src/map/graph.js');
 const ortTexte = { omi: [], mega: [] };
 for (const p of allPlaces) {
   const T = folgeTexte(p);
   ortTexte.omi.push(...T.omi.map((l) => fuelle(l, T, '9.999')));
   ortTexte.mega.push(...T.mega.map((l) => fuelle(l, T, 1)).filter((l) => l.length <= 40));
+  // die Rubrik Brunnen-Interview (rubriken.js): Fragen durchs Megafon, OMIs Übersetzung
+  for (const f of INTERVIEW.fragen) {
+    ortTexte.mega.push(fuelle(f.q, T, 1));
+    ortTexte.omi.push(...f.a.map((l) => fuelle(l, T, '9.999')));
+  }
 }
 const spoken = {
   nomi: [BOARD, DAMAGE_LINES, BRUNNEN_NOMI.map((t) => t.replace('{n}', '9.999')), ortTexte.omi],

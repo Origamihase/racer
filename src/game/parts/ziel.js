@@ -16,6 +16,7 @@ import { estimateSpeech } from '../../speech.js';
 import { TROEDEL } from './stream.js';
 import { folgeTexte, fuelle, ANTEIL, FAKT } from '../brunnentexte.js';
 import { MEGAFON_AUSLAND } from '../../data-memes.js';
+import { rubrikFor, ANTWORT_T, INTERVIEW } from '../rubriken.js';
 
 /** Kratzer von der Leitplanke bisher: jede Schramme (damage.js scraped; gezeichnet sind höchstens drei je Seite). */
 export const scratchMarks = (damage) => damage.scraped || 0;
@@ -621,7 +622,11 @@ export class ZielPart {
     // dem, was der Zufall sonst im Stream bringt – Gebote, Verkehr, Chat –, und ein Lauf mit derselben Saat bleibt gleich)
     const texte = folgeTexte(t.place);
     const rng = mulberry32((Math.imul(n, 7919) ^ Math.imul(t.place + 1, 104729)) >>> 0);
-    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, called: false, debate: entry.d || null, way, texte, rng };
+    // manche Folgen haben eine Rubrik (rubriken.js: das Brunnen-Interview) – nie zwei gleiche hintereinander, im
+    // Ausland nicht (dort grüßt er mit eigenem Gag); der Ruf „Schöner Brunnen!“ bleibt in jeder
+    const rubrik = rubrikFor(n, rng, { last: this.tvLastRubrik, abroad: !!MEGAFON_AUSLAND[places[t.place]?.cc], force: this.forceRubrik });
+    this.tvLastRubrik = rubrik;
+    this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, called: false, debate: entry.d || null, way, texte, rng, rubrik };
     // ab jetzt gehört die Sprachausgabe der Folge: Was spricht, endet höflich, alles andere wartet dahinter (speech.js)
     this.speech.episode?.(true);
     this.quote.tv.push({ t: this.t, n });
@@ -697,7 +702,7 @@ export class ZielPart {
     const t = this.t - tv.t0;
     const moments = [
       [TV.card, () => {
-        this.ui.brunnenTV(tv.n, tv.name);
+        this.ui.brunnenTV(tv.n, tv.name, tv.rubrik ? tv.rubrik.name : '');
         // Mini Adam moderiert als Herr Schönnbrun: dessen Hymne eröffnet die Folge
         this.audio.schoennbrunHymne();
       }],
@@ -709,6 +714,13 @@ export class ZielPart {
         // der Chat sieht, was für ein Brunnen das ist (Figur, echter Brunnen): eine Zeile mitten im Jubel
         const T = tv.texte;
         const R = tv.rng;
+        // (im Interview freut sich der Chat aufs Format statt über die Figur, und niemand weiß etwas über den Ort)
+        if (tv.rubrik === INTERVIEW) {
+          const line = INTERVIEW.chatFrage[Math.floor(R() * INTERVIEW.chatFrage.length)];
+          this.later(1.2 + R(), () => this.chat(line, viewerNameAt(Math.floor(R() * 9973))));
+          if (tv.debate) this.later(3.2, () => this.chat(this.chatLine(BRUNNEN_DEBATTE[tv.debate])));
+          return;
+        }
         if (T && T.chat.length) {
           const line = fuelle(this.tvFresh(T.chat, R, (this.tvChatSeen ??= [])), T, tv.n);
           this.later(1.2 + R(), () => this.chat(line, viewerNameAt(Math.floor(R() * 9973))));
@@ -722,7 +734,8 @@ export class ZielPart {
         }
       }],
       [TV.call, () => this.brunnenCall()],
-      [TV.nomi, () => this.say(this.brunnenOmi(tv), 'love', { priority: false, scene: true })],
+      [ANTWORT_T, () => tv.rubrik === INTERVIEW && this.brunnenAntwort(tv)],
+      [TV.nomi, () => this.say(tv.frage ? this.interviewOmi(tv) : this.brunnenOmi(tv), 'love', { priority: false, scene: true })],
     ];
     while (tv.said < moments.length && t >= moments[tv.said][0]) moments[tv.said++][1]();
     if (t >= TV.end) this.endBrunnenTV();
@@ -748,7 +761,15 @@ export class ZielPart {
     let text = fits.length ? pick(fits) : all.reduce((a, b) => (b.length < a.length ? b : a));
     const T = tv.texte;
     const own = T && !abroad ? fit(T.mega.map((l) => fuelle(l, T, tv.n))) : [];
-    if (own.length && tv.rng() < (T.echt ? 0.9 : ANTEIL.mega)) text = this.tvFresh(own, tv.rng);
+    if (tv.rubrik === INTERVIEW) {
+      // im Interview statt des Grußes die Frage an den Brunnen (eine, die vor dem Ruf zu Ende ist)
+      const fragen = INTERVIEW.fragen.filter((f) => fit([fuelle(f.q, T || {}, tv.n)]).length);
+      if (fragen.length) {
+        const q = this.tvFresh(fragen.map((f) => f.q), tv.rng);
+        tv.frage = fragen.find((f) => f.q === q);
+        text = fuelle(q, T || {}, tv.n);
+      }
+    } else if (own.length && tv.rng() < (T.echt ? 0.9 : ANTEIL.mega)) text = this.tvFresh(own, tv.rng);
     this.audio.megafon();
     // ein Satz der Folge (episode): Was sonst noch reden wollte, wartet dahinter; sein Untertitel kommt mit ihm
     const dur = this.speech.say(text, 'adam', { episode: true, onStart: (d) => this.ui.megafon(text, d + 1, '', SCHOENNBRUN.label) });
@@ -776,6 +797,30 @@ export class ZielPart {
     const T = tv.texte;
     const own = T ? T.omi.map((l) => fuelle(l, T, fmtNum(tv.n))) : [];
     return own.length && tv.rng() < (T.echt ? 0.9 : ANTEIL.omi) ? this.tvFresh(own, tv.rng) : generic;
+  }
+
+  /**
+   * Interview (rubriken.js): Der Brunnen antwortet – er plätschert, der Untertitel schreibt es, und der Chat will
+   * wissen, was er gesagt hat. Der Untertitel bleibt oben (top) bis kurz vor OMIs Übersetzung.
+   */
+  brunnenAntwort(tv) {
+    if (!tv.frage) return;
+    const R = tv.rng;
+    const I = INTERVIEW;
+    this.audio.brunnenBlubb?.();
+    const line = this.ui.brunnenAntwort?.(I.blubb[Math.floor(R() * I.blubb.length)], TV.nomi - ANTWORT_T - 0.1);
+    if (line && typeof line === 'object') line.top = true;
+    const c = I.chatAntwort[Math.floor(R() * I.chatAntwort.length)];
+    this.later(0.5, () => this.chat(c, viewerNameAt(Math.floor(R() * 9973))));
+  }
+
+  /** Interview: OMI übersetzt, was der Brunnen geantwortet hat; danach staunt der Chat. */
+  interviewOmi(tv) {
+    const R = tv.rng;
+    const a = this.tvFresh(tv.frage.a, R);
+    const c = INTERVIEW.chatNach[Math.floor(R() * INTERVIEW.chatNach.length)];
+    this.later(2.4, () => this.chat(c, viewerNameAt(Math.floor(R() * 9973))));
+    return fuelle(a, tv.texte || {}, fmtNum(tv.n));
   }
 
   /** Ein Zuschauer weiß etwas über den Ort: der berühmte Brunnen oder die Zeile seines Steckbriefs. */

@@ -171,6 +171,8 @@ export class UI {
     const line = el('div', 'brunnentv-line', tv);
     this.tvEpisode = el('span', 'brunnentv-episode', line, '');
     this.tvPlace = el('span', 'brunnentv-place', line, '');
+    // (die Rubrik der Folge, wenn sie eine hat: rubriken.js)
+    this.tvRubrik = el('span', 'brunnentv-rubrik', line, '');
     this.subEl = el('div', 'sub-bar hidden', bottom);
     const eyes = el('span', 'sub-sign nomi-eyes', this.subEl);
     el('i', '', eyes);
@@ -180,6 +182,7 @@ export class UI {
     el('span', 'sub-sign megafon-icon', this.subEl, '📢');
     el('span', 'sub-sign adam-icon', this.subEl, '🎤');
     el('span', 'sub-sign navi-icon', this.subEl, '📡');
+    el('span', 'sub-sign quelle-icon', this.subEl, '💧');
     const words = el('span', 'sub-words', this.subEl);
     this.subLabel = el('span', 'sub-label', words, '');
     this.subText = el('span', 'sub-text', words, '');
@@ -709,15 +712,21 @@ export class UI {
    * steht dann über dem Untertitel, statt zu warten, bis keiner mehr spricht (in der Folge spricht fast immer jemand).
    * n = 0 blendet sie aus.
    */
-  brunnenTV(n, name = '') {
+  brunnenTV(n, name = '', rubrik = '') {
     this.tvEl.classList.toggle('hidden', !n);
     this.tvEl.parentElement.classList.toggle('tv', !!n);
     if (!n) return;
     this.tvEpisode.textContent = 'Folge ' + fmtNum(n);
     this.tvPlace.textContent = 'Heute aus ' + name;
+    this.tvRubrik.textContent = rubrik ? '🎤 ' + rubrik : '';
     this.tvEl.classList.remove('pop');
     void this.tvEl.offsetWidth;
     this.tvEl.classList.add('pop');
+  }
+
+  /** Interview (rubriken.js): Der Brunnen antwortet – er plätschert, der Untertitel schreibt es mit Wassertropfen. */
+  brunnenAntwort(text, dur) {
+    return this.speak('quelle', text, Math.max(1.2, dur), 'Der Brunnen antwortet');
   }
 
   /** Funkloch: Der Stream ist weg. Das steht im Chat-Feld, wo er fehlt – ist der Chat abgeschaltet, als Hinweis. */
