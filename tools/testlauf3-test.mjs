@@ -586,18 +586,18 @@ let stream12 = [];
   globalThis.document = doc0;
 
   // der Mittelbildschirm: zeichnet in der Drohnenansicht für das Kärtchen weiter (ohne Hochladen), sonst wie bisher
-  const fake = { acc: 0, spin: 0, live: false, hudOut: false, onDraw: null, texture: { needsUpdate: false }, drawn: 0, draw() { this.drawn++; } };
+  const fake = { acc: 0, spin: 0, live: false, hudOut: false, onDraw: null, upload: { needsUpdate: false }, drawn: 0, draw() { this.drawn++; } };
   const up = (visible) => CenterScreen.prototype.update.call(fake, 0.1, { nav: { visible } });
   let got = 0;
   up(false);
-  ok(fake.drawn === 0 && !fake.texture.needsUpdate, 'ohne Cockpit und ohne Kärtchen ruht der Bildschirm');
+  ok(fake.drawn === 0 && !fake.upload.needsUpdate, 'ohne Cockpit und ohne Kärtchen ruht der Bildschirm');
   fake.onDraw = () => got++;
   fake.hudOut = true;
   up(false);
-  ok(fake.drawn === 1 && got === 1 && !fake.texture.needsUpdate, 'Drohnenansicht: zeichnen und ans Kärtchen geben, nicht hochladen');
+  ok(fake.drawn === 1 && got === 1 && !fake.upload.needsUpdate, 'Drohnenansicht: zeichnen und ans Kärtchen geben, nicht hochladen');
   fake.hudOut = false;
   up(true);
-  ok(fake.drawn === 2 && got === 1 && fake.texture.needsUpdate, 'Cockpit: zeichnen und hochladen, das Kärtchen bekommt nichts');
+  ok(fake.drawn === 2 && got === 1 && fake.upload.needsUpdate, 'Cockpit: zeichnen und hochladen, das Kärtchen bekommt nichts');
   // den Zustand dafür baut main.js nur, wenn der Bildschirm in diesem Bild zeichnet (due): bei 60 Bildern je Sekunde
   // 15-mal im Cockpit, nie ohne Cockpit und Kärtchen; sonst bekommt update null und zählt nur die Zeit
   const scr = new CenterScreen();

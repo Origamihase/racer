@@ -27,6 +27,7 @@ import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
 import { Cockpit, EYE } from './cockpit/cockpit.js';
 import { Facecam } from './cockpit/facecam.js';
+import { flushLiveCanvases } from './cockpit/livecanvas.js';
 import { Windshield, createCompositeMaterial } from './fx/windshield.js';
 import { Rain } from './fx/rain.js';
 import { Audio } from './audio.js';
@@ -1294,6 +1295,8 @@ function renderWorld(cam, { cockpitOn, drops }) {
 
 function renderFrame(cockpitOn) {
   frameNo++;
+  // neue Bilder von Mittelbildschirm und OMI auf die Grafikkarte, bevor der erste Durchgang beginnt
+  flushLiveCanvases(renderer);
   // Innen- und Außenspiegel: immer das Spiegelbild der Straße (die Kofferraum-Kamera zeigt der Mittelbildschirm)
   if (cockpitOn && frameNo % mirrorEvery() === 0) {
     // Rückspiegel: Blick nach hinten

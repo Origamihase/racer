@@ -1,11 +1,11 @@
 // Der große Mittelbildschirm (wie im Model 3): links die Fahrzeugansicht mit Spuren und
 // Verkehr, rechts die Navi-Karte mit Route – ferngesteuert von den Zuschauern.
-import * as THREE from 'three';
 import { clamp, lerp, tachoKmh } from '../util.js';
 import { roundRect } from '../textures.js';
 import { drawDamageCar, damageBand } from './screen-damage.js';
 import { NaviScreen } from '../map/navview.js';
 import { fmtKm } from '../map/navroute.js';
+import { LiveCanvas } from './livecanvas.js';
 
 const CW = 1024;
 const CH = 640;
@@ -44,9 +44,9 @@ export class CenterScreen {
     this.canvas.width = CW;
     this.canvas.height = CH;
     this.ctx = this.canvas.getContext('2d');
-    this.texture = new THREE.CanvasTexture(this.canvas);
-    this.texture.colorSpace = THREE.SRGBColorSpace;
-    this.texture.anisotropy = 8;
+    // 15-mal je Sekunde neuer Inhalt: über LiveCanvas auf die Grafikkarte (dort steht, warum nicht als CanvasTexture)
+    this.upload = new LiveCanvas(this.canvas, { anisotropy: 8 });
+    this.texture = this.upload.texture;
     this.live = false;
     // Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js): solange hudOut gilt, zeichnet der Bildschirm weiter,
     // auch ohne Cockpit im Bild, und reicht jedes neue Bild an onDraw(canvas, navi) weiter (hochgeladen wird es dann
@@ -81,7 +81,7 @@ export class CenterScreen {
     this.step = this.acc;
     this.acc = 0;
     this.draw(st);
-    if (this.live) this.texture.needsUpdate = true;
+    if (this.live) this.upload.needsUpdate = true;
     if (this.hudOut && this.onDraw) this.onDraw(this.canvas, this.navi);
   }
 
