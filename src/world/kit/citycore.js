@@ -10,6 +10,7 @@
 // Alle Farben stecken in den Eckpunkten, samt weicher „Umgebungsschatten“ (unten und unter Traufen dunkler).
 // Text von Läden und Schildern kommt aus einem einzigen Atlas, deshalb kostet Schrift keinen eigenen Draw Call.
 import * as THREE from 'three';
+import { FAR_LAYER } from '../farshadow.js';
 import { PAL } from './palette.js';
 
 export { PAL };
@@ -571,7 +572,11 @@ const SOFT_GLSL = /* glsl */ `#include <lights_fragment_end>
   vec3 ckSun = directionalLights[0].direction;
   vec3 ckFill = normalize(ckUp * (dot(ckSun, ckUp) + 0.3) - ckSun);
   float ckDown = max(-dot(normal, ckUp), 0.0);
-  reflectedLight.indirectDiffuse += directionalLights[0].color * (0.27 * max(dot(normal, ckFill), 0.0) + 0.13 * ckDown) * BRDF_Lambert(material.diffuseColor);
+  vec3 ckSunColor = directionalLights[0].color;
+  #ifdef CW_SUN
+    ckSunColor *= cwSunK; // unter einer Wolke wirft auch der Boden weniger Sonne zurück
+  #endif
+  reflectedLight.indirectDiffuse += ckSunColor * (0.27 * max(dot(normal, ckFill), 0.0) + 0.13 * ckDown) * BRDF_Lambert(material.diffuseColor);
 }
 #endif
 `;
@@ -653,11 +658,19 @@ if (vKind > 0.5 && vKind < 2.5) {
   totalEmissiveRadiance += vec3(0.22, 0.27, 0.32) * (0.35 + 0.65 * ckF * ckF);
 }
 #if NUM_DIR_LIGHTS > 0
+{
+float ckSunK = 1.0;
+#ifdef CW_SUN
+  // unter einer Wolke glitzert weniger (cwSunK gibt es hier noch nicht); außerhalb der Verzweigung gelesen, weil die
+  // Kachel Mipmaps hat und die Ableitungen in einer Verzweigung je Bildpunkt nicht feststehen
+  ckSunK = cwSunAt();
+#endif
 if (vKind < 0.5) {
   // Glitzern in der Sonne: wenige helle Punkte, die aufblitzen und wandern
   vec2 q = vWuv;
   float ckG = sin(q.x * 23.0 + uWater.x * 2.3) * sin(q.y * 27.0 - uWater.x * 1.9) * sin((q.x - q.y) * 11.0 + uWater.x * 3.1);
-  totalEmissiveRadiance += directionalLights[0].color * (0.16 * smoothstep(0.62, 0.95, ckG));
+  totalEmissiveRadiance += directionalLights[0].color * (0.16 * ckSunK * smoothstep(0.62, 0.95, ckG));
+}
 }
 #endif
 `;
@@ -1875,6 +1888,7 @@ export function compose(core, items, { shadows = true } = {}) {
     if (!g) return;
     const m = new THREE.Mesh(g, mat);
     m.castShadow = cast;
+    if (cast) m.layers.enable(FAR_LAYER);
     m.receiveShadow = shadows;
     group.add(m);
   };

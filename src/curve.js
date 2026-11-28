@@ -30,6 +30,108 @@ TEX.generateMipmaps = false;
 export const curveUniforms = {
   uCurve: { value: TEX },
 };
+// --- Wolkenschatten -------------------------------------------------------------------------------------------
+// Weiche Flecken, die mit dem Wind über das Land ziehen: Wo einer liegt, kommt weniger Sonne an (das Himmelslicht
+// bleibt, der Schatten ist also bläulich wie jeder andere). Eine Abfrage je Bildpunkt in einer kleinen Kachel, die
+// sich schräg zur Straße wiederholt (Winkel mit tan ≈ 0,618, dem goldenen Schnitt: Entlang der Straße kommt die
+// Kachel erst nach gut 13 km wieder auf 60 m an dieselbe Stelle). Die Flecken liegen in der
+// ungebogenen Welt fest wie die Wiese (der Boden rückt mit s nach +z). Zwischen den Punkten der Kachel wird weich
+// überblendet (smoothstep statt geradlinig): Geradlinig gäbe an jeder Punktreihe einen Knick im Verlauf, und den
+// sieht man auf der Wiese als feine schräge Linien.
+// Ränder der beiden Schattenkarten als Anteil ihres Kastens, kurz an den Seiten, lang an der fernen Kante: SHADOW_FADE
+// für die feine (getShadow in sky.js), FAR_EDGE und FAR_FAR für die weite (SUN_FAR unten)
+export const SHADOW_FADE = { edge: '0.040', far: '0.290' };
+const FAR_EDGE = '0.040';
+const FAR_FAR = '0.250';
+export const CLOUD = {
+  n: 512, // Kachel in Punkten
+  tile: 1400, // und in Metern
+  turn: 0.554, // Drehung der Kachel gegen die Straße (rad)
+  strength: 0.42, // so viel Sonne nimmt die Mitte eines Flecks
+  wind: [2.2, 4.5], // m/s nach rechts und entgegen der Fahrt
+  end: 0.3, // ab dieser Bewölkung ist der Himmel zu: keine einzelnen Schatten mehr
+};
+/** Die Kachel: Deckung 0 … 255 je Punkt, an den Rändern nahtlos. */
+export function cloudField(n = CLOUD.n) {
+  let seed = 9173;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  const f = new Float32Array(n * n);
+  for (let b = 0; b < 15; b++) {
+    const cx = rnd() * n;
+    const cy = rnd() * n;
+    const r = (0.085 + rnd() * 0.11) * n;
+    const sx = 0.75 + rnd() * 0.7;
+    const rx = Math.ceil(r * sx);
+    const ry = Math.ceil(r);
+    for (let j = -ry; j <= ry; j++) {
+      const y = Math.round(cy) + j;
+      const dy = y - cy;
+      const row = (((y % n) + n) % n) * n;
+      for (let i = -rx; i <= rx; i++) {
+        const x = Math.round(cx) + i;
+        const dx = (x - cx) / sx;
+        const d2 = (dx * dx + dy * dy) / (r * r);
+        if (d2 < 1) f[row + (((x % n) + n) % n)] += (1 - d2) * (1 - d2);
+      }
+    }
+  }
+  const data = new Uint8Array(n * n);
+  for (let i = 0; i < n * n; i++) {
+    const v = Math.min(1, Math.max(0, (f[i] - 0.18) / 0.62));
+    data[i] = Math.round(v * v * (3 - 2 * v) * 255);
+  }
+  return data;
+}
+const CLOUD_DATA = cloudField();
+const CLOUD_TEX = new THREE.DataTexture(CLOUD_DATA, CLOUD.n, CLOUD.n, THREE.RedFormat, THREE.UnsignedByteType);
+CLOUD_TEX.wrapS = CLOUD_TEX.wrapT = THREE.RepeatWrapping;
+CLOUD_TEX.minFilter = THREE.LinearMipmapLinearFilter;
+CLOUD_TEX.magFilter = THREE.LinearFilter;
+CLOUD_TEX.generateMipmaps = true;
+CLOUD_TEX.unpackAlignment = 1;
+CLOUD_TEX.needsUpdate = true;
+// uCloudM: Lage (x, z) in der ungebogenen Welt → Kachel (zwei Zeilen einer Matrix) · uCloud: Versatz in Kacheln
+// (x, y) und Stärke
+// dazu die weite Schattenkarte (world/farshadow.js): uFarMap, uFarM: gebogene Welt → Karte (0 … 1) und Tiefe,
+// uFar: Stärke (0 aus), Luft in der Tiefe, Blick längs der Straße (+1 voraus … −1 zurück), ein Punkt der Karte
+export const sunUniforms = {
+  uFarMap: { value: null },
+  uFarM: { value: new THREE.Matrix4() },
+  uFar: { value: new THREE.Vector4(0, 0, 1, 1) },
+  uCloudTex: { value: CLOUD_TEX },
+  uCloudM: { value: new THREE.Vector4(Math.cos(CLOUD.turn) / CLOUD.tile, -Math.sin(CLOUD.turn) / CLOUD.tile, Math.sin(CLOUD.turn) / CLOUD.tile, Math.cos(CLOUD.turn) / CLOUD.tile) },
+  uCloud: { value: new THREE.Vector3(0, 0, 0) },
+};
+const frac = (v) => v - Math.floor(v);
+/**
+ * Stellt die Wolkenschatten für dieses Bild: s = gefahrene Meter, t = Zeit des Winds in Sekunden, k = Anteil der
+ * Stärke (0 aus … 1 schönes Wetter).
+ */
+export function setCloudShadows(s, t, k) {
+  const M = sunUniforms.uCloudM.value;
+  const C = sunUniforms.uCloud.value;
+  const wx = CLOUD.wind[0] * t;
+  const wz = CLOUD.wind[1] * t - s;
+  C.x = frac(M.x * wx + M.y * wz);
+  C.y = frac(M.z * wx + M.w * wz);
+  C.z = CLOUD.strength * Math.min(Math.max(k, 0), 1);
+}
+/** Anteil der Sonne (1 − Stärke … 1) an der Stelle (x, z) der ungebogenen Welt: dieselbe Rechnung wie im Shader. */
+export function cloudSunAt(x, z) {
+  const M = sunUniforms.uCloudM.value;
+  const C = sunUniforms.uCloud.value;
+  const n = CLOUD.n;
+  const u = frac(M.x * x + M.y * z + C.x) * n - 0.5;
+  const v = frac(M.z * x + M.w * z + C.y) * n - 0.5;
+  const i = Math.floor(u);
+  const j = Math.floor(v);
+  const fu = (u - i) * (u - i) * (3 - 2 * (u - i));
+  const fv = (v - j) * (v - j) * (3 - 2 * (v - j));
+  const at = (a, b) => CLOUD_DATA[(((b % n) + n) % n) * n + (((a % n) + n) % n)];
+  const c = (at(i, j) * (1 - fu) + at(i + 1, j) * fu) * (1 - fv) + (at(i, j + 1) * (1 - fu) + at(i + 1, j + 1) * fu) * fv;
+  return 1 - (C.z * c) / 255;
+}
+
 // zählt die Stände der Tabelle (commit): Wer etwas aus ihr errechnet und aufhebt, erkennt daran, ob es noch gilt
 let stamp = 0;
 export const curveStamp = () => stamp;
@@ -182,8 +284,12 @@ vec4 mvPosition = vec4( transformed, 1.0 );
 #endif
 #ifdef USE_INSTANCING
   mvPosition = instanceMatrix * mvPosition;
+  // CW_WIND
 #endif
 vec4 cwPos = modelMatrix * mvPosition;
+#ifdef CW_SUN
+  vCwSunUv = vec2( dot( uCloudM.xy, cwPos.xz ), dot( uCloudM.zw, cwPos.xz ) ) + uCloud.xy;
+#endif
 #ifdef CW_NORMALS
   cwPos = curveWorldN( cwPos, transformedNormal );
   #ifndef FLAT_SHADED
@@ -191,6 +297,9 @@ vec4 cwPos = modelMatrix * mvPosition;
   #endif
 #else
   cwPos = curveWorld( cwPos );
+#endif
+#ifdef CW_SUN
+  vCwFar = ( uFarM * cwPos ).xyz;
 #endif
 mvPosition = viewMatrix * cwPos;
 gl_Position = projectionMatrix * mvPosition;
@@ -216,11 +325,65 @@ for (const lib of [THREE.ShaderLib.depth, THREE.ShaderLib.distanceRGBA]) {
 }
 
 /** Macht ein eingebautes three.js-Material „kurvig“. */
+// Der Anteil der Sonne im Fragment-Shader: cwSunK steht ab <lights_fragment_begin> bereit und ist dort schon in das
+// Licht der Sonne eingerechnet (three.js' Baustein, um eine Zeile ergänzt). Wer das Licht der Sonne selbst liest
+// (directionalLights[0].color), nimmt cwSunK dazu oder fragt vorher mit cwSunAt() selbst, siehe kit/citycore.js.
+const SUN_AT = '#include <lights_fragment_begin>';
+const SUN_LIGHT = 'getDirectionalLightInfo( directionalLight, directLight );';
+const SUN_VERT = '#define CW_SUN\nuniform vec4 uCloudM;\nuniform vec3 uCloud;\nuniform mat4 uFarM;\nvarying vec2 vCwSunUv;\nvarying vec3 vCwFar;\n';
+const SUN_FRAG = /* glsl */ `#define CW_SUN
+uniform sampler2D uCloudTex;
+uniform vec3 uCloud;
+uniform highp sampler2DShadow uFarMap;
+uniform vec4 uFar;
+varying vec2 vCwSunUv;
+varying vec3 vCwFar;
+float cwFarLit = 1.0;
+float cwSunAt() {
+  vec2 q = vCwSunUv * ${CLOUD.n}.0 + 0.5;
+  vec2 i = floor( q );
+  vec2 f = q - i;
+  f = f * f * ( 3.0 - 2.0 * f );
+  return 1.0 - uCloud.z * texture2D( uCloudTex, ( i + f - 0.5 ) / ${CLOUD.n}.0 ).r;
+}
+`;
+// Weite Schattenkarte: cwFarLit ist ihr Anteil der Sonne (an ihren eigenen Rändern läuft sie aus). Mit der feinen
+// Karte gilt sie dort, wo diese ausläuft, linear überblendet (getShadow in world/sky.js, mit demselben Gewicht): Wo
+// beide Schatten sehen, bleibt es ein voller Schatten. Ohne feine Karte (Schatten aus) ist auch die weite aus; für
+// den Fall rechnet sie hier selbst in cwSunK. cwSunK selbst bleibt sonst der Anteil unter den Wolken.
+const SUN_FAR = /* glsl */ `
+{
+  float cwW = uFar.x * smoothstep( 0.0, ${FAR_EDGE}, vCwFar.x ) * smoothstep( 0.0, ${FAR_EDGE}, 1.0 - vCwFar.x )
+    * smoothstep( 0.0, mix( ${FAR_EDGE}, ${FAR_FAR}, max( - uFar.z, 0.0 ) ), vCwFar.y )
+    * smoothstep( 0.0, mix( ${FAR_EDGE}, ${FAR_FAR}, max( uFar.z, 0.0 ) ), 1.0 - vCwFar.y );
+  if ( cwW > 0.0 ) {
+    // vier Abfragen, jede mittelt selbst vier Punkte: Die groben Punkte der weiten Karte gäben sonst Treppen
+    vec3 cwC = vec3( vCwFar.xy, vCwFar.z - uFar.y );
+    vec2 cwD = vec2( 0.75, 0.25 ) * uFar.w;
+    float cwLit = texture( uFarMap, cwC + vec3( cwD.x, cwD.y, 0.0 ) ) + texture( uFarMap, cwC + vec3( - cwD.y, cwD.x, 0.0 ) )
+      + texture( uFarMap, cwC + vec3( - cwD.x, - cwD.y, 0.0 ) ) + texture( uFarMap, cwC + vec3( cwD.y, - cwD.x, 0.0 ) );
+    cwFarLit = mix( 1.0, cwLit * 0.25, cwW );
+  }
+  #if ! ( defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0 )
+    cwSunK *= cwFarLit;
+  #endif
+}
+`;
+const SUN_BEGIN = 'float cwSunK = cwSunAt();\n' + SUN_FAR
+  + THREE.ShaderChunk.lights_fragment_begin.replace(SUN_LIGHT, SUN_LIGHT + '\n\t\tdirectLight.color *= cwSunK;');
+if (!SUN_BEGIN.includes('directLight.color *= cwSunK;')) throw new Error('curve.js: three.js hat lights_fragment_begin geändert');
+
 export function curve(material) {
   material.userData.curved = true;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uCurve = curveUniforms.uCurve;
     shader.vertexShader = patchVertex(shader.vertexShader);
+    // alles, was die Sonne beleuchtet, bekommt den Anteil cwSunK der Sonne an seiner Stelle (Wolkenschatten)
+    if (shader.fragmentShader.includes(SUN_AT)) {
+      Object.assign(shader.uniforms, sunUniforms);
+      shader.vertexShader = SUN_VERT + shader.vertexShader;
+      shader.fragmentShader = SUN_FRAG + shader.fragmentShader.replace(SUN_AT, SUN_BEGIN);
+    }
   };
   material.customProgramCacheKey = () => 'curved-world';
   return material;

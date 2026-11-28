@@ -9,6 +9,10 @@ import { ball, box, rod, cone, prism, fuse, move } from './kit/shapes.js';
 import { PAL } from './kit/palette.js';
 import { VIEW_BEHIND } from './road.js';
 import { ringAt } from '../map/skyline.js';
+import { worldLight } from './light.js';
+import { CLOUD, SHADOW_FADE, setCloudShadows } from '../curve.js';
+import { setWind } from './wind.js';
+import { FarShadow, FAR_LAYER } from './farshadow.js';
 
 // Schattenkasten der Sonne (Licht-Einheiten bei 2048er Schattenkarte, „mittel“ mit 1024 nimmt 0,7 davon): u quer
 // zur Straße (±63 m), v längs (rund 220 m, davon 40 m hinter der Kamera, der Rest in Blickrichtung). Am Boden
@@ -20,14 +24,21 @@ const SHADOW = { u: 96, v: 176, back: 40, side: 30, edge: 0.04, far: 0.29 };
 // sie stattdessen weich aus (shadowCoord 0…1 über den Kasten; v wächst in Fahrtrichtung). PCFSoftShadowMap nutzt
 // shadowRadius nicht: placeShadow legt dort die Blickrichtung längs der Straße ab (+1 voraus … −1 zurück), damit
 // gerade die ferne Kante lang ausläuft und die nahe hinter der Kamera kurz.
-const EDGE = SHADOW.edge.toFixed(3);
-const FAR = SHADOW.far.toFixed(3);
+// (als Text in curve.js, weil die weite Schattenkarte dort mit dem Gegenstück dieses Gewichts rechnet)
+const EDGE = SHADOW_FADE.edge;
+const FAR = SHADOW_FADE.far;
+if (Number(EDGE) !== SHADOW.edge || Number(FAR) !== SHADOW.far) throw new Error('sky.js: SHADOW und SHADOW_FADE (curve.js) laufen auseinander');
 const FADE = /* glsl */ `
 		float shFar = clamp( shadowRadius, - 1.0, 1.0 );
 		float shFade = smoothstep( 0.0, ${EDGE}, shadowCoord.x ) * smoothstep( 0.0, ${EDGE}, 1.0 - shadowCoord.x )
 			* smoothstep( 0.0, mix( ${EDGE}, ${FAR}, max( - shFar, 0.0 ) ), shadowCoord.y )
 			* smoothstep( 0.0, mix( ${EDGE}, ${FAR}, max( shFar, 0.0 ) ), 1.0 - shadowCoord.y );
-		return mix( 1.0, shadow, shadowIntensity * shFade );`;
+		#ifdef CW_SUN
+		// wo die feine Karte ausläuft, übernimmt die weite (cwFarLit, curve.js): ein Schatten, nicht zwei übereinander
+		return mix( cwFarLit, mix( 1.0, shadow, shadowIntensity ), shFade );
+		#else
+		return mix( 1.0, shadow, shadowIntensity * shFade );
+		#endif`;
 {
   const chunk = THREE.ShaderChunk.shadowmap_pars_fragment;
   const end = 'return mix( 1.0, shadow, shadowIntensity );';
@@ -71,9 +82,6 @@ const SKY = {
   rainLow: [0.53, 0.663, 0.826], // (#c9d3dc)
   rainFog: [0.467, 0.572, 0.744], // (#c2ccd8)
 };
-// Sonne und Himmelslicht bei schönem Wetter: viel Himmelslicht hält die Schattenseiten hell und freundlich
-const SUN_FAIR = 3.05;
-const HEMI_FAIR = 2.05;
 // Alles am Himmel (Wolken, Hügel, Ferndetails) wird im Vertex-Shader auf ein Fünftel an die Kamera herangeholt:
 // das Bild bleibt dasselbe, aber auch die Spiegel-Kamera (Sichtweite 700 m) schneidet nichts ab. Die Kuppel
 // kommt zuletzt und löscht danach die Tiefe, so liegt der ganze Himmel sicher hinter der Welt.
@@ -390,6 +398,11 @@ export class Sky {
     this.fogRain = new THREE.Color(...SKY.rainFog);
     this.fogColor = this.fogClear.clone();
     this.drift = 0;
+    // Wolkenschatten (curve.js): Zeit des Winds, und wie stark sie gerade sind. cloudShade setzt main.js: 0 in den
+    // Szenen, in denen der Wagen steht und gezeigt wird (dort soll nicht minutenlang ein Schatten liegen)
+    this.cloudT = 0;
+    this.cloudShade = 1;
+    this.cloudK = 1;
 
     // Kuppel und Wolken rechnen in Weltlage (Kamerarahmen): sie bekommen die mit dem Kurs gedrehte Sonne. Das
     // Umgebungsbild liegt im Kartenrahmen (Sonne sunDirMap) und wird über environmentRotation gedreht.
@@ -436,8 +449,10 @@ export class Sky {
     // Nebel und Himmel teilen sich dieselbe Farbe, damit der Horizont im Regen mitgraut
     scene.fog.color = this.fogColor;
 
-    // Licht: warme Nachmittagssonne, dazu viel helles Himmelslicht, damit die Schatten weich und freundlich bleiben
-    this.sun = new THREE.DirectionalLight(0xfff0d9, SUN_FAIR);
+    // Licht: kräftige, warme Nachmittagssonne und bläuliches Himmelslicht (world/light.js)
+    this.light = worldLight(0);
+    this.sun = new THREE.DirectionalLight(0xffffff, this.light.sun);
+    this.sun.color.fromArray(this.light.sunColor);
     this.sun.castShadow = shadows;
     // Schattenkamera immer einrichten, damit ein späteres Umschalten auf „mittel“/„hoch“ sofort passt
     this.sun.shadow.mapSize.set(shadowSize, shadowSize);
@@ -449,6 +464,7 @@ export class Sky {
     this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.04;
     // Achsen des Schattenbilds (wie three.js sie mit lookAt bildet): eU quer (ohne z-Anteil), eV längs
+    this.far = new FarShadow(); // Schatten der Landschaft; Größe setzt main.js mit der Qualität
     this.eU = new THREE.Vector3();
     this.eV = new THREE.Vector3();
     this.shadowAxes();
@@ -456,8 +472,14 @@ export class Sky {
     this.shadowBox();
     scene.add(this.sun);
     scene.add(this.sun.target);
-    this.hemi = new THREE.HemisphereLight(0xd8e6ff, 0xc3cf9c, HEMI_FAIR);
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, this.light.hemi);
+    this.hemi.color.fromArray(this.light.sky);
+    this.hemi.groundColor.fromArray(this.light.ground);
     scene.add(this.hemi);
+    // Sonne und Himmel liegen auch auf der Ebene der weiten Karte (farshadow.js). three.js übersetzt die Programme der
+    // feinen Schattenkarte mit der Zahl der Lichter des Durchgangs davor, oft dem der weiten Karte: Ohne Lichter dort
+    // wäre das je nach Bild mal null, mal eins, und mitten in der Fahrt entstünden neue Programme.
+    for (const l of [this.sun, this.hemi]) l.layers.enable(FAR_LAYER);
 
     this.clouds = this.buildClouds();
     this.root.add(this.clouds);
@@ -1004,13 +1026,21 @@ export class Sky {
     const fog = this.scene.fog;
     fog.near = lerp(300, 18, o);
     fog.far = lerp(1550, 430, o);
-    this.sun.intensity = lerp(SUN_FAIR, 0.36, o);
-    this.hemi.intensity = lerp(HEMI_FAIR, 1.6, o);
-    this.hemi.color.setRGB(lerp(0.69, 0.6, o), lerp(0.79, 0.66, o), lerp(1.0, 0.74, o));
+    const light = worldLight(o, this.light);
+    this.sun.intensity = light.sun;
+    this.sun.color.fromArray(light.sunColor);
+    this.hemi.intensity = light.hemi;
+    this.hemi.color.fromArray(light.sky);
+    this.hemi.groundColor.fromArray(light.ground);
     this.hills.visible = o < 0.9;
 
     this.root.position.set(camera.position.x, 0, camera.position.z);
     this.dome.position.y = camera.position.y;
+    // Wolkenschatten ziehen mit dem Wind; zieht der Himmel zu, verlieren sie sich
+    this.cloudT += dt;
+    this.cloudK += clamp(this.cloudShade - this.cloudK, -dt / 3, dt / 3);
+    setCloudShadows(s, this.cloudT, this.cloudK * (1 - o / CLOUD.end));
+    setWind(this.cloudT, o); // derselbe Wind wiegt Bäume und Büsche (wind.js), bei Regen kräftiger
     // die Wolken ziehen ganz langsam um den Horizont
     this.drift += dt * 0.0035;
     this.clouds.rotation.y = this.drift;
@@ -1023,6 +1053,7 @@ export class Sky {
     }
 
     this.placeShadow(camera, s);
+    this.far.place(camera, s, this.sunDir, this.eU, this.eV);
     this.envGround.material.color.setRGB(lerp(0.2, 0.12, o), lerp(0.24, 0.13, o), lerp(0.15, 0.13, o));
     if (Math.abs(o - this.lastEnvOvercast) > 0.12) this.updateEnv();
   }

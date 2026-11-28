@@ -2,7 +2,7 @@
 // Hauptprogramm: Renderer, Bildkomposition (Welt → Regentropfen/Effekte → Cockpit), Kameras
 // (Cockpit, Drohne, Szenen), Zustände und Menüs.
 import * as THREE from 'three';
-import { W, curveTable, curveAt, curveOffset } from './curve.js';
+import { W, curveTable, curveAt, curveOffset, cloudSunAt } from './curve.js';
 import { Course, MapPlanner, PROBE_MARKS } from './game/course.js';
 import * as mapGraph from './map/graph.js';
 import * as mapShapes from './map/shapes.js';
@@ -138,6 +138,7 @@ const rearCam = new THREE.PerspectiveCamera(21, 0.245 / 0.072, 0.6, 700);
 const photoCam = new THREE.PerspectiveCamera(24, 16 / 9, 0.2, 900);
 
 const sky = new Sky(renderer, scene, { shadows: quality.shadows, shadowSize: quality.shadowSize });
+sky.far.setSize(quality.shadows ? quality.shadowSize : 0);
 const road = new Road(scene, ROAD_OPTS);
 const scenery = new Scenery(scene);
 // die Welt der Reise (src/world/xxl): Autobahnen, Ausfahrten, Rampen, Landstraßen und Orte aus der echten Karte
@@ -716,6 +717,7 @@ function applySettings(key) {
         if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => (m.needsUpdate = true));
       });
     }
+    sky.far.setSize(quality.shadows ? quality.shadowSize : 0);
     // neue Schattenauflösung: alte Schattenkarte verwerfen, three.js legt sie passend neu an
     const sh = sky.sun.shadow;
     if (sh.mapSize.x !== quality.shadowSize) {
@@ -1285,6 +1287,8 @@ function renderFrame(cockpitOn) {
   frameNo++;
   // neue Bilder von Mittelbildschirm und OMI auf die Grafikkarte, bevor der erste Durchgang beginnt
   flushLiveCanvases(renderer);
+  // die weite Schattenkarte (Schatten der Landschaft) gilt für alle Durchgänge dieses Bilds
+  sky.far.render(renderer, scene, tesla.root);
   // (__MA.redraw: Rückspiegel und Rückfahrkamera laufen vor renderWorld und läsen sonst die Schattenkarte des Bilds davor)
   if (redrawAll) renderer.shadowMap.needsUpdate = quality.shadows;
   // Innen- und Außenspiegel: immer das Spiegelbild der Straße (die Kofferraum-Kamera zeigt der Mittelbildschirm)
@@ -1764,8 +1768,12 @@ function step(dt, { render = true } = {}) {
     const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook, megafon: adamMegafon });
     tesla.adam.animate(simT, adamOpts);
     facecam.adam.animate(simT, adamOpts);
-    facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake, rain: w, world: sideOn() });
-    tesla.cabinLight.intensity = cockpitOn ? 0 : stopRun.on || tvRun.on || state === 'title' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
+    // so viel Sonne kommt gerade am Wagen an (Wolkenschatten): Innenraum und Facecam gehen mit
+    const sunHere = cloudSunAt(p.x, 0);
+    facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, sun: sunHere, speed: p.speed, shake: cockpit.shake, rain: w, world: sideOn() });
+    const showcase = stopRun.on || tvRun.on || state === 'title' || state === 'charge' || state === 'ending' || state === 'over';
+    tesla.cabinLight.intensity = cockpitOn ? 0 : showcase ? 3.2 : 0.9;
+    sky.cloudShade = showcase ? 0 : 1;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     // Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js): der Mittelbildschirm zeichnet dafür weiter, und jedes
@@ -1804,7 +1812,7 @@ function step(dt, { render = true } = {}) {
     }
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
-      sunDir: sky.sunDir, overcast: cloud, adam: adamOpts, gesture: tesla.adam.pose === 'drive' ? tesla.adam.gestures : null,
+      sunDir: sky.sunDir, overcast: cloud, sun: sunHere, adam: adamOpts, gesture: tesla.adam.pose === 'drive' ? tesla.adam.gestures : null,
       screen: scr, radar: game.radarAlarm, rear: cockpitOn && (p.gear === 'R' || stopRun.rev), visible: cockpitOn,
     });
     if (fxState.trunk > 0) fxState.trunk = Math.max(0, fxState.trunk - dt);
@@ -2015,6 +2023,7 @@ function boot() {
   try {
     // jedes Programm so, wie das erste Bild es braucht: Welt und Facecam zeichnen in ein Render-Ziel (ohne Tone-Mapping,
     // linear – ohne das gebundene Ziel übersetzte das erste Bild die ganze Welt noch einmal), Cockpit und Quads direkt
+    sky.far.warm(renderer, scene, tesla.root);
     renderer.setRenderTarget(worldRT);
     renderer.compile(scene, camera);
     // Spiegel, Seitenfenster und Rückfahrkamera zeigen die Welt ohne den eigenen Wagen, also ohne seine

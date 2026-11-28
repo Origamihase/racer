@@ -902,7 +902,7 @@ export class Cockpit {
       this.sun.position.copy(this.root.position).addScaledVector(st.sunDir, 10);
       this.sun.target.position.copy(this.root.position);
     }
-    this.sun.intensity = LIGHT.sun * (1 - o * 0.85);
+    this.sun.intensity = LIGHT.sun * (1 - o * 0.85) * (st.sun ?? 1); // st.sun: Anteil der Sonne unter Wolkenschatten
     this.hemi.intensity = LIGHT.hemi - o * 0.4;
     this.back.intensity = LIGHT.back - o * 0.25;
     // Spiegelnde Teile bekommen die Umgebung direkt (mit eigener Stärke), sobald main.js sie setzt oder tauscht
