@@ -140,6 +140,8 @@ export class Game {
     this.gags.reset(this.streamT);
     this.memes.reset(this.streamT);
     this.raidT = -1e9; // wann König Knolli zuletzt raidete (FACTS.raid)
+    this.wunschOffen = null; // ein Wunsch aus dem Wunschbrunnen, der sich noch erfüllen kann (Game.wunschTick)
+    this.tvLastRubrik = null;
     this.funklochN = 0; // wie viele Funklöcher bisher (OMIs Satz dazu wechselt: BOARD.funkloch)
     // (Prüfstände setzen stammSeed, damit jeder Lauf gleich ist; im Spiel würfeln die Stammgäste je Stream neu)
     this.stamm.reset(this.stammSeed ?? this.streamT ^ 0x5a17);
@@ -691,6 +693,8 @@ export class Game {
     // der Ladestopp und danach der Zuckerschub des Bananensafts
     this.akku.tick();
     if (this.tv) this.tickBrunnenTV();
+    // ein offener Wunsch aus dem Wunschbrunnen (rubriken.js)
+    if (this.wunschOffen) this.wunschTick();
     else if (this.navi.stopping) this.tickHalt(dt);
     this.updateNavi(dt);
     this.exitCall();

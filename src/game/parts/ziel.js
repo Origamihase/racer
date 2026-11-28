@@ -1,7 +1,7 @@
 // Teil der Regie einer Fahrt (Game, game.js): Navi-Ziel: Ausfahrten, die Auktion ums Ziel, Ankunft, Halt am Brunnen,
 // Rechnung und BrunnenTV.
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
-import { CHAT, BOARD, VOICES, REISE_AKKU, damageCost, damageCount, ladeKosten, viewerName, viewerNameAt, fillTemplate, BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, SCHOENNBRUN } from '../../data.js';
+import { CHAT, CREW, BOARD, VOICES, REISE_AKKU, damageCost, damageCount, ladeKosten, viewerName, viewerNameAt, fillTemplate, BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, SCHOENNBRUN } from '../../data.js';
 import { rand, chance, pick, mulberry32, fmtCent, fmtEuro, fmtNum, fmtKwh, fmtKonto } from '../../util.js';
 import { damageLine } from '../damage.js';
 import { BONTANA } from '../economy.js';
@@ -16,7 +16,7 @@ import { estimateSpeech } from '../../speech.js';
 import { TROEDEL } from './stream.js';
 import { folgeTexte, fuelle, ANTEIL, FAKT } from '../brunnentexte.js';
 import { MEGAFON_AUSLAND } from '../../data-memes.js';
-import { rubrikFor, ANTWORT_T, INTERVIEW } from '../rubriken.js';
+import { rubrikFor, ANTWORT_T, INTERVIEW, WUNSCHBRUNNEN, WUENSCHE, WUNSCH } from '../rubriken.js';
 
 /** Kratzer von der Leitplanke bisher: jede Schramme (damage.js scraped; gezeichnet sind höchstens drei je Seite). */
 export const scratchMarks = (damage) => damage.scraped || 0;
@@ -624,7 +624,9 @@ export class ZielPart {
     const rng = mulberry32((Math.imul(n, 7919) ^ Math.imul(t.place + 1, 104729)) >>> 0);
     // manche Folgen haben eine Rubrik (rubriken.js: das Brunnen-Interview) – nie zwei gleiche hintereinander, im
     // Ausland nicht (dort grüßt er mit eigenem Gag); der Ruf „Schöner Brunnen!“ bleibt in jeder
-    const rubrik = rubrikFor(n, rng, { last: this.tvLastRubrik, abroad: !!MEGAFON_AUSLAND[places[t.place]?.cc], force: this.forceRubrik });
+    let rubrik = rubrikFor(n, rng, { last: this.tvLastRubrik, abroad: !!MEGAFON_AUSLAND[places[t.place]?.cc], force: this.forceRubrik });
+    // (ein Wunsch wartet noch auf die nächste Runde: Bis er sich zeigt, wirft niemand die nächste Münze)
+    if (rubrik === WUNSCHBRUNNEN && this.wunschOffen) rubrik = null;
     this.tvLastRubrik = rubrik;
     this.tv = { n, place: t.place, name: t.name, goal: t.goal || t.name, t0: this.t, said: 0, called: false, debate: entry.d || null, way, texte, rng, rubrik };
     // ab jetzt gehört die Sprachausgabe der Folge: Was spricht, endet höflich, alles andere wartet dahinter (speech.js)
@@ -702,7 +704,7 @@ export class ZielPart {
     const t = this.t - tv.t0;
     const moments = [
       [TV.card, () => {
-        this.ui.brunnenTV(tv.n, tv.name, tv.rubrik ? tv.rubrik.name : '');
+        this.ui.brunnenTV(tv.n, tv.name, tv.rubrik ? `${tv.rubrik.icon} ${tv.rubrik.name}` : '');
         // Mini Adam moderiert als Herr Schönnbrun: dessen Hymne eröffnet die Folge
         this.audio.schoennbrunHymne();
       }],
@@ -721,6 +723,11 @@ export class ZielPart {
           if (tv.debate) this.later(3.2, () => this.chat(this.chatLine(BRUNNEN_DEBATTE[tv.debate])));
           return;
         }
+        // (im Wunschbrunnen wirft ein Zuschauer die Münze und wünscht sich etwas, das das Spiel erfüllen kann)
+        if (tv.rubrik === WUNSCHBRUNNEN) {
+          this.wunschStart(tv);
+          return;
+        }
         if (T && T.chat.length) {
           const line = fuelle(this.tvFresh(T.chat, R, (this.tvChatSeen ??= [])), T, tv.n);
           this.later(1.2 + R(), () => this.chat(line, viewerNameAt(Math.floor(R() * 9973))));
@@ -734,8 +741,8 @@ export class ZielPart {
         }
       }],
       [TV.call, () => this.brunnenCall()],
-      [ANTWORT_T, () => tv.rubrik === INTERVIEW && this.brunnenAntwort(tv)],
-      [TV.nomi, () => this.say(tv.frage ? this.interviewOmi(tv) : this.brunnenOmi(tv), 'love', { priority: false, scene: true })],
+      [ANTWORT_T, () => (tv.rubrik === INTERVIEW ? this.brunnenAntwort(tv) : tv.wunsch && this.wunschMuenze(tv))],
+      [TV.nomi, () => this.say(tv.frage ? this.interviewOmi(tv) : tv.wunsch ? this.wunschOmi(tv) : this.brunnenOmi(tv), 'love', { priority: false, scene: true })],
     ];
     while (tv.said < moments.length && t >= moments[tv.said][0]) moments[tv.said++][1]();
     if (t >= TV.end) this.endBrunnenTV();
@@ -769,6 +776,10 @@ export class ZielPart {
         tv.frage = fragen.find((f) => f.q === q);
         text = fuelle(q, T || {}, tv.n);
       }
+    } else if (tv.rubrik === WUNSCHBRUNNEN) {
+      // im Wunschbrunnen statt des Grußes der Aufruf, eine Münze zu werfen
+      const aufruf = fit(WUNSCHBRUNNEN.aufruf);
+      if (aufruf.length) text = this.tvFresh(aufruf, tv.rng);
     } else if (own.length && tv.rng() < (T.echt ? 0.9 : ANTEIL.mega)) text = this.tvFresh(own, tv.rng);
     this.audio.megafon();
     // ein Satz der Folge (episode): Was sonst noch reden wollte, wartet dahinter; sein Untertitel kommt mit ihm
@@ -808,7 +819,7 @@ export class ZielPart {
     const R = tv.rng;
     const I = INTERVIEW;
     this.audio.brunnenBlubb?.();
-    const line = this.ui.brunnenAntwort?.(I.blubb[Math.floor(R() * I.blubb.length)], TV.nomi - ANTWORT_T - 0.1);
+    const line = this.ui.brunnenAntwort?.(I.blubb[Math.floor(R() * I.blubb.length)], TV.nomi - ANTWORT_T - 0.1, 'Der Brunnen antwortet');
     if (line && typeof line === 'object') line.top = true;
     const c = I.chatAntwort[Math.floor(R() * I.chatAntwort.length)];
     this.later(0.5, () => this.chat(c, viewerNameAt(Math.floor(R() * 9973))));
@@ -821,6 +832,93 @@ export class ZielPart {
     const c = INTERVIEW.chatNach[Math.floor(R() * INTERVIEW.chatNach.length)];
     this.later(2.4, () => this.chat(c, viewerNameAt(Math.floor(R() * 9973))));
     return fuelle(a, tv.texte || {}, fmtNum(tv.n));
+  }
+
+  /**
+   * Wunschbrunnen (rubriken.js): Ein Zuschauer wirft die Münze und wünscht sich etwas, das gerade gehen kann (Regen nur,
+   * wenn es nicht schon regnet; ein Raid nur, wenn der letzte eine Weile her ist). Ob er sich erfüllt, steht mit dem
+   * Zufall der Folge schon fest; wann, zeigt die nächste Runde (endBrunnenTV, wunschTick).
+   */
+  wunschStart(tv) {
+    const R = tv.rng;
+    const W = WUNSCHBRUNNEN;
+    const kinds = Object.keys(WUENSCHE).filter((k) => (k === 'regen' ? !this.weather.active && !(this.weather.front > 0) : k === 'raid' ? this.raidWish() : true));
+    const kind = kinds[Math.floor(R() * kinds.length)];
+    const name = viewerNameAt(Math.floor(R() * 9973));
+    tv.wunsch = { kind, name, ok: R() < WUNSCH.chance };
+    const a = W.chatAufruf[Math.floor(R() * W.chatAufruf.length)];
+    this.later(1.0 + R() * 0.5, () => this.chat(a, viewerNameAt(Math.floor(R() * 9973))));
+    this.later(2.4, () => this.chat('🪙 Ich wünsche mir ' + WUENSCHE[kind].wunsch, name));
+    if (tv.debate) this.later(3.6, () => this.chat(this.chatLine(BRUNNEN_DEBATTE[tv.debate])));
+  }
+
+  /**
+   * Darf sich jemand einen Raid wünschen? Der Wunsch holt König Knollis nächsten Raid nur nach vorn (updateCrew), er
+   * kommt nie zusätzlich: nur, wenn der nächste ohnehin bald fällig ist (WUNSCH.raidSoon), nicht vor dem frühesten
+   * ersten Raid eines Streams und nicht kurz nach dem letzten.
+   */
+  raidWish() {
+    const T = this.crewT;
+    return !!T && T.raid <= WUNSCH.raidSoon && this.t >= CREW.raid.first[0] * 60 && this.t - this.raidT > WUNSCH.raidGap;
+  }
+
+  /** Wunschbrunnen: Der Brunnen nimmt die Münze – es klingelt und plätschert, der Untertitel schreibt es. */
+  wunschMuenze(tv) {
+    const R = tv.rng;
+    const W = WUNSCHBRUNNEN;
+    this.audio.pling();
+    this.audio.brunnenBlubb?.();
+    const line = this.ui.brunnenAntwort?.(W.blubb[Math.floor(R() * W.blubb.length)], TV.nomi - ANTWORT_T - 0.1, 'Der Brunnen nimmt die Münze');
+    if (line && typeof line === 'object') line.top = true;
+  }
+
+  /** Wunschbrunnen: OMI erklärt die Regel; danach drückt der Chat die Daumen. */
+  wunschOmi(tv) {
+    const R = tv.rng;
+    const W = WUNSCHBRUNNEN;
+    const c = W.chatNach[Math.floor(R() * W.chatNach.length)];
+    this.later(2.4, () => this.chat(c, viewerNameAt(Math.floor(R() * 9973))));
+    return fuelle(this.tvFresh(W.omi, R), tv.texte || {}, fmtNum(tv.n)).replace('{wunsch}', WUENSCHE[tv.wunsch.kind].kurz);
+  }
+
+  /**
+   * Der offene Wunsch (aus der letzten Folge Wunschbrunnen) ist fällig: Er erfüllt sich wirklich im Spiel – ein Schauer
+   * zieht auf (updateWeather), König Knolli raidet (updateCrew), Geld regnet in die Kasse –, oder der Chat merkt, dass
+   * nichts kam. Nie während einer Folge, beim Laden oder im Funkloch: dann etwas später.
+   */
+  wunschTick() {
+    const w = this.wunschOffen;
+    if (!w || this.t < w.at) return;
+    if (this.tv || this.charging || this.funkloch > 0) {
+      w.at = this.t + 5;
+      return;
+    }
+    this.wunschOffen = null;
+    const R = w.rng;
+    const pickR = (list) => list[Math.floor(R() * list.length)];
+    if (!w.ok) {
+      this.chat(pickR(WUNSCH.nicht).replace('{ort}', w.ort), w.name);
+      this.stats.wuensche = { ...(this.stats.wuensche || {}), nicht: ((this.stats.wuensche || {}).nicht || 0) + 1 };
+      return;
+    }
+    const kind = w.kind === 'raid' && !this.raidWish() ? 'geld' : w.kind;
+    const D = WUENSCHE[kind];
+    if (kind === 'regen') {
+      const W = this.weather;
+      if (!W.active && !(W.front > 0)) {
+        W.cool = 0;
+        W.calm = Math.max(W.calm, 30);
+      }
+    } else if (kind === 'raid') this.crewT.raid = 0;
+    else {
+      const [lo, hi] = WUNSCH.geld;
+      const euro = lo + 5 * Math.floor(R() * ((hi - lo) / 5 + 1));
+      this.donate(w.name, euro, 'den Wunschbrunnen');
+    }
+    this.stats.wuensche = { ...(this.stats.wuensche || {}), [kind]: ((this.stats.wuensche || {})[kind] || 0) + 1 };
+    this.ui.toast(`⛲ Wunsch erfüllt: ${D.kurz}`, 'good', 'wunsch');
+    this.later(kind === 'regen' ? 9 : 2.5, () => this.chat(pickR(D.erfuellt)));
+    this.later(kind === 'regen' ? 2 : 4, () => this.say(pickR(WUNSCH.omi).replace('{ort}', w.ort).replace('{wunsch}', D.kurz), 'happy', { priority: false }));
   }
 
   /** Ein Zuschauer weiß etwas über den Ort: der berühmte Brunnen oder die Zeile seines Steckbriefs. */
@@ -870,6 +968,12 @@ export class ZielPart {
     // was die Folge gebracht hat, steht kurz am Rand
     const gain = this.tv && this.tv.viewers !== undefined ? Math.round(this.viewers - this.tv.viewers) : 0;
     if (gain >= 20) this.ui.toast(`📈 BrunnenTV: +${fmtNum(gain)} Zuschauer`, 'good', 'zuschauer');
+    // ein Wunsch aus dem Wunschbrunnen: In der nächsten Runde zeigt sich, ob er sich erfüllt (wunschTick)
+    const wunsch = this.tv && this.tv.wunsch;
+    if (wunsch) {
+      const R = this.tv.rng;
+      this.wunschOffen = { ...wunsch, ort: this.tv.name, rng: R, at: this.t + WUNSCH.delay[0] + R() * (WUNSCH.delay[1] - WUNSCH.delay[0]) };
+    }
     this.tv = null;
     this.memes.folgeEnde();
     // was hinter der Folge gewartet hat, spricht jetzt (Veraltetes entfällt)

@@ -62,7 +62,7 @@ export function makeStream({ driver = DRIVERS.mittel, seed = 1, upgrades = {}, t
     megafon: (text, dur, buyer, label) => log.speak.push({ t: game.t, who: 'megafon', text, label: label || 'Megafon-Wunsch von ' + buyer, at: state() }),
     durchsage: (voice, text) => log.speak.push({ t: game.t, who: 'durchsage', text, voice, at: state() }),
     brunnenTV: (n, name, rubrik) => log.tv.push({ t: game.t, n, name, rubrik: rubrik || '' }),
-    brunnenAntwort: (text) => (log.speak.push({ t: game.t, who: 'quelle', text, at: state() }), { text }),
+    brunnenAntwort: (text, dur, label) => (log.speak.push({ t: game.t, who: 'quelle', text, label, at: state() }), { text }),
     funkloch: (on) => log.funk.push({ t: game.t, on, at: state() }),
   });
   game = new Game({

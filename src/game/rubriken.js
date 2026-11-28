@@ -16,8 +16,9 @@ export const ANTWORT_T = 8.6;
 export const INTERVIEW = {
   key: 'interview',
   name: 'Brunnen-Interview',
-  // (in etwa jeder vierten Folge ab der zweiten; nie zweimal hintereinander)
-  chance: 0.28,
+  icon: '🎤',
+  // (Anteil der Folgen ab der zweiten; nie dieselbe Rubrik zweimal hintereinander)
+  chance: 0.2,
   // q: die Frage durchs Megafon, a: was OMI daraus übersetzt (sie beginnt immer mit „Übersetzung:“)
   fragen: [
     {
@@ -69,8 +70,69 @@ export const INTERVIEW = {
   chatNach: ['Weise Worte 🙏', 'Das erklärt einiges 😂', 'Bester Interviewgast bisher', 'OMI spricht Brunnisch?! 😳', 'Der Brunnen hat mehr Charisma als ich'],
 };
 
-/** Alle Rubriken (eine zur Probe; weitere kommen hier dazu). */
-export const RUBRIKEN = [INTERVIEW];
+// Der Wunschbrunnen (der Besitzer am 28.11.2026: „Das klingt interessant“): Mini Adam ruft dazu auf, ein Zuschauer
+// wirft eine Münze und wünscht sich etwas, „Schöner Brunnen!“ wie immer, der Brunnen nimmt die Münze, OMI erklärt die
+// Regel. Manchmal (WUNSCH.chance) erfüllt sich der Wunsch in der nächsten Runde, wirklich im Spiel: Ein Schauer zieht
+// auf, König Knolli raidet, oder Geld regnet in die Stream-Kasse. Sonst merkt der Chat, dass es nicht geklappt hat.
+export const WUNSCHBRUNNEN = {
+  key: 'wunsch',
+  name: 'Wunschbrunnen',
+  icon: '🪙',
+  chance: 0.15,
+  // Mini Adams Aufruf statt des Grußes (vor dem Ruf zu Ende: höchstens gut 38 Zeichen)
+  aufruf: ['Wunschbrunnen! Wer wünscht sich was?', 'Münze rein, Wunsch raus!', 'Heute ist das hier ein Wunschbrunnen!', 'Wünsch dir was, Chat!'],
+  // was im Untertitel steht, während der Brunnen die Münze nimmt
+  blubb: ['Pling! … plätscher … blubb.', 'Plopp. Gluck gluck. Pling!', 'Pling … blubb blubb … plätscher.'],
+  // OMIs Satz danach ({wunsch}: kurz, was gewünscht ist)
+  omi: [
+    'Münze ist drin. Wünsche erfüllen sich hier manchmal in der nächsten Runde.',
+    'Wunsch notiert: {wunsch}. Ich gebe keine Garantie, ich bin nur das Navi.',
+    'Der Brunnen hat die Münze angenommen. Ob er liefert, zeigt die nächste Runde.',
+    'Registriert. Wunschbrunnen erfüllen nur manche Wünsche. Viel Glück!',
+  ],
+  chatAufruf: ['Ich hab eine Münze! 🪙', 'WUNSCHBRUNNEN 🪙✨', 'Darf ich auch was wünschen?', 'Augen zu und wünschen 🤞'],
+  chatNach: ['Daumen drücken 🤞', 'Bitte bitte bitte 🙏', 'Das klappt nie 😂', 'Ich glaub dran ✨'],
+};
+
+/**
+ * Was sich der Chat wünschen kann (Game.wunschTick erfüllt es): wunsch – die Zeile im Chat („Ich wünsche mir …“),
+ * kurz – für OMI und den Hinweis am Rand, erfuellt / nicht – was der Chat dazu sagt.
+ */
+export const WUENSCHE = {
+  regen: {
+    wunsch: 'Regen, damit der Wischer zuckt! 🌧️',
+    kurz: 'Regen für den Wischer',
+    erfuellt: ['WUNSCH ERFÜLLT! Es regnet! 🌧️⛲', 'Der Wunschbrunnen liefert 🌧️', 'Jetzt zuckt er gleich 😂🌧️'],
+  },
+  raid: {
+    wunsch: 'einen Raid von König Knolli! 👑',
+    kurz: 'ein Raid von König Knolli',
+    erfuellt: ['WUNSCH ERFÜLLT! Knolli ist da 👑⛲', 'Der Wunschbrunnen hat Knolli bestellt 😱', 'Hat jemand gewünscht? 👑'],
+  },
+  geld: {
+    wunsch: 'einen Geldregen für die Stream-Kasse! 💶',
+    kurz: 'Geldregen',
+    erfuellt: ['WUNSCH ERFÜLLT! 💶⛲', 'Der Wunschbrunnen zahlt aus 💶', 'Geldregen, wie bestellt 💶✨'],
+  },
+};
+export const WUNSCH = {
+  // wie oft sich ein Wunsch erfüllt, und wann (Sekunden nach dem Ende der Folge)
+  chance: 0.6,
+  delay: [45, 120],
+  // Geldregen in Euro (in Fünfern)
+  geld: [10, 40],
+  // ein Raid nur, wenn der letzte eine Weile her ist und der nächste ohnehin bald käme (Sekunden; der Wunsch holt ihn
+  // nur nach vorn, Game.raidWish)
+  raidGap: 300,
+  raidSoon: 600,
+  // was der Chat sagt, wenn sich nichts erfüllt ({ort}: wo die Münze liegt)
+  nicht: ['Der Wunschbrunnen in {ort} hat wohl geschlafen 😴', 'Meine Münze in {ort} war wohl zu klein 😢', 'Wunschbrunnen {ort}: 0 von 1 Wünschen erfüllt 😂'],
+  // OMI, wenn er sich erfüllt ({wunsch} kurz, {ort})
+  omi: ['Der Wunschbrunnen in {ort} hat geliefert: {wunsch}.', 'Wunsch erfüllt: {wunsch}. Danke, Brunnen in {ort}!'],
+};
+
+/** Alle Rubriken. */
+export const RUBRIKEN = [INTERVIEW, WUNSCHBRUNNEN];
 
 /**
  * Welche Rubrik Folge n hat (oder null für eine gewöhnliche Folge). R: der Zufall der Folge (game.js startBrunnenTV),
@@ -81,6 +143,10 @@ export function rubrikFor(n, R, { last = null, abroad = false, force = null } = 
   if (force) return RUBRIKEN.find((r) => r.key === force) ?? null;
   if (n < 2 || abroad) return null;
   const roll = R();
-  for (const r of RUBRIKEN) if (r !== last && roll < r.chance) return r;
+  let sum = 0;
+  for (const r of RUBRIKEN) {
+    sum += r.chance;
+    if (roll < sum) return r === last ? null : r;
+  }
   return null;
 }

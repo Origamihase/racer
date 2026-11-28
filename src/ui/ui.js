@@ -718,15 +718,15 @@ export class UI {
     if (!n) return;
     this.tvEpisode.textContent = 'Folge ' + fmtNum(n);
     this.tvPlace.textContent = 'Heute aus ' + name;
-    this.tvRubrik.textContent = rubrik ? '🎤 ' + rubrik : '';
+    this.tvRubrik.textContent = rubrik;
     this.tvEl.classList.remove('pop');
     void this.tvEl.offsetWidth;
     this.tvEl.classList.add('pop');
   }
 
-  /** Interview (rubriken.js): Der Brunnen antwortet – er plätschert, der Untertitel schreibt es mit Wassertropfen. */
-  brunnenAntwort(text, dur) {
-    return this.speak('quelle', text, Math.max(1.2, dur), 'Der Brunnen antwortet');
+  /** Rubriken (rubriken.js): Der Brunnen antwortet oder nimmt die Münze – er plätschert, der Untertitel schreibt es. */
+  brunnenAntwort(text, dur, label = 'Der Brunnen antwortet') {
+    return this.speak('quelle', text, Math.max(1.2, dur), label);
   }
 
   /** Funkloch: Der Stream ist weg. Das steht im Chat-Feld, wo er fehlt – ist der Chat abgeschaltet, als Hinweis. */
