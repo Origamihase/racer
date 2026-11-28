@@ -97,7 +97,7 @@ const maxLen = (x) => Math.max(...flat(x).map((t) => t.length));
 const town = (list, key) => list.map((t) => t.replace('{' + key + '}', 'x'.repeat(20)));
 // die Sätze, die eine Folge über ihren Brunnen sagt (brunnentexte.js), an jedem Ort mit seinen Namen eingesetzt
 const { folgeTexte, fuelle } = await import('../src/game/brunnentexte.js');
-const { INTERVIEW } = await import('../src/game/rubriken.js');
+const { INTERVIEW, WUNSCHBRUNNEN, WUENSCHE, WUNSCH } = await import('../src/game/rubriken.js');
 const { places: allPlaces } = await import('../src/map/graph.js');
 const ortTexte = { omi: [], mega: [] };
 for (const p of allPlaces) {
@@ -109,12 +109,15 @@ for (const p of allPlaces) {
     ortTexte.mega.push(fuelle(f.q, T, 1));
     ortTexte.omi.push(...f.a.map((l) => fuelle(l, T, '9.999')));
   }
+  // der Wunschbrunnen: OMIs Regel und ihr Satz, wenn sich ein Wunsch erfüllt (mit dem längsten Wunsch)
+  const kurz = Object.values(WUENSCHE).map((w) => w.kurz).reduce((x, y) => (y.length > x.length ? y : x));
+  for (const l of [...WUNSCHBRUNNEN.omi, ...WUNSCH.omi]) ortTexte.omi.push(fuelle(l, T, '9.999').replace('{wunsch}', kurz).replaceAll('{ort}', T.ort));
 }
 const spoken = {
   nomi: [BOARD, DAMAGE_LINES, BRUNNEN_NOMI.map((t) => t.replace('{n}', '9.999')), ortTexte.omi],
   studio: [STUDIO],
   durchsage: [town(all, 'city')],
-  megafon: [MEGAFON_WUENSCHE, town(BRUNNEN_MEGAFON, 'ort'), ortTexte.mega],
+  megafon: [MEGAFON_WUENSCHE, town(BRUNNEN_MEGAFON, 'ort'), ortTexte.mega, WUNSCHBRUNNEN.aufruf],
 };
 for (const [who, lists] of Object.entries(spoken)) check(maxLen(lists) <= LONG[who].length, `${who}: längster Satz ${maxLen(lists)} Zeichen, gemessen wird mit ${LONG[who].length}`);
 check(all.includes(browser.match(/const BREIT = '([^']+)';/)[1]), 'die Sprachdurchsage mit den meisten Zeilen (BREIT) steht so in den Daten');

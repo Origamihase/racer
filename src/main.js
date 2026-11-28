@@ -414,7 +414,7 @@ const uiFacade = {
     photoRequest = { kmh, clock, limit };
   },
   brunnenTV: (n, name, rubrik) => ui.brunnenTV(n, name, rubrik),
-  brunnenAntwort: (t, d) => ui.brunnenAntwort(t, d),
+  brunnenAntwort: (t, d, l) => ui.brunnenAntwort(t, d, l),
 };
 
 // Das Spiel bietet auf echte Orte und braucht dafür die Fahrt der Welt (jedes Gebot setzt ihr Ziel), den Halt am
