@@ -329,6 +329,12 @@ export class UI {
     this.facecamOn = on;
   }
 
+  /** Der Rahmen „Bildhälfte abdecken“ deckt gerade die linke Bildhälfte zu (dort steht die Facecam). */
+  leftCovered() {
+    for (const { el } of this.rahmenList) if (el.querySelector('.half-left')) return true;
+    return false;
+  }
+
   /**
    * Wo die Facecam hin soll (CSS-Pixel) – unten links über der Türverkleidung des Cockpits, etwa 22 % der Bildbreite.
    * Rahmen-Streifen und Briefmarkenrand schieben sie nach innen, Pappkartons nach oben, auf Tablets steht sie über den
@@ -344,9 +350,8 @@ export class UI {
     let w = Math.min(W * 0.22, H * 0.5, 440);
     let left = 14;
     let bottom = 14;
-    let covered = false; // die linke Bildhälfte ist für ein paar Sekunden abgedeckt
+    const covered = this.leftCovered(); // für ein paar Sekunden
     for (const { el: r } of this.rahmenList) {
-      if (r.querySelector('.half-left')) covered = true;
       if (r.querySelector('.strip-left') && !r.classList.contains('corner-only')) {
         left = Math.max(left, 7.5 * vh + 10);
         bottom = Math.max(bottom, 7.5 * vh + 10);
@@ -395,22 +400,24 @@ export class UI {
     const resized = f.vw !== window.innerWidth || f.vh !== window.innerHeight;
     f.vw = window.innerWidth;
     f.vh = window.innerHeight;
-    // Lage neu bestimmen: 10× pro Sekunde (liest Elementgrößen) und sofort beim Einblenden. Kamerawechsel, Ende der
-    // Fahrt oder Einstellung aus: sofort weg (das WebGL-Bild gibt es dann ohnehin nicht mehr)
+    // Lage neu bestimmen: 10× pro Sekunde (liest Elementgrößen) und sofort beim Einblenden, ebenso in dem Bild, in dem
+    // die abgedeckte linke Bildhälfte wieder frei ist. Kamerawechsel, Ende der Fahrt oder Einstellung aus: sofort weg
+    // (das WebGL-Bild gibt es dann ohnehin nicht mehr)
     f.check -= dt;
     if (!on) {
       f.target = null;
       f.alpha = 0;
-    } else if (resized || f.check <= 0 || !f.target) {
+    } else if (resized || f.check <= 0 || !f.target || (f.target.covered && !this.leftCovered())) {
       f.check = 0.1;
       f.target = this.facecamTarget();
     }
-    const t = f.target;
-    const show = t && !t.blocked ? 1 : 0;
     // (für die Qualität „Auto“, main.js adaptResolution: Die Facecam gehört in dieses Bild, ist aber gerade nicht zu
     // sehen, weil das HUD aus ist oder etwas auf ihrem Platz liegt. Hat sie in diesem Fenster gar keinen Platz, fehlt
     // sie nicht: Dann ist das Bild ohne sie das volle)
-    this.facecamAway = want && this.facecamOn && (!on || (!!t && t.blocked));
+    this.facecamAway = want && this.facecamOn && (!on || (!!f.target && f.target.blocked));
+    // unter der abgedeckten Bildhälfte gilt für das Bild dasselbe wie ohne Platz
+    const t = f.target && !f.target.covered ? f.target : null;
+    const show = t && !t.blocked ? 1 : 0;
     if (!t && resized) f.alpha = 0;
     if (t) {
       if (f.alpha <= 0.001 || resized) {

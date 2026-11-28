@@ -326,10 +326,11 @@ function trapezGaps() {
   return out;
 }
 /**
- * Quader gezielt an den Stücken mit der größten Abweichung: klein bis reihenlang, nah und sehr weit neben der Straße,
- * innen und außen (xs: ihre Querlagen). Punkte dicht längs (der äußerste liegt zwischen den Stützstellen).
+ * Quader gezielt an den Stücken mit der größten Abweichung: klein bis reihenlang, auf der Straße, nah und sehr weit
+ * daneben, innen und außen (xs: ihre Querlagen). Punkte dicht längs (der äußerste liegt zwischen den Stützstellen).
+ * (Auf der Straße sind breite, lange Quader am knappsten für den Schrägfaktor: Dort sind Länge und Breite ähnlich.)
  */
-const FAR_OUT = [-2000, -900, -400, -150, 150, 400, 900, 2000];
+const FAR_OUT = [-2000, -900, -400, -150, -40, -12, 0, 12, 40, 150, 400, 900, 2000];
 function gapCheck(rnd, acc, xs = FAR_OUT) {
   const gaps = trapezGaps();
   const order = Array.from(gaps.keys()).sort((a, b) => Math.abs(gaps[b]) * (0.5 + rnd()) - Math.abs(gaps[a]) * (0.5 + rnd()));
@@ -400,6 +401,29 @@ console.log('curveBound, wo der Kurs zwischen den Stützstellen anders dreht als
       }
     }
     check(acc.out.n === 0 && acc.slack >= 0.24 && acc.raw >= -0.005, `Bezugslinie 300 m neben der Linie x = 0, Quader an ihr: ${accText(acc)}, ${rawText(acc)}`);
+  }
+  // Am knappsten für den Schrägfaktor der Hülle (Länge und Breite stehen nach dem Biegen nicht mehr senkrecht
+  // aufeinander) sind gleichmäßig enge Bögen, in denen der Kurs überall neben der Trapezsumme liegt, und breite, lange
+  // Quader auf der Straße. Im Spiel gibt es den Rest nur an den Enden der Übergänge; hier liegt er auf jedem zweiten
+  // Stück, bis zum Achtfachen (1 mrad je Meter)
+  {
+    const rndP = rng(31);
+    const acc = gapAcc();
+    for (let n = 0; n < 24; n++) {
+      const K = zeros();
+      const TH = zeros();
+      for (let j = 0, v = 0; j < N; ) {
+        const target = rndP() < 0.35 ? 0 : (rndP() * 2 - 1) / 110;
+        const ramp = 1 + Math.floor(rndP() * 14);
+        for (let i = 1; i <= ramp && j < N; i++, j++) K[j] = v + ((target - v) * i) / ramp;
+        v = target;
+        for (let i = Math.floor(rndP() * 60); i > 0 && j < N; i--, j++) K[j] = v;
+      }
+      for (let j = 0; j + 1 < N; j++) TH[j + 1] = TH[j] + DS * ((K[j] + K[j + 1]) / 2 + (rndP() < 0.5 ? (rndP() * 2 - 1) * 1e-3 : 0));
+      writeTable(K, TH, zeros(), zeros(), zeros());
+      gapCheck(rndP, acc, [-40, -12, 0, 12, 40]);
+    }
+    check(acc.out.n === 0 && acc.slack >= 0.24 && acc.raw >= -0.005, `gleichmäßige Bögen (R 110 m), Kurs überall bis ${(acc.gap * 1000).toFixed(2)} mrad neben der Trapezsumme, Quader auf der Straße: ${accText(acc)}, ${rawText(acc)}`);
   }
   // dasselbe mit der Tabelle, die course.fill selbst schreibt: Kurvenprobe aus Schlangen an der Grenze der Landstraße
   const saved = PROBE.splice(0, PROBE.length);

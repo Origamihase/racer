@@ -584,6 +584,7 @@ const OUTSIDE = { inside: false };
     subEl: { parentNode: { children: [] } },
     rahmenEl: { querySelectorAll: () => [] },
     facecamTarget: UI.prototype.facecamTarget,
+    leftCovered: UI.prototype.leftCovered,
   });
   /** Eine Sekunde mit diesem HUD (want: Cockpit in der Fahrt): Wird die Facecam am Ende gezeichnet, und fehlt sie? */
   const after = (u, want = true) => {
@@ -619,6 +620,48 @@ const OUTSIDE = { inside: false };
   ok(away >= 203 && away <= 210, `linke Bildhälfte 3,5 s abgedeckt: ${away} von 210 Bildern zählen als leichter`);
   u.rahmenList = [];
   ok(after(u) === 'gezeichnet, fehlt nicht', 'danach ist die Facecam wieder da');
+  // Mit dem Ende der Abdeckung ist sie im selben Bild wieder da und nach 0,4 s ganz zu sehen, wie bevor es facecamAway
+  // gab – gleich, wann das Ende zwischen zwei Blicken auf die Lage fällt. Unter der Abdeckung bleibt es bei zehn
+  // Blicken je Sekunde (jeder liest Elementgrößen)
+  {
+    const back = [];
+    let reads = 0;
+    for (let phase = 0; phase < 7; phase++) {
+      const v = hud();
+      let calls = 0;
+      v.facecamTarget = function () {
+        calls++;
+        return UI.prototype.facecamTarget.call(this);
+      };
+      after(v);
+      v.rahmenList = hud({ half: 'left' }).rahmenList;
+      calls = 0;
+      for (let i = 0; i < 180 + phase; i++) UI.prototype.placeFacecam.call(v, 1 / 60, true);
+      reads = Math.max(reads, calls);
+      v.rahmenList = [];
+      let first = 0;
+      let full = 0;
+      for (let i = 1; i <= 60 && !full; i++) {
+        const box = UI.prototype.placeFacecam.call(v, 1 / 60, true);
+        if (box && !first) first = i;
+        if (box && box.alpha === 1) full = i;
+      }
+      back.push(`${first}/${full}`);
+    }
+    ok(back.every((b) => b === '1/24'), `Ende der Abdeckung: Die Facecam ist im 1. Bild wieder da und im 24. ganz zu sehen (${[...new Set(back)].join(', ')})`);
+    ok(reads >= 20 && reads <= 31, `unter der Abdeckung: ${reads} Blicke auf die Lage in 3 s`);
+    // … und beim Ausblenden bleibt sie stehen, auch wenn derselbe Rahmen ihr zugleich einen anderen Platz gäbe (Streifen)
+    const w = hud();
+    after(w);
+    const x0 = w.fcBox.x;
+    w.rahmenList = [{ el: { querySelector: (sel) => (sel === '.half-left' || sel === '.strip-left' ? {} : null), classList: { contains: () => false } } }];
+    const xs = new Set();
+    for (let i = 0; i < 60; i++) {
+      const box = UI.prototype.placeFacecam.call(w, 1 / 60, true);
+      if (box) xs.add(box.x);
+    }
+    ok(xs.size === 1 && xs.has(x0), `beim Ausblenden unter der Abdeckung bleibt sie an ihrem Platz (x = ${[...xs].join(', ')})`);
+  }
   // kein Platz im Fenster (480 × 270): Dann gibt es sie nie, und das Bild ohne sie ist das volle – auch unter der
   // abgedeckten Bildhälfte
   Object.assign(globalThis.window, { innerWidth: 480, innerHeight: 270 });
