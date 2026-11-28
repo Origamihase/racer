@@ -3,6 +3,7 @@
 // und Wahrzeichen am Rand (Brunnen für BrunnenTV, Elsa).
 // Die Welt ist in 100-m-Segmente geteilt, die vor dem Spieler neu gebaut werden.
 import * as THREE from 'three';
+import { FAR_LAYER } from './farshadow.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../curve.js';
 import {
@@ -242,6 +243,7 @@ export class Scenery {
       const mesh = cullByRows(new THREE.InstancedMesh(geo, m, cap * NSLOTS), this.cull);
       mesh.frustumCulled = false;
       mesh.castShadow = true;
+      mesh.layers.enable(FAR_LAYER);
       mesh.receiveShadow = name === 'house' || name === 'roof';
       mesh.setColorAt(0, new THREE.Color(1, 1, 1));
       mesh.count = 0;

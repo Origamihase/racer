@@ -138,6 +138,7 @@ const rearCam = new THREE.PerspectiveCamera(21, 0.245 / 0.072, 0.6, 700);
 const photoCam = new THREE.PerspectiveCamera(24, 16 / 9, 0.2, 900);
 
 const sky = new Sky(renderer, scene, { shadows: quality.shadows, shadowSize: quality.shadowSize });
+sky.far.setSize(quality.shadows ? quality.shadowSize : 0);
 const road = new Road(scene, ROAD_OPTS);
 const scenery = new Scenery(scene);
 // die Welt der Reise (src/world/xxl): Autobahnen, Ausfahrten, Rampen, Landstraßen und Orte aus der echten Karte
@@ -716,6 +717,7 @@ function applySettings(key) {
         if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => (m.needsUpdate = true));
       });
     }
+    sky.far.setSize(quality.shadows ? quality.shadowSize : 0);
     // neue Schattenauflösung: alte Schattenkarte verwerfen, three.js legt sie passend neu an
     const sh = sky.sun.shadow;
     if (sh.mapSize.x !== quality.shadowSize) {
@@ -1285,6 +1287,8 @@ function renderFrame(cockpitOn) {
   frameNo++;
   // neue Bilder von Mittelbildschirm und OMI auf die Grafikkarte, bevor der erste Durchgang beginnt
   flushLiveCanvases(renderer);
+  // die weite Schattenkarte (Schatten der Landschaft) gilt für alle Durchgänge dieses Bilds
+  sky.far.render(renderer, scene, tesla.root);
   // (__MA.redraw: Rückspiegel und Rückfahrkamera laufen vor renderWorld und läsen sonst die Schattenkarte des Bilds davor)
   if (redrawAll) renderer.shadowMap.needsUpdate = quality.shadows;
   // Innen- und Außenspiegel: immer das Spiegelbild der Straße (die Kofferraum-Kamera zeigt der Mittelbildschirm)
@@ -2019,6 +2023,7 @@ function boot() {
   try {
     // jedes Programm so, wie das erste Bild es braucht: Welt und Facecam zeichnen in ein Render-Ziel (ohne Tone-Mapping,
     // linear – ohne das gebundene Ziel übersetzte das erste Bild die ganze Welt noch einmal), Cockpit und Quads direkt
+    sky.far.warm(renderer, scene, tesla.root);
     renderer.setRenderTarget(worldRT);
     renderer.compile(scene, camera);
     // Spiegel, Seitenfenster und Rückfahrkamera zeigen die Welt ohne den eigenen Wagen, also ohne seine

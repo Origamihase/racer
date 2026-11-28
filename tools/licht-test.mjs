@@ -1,8 +1,11 @@
-// Prüfstand Licht der Welt (src/world/light.js) und Wolkenschatten (src/curve.js): Das kräftige Schönwetterlicht macht das Bild nicht heller oder
+// Prüfstand Licht der Welt (src/world/light.js), Wolkenschatten (src/curve.js) und weite Schattenkarte
+// (src/world/farshadow.js): Das kräftige Schönwetterlicht macht das Bild nicht heller oder
 // dunkler als das frühere, weiche (eine besonnte Wiese bekommt gleich viel Licht), es macht nur die Schatten tiefer
 // und bläulich. Und im Regen ist alles, wie es war: Ab Bewölkung FAIR_END gilt Wert für Wert das frühere Licht.
 import { LIGHT, FAIR_END, worldLight, linear } from '../src/world/light.js';
-import { CLOUD, cloudField, cloudSunAt, setCloudShadows, cloudUniforms } from '../src/curve.js';
+import * as THREE from 'three';
+import { CLOUD, SHADOW_FADE, cloudField, cloudSunAt, setCloudShadows, sunUniforms } from '../src/curve.js';
+import { FarShadow, FAR, FAR_LAYER } from '../src/world/farshadow.js';
 import { readFileSync } from 'node:fs';
 
 let fails = 0;
@@ -164,10 +167,10 @@ const same = (A, B) => Math.abs(A.sun - B.sun) < 1e-12 && Math.abs(A.hemi - B.he
   for (let k = 0; k < 100; k++) off = Math.min(off, cloudSunAt(k * 11, -k * 53));
   ok(off === 1, 'Stärke 0: überall volle Sonne');
   setCloudShadows(777, 9, -0.4);
-  ok(cloudUniforms.uCloud.value.z === 0, 'negative Stärke wird 0 (Bewölkung über CLOUD.end)');
+  ok(sunUniforms.uCloud.value.z === 0, 'negative Stärke wird 0 (Bewölkung über CLOUD.end)');
   setCloudShadows(777, 9, 3);
-  ok(cloudUniforms.uCloud.value.z === CLOUD.strength, 'Stärke über 1 wird begrenzt');
-  ok(cloudUniforms.uCloud.value.x >= 0 && cloudUniforms.uCloud.value.x < 1 && cloudUniforms.uCloud.value.y >= 0 && cloudUniforms.uCloud.value.y < 1, 'Versatz bleibt in der Kachel (auch nach vielen Kilometern genau)');
+  ok(sunUniforms.uCloud.value.z === CLOUD.strength, 'Stärke über 1 wird begrenzt');
+  ok(sunUniforms.uCloud.value.x >= 0 && sunUniforms.uCloud.value.x < 1 && sunUniforms.uCloud.value.y >= 0 && sunUniforms.uCloud.value.y < 1, 'Versatz bleibt in der Kachel (auch nach vielen Kilometern genau)');
   ok(CLOUD.end < FAIR_END, `Schatten sind weg (Bewölkung ${CLOUD.end}), bevor das Schönwetterlicht es ist (${FAIR_END})`);
   // der Himmel reicht sie weiter, und wer das Sonnenlicht selbst liest, rechnet den Anteil ein
   ok(/setCloudShadows\(s, this\.cloudT, this\.cloudK \* \(1 - o \/ CLOUD\.end\)\)/.test(sky), 'world/sky.js stellt die Wolkenschatten in jedem Bild');
@@ -175,6 +178,76 @@ const same = (A, B) => Math.abs(A.sun - B.sun) < 1e-12 && Math.abs(A.hemi - B.he
   const reads = city.split('directionalLights[0].color').length - 1;
   const guarded = city.split('#ifdef CW_SUN').length - 1;
   ok(reads === 2 && guarded === 2, `kit/citycore.js: ${reads} Stellen lesen das Sonnenlicht selbst, ${guarded} rechnen den Wolkenschatten ein`);
+}
+
+// 7. Weite Schattenkarte (src/world/farshadow.js): Der Kasten liegt vor der Kamera, rastet auf ganze Punkte der Welt
+// ein (sonst flimmern Schattenkanten beim Fahren) und rechnet die Welt richtig in die Karte um
+{
+  const far = new FarShadow();
+  ok(!far.on && sunUniforms.uFar.value.x === 0 && sunUniforms.uFarMap.value === far.rt.depthTexture, 'aus: Stärke 0, eine winzige leere Karte hängt am Shader');
+  far.setSize(2048);
+  ok(far.on && far.rt.width === 2048 && sunUniforms.uFarMap.value === far.rt.depthTexture, 'an: Karte 2048 × 2048 hängt am Shader');
+  ok(far.rt.depthTexture.compareFunction === THREE.LessEqualCompare && far.material.side === THREE.BackSide, 'Tiefenvergleich in der Karte, Rückseiten als Schattenwerfer');
+  // Sonne und Achsen wie world/sky.js bei Kurs psi
+  const axes = (psi) => {
+    const sun = new THREE.Vector3(sx, sy, sz).normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), -psi);
+    const eU = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 0, -1), sun).normalize();
+    const eV = new THREE.Vector3().crossVectors(sun, eU);
+    return { sun, eU, eV };
+  };
+  const cam = new THREE.PerspectiveCamera(60, 16 / 9, 0.25, 3200);
+  const at = (x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(sunUniforms.uFarM.value);
+  let worst = 0;
+  let depthBad = 0;
+  let snapBad = 0;
+  let coverBad = 0;
+  for (let k = 0; k < 60; k++) {
+    const psi = (k - 30) * 0.1;
+    const { sun, eU, eV } = axes(psi);
+    cam.position.set((k % 7) - 3, 1.3 + (k % 5), 0);
+    cam.lookAt(cam.position.x + Math.sin(k * 0.05) * 0.2, 1, -50);
+    cam.updateMatrixWorld(true);
+    const s = 1000 + k * 333.3;
+    far.place(cam, s, sun, eU, eV);
+    // Mitte des Kastens am Boden
+    const c = far.camera.position.clone().addScaledVector(sun, -FAR.depth / 2);
+    const m = at(c.x, 0, c.z);
+    worst = Math.max(worst, Math.abs(m.x - 0.5), Math.abs(m.y - 0.5));
+    // ein Punkt näher an der Sonne hat die kleinere Tiefe, und der Boden liegt mitten im Tiefenbereich
+    const up = at(c.x + sun.x * 30, sun.y * 30, c.z + sun.z * 30);
+    if (!(up.z < m.z && m.z > 0.3 && m.z < 0.7 && Math.abs(up.x - m.x) < 1e-6 && Math.abs(up.y - m.y) < 1e-6)) depthBad++;
+    // der Boden vom Wagen bis 500 m voraus und 150 m zur Seite liegt in der Karte (bei Kurs der Straße bis ±1,2 rad)
+    if (Math.abs(psi) <= 1.2) for (const [x, z] of [[0, 0], [0, -500], [150, -200], [-150, -200], [0, 40]]) {
+      const q = at(x, 0, z);
+      if (!(q.x > 0.02 && q.x < 0.98 && q.y > 0.02 && q.y < 0.98)) coverBad++;
+    }
+    // eingerastet: die Lage der Karte gegen die Welt (die mit s nach +z rückt) ist ein ganzes Vielfaches eines Punkts
+    const u = eU.x * c.x + eU.z * c.z;
+    const v = eV.x * c.x + eV.z * (c.z - s);
+    const fu = Math.abs(u / (FAR.u / far.size) - Math.round(u / (FAR.u / far.size)));
+    const fv = Math.abs(v / (FAR.v / far.size) - Math.round(v / (FAR.v / far.size)));
+    if (fu > 1e-6 || fv > 1e-6) snapBad++;
+  }
+  ok(worst < 1e-9, `die Mitte des Kastens liegt in der Mitte der Karte (Abweichung ${worst.toExponential(1)})`);
+  ok(depthBad === 0, `Tiefe wächst von der Sonne weg, der Boden liegt mitten im Tiefenbereich (${depthBad} Verstöße)`);
+  ok(coverBad === 0, `der Boden vom Wagen bis 500 m voraus und 150 m zur Seite liegt in der Karte (${coverBad} Punkte draußen)`);
+  ok(snapBad === 0, `der Kasten rastet auf ganze Punkte der Welt ein (${snapBad} Verstöße)`);
+  const U = sunUniforms.uFar.value;
+  ok(U.x === 1 && U.y > 0 && U.y < 0.001 && U.w === 1 / 2048, `Stärke 1, Luft ${(U.y * (FAR.depth - FAR.near)).toFixed(2)} m, Punktgröße 1/2048`);
+  far.setSize(0);
+  ok(!far.on && U.x === 0, 'wieder aus: Stärke 0');
+  const before = sunUniforms.uFarM.value.clone();
+  far.place(cam, 5, ...Object.values(axes(0)));
+  ok(before.equals(sunUniforms.uFarM.value) && U.x === 0, 'aus: place stellt nichts');
+  // dieselben Ränder wie die feine Karte, und wer Schatten wirft, liegt auf der Ebene der weiten Karte
+  const curveSrc = readFileSync(new URL('../src/curve.js', import.meta.url), 'utf8');
+  ok(Number(SHADOW_FADE.edge) === 0.04 && Number(SHADOW_FADE.far) === 0.29 && /1\.0 - smoothstep\( 0\.0, \$\{SHADOW_FADE\.edge\}, cwN\.x \)/.test(curveSrc),
+    'die weite Karte gilt mit dem Gegenstück des Gewichts der feinen (dieselben Ränder)');
+  ok(/if \( ! receiveShadow \) cwW = 0\.0;/.test(curveSrc), 'was keinen Schatten empfängt, bekommt auch keinen weiten');
+  for (const f of ['world/xxl/forest.js', 'world/scenery.js', 'world/kit/citycore.js']) {
+    ok(/layers\.enable\(FAR_LAYER\)/.test(readFileSync(new URL('../src/' + f, import.meta.url), 'utf8')), `${f}: Schattenwerfer liegen auf der Ebene der weiten Karte`);
+  }
+  ok(far.camera.layers.mask === 1 << FAR_LAYER, 'die Kamera der weiten Karte sieht nur diese Ebene');
 }
 
 console.log(`${checks} Prüfungen, ${fails} Fehler`);

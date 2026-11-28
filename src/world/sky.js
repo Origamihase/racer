@@ -10,7 +10,8 @@ import { PAL } from './kit/palette.js';
 import { VIEW_BEHIND } from './road.js';
 import { ringAt } from '../map/skyline.js';
 import { worldLight } from './light.js';
-import { CLOUD, setCloudShadows } from '../curve.js';
+import { CLOUD, SHADOW_FADE, setCloudShadows } from '../curve.js';
+import { FarShadow, FAR_LAYER } from './farshadow.js';
 
 // Schattenkasten der Sonne (Licht-Einheiten bei 2048er Schattenkarte, „mittel“ mit 1024 nimmt 0,7 davon): u quer
 // zur Straße (±63 m), v längs (rund 220 m, davon 40 m hinter der Kamera, der Rest in Blickrichtung). Am Boden
@@ -22,8 +23,10 @@ const SHADOW = { u: 96, v: 176, back: 40, side: 30, edge: 0.04, far: 0.29 };
 // sie stattdessen weich aus (shadowCoord 0…1 über den Kasten; v wächst in Fahrtrichtung). PCFSoftShadowMap nutzt
 // shadowRadius nicht: placeShadow legt dort die Blickrichtung längs der Straße ab (+1 voraus … −1 zurück), damit
 // gerade die ferne Kante lang ausläuft und die nahe hinter der Kamera kurz.
-const EDGE = SHADOW.edge.toFixed(3);
-const FAR = SHADOW.far.toFixed(3);
+// (als Text in curve.js, weil die weite Schattenkarte dort mit dem Gegenstück dieses Gewichts rechnet)
+const EDGE = SHADOW_FADE.edge;
+const FAR = SHADOW_FADE.far;
+if (Number(EDGE) !== SHADOW.edge || Number(FAR) !== SHADOW.far) throw new Error('sky.js: SHADOW und SHADOW_FADE (curve.js) laufen auseinander');
 const FADE = /* glsl */ `
 		float shFar = clamp( shadowRadius, - 1.0, 1.0 );
 		float shFade = smoothstep( 0.0, ${EDGE}, shadowCoord.x ) * smoothstep( 0.0, ${EDGE}, 1.0 - shadowCoord.x )
@@ -455,6 +458,7 @@ export class Sky {
     this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.04;
     // Achsen des Schattenbilds (wie three.js sie mit lookAt bildet): eU quer (ohne z-Anteil), eV längs
+    this.far = new FarShadow(); // Schatten der Landschaft; Größe setzt main.js mit der Qualität
     this.eU = new THREE.Vector3();
     this.eV = new THREE.Vector3();
     this.shadowAxes();
@@ -466,6 +470,10 @@ export class Sky {
     this.hemi.color.fromArray(this.light.sky);
     this.hemi.groundColor.fromArray(this.light.ground);
     scene.add(this.hemi);
+    // Sonne und Himmel liegen auch auf der Ebene der weiten Karte (farshadow.js). three.js übersetzt die Programme der
+    // feinen Schattenkarte mit der Zahl der Lichter des Durchgangs davor, oft dem der weiten Karte: Ohne Lichter dort
+    // wäre das je nach Bild mal null, mal eins, und mitten in der Fahrt entstünden neue Programme.
+    for (const l of [this.sun, this.hemi]) l.layers.enable(FAR_LAYER);
 
     this.clouds = this.buildClouds();
     this.root.add(this.clouds);
@@ -1038,6 +1046,7 @@ export class Sky {
     }
 
     this.placeShadow(camera, s);
+    this.far.place(camera, s, this.sunDir, this.eU, this.eV);
     this.envGround.material.color.setRGB(lerp(0.2, 0.12, o), lerp(0.24, 0.13, o), lerp(0.15, 0.13, o));
     if (Math.abs(o - this.lastEnvOvercast) > 0.12) this.updateEnv();
   }

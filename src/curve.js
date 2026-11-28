@@ -37,6 +37,11 @@ export const curveUniforms = {
 // ungebogenen Welt fest wie die Wiese (der Boden rückt mit s nach +z). Zwischen den Punkten der Kachel wird weich
 // überblendet (smoothstep statt geradlinig): Geradlinig gäbe an jeder Punktreihe einen Knick im Verlauf, und den
 // sieht man auf der Wiese als feine schräge Linien.
+// Ränder der beiden Schattenkarten als Anteil ihres Kastens (hier, weil der Shader beide braucht; sky.js und
+// farshadow.js lesen sie von hier): kurz an den Seiten, lang an der fernen Kante
+export const SHADOW_FADE = { edge: '0.040', far: '0.290' };
+const FAR_EDGE = '0.040';
+const FAR_FAR = '0.250';
 export const CLOUD = {
   n: 512, // Kachel in Punkten
   tile: 1400, // und in Metern
@@ -86,7 +91,12 @@ CLOUD_TEX.unpackAlignment = 1;
 CLOUD_TEX.needsUpdate = true;
 // uCloudM: Lage (x, z) in der ungebogenen Welt → Kachel (zwei Zeilen einer Matrix) · uCloud: Versatz in Kacheln
 // (x, y) und Stärke
-export const cloudUniforms = {
+// dazu die weite Schattenkarte (world/farshadow.js): uFarMap, uFarM: gebogene Welt → Karte (0 … 1) und Tiefe,
+// uFar: Stärke (0 aus), Luft in der Tiefe, Blick längs der Straße (+1 voraus … −1 zurück), ein Punkt der Karte
+export const sunUniforms = {
+  uFarMap: { value: null },
+  uFarM: { value: new THREE.Matrix4() },
+  uFar: { value: new THREE.Vector4(0, 0, 1, 1) },
   uCloudTex: { value: CLOUD_TEX },
   uCloudM: { value: new THREE.Vector4(Math.cos(CLOUD.turn) / CLOUD.tile, -Math.sin(CLOUD.turn) / CLOUD.tile, Math.sin(CLOUD.turn) / CLOUD.tile, Math.cos(CLOUD.turn) / CLOUD.tile) },
   uCloud: { value: new THREE.Vector3(0, 0, 0) },
@@ -97,8 +107,8 @@ const frac = (v) => v - Math.floor(v);
  * Stärke (0 aus … 1 schönes Wetter).
  */
 export function setCloudShadows(s, t, k) {
-  const M = cloudUniforms.uCloudM.value;
-  const C = cloudUniforms.uCloud.value;
+  const M = sunUniforms.uCloudM.value;
+  const C = sunUniforms.uCloud.value;
   const wx = CLOUD.wind[0] * t;
   const wz = CLOUD.wind[1] * t - s;
   C.x = frac(M.x * wx + M.y * wz);
@@ -107,8 +117,8 @@ export function setCloudShadows(s, t, k) {
 }
 /** Anteil der Sonne (1 − Stärke … 1) an der Stelle (x, z) der ungebogenen Welt: dieselbe Rechnung wie im Shader. */
 export function cloudSunAt(x, z) {
-  const M = cloudUniforms.uCloudM.value;
-  const C = cloudUniforms.uCloud.value;
+  const M = sunUniforms.uCloudM.value;
+  const C = sunUniforms.uCloud.value;
   const n = CLOUD.n;
   const u = frac(M.x * x + M.y * z + C.x) * n - 0.5;
   const v = frac(M.z * x + M.w * z + C.y) * n - 0.5;
@@ -286,6 +296,9 @@ vec4 cwPos = modelMatrix * mvPosition;
 #else
   cwPos = curveWorld( cwPos );
 #endif
+#ifdef CW_SUN
+  vCwFar = ( uFarM * cwPos ).xyz;
+#endif
 mvPosition = viewMatrix * cwPos;
 gl_Position = projectionMatrix * mvPosition;
 `;
@@ -315,11 +328,14 @@ for (const lib of [THREE.ShaderLib.depth, THREE.ShaderLib.distanceRGBA]) {
 // (directionalLights[0].color), nimmt cwSunK dazu oder fragt vorher mit cwSunAt() selbst, siehe kit/citycore.js.
 const SUN_AT = '#include <lights_fragment_begin>';
 const SUN_LIGHT = 'getDirectionalLightInfo( directionalLight, directLight );';
-const SUN_VERT = '#define CW_SUN\nuniform vec4 uCloudM;\nuniform vec3 uCloud;\nvarying vec2 vCwSunUv;\n';
+const SUN_VERT = '#define CW_SUN\nuniform vec4 uCloudM;\nuniform vec3 uCloud;\nuniform mat4 uFarM;\nvarying vec2 vCwSunUv;\nvarying vec3 vCwFar;\n';
 const SUN_FRAG = /* glsl */ `#define CW_SUN
 uniform sampler2D uCloudTex;
 uniform vec3 uCloud;
+uniform highp sampler2DShadow uFarMap;
+uniform vec4 uFar;
 varying vec2 vCwSunUv;
+varying vec3 vCwFar;
 float cwSunAt() {
   vec2 q = vCwSunUv * ${CLOUD.n}.0 + 0.5;
   vec2 i = floor( q );
@@ -328,7 +344,32 @@ float cwSunAt() {
   return 1.0 - uCloud.z * texture2D( uCloudTex, ( i + f - 0.5 ) / ${CLOUD.n}.0 ).r;
 }
 `;
-const SUN_BEGIN = 'float cwSunK = cwSunAt();\n'
+// Weite Schattenkarte: gilt mit dem Gegenstück des Gewichts der feinen (shFade in world/sky.js, dieselbe Rechnung),
+// läuft an ihren eigenen Rändern aus und fällt nur auf das, was Schatten empfängt
+const SUN_FAR = /* glsl */ `
+{
+  float cwW = uFar.x * smoothstep( 0.0, ${FAR_EDGE}, vCwFar.x ) * smoothstep( 0.0, ${FAR_EDGE}, 1.0 - vCwFar.x )
+    * smoothstep( 0.0, mix( ${FAR_EDGE}, ${FAR_FAR}, max( - uFar.z, 0.0 ) ), vCwFar.y )
+    * smoothstep( 0.0, mix( ${FAR_EDGE}, ${FAR_FAR}, max( uFar.z, 0.0 ) ), 1.0 - vCwFar.y );
+  #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+    vec3 cwN = vDirectionalShadowCoord[ 0 ].xyz / vDirectionalShadowCoord[ 0 ].w;
+    float cwNf = clamp( directionalLightShadows[ 0 ].shadowRadius, - 1.0, 1.0 );
+    cwW *= 1.0 - smoothstep( 0.0, ${SHADOW_FADE.edge}, cwN.x ) * smoothstep( 0.0, ${SHADOW_FADE.edge}, 1.0 - cwN.x )
+      * smoothstep( 0.0, mix( ${SHADOW_FADE.edge}, ${SHADOW_FADE.far}, max( - cwNf, 0.0 ) ), cwN.y )
+      * smoothstep( 0.0, mix( ${SHADOW_FADE.edge}, ${SHADOW_FADE.far}, max( cwNf, 0.0 ) ), 1.0 - cwN.y );
+    if ( ! receiveShadow ) cwW = 0.0;
+  #endif
+  if ( cwW > 0.0 ) {
+    // vier Abfragen, jede mittelt selbst vier Punkte: Die groben Punkte der weiten Karte gäben sonst Treppen
+    vec3 cwC = vec3( vCwFar.xy, vCwFar.z - uFar.y );
+    vec2 cwD = vec2( 0.75, 0.25 ) * uFar.w;
+    float cwLit = texture( uFarMap, cwC + vec3( cwD.x, cwD.y, 0.0 ) ) + texture( uFarMap, cwC + vec3( - cwD.y, cwD.x, 0.0 ) )
+      + texture( uFarMap, cwC + vec3( - cwD.x, - cwD.y, 0.0 ) ) + texture( uFarMap, cwC + vec3( cwD.y, - cwD.x, 0.0 ) );
+    cwSunK *= mix( 1.0, cwLit * 0.25, cwW );
+  }
+}
+`;
+const SUN_BEGIN = 'float cwSunK = cwSunAt();\n' + SUN_FAR
   + THREE.ShaderChunk.lights_fragment_begin.replace(SUN_LIGHT, SUN_LIGHT + '\n\t\tdirectLight.color *= cwSunK;');
 if (!SUN_BEGIN.includes('directLight.color *= cwSunK;')) throw new Error('curve.js: three.js hat lights_fragment_begin geändert');
 
@@ -339,7 +380,7 @@ export function curve(material) {
     shader.vertexShader = patchVertex(shader.vertexShader);
     // alles, was die Sonne beleuchtet, bekommt den Anteil cwSunK der Sonne an seiner Stelle (Wolkenschatten)
     if (shader.fragmentShader.includes(SUN_AT)) {
-      Object.assign(shader.uniforms, cloudUniforms);
+      Object.assign(shader.uniforms, sunUniforms);
       shader.vertexShader = SUN_VERT + shader.vertexShader;
       shader.fragmentShader = SUN_FRAG + shader.fragmentShader.replace(SUN_AT, SUN_BEGIN);
     }

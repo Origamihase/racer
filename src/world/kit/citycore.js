@@ -10,6 +10,7 @@
 // Alle Farben stecken in den Eckpunkten, samt weicher „Umgebungsschatten“ (unten und unter Traufen dunkler).
 // Text von Läden und Schildern kommt aus einem einzigen Atlas, deshalb kostet Schrift keinen eigenen Draw Call.
 import * as THREE from 'three';
+import { FAR_LAYER } from '../farshadow.js';
 import { PAL } from './palette.js';
 
 export { PAL };
@@ -1883,6 +1884,7 @@ export function compose(core, items, { shadows = true } = {}) {
     if (!g) return;
     const m = new THREE.Mesh(g, mat);
     m.castShadow = cast;
+    if (cast) m.layers.enable(FAR_LAYER);
     m.receiveShadow = shadows;
     group.add(m);
   };

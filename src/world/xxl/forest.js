@@ -6,6 +6,7 @@
 // Ein Straßenstück plant seine Pflanzen einmal (planProps, deterministisch aus seinem Samen), die Rahmenansicht
 // sammelt die Pläne aller ihrer Stücke in je einem InstancedMesh pro Art (PropSet): wenige Zeichenaufrufe.
 import * as THREE from 'three';
+import { FAR_LAYER } from '../farshadow.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../../curve.js';
 import { colorize } from '../../models/loft.js';
@@ -384,6 +385,7 @@ export class PropSet {
         m = this.meshes[t] = cullByRows(new THREE.InstancedMesh(S.geo[t], S.mat[t], cap), this.cull);
         m.frustumCulled = false;
         m.castShadow = S.shadow[t];
+        if (S.shadow[t]) m.layers.enable(FAR_LAYER);
         m.receiveShadow = true;
         m.name = 'XXL-' + TYPES[t];
         m.setColorAt(0, _c.setRGB(1, 1, 1));
