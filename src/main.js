@@ -1487,6 +1487,7 @@ function pollMenuPad(active) {
   }
 }
 
+let drawn = false; // das Bild davor hat die Welt gezeichnet (nicht nur die große Karte)
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000;
@@ -1495,8 +1496,12 @@ function frame(now) {
   if (!(dt > 0)) dt = 1 / 60;
   dt = Math.min(dt, 1 / 20);
   const mapOpen = menus.current === 'karte'; // die große Karte deckt alles zu: dahinter kein 3D-Bild
+  // Qualität „Auto“ vor dem Zeichnen: Sie misst das Bild davor (dt ist seine Dauer) und stellt die Schärfe für dieses
+  // ein. Eine neue Schärfe legt die Zeichenfläche neu an, und die ist dann leer – erst danach gezeichnet, steht das
+  // Bild; davor gezeichnet (so war es früher), blieb der Schirm bei jedem Schritt der Schärfe ein Bild lang schwarz
+  if (drawn && !mapOpen) adaptResolution(dt);
   step(dt, { render: !mapOpen });
-  if (!mapOpen) adaptResolution(dt);
+  drawn = !mapOpen;
 }
 
 function step(dt, { render = true } = {}) {
