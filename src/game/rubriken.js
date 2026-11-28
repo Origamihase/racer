@@ -121,8 +121,10 @@ export const WUNSCH = {
   delay: [45, 120],
   // Geldregen in Euro (in Fünfern)
   geld: [10, 40],
-  // ein Raid nur, wenn der letzte eine Weile her ist (Sekunden)
+  // ein Raid nur, wenn der letzte eine Weile her ist und der nächste ohnehin bald käme (Sekunden; der Wunsch holt ihn
+  // nur nach vorn, Game.raidWish)
   raidGap: 300,
+  raidSoon: 600,
   // was der Chat sagt, wenn sich nichts erfüllt ({ort}: wo die Münze liegt)
   nicht: ['Der Wunschbrunnen in {ort} hat wohl geschlafen 😴', 'Meine Münze in {ort} war wohl zu klein 😢', 'Wunschbrunnen {ort}: 0 von 1 Wünschen erfüllt 😂'],
   // OMI, wenn er sich erfüllt ({wunsch} kurz, {ort})

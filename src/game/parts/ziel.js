@@ -1,7 +1,7 @@
 // Teil der Regie einer Fahrt (Game, game.js): Navi-Ziel: Ausfahrten, die Auktion ums Ziel, Ankunft, Halt am Brunnen,
 // Rechnung und BrunnenTV.
 // Die Methoden stehen hier, gehören aber zu Game – game.js hängt sie an (attachParts); this ist das Spiel.
-import { CHAT, BOARD, VOICES, REISE_AKKU, damageCost, damageCount, ladeKosten, viewerName, viewerNameAt, fillTemplate, BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, SCHOENNBRUN } from '../../data.js';
+import { CHAT, CREW, BOARD, VOICES, REISE_AKKU, damageCost, damageCount, ladeKosten, viewerName, viewerNameAt, fillTemplate, BRUNNEN_MEGAFON, BRUNNEN_NOMI, BRUNNEN_DEBATTE, SCHOENER_BRUNNEN, SCHOENNBRUN } from '../../data.js';
 import { rand, chance, pick, mulberry32, fmtCent, fmtEuro, fmtNum, fmtKwh, fmtKonto } from '../../util.js';
 import { damageLine } from '../damage.js';
 import { BONTANA } from '../economy.js';
@@ -842,7 +842,7 @@ export class ZielPart {
   wunschStart(tv) {
     const R = tv.rng;
     const W = WUNSCHBRUNNEN;
-    const kinds = Object.keys(WUENSCHE).filter((k) => (k === 'regen' ? !this.weather.active && !(this.weather.front > 0) : k === 'raid' ? this.t - this.raidT > WUNSCH.raidGap : true));
+    const kinds = Object.keys(WUENSCHE).filter((k) => (k === 'regen' ? !this.weather.active && !(this.weather.front > 0) : k === 'raid' ? this.raidWish() : true));
     const kind = kinds[Math.floor(R() * kinds.length)];
     const name = viewerNameAt(Math.floor(R() * 9973));
     tv.wunsch = { kind, name, ok: R() < WUNSCH.chance };
@@ -850,6 +850,16 @@ export class ZielPart {
     this.later(1.0 + R() * 0.5, () => this.chat(a, viewerNameAt(Math.floor(R() * 9973))));
     this.later(2.4, () => this.chat('🪙 Ich wünsche mir ' + WUENSCHE[kind].wunsch, name));
     if (tv.debate) this.later(3.6, () => this.chat(this.chatLine(BRUNNEN_DEBATTE[tv.debate])));
+  }
+
+  /**
+   * Darf sich jemand einen Raid wünschen? Der Wunsch holt König Knollis nächsten Raid nur nach vorn (updateCrew), er
+   * kommt nie zusätzlich: nur, wenn der nächste ohnehin bald fällig ist (WUNSCH.raidSoon), nicht vor dem frühesten
+   * ersten Raid eines Streams und nicht kurz nach dem letzten.
+   */
+  raidWish() {
+    const T = this.crewT;
+    return !!T && T.raid <= WUNSCH.raidSoon && this.t >= CREW.raid.first[0] * 60 && this.t - this.raidT > WUNSCH.raidGap;
   }
 
   /** Wunschbrunnen: Der Brunnen nimmt die Münze – es klingelt und plätschert, der Untertitel schreibt es. */
@@ -891,7 +901,7 @@ export class ZielPart {
       this.stats.wuensche = { ...(this.stats.wuensche || {}), nicht: ((this.stats.wuensche || {}).nicht || 0) + 1 };
       return;
     }
-    const kind = w.kind === 'raid' && this.t - this.raidT < WUNSCH.raidGap ? 'geld' : w.kind;
+    const kind = w.kind === 'raid' && !this.raidWish() ? 'geld' : w.kind;
     const D = WUENSCHE[kind];
     if (kind === 'regen') {
       const W = this.weather;
