@@ -483,6 +483,11 @@ export class Sky {
     this.envTarget = null;
     this.lastEnvOvercast = -1;
     this.updateEnv();
+    // Nach einem Zurücksetzen der Grafikkarte legt three.js das Ziel der Umgebungskarte neu an, aber leer: Lack, Glas
+    // und Cockpit verlören ihr Himmelslicht bis zum nächsten Wetterwechsel. Also im nächsten update neu backen.
+    renderer.domElement.addEventListener('webglcontextrestored', () => {
+      this.lastEnvOvercast = -1;
+    });
   }
 
   /**
