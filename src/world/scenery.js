@@ -4,6 +4,7 @@
 // Die Welt ist in 100-m-Segmente geteilt, die vor dem Spieler neu gebaut werden.
 import * as THREE from 'three';
 import { FAR_LAYER } from './farshadow.js';
+import { windGeo, windMaterials } from './wind.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../curve.js';
 import {
@@ -214,10 +215,12 @@ export class Scenery {
 
   makeInstanced() {
     const mat = W.lambert({ vertexColors: true });
+    // Bäume und Büsche wiegen sich im Wind (wind.js), Häuser und Dächer nicht
+    const plant = windMaterials();
     const defs = {
-      conifer: [coniferGeo(), 150],
-      decid: [decidGeo(), 110],
-      bush: [bushGeo(), 50],
+      conifer: [windGeo(coniferGeo()), 150],
+      decid: [windGeo(decidGeo()), 110],
+      bush: [windGeo(bushGeo()), 50],
       house: [houseGeo(), 34],
       roof: [roofGeo(), 34],
     };
@@ -239,8 +242,9 @@ export class Scenery {
     this.slotRows.reset(NSLOTS * SUB);
     this.cull = new RowCull();
     for (const [name, [geo, cap]] of Object.entries(defs)) {
-      const m = name === 'house' ? W.lambert({ vertexColors: true }) : mat;
+      const m = name === 'house' ? W.lambert({ vertexColors: true }) : name === 'roof' ? mat : plant.mat;
       const mesh = cullByRows(new THREE.InstancedMesh(geo, m, cap * NSLOTS), this.cull);
+      if (m === plant.mat) mesh.customDepthMaterial = plant.depth;
       mesh.frustumCulled = false;
       mesh.castShadow = true;
       mesh.layers.enable(FAR_LAYER);

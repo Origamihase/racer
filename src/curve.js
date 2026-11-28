@@ -283,6 +283,7 @@ vec4 mvPosition = vec4( transformed, 1.0 );
 #endif
 #ifdef USE_INSTANCING
   mvPosition = instanceMatrix * mvPosition;
+  // CW_WIND
 #endif
 vec4 cwPos = modelMatrix * mvPosition;
 #ifdef CW_SUN

@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import { CLOUD, SHADOW_FADE, cloudField, cloudSunAt, setCloudShadows, sunUniforms } from '../src/curve.js';
 import { FarShadow, FAR, FAR_LAYER } from '../src/world/farshadow.js';
 import { readFileSync } from 'node:fs';
+import { WIND, windGeo, windSway, setWind, windUniforms, windMaterials, WIND_GLSL } from '../src/world/wind.js';
+import { coniferGeo, decidGeo, bushGeo } from '../src/world/scenery.js';
 
 let fails = 0;
 let checks = 0;
@@ -248,6 +250,69 @@ const same = (A, B) => Math.abs(A.sun - B.sun) < 1e-12 && Math.abs(A.hemi - B.he
     ok(/layers\.enable\(FAR_LAYER\)/.test(readFileSync(new URL('../src/' + f, import.meta.url), 'utf8')), `${f}: Schattenwerfer liegen auf der Ebene der weiten Karte`);
   }
   ok(far.camera.layers.mask === 1 << FAR_LAYER, 'die Kamera der weiten Karte sieht nur diese Ebene');
+}
+
+
+// Wind in Bäumen und Büschen (src/world/wind.js)
+{
+  // der Fuß steht, die Spitze schwingt, nichts mehr als 1
+  for (const [name, g] of [['Nadelbaum', coniferGeo()], ['Laubbaum', decidGeo()], ['Busch', bushGeo()]]) {
+    windGeo(g);
+    const p = g.attributes.position;
+    const w = g.attributes.cwWind;
+    let lo = Infinity, hi = 0, base = 0, h = 0, minY = Infinity;
+    for (let i = 0; i < p.count; i++) {
+      h = Math.max(h, p.getY(i));
+      minY = Math.min(minY, p.getY(i));
+    }
+    for (let i = 0; i < p.count; i++) {
+      lo = Math.min(lo, w.getX(i));
+      hi = Math.max(hi, w.getX(i));
+      if (p.getY(i) < 0.05 * h) base = Math.max(base, w.getX(i));
+    }
+    ok(minY >= -0.31, `${name}: Fuß bei y = 0, Stamm höchstens 0,3 m im Boden (tiefster Punkt ${minY.toFixed(2)} m)`);
+    ok(lo >= 0 && hi <= 1 && hi > 0.3, `${name}: Gewicht 0 … ${hi.toFixed(2)} (Höhe ${h.toFixed(1)} m)`);
+    ok(base < 0.01, `${name}: am Fuß bewegt sich nichts (${base.toFixed(4)})`);
+    ok(windGeo(g) === g && g.attributes.cwWind === w, `${name}: zweimal eintragen ändert nichts`);
+  }
+  // nie weiter als die Luft der Hüllen der Reihen, bei Regen kräftiger, und es bewegt sich wirklich
+  let worst = 0;
+  for (const o of [0, 0.5, 1]) {
+    setWind(0, o);
+    for (let t = 0; t < 60; t += 0.37) for (let x = -300; x <= 300; x += 37) worst = Math.max(worst, Math.abs(windSway(x, -x * 1.7, t)));
+  }
+  ok(worst <= WIND.max && WIND.max < 0.25, `größter Ausschlag ${worst.toFixed(3)} m (Grenze ${WIND.max} m, Luft der Hüllen 0,25 m)`);
+  setWind(0, 0);
+  const fair = windUniforms.uWind.value.y;
+  setWind(0, 1);
+  ok(windUniforms.uWind.value.y > fair * 1.3, 'bei Regen weht es kräftiger');
+  setWind(0, 0);
+  let span = -Infinity;
+  let low = Infinity;
+  for (let t = 0; t < 20; t += 0.1) {
+    span = Math.max(span, windSway(10, 20, t));
+    low = Math.min(low, windSway(10, 20, t));
+  }
+  ok(span - low > 0.08, `die Spitze eines großen Baums wandert ${((span - low) * 100).toFixed(0)} cm hin und her`);
+  // Nachbarn schwingen nicht im Gleichtakt
+  let differ = 0;
+  for (let t = 0; t < 20; t += 0.5) differ = Math.max(differ, Math.abs(windSway(0, 0, t) - windSway(13, 7, t)));
+  ok(differ > 0.02, `Nachbarn schwingen gegeneinander versetzt (${(differ * 100).toFixed(0)} cm)`);
+  // Shader: dieselbe Rechnung, eigene Programme für Bild und Schatten, Stelle in PROJECT vorhanden
+  ok(/sin\( uWind\.x \* 1\.3 - cwPh \) \* 0\.55 \+ sin\( uWind\.x \* 2\.9 - cwPh \* 1\.7 \) \* 0\.25 \+ 0\.45/.test(WIND_GLSL)
+    && Math.abs(0.55 + 0.25 + 0.45 - WIND.peak) < 1e-9, 'Shader und windSway rechnen gleich');
+  const { mat, depth } = windMaterials();
+  ok(mat.customProgramCacheKey() !== 'curved-world' && depth.customProgramCacheKey() !== mat.customProgramCacheKey(), 'eigene Programme für Bild und Schatten');
+  ok(depth.depthPacking === THREE.RGBADepthPacking, 'Schatten-Tiefe wie bei three.js gepackt');
+  const sh = { uniforms: {}, vertexShader: THREE.ShaderLib.depth.vertexShader, fragmentShader: THREE.ShaderLib.depth.fragmentShader };
+  depth.onBeforeCompile(sh);
+  ok(sh.vertexShader.includes('cwWind * cwS') && sh.uniforms.uWind === windUniforms.uWind, 'Tiefen-Shader bekommt den Wind');
+  const curveSrc = readFileSync(new URL('../src/curve.js', import.meta.url), 'utf8');
+  ok(/mvPosition = instanceMatrix \* mvPosition;\n  \/\/ CW_WIND\n#endif\nvec4 cwPos/.test(curveSrc), 'Wind nach dem Legen der Instanz, vor dem Biegen');
+  for (const f of ['world/xxl/forest.js', 'world/scenery.js']) {
+    const src = readFileSync(new URL('../src/' + f, import.meta.url), 'utf8');
+    ok(/customDepthMaterial = /.test(src) && /windGeo\(coniferGeo\(\)\)/.test(src), `${f}: Pflanzen mit Wind, Schatten schwingen mit`);
+  }
 }
 
 console.log(`${checks} Prüfungen, ${fails} Fehler`);

@@ -7,6 +7,7 @@
 // sammelt die Pläne aller ihrer Stücke in je einem InstancedMesh pro Art (PropSet): wenige Zeichenaufrufe.
 import * as THREE from 'three';
 import { FAR_LAYER } from '../farshadow.js';
+import { windGeo, windMaterials } from '../wind.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { W } from '../../curve.js';
 import { colorize } from '../../models/loft.js';
@@ -318,14 +319,18 @@ function upTri3(buf, a, b, c, n) {
   else buf.tri(a, c, b);
 }
 
+const PLANTS = new Set(['conifer', 'decid', 'bush', 'fern']);
 let shared = null;
 function sharedGeo() {
   if (shared) return shared;
   const mat = W.lambert({ vertexColors: true });
   const walls = W.lambert({ vertexColors: true });
+  // Bäume, Büsche und Farn wiegen sich im Wind (wind.js), Häuser, Tiere, Hochsitze und Bänke nicht
+  const plant = windMaterials();
   shared = {
-    geo: [coniferGeo(), decidGeo(), bushGeo(), fernGeo(), wallGeo(), townRoofGeo(), deerGeo(), hideGeo(), benchGeo(), ...HOUSES.map(windowsGeo), gableGeo()],
-    mat: TYPES.map((t) => (t === 'house' || t === 'gable' ? walls : t === 'roof' ? W.lambert({ vertexColors: true }) : mat)),
+    geo: [windGeo(coniferGeo()), windGeo(decidGeo()), windGeo(bushGeo()), windGeo(fernGeo()), wallGeo(), townRoofGeo(), deerGeo(), hideGeo(), benchGeo(), ...HOUSES.map(windowsGeo), gableGeo()],
+    mat: TYPES.map((t) => (t === 'house' || t === 'gable' ? walls : t === 'roof' ? W.lambert({ vertexColors: true }) : PLANTS.has(t) ? plant.mat : mat)),
+    depth: TYPES.map((t) => (PLANTS.has(t) ? plant.depth : undefined)),
     shadow: TYPES.map((t) => t !== 'fern' && !t.startsWith('win')),
   };
   // Hüllkugel jeder Form (für die Reihen, siehe PropSet.fill)
@@ -385,6 +390,7 @@ export class PropSet {
         m = this.meshes[t] = cullByRows(new THREE.InstancedMesh(S.geo[t], S.mat[t], cap), this.cull);
         m.frustumCulled = false;
         m.castShadow = S.shadow[t];
+        if (S.depth[t]) m.customDepthMaterial = S.depth[t];
         if (S.shadow[t]) m.layers.enable(FAR_LAYER);
         m.receiveShadow = true;
         m.name = 'XXL-' + TYPES[t];

@@ -11,6 +11,7 @@ import { VIEW_BEHIND } from './road.js';
 import { ringAt } from '../map/skyline.js';
 import { worldLight } from './light.js';
 import { CLOUD, SHADOW_FADE, setCloudShadows } from '../curve.js';
+import { setWind } from './wind.js';
 import { FarShadow, FAR_LAYER } from './farshadow.js';
 
 // Schattenkasten der Sonne (Licht-Einheiten bei 2048er Schattenkarte, „mittel“ mit 1024 nimmt 0,7 davon): u quer
@@ -1034,6 +1035,7 @@ export class Sky {
     this.cloudT += dt;
     this.cloudK += clamp(this.cloudShade - this.cloudK, -dt / 3, dt / 3);
     setCloudShadows(s, this.cloudT, this.cloudK * (1 - o / CLOUD.end));
+    setWind(this.cloudT, o); // derselbe Wind wiegt Bäume und Büsche (wind.js), bei Regen kräftiger
     // die Wolken ziehen ganz langsam um den Horizont
     this.drift += dt * 0.0035;
     this.clouds.rotation.y = this.drift;
