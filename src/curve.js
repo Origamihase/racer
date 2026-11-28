@@ -434,7 +434,7 @@ export function curveBound(sphere, ex = sphere.radius, ey = ex, ez = ex) {
     const mi = i ? (oMin + oMax) / 2 : 0;
     const l = ez * (Math.max(Math.abs(1 + mi * kmin), Math.abs(1 + mi * kmax)) + (xra + Math.abs(mi)) * turn + jump);
     const w = Math.max(oMax - mi, mi - oMin);
-    const q = jump > 0 ? l + w : Math.hypot(l, w) * skew;
+    const q = jump > 0 ? l + w : Math.sqrt(l * l + w * w) * skew;
     if (i && q >= across) break;
     m = mi;
     across = q;
@@ -458,8 +458,11 @@ export function curveBound(sphere, ex = sphere.radius, ey = ex, ez = ex) {
   // course.fill dreht den Kurs zuletzt um einen winzigen Rest, dem die Linie nicht folgt: gemessen bis 0,11 mrad (auf
   // der Landstraße, wo zwei Gegenbögen aufeinandertreffen), die Luft trägt das Neunfache; tools/reihen-test.mjs prüft
   // beides)
-  sphere.radius = Math.hypot(across, (hi - lo) / 2) * 1.02 + 0.25;
-  if (d + ez >= FOLD.d && Math.hypot(p.x, p.z) - sphere.radius < FOLD.hi * (d + ez)) {
+  // Math.sqrt statt Math.hypot: hypot legt in V8 bei jedem Aufruf Speicher an, und das hier läuft für jede Hülle in
+  // jedem Bild
+  const half = (hi - lo) / 2;
+  sphere.radius = Math.sqrt(across * across + half * half) * 1.02 + 0.25;
+  if (d + ez >= FOLD.d && Math.sqrt(p.x * p.x + p.z * p.z) - sphere.radius < FOLD.hi * (d + ez)) {
     p.y -= FOLD.sink / 2;
     sphere.radius += FOLD.sink / 2;
   }
