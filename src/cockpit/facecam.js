@@ -495,13 +495,13 @@ export class Facecam {
    * Pro Bild: Lenkrad mitdrehen, Licht ans Wetter anpassen, Landschaft vorbeiziehen lassen, die Kamera zittert kaum
    * merklich mit der Fahrbahn. rain 0 … 1: Regen auf den Seitenscheiben (dieselbe Stärke wie auf der Frontscheibe);
    * world: das Seitenfenster zeigt das Bild der Seitenkamera (setSideView), sonst die gemalte Landschaft.
-   * @param {{t:number, dt?:number, steer?:number, overcast?:number, speed?:number, shake?:number, rain?:number, world?:boolean}} s speed in m/s
+   * @param {{t:number, dt?:number, steer?:number, overcast?:number, sun?:number, speed?:number, shake?:number, rain?:number, world?:boolean}} s speed in m/s
    */
-  update({ t, dt = 0, steer = 0, overcast = 0, speed = 0, shake = 0, rain = 0, world = false }) {
+  update({ t, dt = 0, steer = 0, overcast = 0, sun = 1, speed = 0, shake = 0, rain = 0, world = false }) {
     // gleiche Drehung wie Adams Griff (handTarget: 0,5 rad bei vollem Einschlag, rechts = im Uhrzeigersinn)
     this.wheel.rotation.z = -steer * 0.5;
     const o = overcast;
-    this.key.intensity = 2.2 * (1 - o * 0.75);
+    this.key.intensity = 2.2 * (1 - o * 0.75) * sun; // sun: Anteil der Sonne unter Wolkenschatten
     this.rim.intensity = 1.6 * (1 - o * 0.5);
     this.fill.intensity = 0.75 * (1 - o * 0.3);
     this.hemi.intensity = 0.95 - o * 0.15;

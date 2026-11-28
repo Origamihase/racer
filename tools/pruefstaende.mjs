@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 // Die langsamen zuerst, damit sie nicht am Ende allein laufen.
 const ALLE = [
-  'geld', 'journey', 'testlauf3', 'citykit', 'xxl', 'stopp', 'streamgags', 'course', 'wiper', 'map', 'reihen',
+  'geld', 'journey', 'testlauf3', 'citykit', 'xxl', 'stopp', 'streamgags', 'course', 'wiper', 'map', 'reihen', 'licht',
   'ansagen', 'laden2', 'trip', 'winken2', 'testlauf4', 'brunnen', 'rueckwaerts', 'verkehr', 'menues',
   'radar', 'zwischenstand', 'orbit', 'steer', 'shape', 'album', 'sicht', 'tipps', 'save', 'testlauf5', 'testlauf6', 'steckbrief', 'minus', 'ladepreis', 'fluesse', 'flusskarte', 'bruecken', 'ufer', 'landschaft', 'laden', 'spielspass', 'radio', 'brunnentexte', 'rubriken', 'autoqualitaet',
 ];

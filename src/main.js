@@ -2,7 +2,7 @@
 // Hauptprogramm: Renderer, Bildkomposition (Welt → Regentropfen/Effekte → Cockpit), Kameras
 // (Cockpit, Drohne, Szenen), Zustände und Menüs.
 import * as THREE from 'three';
-import { W, curveTable, curveAt, curveOffset } from './curve.js';
+import { W, curveTable, curveAt, curveOffset, cloudSunAt } from './curve.js';
 import { Course, MapPlanner, PROBE_MARKS } from './game/course.js';
 import * as mapGraph from './map/graph.js';
 import * as mapShapes from './map/shapes.js';
@@ -1764,8 +1764,12 @@ function step(dt, { render = true } = {}) {
     const adamOpts = adamFrame(dt, { steer: p.wheel, wave: adamWave, look: adamLook, megafon: adamMegafon });
     tesla.adam.animate(simT, adamOpts);
     facecam.adam.animate(simT, adamOpts);
-    facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, speed: p.speed, shake: cockpit.shake, rain: w, world: sideOn() });
-    tesla.cabinLight.intensity = cockpitOn ? 0 : stopRun.on || tvRun.on || state === 'title' || state === 'charge' || state === 'ending' || state === 'over' ? 3.2 : 0.9;
+    // so viel Sonne kommt gerade am Wagen an (Wolkenschatten): Innenraum und Facecam gehen mit
+    const sunHere = cloudSunAt(p.x, 0);
+    facecam.update({ t: simT, dt, steer: p.wheel, overcast: cloud, sun: sunHere, speed: p.speed, shake: cockpit.shake, rain: w, world: sideOn() });
+    const showcase = stopRun.on || tvRun.on || state === 'title' || state === 'charge' || state === 'ending' || state === 'over';
+    tesla.cabinLight.intensity = cockpitOn ? 0 : showcase ? 3.2 : 0.9;
+    sky.cloudShade = showcase ? 0 : 1;
     tesla.setGroundShade(w);
     windshield.update(dt, { speed: p.speed, camera, carMatrix });
     // Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js): der Mittelbildschirm zeichnet dafür weiter, und jedes
@@ -1804,7 +1808,7 @@ function step(dt, { render = true } = {}) {
     }
     cockpit.update({
       dt, t: simT, steer: p.wheel, latAcc: p.latAccSm, wiperAngles: windshield.angles, wiperFlex: windshield.flex,
-      sunDir: sky.sunDir, overcast: cloud, adam: adamOpts, gesture: tesla.adam.pose === 'drive' ? tesla.adam.gestures : null,
+      sunDir: sky.sunDir, overcast: cloud, sun: sunHere, adam: adamOpts, gesture: tesla.adam.pose === 'drive' ? tesla.adam.gestures : null,
       screen: scr, radar: game.radarAlarm, rear: cockpitOn && (p.gear === 'R' || stopRun.rev), visible: cockpitOn,
     });
     if (fxState.trunk > 0) fxState.trunk = Math.max(0, fxState.trunk - dt);
