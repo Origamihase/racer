@@ -290,7 +290,7 @@ export const MEGAFON_WUENSCHE = [
   'Achtung, Achtung! Der Chat wünscht allen eine gute Fahrt!',
   'Hier spricht Mini Adam. Bitte einmal freundlich winken!',
   'Durchsage vom Chat: Wer einen Brunnen sieht, bitte hupen!',
-  'Achtung! Hier fährt ein Plüschtier. Bitte nicht streicheln!',
+  'Achtung! Hier fährt ein Plüschmann. Bitte nicht streicheln!',
 ];
 
 // BrunnenTV am Navi-Ziel der Reise: Mini Adam spricht durchs offene Fenster mit dem Megafon zum Brunnen (Stimme wie
@@ -544,7 +544,7 @@ export const CHAT = {
     'Die Scheibe sieht aus wie mein Aquarium', 'Platsch!', 'Gemütlich bei euch im Tesla ☔', 'Ich hör den Regen bis hierher',
     'Wisch! … oder auch nicht 😂', 'Tropfen zählen: 1, 2, viele'],
   // jemand ist zum ersten Mal da – das Sprachstudio begrüßt ihn dann mit Namen
-  newViewer: ['Hallo! Bin zum ersten Mal hier 👋', 'Hallo Chat, ich wurde geboren 👶', 'Hi, bin neu. Warum fährt da ein Plüschtier? 😄',
+  newViewer: ['Hallo! Bin zum ersten Mal hier 👋', 'Hallo Chat, ich wurde geboren 👶', 'Hi, bin neu. Warum fährt da ein Plüschmann? 😄',
     'Moin aus {city}! Hab euch eben beim Zappen gefunden', 'Neu hier und schon Fan von OMI 😍',
     'Ein Kumpel hat mir den Stream empfohlen. Hallo zusammen!'],
   // Abos und VIP

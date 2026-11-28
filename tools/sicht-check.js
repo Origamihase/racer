@@ -37,7 +37,7 @@
     nomi: 'Entschuldigung. Der automatische Scheibenwischer ist noch in der Beta. Bitte nicht wundern.',
     studio: 'Ruhige Lage. Der Chat hält schon ein paar Dreien bereit, falls wieder nach einer Zahl gefragt wird.',
     durchsage: 'Treffen sich zwei Scheibenwischer. Fragt der eine: Na, wie läuft’s? Sagt der andere: Hin und her.',
-    megafon: 'Achtung! Hier fährt ein Plüschtier. Bitte nicht streicheln!',
+    megafon: 'Achtung! Hier fährt ein Plüschmann. Bitte nicht streicheln!',
   };
   const BREIT = 'Achtung, Achtung. Der automatische Scheibenwischer befindet sich weiterhin in der Beta-Phase.';
   const TIPP = '🤑 Bieterduell: Bananensaftkönig gegen Satelliten_FFM';

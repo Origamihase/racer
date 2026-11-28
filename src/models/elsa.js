@@ -3,7 +3,7 @@
 // Filzzunge, große braune Glasaugen mit langen Wimpern oben auf dem Kopf, dazwischen ein goldenes Krönchen, quer
 // über Brust und Bauch zwei weiße Schärpenbänder und ringsum weiße Kleeblätter, Stummelarme mit Paddelhänden und
 // große Füße mit drei Zehennähten.
-// Sie ist ein Stofftier wie Mini Adam: weiche Formen aus softMesh.js, Stoff aus plushMaterial.js (Farbe, Nähte und
+// Sie ist aus Stoff genäht wie der Plüschmann Mini Adam: weiche Formen aus softMesh.js, Stoff aus plushMaterial.js (Farbe, Nähte und
 // Aufdruck stehen je Ecke in der Geometrie). Gerechnet wird die Form einmal; Statue und Wackel-Elsa teilen sie sich.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';

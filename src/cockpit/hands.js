@@ -1,7 +1,7 @@
 // Mini Adams Plüscharme aus der Ich-Perspektive (und für freie Kameras): Fäustlinge, die wirklich um den
 // Lenkradkranz greifen (Handballen zum Fahrer, vier Finger als ein weicher Fäustling außen herum, Daumen innen um
 // den Kranz), Unter- und Oberarm aus Plüsch mit weichem Ellbogen und der kurze T-Shirt-Ärmel. Genäht wie ein
-// Plüschtier: Steppnähte ziehen Rillen zwischen die Finger, helle Stiche an den Seiten der Fäustlinge, ums
+// Plüschmann: Steppnähte ziehen Rillen zwischen die Finger, helle Stiche an den Seiten der Fäustlinge, ums
 // Handgelenk und längs der Unterarme.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -210,7 +210,7 @@ export function upperArmGeometry(len) {
 
 /**
  * Kurzer T-Shirt-Ärmel ab der Schulter (im Ursprung) nach +y: an der Schulter rund geschlossen (wie das Gelenk
- * eines Plüschtiers), vorn weit offen mit umgeschlagenem Saum und Saumnaht, dazu ein paar weiche Falten.
+ * eines Plüschmanns), vorn weit offen mit umgeschlagenem Saum und Saumnaht, dazu ein paar weiche Falten.
  * Innen ist er geschlossen und dunkel (durch den Spalt zwischen Saum und Arm sieht man Stoff, nicht ins Leere).
  */
 export function sleeveGeometry(len) {
