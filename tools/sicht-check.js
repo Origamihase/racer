@@ -59,8 +59,9 @@
       if (shown(ui.chatEl)) f.Chat = box(ui.chatEl);
       // Tacho und Navi-Karte der Drohnenansicht (ui/drone-hud.js): auch darauf liegt nichts
       if (drone && shown(ui.droneHud.el)) f['Tacho und Karte'] = box(ui.droneHud.el);
+      // (unter der abgedeckten linken Bildhälfte steht sie nicht: Dort darf liegen, was will)
       const fc = !drone && ui.facecamTarget();
-      if (fc) f.Facecam = { left: fc.x, top: fc.y, right: fc.x + fc.w, bottom: fc.y + fc.h };
+      if (fc && !fc.covered) f.Facecam = { left: fc.x, top: fc.y, right: fc.x + fc.w, bottom: fc.y + fc.h };
       document.querySelectorAll('.touch button, .touch .tc-hint').forEach((b, i) => {
         if (shown(b)) f['Touch-Knopf ' + (b.textContent.trim() || i)] = box(b);
       });

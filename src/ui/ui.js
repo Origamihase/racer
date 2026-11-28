@@ -202,6 +202,7 @@ export class UI {
     // placeFacecam zurückgibt (gerundet, mit Eckradius r)
     this.fc = { x: 0, y: 0, w: 0, h: 0, alpha: 0, target: null, check: 0 };
     this.fcBox = null;
+    this.facecamAway = false;
 
     this.chatOn = true;
     this.chatRect = null;
@@ -332,8 +333,8 @@ export class UI {
    * Wo die Facecam hin soll (CSS-Pixel) – unten links über der Türverkleidung des Cockpits, etwa 22 % der Bildbreite.
    * Rahmen-Streifen und Briefmarkenrand schieben sie nach innen, Pappkartons nach oben, auf Tablets steht sie über den
    * Touch-Knöpfen; nach oben begrenzt sie das Info-Feld (dann wird sie kleiner). null: kein Platz (Handy hochkant,
-   * kleine Handys quer, abgedeckte linke Bildhälfte). blocked: ein anderes HUD-Element liegt gerade darauf – dann
-   * blendet sie so lange aus (sie ist das Unwichtigste im Bild).
+   * kleine Handys quer). blocked: ein anderes HUD-Element liegt gerade darauf, oder der Rahmen „Bildhälfte abdecken“
+   * deckt die linke Hälfte zu (covered) – dann blendet sie so lange aus (sie ist das Unwichtigste im Bild).
    */
   facecamTarget() {
     const W = window.innerWidth;
@@ -343,8 +344,9 @@ export class UI {
     let w = Math.min(W * 0.22, H * 0.5, 440);
     let left = 14;
     let bottom = 14;
+    let covered = false; // die linke Bildhälfte ist für ein paar Sekunden abgedeckt
     for (const { el: r } of this.rahmenList) {
-      if (r.querySelector('.half-left')) return null;
+      if (r.querySelector('.half-left')) covered = true;
       if (r.querySelector('.strip-left') && !r.classList.contains('corner-only')) {
         left = Math.max(left, 7.5 * vh + 10);
         bottom = Math.max(bottom, 7.5 * vh + 10);
@@ -371,14 +373,14 @@ export class UI {
     const box = { left, top: H - bottom - h, right: left + w, bottom: H - bottom };
     // was darauf liegen könnte: der Hinweis des ersten Starts (er steht an ihrem Platz), der Streifen unten, das
     // Blitzerfoto, ein Rahmen-Hinweis
-    let blocked = false;
+    let blocked = covered;
     const parts = [this.hintEl, this.photoEl, ...this.subEl.parentNode.children, ...this.rahmenEl.querySelectorAll('.rahmen-caption')];
     for (const e of parts) {
       if (e.classList.contains('hidden')) continue;
       const r = e.getBoundingClientRect();
       if (r.width && r.height && overlap(r, box, 6)) blocked = true;
     }
-    return { x: left, y: box.top, w, h, blocked };
+    return { x: left, y: box.top, w, h, blocked, covered };
   }
 
   /**
@@ -405,6 +407,10 @@ export class UI {
     }
     const t = f.target;
     const show = t && !t.blocked ? 1 : 0;
+    // (für die Qualität „Auto“, main.js adaptResolution: Die Facecam gehört in dieses Bild, ist aber gerade nicht zu
+    // sehen, weil das HUD aus ist oder etwas auf ihrem Platz liegt. Hat sie in diesem Fenster gar keinen Platz, fehlt
+    // sie nicht: Dann ist das Bild ohne sie das volle)
+    this.facecamAway = want && this.facecamOn && (!on || (!!t && t.blocked));
     if (!t && resized) f.alpha = 0;
     if (t) {
       if (f.alpha <= 0.001 || resized) {

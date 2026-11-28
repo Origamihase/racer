@@ -28,6 +28,7 @@ import { buildTesla } from './models/tesla.js';
 import { Cockpit, EYE } from './cockpit/cockpit.js';
 import { Facecam } from './cockpit/facecam.js';
 import { flushLiveCanvases } from './cockpit/livecanvas.js';
+import { AutoViews, AUTO_MIRROR } from './autoquality.js';
 import { Windshield, createCompositeMaterial } from './fx/windshield.js';
 import { Rain } from './fx/rain.js';
 import { Audio } from './audio.js';
@@ -215,8 +216,11 @@ const SIDE = { w: 384, h: 72, hfov: 100 };
 const sideCam = new THREE.PerspectiveCamera((2 * Math.atan(Math.tan((SIDE.hfov * Math.PI) / 360) / (SIDE.w / SIDE.h)) * 180) / Math.PI, SIDE.w / SIDE.h, 0.4, 700);
 const sideRT = new THREE.WebGLRenderTarget(SIDE.w, SIDE.h, { type: THREE.HalfFloatType, depthBuffer: true });
 facecam.setSideView(sideRT.texture);
+// Qualität „Auto“: Sparstufe und Schärfe, je ein Stand für Bilder mit und ohne Cockpit (autoquality.js, dort steht die
+// Regel; adaptResolution setzt sie um)
+const auto = new AutoViews(quality.pr);
 // (in „Auto“ schaltet adaptResolution es auf langsamen Geräten ab, bevor das Bild unschärfer wird)
-const sideOn = () => settings.quality !== 'niedrig' && !(quality.auto && autoLevel >= 2);
+const sideOn = () => settings.quality !== 'niedrig' && !(quality.auto && auto.level >= 2);
 // Popcorn-Stand der Ladeszene (world/xxl/popstand.js): Nach der Szene geht er nur, wo ihn keine der Kameras sieht, die
 // gerade Welt zeigen – die Hauptkamera, mit Cockpit der Rückspiegel (auch in der Heckscheibe der Facecam), ihr
 // Seitenfenster und in R die Rückfahrkamera
@@ -702,7 +706,7 @@ function applySettings(key) {
   if (!key || key === 'quality') {
     const before = quality;
     quality = qualityPreset();
-    autoLevel = 0;
+    auto.reset(quality.pr);
     pixelRatio = quality.pr;
     if (before.shadows !== quality.shadows) {
       renderer.shadowMap.enabled = quality.shadows;
@@ -1234,49 +1238,31 @@ window.addEventListener('resize', onResize);
 onResize();
 
 /**
- * Qualität „Auto“: Wird das Bild zu langsam (unter 45 Bildern je Sekunde), spart das Spiel zuerst, wo man es kaum sieht
- * – die Welt im Rückspiegel nur jedes zweite, dann jedes dritte Bild (AUTO_MIRROR) und das Seitenfenster der Facecam
- * gemalt statt gefilmt (sideOn) –, und erst danach an der Schärfe des ganzen Bilds (pixelRatio). Läuft es wieder
- * flüssig (über 75 je Sekunde), kommt alles in umgekehrter Reihenfolge zurück.
+ * Qualität „Auto“ (autoquality.js): Wird das Bild zu langsam (unter 45 Bildern je Sekunde), spart das Spiel zuerst, wo
+ * man es kaum sieht – die Welt im Rückspiegel nur jedes zweite, dann jedes dritte Bild (AUTO_MIRROR) und das
+ * Seitenfenster der Facecam gemalt statt gefilmt (sideOn) –, und erst danach an der Schärfe des ganzen Bilds
+ * (pixelRatio). Läuft es wieder flüssig, kommt alles Schritt für Schritt in umgekehrter Reihenfolge zurück. Bilder mit
+ * und ohne Cockpit haben je ihren eigenen Stand: Beim Wechsel der Ansicht kann die Schärfe springen.
+ *
+ * frame ruft das vor dem Zeichnen: dt, shownInside, state und die Facecam beschreiben hier das Bild davor.
  */
-const AUTO_MIRROR = [1, 2, 3];
-let autoLevel = 0;
-const mirrorEvery = () => (quality.auto ? AUTO_MIRROR[autoLevel] : quality.mirrorEvery);
-const perf = { acc: 0, n: 0, cool: 3 };
+const mirrorEvery = () => (quality.auto ? AUTO_MIRROR[auto.level] : quality.mirrorEvery);
 function adaptResolution(dt) {
-  if (!quality.auto || state === 'loading') return;
-  perf.acc += dt;
-  perf.n++;
-  perf.cool -= dt;
-  if (perf.n < 40) return;
-  const avg = perf.acc / perf.n;
-  perf.acc = 0;
-  perf.n = 0;
-  if (perf.cool > 0) return;
-  const maxPR = Math.min(window.devicePixelRatio || 1, 1.5);
-  if (avg > 1 / 45) {
-    if (autoLevel < AUTO_MIRROR.length - 1) {
-      autoLevel++;
-      perf.cool = 1.5;
-    } else if (pixelRatio > 0.55) {
-      pixelRatio = Math.max(0.55, pixelRatio - 0.12);
-      perf.cool = 1.5;
-      onResize();
-    }
-  } else if (avg < 1 / 75) {
-    if (pixelRatio < maxPR) {
-      pixelRatio = Math.min(maxPR, pixelRatio + 0.06);
-      perf.cool = 3;
-      onResize();
-    } else if (autoLevel > 0) {
-      autoLevel--;
-      perf.cool = 3;
-    }
+  // (in der Pause steht die Welt, und die Facecam wird nicht neu gefilmt: Das sagt nichts über das Bild beim Fahren)
+  if (!quality.auto || state === 'loading' || paused) return;
+  // Cockpit ohne die Facecam, die beim Fahren dazugehört (Startszene, Ende der Fahrt, ein Hinweis liegt auf ihrem
+  // Platz): leichter als sonst, also nur sparen, nichts zurückholen
+  const light = shownInside && (state !== 'drive' || ui.facecamAway);
+  if (!auto.tick(dt, Math.min(window.devicePixelRatio || 1, 1.5), shownInside, light)) return;
+  if (auto.pixelRatio !== pixelRatio) {
+    pixelRatio = auto.pixelRatio;
+    onResize();
   }
 }
 
 // --- Rendern --------------------------------------------------------------------------
 let frameNo = 0;
+let shownInside = false; // das letzte Bild war eines mit Cockpit (für die Qualität „Auto“)
 // Lage der Facecam in diesem Bild (ui.placeFacecam) oder null
 let facecamBox = null;
 function renderWorld(cam, { cockpitOn, drops }) {
@@ -1845,7 +1831,7 @@ function step(dt, { render = true } = {}) {
   document.body.classList.toggle('drone', view === 'drone');
   // Facecam-Rahmen vor dem Rendern setzen, damit Bild und Rahmen im selben Bild an derselben Stelle sind
   facecamBox = ui.placeFacecam(paused ? 0 : dt, state === 'drive' && cockpitOn);
-  if (render) renderFrame(cockpitOn);
+  if (render) renderFrame((shownInside = cockpitOn));
   // in der Pause bleiben Banner, Geld-Anzeigen und Funkloch stehen
   ui.update(paused ? 0 : dt, state === 'drive' || state === 'charge' ? game : null, cockpit.screen.live || cockpit.screen.hudOut ? cockpit.screen.kmh : null);
   input.endFrame();
@@ -2078,9 +2064,11 @@ if (DEBUG) {
     get state() {
       return state;
     },
-    // Qualität „Auto“ (adaptResolution): Sparstufe (Rückspiegel-Takt, Seitenfenster) und Schärfe
+    // Qualität „Auto“ (adaptResolution): Sparstufe (Rückspiegel-Takt, Seitenfenster) und Schärfe; inside: Der Stand
+    // der Bilder mit Cockpit ist an der Reihe, trial und wait gehören zu ihm
     get autoQuality() {
-      return { level: autoLevel, mirrorEvery: mirrorEvery(), side: sideOn(), pixelRatio };
+      const q = auto.now;
+      return { inside: q === auto.inside, level: auto.level, mirrorEvery: mirrorEvery(), side: sideOn(), pixelRatio, trial: !!q.trial, wait: Math.max(0, q.wait) };
     },
     // der Ladestopp im Park (stopBegin … stopTick): on, c (game.charging), q (Lage des Wagens), skipT
     get stop() {
