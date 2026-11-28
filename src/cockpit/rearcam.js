@@ -168,11 +168,12 @@ export class RearCam {
 
   /**
    * Das Bild der Kamera rendern (main.js, vor dem Cockpit; nur wenn on): toWorld(v) setzt einen Punkt in
-   * Wagenkoordinaten in die Welt um (wie beim Innenspiegel), t: Spielzeit (s).
+   * Wagenkoordinaten in die Welt um (wie beim Innenspiegel), t: Spielzeit (s). force: auch außerhalb ihres Takts (für
+   * Prüfbilder, __MA.redraw).
    */
-  render(renderer, scene, toWorld, t, quality = 'hoch') {
+  render(renderer, scene, toWorld, t, quality = 'hoch', force = false) {
     const q = quality === 'niedrig' ? REAR_LOW : REAR_CAM;
-    if (!this.on || t - this.shotT < 0.97 / q.rate) return;
+    if (!this.on || (!force && t - this.shotT < 0.97 / q.rate)) return;
     this.shotT = t;
     if (this.cam.far !== q.far) {
       this.cam.far = q.far;

@@ -19,6 +19,7 @@ import { bakenBetween } from './baustelle-plan.js';
 import { fieldTexture, FIELD_V } from './xxl/fieldtex.js';
 import { CROPS } from './xxl/fieldplan.js';
 import { LAYER } from './xxl/ground.js';
+import { ROW, RowCull, cullByRows } from './rowcull.js';
 
 export const SEG = 100;
 // Äcker neben der Autobahn (XXL, wo die Karte Ackerland zeigt): Felder in Zellen längs der Strecke (Länge FC.len mit
@@ -34,6 +35,8 @@ const fcEdge = (i) => i * FC.len + (fhash(i, 7) - 0.5) * FC.jit * FC.len;
 const AHEAD = 17;
 const BEHIND = 2;
 const NSLOTS = AHEAD + BEHIND + 1;
+// Reihen der Instanzen je Abschnitt (rowcull.js)
+const SUB = Math.round(SEG / ROW);
 // leerer Platz im Vorrat der Bäume und Häuser (Größe 0)
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 
@@ -218,13 +221,25 @@ export class Scenery {
       roof: [roofGeo(), 34],
     };
     this.inst = {};
-    // Jeder Abschnitt hat feste Plätze (cap je Art) in einem Vorrat (mat, col); gezeichnet werden davon nur die besetzten,
-    // dicht hintereinander in der Reihenfolge der Plätze (pack). Früher liefen alle Plätze durch die Grafikkarte, die
-    // leeren als Punkt ohne Größe: gut 1,2 Mio. Dreiecke je Durchgang (Sicht, Rückspiegel, Schatten), obwohl meist
-    // nur ein Viertel bis ein Drittel davon steht.
+    // Jeder Abschnitt hat feste Plätze (cap je Art) in einem Vorrat (mat, col); gezeichnet werden davon nur die besetzten
+    // der gebauten Abschnitte, dicht hintereinander (pack). Früher liefen alle Plätze durch die Grafikkarte, die leeren
+    // als Punkt ohne Größe: gut 1,2 Mio. Dreiecke je Durchgang (Sicht, Rückspiegel, Schatten), obwohl meist nur ein
+    // Viertel bis ein Drittel davon steht.
+    // Die besetzten liegen in Reihen entlang der Straße, hinten zuerst (rowcull.js): Rückspiegel, Schattenkarte und
+    // Seitenfenster zeichnen nur bis zur letzten Reihe, die bei ihnen vorkommen kann. slotRows merkt sich die Hüllen
+    // der Reihen je Abschnitt (SUB Reihen), cull bekommt sie beim Legen in der Reihenfolge der Strecke.
+    // (Nach reset liegt in Plätzen, die die neue Fahrt noch nicht gebaut hat, der Bewuchs der alten. Er hat keine Reihe
+    // und bleibt draußen, bis sein Abschnitt neu gebaut ist: Eine neue Fahrt beginnt wie nach frischem Laden. Vor den
+    // Reihen wurde er bis dahin mitgezeichnet: nach einer Fahrt von weniger als gut 2 km auf den ersten 200 m der
+    // nächsten, knapp 2 km voraus im Dunst. Dasselbe gilt für einen Abschnitt, den invalidate verwirft, während er
+    // außerhalb des Baufensters liegt – das gibt es nur auf den ersten 200 m nach Rückwärtsfahren: Auch er fehlt, bis
+    // er neu gebaut ist, weiter voraus, als der Dunst reicht.)
+    this.slotRows = new RowCull();
+    this.slotRows.reset(NSLOTS * SUB);
+    this.cull = new RowCull();
     for (const [name, [geo, cap]] of Object.entries(defs)) {
       const m = name === 'house' ? W.lambert({ vertexColors: true }) : mat;
-      const mesh = new THREE.InstancedMesh(geo, m, cap * NSLOTS);
+      const mesh = cullByRows(new THREE.InstancedMesh(geo, m, cap * NSLOTS), this.cull);
       mesh.frustumCulled = false;
       mesh.castShadow = true;
       mesh.receiveShadow = name === 'house' || name === 'roof';
@@ -232,30 +247,46 @@ export class Scenery {
       mesh.count = 0;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       this.track.add(mesh);
-      const store = { mat: new Float32Array(cap * NSLOTS * 16), col: new Float32Array(cap * NSLOTS * 3).fill(1) };
+      // (sub: Reihe des Platzes in seinem Abschnitt, ball: Hüllkugel der Form)
+      const store = { mat: new Float32Array(cap * NSLOTS * 16), col: new Float32Array(cap * NSLOTS * 3).fill(1), sub: new Uint8Array(cap * NSLOTS) };
       for (let i = 0; i < cap * NSLOTS; i++) ZERO.toArray(store.mat, i * 16);
-      this.inst[name] = { mesh, cap, ...store };
+      geo.computeBoundingSphere();
+      this.inst[name] = { mesh, cap, ball: geo.boundingSphere, ...store };
     }
     this.instDirty = false;
   }
 
-  /** Die besetzten Plätze aller Arten dicht in die Netze legen (nach jeder Änderung, vor dem nächsten Bild). */
+  /** Die besetzten Plätze der gebauten Abschnitte dicht in die Netze legen (nach jeder Änderung, vor dem nächsten Bild). */
   pack() {
     this.instDirty = false;
+    // die Abschnitte in der Reihenfolge der Strecke (die Plätze selbst laufen im Kreis), je Abschnitt SUB Reihen
+    const order = [];
+    for (let i = 0; i < NSLOTS; i++) if (this.slots[i].k >= 0) order.push(i);
+    order.sort((a, b) => this.slots[a].k - this.slots[b].k);
+    const rows = order.length * SUB;
+    this.cull.reset(rows);
+    for (let r = 0; r < rows; r++) this.cull.take(r, this.slotRows, order[(r / SUB) | 0] * SUB + (r % SUB));
     for (const def of Object.values(this.inst)) {
-      const { mesh, mat, col } = def;
+      const { mesh, mat, col, sub, cap } = def;
       const M = mesh.instanceMatrix;
       const C = mesh.instanceColor;
-      const total = def.cap * NSLOTS;
+      const start = new Uint32Array(rows + 1);
       let n = 0;
-      for (let i = 0; i < total; i++) {
-        const o = i * 16;
-        if (mat[o] === 0 && mat[o + 1] === 0 && mat[o + 2] === 0) continue; // leerer Platz
-        M.array.set(mat.subarray(o, o + 16), n * 16);
-        C.array.set(col.subarray(i * 3, i * 3 + 3), n * 3);
-        n++;
+      for (let r = 0; r < rows; r++) {
+        start[r] = n;
+        const q = r % SUB;
+        const i0 = order[(r / SUB) | 0] * cap;
+        for (let i = i0; i < i0 + cap; i++) {
+          const o = i * 16;
+          if (sub[i] !== q || (mat[o] === 0 && mat[o + 1] === 0 && mat[o + 2] === 0)) continue; // andere Reihe, leerer Platz
+          M.array.set(mat.subarray(o, o + 16), n * 16);
+          C.array.set(col.subarray(i * 3, i * 3 + 3), n * 3);
+          n++;
+        }
       }
-      mesh.count = n;
+      start[rows] = n;
+      mesh.userData.rowStart = start;
+      mesh.count = mesh.userData.rowTotal = n;
       // hochgeladen wird nur, was gezeichnet wird
       M.clearUpdateRanges();
       M.addUpdateRange(0, Math.max(1, n) * 16);
@@ -343,6 +374,7 @@ export class Scenery {
     for (const it of slot.items) this.release(it);
     slot.items = [];
     slot.k = k;
+    for (let q = 0; q < SUB; q++) this.slotRows.clearRow(slotIdx * SUB + q);
     const rnd = mulberry32(k * 7919 + 17);
     const s0 = k * SEG;
     const z0 = -s0;
@@ -373,6 +405,11 @@ export class Scenery {
       const i = slotIdx * def.cap + n;
       m4.toArray(def.mat, i * 16);
       col.setHex(color).toArray(def.col, i * 3);
+      // Reihe im Abschnitt nach dem Fußpunkt; ihre Hülle wächst um die Kugel der Form an dieser Stelle
+      const row = Math.min(SUB - 1, Math.max(0, Math.floor((-z - s0) / ROW)));
+      def.sub[i] = row;
+      v.copy(def.ball.center).applyMatrix4(m4);
+      this.slotRows.add(slotIdx * SUB + row, v.x, v.y, v.z, def.ball.radius * Math.max(Math.abs(sc.x), Math.abs(sc.y), Math.abs(sc.z)));
       return true;
     };
 

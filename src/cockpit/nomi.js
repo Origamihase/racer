@@ -2,6 +2,7 @@
 // Display und zwei weißen, abgerundeten Augen. Dreht sich beim Sprechen zum Fahrer.
 import * as THREE from 'three';
 import { damp, clamp } from '../util.js';
+import { LiveCanvas } from './livecanvas.js';
 
 const S = 256;
 
@@ -13,8 +14,9 @@ export class Nomi {
     this.canvas.width = S;
     this.canvas.height = S;
     this.ctx = this.canvas.getContext('2d');
-    this.tex = new THREE.CanvasTexture(this.canvas);
-    this.tex.colorSpace = THREE.SRGBColorSpace;
+    // das Gesicht ändert sich beim Blinzeln und Sprechen: über LiveCanvas auf die Grafikkarte (siehe dort)
+    this.upload = new LiveCanvas(this.canvas);
+    this.tex = this.upload.texture;
 
     const R = 0.066;
     const base = new THREE.Mesh(
@@ -140,7 +142,7 @@ export class Nomi {
       if (key === null || key !== this.drawnKey) {
         this.drawnKey = key;
         this.draw(t);
-        this.tex.needsUpdate = true;
+        this.upload.needsUpdate = true;
       }
     }
   }

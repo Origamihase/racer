@@ -27,6 +27,9 @@ import { prewarmVehicles } from './models/vehicles.js';
 import { buildTesla } from './models/tesla.js';
 import { Cockpit, EYE } from './cockpit/cockpit.js';
 import { Facecam } from './cockpit/facecam.js';
+import { flushLiveCanvases } from './cockpit/livecanvas.js';
+import { AutoViews, AUTO_MIRROR } from './autoquality.js';
+import { rowStats, setRowCull } from './world/rowcull.js';
 import { Windshield, createCompositeMaterial } from './fx/windshield.js';
 import { Rain } from './fx/rain.js';
 import { Audio } from './audio.js';
@@ -214,8 +217,11 @@ const SIDE = { w: 384, h: 72, hfov: 100 };
 const sideCam = new THREE.PerspectiveCamera((2 * Math.atan(Math.tan((SIDE.hfov * Math.PI) / 360) / (SIDE.w / SIDE.h)) * 180) / Math.PI, SIDE.w / SIDE.h, 0.4, 700);
 const sideRT = new THREE.WebGLRenderTarget(SIDE.w, SIDE.h, { type: THREE.HalfFloatType, depthBuffer: true });
 facecam.setSideView(sideRT.texture);
+// Qualität „Auto“: Sparstufe und Schärfe, je ein Stand für Bilder mit und ohne Cockpit (autoquality.js, dort steht die
+// Regel; adaptResolution setzt sie um)
+const auto = new AutoViews(quality.pr);
 // (in „Auto“ schaltet adaptResolution es auf langsamen Geräten ab, bevor das Bild unschärfer wird)
-const sideOn = () => settings.quality !== 'niedrig' && !(quality.auto && autoLevel >= 2);
+const sideOn = () => settings.quality !== 'niedrig' && !(quality.auto && auto.level >= 2);
 // Popcorn-Stand der Ladeszene (world/xxl/popstand.js): Nach der Szene geht er nur, wo ihn keine der Kameras sieht, die
 // gerade Welt zeigen – die Hauptkamera, mit Cockpit der Rückspiegel (auch in der Heckscheibe der Facecam), ihr
 // Seitenfenster und in R die Rückfahrkamera
@@ -701,7 +707,7 @@ function applySettings(key) {
   if (!key || key === 'quality') {
     const before = quality;
     quality = qualityPreset();
-    autoLevel = 0;
+    auto.reset(quality.pr);
     pixelRatio = quality.pr;
     if (before.shadows !== quality.shadows) {
       renderer.shadowMap.enabled = quality.shadows;
@@ -1233,49 +1239,32 @@ window.addEventListener('resize', onResize);
 onResize();
 
 /**
- * Qualität „Auto“: Wird das Bild zu langsam (unter 45 Bildern je Sekunde), spart das Spiel zuerst, wo man es kaum sieht
- * – die Welt im Rückspiegel nur jedes zweite, dann jedes dritte Bild (AUTO_MIRROR) und das Seitenfenster der Facecam
- * gemalt statt gefilmt (sideOn) –, und erst danach an der Schärfe des ganzen Bilds (pixelRatio). Läuft es wieder
- * flüssig (über 75 je Sekunde), kommt alles in umgekehrter Reihenfolge zurück.
+ * Qualität „Auto“ (autoquality.js): Wird das Bild zu langsam (unter 45 Bildern je Sekunde), spart das Spiel zuerst, wo
+ * man es kaum sieht – die Welt im Rückspiegel nur jedes zweite, dann jedes dritte Bild (AUTO_MIRROR) und das
+ * Seitenfenster der Facecam gemalt statt gefilmt (sideOn) –, und erst danach an der Schärfe des ganzen Bilds
+ * (pixelRatio). Läuft es wieder flüssig, kommt alles Schritt für Schritt in umgekehrter Reihenfolge zurück. Bilder mit
+ * und ohne Cockpit haben je ihren eigenen Stand: Beim Wechsel der Ansicht kann die Schärfe springen.
+ *
+ * frame ruft das vor dem Zeichnen: dt, shownInside, state und die Facecam beschreiben hier das Bild davor.
  */
-const AUTO_MIRROR = [1, 2, 3];
-let autoLevel = 0;
-const mirrorEvery = () => (quality.auto ? AUTO_MIRROR[autoLevel] : quality.mirrorEvery);
-const perf = { acc: 0, n: 0, cool: 3 };
+const mirrorEvery = () => (quality.auto ? AUTO_MIRROR[auto.level] : quality.mirrorEvery);
 function adaptResolution(dt) {
-  if (!quality.auto || state === 'loading') return;
-  perf.acc += dt;
-  perf.n++;
-  perf.cool -= dt;
-  if (perf.n < 40) return;
-  const avg = perf.acc / perf.n;
-  perf.acc = 0;
-  perf.n = 0;
-  if (perf.cool > 0) return;
-  const maxPR = Math.min(window.devicePixelRatio || 1, 1.5);
-  if (avg > 1 / 45) {
-    if (autoLevel < AUTO_MIRROR.length - 1) {
-      autoLevel++;
-      perf.cool = 1.5;
-    } else if (pixelRatio > 0.55) {
-      pixelRatio = Math.max(0.55, pixelRatio - 0.12);
-      perf.cool = 1.5;
-      onResize();
-    }
-  } else if (avg < 1 / 75) {
-    if (pixelRatio < maxPR) {
-      pixelRatio = Math.min(maxPR, pixelRatio + 0.06);
-      perf.cool = 3;
-      onResize();
-    } else if (autoLevel > 0) {
-      autoLevel--;
-      perf.cool = 3;
-    }
+  // (in der Pause steht die Welt, und die Facecam wird nicht neu gefilmt: Das sagt nichts über das Bild beim Fahren)
+  if (!quality.auto || state === 'loading' || paused) return;
+  // Cockpit ohne die Facecam, die beim Fahren dazugehört (Startszene, Ende der Fahrt, ein Hinweis liegt auf ihrem
+  // Platz): leichter als sonst, also nur sparen, nichts zurückholen
+  const light = shownInside && (state !== 'drive' || ui.facecamAway);
+  if (!auto.tick(dt, Math.min(window.devicePixelRatio || 1, 1.5), shownInside, light)) return;
+  if (auto.pixelRatio !== pixelRatio) {
+    pixelRatio = auto.pixelRatio;
+    onResize();
   }
 }
 
 // --- Rendern --------------------------------------------------------------------------
 let frameNo = 0;
+let shownInside = false; // das letzte Bild war eines mit Cockpit (für die Qualität „Auto“ und __MA.redraw)
+let redrawAll = false; // __MA.redraw: jeden Durchgang neu zeichnen, auch die mit eigenem Takt
 // Lage der Facecam in diesem Bild (ui.placeFacecam) oder null
 let facecamBox = null;
 function renderWorld(cam, { cockpitOn, drops }) {
@@ -1294,8 +1283,12 @@ function renderWorld(cam, { cockpitOn, drops }) {
 
 function renderFrame(cockpitOn) {
   frameNo++;
+  // neue Bilder von Mittelbildschirm und OMI auf die Grafikkarte, bevor der erste Durchgang beginnt
+  flushLiveCanvases(renderer);
+  // (__MA.redraw: Rückspiegel und Rückfahrkamera laufen vor renderWorld und läsen sonst die Schattenkarte des Bilds davor)
+  if (redrawAll) renderer.shadowMap.needsUpdate = quality.shadows;
   // Innen- und Außenspiegel: immer das Spiegelbild der Straße (die Kofferraum-Kamera zeigt der Mittelbildschirm)
-  if (cockpitOn && frameNo % mirrorEvery() === 0) {
+  if (cockpitOn && (redrawAll || frameNo % mirrorEvery() === 0)) {
     // Rückspiegel: Blick nach hinten
     rearCam.position.copy(localToWorld(tmpV2.set(0, 1.32, 0.9)));
     rearCam.lookAt(localToWorld(tmpV2.set(0, 1.05, 40)));
@@ -1306,7 +1299,7 @@ function renderFrame(cockpitOn) {
   // Rückfahrkamera für den Mittelbildschirm: nur in R und nur mit Cockpit (cockpit.rear.on), in halber Bildrate
   if (cockpitOn && cockpit.rear.on) {
     tesla.root.visible = false;
-    cockpit.rear.render(renderer, scene, localToWorld, simT, settings.quality);
+    cockpit.rear.render(renderer, scene, localToWorld, simT, settings.quality, redrawAll);
   }
   if (photoRequest) {
     takePhoto(photoRequest);
@@ -1337,7 +1330,7 @@ function renderFrame(cockpitOn) {
     const fc = facecamBox;
     if (fc) {
       // (nach einem Zeitsprung – Pause, Test – sofort, damit nie ein altes Bild stehen bleibt)
-      const due = !paused && (frameNo % Math.max(2, mirrorEvery()) === 0 || Math.abs(simT - facecam.shotT) > 0.3);
+      const due = redrawAll || (!paused && (frameNo % Math.max(2, mirrorEvery()) === 0 || Math.abs(simT - facecam.shotT) > 0.3));
       if (!facecam.ready || due) {
         if (sideOn()) renderSide();
         facecam.render(renderer, fc, settings.quality === 'auto' ? 'hoch' : settings.quality);
@@ -1487,6 +1480,7 @@ function pollMenuPad(active) {
   }
 }
 
+let drawn = false; // das Bild davor hat die Welt gezeichnet (nicht nur die große Karte)
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000;
@@ -1495,8 +1489,12 @@ function frame(now) {
   if (!(dt > 0)) dt = 1 / 60;
   dt = Math.min(dt, 1 / 20);
   const mapOpen = menus.current === 'karte'; // die große Karte deckt alles zu: dahinter kein 3D-Bild
+  // Qualität „Auto“ vor dem Zeichnen: Sie misst das Bild davor (dt ist seine Dauer) und stellt die Schärfe für dieses
+  // ein. Eine neue Schärfe legt die Zeichenfläche neu an, und die ist dann leer – erst danach gezeichnet, steht das
+  // Bild; davor gezeichnet (so war es früher), blieb der Schirm bei jedem Schritt der Schärfe ein Bild lang schwarz
+  if (drawn && !mapOpen) adaptResolution(dt);
   step(dt, { render: !mapOpen });
-  if (!mapOpen) adaptResolution(dt);
+  drawn = !mapOpen;
 }
 
 function step(dt, { render = true } = {}) {
@@ -1837,7 +1835,7 @@ function step(dt, { render = true } = {}) {
   document.body.classList.toggle('drone', view === 'drone');
   // Facecam-Rahmen vor dem Rendern setzen, damit Bild und Rahmen im selben Bild an derselben Stelle sind
   facecamBox = ui.placeFacecam(paused ? 0 : dt, state === 'drive' && cockpitOn);
-  if (render) renderFrame(cockpitOn);
+  if (render) renderFrame((shownInside = cockpitOn));
   // in der Pause bleiben Banner, Geld-Anzeigen und Funkloch stehen
   ui.update(paused ? 0 : dt, state === 'drive' || state === 'charge' ? game : null, cockpit.screen.live || cockpit.screen.hudOut ? cockpit.screen.kmh : null);
   input.endFrame();
@@ -2070,9 +2068,21 @@ if (DEBUG) {
     get state() {
       return state;
     },
-    // Qualität „Auto“ (adaptResolution): Sparstufe (Rückspiegel-Takt, Seitenfenster) und Schärfe
+    // Reihen der Bäume und Häuser (world/rowcull.js): gezeichnete und vorhandene Instanzen seit dem letzten Abruf;
+    // rowCull = false zeichnet in jedem Durchgang alle, in derselben Reihenfolge (für Vergleichsbilder und Messungen)
+    get rows() {
+      const r = { ...rowStats };
+      rowStats.drawn = rowStats.total = rowStats.bounds = 0;
+      return r;
+    },
+    set rowCull(on) {
+      setRowCull(on);
+    },
+    // Qualität „Auto“ (adaptResolution): Sparstufe (Rückspiegel-Takt, Seitenfenster) und Schärfe; inside: Der Stand
+    // der Bilder mit Cockpit ist an der Reihe, trial und wait gehören zu ihm
     get autoQuality() {
-      return { level: autoLevel, mirrorEvery: mirrorEvery(), side: sideOn(), pixelRatio };
+      const q = auto.now;
+      return { inside: q === auto.inside, level: auto.level, mirrorEvery: mirrorEvery(), side: sideOn(), pixelRatio, trial: !!q.trial, wait: Math.max(0, q.wait) };
     },
     // der Ladestopp im Park (stopBegin … stopTick): on, c (game.charging), q (Lage des Wagens), skipT
     get stop() {
@@ -2103,6 +2113,17 @@ if (DEBUG) {
     step: (seconds, dt = 1 / 30) => {
       const n = Math.round(seconds / dt);
       for (let i = 0; i < n; i++) step(dt, { render: i === n - 1 });
+    },
+    // denselben Stand noch einmal zeichnen, ohne dass die Welt weiterläuft (Vergleichsbilder): Jeder Durchgang läuft
+    // neu, mit neuer Schattenkarte – auch Rückspiegel und Rückfahrkamera, die sonst ihren eigenen Takt haben, und
+    // Facecam und Seitenfenster, die sonst nur jedes zweite oder dritte Bild und in der Pause gar nicht gefilmt werden
+    redraw: () => {
+      redrawAll = true;
+      try {
+        renderFrame(shownInside);
+      } finally {
+        redrawAll = false;
+      }
     },
     setState: (s, t = 0) => {
       state = s;

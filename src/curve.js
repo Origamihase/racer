@@ -30,6 +30,9 @@ TEX.generateMipmaps = false;
 export const curveUniforms = {
   uCurve: { value: TEX },
 };
+// zählt die Stände der Tabelle (commit): Wer etwas aus ihr errechnet und aufhebt, erkennt daran, ob es noch gilt
+let stamp = 0;
+export const curveStamp = () => stamp;
 
 /** Schreibzugriff für den Kurs (course.fill): Stützstelle j setzen, danach commit(). */
 export const curveTable = {
@@ -54,6 +57,7 @@ export const curveTable = {
   },
   /** Neue Werte zur Grafikkarte; mit renderer sofort (die Schattenkarte entsteht vor allem anderen im Bild). */
   commit(renderer) {
+    stamp++;
     TEX.needsUpdate = true;
     if (renderer) renderer.initTexture(TEX);
   },
@@ -330,6 +334,140 @@ THREE.Frustum.prototype.intersectsObject = function (object) {
   _sph.radius = r * (1.1 + k * (Math.abs(f - c.xr) + r));
   return this.intersectsSphere(_sph);
 };
+
+/** Querlage zur Bezugslinie nach der Stauchung (wie curveOffset): t = x − xr vorher, Ergebnis f − xr. */
+function squeezed(t, k) {
+  const u = -t * k;
+  return u <= U0 ? t : -(1 - (1 - U0) * Math.exp((U0 - u) / (1 - U0))) / k;
+}
+
+/**
+ * Hüllkugel in der gebogenen Welt, sicher statt knapp (für world/rowcull.js: dort entscheidet sie, ob ganze Reihen
+ * von Bäumen und Häusern in einem Durchgang fehlen dürfen, die Faustregel oben reicht dafür nicht).
+ *
+ * sphere.center: Mitte eines Quaders in der geraden Welt der Simulation (schon mit der Matrix des Objekts), ex, ey,
+ * ez: seine halben Kanten quer, hoch und längs (ohne Angabe: der Würfel um die Kugel sphere). Danach ist sphere eine
+ * Kugel, in der nach dem Biegen alles liegt, was vorher im Quader lag.
+ *
+ * Ein Punkt (x, y, d) erscheint bei B(d) + o · N(d): B = Q + xr · N ist die Bezugslinie, o seine Querlage zu ihr nach
+ * der Stauchung (squeezed; ohne Stauchung o = x − xr). o wächst mit der Querlage vorher und mit kappa, liegt für den
+ * ganzen Quader also zwischen squeezed(kleinste Querlage, kleinstes kappa) und squeezed(größte Querlage, größtes
+ * kappa): Tief innen in einer Kurve bleibt davon ein schmaler Streifen nahe am Kurvenmittelpunkt, auch wenn der
+ * Quader in der geraden Welt hunderte Meter neben der Straße liegt.
+ *
+ * Um die Linie mit fester Querlage m, C(d) = B(d) + m · N(d), liegt dann alles höchstens w = größter Abstand |o − m|
+ * quer. Sie selbst läuft über die halbe Länge ez höchstens l = ez · (max|1 + m · kappa| + |xr'| + (|xr| + |m|) · v)
+ * weit, denn ihre Ableitung ist (1 + m · kappa + (xr + m) · (th' − kappa)) · T + xr' · N: außen in der Kurve länger,
+ * innen kürzer als die Straße. v ist, was der Kurs sich zwischen zwei Stützstellen schneller oder langsamer dreht, als
+ * kappa dort sagt (siehe unten); weit neben der Straße zählt das. Beides steht fast senkrecht aufeinander (die Straße
+ * dreht sich über ez um höchstens t = ez · (max|kappa| + v)): Der Abstand zu C(d der Mitte) ist höchstens
+ * Wurzel((l² + w²) · (1 + t / 2)); wo xr springt, schlicht l + w. Geprüft werden m = 0 (die Bezugslinie: Ihre Länge
+ * hängt nicht von kappa ab) und die Mitte des Streifens (kleinstes w).
+ *
+ * Die Höhe ist y · fx + Y(d): ohne Stauchung die eigene, mit Stauchung (fx < 1) schrumpft sie höchstens bis zum Boden.
+ *
+ * kappa, xr und g laufen zwischen den Stützstellen gerade: Ihre Grenzen über [d − ez, d + ez] stehen an den
+ * Stützstellen, die das Stück einschließen (jenseits der Tabelle geht es gerade und eben weiter). Der Kurs th ist
+ * dazwischen ein kubischer Bogen durch die Kurse der beiden Stützstellen mit kappa als Steigung an den Enden. Seine
+ * Steigung ist kappa (gerade verbunden) + 6 · t · (1 − t) · e, mit e = (Unterschied der Kurse) / DS − Mittel der
+ * beiden kappa: also höchstens v = 1,5 · |e| neben kappa. e ist 0, wenn die Kurse genau die Trapezsumme von kappa
+ * sind. course.fill schreibt aber den genauen Kurs des Straßenprofils (5-m-Raster) in ein 7,5-m-Raster: Wo die
+ * Krümmung sich biegt (Anfang und Ende eines Übergangs), bleibt ein e von bis zu 0,13 mrad je Meter.
+ *
+ * Kann im Quader die Rückfaltung greifen (cwSink: bis FOLD.sink Meter hinab), reicht die Kugel entsprechend tiefer.
+ */
+export function curveBound(sphere, ex = sphere.radius, ey = ex, ez = ex) {
+  const p = sphere.center;
+  const d = -p.z;
+  const u0 = (d - ez - CURVE_D0) / CURVE_DS;
+  const u1 = (d + ez - CURVE_D0) / CURVE_DS;
+  const j0 = Math.min(Math.max(Math.floor(u0), 0), CURVE_N - 1);
+  const j1 = Math.min(Math.max(Math.ceil(u1), 0), CURVE_N - 1);
+  // (ragt der Quader über die Tabelle hinaus, gehört die Gerade dort dazu)
+  const beyond = u0 < 0 || u1 > CURVE_N - 1;
+  let kmin = beyond ? 0 : Infinity;
+  let kmax = beyond ? 0 : -Infinity;
+  let xmin = Infinity; // Bezugslinie xr
+  let xmax = -Infinity;
+  let g = 0;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  let dxr = 0; // größte Änderung von xr zwischen zwei Stützstellen
+  let dev = 0; // größtes |e|: so viel dreht der Kurs zwischen zwei Stützstellen neben kappa (je Meter, im Mittel)
+  let xr0 = DATA[(CURVE_N + j0) * 4 + 1];
+  let k0 = 0;
+  let th0 = 0;
+  for (let j = j0, a = j0 * 4 + 3, b = (CURVE_N + j0) * 4; j <= j1; j++, a += 4, b += 4) {
+    const k = DATA[b];
+    if (k < kmin) kmin = k;
+    if (k > kmax) kmax = k;
+    const th = DATA[a - 1];
+    if (j > j0) {
+      const e = Math.abs((th - th0) / CURVE_DS - (k + k0) / 2);
+      if (e > dev) dev = e;
+    }
+    k0 = k;
+    th0 = th;
+    const xr = DATA[b + 1];
+    if (xr < xmin) xmin = xr;
+    if (xr > xmax) xmax = xr;
+    if (Math.abs(xr - xr0) > dxr) dxr = Math.abs(xr - xr0);
+    xr0 = xr;
+    const s = Math.abs(DATA[b + 2]);
+    if (s > g) g = s;
+    const y = DATA[a];
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  // der Streifen der Querlagen nach der Stauchung
+  const tmin = p.x - ex - xmax;
+  const tmax = p.x + ex - xmin;
+  const oMin = squeezed(tmin, kmin);
+  const oMax = squeezed(tmax, kmax);
+  const jump = dxr / CURVE_DS;
+  const turn = 1.5 * dev;
+  const xra = Math.max(Math.abs(xmin), Math.abs(xmax));
+  const skew = Math.sqrt(1 + (ez * (Math.max(kmax, -kmin) + turn)) / 2);
+  let m = 0;
+  let across = 0;
+  for (let i = 0; i < 2; i++) {
+    const mi = i ? (oMin + oMax) / 2 : 0;
+    const l = ez * (Math.max(Math.abs(1 + mi * kmin), Math.abs(1 + mi * kmax)) + (xra + Math.abs(mi)) * turn + jump);
+    const w = Math.max(oMax - mi, mi - oMin);
+    const q = jump > 0 ? l + w : Math.sqrt(l * l + w * w) * skew;
+    if (i && q >= across) break;
+    m = mi;
+    across = q;
+  }
+  // Höhe: gestaucht wird, wo (xr − x) · kappa über U0 liegt (am größten an einer Ecke der Bereiche)
+  let lo = p.y - ey;
+  let hi = p.y + ey;
+  if (Math.max(-tmin * kmax, -tmin * kmin, -tmax * kmax, -tmax * kmin) > U0) {
+    lo = Math.min(lo, 0);
+    hi = Math.max(hi, 0);
+  }
+  // (zwischen den Stützstellen ist Y ein kubischer Bogen: Er schwingt höchstens 8/27 · DS · g über sie hinaus)
+  lo += y0 - 0.3 * CURVE_DS * g;
+  hi += y1 + 0.3 * CURVE_DS * g;
+  const c = curveAt(d, _fr);
+  const f = c.xr + m;
+  p.x = c.x + f * Math.cos(c.th);
+  p.z = c.z - f * Math.sin(c.th);
+  p.y = (lo + hi) / 2;
+  // (etwas Luft: Die Grafikkarte rechnet mit float32, zwischen den Stützstellen ist die Bahn ein kubischer Bogen, und
+  // course.fill dreht den Kurs zuletzt um einen winzigen Rest, dem die Linie nicht folgt: gemessen bis 0,11 mrad (auf
+  // der Landstraße, wo zwei Gegenbögen aufeinandertreffen), die Luft trägt das Neunfache; tools/reihen-test.mjs prüft
+  // beides)
+  // Math.sqrt statt Math.hypot: hypot legt in V8 bei jedem Aufruf Speicher an, und das hier läuft für jede Hülle in
+  // jedem Bild
+  const half = (hi - lo) / 2;
+  sphere.radius = Math.sqrt(across * across + half * half) * 1.02 + 0.25;
+  if (d + ez >= FOLD.d && Math.sqrt(p.x * p.x + p.z * p.z) - sphere.radius < FOLD.hi * (d + ez)) {
+    p.y -= FOLD.sink / 2;
+    sphere.radius += FOLD.sink / 2;
+  }
+  return sphere;
+}
 
 /** Material-Fabrik für die Welt: alle Materialien sind automatisch gebogen. */
 export const W = {

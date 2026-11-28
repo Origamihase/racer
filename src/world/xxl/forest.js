@@ -13,6 +13,7 @@ import { coniferGeo, decidGeo, bushGeo } from '../scenery.js';
 import { PAL } from '../kit/palette.js';
 import { GeoBuf, boxInto } from './roadkit.js';
 import { mulberry32 } from '../../util.js';
+import { ROW, RowCull, cullByRows } from '../rowcull.js';
 
 export const TYPES = ['conifer', 'decid', 'bush', 'fern', 'house', 'roof', 'deer', 'hide', 'bench', 'win0', 'win1', 'win2', 'win3', 'gable'];
 const T = Object.fromEntries(TYPES.map((t, i) => [t, i]));
@@ -326,6 +327,11 @@ function sharedGeo() {
     mat: TYPES.map((t) => (t === 'house' || t === 'gable' ? walls : t === 'roof' ? W.lambert({ vertexColors: true }) : mat)),
     shadow: TYPES.map((t) => t !== 'fern' && !t.startsWith('win')),
   };
+  // Hüllkugel jeder Form (für die Reihen, siehe PropSet.fill)
+  shared.ball = shared.geo.map((g) => {
+    g.computeBoundingSphere();
+    return g.boundingSphere;
+  });
   return shared;
 }
 
@@ -335,20 +341,36 @@ export function addProp(out, type, x, s, sx, sy, sz, rot, color, y = 0) {
   out.push(type, x, y, s, sx, sy, sz, rot, color);
 }
 
-/** Instanzen aller Stücke eines Rahmens, je Art ein InstancedMesh. */
+/**
+ * Instanzen aller Stücke eines Rahmens, je Art ein InstancedMesh. Die Instanzen liegen in Reihen entlang der Straße
+ * (rowcull.js): So zeichnen Rückspiegel, Schattenkarte und Seitenfenster nur, was bei ihnen überhaupt vorkommen kann.
+ */
 export class PropSet {
   constructor(parent) {
     this.group = new THREE.Group();
     this.group.name = 'XXL-Bewuchs';
     parent.add(this.group);
     this.meshes = new Array(TYPES.length).fill(null);
+    this.cull = new RowCull();
   }
 
   /** lists: Pläne (siehe addProp); sRef: Bezugspunkt (die Instanzen stehen relativ dazu, kleine Zahlen). */
   fill(lists, sRef) {
     const S = sharedGeo();
     const counts = new Array(TYPES.length).fill(0);
-    for (const L of lists) for (let i = 0; i < L.length; i += STRIDE) counts[L[i]]++;
+    // Reihen: ROW Meter Strecke je Reihe, die erste dort, wo das hinterste Stück beginnt
+    let row0 = Infinity;
+    let row1 = -Infinity;
+    for (const L of lists) {
+      for (let i = 0; i < L.length; i += STRIDE) {
+        counts[L[i]]++;
+        const row = Math.floor(L[i + 3] / ROW);
+        if (row < row0) row0 = row;
+        if (row > row1) row1 = row;
+      }
+    }
+    const rows = row1 >= row0 ? row1 - row0 + 1 : 0;
+    this.cull.reset(rows);
     for (let t = 0; t < TYPES.length; t++) {
       let m = this.meshes[t];
       if (m && m.instanceMatrix.count < counts[t]) {
@@ -359,7 +381,7 @@ export class PropSet {
       if (!m && counts[t] > 0) {
         let cap = 64;
         while (cap < counts[t]) cap *= 2;
-        m = this.meshes[t] = new THREE.InstancedMesh(S.geo[t], S.mat[t], cap);
+        m = this.meshes[t] = cullByRows(new THREE.InstancedMesh(S.geo[t], S.mat[t], cap), this.cull);
         m.frustumCulled = false;
         m.castShadow = S.shadow[t];
         m.receiveShadow = true;
@@ -367,19 +389,35 @@ export class PropSet {
         m.setColorAt(0, _c.setRGB(1, 1, 1));
         this.group.add(m);
       }
-      if (m) m.count = 0;
+      if (!m) continue;
+      m.count = m.userData.rowTotal = counts[t];
+      // erste Instanz jeder Reihe: zuerst zählen (um eins versetzt), dann aufsummieren
+      m.userData.rowStart = new Uint32Array(rows + 1);
     }
+    for (const L of lists) for (let i = 0; i < L.length; i += STRIDE) this.meshes[L[i]].userData.rowStart[Math.floor(L[i + 3] / ROW) - row0 + 1]++;
+    const next = this.meshes.map((m) => {
+      if (!m) return null;
+      const st = m.userData.rowStart;
+      for (let r = 1; r <= rows; r++) st[r] += st[r - 1];
+      return st.slice(0, rows);
+    });
     this.group.position.z = -sRef;
     for (const L of lists) {
       for (let i = 0; i < L.length; i += STRIDE) {
-        const m = this.meshes[L[i]];
+        const t = L[i];
+        const m = this.meshes[t];
+        const row = Math.floor(L[i + 3] / ROW) - row0;
+        const at = next[t][row]++;
         _p.set(L[i + 1], L[i + 2], -(L[i + 3] - sRef));
         _q.setFromAxisAngle(_y, L[i + 7]);
         _s.set(L[i + 4], L[i + 5], L[i + 6]);
         _m.compose(_p, _q, _s);
-        m.setMatrixAt(m.count, _m);
-        m.setColorAt(m.count, _c.setHex(L[i + 8]));
-        m.count++;
+        m.setMatrixAt(at, _m);
+        m.setColorAt(at, _c.setHex(L[i + 8]));
+        // Hülle der Reihe: die Kugel der Form, mit der Instanz gedreht, verschoben und um ihr größtes Maß gestreckt
+        const ball = S.ball[t];
+        _v.copy(ball.center).applyMatrix4(_m);
+        this.cull.add(row, _v.x, _v.y, _v.z, ball.radius * Math.max(Math.abs(L[i + 4]), Math.abs(L[i + 5]), Math.abs(L[i + 6])));
       }
     }
     for (const m of this.meshes) {
@@ -390,6 +428,7 @@ export class PropSet {
   }
 }
 const _p = new THREE.Vector3();
+const _v = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _y = new THREE.Vector3(0, 1, 0);
